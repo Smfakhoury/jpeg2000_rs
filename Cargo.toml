@@ -1,0 +1,32 @@
+[package]
+name = "jpeg2000_rs"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93.1"
+description = "Memory-safe JPEG 2000 decoding with Verus verification"
+readme = "README.md"
+publish = false
+include = [
+    "Cargo.toml",
+    "README.md",
+    "RELEASING.md",
+    "SECURITY.md",
+    "THREAT_MODEL.md",
+    "normative-coverage.json",
+    "normative-coverage.schema.json",
+    "src/**/*.rs",
+    "standards-profile.json",
+    "support-matrix.json",
+    "unsupported-boundary-audit.json",
+]
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(verus_keep_ghost)",
+] }
+
+[lints.clippy]
+all = "deny"
