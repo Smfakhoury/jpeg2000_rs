@@ -1,0 +1,42 @@
+name: Verus
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Download pinned Verus
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 \
+            --output /tmp/verus.zip \
+            https://github.com/verus-lang/verus/releases/download/release/0.2026.10.04.426d8b0/verus-0.2026.10.04.426d8b0-x86-linux.zip
+          echo "624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0  /tmp/verus.zip" \
+            | sha256sum --check
+          unzip -q /tmp/verus.zip -d /tmp/verus
+      - name: Verify exact production crate root
+        shell: bash
+        run: |
+          /tmp/verus/verus-x86-linux/verus \
+            --no-lifetime \
+            --output-json \
+            --crate-type lib \
+            src/lib.rs \
+            > /tmp/verus-result.json
+      - name: Audit proof coverage
+        shell: bash
+        run: |
+          python3 validation/generate-proof-coverage.py \
+            /tmp/verus-result.json \
+            /tmp/production-proof-coverage.json
+          diff -u production-proof-coverage.json /tmp/production-proof-coverage.json
