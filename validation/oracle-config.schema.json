@@ -1,0 +1,69 @@
+{
+  "$id": "https://example.invalid/jpeg2000_rs/validation/oracle-config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "oracles": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "raw",
+                "jp2",
+                "jph",
+                "jpx"
+              ]
+            },
+            "type": "array"
+          },
+          "name": {
+            "enum": [
+              "openjpeg",
+              "grok",
+              "jasper"
+            ]
+          },
+          "output": {
+            "const": "pnm"
+          }
+        },
+        "required": [
+          "name",
+          "environment",
+          "executable",
+          "formats",
+          "command",
+          "output"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "oracles"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,333 @@
+{
+  "$schema": "./corpus.schema.json",
+  "entries": [
+    {
+      "bytes": 82,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "raw",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "raw-minimal"
+      },
+      "id": "raw-minimal",
+      "kind": "positive",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/raw-minimal.j2k",
+      "redistribution": "approved",
+      "sha256": "c781555cad8670d3763ef5c8b6be0a22e6827222faafe0fe3037c09f7167721c"
+    },
+    {
+      "bytes": 167,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "jp2",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jp2-minimal"
+      },
+      "id": "jp2-minimal",
+      "kind": "positive",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/jp2-minimal.jp2",
+      "redistribution": "approved",
+      "sha256": "df1abe6330374120f7bb5507009f82943f35d132ae0904314e38b3afeb534924"
+    },
+    {
+      "bytes": 176,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "jph",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jph-minimal-profile"
+      },
+      "id": "jph-minimal-profile",
+      "kind": "positive",
+      "license": "project-generated-no-external-rights",
+      "operation": "inspect",
+      "path": "generated/corpus/jph-minimal-profile.jph",
+      "redistribution": "approved",
+      "sha256": "fd42e4251e76532ce15c6eb56d9374a4f54059a8e4ef432b43902e2cf0c8c7f5"
+    },
+    {
+      "bytes": 167,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "jpx",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jpx-minimal"
+      },
+      "id": "jpx-minimal",
+      "kind": "positive",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/jpx-minimal.jpx",
+      "redistribution": "approved",
+      "sha256": "3c1c66690f17c45b004995837dcdd77cc29e08d9676cd104ccbf96634e34d7db"
+    },
+    {
+      "bytes": 9,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "jpip",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jpip-minimal-response"
+      },
+      "id": "jpip-minimal-response",
+      "kind": "positive",
+      "license": "project-generated-no-external-rights",
+      "operation": "ingest",
+      "path": "generated/corpus/jpip-minimal-response.jpip",
+      "redistribution": "approved",
+      "sha256": "8bba2a301d15a17d7d48f5277c012c7307f56f769fdf5b6c520f47290bb48dbc"
+    },
+    {
+      "bytes": 12,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "raw",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "raw-minimal-truncated-prefix"
+      },
+      "id": "raw-minimal-truncated-prefix",
+      "kind": "malformed-prefix",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/raw-minimal-truncated-prefix.j2k",
+      "redistribution": "approved",
+      "sha256": "7c07eba8a99bb327afc71b2ea82306850ea4411661460ebd13234fc357c85dc6"
+    },
+    {
+      "bytes": 12,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jp2",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jp2-minimal-truncated-prefix"
+      },
+      "id": "jp2-minimal-truncated-prefix",
+      "kind": "malformed-prefix",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/jp2-minimal-truncated-prefix.jp2",
+      "redistribution": "approved",
+      "sha256": "7ccc55e3855843e35299487bcc6f30f68922e3c08eaa8c55887c43eac3e59cf6"
+    },
+    {
+      "bytes": 12,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jph",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jph-minimal-profile-truncated-prefix"
+      },
+      "id": "jph-minimal-profile-truncated-prefix",
+      "kind": "malformed-prefix",
+      "license": "project-generated-no-external-rights",
+      "operation": "inspect",
+      "path": "generated/corpus/jph-minimal-profile-truncated-prefix.jph",
+      "redistribution": "approved",
+      "sha256": "7ccc55e3855843e35299487bcc6f30f68922e3c08eaa8c55887c43eac3e59cf6"
+    },
+    {
+      "bytes": 12,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jpx",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jpx-minimal-truncated-prefix"
+      },
+      "id": "jpx-minimal-truncated-prefix",
+      "kind": "malformed-prefix",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/jpx-minimal-truncated-prefix.jpx",
+      "redistribution": "approved",
+      "sha256": "7ccc55e3855843e35299487bcc6f30f68922e3c08eaa8c55887c43eac3e59cf6"
+    },
+    {
+      "bytes": 4,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jpip",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jpip-minimal-response-truncated-prefix"
+      },
+      "id": "jpip-minimal-response-truncated-prefix",
+      "kind": "malformed-prefix",
+      "license": "project-generated-no-external-rights",
+      "operation": "ingest",
+      "path": "generated/corpus/jpip-minimal-response-truncated-prefix.jpip",
+      "redistribution": "approved",
+      "sha256": "c7475f94706c8340b61fba52c96a65298b15f876061155cfeadf83288ba57974"
+    },
+    {
+      "bytes": 82,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "raw",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "raw-invalid-soc"
+      },
+      "id": "raw-invalid-soc",
+      "kind": "negative",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/raw-invalid-soc.j2k",
+      "redistribution": "approved",
+      "sha256": "1029787e7f86917dae8346fe7662ae9901fee0db750cdbf4a3bbf0ea25ab8c9c"
+    },
+    {
+      "bytes": 167,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jp2",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jp2-invalid-signature"
+      },
+      "id": "jp2-invalid-signature",
+      "kind": "negative",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/jp2-invalid-signature.jp2",
+      "redistribution": "approved",
+      "sha256": "1cb48be12d72fd77835db163917aa1d54819f46b4d18252e1d99e3bc082b46cc"
+    },
+    {
+      "bytes": 176,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jph",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jph-contradictory-brand"
+      },
+      "id": "jph-contradictory-brand",
+      "kind": "negative",
+      "license": "project-generated-no-external-rights",
+      "operation": "inspect",
+      "path": "generated/corpus/jph-contradictory-brand.jph",
+      "redistribution": "approved",
+      "sha256": "7198c805b6e0dcfe2bf6eefe42e98a900e56b111841080ca90c3f0ad0e3fe76c"
+    },
+    {
+      "bytes": 167,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jpx",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jpx-invalid-box-length"
+      },
+      "id": "jpx-invalid-box-length",
+      "kind": "negative",
+      "license": "project-generated-no-external-rights",
+      "operation": "decode",
+      "path": "generated/corpus/jpx-invalid-box-length.jpx",
+      "redistribution": "approved",
+      "sha256": "adef54743547c7e0f6078e453b1ea20158457c19d6e119d51d31c0c5a81ea781"
+    },
+    {
+      "bytes": 2,
+      "classification": "generated",
+      "expected": "reject",
+      "format": "jpip",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jpip-overlong-vbas"
+      },
+      "id": "jpip-overlong-vbas",
+      "kind": "negative",
+      "license": "project-generated-no-external-rights",
+      "operation": "ingest",
+      "path": "generated/corpus/jpip-overlong-vbas.jpip",
+      "redistribution": "approved",
+      "sha256": "34921bfa061b5734acf41338ddc8ccbb6bdb91a85e8609cc342de669bf550d03"
+    },
+    {
+      "bytes": 95,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "raw",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "raw-comment-metamorphic"
+      },
+      "id": "raw-comment-metamorphic",
+      "kind": "metamorphic",
+      "license": "project-generated-no-external-rights",
+      "metamorphic": {
+        "parent": "raw-minimal",
+        "relation": "same-normalized-output"
+      },
+      "operation": "decode",
+      "path": "generated/corpus/raw-comment-metamorphic.j2k",
+      "redistribution": "approved",
+      "sha256": "87df448a606412195cd91d81bffa1a88155bd56c201360a9906640292c965516"
+    },
+    {
+      "bytes": 184,
+      "classification": "generated",
+      "expected": "accept",
+      "format": "jp2",
+      "generator": {
+        "id": "jpeg2000-rs-validation-generator-v1",
+        "inputs": [],
+        "recipe": "jp2-free-box-metamorphic"
+      },
+      "id": "jp2-free-box-metamorphic",
+      "kind": "metamorphic",
+      "license": "project-generated-no-external-rights",
+      "metamorphic": {
+        "parent": "jp2-minimal",
+        "relation": "same-normalized-output"
+      },
+      "operation": "decode",
+      "path": "generated/corpus/jp2-free-box-metamorphic.jp2",
+      "redistribution": "approved",
+      "sha256": "7e5df21f4205ef8efa25eec572bbe20f0ed0fce819cf874489d13b5a5f9c7ea2"
+    }
+  ],
+  "generator": {
+    "deterministic": true,
+    "id": "jpeg2000-rs-validation-generator-v1",
+    "source": "validation/framework.py"
+  },
+  "policy": {
+    "allowed_classifications": [
+      "generated"
+    ],
+    "official_vectors_included": false,
+    "restricted_vectors_included": false
+  },
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "schema_version": 1
+}

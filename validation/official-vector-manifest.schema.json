@@ -1,0 +1,233 @@
+{
+  "$id": "https://example.invalid/jpeg2000_rs/validation/official-vector-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "const": "jpeg2000-rs-first-release-proposed"
+    },
+    "suite": {
+      "additionalProperties": false,
+      "properties": {
+        "source_url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "acquired_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "access_status": {
+          "const": "authorized-internal"
+        },
+        "license": {
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "const": "approved-internal-use"
+            },
+            "reviewed_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "redistribution_permitted": {
+              "const": false
+            },
+            "basis": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "reviewed_at",
+            "redistribution_permitted",
+            "basis"
+          ],
+          "type": "object"
+        },
+        "archive": {
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/relativePath"
+            },
+            "bytes": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "path",
+            "bytes",
+            "sha256"
+          ],
+          "type": "object"
+        },
+        "selection": {
+          "additionalProperties": false,
+          "properties": {
+            "complete": {
+              "const": true
+            },
+            "applicable_vector_count": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "basis": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "complete",
+            "applicable_vector_count",
+            "basis"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "source_url",
+        "acquired_at",
+        "access_status",
+        "license",
+        "archive",
+        "selection"
+      ],
+      "type": "object"
+    },
+    "entries": {
+      "items": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "applicable": {
+                  "const": true
+                },
+                "expected": {
+                  "properties": {
+                    "accepted": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ]
+                }
+              },
+              "required": [
+                "applicable",
+                "expected"
+              ]
+            },
+            "then": {
+              "properties": {
+                "expected": {
+                  "required": [
+                    "normalized_sha256"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "identifier_public": {
+            "type": "boolean"
+          },
+          "path": {
+            "$ref": "#/$defs/relativePath"
+          },
+          "sha256": {
+            "$ref": "#/$defs/sha256"
+          },
+          "bytes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "format": {
+            "enum": [
+              "raw",
+              "jp2",
+              "jph",
+              "jpx"
+            ]
+          },
+          "operation": {
+            "const": "decode"
+          },
+          "applicable": {
+            "type": "boolean"
+          },
+          "expected": {
+            "additionalProperties": false,
+            "properties": {
+              "accepted": {
+                "type": "boolean"
+              },
+              "normalized_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "category": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "accepted"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "identifier_public",
+          "path",
+          "sha256",
+          "bytes",
+          "format",
+          "operation",
+          "applicable",
+          "expected"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile_id",
+    "suite",
+    "entries"
+  ],
+  "$defs": {
+    "relativePath": {
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    }
+  },
+  "title": "External official decoder-vector manifest",
+  "type": "object"
+}
