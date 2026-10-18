@@ -1,0 +1,65 @@
+{
+  "$schema": "./release-attestation.schema.json",
+  "attestation_type": "conformance",
+  "commands": [
+    "cargo test --all-targets --locked",
+    "python3 validation/run-validation.py all",
+    "python3 validation/run-validation.py official"
+  ],
+  "created_at": "2026-10-18T00:16:22.037055Z",
+  "immutable_source_revision": "sha256-tree-v1:11dc7a8d3b486119f98469db24f313f37e11bdd3ef0f56b098651e11ebbc6c80",
+  "input_hashes": {
+    "validation/corpus.json": "3bf434745e7804a7e6aa62eedeb2f4b87cb0440ea71f8f659f837da70090c285",
+    "validation/results/budget-results.json": "3e57113fbedba6cb676693ac674b253d38fcb09bb4f60657eea6d310055a03f4",
+    "validation/results/official-vector-results.json": "8f9d1a2664d36003f079a5927fb1f3497807631140a3f7dd70d8f602ad66d79e",
+    "validation/results/oracle-adjudications.json": "53379a973ccab7df8cf8072fcf5831d90154c47d13a1c5c39eb56ec34abd991b",
+    "validation/results/validation-results.json": "cc0d8258c429a9594f146f56452caadaf8cbf190b43ea7ca2f170c7d8918f63c"
+  },
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "result": {
+    "differential_disagreements": 0,
+    "failed": 0,
+    "generated_vectors": 17,
+    "ht_block_segment_vectors": 3,
+    "ht_cleanup_metadata_vectors": 3,
+    "ht_cleanup_reconstruction_vectors": 6,
+    "ht_mixed_selection_vectors": 2,
+    "ht_packet_layer_routing_vectors": 2,
+    "ht_placeholder_multi_set_capability_vectors": 5,
+    "ht_raw_jph_integration_vectors": 2,
+    "ht_refinement_reader_vectors": 3,
+    "ht_refinement_traversal_vectors": 3,
+    "jph_profile_detection_vectors": 5,
+    "jpip_header_fragment_cache_vectors": 20,
+    "jpip_selected_precinct_progressive_unit_cases": 9,
+    "lossy_metrics": [],
+    "official_conformance_claimed": false,
+    "official_vector_status": "blocked",
+    "official_vectors": 0,
+    "open_vectors": 0,
+    "passed": 233,
+    "phase_h_external_oracles_available": 1,
+    "phase_h_external_oracles_executed": [
+      "openjpeg"
+    ],
+    "phase_h_external_oracles_skipped": [
+      "grok",
+      "jasper"
+    ],
+    "phase_h_generated_decoder_cases": 17,
+    "phase_h_generated_decoder_cases_passed": 17,
+    "phase_l_ads_atk_nlt_cbd_unit_cases": 5,
+    "phase_l_color_conversion_unit_cases": 3,
+    "phase_l_jpx_execution_unit_cases": 8,
+    "phase_l_part2_mct_unit_cases": 9,
+    "phase_m_part9_refinement_unit_cases": 14,
+    "regression_vectors": 216,
+    "selective_decode_equivalence_vectors": 2,
+    "selective_decode_limit_vectors": 2,
+    "selective_decode_malformed_vectors": 7,
+    "validation_framework_tests": 13
+  },
+  "schema_version": 1,
+  "status": "blocked",
+  "tool_revision": "rustc 1.93.1 (01f6ddf75 2026-02-11)"
+}

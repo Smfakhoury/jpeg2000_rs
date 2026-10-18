@@ -1,0 +1,39 @@
+{
+  "blockers": [
+    {
+      "evidence": [
+        "validation/results/official-vector-results.json"
+      ],
+      "gate": "official_vectors",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "proof-attestation.json",
+        "production-proof-coverage.json",
+        "lifetime-analysis-blocker.json"
+      ],
+      "gate": "proof_boundary",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "legal-publication-review.json"
+      ],
+      "gate": "legal_publication",
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "owner-approval.json"
+      ],
+      "gate": "owner_approval",
+      "status": "blocked"
+    }
+  ],
+  "immutable_source_revision": "sha256-tree-v1:11dc7a8d3b486119f98469db24f313f37e11bdd3ef0f56b098651e11ebbc6c80",
+  "phase": "phase-i-release-conformance",
+  "release_attestation_sha256": "0f02cc0d4aad4d5a736d6f9a014bafe00876fa81c7c2e8f293b43eb370066c82",
+  "schema_version": 1,
+  "status": "blocked"
+}

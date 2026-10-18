@@ -1,0 +1,106 @@
+{
+  "$schema": "./architecture-review.schema.json",
+  "checklist": [
+    {
+      "evidence": [
+        "Cargo.toml",
+        "support-matrix.json",
+        "unsupported-boundary-audit.json",
+        "src/lib.rs"
+      ],
+      "finding": "The selected profile is decoder-only, publish remains disabled, and encoding, network behavior, ICC execution, and other unsupported capabilities are explicit.",
+      "id": "release-scope-and-boundaries",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "Cargo.toml",
+        "src/limits.rs",
+        "validation/results/budget-results.json"
+      ],
+      "finding": "Unsafe Rust is forbidden and decoder plus process-level validation budgets bound untrusted input handling.",
+      "id": "memory-safety-and-resource-limits",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "src/error.rs",
+        "support-matrix.json",
+        "unsupported-boundary-audit.json",
+        "validation/results/validation-results.json"
+      ],
+      "finding": "Unsupported and malformed inputs use typed errors and the generated negative corpus exercises public format boundaries.",
+      "id": "typed-failure-model",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "normative-coverage.json",
+        "normative-coverage.schema.json",
+        "src/refinement.rs",
+        "specs/mod.rs",
+        "proofs/production_impl/mod.rs"
+      ],
+      "finding": "All 54 selected executable Parts 1, 2, 9, and 15 requirement groups link to 160 concrete contracted functions with zero unlinked selected groups.",
+      "id": "selected-parts-functional-refinement",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "support-matrix.json",
+        "unsupported-boundary-audit.json",
+        "src/error.rs"
+      ],
+      "finding": "The source audit has zero selected-profile unsupported class-C paths and zero support-matrix contradictions.",
+      "id": "unsupported-boundary-audit",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "proof-attestation.json",
+        "production-proof-coverage.json",
+        "validation/generate-proof-coverage.py"
+      ],
+      "finding": "Every production function has one disposition with zero termination gaps, incomplete functions, missing or duplicate dispositions, and trusted codec functions.",
+      "id": "complete-proof-dispositions",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "lifetime-analysis-blocker.json",
+        "proof-attestation.json",
+        "source-tree.json",
+        "validation/verus-lifetime-reproducer.rs"
+      ],
+      "finding": "Lifetime analysis remains an explicit upstream Verus internal-error boundary; Rust borrow checking remains active and no proof assumption or source workaround was added.",
+      "id": "lifetime-analysis-proof-boundary",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "validation/expected-package-files.txt",
+        "Cargo.toml",
+        "RELEASING.md"
+      ],
+      "finding": "The package boundary excludes proofs, validation assets, generated results, and native oracle binaries.",
+      "id": "package-and-publication-boundary",
+      "status": "passed"
+    },
+    {
+      "evidence": [
+        "validation/oracles.json",
+        "validation/results/oracle-adjudications.json",
+        "release-attestation.schema.json"
+      ],
+      "finding": "External observations remain distinct from official Part 4 conformance and unresolved disagreements block release.",
+      "id": "independent-validation-and-claims",
+      "status": "passed"
+    }
+  ],
+  "review_kind": "local-evidence-review",
+  "reviewed_at": "2026-10-17T23:54:18Z",
+  "reviewer": "phase-m-local-validation",
+  "schema_version": 1,
+  "source_revision": "sha256-tree-v1:11dc7a8d3b486119f98469db24f313f37e11bdd3ef0f56b098651e11ebbc6c80",
+  "status": "passed"
+}
