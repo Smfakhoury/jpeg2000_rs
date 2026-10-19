@@ -860,6 +860,10 @@
         {
           "path": "src/refinement.rs",
           "symbol": "tier1_predicted_negative"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_decoded_sign"
         }
       ],
       "id": "part1-complete-legacy-tier1",
@@ -887,6 +891,10 @@
         {
           "path": "src/tier1.rs",
           "symbol": "decode_cleanup_coefficient"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_sign_and_mark"
         }
       ],
       "proof_refs": [
@@ -931,6 +939,10 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part1_tier1_predicted_negative"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_decoded_sign"
         }
       ],
       "test_refs": [
@@ -941,6 +953,10 @@
         {
           "path": "src/tier1.rs",
           "symbol": "raw_bypass_decodes_significance_and_refinement_passes"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_bypass_sign_bits_do_not_use_mq_sign_prediction"
         },
         {
           "path": "src/tier1.rs",

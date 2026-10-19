@@ -4586,6 +4586,29 @@ mod tests {
     }
 
     #[test]
+    fn decodes_nonzero_samples_with_leading_zero_bitplanes() {
+        // Packet bytes independently encoded from constant 8-bit PGM samples by OpenJPEG 2.4.
+        for (value, packet) in [
+            (1, &[0xcf, 0xb4, 0x04, 0x09][..]),
+            (129, &[0xc0, 0x21, 0x03][..]),
+            (200, &[0xcf, 0xb4, 0x08, 0x04, 0x4f][..]),
+        ] {
+            let mut bytes = prepared_codestream(1, 1, 1, &[0x40, 0x40], packet);
+            let cod = bytes
+                .windows(2)
+                .position(|marker| marker == [0xff, 0x52])
+                .unwrap();
+            bytes[cod + 9] = 0;
+            let image = decode_codestream(&bytes, &DecodeOptions::default()).unwrap();
+            assert_eq!(
+                image.components()[0].samples(),
+                &TypedSamples::Unsigned(vec![value]),
+                "sample {value}"
+            );
+        }
+    }
+
+    #[test]
     fn decodes_packet_body_through_inverse_quantization() {
         let limits = ResourceLimits::default();
         let mut inclusion = TagTree::new(1, 1, &limits).unwrap();

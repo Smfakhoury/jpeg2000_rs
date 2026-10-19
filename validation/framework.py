@@ -181,6 +181,7 @@ def validate_evidence_schemas(output_dir: Path | None = None) -> dict[str, Any]:
         ("oracle-adjudications.json", "oracle-adjudication.schema.json"),
         ("official-vector-results.json", "official-vector-result.schema.json"),
         ("proof-coverage.json", "proof-coverage.schema.json"),
+        ("numerical-results.json", "numerical-result.schema.json"),
     ):
         path = (output_dir or RESULTS_DIR) / name
         if path.is_file():

@@ -21,13 +21,13 @@ PYTHONPATH=validation .venv/bin/python -m unittest discover -s validation/tests 
 ```
 
 `all` checks corpus reproducibility, schemas, technical inventory links,
-generated decoder cases, and budgets. It builds the example harness with
+generated decoder cases, independent numerical cases, and budgets. It builds the example harness with
 `cargo build --example validation_decoder --locked`. It does not require
 internal approvals, old results, or committed source snapshots. `--subject`
 selects a different harness; `--no-build` uses the existing default binary.
 
 All reports default to ignored `target/validation/`. The `run`, `budget`,
-`official`, `schemas`, and `all` commands accept `--output-dir`. Existing
+`official`, `numerical`, `schemas`, and `all` commands accept `--output-dir`. Existing
 tracked report paths are refused. Reports bind the Git commit, dirty flag,
 current source and validation-tool hashes, and subject binary hash when run.
 These describe the current execution, not the validity of historical evidence.
@@ -71,6 +71,51 @@ external `--adjudication-file` can supply human decisions using
 `oracle-adjudication.schema.json`; it is validated and never rewritten.
 The generated `oracle-adjudications.json` is only a derived view. Without
 external observations its status is `skipped`, not passed.
+
+## Independent numerical regression checks
+
+Install OpenJPEG's `opj_compress` and `opj_decompress` CLI tools (for example,
+`libopenjp2-tools` on Debian/Ubuntu). The suite creates its own deterministic
+nonzero 8/16-bit PGM/PPM images, including channel extrema. It encodes and decodes
+them independently and compares the Rust decoder's sample planes.
+It also exercises 256-by-256 grayscale/RGB images with multiple code-blocks.
+
+```sh
+.venv/bin/python validation/run-validation.py numerical
+.venv/bin/python validation/run-validation.py numerical --output-dir target/validation/numerical
+```
+
+Cases cover grayscale/RGB, raw/JP2, tiles and nonzero origins, multiple quality
+layers, progression orders, every legacy coding-style flag, SOP/EPH/PLT, and
+reversible/irreversible transforms.
+Lossless cases must reproduce the original and reference samples bit for bit.
+Lossy cases record per-component maximum error, MSE, RMSE and PSNR, plus error
+against the original image. PSNR is `null` when MSE is zero, rather than a
+nonfinite JSON value.
+
+These explicit **engineering regression budgets** compare against OpenJPEG;
+they are not official Part 4 numerical tolerances:
+
+| Irreversible case | Maximum sample error | Maximum per-component RMSE |
+|---|---:|---:|
+| 8-bit grayscale | 1 | 0.25 |
+| 8-bit RGB | 2 | 0.5 |
+| 16-bit grayscale | 8 | 2.0 |
+
+`numerical-results.json` retains every failure and measured disagreement with
+source, input, encoded-stream, output and executable hash bindings. Successful generated images and encoded files are temporary; recipes and
+runner source are tracked. Failed inputs, encoded streams and reference images
+are retained under the ignored output's `numerical-failures/` directory and
+included in CI artifacts for reproduction and minimization.
+Native execution has time, output and POSIX address-space/file-size bounds.
+Reports include encoder/reference/subject timings and total case time. Each
+native stage defaults to ten seconds; the aggregate case budget is three
+times that timeout, including normalization. Output capture is limited to one
+MiB and files to two MiB, with 512 MiB address space where available.
+Missing default tools are explicitly `blocked`; configured missing tools,
+process failures, invalid output and exceeded thresholds cannot pass.
+`--encoder`, `--decoder`, `OPENJPEG_ENCODER` and `OPENJPEG_DECODER` select trusted
+local tools. `all` includes this gate unless `--no-external` is selected.
 
 ## Budgets
 

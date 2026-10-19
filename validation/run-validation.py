@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from numerical import run_numerical
 from framework import (
     build_subject,
     generate_corpus,
@@ -31,11 +32,15 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("inventory")
     schemas = commands.add_parser("schemas")
     schemas.add_argument("--output-dir", type=Path)
-    for name in ("run", "budget", "official", "all"):
+    for name in ("run", "budget", "official", "numerical", "all"):
         command = commands.add_parser(name)
         command.add_argument("--output-dir", type=Path)
         command.add_argument("--subject", type=Path)
         command.add_argument("--no-build", action="store_true")
+        if name == "numerical":
+            command.add_argument("--encoder", type=Path)
+            command.add_argument("--decoder", type=Path)
+            command.add_argument("--timeout-seconds", type=float, default=10.0)
         if name in ("run", "all"):
             command.add_argument("--no-external", action="store_true")
             command.add_argument("--oracle-config", type=Path)
@@ -98,6 +103,14 @@ def main() -> int:
             )
             emit({key: result[key] for key in ("status", "selection", "summary", "blockers")})
             return int(result["status"] != "passed")
+        elif arguments.command == "numerical":
+            result = run_numerical(
+                executable=subject_for(arguments) if arguments.subject or arguments.no_build else None,
+                output_dir=arguments.output_dir, encoder=arguments.encoder,
+                decoder=arguments.decoder, timeout_seconds=arguments.timeout_seconds,
+            )
+            emit({"status": result["status"], **result["summary"], "blockers": result["blockers"]})
+            return int(result["status"] != "passed")
         elif arguments.command == "budget":
             result = run_budget(
                 subject_for(arguments), arguments.max_case_ms,
@@ -122,6 +135,11 @@ def main() -> int:
             emit(result["summary"])
             failed = result["summary"]["status"] != "passed"
             if arguments.command == "all":
+                if not arguments.no_external:
+                    numerical = run_numerical(executable, output_dir=arguments.output_dir)
+                    emit({"numerical": numerical["summary"], "status": numerical["status"],
+                          "blockers": numerical["blockers"]})
+                    failed |= numerical["status"] != "passed"
                 budget = run_budget(executable, output_dir=arguments.output_dir)
                 emit(budget["summary"])
                 emit(validate_evidence_schemas(arguments.output_dir))

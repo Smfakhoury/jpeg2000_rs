@@ -2494,11 +2494,8 @@ pub struct Tier1SegmentDecode {
 
 #[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
-pub struct Tier1CodeBlockDecoder {
+struct LegacySegmentState {
     plane: CodeBlockPlane,
-    orientation: SubbandOrientation,
-    style: Tier1CodingStyle,
-    maximum_passes: u32,
     next_pass: u32,
     bitplane: u16,
     bitplane_state: Option<Tier1BitplaneState>,
@@ -2506,6 +2503,27 @@ pub struct Tier1CodeBlockDecoder {
     reset_contexts_before_mq: bool,
     decoded_segments: u32,
     decoded_bytes: u64,
+    input: Vec<u8>,
+    passes: u32,
+}
+
+#[derive(Clone)]
+#[cfg_attr(not(verus_keep_ghost), derive(Debug))]
+pub struct Tier1CodeBlockDecoder {
+    plane: CodeBlockPlane,
+    orientation: SubbandOrientation,
+    style: Tier1CodingStyle,
+    maximum_passes: u32,
+    next_pass: u32,
+    bitplane: u16,
+    zero_bitplanes: Option<u16>,
+    bitplane_state: Option<Tier1BitplaneState>,
+    mq_context_state: Option<MqContextState>,
+    reset_contexts_before_mq: bool,
+    decoded_segments: u32,
+    decoded_bytes: u64,
+    legacy_segment: Option<LegacySegmentState>,
+    legacy_decode_work: u64,
     ht_cleanup_plane: Option<CodeBlockPlane>,
     ht_refinement_data: Vec<u8>,
     ht_refinement_passes: u8,
@@ -2601,11 +2619,14 @@ impl Tier1CodeBlockDecoder {
             maximum_passes,
             next_pass: 0,
             bitplane,
+            zero_bitplanes: None,
             bitplane_state: None,
             mq_context_state: None,
             reset_contexts_before_mq: false,
             decoded_segments: 0,
             decoded_bytes: 0,
+            legacy_segment: None,
+            legacy_decode_work: 0,
             ht_cleanup_plane: None,
             ht_refinement_data: Vec::new(),
             ht_refinement_passes: 0,
@@ -2645,6 +2666,31 @@ impl Tier1CodeBlockDecoder {
         self.decoded_bytes
     }
 
+    pub(crate) fn set_zero_bitplanes(&mut self, zero_bitplanes: u16) -> Result<(), DecodeError> {
+        if let Some(previous) = self.zero_bitplanes {
+            return if previous == zero_bitplanes {
+                Ok(())
+            } else {
+                Err(invalid_code_block())
+            };
+        }
+        if self.next_pass != 0 || self.decoded_segments != 0 || zero_bitplanes > self.bitplane {
+            return Err(invalid_code_block());
+        }
+        let bitplane = self
+            .bitplane
+            .checked_sub(zero_bitplanes)
+            .ok_or_else(invalid_code_block)?;
+        let maximum_passes = u32::from(bitplane)
+            .checked_mul(3)
+            .and_then(|passes| passes.checked_add(1))
+            .ok_or_else(arithmetic_overflow)?;
+        self.bitplane = bitplane;
+        self.maximum_passes = maximum_passes;
+        self.zero_bitplanes = Some(zero_bitplanes);
+        Ok(())
+    }
+
     pub fn set_multiple_ht_sets_allowed(&mut self, allowed: bool) {
         self.allow_multiple_ht_sets = allowed;
     }
@@ -2669,6 +2715,97 @@ impl Tier1CodeBlockDecoder {
         matches!(self.style.block_coding, Tier1BlockCoding::HighThroughput)
             || (matches!(self.style.block_coding, Tier1BlockCoding::Mixed)
                 && self.ht_cleanup_plane.is_some())
+    }
+
+    pub(crate) fn decode_legacy_contribution(
+        &mut self,
+        input: &[u8],
+        passes: u8,
+        limits: &ResourceLimits,
+    ) -> Result<(), DecodeError> {
+        if passes == 0 {
+            return Err(invalid_code_block());
+        }
+        let next_bytes = self
+            .decoded_bytes
+            .checked_add(input.len() as u64)
+            .ok_or_else(arithmetic_overflow)?;
+        if next_bytes > limits.maximum_code_block_bytes() {
+            return Err(DecodeError::limit(
+                Resource::CodeBlockBytes,
+                limits.maximum_code_block_bytes(),
+                next_bytes,
+            ));
+        }
+        let replay_passes = match &self.legacy_segment {
+            Some(segment) => segment.passes,
+            None => 0,
+        }
+        .checked_add(u32::from(passes))
+        .ok_or_else(arithmetic_overflow)?;
+        let work = (self.plane.coefficients().len() as u64)
+            .checked_mul(u64::from(replay_passes))
+            .and_then(|value| value.checked_add(next_bytes))
+            .and_then(|value| value.checked_add(self.legacy_decode_work))
+            .ok_or_else(arithmetic_overflow)?;
+        if work > limits.maximum_work_units() {
+            return Err(DecodeError::limit(
+                Resource::WorkUnits,
+                limits.maximum_work_units(),
+                work,
+            ));
+        }
+        self.legacy_decode_work = work;
+        let next_pass = self
+            .next_pass
+            .checked_add(u32::from(passes))
+            .ok_or_else(arithmetic_overflow)?;
+        let last_pass = next_pass.checked_sub(1).ok_or_else(invalid_code_block)?;
+        if self.legacy_segment.is_none()
+            && (next_pass == self.maximum_passes
+                || self.style.pass_plan(last_pass).terminates_segment)
+        {
+            self.decode_legacy_segment(input, u32::from(passes), limits)?;
+            return Ok(());
+        }
+        let mut segment = match self.legacy_segment.take() {
+            Some(segment) => segment,
+            None => LegacySegmentState {
+                plane: self.plane.clone(),
+                next_pass: self.next_pass,
+                bitplane: self.bitplane,
+                bitplane_state: self.bitplane_state.clone(),
+                mq_context_state: self.mq_context_state,
+                reset_contexts_before_mq: self.reset_contexts_before_mq,
+                decoded_segments: self.decoded_segments,
+                decoded_bytes: self.decoded_bytes,
+                input: Vec::new(),
+                passes: 0,
+            },
+        };
+        segment.input.extend_from_slice(input);
+        segment.passes = replay_passes;
+        self.plane = segment.plane.clone();
+        self.next_pass = segment.next_pass;
+        self.bitplane = segment.bitplane;
+        self.bitplane_state = segment.bitplane_state.clone();
+        self.mq_context_state = segment.mq_context_state;
+        self.reset_contexts_before_mq = segment.reset_contexts_before_mq;
+        self.decoded_segments = segment.decoded_segments;
+        self.decoded_bytes = segment.decoded_bytes;
+        // Layer boundaries can truncate an unterminated arithmetic segment.
+        // Replay its bounded prefix so virtual end-fill is never resumed as real input.
+        self.decode_legacy_segment(&segment.input, segment.passes, limits)?;
+        let last_pass = self
+            .next_pass
+            .checked_sub(1)
+            .ok_or_else(invalid_code_block)?;
+        if self.next_pass < self.maximum_passes
+            && !self.style.pass_plan(last_pass).terminates_segment
+        {
+            self.legacy_segment = Some(segment);
+        }
+        Ok(())
     }
 
     pub fn decode_segment(
@@ -2708,7 +2845,18 @@ impl Tier1CodeBlockDecoder {
                 ..decoded
             });
         }
-        let pass_count = u32::from(passes);
+        self.decode_legacy_segment(input, u32::from(passes), limits)
+    }
+
+    fn decode_legacy_segment(
+        &mut self,
+        input: &[u8],
+        pass_count: u32,
+        limits: &ResourceLimits,
+    ) -> Result<Tier1SegmentDecode, DecodeError> {
+        if input.is_empty() || pass_count == 0 {
+            return Err(invalid_code_block());
+        }
         let next_pass = self
             .next_pass
             .checked_add(pass_count)
@@ -3792,12 +3940,13 @@ fn decode_sign_and_mark(
     summary: NeighborSummary,
 ) -> Result<(), DecodeError> {
     let sign = sign_context(summary);
+    let raw = matches!(decoder, Tier1SymbolDecoder::Raw(_));
     let decoded_sign = decoder.decode(usize::from(sign.context))?;
     plane.mark_significant_magnitude(
         x,
         y,
         Magnitude::single_bit(bitplane)?,
-        decoded_sign ^ sign.predicted_negative,
+        crate::refinement::tier1_decoded_sign(decoded_sign, sign.predicted_negative, raw),
     )
 }
 
@@ -4262,6 +4411,27 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn leading_zero_bitplanes_are_configured_once_before_coding() {
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            5,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        assert!(decoder.set_zero_bitplanes(5).is_err());
+        assert_eq!(decoder.maximum_passes(), 13);
+        decoder.set_zero_bitplanes(2).unwrap();
+        assert_eq!(decoder.bitplane, 2);
+        assert_eq!(decoder.maximum_passes(), 7);
+        decoder.set_zero_bitplanes(2).unwrap();
+        assert!(decoder.set_zero_bitplanes(1).is_err());
+        assert_eq!(decoder.bitplane, 2);
+        assert_eq!(decoder.maximum_passes(), 7);
+    }
 
     #[test]
     fn raw_reader_applies_seven_bit_stuffing_after_ff() {
@@ -4892,6 +5062,29 @@ mod tests {
                 .vertical_significant,
             1
         );
+    }
+
+    #[test]
+    fn raw_bypass_sign_bits_do_not_use_mq_sign_prediction() {
+        let limits = ResourceLimits::default();
+        for neighbor_negative in [false, true] {
+            for negative in [false, true] {
+                let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+                plane.mark_significant(0, 0, 8, neighbor_negative).unwrap();
+                let mut state = Tier1BitplaneState::new(&plane, 4).unwrap();
+                let bytes = [if negative { 0xc0 } else { 0x80 }];
+                let mut reader = RawBitReader::new(&bytes, &limits).unwrap();
+                decode_raw_significance_propagation_pass(
+                    &mut plane,
+                    &mut state,
+                    &mut reader,
+                    SubbandOrientation::Ll,
+                    Tier1CodingStyle::from_code_block_style(0x01).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(plane.coefficient(1, 0).unwrap().negative, negative);
+            }
+        }
     }
 
     #[test]

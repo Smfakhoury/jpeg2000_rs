@@ -19,6 +19,11 @@ cargo test --doc --locked
 
 ## Required local checks
 
+External numerical checks require OpenJPEG's `opj_compress` and
+`opj_decompress` (Debian/Ubuntu package `libopenjp2-tools`). Use
+`all --no-external` only when intentionally omitting native comparisons;
+that does not establish numerical agreement.
+
 ```sh
 cargo fmt --all -- --check
 cargo test --all-targets --locked
@@ -28,6 +33,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked
 python -m unittest discover -s validation/tests -v
 python validation/run-validation.py all
 cargo check --manifest-path fuzz/Cargo.toml --all-targets --locked
+cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 diff -u validation/expected-package-files.txt <(cargo package --list --locked)
 ```
 
@@ -76,3 +82,16 @@ cargo +nightly fuzz run structured_framing target/validation/fuzz-corpus -- \
 
 This is still a smoke budget, not a sustained coverage campaign. Do not mutate
 the checked-in corpus during exploratory runs.
+
+Fuzz targets share a tighter profile than the production defaults: one-MiB
+input/metadata, four-MiB decoded storage, 256 code-blocks, 4,096 packets,
+256 JPIP fragments and one million work units. These bounds leave room for
+AddressSanitizer overhead within the process RSS cap. Larger production
+resource profiles need separate representative-image budget tests.
+
+For a longer bounded run, replace `-runs=1000` with
+`-max_total_time=60 -print_final_stats=1`. Apply the same explicit time, input,
+timeout and RSS budgets to all seven targets. Capture the source commit/dirty
+state, harness and binary hashes, nightly/cargo-fuzz versions, final execution
+counts, coverage counters, and peak RSS. Keep corpus growth and crash artifacts
+in the ignored output directory; a successful minute is not exhaustive coverage.

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "scope", "provenance", "tools", "status", "blockers", "summary", "records"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": 1},
+    "scope": {"type": "string", "minLength": 1},
+    "provenance": {"type": "object"},
+    "tools": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "status": {"enum": ["passed", "failed", "blocked"]},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cases", "passed", "failed"],
+      "properties": {
+        "cases": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0}
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "lossless", "width", "height", "elapsed_ms", "encoder_options", "thresholds", "status", "error", "metrics", "source_metrics", "input_sha256", "artifacts"],
+        "allOf": [{
+          "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
+          "then": {
+            "required": ["codestream_sha256", "reference_sha256", "decoded_sha256", "timings"],
+            "properties": {
+              "metrics": {"$ref": "#/$defs/metrics"},
+              "source_metrics": {"$ref": "#/$defs/metrics"},
+              "error": {"type": "null"}
+            }
+          }
+        }, {
+          "if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]},
+          "then": {"properties": {"artifacts": {"minItems": 1}}}
+        }],
+        "properties": {
+          "id": {"type": "string"},
+          "lossless": {"type": "boolean"},
+          "width": {"type": "integer", "minimum": 1},
+          "height": {"type": "integer", "minimum": 1},
+          "elapsed_ms": {"type": "number", "minimum": 0},
+          "timings": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["encoder_ms", "reference_ms", "subject_ms"],
+            "properties": {
+              "encoder_ms": {"type": "number", "minimum": 0},
+              "reference_ms": {"type": "number", "minimum": 0},
+              "subject_ms": {"type": "number", "minimum": 0}
+            }
+          },
+          "encoder_options": {"type": "array", "items": {"type": "string"}},
+          "thresholds": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["maximum_error", "maximum_rmse", "maximum_case_ms"],
+            "properties": {
+              "maximum_error": {"type": "integer", "minimum": 0},
+              "maximum_rmse": {"type": "number", "minimum": 0},
+              "maximum_case_ms": {"type": "number", "exclusiveMinimum": 0}
+            }
+          },
+          "status": {"enum": ["passed", "failed"]},
+          "error": {"type": ["string", "null"]},
+          "artifacts": {"type": "array", "items": {"type": "string"}},
+          "metrics": {"anyOf": [{"$ref": "#/$defs/metrics"}, {"type": "null"}]},
+          "source_metrics": {"anyOf": [{"$ref": "#/$defs/metrics"}, {"type": "null"}]},
+          "input_sha256": {"$ref": "#/$defs/hash"},
+          "codestream_sha256": {"$ref": "#/$defs/hash"},
+          "reference_sha256": {"$ref": "#/$defs/hash"},
+          "decoded_sha256": {"$ref": "#/$defs/hash"}
+        }
+      }
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
+    "then": {
+      "properties": {
+        "tools": {"required": ["encoder", "decoder", "subject"]},
+        "summary": {"properties": {"passed": {"minimum": 1}, "failed": {"const": 0}}},
+        "records": {"minItems": 1, "items": {"properties": {"status": {"const": "passed"}}}}
+      }
+    }
+  }],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_error", "rmse", "worst_component_rmse", "components"],
+      "properties": {
+        "maximum_error": {"type": "integer", "minimum": 0},
+        "rmse": {"type": "number", "minimum": 0},
+        "worst_component_rmse": {"type": "number", "minimum": 0},
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["samples", "maximum_error", "mse", "rmse", "psnr_db"],
+            "properties": {
+              "samples": {"type": "integer", "minimum": 1},
+              "maximum_error": {"type": "integer", "minimum": 0},
+              "mse": {"type": "number", "minimum": 0},
+              "rmse": {"type": "number", "minimum": 0},
+              "psnr_db": {"type": ["number", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

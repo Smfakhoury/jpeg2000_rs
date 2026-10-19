@@ -1,17 +1,18 @@
 #![no_main]
 
 use jpeg2000_rs::{
-    DecodeOptions, DecodeSelection, ImageRegion, ResourceLimits, decode_jp2, decode_jp2_color,
+    DecodeOptions, DecodeSelection, ImageRegion, decode_jp2, decode_jp2_color,
     decode_jp2_color_selected, decode_jp2_selected, decode_jph, decode_jph_color,
     decode_jph_color_selected, decode_jph_selected, decode_jpx_codestream,
     decode_jpx_codestream_color, decode_jpx_codestream_color_selected,
-    decode_jpx_codestream_selected, inspect_jph, inspect_jpx_layers, jp2,
-    render_jpx_composition, render_jpx_frame, render_jpx_layer,
+    decode_jpx_codestream_selected, inspect_jph, inspect_jpx_layers, jp2, render_jpx_composition,
+    render_jpx_frame, render_jpx_layer,
 };
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = ResourceLimits::default();
+    let limits = resource_limits();
     let seed = data.first().copied().unwrap_or(0);
     let selection = DecodeSelection::full_image()
         .with_region(ImageRegion::new(
