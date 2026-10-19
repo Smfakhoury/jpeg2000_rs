@@ -49,8 +49,14 @@ jobs:
   decoder-validation:
     name: Generated decoder validation
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_HOME: ${{ runner.temp }}/jpeg2000-validation-rustup
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Initialize pinned crate toolchain
+        run: |
+          cargo --version
+          rustc --version
       - name: Install pinned validation dependencies
         run: |
           python3 -m venv .venv

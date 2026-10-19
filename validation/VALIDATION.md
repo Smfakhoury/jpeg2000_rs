@@ -34,6 +34,10 @@ These describe the current execution, not the validity of historical evidence.
 No command updates a committed source snapshot or creates an attestation.
 The commands above leave tracked source unchanged.
 
+CI initializes the crate's pinned Rust toolchain in a job-local `RUSTUP_HOME`
+before building the native harness. This keeps validation independent of
+preinstalled runner toolchain/component state.
+
 ## Reproducible corpus
 
 `framework.py` deterministically generates 17 minimal raw codestream, JP2,
