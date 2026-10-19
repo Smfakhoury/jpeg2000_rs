@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.93.1"
 description = "Memory-safe JPEG 2000 decoding with Verus verification"
 readme = "README.md"
+repository = "https://github.com/microsoft/jpeg2000_rs"
 publish = false
 include = [
     "Cargo.toml",
@@ -12,12 +13,12 @@ include = [
     "RELEASING.md",
     "SECURITY.md",
     "THREAT_MODEL.md",
-    "normative-coverage.json",
-    "normative-coverage.schema.json",
+    "SUPPORTED.md",
+    "PROOFS.md",
+    "CONTRIBUTING.md",
+    "REFERENCES.md",
+    "THIRD_PARTY_NOTICES",
     "src/**/*.rs",
-    "standards-profile.json",
-    "support-matrix.json",
-    "unsupported-boundary-audit.json",
 ]
 
 [dependencies]

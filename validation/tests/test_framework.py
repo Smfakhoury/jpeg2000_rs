@@ -1,7 +1,11 @@
+import copy
 import json
+import os
+import shutil
+import subprocess
 import sys
-import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest import mock
 
@@ -9,264 +13,335 @@ VALIDATION = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(VALIDATION))
 
 import framework
-from jsonschema import Draft202012Validator, ValidationError
 
 
-class FrameworkTests(unittest.TestCase):
+class WorkingFiles(unittest.TestCase):
+    def setUp(self):
+        self.work = framework.RESULTS_DIR / "test-work" / uuid.uuid4().hex
+        self.work.mkdir(parents=True)
+        self.addCleanup(shutil.rmtree, self.work)
+
+    def subject(self):
+        path = self.work / "subject"
+        accepted = {
+            entry["id"] for entry in framework.load_manifest()["entries"]
+            if entry["expected"] == "accept"
+        }
+        path.write_text(
+            f"#!{sys.executable}\n"
+            "import sys\nfrom pathlib import Path\n"
+            f"accepted = {accepted!r}\n"
+            "if Path(sys.argv[-1]).stem in accepted:\n"
+            "    print('IMAGE\\n1 1 1\\n1\\t1\\t8\\t0\\tunsigned\\t128')\n"
+            "else:\n"
+            "    print('ERR\\tMalformedInput\\texpected rejection')\n"
+            "    raise SystemExit(1)\n"
+        )
+        path.chmod(0o700)
+        return path
+
+    def oracle_config(self):
+        config = json.loads((framework.VALIDATION / "oracles.json").read_text())
+        config["oracles"] = config["oracles"][:1]
+        path = self.work / "oracles.json"
+        path.write_text(json.dumps(config))
+        return path
+
+    def external_manifest(self):
+        archive = self.work / "suite.bin"
+        vector = self.work / "vector.j2k"
+        archive.write_bytes(b"synthetic archive fixture, not an official asset")
+        vector.write_bytes(b"synthetic vector fixture, not an official asset")
+        manifest = {
+            "schema_version": 1,
+            "profile_id": framework.PROFILE_ID,
+            "suite": {
+                "source_url": "https://example.invalid/synthetic-suite",
+                "acquired_at": "2026-10-18T00:00:00Z",
+                "access_status": "authorized-internal",
+                "license": {
+                    "status": "approved-internal-use",
+                    "reviewed_at": "2026-10-18T00:00:00Z",
+                    "redistribution_permitted": False,
+                    "basis": "synthetic test fixture",
+                },
+                "archive": {
+                    "path": archive.name,
+                    "bytes": archive.stat().st_size,
+                    "sha256": framework.sha256_file(archive),
+                },
+                "selection": {
+                    "complete": True,
+                    "applicable_vector_count": 1,
+                    "basis": "synthetic test fixture",
+                },
+            },
+            "entries": [{
+                "id": "private-fixture-id",
+                "identifier_public": False,
+                "path": vector.name,
+                "sha256": framework.sha256_file(vector),
+                "bytes": vector.stat().st_size,
+                "format": "raw",
+                "operation": "decode",
+                "applicable": True,
+                "expected": {"accepted": False, "category": "MalformedInput"},
+            }],
+        }
+        path = self.work / "official-vector-manifest.json"
+        path.write_text(json.dumps(manifest))
+        return path, manifest
+
+
+class FrameworkTests(WorkingFiles):
     def test_generation_is_deterministic_and_complete(self):
         first = framework.build_manifest(framework.generated_cases())
-        second = framework.build_manifest(framework.generated_cases())
-        self.assertEqual(first, second)
-        formats = {entry["format"] for entry in first["entries"]}
-        kinds = {entry["kind"] for entry in first["entries"]}
-        self.assertEqual(formats, {"raw", "jp2", "jph", "jpx", "jpip"})
-        self.assertEqual(
-            kinds, {"positive", "malformed-prefix", "negative", "metamorphic"}
-        )
-
-    def test_committed_generated_corpus_has_valid_provenance(self):
+        self.assertEqual(first, framework.build_manifest(framework.generated_cases()))
+        self.assertEqual(len(first["entries"]), 17)
+        self.assertEqual({entry["format"] for entry in first["entries"]}, {"raw", "jp2", "jph", "jpx", "jpip"})
         framework.generate_corpus(check=True)
-        result = framework.verify_manifest()
-        self.assertEqual(result["status"], "passed")
+        self.assertEqual(framework.verify_manifest()["status"], "passed")
 
-    def test_subject_output_normalization_is_stable(self):
+    def test_manifest_rejects_bad_hash_and_restricted_assets(self):
+        for field, value in (("sha256", "0" * 64), ("classification", "restricted")):
+            manifest = framework.load_manifest()
+            manifest["entries"][0][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                framework.verify_manifest(manifest)
+
+    def test_normalization_is_stable(self):
         output = b"IMAGE\n1 1 1\n1\t1\t8\t0\tunsigned\t128\n"
         parsed = framework.parse_subject_output(output, b"", 0)
         self.assertTrue(parsed["accepted"])
-        self.assertEqual(
-            framework.normalized_hash(parsed), framework.normalized_hash(parsed)
-        )
-
-    def test_error_normalization_omits_unstable_detail(self):
-        first = framework.parse_subject_output(
-            b"ERR\tMalformedInput\tat byte 1\n", b"", 1
-        )
-        second = framework.parse_subject_output(
-            b"ERR\tMalformedInput\tat byte 9\n", b"", 1
-        )
+        self.assertEqual(framework.normalized_hash(parsed), framework.normalized_hash(parsed))
+        first = framework.parse_subject_output(b"ERR\tMalformedInput\tat byte 1\n", b"", 1)
+        second = framework.parse_subject_output(b"ERR\tMalformedInput\tat byte 9\n", b"", 1)
         self.assertEqual(first, second)
 
     def test_binary_pnm_normalization(self):
-        with tempfile.TemporaryDirectory(dir=framework.VALIDATION) as directory:
-            path = Path(directory) / "output.pnm"
-            path.write_bytes(b"P6\n1 1\n255\n\x01\x02\x03")
-            parsed = framework.parse_pnm(path)
-        self.assertEqual(
-            [component["samples"] for component in parsed["image"]["components"]],
-            [[1], [2], [3]],
-        )
+        path = self.work / "output.pnm"
+        path.write_bytes(b"P6\n1 1\n255\n\x01\x02\x03")
+        parsed = framework.parse_pnm(path)
+        self.assertEqual([c["samples"] for c in parsed["image"]["components"]], [[1], [2], [3]])
 
-    def test_missing_external_oracles_are_explicit_in_config(self):
-        config = framework.load_oracles()
-        self.assertEqual(
-            {entry["name"] for entry in config}, {"openjpeg", "grok", "jasper"}
-        )
-        self.assertTrue(all(entry["environment"] for entry in config))
+    def test_inventory_checks_present_items_without_exact_progress_counts(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        coverage["requirements"] = coverage["requirements"][:1]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
 
-    def test_release_schema_requires_evidence_bindings(self):
-        schema = json.loads((framework.ROOT / "release-attestation.schema.json").read_text())
-        conditional = schema["allOf"][0]["then"]["required"]
-        self.assertEqual(set(conditional), {"bindings", "gates"})
-        required_bindings = set(schema["properties"]["bindings"]["required"])
-        self.assertTrue(
-            {
-                "source",
-                "toolchains",
-                "proof",
-                "corpus",
-                "validation",
-                "budgets",
-                "adjudication",
-                "architecture",
-                "approvals",
-            }.issubset(required_bindings)
-        )
-        required_gates = set(schema["properties"]["gates"]["required"])
-        self.assertIn("proof_boundary", required_gates)
-
-    def test_normative_coverage_requires_concrete_contract_evidence(self):
-        coverage = json.loads(
-            (framework.ROOT / "normative-coverage.json").read_text()
-        )
-        self.assertEqual(
-            framework.validate_normative_coverage(coverage)["status"], "passed"
-        )
-        coverage["requirements"][0]["contract_refs"][0]["symbol"] = "unchecked_shadow"
-        with self.assertRaises(ValueError):
+    def test_inventory_rejects_missing_evidence_and_shadow_only_links(self):
+        original = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        for field in ("implementation_refs", "spec_refs", "contract_refs", "proof_refs", "test_refs"):
+            coverage = copy.deepcopy(original)
+            coverage["requirements"][0][field][0]["symbol"] = "unchecked_shadow"
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                framework.validate_normative_coverage(coverage)
+        coverage = copy.deepcopy(original)
+        coverage["requirements"][0]["implementation_refs"] = [{"path": "src/error.rs", "symbol": "DecodeError"}]
+        with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
             framework.validate_normative_coverage(coverage)
-        coverage = json.loads(
-            (framework.ROOT / "normative-coverage.json").read_text()
+
+    def test_build_subject_is_locked(self):
+        executable = self.work / "built-subject"
+        executable.touch()
+        with mock.patch.object(framework, "resolve_subject", return_value=executable), mock.patch.object(framework.subprocess, "run") as run:
+            self.assertEqual(framework.build_subject(), executable)
+        self.assertIn("--locked", run.call_args.args[0])
+
+    def test_run_outputs_are_redirectable_and_schemas_accept_new_results(self):
+        subject = self.subject()
+        result = framework.run_validation(subject, include_external=False, output_dir=self.work)
+        self.assertEqual(result["summary"]["status"], "passed")
+        self.assertEqual(result["summary"]["external_oracles_available"], 0)
+        adjudications = json.loads((self.work / "oracle-adjudications.json").read_text())
+        self.assertEqual(adjudications["status"], "skipped")
+        self.assertRegex(result["provenance"]["git_commit"], r"^[a-f0-9]{40,64}$")
+        self.assertIsInstance(result["provenance"]["git_dirty"], bool)
+        self.assertTrue(result["provenance"]["tool_hashes"])
+        self.assertTrue((self.work / result["$schema"]).is_file())
+        budget = framework.run_budget(subject, output_dir=self.work)
+        self.assertEqual(budget["summary"]["status"], "passed")
+        self.assertEqual(framework.validate_evidence_schemas(self.work)["status"], "passed")
+        self.assertFalse((framework.VALIDATION / "results/validation-results.json").exists())
+
+    def test_default_output_is_ignored_and_tracked_overwrites_are_refused(self):
+        self.assertEqual(framework.RESULTS_DIR, framework.ROOT / "target/validation")
+        path = framework.report_path(None, "validation-results.json")
+        result = subprocess.run(["git", "check-ignore", str(path)], cwd=framework.ROOT, capture_output=True)
+        self.assertEqual(result.returncode, 0)
+        with self.assertRaisesRegex(ValueError, "tracked"):
+            framework.report_path(framework.ROOT, "Cargo.toml")
+
+    def test_missing_unconfigured_oracle_is_skipped(self):
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(framework.shutil, "which", return_value=None):
+            result = framework.run_validation(self.subject(), oracle_config=self.oracle_config(), output_dir=self.work)
+        self.assertEqual(result["summary"]["status"], "passed")
+        self.assertEqual(result["oracles"][1]["status"], "skipped")
+        self.assertEqual(result["summary"]["external_oracles_skipped"], 1)
+
+    def test_explicit_missing_oracle_is_failed_not_skipped(self):
+        with mock.patch.dict(os.environ, {"OPENJPEG_DECODER": str(self.work / "missing")}, clear=True):
+            result = framework.run_validation(self.subject(), oracle_config=self.oracle_config(), output_dir=self.work)
+        self.assertEqual(result["summary"]["status"], "failed")
+        self.assertEqual(result["oracles"][1]["status"], "failed")
+        self.assertEqual(result["summary"]["oracle_errors"], 1)
+
+    def test_invalid_oracle_output_is_failed_not_a_rejection_or_skip(self):
+        oracle = self.work / "oracle"
+        oracle.write_text(f"#!{sys.executable}\nraise SystemExit(0)\n")
+        oracle.chmod(0o700)
+        with mock.patch.dict(os.environ, {"OPENJPEG_DECODER": str(oracle)}, clear=True):
+            result = framework.run_validation(self.subject(), oracle_config=self.oracle_config(), output_dir=self.work)
+        self.assertEqual(result["summary"]["status"], "failed")
+        self.assertGreater(result["summary"]["oracle_errors"], 0)
+        self.assertTrue(any(
+            record["outcomes"].get("openjpeg", {}).get("execution_failed")
+            for record in result["records"]
+        ))
+        adjudications = json.loads((self.work / "oracle-adjudications.json").read_text())
+        self.assertEqual(adjudications["status"], "blocked")
+
+    def test_oracle_timeout_is_failure_not_skip(self):
+        subject = self.subject()
+        oracle = self.work / "oracle"
+        shutil.copyfile(subject, oracle)
+        oracle.chmod(0o700)
+        original_run = framework._run_process
+
+        def timeout_external(command, timeout):
+            if command[0] == str(oracle):
+                raise subprocess.TimeoutExpired(command, timeout)
+            return original_run(command, timeout)
+
+        with mock.patch.dict(os.environ, {"OPENJPEG_DECODER": str(oracle)}, clear=True), mock.patch.object(framework, "_run_process", side_effect=timeout_external):
+            result = framework.run_validation(subject, oracle_config=self.oracle_config(), output_dir=self.work)
+        self.assertEqual(result["summary"]["status"], "failed")
+        self.assertGreater(result["summary"]["oracle_errors"], 0)
+
+    def test_subject_process_failure_does_not_pass_negative_case(self):
+        parsed = framework.parse_subject_output(b"", b"crash", -9)
+        self.assertTrue(parsed["execution_failed"])
+        self.assertEqual(parsed["category"], "process-error")
+
+    def test_disagreements_are_retained_and_external_adjudications_not_rewritten(self):
+        oracle = self.work / "oracle"
+        oracle.write_text(f"#!{sys.executable}\nraise SystemExit(1)\n")
+        oracle.chmod(0o700)
+        with mock.patch.dict(os.environ, {"OPENJPEG_DECODER": str(oracle)}, clear=True):
+            result = framework.run_validation(self.subject(), oracle_config=self.oracle_config(), output_dir=self.work)
+            self.assertEqual(result["summary"]["status"], "blocked")
+            self.assertTrue(result["disagreements"])
+            external = self.work / "external-adjudications.json"
+            adjudications = json.loads((self.work / "oracle-adjudications.json").read_text())
+            for record in adjudications["records"]:
+                record.update(status="adjudicated", decision="retain observation", rationale="synthetic fixture decision", adjudicator="unit test", adjudicated_at="2026-10-19T00:00:00Z")
+            external.write_text(json.dumps(adjudications))
+            before = external.read_bytes()
+            result = framework.run_validation(self.subject(), oracle_config=self.oracle_config(), output_dir=self.work, adjudication_file=external)
+        self.assertEqual(result["summary"]["status"], "passed")
+        self.assertTrue(result["disagreements"])
+        self.assertEqual(external.read_bytes(), before)
+        framework.validate_evidence_schemas(self.work)
+
+    def test_schema_check_does_not_require_existing_results(self):
+        result = framework.validate_evidence_schemas(self.work)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["reports"], [])
+
+    def test_clean_clone_without_private_root_evidence_runs_all(self):
+        clone = self.work / "source"
+        clone.mkdir()
+        for directory in ("src", "specs", "proofs", "examples", "validation"):
+            shutil.copytree(framework.ROOT / directory, clone / directory, ignore=shutil.ignore_patterns("__pycache__", "results"))
+        for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "normative-coverage.json", "normative-coverage.schema.json"):
+            shutil.copyfile(framework.ROOT / name, clone / name)
+        root_json = {path.name for path in clone.glob("*.json")}
+        self.assertEqual(root_json, {"normative-coverage.json", "normative-coverage.schema.json"})
+        source_hashes = {
+            path: framework.sha256_file(path)
+            for path in clone.rglob("*") if path.is_file()
+        }
+        completed = subprocess.run(
+            [sys.executable, str(clone / "validation/run-validation.py"), "all", "--no-external", "--subject", str(self.subject())],
+            cwd=clone, capture_output=True, text=True,
         )
-        coverage["unlinked_selected_part2_requirement_groups"] = [
-            "orphan selected semantics"
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue((clone / "target/validation/validation-results.json").is_file())
+        self.assertFalse((clone / "validation/results").exists())
+        self.assertEqual(source_hashes, {path: framework.sha256_file(path) for path in source_hashes})
+
+    def test_budget_output_is_bounded_and_limit_failure_cannot_pass(self):
+        subject = self.work / "noisy-subject"
+        subject.write_text(f"#!{sys.executable}\nprint('x' * 100000)\n")
+        subject.chmod(0o700)
+        result = framework.run_budget(subject, max_output_bytes=512, output_dir=self.work)
+        self.assertEqual(result["summary"]["status"], "failed")
+        self.assertTrue(any("output budget" in failure for failure in result["summary"]["failures"]))
+
+    def test_official_unconfigured_is_explicitly_blocked(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = framework.run_official_vectors(output_dir=self.work)
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["acquisition"]["access_status"], "not-configured")
+        self.assertEqual(result["records"], [])
+        framework.validate_evidence_schemas(self.work)
+
+    def test_official_manifest_execution_uses_hashes_and_redacts_private_identifiers(self):
+        path, manifest = self.external_manifest()
+        result = framework.run_official_vectors(self.subject(), self.work, path, output_dir=self.work)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["source_url"], manifest["suite"]["source_url"])
+        self.assertFalse(result["license"]["redistribution_permitted"])
+        serialized = json.dumps(result)
+        self.assertNotIn("private-fixture-id", serialized)
+        self.assertNotIn(str(self.work), serialized)
+        framework.validate_evidence_schemas(self.work)
+
+    def test_malformed_official_manifests_fail_before_execution(self):
+        path, original = self.external_manifest()
+        mutations = [
+            lambda m: m["suite"].pop("license"),
+            lambda m: m["suite"]["license"].update(redistribution_permitted=True),
+            lambda m: m["suite"].update(acquired_at="not-a-date"),
+            lambda m: m["entries"][0].update(path="../outside.j2k"),
+            lambda m: m["entries"][0].update(sha256="invalid"),
+            lambda m: m["entries"][0].update(expected={"accepted": True}),
+            lambda m: m["entries"].append(copy.deepcopy(m["entries"][0])),
         ]
-        coverage["summary"]["unlinked_selected_part2_requirement_groups"] = 1
-        with self.assertRaises(ValueError):
-            framework.validate_normative_coverage(coverage)
-        coverage = json.loads(
-            (framework.ROOT / "normative-coverage.json").read_text()
-        )
-        coverage["unlinked_part1_requirement_groups"] = ["orphan semantics"]
-        coverage["summary"]["unlinked_part1_requirement_groups"] = 1
-        with self.assertRaises(ValueError):
-            framework.validate_normative_coverage(coverage)
+        for mutate in mutations:
+            manifest = copy.deepcopy(original)
+            mutate(manifest)
+            path.write_text(json.dumps(manifest))
+            with self.subTest(mutation=mutate), mock.patch.object(framework, "_run_process_bounded") as run:
+                with self.assertRaises(ValueError):
+                    framework.run_official_vectors(self.subject(), self.work, path, output_dir=self.work)
+                run.assert_not_called()
+        path.write_text("{")
+        with self.assertRaisesRegex(ValueError, "invalid external official vector manifest"):
+            framework.run_official_vectors(self.subject(), self.work, path, output_dir=self.work)
 
-    def test_source_tree_revision_is_deterministic_and_separates_production(self):
-        first = framework.build_source_tree_manifest()
-        second = framework.build_source_tree_manifest()
-        self.assertEqual(first, second)
-        self.assertRegex(first["source_revision"], r"^sha256-tree-v1:[a-f0-9]{64}$")
-        self.assertRegex(
-            first["production_source_revision"],
-            r"^sha256-tree-v1:[a-f0-9]{64}$",
-        )
-        self.assertTrue(
-            all(
-                entry["path"].startswith("src/")
-                for entry in first["production_files"]
-            )
-        )
+    def test_official_hash_mismatch_and_escaped_symlink_fail(self):
+        path, manifest = self.external_manifest()
+        (self.work / "vector.j2k").write_bytes(b"wrong")
+        result = framework.run_official_vectors(self.subject(), self.work, path, output_dir=self.work)
+        self.assertEqual(result["status"], "failed")
+        outside = self.work.parent / f"outside-{uuid.uuid4().hex}.j2k"
+        outside.write_bytes(b"outside fixture")
+        self.addCleanup(outside.unlink)
+        (self.work / "vector.j2k").unlink()
+        (self.work / "vector.j2k").symlink_to(outside)
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            framework.run_official_vectors(self.subject(), self.work, path, output_dir=self.work)
 
-    def test_unsupported_boundary_audit_has_no_selected_profile_gap(self):
-        audit = json.loads(
-            (framework.ROOT / "unsupported-boundary-audit.json").read_text()
-        )
-        summary = audit["classification_summary"]
-        self.assertEqual(summary["class_c_selected_profile_unsupported_paths_remaining"], 0)
-        self.assertEqual(summary["contradictions"], 0)
-        approved = {
-            entry["approved_boundary"]
-            for entry in audit["remaining_production_unsupported_constructions"]
-        }
-        self.assertEqual(
-            approved,
-            {"icc_execution", "unpinned_color_registry_values", "unselected_parts"},
-        )
-        matrix = json.loads((framework.ROOT / "support-matrix.json").read_text())
-        closure = matrix["unsupported"]["selected_profile_closure_audit"]
-        self.assertEqual(closure["class_c_remaining"], 0)
-        self.assertEqual(closure["contradictions"], 0)
-
-    def test_architecture_review_is_current_and_covers_phase_m(self):
-        review = framework.build_architecture_review()
-        self.assertEqual(review["status"], "passed")
-        self.assertEqual(
-            review["source_revision"],
-            framework.build_source_tree_manifest()["source_revision"],
-        )
-        checklist = {entry["id"]: entry for entry in review["checklist"]}
-        self.assertTrue(
-            {
-                "selected-parts-functional-refinement",
-                "unsupported-boundary-audit",
-                "complete-proof-dispositions",
-                "lifetime-analysis-proof-boundary",
-            }.issubset(checklist)
-        )
-        finding = checklist["selected-parts-functional-refinement"]["finding"]
-        self.assertIn("Parts 1, 2, 9, and 15", finding)
-        self.assertIn("54", finding)
-        self.assertIn("160", finding)
-
-    def test_disagreement_identifier_is_stable(self):
-        disagreement = {
-            "case_id": "case",
-            "oracle": "oracle",
-            "kind": "acceptance",
-            "subject_sha256": "a" * 64,
-            "oracle_sha256": "b" * 64,
-            "status": "unadjudicated",
-        }
-        first = framework.disagreement_id(disagreement)
-        disagreement["status"] = "adjudicated"
-        self.assertEqual(first, framework.disagreement_id(disagreement))
-        self.assertRegex(first, r"^oracle-disagreement-v1:[a-f0-9]{64}$")
-
-    def test_release_schema_rejects_passed_status_with_blocked_gates(self):
-        schema = json.loads(
-            (framework.ROOT / "release-attestation.schema.json").read_text()
-        )
-        attestation = json.loads(
-            (framework.ROOT / "release-attestation.json").read_text()
-        )
-        attestation["status"] = "passed"
-        attestation["result"]["publish_allowed"] = True
-        with self.assertRaises(ValidationError):
-            Draft202012Validator(schema).validate(attestation)
-
-    def test_official_vectors_execute_only_from_hash_verified_external_root(self):
-        with tempfile.TemporaryDirectory(dir=framework.VALIDATION) as directory:
-            root = Path(directory)
-            archive = root / "suite.bin"
-            vector = root / "vector.j2k"
-            harness = root / "harness.py"
-            archive.write_bytes(b"official-suite-archive-placeholder")
-            vector.write_bytes(b"official-vector-placeholder")
-            harness.write_text(
-                "#!/usr/bin/env python3\n"
-                "print('ERR\\tMalformedInput\\texpected rejection')\n"
-                "raise SystemExit(1)\n"
-            )
-            harness.chmod(0o700)
-            manifest = {
-                "$schema": str(
-                    framework.VALIDATION / "official-vector-manifest.schema.json"
-                ),
-                "schema_version": 1,
-                "profile_id": framework.PROFILE_ID,
-                "suite": {
-                    "source_url": framework._official_source_url(),
-                    "acquired_at": "2026-10-18T00:00:00Z",
-                    "access_status": "authorized-internal",
-                    "license": {
-                        "status": "approved-internal-use",
-                        "reviewed_at": "2026-10-18T00:00:00Z",
-                        "redistribution_permitted": False,
-                        "basis": "test fixture",
-                    },
-                    "archive": {
-                        "path": archive.name,
-                        "bytes": archive.stat().st_size,
-                        "sha256": framework.sha256_file(archive),
-                    },
-                    "selection": {
-                        "complete": True,
-                        "applicable_vector_count": 1,
-                        "basis": "test fixture",
-                    },
-                },
-                "entries": [
-                    {
-                        "id": "private-fixture-id",
-                        "identifier_public": False,
-                        "path": vector.name,
-                        "sha256": framework.sha256_file(vector),
-                        "bytes": vector.stat().st_size,
-                        "format": "raw",
-                        "operation": "decode",
-                        "applicable": True,
-                        "expected": {
-                            "accepted": False,
-                            "category": "MalformedInput",
-                        },
-                    }
-                ],
-            }
-            manifest_path = root / "official-vector-manifest.json"
-            manifest_path.write_text(json.dumps(manifest))
-            result_path = root / "result.json"
-            with mock.patch.object(
-                framework, "OFFICIAL_RESULT_PATH", result_path
-            ):
-                result = framework.run_official_vectors(
-                    executable=harness,
-                    vector_root=root,
-                    manifest_path=manifest_path,
-                )
-            self.assertEqual(result["status"], "passed")
-            self.assertEqual(result["summary"]["passed"], 1)
-            self.assertNotIn("public_id", result["records"][0])
-            self.assertFalse(any(root.as_posix() in str(value) for value in result.values()))
+    def test_official_invalid_archive_never_executes_a_vector(self):
+        path, _ = self.external_manifest()
+        (self.work / "suite.bin").write_bytes(b"wrong archive")
+        with mock.patch.object(framework, "_run_process_bounded") as run:
+            result = framework.run_official_vectors(self.subject(), self.work, path, output_dir=self.work)
+            run.assert_not_called()
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["summary"]["executed"], 0)
 
 
 if __name__ == "__main__":

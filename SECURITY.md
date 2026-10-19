@@ -15,14 +15,14 @@ please review the latest guidance for Microsoft repositories at
 
 ## Supported versions
 
-There is no supported release. The project is approval-gated and codec
-implementation has not started.
+There is no stable supported release yet. The decoder is experimental.
+Report suspected issues against the current source revision and include the
+resource limits used.
 
 ## Reporting a vulnerability
 
 Do not publish suspected vulnerabilities or malicious test files in a public
-issue. Report them through the repository owner's approved private security
-channel. A public reporting address must be added before the first release.
+issue. Use the Microsoft reporting guidance linked above.
 
 Include:
 
@@ -34,8 +34,8 @@ Include:
 - whether the issue causes a panic, excessive work or allocation, incorrect
   output, out-of-bounds behavior in a native oracle, or nondeterminism.
 
-Restricted, purchased, or standards-derived vectors must remain in approved
-storage and must not be attached to public reports.
+Restricted or purchased vectors must remain in authorized storage and must not
+be attached to public reports without redistribution permission.
 
 ## Security requirements
 

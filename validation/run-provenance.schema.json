@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Current execution checkout and tool bindings (not an attestation)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["git_commit", "git_dirty", "source_revision", "source_hashes", "tool_hashes", "python"],
+  "properties": {
+    "git_commit": {"type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"},
+    "git_dirty": {"type": "boolean"},
+    "source_revision": {"type": "string", "pattern": "^sha256-tree-v1:[a-f0-9]{64}$"},
+    "source_hashes": {"$ref": "#/$defs/hashes"},
+    "tool_hashes": {"$ref": "#/$defs/hashes"},
+    "python": {"type": "string", "minLength": 1},
+    "subject_binary_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "$defs": {
+    "hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }
+  }
+}

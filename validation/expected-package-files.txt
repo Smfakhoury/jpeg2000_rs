@@ -1,13 +1,16 @@
 .cargo_vcs_info.json
+CONTRIBUTING.md
 Cargo.lock
 Cargo.toml
 Cargo.toml.orig
+PROOFS.md
 README.md
+REFERENCES.md
 RELEASING.md
 SECURITY.md
+SUPPORTED.md
+THIRD_PARTY_NOTICES
 THREAT_MODEL.md
-normative-coverage.json
-normative-coverage.schema.json
 src/codestream.rs
 src/color.rs
 src/decode.rs
@@ -26,6 +29,3 @@ src/refinement.rs
 src/tier1.rs
 src/tier1_ht_tables.rs
 src/transform.rs
-standards-profile.json
-support-matrix.json
-unsupported-boundary-audit.json

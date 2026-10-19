@@ -45,7 +45,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - run: python3 -m pip install -r validation/requirements.txt
-      - run: python3 -m unittest discover -s validation/tests -v
-      - run: python3 validation/run-validation.py source --check
-      - run: python3 validation/run-validation.py all
+      - name: Install pinned validation dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r validation/requirements.txt
+      - name: Framework regression tests
+        run: .venv/bin/python -m unittest discover -s validation/tests -v
+        env:
+          PYTHONPATH: validation
+      - run: .venv/bin/python validation/run-validation.py generate --check
+      - run: .venv/bin/python validation/run-validation.py verify
+      - run: .venv/bin/python validation/run-validation.py inventory
+      - run: .venv/bin/python validation/run-validation.py schemas
+      - run: .venv/bin/python validation/run-validation.py all
+      - name: Check validation did not modify tracked source
+        run: git diff --exit-code
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: decoder-validation
+          path: target/validation/*.json
+          if-no-files-found: warn
+          retention-days: 14

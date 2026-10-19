@@ -21,6 +21,17 @@
     "profile_id": {
       "type": "string"
     },
+    "provenance": {
+      "type": "object",
+      "required": ["git_commit", "git_dirty", "source_revision", "source_hashes", "tool_hashes", "python"]
+    },
+    "oracle_errors": {
+      "type": "array"
+    },
+    "oracle_config_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "records": {
       "type": "array"
     },
@@ -34,6 +45,8 @@
   "required": [
     "schema_version",
     "profile_id",
+    "provenance",
+    "oracle_errors",
     "corpus_manifest_sha256",
     "oracles",
     "summary",
