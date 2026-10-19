@@ -3,6 +3,7 @@ CONTRIBUTING.md
 Cargo.lock
 Cargo.toml
 Cargo.toml.orig
+LICENSE
 PROOFS.md
 README.md
 REFERENCES.md

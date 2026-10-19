@@ -134,3 +134,9 @@ conformance, or independent review of the specifications.
 Follow [Microsoft's security reporting policy](SECURITY.md), not public issue
 reports, for suspected vulnerabilities or sensitive reproductions.
 The [threat model](THREAT_MODEL.md) describes the input and tooling boundaries.
+
+## License
+
+First-party source is licensed under the [MIT license](./LICENSE).
+Derived HT VLC lookup tables retain the upstream BSD-2-Clause notices in
+[THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES).

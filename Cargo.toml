@@ -6,9 +6,11 @@ rust-version = "1.93.1"
 description = "Memory-safe JPEG 2000 decoding with Verus verification"
 readme = "README.md"
 repository = "https://github.com/microsoft/jpeg2000_rs"
+license = "MIT"
 publish = false
 include = [
     "Cargo.toml",
+    "/LICENSE",
     "README.md",
     "RELEASING.md",
     "SECURITY.md",
