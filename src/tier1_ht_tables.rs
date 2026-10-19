@@ -1,5 +1,6 @@
 // Decoder lookup words derived from the HT VLC codebook as represented by the
-// pinned BSD-2-Clause OpenJPEG implementation recorded in source-provenance.json.
+// pinned BSD-2-Clause OpenJPEG implementation cited in REFERENCES.md.
+// See THIRD_PARTY_NOTICES for the upstream copyright and license.
 
 pub(crate) const HT_VLC_INITIAL: [u16; 1024] = [
     0x0023, 0x00a5, 0x0043, 0x0066, 0x0083, 0xa8ee, 0x0014, 0xd8df, 0x0023, 0x10be, 0x0043, 0xf5ff,

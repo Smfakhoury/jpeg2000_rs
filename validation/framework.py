@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Reproducible decoder-validation and release-evidence support."""
+"""Reproducible decoder validation without publication approval state."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import selectors
@@ -17,9 +18,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 try:
-    from jsonschema import Draft202012Validator
+    from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 except ImportError as error:
     raise RuntimeError(
         "schema validation requires validation/requirements.txt"
@@ -33,62 +35,37 @@ except ImportError:  # pragma: no cover - unavailable on Windows
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATION = ROOT / "validation"
 CORPUS_DIR = VALIDATION / "generated" / "corpus"
-RESULTS_DIR = VALIDATION / "results"
+RESULTS_DIR = ROOT / "target" / "validation"
 MANIFEST_PATH = VALIDATION / "corpus.json"
 PROFILE_ID = "jpeg2000-rs-first-release-proposed"
 GENERATOR_ID = "jpeg2000-rs-validation-generator-v1"
-SOURCE_TREE_PATH = ROOT / "source-tree.json"
-ARCHITECTURE_REVIEW_PATH = ROOT / "architecture-review.json"
-ADJUDICATION_PATH = RESULTS_DIR / "oracle-adjudications.json"
-OFFICIAL_RESULT_PATH = RESULTS_DIR / "official-vector-results.json"
 OFFICIAL_VECTOR_ROOT_ENV = "JPEG2000_OFFICIAL_VECTOR_ROOT"
 OFFICIAL_VECTOR_MANIFEST_ENV = "JPEG2000_OFFICIAL_VECTOR_MANIFEST"
-SOURCE_TREE_ROOT_FILES = (
-    ".github/workflows/ci.yml",
-    ".github/workflows/verus.yml",
-    "Cargo.lock",
-    "Cargo.toml",
-    "README.md",
-    "RELEASING.md",
-    "SECURITY.md",
-    "THREAT_MODEL.md",
-    "architecture-review.schema.json",
-    "fuzz/Cargo.lock",
-    "fuzz/Cargo.toml",
-    "legal-publication-review.schema.json",
-    "lifetime-analysis-blocker.json",
-    "normative-coverage.json",
-    "normative-coverage.schema.json",
-    "owner-approval.schema.json",
-    "release-attestation.schema.json",
-    "rust-toolchain.toml",
-    "standards-profile.json",
-    "support-matrix.json",
-    "support-matrix.schema.json",
-    "unsupported-boundary-audit.json",
-    "validation/VALIDATION.md",
-    "validation/budget-result.schema.json",
-    "validation/corpus.schema.json",
-    "validation/expected-package-files.txt",
-    "validation/framework.py",
-    "validation/oracle-adjudication.schema.json",
-    "validation/oracle-config.schema.json",
-    "validation/oracles.json",
-    "validation/official-vector-manifest.schema.json",
-    "validation/official-vector-result.schema.json",
-    "validation/requirements.txt",
-    "validation/run-validation.py",
-    "validation/validation-result.schema.json",
-    "validation/verus-lifetime-reproducer.rs",
-)
-SOURCE_TREE_DIRECTORIES = (
-    "examples",
-    "fuzz/fuzz_targets",
-    "proofs",
-    "specs",
-    "src",
-    "validation/tests",
-)
+FORMAT_CHECKER = FormatChecker()
+
+
+@FORMAT_CHECKER.checks("date-time", raises=ValueError)
+def _date_time_format(value: Any) -> bool:
+    if not isinstance(value, str):
+        return True
+    if not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})",
+        value,
+    ):
+        return False
+    return datetime.fromisoformat(value.upper().replace("Z", "+00:00")).tzinfo is not None
+
+
+@FORMAT_CHECKER.checks("uri", raises=ValueError)
+def _uri_format(value: Any) -> bool:
+    if not isinstance(value, str):
+        return True
+    parsed = urlsplit(value)
+    return (
+        bool(parsed.scheme)
+        and not any(character.isspace() for character in value)
+        and (parsed.scheme not in ("http", "https") or bool(parsed.netloc))
+    )
 
 
 def canonical_bytes(value: Any) -> bytes:
@@ -112,562 +89,167 @@ def write_json(path: Path, value: Any) -> None:
     path.write_bytes(json.dumps(value, indent=2, sort_keys=True).encode() + b"\n")
 
 
-def _tree_entries(paths: list[Path]) -> list[dict[str, Any]]:
-    return [
-        {
-            "path": path.relative_to(ROOT).as_posix(),
-            "bytes": path.stat().st_size,
-            "sha256": sha256_file(path),
-        }
-        for path in sorted(paths, key=lambda item: item.relative_to(ROOT).as_posix())
+def validate_schema(schema_path: Path, value: Any) -> None:
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    try:
+        Draft202012Validator(schema, format_checker=FORMAT_CHECKER).validate(value)
+    except ValidationError as error:
+        raise ValueError(f"{schema_path.name}: {error.message}") from error
+    if isinstance(value, dict) and "provenance" in value:
+        validate_schema(VALIDATION / "run-provenance.schema.json", value["provenance"])
+
+
+def source_binding(source_root: Path | None = None) -> dict[str, Any]:
+    """Describe this run's checkout, not a reusable approval or source snapshot."""
+    root = source_root or ROOT
+    paths = [
+        path
+        for directory in ("src", "specs", "proofs", "examples")
+        for path in (root / directory).rglob("*.rs")
     ]
-
-
-def _tree_revision(entries: list[dict[str, Any]]) -> str:
-    payload = {"algorithm": "sha256-tree-v1", "files": entries}
-    return "sha256-tree-v1:" + sha256_bytes(canonical_bytes(payload))
-
-
-def build_source_tree_manifest() -> dict[str, Any]:
-    paths = [ROOT / relative for relative in SOURCE_TREE_ROOT_FILES]
-    missing = [
-        path.relative_to(ROOT).as_posix()
-        for path in paths
-        if not path.is_file()
-    ]
-    if missing:
-        raise FileNotFoundError("missing source-tree inputs: " + ", ".join(missing))
-    for relative in SOURCE_TREE_DIRECTORIES:
-        directory = ROOT / relative
-        if not directory.is_dir():
-            missing.append(relative)
-            continue
-        paths.extend(
-            path
-            for path in directory.rglob("*")
-            if path.is_file() and "__pycache__" not in path.parts
-        )
-    if missing:
-        raise FileNotFoundError("missing source-tree inputs: " + ", ".join(missing))
-    entries = _tree_entries(paths)
-    production_entries = _tree_entries(
-        [path for path in (ROOT / "src").rglob("*.rs") if path.is_file()]
+    paths.extend(
+        root / name
+        for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
+        if (root / name).is_file()
     )
+    hashes = {
+        path.relative_to(root).as_posix(): sha256_file(path)
+        for path in sorted(paths)
+    }
+    tools = {
+        path.relative_to(ROOT).as_posix(): sha256_file(path)
+        for path in sorted(
+            list(VALIDATION.glob("*.py"))
+            + list(VALIDATION.glob("*.schema.json"))
+            + [VALIDATION / "requirements.txt"]
+        )
+    }
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, check=True,
+        text=True,
+    ).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=root, capture_output=True, check=True, text=True,
+    ).stdout
     return {
-        "schema_version": 1,
-        "algorithm": "sha256-tree-v1",
-        "source_revision": _tree_revision(entries),
-        "production_source_revision": _tree_revision(production_entries),
-        "scope": {
-            "included": list(SOURCE_TREE_ROOT_FILES)
-            + [f"{path}/**" for path in SOURCE_TREE_DIRECTORIES],
-            "excluded_generated_evidence": [
-                "source-tree.json",
-                "*-attestation.json",
-                "validation/generated/**",
-                "validation/results/**",
-                "target/**",
-                "fuzz/target/**",
-                ".venv/**",
-            ],
-        },
-        "files": entries,
-        "production_files": production_entries,
+        "git_commit": commit,
+        "git_dirty": bool(dirty),
+        "source_revision": "sha256-tree-v1:" + sha256_bytes(canonical_bytes(hashes)),
+        "source_hashes": hashes,
+        "tool_hashes": tools,
+        "python": sys.version.split()[0],
     }
 
 
-def write_source_tree_manifest(check: bool = False) -> dict[str, Any]:
-    manifest = build_source_tree_manifest()
-    expected = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
-    if check:
-        if not SOURCE_TREE_PATH.is_file() or SOURCE_TREE_PATH.read_text() != expected:
-            raise ValueError("source-tree manifest drift")
-    else:
-        SOURCE_TREE_PATH.write_text(expected)
-    return manifest
+def report_path(output_dir: Path | None, name: str) -> Path:
+    path = ((output_dir or RESULTS_DIR) / name).resolve()
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        return path
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", relative.as_posix()],
+        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+    )
+    if tracked.returncode == 0:
+        raise ValueError(f"refusing to overwrite tracked report: {relative}")
+    return path
 
 
-def validate_evidence_schemas() -> dict[str, Any]:
-    pairs = [
-        ("support-matrix.schema.json", "support-matrix.json"),
-        ("normative-coverage.schema.json", "normative-coverage.json"),
-        ("release-attestation.schema.json", "proof-attestation.json"),
-        ("release-attestation.schema.json", "fuzz-attestation.json"),
-        ("release-attestation.schema.json", "conformance-attestation.json"),
-        ("release-attestation.schema.json", "release-attestation.json"),
-        ("architecture-review.schema.json", "architecture-review.json"),
-        (
-            "legal-publication-review.schema.json",
-            "legal-publication-review.json",
-        ),
-        ("owner-approval.schema.json", "owner-approval.json"),
-        ("validation/corpus.schema.json", "validation/corpus.json"),
-        (
-            "validation/validation-result.schema.json",
-            "validation/results/validation-results.json",
-        ),
-        (
-            "validation/budget-result.schema.json",
-            "validation/results/budget-results.json",
-        ),
-        (
-            "validation/oracle-adjudication.schema.json",
-            "validation/results/oracle-adjudications.json",
-        ),
-        (
-            "validation/official-vector-result.schema.json",
-            "validation/results/official-vector-results.json",
-        ),
-    ]
+def report_schema(output_dir: Path | None, name: str) -> str:
+    return os.path.relpath(VALIDATION / name, (output_dir or RESULTS_DIR).resolve())
+
+
+def validate_evidence_schemas(output_dir: Path | None = None) -> dict[str, Any]:
+    """Check static inputs and any reports present; absent reports are not passes."""
     checked = []
-    for schema_name, instance_name in pairs:
-        schema = json.loads((ROOT / schema_name).read_text())
-        instance = json.loads((ROOT / instance_name).read_text())
-        Draft202012Validator.check_schema(schema)
-        Draft202012Validator(schema).validate(instance)
-        checked.append({"schema": schema_name, "instance": instance_name})
-    official_manifest_schema = json.loads(
-        (VALIDATION / "official-vector-manifest.schema.json").read_text()
-    )
-    Draft202012Validator.check_schema(official_manifest_schema)
-    checked.append(
-        {
-            "schema": "validation/official-vector-manifest.schema.json",
-            "instance": "external-only",
-        }
-    )
+    for path in sorted(VALIDATION.glob("*.schema.json")):
+        Draft202012Validator.check_schema(json.loads(path.read_text()))
+        checked.append(path.name)
+    for schema, instance in (
+        ("corpus.schema.json", MANIFEST_PATH),
+        ("oracle-config.schema.json", VALIDATION / "oracles.json"),
+    ):
+        validate_schema(VALIDATION / schema, json.loads(instance.read_text()))
     validate_normative_coverage()
-    return {"status": "passed", "checked": checked}
+    reports = []
+    for name, schema in (
+        ("validation-results.json", "validation-result.schema.json"),
+        ("budget-results.json", "budget-result.schema.json"),
+        ("oracle-adjudications.json", "oracle-adjudication.schema.json"),
+        ("official-vector-results.json", "official-vector-result.schema.json"),
+        ("proof-coverage.json", "proof-coverage.schema.json"),
+        ("numerical-results.json", "numerical-result.schema.json"),
+    ):
+        path = (output_dir or RESULTS_DIR) / name
+        if path.is_file():
+            validate_schema(VALIDATION / schema, json.loads(path.read_text()))
+            reports.append(name)
+    return {"status": "passed", "schemas": checked, "reports": reports}
 
 
 def _coverage_symbol_present(path: Path, symbol: str) -> bool:
-    text = path.read_text(encoding="utf-8")
-    short = symbol.rsplit("::", 1)[-1]
-    return (
-        f"fn {short}" in text
-        or f"struct {short}" in text
-        or f"enum {short}" in text
-        or symbol in text
-    )
+    short = re.escape(symbol.rsplit("::", 1)[-1])
+    return bool(re.search(
+        rf"\b(?:fn|struct|enum|type|const|trait)\s+{short}\b",
+        path.read_text(encoding="utf-8"),
+    ))
 
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Check the links present, without asserting exhaustive clause coverage."""
     if coverage is None:
         coverage = json.loads((ROOT / "normative-coverage.json").read_text())
-    requirements = coverage.get("requirements", [])
-    linked = [
-        entry
-        for entry in requirements
-        if entry.get("status") == "functionally_linked"
-    ]
+    validate_schema(ROOT / "normative-coverage.schema.json", coverage)
+    ids: set[str] = set()
     contract_functions: set[tuple[str, str]] = set()
-    for entry in linked:
+    for entry in coverage["requirements"]:
+        if entry["id"] in ids:
+            raise ValueError(f"duplicate normative inventory id: {entry['id']}")
+        ids.add(entry["id"])
         for field in (
-            "implementation_refs",
-            "spec_refs",
-            "contract_refs",
-            "proof_refs",
-            "test_refs",
+            "implementation_refs", "spec_refs", "contract_refs",
+            "proof_refs", "test_refs",
         ):
-            refs = entry.get(field)
-            if not refs:
-                raise ValueError(
-                    f"{entry.get('id', '<unknown>')} lacks {field} evidence"
-                )
-            for reference in refs:
-                path = ROOT / reference["path"]
-                if not path.is_file():
+            for reference in entry[field]:
+                path = (ROOT / reference["path"]).resolve()
+                if not path.is_relative_to(ROOT.resolve()) or not path.is_file():
                     raise ValueError(f"missing normative evidence path: {reference['path']}")
                 if not _coverage_symbol_present(path, reference["symbol"]):
                     raise ValueError(
-                        "missing normative evidence symbol: "
-                        f"{reference['path']}::{reference['symbol']}"
+                        f"missing normative evidence symbol: {reference['path']}::{reference['symbol']}"
                     )
-        spec_symbols = {
-            reference["symbol"] for reference in entry["spec_refs"]
-        }
+        spec_symbols = {reference["symbol"] for reference in entry["spec_refs"]}
         for reference in entry["contract_refs"]:
-            path = ROOT / reference["path"]
-            text = path.read_text(encoding="utf-8")
+            text = (ROOT / reference["path"]).read_text(encoding="utf-8")
             short = reference["symbol"].rsplit("::", 1)[-1]
-            signature = text.find(f"fn {short}")
-            if signature < 0:
+            signature_match = re.search(rf"\bfn\s+{re.escape(short)}\b", text)
+            if signature_match is None:
                 raise ValueError(f"missing linked contract function: {short}")
+            signature = signature_match.start()
             contract_start = text.rfind("#[cfg_attr", 0, signature)
             contract = text[contract_start:signature] if contract_start >= 0 else ""
             if "verus_spec(" not in contract or "ensures returns" not in contract:
-                raise ValueError(
-                    f"linked function lacks executable Verus contract: {short}"
-                )
-            if not any(symbol in contract for symbol in spec_symbols):
-                raise ValueError(
-                    f"linked function contract lacks normative spec reference: {short}"
-                )
+                raise ValueError(f"linked function lacks executable Verus contract: {short}")
+            if not any(re.search(rf"\b{re.escape(symbol)}\b", contract) for symbol in spec_symbols):
+                raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if not any(
-                reference["symbol"] in (ROOT / implementation["path"]).read_text(
-                    encoding="utf-8"
-                )
-                for implementation in entry["implementation_refs"]
+                re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
+                for ref in entry["implementation_refs"]
+                if ref["path"] != reference["path"]
             ):
-                raise ValueError(
-                    f"linked function is not used by claimed implementation: {short}"
-                )
+                raise ValueError(f"linked function is not used by claimed implementation: {short}")
             contract_functions.add((reference["path"], reference["symbol"]))
-    summary = coverage.get("summary", {})
-    if summary.get("functionally_linked_requirements") != len(linked):
-        raise ValueError("normative linked-requirement summary drift")
-    if summary.get("concrete_linked_functions") != len(contract_functions):
-        raise ValueError("normative linked-function summary drift")
-    unlinked = coverage.get("unlinked_part1_requirement_groups", [])
-    if summary.get("unlinked_part1_requirement_groups") != len(unlinked):
-        raise ValueError("normative unlinked-group summary drift")
-    if coverage.get("part1_closure_complete") and unlinked:
-        raise ValueError("complete Part1 closure cannot retain unlinked groups")
-    unlinked_part2 = coverage.get("unlinked_selected_part2_requirement_groups", [])
-    if summary.get("unlinked_selected_part2_requirement_groups") != len(
-        unlinked_part2
-    ):
-        raise ValueError("normative selected-Part2 unlinked-group summary drift")
-    if coverage.get("selected_part2_closure_complete") and unlinked_part2:
-        raise ValueError("complete selected Part2 closure cannot retain unlinked groups")
-    unlinked_part9 = coverage.get("unlinked_selected_part9_requirement_groups", [])
-    if summary.get("unlinked_selected_part9_requirement_groups") != len(
-        unlinked_part9
-    ):
-        raise ValueError("normative selected-Part9 unlinked-group summary drift")
-    if coverage.get("selected_part9_closure_complete") and unlinked_part9:
-        raise ValueError("complete selected Part9 closure cannot retain unlinked groups")
-    unlinked_part15 = coverage.get(
-        "unlinked_selected_part15_requirement_groups", []
-    )
-    if summary.get("unlinked_selected_part15_requirement_groups") != len(
-        unlinked_part15
-    ):
-        raise ValueError("normative selected-Part15 unlinked-group summary drift")
-    if coverage.get("selected_part15_closure_complete") and unlinked_part15:
-        raise ValueError("complete selected Part15 closure cannot retain unlinked groups")
-    expected_part9 = {
-        "part9-bin-id-vbas-aux-eor",
-        "part9-databin-identity",
-        "part9-fragment-final-semantics",
-        "part9-transactional-overlap",
-        "part9-interval-completeness",
-        "part9-range-availability",
-        "part9-metadata-placeholder-assembly",
-        "part9-codestream-reconstruction",
-        "part9-automatic-precinct-mapping",
-        "part9-packet-reframing",
-        "part9-later-tile-state",
-        "part9-progressive-updates",
-    }
-    actual_part9 = {
-        entry["id"] for entry in linked if entry.get("id", "").startswith("part9-")
-    }
-    if actual_part9 != expected_part9:
-        raise ValueError(
-            "selected Part9 requirement inventory drift: "
-            f"missing={sorted(expected_part9 - actual_part9)}, "
-            f"stale={sorted(actual_part9 - expected_part9)}"
-        )
-    expected_part15 = {
-        "part15-jph-branding",
-        "part15-profile-signaling",
-        "part15-capability-constraints",
-        "part15-pass-grouping",
-        "part15-mixed-routing",
-        "part15-cleanup-partition",
-        "part15-stuffing-and-cursors",
-        "part15-mel-vlc-uvlc-quads",
-        "part15-magsgn-reconstruction",
-        "part15-transactional-stream-writes",
-        "part15-refinement-traversal",
-        "part15-pass-sets-and-continuation",
-    }
-    actual_part15 = {
-        entry["id"]
-        for entry in linked
-        if entry.get("id", "").startswith("part15-")
-    }
-    if actual_part15 != expected_part15:
-        raise ValueError(
-            "selected Part15 requirement inventory drift: "
-            f"missing={sorted(expected_part15 - actual_part15)}, "
-            f"stale={sorted(actual_part15 - expected_part15)}"
-        )
-    accessibility = coverage.get("part9_source_accessibility", [])
-    classifications = {entry.get("group"): entry for entry in accessibility}
-    expected_accessibility = {
-        "bounded_non_network_semantics": (
-            "selected",
-            "authoritative_source_accessible",
-        ),
-        "network_tls_auth_request_server": (
-            "approved_out_of_scope",
-            "authoritative_source_accessible",
-        ),
-        "cache_signaling_syntax": (
-            "approved_out_of_scope",
-            "authoritative_source_inaccessible",
-        ),
-    }
-    if set(classifications) != set(expected_accessibility):
-        raise ValueError("Part9 source-accessibility inventory drift")
-    for group, (selection, classification) in expected_accessibility.items():
-        entry = classifications[group]
-        if (
-            entry.get("selection") != selection
-            or entry.get("classification") != classification
-        ):
-            raise ValueError(f"invalid Part9 source-accessibility classification: {group}")
-    part15_accessibility = coverage.get("part15_source_accessibility", [])
-    part15_classifications = {
-        entry.get("group"): entry for entry in part15_accessibility
-    }
-    expected_part15_accessibility = {
-        "selected_executable_htj2k_semantics": (
-            "selected",
-            "authoritative_source_accessible",
-        ),
-        "profile_number_registry_interpretation": (
-            "approved_out_of_scope",
-            "authoritative_source_inaccessible",
-        ),
-    }
-    if set(part15_classifications) != set(expected_part15_accessibility):
-        raise ValueError("Part15 source-accessibility inventory drift")
-    for group, (selection, classification) in expected_part15_accessibility.items():
-        entry = part15_classifications[group]
-        if (
-            entry.get("selection") != selection
-            or entry.get("classification") != classification
-        ):
-            raise ValueError(
-            f"invalid Part15 source-accessibility classification: {group}"
-            )
-    refinement_path = ROOT / "src/refinement.rs"
-    refinement_text = refinement_path.read_text(encoding="utf-8")
-    executable_contracts = {
-        ("src/refinement.rs", symbol)
-        for symbol in re.findall(
-            r"pub\(crate\)\s+const\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)",
-            refinement_text,
-        )
-    }
-    if contract_functions != executable_contracts:
-        missing = sorted(executable_contracts - contract_functions)
-        stale = sorted(contract_functions - executable_contracts)
-        raise ValueError(
-            f"normative executable-contract inventory drift: "
-            f"missing={missing}, stale={stale}"
-        )
     return {
         "status": "passed",
-        "functionally_linked_requirements": len(linked),
-        "concrete_linked_functions": len(contract_functions),
-        "unlinked_part1_requirement_groups": len(unlinked),
-        "unlinked_selected_part2_requirement_groups": len(unlinked_part2),
-        "unlinked_selected_part9_requirement_groups": len(unlinked_part9),
-        "unlinked_selected_part15_requirement_groups": len(unlinked_part15),
+        "inventory_items": len(ids),
+        "referenced_contract_functions": len(contract_functions),
+        "scope": coverage["scope"],
     }
-
-
-def build_architecture_review() -> dict[str, Any]:
-    source_tree = build_source_tree_manifest()
-    normative = validate_normative_coverage()
-    audit = json.loads((ROOT / "unsupported-boundary-audit.json").read_text())
-    audit_summary = audit["classification_summary"]
-    proof = json.loads((ROOT / "production-proof-coverage.json").read_text())
-    proof_results = proof["results"]
-    lifetime = json.loads((ROOT / "lifetime-analysis-blocker.json").read_text())
-
-    expected_normative = {
-        "functionally_linked_requirements": 54,
-        "concrete_linked_functions": 160,
-        "unlinked_part1_requirement_groups": 0,
-        "unlinked_selected_part2_requirement_groups": 0,
-        "unlinked_selected_part9_requirement_groups": 0,
-        "unlinked_selected_part15_requirement_groups": 0,
-    }
-    if any(normative.get(key) != value for key, value in expected_normative.items()):
-        raise ValueError("architecture normative-coverage checklist failed")
-    if (
-        audit_summary.get(
-            "class_c_selected_profile_unsupported_paths_remaining"
-        )
-        != 0
-        or audit_summary.get("contradictions") != 0
-    ):
-        raise ValueError("architecture unsupported-boundary checklist failed")
-    expected_zero_proof_results = (
-        "incomplete_production_functions",
-        "missing_dispositions",
-        "duplicated_dispositions",
-        "trusted_codec_functions",
-    )
-    if any(proof_results.get(key) != 0 for key in expected_zero_proof_results):
-        raise ValueError("architecture proof-disposition checklist failed")
-    if proof.get("known_proof_boundary", {}).get("termination") != []:
-        raise ValueError("architecture termination checklist failed")
-    if (
-        lifetime.get("status") != "blocked"
-        or "VerusErasureCtxt" not in lifetime["production_probe"].get("failure", "")
-        or lifetime["production_probe"].get("exit_code") != 1
-    ):
-        raise ValueError("architecture lifetime-boundary checklist failed")
-
-    return {
-        "$schema": "./architecture-review.schema.json",
-        "schema_version": 1,
-        "status": "passed",
-        "source_revision": source_tree["source_revision"],
-        "review_kind": "local-evidence-review",
-        "reviewer": "phase-m-local-validation",
-        "reviewed_at": "2026-10-17T23:54:18Z",
-        "checklist": [
-            {
-                "id": "release-scope-and-boundaries",
-                "status": "passed",
-                "evidence": [
-                    "Cargo.toml",
-                    "support-matrix.json",
-                    "unsupported-boundary-audit.json",
-                    "src/lib.rs",
-                ],
-                "finding": (
-                    "The selected profile is decoder-only, publish remains "
-                    "disabled, and encoding, network behavior, ICC execution, "
-                    "and other unsupported capabilities are explicit."
-                ),
-            },
-            {
-                "id": "memory-safety-and-resource-limits",
-                "status": "passed",
-                "evidence": [
-                    "Cargo.toml",
-                    "src/limits.rs",
-                    "validation/results/budget-results.json",
-                ],
-                "finding": (
-                    "Unsafe Rust is forbidden and decoder plus process-level "
-                    "validation budgets bound untrusted input handling."
-                ),
-            },
-            {
-                "id": "typed-failure-model",
-                "status": "passed",
-                "evidence": [
-                    "src/error.rs",
-                    "support-matrix.json",
-                    "unsupported-boundary-audit.json",
-                    "validation/results/validation-results.json",
-                ],
-                "finding": (
-                    "Unsupported and malformed inputs use typed errors and the "
-                    "generated negative corpus exercises public format boundaries."
-                ),
-            },
-            {
-                "id": "selected-parts-functional-refinement",
-                "status": "passed",
-                "evidence": [
-                    "normative-coverage.json",
-                    "normative-coverage.schema.json",
-                    "src/refinement.rs",
-                    "specs/mod.rs",
-                    "proofs/production_impl/mod.rs",
-                ],
-                "finding": (
-                    "All 54 selected executable Parts 1, 2, 9, and 15 "
-                    "requirement groups link to 160 concrete contracted "
-                    "functions with zero unlinked selected groups."
-                ),
-            },
-            {
-                "id": "unsupported-boundary-audit",
-                "status": "passed",
-                "evidence": [
-                    "support-matrix.json",
-                    "unsupported-boundary-audit.json",
-                    "src/error.rs",
-                ],
-                "finding": (
-                    "The source audit has zero selected-profile unsupported "
-                    "class-C paths and zero support-matrix contradictions."
-                ),
-            },
-            {
-                "id": "complete-proof-dispositions",
-                "status": "passed",
-                "evidence": [
-                    "proof-attestation.json",
-                    "production-proof-coverage.json",
-                    "validation/generate-proof-coverage.py",
-                ],
-                "finding": (
-                    "Every production function has one disposition with zero "
-                    "termination gaps, incomplete functions, missing or duplicate "
-                    "dispositions, and trusted codec functions."
-                ),
-            },
-            {
-                "id": "lifetime-analysis-proof-boundary",
-                "status": "passed",
-                "evidence": [
-                    "lifetime-analysis-blocker.json",
-                    "proof-attestation.json",
-                    "source-tree.json",
-                    "validation/verus-lifetime-reproducer.rs",
-                ],
-                "finding": (
-                    "Lifetime analysis remains an explicit upstream Verus "
-                    "internal-error boundary; Rust borrow checking remains active "
-                    "and no proof assumption or source workaround was added."
-                ),
-            },
-            {
-                "id": "package-and-publication-boundary",
-                "status": "passed",
-                "evidence": [
-                    "validation/expected-package-files.txt",
-                    "Cargo.toml",
-                    "RELEASING.md",
-                ],
-                "finding": (
-                    "The package boundary excludes proofs, validation assets, "
-                    "generated results, and native oracle binaries."
-                ),
-            },
-            {
-                "id": "independent-validation-and-claims",
-                "status": "passed",
-                "evidence": [
-                    "validation/oracles.json",
-                    "validation/results/oracle-adjudications.json",
-                    "release-attestation.schema.json",
-                ],
-                "finding": (
-                    "External observations remain distinct from official Part 4 "
-                    "conformance and unresolved disagreements block release."
-                ),
-            },
-        ],
-    }
-
-
-def write_architecture_review(check: bool = False) -> dict[str, Any]:
-    review = build_architecture_review()
-    expected = json.dumps(review, indent=2, sort_keys=True) + "\n"
-    if check:
-        if (
-            not ARCHITECTURE_REVIEW_PATH.is_file()
-            or ARCHITECTURE_REVIEW_PATH.read_text() != expected
-        ):
-            raise ValueError("architecture review drift")
-    else:
-        ARCHITECTURE_REVIEW_PATH.write_text(expected)
-    return review
 
 
 def segment(marker: int, payload: bytes) -> bytes:
@@ -975,6 +557,7 @@ def parse_subject_output(stdout: bytes, stderr: bytes, returncode: int) -> dict[
             "category": "process-error",
             "returncode": returncode,
             "stderr": stderr.decode("utf-8", "replace")[:4096],
+            "execution_failed": True,
         }
     if text.startswith("ERR\t"):
         fields = text.split("\t", 2)
@@ -985,8 +568,8 @@ def parse_subject_output(stdout: bytes, stderr: bytes, returncode: int) -> dict[
     if text.startswith("META\t"):
         return {"accepted": True, "metadata": text.split("\t")[1:]}
     lines = text.splitlines()
-    if not lines or lines[0] != "IMAGE":
-        return {"accepted": False, "category": "invalid-harness-output"}
+    if len(lines) < 2 or lines[0] != "IMAGE":
+        return {"accepted": False, "category": "invalid-harness-output", "execution_failed": True}
     header = [int(value) for value in lines[1].split()]
     components = []
     for line in lines[2:]:
@@ -1098,19 +681,26 @@ def build_adjudications(
     disagreements: list[dict[str, Any]],
     validation_result: Path,
     external_oracles_available: int,
+    adjudication_file: Path | None = None,
+    external_observations: int = 0,
+    external_oracle_errors: int = 0,
 ) -> dict[str, Any]:
     previous: dict[str, dict[str, Any]] = {}
-    if ADJUDICATION_PATH.is_file():
-        existing = json.loads(ADJUDICATION_PATH.read_text())
+    if adjudication_file is not None:
+        existing = json.loads(adjudication_file.read_text())
+        validate_schema(VALIDATION / "oracle-adjudication.schema.json", existing)
+        if len({record["id"] for record in existing["records"]}) != len(existing["records"]):
+            raise ValueError("duplicate external adjudication identifier")
         previous = {
             record["id"]: record
-            for record in existing.get("records", [])
-            if isinstance(record, dict) and isinstance(record.get("id"), str)
+            for record in existing["records"]
         }
     records = []
     for disagreement in disagreements:
         record_id = disagreement_id(disagreement)
         retained = previous.get(record_id, {})
+        if retained and disagreement_id(retained) != record_id:
+            raise ValueError("external adjudication does not match observation identity")
         records.append(
             {
                 "id": record_id,
@@ -1133,19 +723,23 @@ def build_adjudications(
         )
     unresolved = sum(record["status"] == "unadjudicated" for record in records)
     status = (
-        "skipped"
-        if external_oracles_available == 0
+        "blocked"
+        if external_oracle_errors
+        else "skipped"
+        if external_observations == 0
         else "passed"
         if unresolved == 0
         else "blocked"
     )
     return {
-        "$schema": "../oracle-adjudication.schema.json",
+        "$schema": report_schema(validation_result.parent, "oracle-adjudication.schema.json"),
         "schema_version": 1,
         "status": status,
         "validation_result_sha256": sha256_file(validation_result),
         "summary": {
             "external_oracles_available": external_oracles_available,
+            "external_observations": external_observations,
+            "external_oracle_errors": external_oracle_errors,
             "total": len(records),
             "unadjudicated": unresolved,
             "adjudicated": len(records) - unresolved,
@@ -1172,11 +766,7 @@ def build_subject() -> Path:
 
 
 def _official_source_url() -> str:
-    profile = json.loads((ROOT / "standards-profile.json").read_text())
-    for edition in profile["normative_editions"]:
-        if edition.get("part") == 4:
-            return edition["test_asset_url"]
-    raise ValueError("selected profile has no Part 4 test asset URL")
+    return "https://handle.itu.int/11.1002/2000/6179"
 
 
 def _official_limits(
@@ -1206,10 +796,12 @@ def _official_blocked_result(
     final_url: str | None,
     http_status: int | None,
     limits: dict[str, Any],
+    output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    source_revision = build_source_tree_manifest()["source_revision"]
+    provenance = source_binding()
+    source_revision = provenance["source_revision"]
     result = {
-        "$schema": "../official-vector-result.schema.json",
+        "$schema": report_schema(output_dir, "official-vector-result.schema.json"),
         "schema_version": 1,
         "profile_id": PROFILE_ID,
         "status": "blocked",
@@ -1223,7 +815,8 @@ def _official_blocked_result(
             "archive_bytes": None,
         },
         "manifest_sha256": None,
-        "immutable_source_revision": source_revision,
+        "source_revision": source_revision,
+        "provenance": provenance,
         "tool_revision": (
             f"python {sys.version_info.major}.{sys.version_info.minor}."
             f"{sys.version_info.micro}"
@@ -1245,7 +838,8 @@ def _official_blocked_result(
         "blockers": [blocker],
         "records": [],
     }
-    write_json(OFFICIAL_RESULT_PATH, result)
+    validate_schema(VALIDATION / "official-vector-result.schema.json", result)
+    write_json(report_path(output_dir, "official-vector-results.json"), result)
     return result
 
 
@@ -1356,8 +950,14 @@ def run_official_vectors(
     max_input_bytes: int = 64 * 1024 * 1024,
     max_output_bytes: int = 64 * 1024 * 1024,
     max_address_space_bytes: int = 512 * 1024 * 1024,
+    output_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Verify and execute externally held official vectors without copying them."""
+    if any(not math.isfinite(limit) or limit <= 0 for limit in (
+        max_case_ms, max_total_ms, max_input_bytes,
+        max_output_bytes, max_address_space_bytes,
+    )):
+        raise ValueError("official vector limits must be positive")
     limits = _official_limits(
         max_case_ms,
         max_total_ms,
@@ -1372,7 +972,7 @@ def run_official_vectors(
     )
     if configured_root is None:
         return _official_blocked_result(
-            access_status, blocked_reason, final_url, http_status, limits
+            access_status, blocked_reason, final_url, http_status, limits, output_dir
         )
     root = configured_root.resolve()
     if not root.is_dir():
@@ -1382,6 +982,7 @@ def run_official_vectors(
             final_url,
             http_status,
             limits,
+            output_dir,
         )
     configured_manifest = manifest_path or (
         Path(os.environ[OFFICIAL_VECTOR_MANIFEST_ENV])
@@ -1395,22 +996,15 @@ def run_official_vectors(
             final_url,
             http_status,
             limits,
+            output_dir,
         )
     manifest_bytes = configured_manifest.read_bytes()
     try:
         manifest = json.loads(manifest_bytes)
-        schema = json.loads(
-            (VALIDATION / "official-vector-manifest.schema.json").read_text()
-        )
-        Draft202012Validator(schema).validate(manifest)
+        validate_schema(VALIDATION / "official-vector-manifest.schema.json", manifest)
     except (json.JSONDecodeError, ValueError) as error:
         raise ValueError(f"invalid external official vector manifest: {error}") from error
-    except Exception as error:
-        raise ValueError(f"invalid external official vector manifest: {error}") from error
-
     suite = manifest["suite"]
-    if suite["source_url"] != _official_source_url():
-        raise ValueError("official vector source URL does not match selected profile")
     entries = manifest["entries"]
     applicable = [entry for entry in entries if entry["applicable"]]
     if suite["selection"]["applicable_vector_count"] != len(applicable):
@@ -1418,6 +1012,8 @@ def run_official_vectors(
     ids = [entry["id"] for entry in entries]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate official vector identifier")
+    for entry in entries:
+        _external_path(root, entry["path"])
 
     archive = suite["archive"]
     archive_path = _external_path(root, archive["path"])
@@ -1432,7 +1028,8 @@ def run_official_vectors(
 
     if executable is None:
         executable = build_subject()
-    source_revision = build_source_tree_manifest()["source_revision"]
+    provenance = source_binding()
+    source_revision = provenance["source_revision"]
     records: list[dict[str, Any]] = []
     verified = 0
     executed = 0
@@ -1457,6 +1054,10 @@ def run_official_vectors(
         }
         if entry["identifier_public"]:
             record["public_id"] = entry["id"]
+        if not archive_valid:
+            record["failure"] = "archive integrity check failed; vector not executed"
+            records.append(record)
+            continue
         if not vector_path.is_file():
             record["failure"] = "vector file unavailable"
             records.append(record)
@@ -1498,13 +1099,14 @@ def run_official_vectors(
         try:
             completed, elapsed_ms, output_limited = _run_process_bounded(
                 command,
-                max_case_ms / 1000,
+                min(max_case_ms, max_total_ms - total_elapsed_ms) / 1000,
                 max_output_bytes,
                 preexec_fn,
             )
             executed += 1
             if output_limited:
                 outcome = {"accepted": False, "category": "output-limit"}
+                record["failure"] = "output resource limit exceeded"
             else:
                 outcome = parse_subject_output(
                     completed.stdout, completed.stderr, completed.returncode
@@ -1513,6 +1115,7 @@ def run_official_vectors(
             elapsed_ms = (time.monotonic() - start) * 1000
             executed += 1
             outcome = {"accepted": False, "category": "timeout"}
+            record["failure"] = "execution time limit exceeded"
         except (OSError, ValueError) as error:
             elapsed_ms = (time.monotonic() - start) * 1000
             executed += 1
@@ -1523,7 +1126,9 @@ def run_official_vectors(
         output_sha256 = normalized_hash(outcome)
         expected = entry["expected"]
         failure = record["failure"]
-        if outcome["accepted"] != expected["accepted"]:
+        if outcome.get("execution_failed"):
+            failure = "subject harness failed"
+        elif outcome["accepted"] != expected["accepted"]:
             failure = "acceptance mismatch"
         elif outcome["accepted"] and output_sha256 != expected["normalized_sha256"]:
             failure = "normalized output hash mismatch"
@@ -1549,12 +1154,10 @@ def run_official_vectors(
     failed = sum(record["status"] == "failed" for record in records)
     blocked = sum(record["status"] == "blocked" for record in records)
     passed = sum(record["status"] == "passed" for record in records)
-    if not archive_valid:
+    if not archive_valid or failed:
         status = "failed"
     elif blocked:
         status = "blocked"
-    elif failed:
-        status = "failed"
     elif not applicable or executed != len(applicable) or passed != len(applicable):
         status = "blocked"
     else:
@@ -1562,7 +1165,7 @@ def run_official_vectors(
     if status != "passed" and not blockers:
         blockers.append("not all selected-profile applicable official vectors passed")
     result = {
-        "$schema": "../official-vector-result.schema.json",
+        "$schema": report_schema(output_dir, "official-vector-result.schema.json"),
         "schema_version": 1,
         "profile_id": PROFILE_ID,
         "status": status,
@@ -1576,7 +1179,9 @@ def run_official_vectors(
             "archive_bytes": archive["bytes"],
         },
         "manifest_sha256": sha256_bytes(manifest_bytes),
-        "immutable_source_revision": source_revision,
+        "source_revision": source_revision,
+        "provenance": provenance,
+        "license": suite["license"],
         "tool_revision": (
             f"python {sys.version_info.major}.{sys.version_info.minor}."
             f"{sys.version_info.micro}; rust subject {sha256_file(executable)}"
@@ -1602,26 +1207,26 @@ def run_official_vectors(
         "blockers": blockers,
         "records": records,
     }
-    write_json(OFFICIAL_RESULT_PATH, result)
+    validate_schema(VALIDATION / "official-vector-result.schema.json", result)
+    write_json(report_path(output_dir, "official-vector-results.json"), result)
     return result
 
 
 def load_oracles(path: Path | None = None) -> list[dict[str, Any]]:
     config_path = path or VALIDATION / "oracles.json"
-    return json.loads(config_path.read_text())["oracles"]
+    config = json.loads(config_path.read_text())
+    validate_schema(VALIDATION / "oracle-config.schema.json", config)
+    names = [spec["name"] for spec in config["oracles"]]
+    if len(names) != len(set(names)):
+        raise ValueError("duplicate oracle name")
+    return config["oracles"]
 
 
 def _run_process(command: list[str], timeout_seconds: float) -> tuple[subprocess.CompletedProcess[bytes], float]:
-    start = time.monotonic()
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=timeout_seconds,
-        check=False,
-    )
-    return completed, (time.monotonic() - start) * 1000
+    completed, elapsed, limited = _run_process_bounded(command, timeout_seconds, 1024 * 1024, None)
+    if limited:
+        raise ValueError("process output limit exceeded")
+    return completed, elapsed
 
 
 def run_validation(
@@ -1629,8 +1234,13 @@ def run_validation(
     include_external: bool = True,
     timeout_seconds: float = 5.0,
     oracle_config: Path | None = None,
+    output_dir: Path | None = None,
+    adjudication_file: Path | None = None,
 ) -> dict[str, Any]:
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError("timeout must be positive")
     manifest = load_manifest()
+    verify_manifest(manifest)
     oracle_specs = load_oracles(oracle_config) if include_external else []
     oracle_status: list[dict[str, Any]] = [
         {
@@ -1641,10 +1251,11 @@ def run_validation(
         }
     ]
     available_oracles: list[tuple[dict[str, Any], str]] = []
+    oracle_errors: list[dict[str, Any]] = []
     for spec in oracle_specs:
         configured = os.environ.get(spec["environment"])
         found = configured or shutil.which(spec["executable"])
-        if found:
+        if found and Path(found).is_file() and os.access(found, os.X_OK):
             available_oracles.append((spec, found))
             oracle_status.append(
                 {
@@ -1654,6 +1265,12 @@ def run_validation(
                     "binary_sha256": sha256_file(Path(found).resolve()),
                 }
             )
+        elif configured:
+            oracle_errors.append({"oracle": spec["name"], "reason": "configured executable unavailable"})
+            oracle_status.append({
+                "name": spec["name"], "status": "failed",
+                "reason": "configured executable unavailable",
+            })
         else:
             oracle_status.append(
                 {
@@ -1670,9 +1287,13 @@ def run_validation(
         try:
             process, elapsed = _run_process(command, timeout_seconds)
             outcome = parse_subject_output(process.stdout, process.stderr, process.returncode)
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, OSError, ValueError) as error:
             elapsed = timeout_seconds * 1000
-            outcome = {"accepted": False, "category": "timeout"}
+            outcome = {
+                "accepted": False,
+                "category": "timeout" if isinstance(error, subprocess.TimeoutExpired) else "harness-error",
+                "execution_failed": True,
+            }
         outcome["elapsed_ms"] = round(elapsed, 3)
         outcome["normalized_sha256"] = normalized_hash(outcome)
         record: dict[str, Any] = {
@@ -1690,9 +1311,11 @@ def run_validation(
                     "reason": "unsupported format or operation",
                 }
                 continue
-            output_base = RESULTS_DIR / "oracle-output" / f"{spec['name']}-{entry['id']}"
+            output_base = report_path(output_dir, f"oracle-output/{spec['name']}-{entry['id']}")
             output_base.parent.mkdir(parents=True, exist_ok=True)
             output_path = output_base.with_suffix(".pnm")
+            if output_path.exists():
+                output_path.unlink()
             command = [
                 value.format(
                     executable=oracle_executable,
@@ -1706,19 +1329,26 @@ def run_validation(
                 process, oracle_elapsed = _run_process(command, timeout_seconds)
                 if process.returncode == 0 and output_path.is_file():
                     oracle_outcome = parse_pnm(output_path)
-                else:
+                elif process.returncode > 0:
                     oracle_outcome = {
                         "accepted": False,
                         "category": "decoder-rejected",
                         "returncode": process.returncode,
                     }
+                else:
+                    raise ValueError("oracle succeeded without output or was terminated by signal")
                 oracle_outcome["elapsed_ms"] = round(oracle_elapsed, 3)
                 oracle_outcome["normalized_sha256"] = normalized_hash(oracle_outcome)
-            except (subprocess.TimeoutExpired, ValueError) as error:
+            except (subprocess.TimeoutExpired, OSError, ValueError) as error:
                 oracle_outcome = {
                     "accepted": False,
                     "category": "timeout" if isinstance(error, subprocess.TimeoutExpired) else "output-error",
+                    "execution_failed": True,
                 }
+                oracle_errors.append({
+                    "oracle": spec["name"], "case_id": entry["id"],
+                    "reason": oracle_outcome["category"],
+                })
             finally:
                 if output_path.exists():
                     output_path.unlink()
@@ -1729,7 +1359,7 @@ def run_validation(
     for entry, record in zip(manifest["entries"], records):
         subject = record["outcomes"]["jpeg2000_rs"]
         expected_accept = entry["expected"] == "accept"
-        if subject["accepted"] != expected_accept:
+        if subject.get("execution_failed") or subject["accepted"] != expected_accept:
             failures.append(
                 {
                     "case_id": entry["id"],
@@ -1750,7 +1380,11 @@ def run_validation(
                     }
                 )
         for oracle_name, oracle_outcome in record["outcomes"].items():
-            if oracle_name == "jpeg2000_rs" or "accepted" not in oracle_outcome:
+            if (
+                oracle_name == "jpeg2000_rs"
+                or "accepted" not in oracle_outcome
+                or oracle_outcome.get("execution_failed")
+            ):
                 continue
             acceptance_differs = oracle_outcome["accepted"] != subject["accepted"]
             output_differs = (
@@ -1770,10 +1404,12 @@ def run_validation(
                 disagreement["id"] = disagreement_id(disagreement)
                 disagreements.append(disagreement)
     result = {
-        "$schema": "../validation-result.schema.json",
+        "$schema": report_schema(output_dir, "validation-result.schema.json"),
         "schema_version": 1,
         "profile_id": PROFILE_ID,
+        "provenance": source_binding(),
         "corpus_manifest_sha256": sha256_file(MANIFEST_PATH),
+        "oracle_config_sha256": sha256_file(oracle_config or VALIDATION / "oracles.json") if include_external else None,
         "oracles": oracle_status,
         "summary": {
             "cases": len(records),
@@ -1784,18 +1420,21 @@ def run_validation(
             "external_oracles_skipped": sum(
                 status["status"] == "skipped" for status in oracle_status
             ),
+            "oracle_errors": len(oracle_errors),
         },
         "failures": failures,
+        "oracle_errors": oracle_errors,
         "disagreements": disagreements,
         "records": records,
     }
-    validation_path = RESULTS_DIR / "validation-results.json"
+    validation_path = report_path(output_dir, "validation-results.json")
+    result["summary"]["status"] = "failed" if failures or oracle_errors else "blocked" if disagreements else "passed"
     write_json(validation_path, result)
     write_json(
-        RESULTS_DIR / "disagreements.json",
+        report_path(output_dir, "disagreements.json"),
         {
             "schema_version": 1,
-            "status": "blocked" if disagreements else "passed",
+            "status": "blocked" if disagreements else "passed" if available_oracles else "skipped",
             "disagreements": disagreements,
         },
     )
@@ -1803,8 +1442,21 @@ def run_validation(
         disagreements,
         validation_path,
         len(available_oracles),
+        adjudication_file,
+        external_observations=sum(
+            "accepted" in outcome and not outcome.get("execution_failed")
+            for record in records
+            for name, outcome in record["outcomes"].items()
+            if name != "jpeg2000_rs"
+        ),
+        external_oracle_errors=len(oracle_errors),
     )
-    write_json(ADJUDICATION_PATH, adjudications)
+    write_json(report_path(output_dir, "oracle-adjudications.json"), adjudications)
+    if result["summary"]["status"] == "blocked" and adjudications["status"] == "passed":
+        result["summary"]["status"] = "passed"
+        write_json(validation_path, result)
+        adjudications["validation_result_sha256"] = sha256_file(validation_path)
+        write_json(report_path(output_dir, "oracle-adjudications.json"), adjudications)
     return result
 
 
@@ -1815,15 +1467,25 @@ def run_budget(
     max_output_bytes: int = 1024 * 1024,
     max_input_bytes: int = 1024 * 1024,
     max_address_space_bytes: int = 512 * 1024 * 1024,
+    output_dir: Path | None = None,
 ) -> dict[str, Any]:
+    if any(not math.isfinite(limit) or limit <= 0 for limit in (
+        max_case_ms, max_total_ms, max_output_bytes,
+        max_input_bytes, max_address_space_bytes,
+    )):
+        raise ValueError("budgets must be positive")
     manifest = load_manifest()
+    verify_manifest(manifest)
     cases: list[dict[str, Any]] = []
     total_ms = 0.0
     failures: list[str] = []
     for entry in manifest["entries"]:
         input_path = VALIDATION / entry["path"]
-        if entry["bytes"] > max_input_bytes:
-            failures.append(f"{entry['id']}: input budget")
+        if entry["bytes"] > max_input_bytes or total_ms >= max_total_ms:
+            reason = "input budget" if entry["bytes"] > max_input_bytes else "total time budget"
+            failures.append(f"{entry['id']}: {reason}")
+            cases.append({"case_id": entry["id"], "elapsed_ms": 0.0, "output_bytes": 0, "status": "failed"})
+            continue
         command = [str(executable), entry["operation"], entry["format"], str(input_path)]
         start = time.monotonic()
         preexec_fn = None
@@ -1836,26 +1498,26 @@ def run_budget(
 
             preexec_fn = limit_address_space
         try:
-            completed = subprocess.run(
+            completed, elapsed, output_limited = _run_process_bounded(
                 command,
-                cwd=ROOT,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=max_case_ms / 1000,
-                check=False,
-                preexec_fn=preexec_fn,
+                min(max_case_ms, max_total_ms - total_ms) / 1000,
+                max_output_bytes,
+                preexec_fn,
             )
             elapsed = (time.monotonic() - start) * 1000
             output_bytes = len(completed.stdout) + len(completed.stderr)
             status = "passed"
-            if output_bytes > max_output_bytes:
+            if output_limited:
                 status = "failed"
                 failures.append(f"{entry['id']}: output budget")
-        except subprocess.TimeoutExpired:
+            if completed.returncode < 0:
+                status = "failed"
+                failures.append(f"{entry['id']}: process signal")
+        except (subprocess.TimeoutExpired, OSError, ValueError) as error:
             elapsed = (time.monotonic() - start) * 1000
             output_bytes = 0
             status = "failed"
-            failures.append(f"{entry['id']}: time budget")
+            failures.append(f"{entry['id']}: {type(error).__name__}")
         total_ms += elapsed
         cases.append(
             {
@@ -1868,9 +1530,10 @@ def run_budget(
     if total_ms > max_total_ms:
         failures.append("total time budget")
     result = {
-        "$schema": "../budget-result.schema.json",
+        "$schema": report_schema(output_dir, "budget-result.schema.json"),
         "schema_version": 1,
         "profile_id": PROFILE_ID,
+        "provenance": {**source_binding(), "subject_binary_sha256": sha256_file(executable)},
         "budgets": {
             "max_case_ms": max_case_ms,
             "max_total_ms": max_total_ms,
@@ -1891,285 +1554,5 @@ def run_budget(
         },
         "cases": cases,
     }
-    write_json(RESULTS_DIR / "budget-results.json", result)
+    write_json(report_path(output_dir, "budget-results.json"), result)
     return result
-
-
-def build_release_attestation() -> dict[str, Any]:
-    source_tree = write_source_tree_manifest()
-    architecture = write_architecture_review()
-    validation_result = RESULTS_DIR / "validation-results.json"
-    budget_result = RESULTS_DIR / "budget-results.json"
-    required = [
-        SOURCE_TREE_PATH,
-        ROOT / "source-provenance.json",
-        ROOT / "rust-toolchain.toml",
-        VALIDATION / "requirements.txt",
-        ROOT / "proof-attestation.json",
-        ROOT / "production-proof-coverage.json",
-        ROOT / "normative-coverage.json",
-        ROOT / "lifetime-analysis-blocker.json",
-        ROOT / "conformance-attestation.json",
-        ROOT / "fuzz-attestation.json",
-        ROOT / "standards-profile.json",
-        ROOT / "support-matrix.json",
-        ROOT / "unsupported-boundary-audit.json",
-        MANIFEST_PATH,
-        validation_result,
-        budget_result,
-        ADJUDICATION_PATH,
-        OFFICIAL_RESULT_PATH,
-        ROOT / "architecture-review.json",
-        ROOT / "legal-publication-review.json",
-        ROOT / "owner-approval.json",
-        VALIDATION / "expected-package-files.txt",
-    ]
-    missing = [path.relative_to(ROOT).as_posix() for path in required if not path.is_file()]
-    if missing:
-        raise FileNotFoundError("missing attestation inputs: " + ", ".join(missing))
-    validation = json.loads(validation_result.read_text())
-    budget = json.loads(budget_result.read_text())
-    adjudication = json.loads(ADJUDICATION_PATH.read_text())
-    official_result = json.loads(OFFICIAL_RESULT_PATH.read_text())
-    legal = json.loads((ROOT / "legal-publication-review.json").read_text())
-    owner = json.loads((ROOT / "owner-approval.json").read_text())
-    proof = json.loads((ROOT / "proof-attestation.json").read_text())
-    proof_coverage_path = ROOT / "production-proof-coverage.json"
-    proof_coverage = json.loads(proof_coverage_path.read_text())
-    proof_coverage_matches = (
-        proof.get("input_hashes", {}).get("production-proof-coverage.json")
-        == sha256_file(proof_coverage_path)
-    )
-    proof_sources_match = all(
-        (ROOT / relative).is_file()
-        and sha256_file(ROOT / relative) == expected
-        for relative, expected in proof_coverage.get("source_hashes", {}).items()
-    )
-    proof_results = proof.get("result", {})
-    proof_locally_complete = (
-        proof_coverage_matches
-        and proof_sources_match
-        and proof_results.get("errors") == 0
-        and proof_results.get("incomplete_functions") == 0
-        and proof_results.get("missing_dispositions") == 0
-        and proof_results.get("duplicated_dispositions") == 0
-        and proof_results.get("trusted_codec_functions") == 0
-    )
-    lifetime = json.loads((ROOT / "lifetime-analysis-blocker.json").read_text())
-    proof_boundary_status = (
-        "blocked"
-        if proof_locally_complete and lifetime.get("status") == "blocked"
-        else "passed"
-        if proof_locally_complete
-        else "failed"
-    )
-    bindings = {
-        path.relative_to(ROOT).as_posix(): sha256_file(path)
-        for path in required
-    }
-    framework_complete = (
-        validation["summary"]["failed"] == 0
-        and budget["summary"]["status"] == "passed"
-    )
-    official_vectors = official_result["selection"]["applicable"]
-    official_vectors_passed = (
-        official_result["status"] == "passed"
-        and official_result["selection"]["complete"]
-        and official_vectors > 0
-        and official_result["summary"]["executed"] == official_vectors
-        and official_result["summary"]["passed"] == official_vectors
-        and official_result["summary"]["failed"] == 0
-        and official_result["summary"]["blocked"] == 0
-    )
-    architecture_status = (
-        "passed"
-        if architecture.get("status") == "passed"
-        and architecture.get("source_revision") == source_tree["source_revision"]
-        else "blocked"
-    )
-    legal_status = (
-        "passed"
-        if legal.get("status") == "approved"
-        and legal.get("candidate_revision") == source_tree["source_revision"]
-        else "blocked"
-    )
-    owner_status = (
-        "passed"
-        if owner.get("status") == "approved"
-        and owner.get("candidate_revision") == source_tree["source_revision"]
-        else "blocked"
-    )
-    adjudication_status = (
-        "passed"
-        if adjudication["status"] == "passed"
-        and adjudication["summary"]["unadjudicated"] == 0
-        else "blocked"
-    )
-    gates = {
-        "official_vectors": {
-            "status": (
-                "passed"
-                if official_vectors_passed
-                else "failed"
-                if official_result["status"] == "failed"
-                else "blocked"
-            ),
-            "evidence": ["validation/results/official-vector-results.json"],
-            "vector_count": official_vectors,
-            "selection_complete": official_result["selection"]["complete"],
-            "executed": official_result["summary"]["executed"],
-            "passed": official_result["summary"]["passed"],
-            "failed": official_result["summary"]["failed"],
-            "manifest_sha256": official_result["manifest_sha256"],
-            "archive_sha256": official_result["acquisition"]["archive_sha256"],
-            "result_sha256": sha256_file(OFFICIAL_RESULT_PATH),
-        },
-        "oracle_adjudication": {
-            "status": adjudication_status,
-            "evidence": [
-                "validation/results/validation-results.json",
-                "validation/results/oracle-adjudications.json",
-            ],
-            "unresolved": adjudication["summary"]["unadjudicated"],
-            "external_oracles_available": adjudication["summary"][
-                "external_oracles_available"
-            ],
-        },
-        "architecture": {
-            "status": architecture_status,
-            "evidence": ["architecture-review.json"],
-        },
-        "proof_boundary": {
-            "status": proof_boundary_status,
-            "evidence": [
-                "proof-attestation.json",
-                "production-proof-coverage.json",
-                "lifetime-analysis-blocker.json",
-            ],
-        },
-        "legal_publication": {
-            "status": legal_status,
-            "evidence": ["legal-publication-review.json"],
-        },
-        "owner_approval": {
-            "status": owner_status,
-            "evidence": ["owner-approval.json"],
-        },
-    }
-    blocking_gates = [
-        name for name, gate in gates.items() if gate["status"] != "passed"
-    ]
-    publish_allowed = framework_complete and not blocking_gates
-    attestation = {
-        "$schema": "./release-attestation.schema.json",
-        "schema_version": 2,
-        "attestation_type": "release",
-        "status": "passed" if publish_allowed else "blocked",
-        "immutable_source_revision": source_tree["source_revision"],
-        "profile_id": PROFILE_ID,
-        "tool_revision": f"python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "input_hashes": bindings,
-        "bindings": {
-            "source": ["source-tree.json", "source-provenance.json"],
-            "toolchains": [
-                "rust-toolchain.toml",
-                "validation/requirements.txt",
-                "source-provenance.json",
-            ],
-            "proof": [
-                "proof-attestation.json",
-                "production-proof-coverage.json",
-                "normative-coverage.json",
-                "lifetime-analysis-blocker.json",
-            ],
-            "corpus": ["validation/corpus.json"],
-            "validation": [
-                "conformance-attestation.json",
-                "validation/results/validation-results.json",
-                "validation/results/official-vector-results.json",
-            ],
-            "budgets": ["validation/results/budget-results.json"],
-            "fuzz": ["fuzz-attestation.json"],
-            "profile": [
-                "standards-profile.json",
-                "support-matrix.json",
-                "unsupported-boundary-audit.json",
-            ],
-            "package": ["validation/expected-package-files.txt"],
-            "adjudication": ["validation/results/oracle-adjudications.json"],
-            "architecture": ["architecture-review.json"],
-            "approvals": [
-                "legal-publication-review.json",
-                "owner-approval.json",
-            ],
-            "results": [
-                "validation/results/validation-results.json",
-                "validation/results/budget-results.json",
-                "validation/results/official-vector-results.json",
-            ],
-        },
-        "gates": gates,
-        "result": {
-            "publish_allowed": publish_allowed,
-            "validation_framework_complete": framework_complete,
-            "official_conformance_claimed": publish_allowed and official_vectors_passed,
-            "official_vectors": official_vectors,
-            "official_vector_evidence": {
-                "status": official_result["status"],
-                "manifest_sha256": official_result["manifest_sha256"],
-                "archive_sha256": official_result["acquisition"]["archive_sha256"],
-                "result_sha256": sha256_file(OFFICIAL_RESULT_PATH),
-                "source_revision": official_result["immutable_source_revision"],
-                "subject_binary_sha256": official_result["subject"]["binary_sha256"],
-            },
-            "external_oracles": validation["oracles"],
-            "proof_reference": {
-                "status": (
-                    "verified"
-                    if proof_locally_complete
-                    else "failed"
-                ),
-                "production_source_revision": source_tree[
-                    "production_source_revision"
-                ],
-                "attestation": "proof-attestation.json",
-                "coverage_hash_matches_attestation": proof_coverage_matches,
-                "all_proof_input_hashes_match": proof_sources_match,
-            },
-            "blocking_gates": blocking_gates,
-        },
-        "commands": [
-            "python3 validation/run-validation.py generate --check",
-            "python3 validation/run-validation.py verify",
-            "python3 validation/run-validation.py run",
-            "python3 validation/run-validation.py budget",
-            "python3 validation/run-validation.py official",
-            "python3 validation/run-validation.py source --check",
-            "python3 validation/run-validation.py architecture --check",
-            "python3 validation/run-validation.py attest",
-            "python3 validation/run-validation.py schemas",
-        ],
-        "created_at": None,
-    }
-    write_json(ROOT / "release-attestation.json", attestation)
-    write_json(
-        ROOT / "release-blockers.json",
-        {
-            "schema_version": 1,
-            "phase": "phase-i-release-conformance",
-            "status": "blocked" if blocking_gates else "passed",
-            "immutable_source_revision": source_tree["source_revision"],
-            "release_attestation_sha256": sha256_file(
-                ROOT / "release-attestation.json"
-            ),
-            "blockers": [
-                {
-                    "gate": name,
-                    "status": gates[name]["status"],
-                    "evidence": gates[name]["evidence"],
-                }
-                for name in blocking_gates
-            ],
-        },
-    )
-    return attestation

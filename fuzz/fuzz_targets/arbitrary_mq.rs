@@ -1,10 +1,11 @@
 #![no_main]
 
-use jpeg2000_rs::{ResourceLimits, mq::MqDecoder};
+use jpeg2000_rs::mq::MqDecoder;
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = ResourceLimits::default();
+    let limits = resource_limits();
     let payload = data.get(1..).unwrap_or_default();
     let Ok(mut decoder) = MqDecoder::new(payload, &limits) else {
         return;

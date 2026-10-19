@@ -660,6 +660,16 @@ pub(crate) const fn tier1_predicted_negative(horizontal: i8, vertical: i8) -> bo
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
+        ensures returns crate::specs::part1_tier1_decoded_sign(symbol, predicted, raw),
+    )
+)]
+pub(crate) const fn tier1_decoded_sign(symbol: bool, predicted: bool, raw: bool) -> bool {
+    if raw { symbol } else { symbol ^ predicted }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
         ensures returns crate::specs::part1_irreversible_centered(magnitude),
     )
 )]
@@ -693,7 +703,7 @@ pub(crate) const fn fixed_round_q16(adjusted: i64) -> i64 {
     verus_spec(ensures returns crate::specs::part1_nine_seven_scale(low),)
 )]
 pub(crate) const fn nine_seven_scale(low: bool) -> i64 {
-    if low { 53_274 } else { 80_621 }
+    if low { 80_621 } else { 53_274 }
 }
 
 #[cfg_attr(

@@ -1514,6 +1514,10 @@ pub open spec fn part1_tier1_predicted_negative(horizontal: i8, vertical: i8) ->
     horizontal < 0 || (horizontal == 0 && vertical < 0)
 }
 
+pub open spec fn part1_tier1_decoded_sign(symbol: bool, predicted: bool, raw: bool) -> bool {
+    if raw { symbol } else { symbol != predicted }
+}
+
 pub open spec fn part1_irreversible_centered(magnitude: i64) -> i128 {
     ((magnitude as int) * 2 + 1) as i128
 }
@@ -1529,7 +1533,7 @@ pub open spec fn part1_fixed_round_q16(adjusted: i64) -> i64 {
 }
 
 pub open spec fn part1_nine_seven_scale(low: bool) -> i64 {
-    if low { 53274 } else { 80621 }
+    if low { 80621 } else { 53274 }
 }
 
 pub open spec fn part1_nine_seven_lift(stage: u8) -> i64 {

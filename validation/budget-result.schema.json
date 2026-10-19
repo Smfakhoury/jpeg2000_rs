@@ -14,6 +14,10 @@
     "profile_id": {
       "type": "string"
     },
+    "provenance": {
+      "type": "object",
+      "required": ["git_commit", "git_dirty", "source_revision", "source_hashes", "tool_hashes", "python", "subject_binary_sha256"]
+    },
     "schema_version": {
       "const": 1
     },
@@ -24,6 +28,7 @@
   "required": [
     "schema_version",
     "profile_id",
+    "provenance",
     "budgets",
     "summary",
     "cases"

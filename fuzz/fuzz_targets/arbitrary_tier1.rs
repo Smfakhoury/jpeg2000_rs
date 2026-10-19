@@ -1,26 +1,24 @@
 #![no_main]
 
 use jpeg2000_rs::{
-    ResourceLimits,
     mq::MqDecoder,
     tier1::{
         CodeBlockPlane, CodeBlockSegmentAccounting, HtForwardMagSgnReader,
         HtForwardRefinementReader, HtPassGroup, HtReverseRefinementReader, RawBitReader,
         SubbandOrientation, Tier1BitplaneState, Tier1BlockCoding, Tier1CodeBlockDecoder,
-        Tier1CodingStyle, complete_ht_kappa,
-        decode_cleanup_pass_with_style, decode_ht_cleanup_metadata,
-        decode_magnitude_refinement_pass_with_style, decode_raw_magnitude_refinement_pass,
-        decode_raw_significance_propagation_pass,
+        Tier1CodingStyle, complete_ht_kappa, decode_cleanup_pass_with_style,
+        decode_ht_cleanup_metadata, decode_magnitude_refinement_pass_with_style,
+        decode_raw_magnitude_refinement_pass, decode_raw_significance_propagation_pass,
         decode_significance_propagation_pass_with_style, initialize_tier1_contexts,
-        magnitude_refinement_context, parse_ht_block_segments, sign_context,
-        zero_coding_context,
+        magnitude_refinement_context, parse_ht_block_segments, sign_context, zero_coding_context,
     },
     transform::{QuantizationStep, inverse_5_3, inverse_9_7, inverse_quantize, undo_maxshift},
 };
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = ResourceLimits::default();
+    let limits = resource_limits();
     if let Ok(mut magsgn) = HtForwardMagSgnReader::new(data, &limits) {
         let requested = data.first().copied().unwrap_or(0) % 40;
         let _ = magsgn.read_bits(requested);
@@ -96,19 +94,17 @@ fuzz_target!(|data: &[u8]| {
         if let Ok(group) = HtPassGroup::from_packet_passes(packet_passes) {
             let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
             assert_eq!(style.block_coding, Tier1BlockCoding::HighThroughput);
-            if let Ok(mut decoder) =
-                Tier1CodeBlockDecoder::new(
-                    1,
-                    1,
-                    u16::from(data.get(5).copied().unwrap_or(0)) + 37,
-                    SubbandOrientation::Ll,
-                    style,
-                )
-            {
+            if let Ok(mut decoder) = Tier1CodeBlockDecoder::new(
+                1,
+                1,
+                u16::from(data.get(5).copied().unwrap_or(0)) + 37,
+                SubbandOrientation::Ll,
+                style,
+            ) {
                 decoder.set_multiple_ht_sets_allowed(data.get(6).copied().unwrap_or(0) & 1 != 0);
-                let _ = decoder
-                    .set_ht_magnitude_bound(data.get(7).copied().unwrap_or(0) % 74 + 1);
-                let refinement = (group.refinement_passes > 0).then_some(refinement.unwrap_or_default());
+                let _ = decoder.set_ht_magnitude_bound(data.get(7).copied().unwrap_or(0) % 74 + 1);
+                let refinement =
+                    (group.refinement_passes > 0).then_some(refinement.unwrap_or_default());
                 let _ = decoder.decode_high_throughput_segments(
                     cleanup,
                     group.cleanup_passes,

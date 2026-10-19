@@ -1,11 +1,12 @@
 #![no_main]
 
 use jpeg2000_rs::{
-    DecodeOptions, DecodeSelection, ImageRegion, ResourceLimits, codestream, decode_codestream,
-    decode_codestream_selected, decode_jp2, decode_jp2_selected, decode_jph,
-    decode_jph_selected, decode_jpx_codestream, decode_jpx_codestream_selected, inspect_jph,
-    inspect_jpx_layers, jp2, render_jpx_composition, render_jpx_frame, render_jpx_layer,
+    DecodeOptions, DecodeSelection, ImageRegion, codestream, decode_codestream,
+    decode_codestream_selected, decode_jp2, decode_jp2_selected, decode_jph, decode_jph_selected,
+    decode_jpx_codestream, decode_jpx_codestream_selected, inspect_jph, inspect_jpx_layers, jp2,
+    render_jpx_composition, render_jpx_frame, render_jpx_layer,
 };
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 const SOC: u16 = 0xff4f;
@@ -45,7 +46,7 @@ fuzz_target!(|data: &[u8]| {
         data.get(2).copied().unwrap_or(0),
         tile_data,
     );
-    let limits = ResourceLimits::default();
+    let limits = resource_limits();
     assert!(codestream::parse(&codestream_bytes, &limits).is_ok());
 
     let palette_mapping = data.get(2).copied().unwrap_or(0) & 1 != 0;
@@ -64,12 +65,8 @@ fuzz_target!(|data: &[u8]| {
     let options = DecodeOptions::new(limits);
     let _ = decode_codestream(&codestream_bytes, &options);
     let _ = decode_jp2(&jp2_bytes, &options);
-    let region = DecodeSelection::tile(0).with_region(ImageRegion::new(
-        0,
-        0,
-        width.max(1),
-        height.max(1),
-    ));
+    let region =
+        DecodeSelection::tile(0).with_region(ImageRegion::new(0, 0, width.max(1), height.max(1)));
     let _ = decode_codestream_selected(&codestream_bytes, &options, &region);
     let _ = decode_jp2_selected(&jp2_bytes, &options, &region);
 
@@ -102,21 +99,23 @@ fuzz_target!(|data: &[u8]| {
     let _ = render_jpx_layer(&jpx_bytes, selected, &options);
     let _ = render_jpx_composition(&jpx_bytes, &options);
     let _ = render_jpx_frame(&jpx_bytes, 0, &options);
-    let malformed = DecodeSelection::tiles(vec![0, 0])
-        .with_discard_levels(data.get(3).copied().unwrap_or(0));
+    let malformed =
+        DecodeSelection::tiles(vec![0, 0]).with_discard_levels(data.get(3).copied().unwrap_or(0));
     let _ = decode_codestream_selected(&codestream_bytes, &options, &malformed);
 
-    let composed = make_static_jpx(&codestream_bytes, width, height, data.get(2).copied().unwrap_or(0));
+    let composed = make_static_jpx(
+        &codestream_bytes,
+        width,
+        height,
+        data.get(2).copied().unwrap_or(0),
+    );
     let inspected_layers = inspect_jpx_layers(&composed, &limits).unwrap();
     assert_eq!(inspected_layers.layers().len(), 1);
     let _ = render_jpx_layer(&composed, 0, &options);
     let _ = render_jpx_composition(&composed, &options);
     let _ = render_jpx_frame(&composed, 0, &options);
     let mut nested = composed;
-    nested.extend(box32(
-        *b"asoc",
-        &box32(*b"asoc", &box32(*b"lbl ", b"fuzz")),
-    ));
+    nested.extend(box32(*b"asoc", &box32(*b"asoc", &box32(*b"lbl ", b"fuzz"))));
     let nested_inspection = inspect_jpx_layers(&nested, &limits).unwrap();
     assert_eq!(nested_inspection.metadata_boxes(), 3);
     assert_eq!(nested_inspection.metadata_depth(), 3);
@@ -188,7 +187,12 @@ fn make_codestream(
     ));
     bytes.extend(segment(
         NLT,
-        &[0xff, 0xff, 7, if packet_length_mode & 1 == 0 { 0 } else { 3 }],
+        &[
+            0xff,
+            0xff,
+            7,
+            if packet_length_mode & 1 == 0 { 0 } else { 3 },
+        ],
     ));
     bytes.extend(segment(CBD, &[0, 1, 7]));
     let mut atk = vec![0x4c, 2];
@@ -281,11 +285,7 @@ fn make_codestream(
     }
     if packet_length_mode & 6 == 2 {
         let mut ppm = vec![0];
-        ppm.extend_from_slice(
-            &u32::try_from(packed_header.len())
-                .unwrap()
-                .to_be_bytes(),
-        );
+        ppm.extend_from_slice(&u32::try_from(packed_header.len()).unwrap().to_be_bytes());
         ppm.extend_from_slice(packed_header);
         bytes.extend(segment(PPM, &ppm));
     }
@@ -394,12 +394,7 @@ fn make_jp2(
     bytes
 }
 
-fn make_static_jpx(
-    codestream_bytes: &[u8],
-    width: u32,
-    height: u32,
-    mode: u8,
-) -> Vec<u8> {
+fn make_static_jpx(codestream_bytes: &[u8], width: u32, height: u32, mode: u8) -> Vec<u8> {
     let mut bytes = box32(*b"jP  ", &[0x0d, 0x0a, 0x87, 0x0a]);
     bytes.extend(box32(*b"ftyp", b"jpxb\0\0\0\0jpxb"));
     let mut image_header = Vec::new();

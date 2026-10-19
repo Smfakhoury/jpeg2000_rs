@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Observed pinned Verus run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "source_root", "source_hashes", "provenance", "verus",
+    "results", "known_proof_boundary", "functions", "rust_only_adapters", "scope"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": 1},
+    "source_root": {"const": "src/lib.rs"},
+    "source_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    },
+    "verus_result_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "provenance": {
+      "type": "object",
+      "required": ["git_commit", "git_dirty", "source_revision", "source_hashes", "tool_hashes", "python"]
+    },
+    "verus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "commit", "profile", "toolchain", "workflow_flags"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "commit": {"const": "426d8b01e7ffb910a36c15e1f870ff985bb61eef"},
+        "profile": {"type": "string", "minLength": 1},
+        "toolchain": {"type": "string", "minLength": 1},
+        "workflow_flags": {
+          "const": ["--no-lifetime", "--crate-type", "lib"]
+        }
+      }
+    },
+    "results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verus_verified_obligations", "verus_errors",
+        "documented_rust_only_adapters", "verified_project_functions",
+        "incomplete_production_functions"
+      ],
+      "properties": {
+        "verus_verified_obligations": {"type": "integer", "minimum": 1},
+        "verus_errors": {"const": 0},
+        "documented_rust_only_adapters": {"type": "integer", "minimum": 0},
+        "verified_project_functions": {"type": "integer", "minimum": 1},
+        "incomplete_production_functions": {"type": "integer", "minimum": 0}
+      }
+    },
+    "known_proof_boundary": {
+      "type": "object",
+      "required": ["lifetime_analysis", "termination"],
+      "properties": {
+        "lifetime_analysis": {"type": "string", "minLength": 1},
+        "termination": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "functions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["function", "disposition"],
+        "additionalProperties": false,
+        "properties": {
+          "function": {"type": "string", "pattern": "^lib::"},
+          "disposition": {"enum": ["verified", "verified-with-termination-gap"]}
+        }
+      }
+    },
+    "rust_only_adapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["function", "disposition"],
+        "properties": {
+          "function": {"type": "string", "pattern": "^lib::"},
+          "disposition": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "scope": {"type": "string", "minLength": 1}
+  }
+}

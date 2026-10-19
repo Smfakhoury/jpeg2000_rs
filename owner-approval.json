@@ -1,9 +1,0 @@
-{
-  "$schema": "./owner-approval.schema.json",
-  "approved_at": null,
-  "approved_by": null,
-  "candidate_revision": "sha256-tree-v1:c9443868438bed714db257e8cddc01ccdde82b19f9b0173474525434ee00f17a",
-  "schema_version": 1,
-  "statement": null,
-  "status": "pending"
-}

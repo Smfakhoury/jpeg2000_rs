@@ -1,17 +1,14 @@
 #![no_main]
 
 use jpeg2000_rs::{
-    DatabinCache, DatabinId, JpipDatabinRange, JpipFragment, JpipHeaderContext, ResourceLimits,
+    DatabinCache, DatabinId, JpipDatabinRange, JpipFragment, JpipHeaderContext,
     ingest_jpip_response, parse_jpip_message,
 };
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = ResourceLimits::default()
-        .with_maximum_input_bytes(1 << 20)
-        .unwrap()
-        .with_maximum_jpip_fragments(256)
-        .unwrap();
+    let limits = resource_limits();
     let _ = parse_jpip_message(data, &mut JpipHeaderContext::new(), &limits);
 
     let mut parsed_cache = DatabinCache::new(limits);
@@ -25,14 +22,7 @@ fuzz_target!(|data: &[u8]| {
     let first = &data[..split];
     let second = &data[split..];
     let mut cache = DatabinCache::new(limits);
-    if let Ok(later) = JpipFragment::new(
-        id,
-        split as u64,
-        second.to_vec(),
-        true,
-        None,
-        &limits,
-    ) {
+    if let Ok(later) = JpipFragment::new(id, split as u64, second.to_vec(), true, None, &limits) {
         let _ = cache.insert(later);
     }
     if !first.is_empty()

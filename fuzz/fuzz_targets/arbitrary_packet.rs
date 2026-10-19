@@ -1,20 +1,20 @@
 #![no_main]
 
 use jpeg2000_rs::{
-    ResourceLimits,
     codestream::{CodingStyle, ProgressionOrder, TilePartPayload, WaveletTransform},
     packet::{
-        CodeBlockPacketContext, CodeBlockPacketState, PacketBitReader, PacketGrid, PacketIterator,
-        PacketCodeBlockExecution, PacketPrecinctDecoder, PacketPrecinctGeometry, TagTree,
+        CodeBlockPacketContext, CodeBlockPacketState, PacketBitReader, PacketCodeBlockExecution,
+        PacketGrid, PacketIterator, PacketPrecinctDecoder, PacketPrecinctGeometry, TagTree,
         decode_code_block_contribution, decode_code_block_contribution_body,
         decode_multi_code_block_packet, decode_progression_tile_packets,
     },
     tier1::{SubbandOrientation, Tier1CodeBlockDecoder, Tier1CodingStyle},
 };
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = ResourceLimits::default();
+    let limits = resource_limits();
     let code_block_style = if data.get(7).copied().unwrap_or(0) & 0x40 != 0 {
         0x40
     } else {
@@ -76,10 +76,8 @@ fuzz_target!(|data: &[u8]| {
         multiple_component_transform: false,
         decomposition_levels: 0,
         decomposition_structure: None,
-        decomposition_directions: [
-            jpeg2000_rs::codestream::DecompositionDirection::TwoDimensional;
-            32
-        ],
+        decomposition_directions: [jpeg2000_rs::codestream::DecompositionDirection::TwoDimensional;
+            32],
         code_block_width: 1,
         code_block_height: 1,
         code_block_style,

@@ -1,145 +1,186 @@
 # Decoder validation
 
-This directory implements Phase H as **decoder** validation hardening.
-Encoding is not part of the approved first-release profile. The framework does
-not claim ISO/IEC 15444-4 conformance and contains no official, restricted, or
-standards-derived vectors.
+This is a reusable decoder validation framework, not an ISO/IEC 15444-4
+conformance claim or a publication approval system. It contains no official,
+restricted, or standards-derived vectors.
 
-## Reproducible generated corpus
+## Running the checks
 
-`framework.py` deterministically generates minimal raw codestream, JP2, JPH,
-JPX, and JPIP cases plus truncation-prefix, negative, and metamorphic variants.
-`corpus.json` records every byte length and SHA-256, its generation recipe,
-redistribution status, expected result, and any metamorphic relationship.
-`corpus.schema.json` rejects non-generated classifications. `verify` checks
-hashes, duplicate identifiers, provenance policy, path containment,
-metamorphic parents, and unmanifested corpus files.
+Use Python with the pinned `jsonschema` dependency in `requirements.txt`.
+For example, from the repository root (installation is needed only once):
 
 ```sh
-python3 validation/run-validation.py generate --check
-python3 validation/run-validation.py verify
+python3 -m venv .venv
+.venv/bin/python -m pip install -r validation/requirements.txt
+PYTHONPATH=validation .venv/bin/python -m unittest discover -s validation/tests -v
+.venv/bin/python validation/run-validation.py generate --check
+.venv/bin/python validation/run-validation.py verify
+.venv/bin/python validation/run-validation.py inventory
+.venv/bin/python validation/run-validation.py schemas
+.venv/bin/python validation/run-validation.py all --no-external
 ```
 
-Regenerate intentionally with `generate` without `--check`. Generation uses
-only Python's standard library and is deterministic.
+`all` checks corpus reproducibility, schemas, technical inventory links,
+generated decoder cases, independent numerical cases, and budgets. It builds the example harness with
+`cargo build --example validation_decoder --locked`. It does not require
+internal approvals, old results, or committed source snapshots. `--subject`
+selects a different harness; `--no-build` uses the existing default binary.
 
-## Differential execution and normalization
+All reports default to ignored `target/validation/`. The `run`, `budget`,
+`official`, `numerical`, `schemas`, and `all` commands accept `--output-dir`. Existing
+tracked report paths are refused. Reports bind the Git commit, dirty flag,
+current source and validation-tool hashes, and subject binary hash when run.
+These describe the current execution, not the validity of historical evidence.
+No command updates a committed source snapshot or creates an attestation.
+The commands above leave tracked source unchanged.
 
-The in-tree validation adapter is an example target, deliberately excluded
-from the published package. It emits a stable image/error protocol. Successful
-images are normalized by dimensions, component precision/sign, and integer
-sample values before hashing. Error normalization retains only the typed error
-category. Metamorphic cases require the same normalized output hash.
+CI initializes the crate's pinned Rust toolchain in a job-local `RUSTUP_HOME`
+before building the native harness. This keeps validation independent of
+preinstalled runner toolchain/component state.
 
-`oracles.json` defines optional command templates for OpenJPEG, Grok, and
-JasPer. The framework neither downloads nor bundles those programs. It uses
-`OPENJPEG_DECODER`, `GROK_DECODER`, or `JASPER_DECODER` when set, otherwise
-searches `PATH`. Missing programs are recorded as `skipped` with a reason;
-their absence does not fabricate a pass or a disagreement. External PGM/PPM
-outputs are normalized to the same planar integer representation.
+## Reproducible corpus
+
+`framework.py` deterministically generates 17 minimal raw codestream, JP2,
+JPH, JPX, and JPIP fixtures, including negative, malformed-prefix, and
+metamorphic cases. `corpus.json` retains byte lengths, hashes, recipes,
+redistribution policy, expected outcomes, and metamorphic parents. `verify`
+checks these bindings, path containment, identifiers, and unexpected files.
+Intentional recipe changes can be regenerated with `generate` (without
+`--check`); this maintenance operation updates the tracked corpus.
+
+## Differential execution
+
+The package-excluded example harness emits stable image/error observations.
+Images normalize dimensions, component precision/sign, and integer samples;
+errors normalize typed categories. Metamorphic cases compare normalized hashes.
+
+`oracles.json` defines optional OpenJPEG, Grok, and JasPer command templates.
+Use `--oracle-config` for another configuration. The framework neither downloads
+nor bundles those programs. It checks `OPENJPEG_DECODER`, `GROK_DECODER`, and
+`JASPER_DECODER`, then `PATH`. An absent unconfigured oracle is explicitly
+`skipped`, not passed. An explicitly configured missing executable, crash,
+timeout, or invalid output is a failure, not a skip or successful rejection.
+External PGM/PPM images normalize to the same planar integer representation.
 
 ```sh
-python3 validation/run-validation.py run
-python3 validation/run-validation.py run --no-external
+.venv/bin/python validation/run-validation.py run
+.venv/bin/python validation/run-validation.py run --no-external --output-dir target/validation/local
 ```
 
-Per-case observations are written to
-`validation/results/validation-results.json`; all acceptance or normalized
-output differences are preserved in `validation/results/disagreements.json`
-as unadjudicated records. Stable `oracle-disagreement-v1` identifiers are
-derived only from the case, oracle, disagreement kind, and both normalized
-hashes. Human decisions are stored separately in
-`validation/results/oracle-adjudications.json` and survive reruns with the
-same observation. An unresolved record blocks the oracle-adjudication gate;
-the framework never resolves one automatically. These generated result files
-are evidence, not official conformance results.
+`validation-results.json` records observations and oracle errors;
+`disagreements.json` preserves acceptance/output differences. Stable
+`oracle-disagreement-v1` IDs bind case, oracle, kind, and normalized hashes.
+Unresolved differences make the run `blocked` (nonzero exit). An optional
+external `--adjudication-file` can supply human decisions using
+`oracle-adjudication.schema.json`; it is validated and never rewritten.
+The generated `oracle-adjudications.json` is only a derived view. Without
+external observations its status is `skipped`, not passed.
 
-## Resource budgets and attestation
+## Independent numerical regression checks
 
-`budget` applies a five-second per-process timeout, a 30-second corpus budget,
-one-MiB input/output caps, and a 512-MiB address-space limit where POSIX
-`RLIMIT_AS` is available. The result explicitly reports whether the OS memory
-limit was enforced; production decoder `ResourceLimits` remain active on every
-platform.
+Install OpenJPEG's `opj_compress` and `opj_decompress` CLI tools (for example,
+`libopenjp2-tools` on Debian/Ubuntu). The suite creates its own deterministic
+nonzero 8/16-bit PGM/PPM images, including channel extrema. It encodes and decodes
+them independently and compares the Rust decoder's sample planes.
+It also exercises 256-by-256 grayscale/RGB images with multiple code-blocks.
 
 ```sh
-python3 validation/run-validation.py budget
-python3 validation/run-validation.py attest
-python3 validation/run-validation.py all
+.venv/bin/python validation/run-validation.py numerical
+.venv/bin/python validation/run-validation.py numerical --output-dir target/validation/numerical
 ```
 
-`source-tree.json` is a non-VCS, deterministic `sha256-tree-v1` manifest. It
-content-addresses production, proof, validation, schema, workflow, fuzz, and
-release-documentation source while explicitly excluding generated evidence
-and build output. A separate production-source revision plus the per-file
-hashes in `production-proof-coverage.json` permits reuse of existing proof
-evidence only when every proof input still matches.
+Cases cover grayscale/RGB, raw/JP2, tiles and nonzero origins, multiple quality
+layers, progression orders, every legacy coding-style flag, SOP/EPH/PLT, and
+reversible/irreversible transforms.
+Lossless cases must reproduce the original and reference samples bit for bit.
+Lossy cases record per-component maximum error, MSE, RMSE and PSNR, plus error
+against the original image. PSNR is `null` when MSE is zero, rather than a
+nonfinite JSON value.
 
-The release attestation binds hashes for source, exact toolchain declarations,
-proof attestation/coverage, corpus, differential validation, adjudications,
-budgets, fuzz evidence, package inventory, architecture review, and approval
-placeholders. Schema rules make a `passed` release impossible without
-official vectors, zero unresolved oracle disagreements, current architecture
-review, legal/publication approval, and release-owner approval.
+These explicit **engineering regression budgets** compare against OpenJPEG;
+they are not official Part 4 numerical tolerances:
 
-`normative-coverage.json` records selected-profile functional refinement for
-Parts 1, 2, 9, and 15: 54 requirement groups linked to 160 concrete contracted
-functions with zero unlinked selected groups. Its validator resolves implementation,
-normative spec, executable contract, proof/view, and test symbols, enforces the
-complete selected Part 9 and Part 15 group inventories and source-accessibility
-classifications, and rejects any closure claim with an unlinked group. A
-`functionally_linked` claim is rejected when its contract does not directly
-ensure the referenced spec or is not called by the claimed production
-implementation.
+| Irreversible case | Maximum sample error | Maximum per-component RMSE |
+|---|---:|---:|
+| 8-bit grayscale | 1 | 0.25 |
+| 8-bit RGB | 2 | 0.5 |
+| 16-bit grayscale | 8 | 2.0 |
+
+`numerical-results.json` retains every failure and measured disagreement with
+source, input, encoded-stream, output and executable hash bindings. Successful generated images and encoded files are temporary; recipes and
+runner source are tracked. Failed inputs, encoded streams and reference images
+are retained under the ignored output's `numerical-failures/` directory and
+included in CI artifacts for reproduction and minimization.
+Native execution has time, output and POSIX address-space/file-size bounds.
+Reports include encoder/reference/subject timings and total case time. Each
+native stage defaults to ten seconds; the aggregate case budget is three
+times that timeout, including normalization. Output capture is limited to one
+MiB and files to two MiB, with 512 MiB address space where available.
+Missing default tools are explicitly `blocked`; configured missing tools,
+process failures, invalid output and exceeded thresholds cannot pass.
+`--encoder`, `--decoder`, `OPENJPEG_ENCODER` and `OPENJPEG_DECODER` select trusted
+local tools. `all` includes this gate unless `--no-external` is selected.
+
+## Budgets
 
 ```sh
-python3 validation/run-validation.py source
-python3 validation/run-validation.py source --check
-python3 validation/run-validation.py architecture --check
-python3 validation/run-validation.py schemas
+.venv/bin/python validation/run-validation.py budget
 ```
 
-The committed Phase I result remains blocked and does not claim official
-conformance when any external approval or official-vector input is absent.
+Defaults are five seconds per case, 30 seconds total, one-MiB input/output
+caps, and 512 MiB address space where POSIX `RLIMIT_AS` is available. Execution
+enforces bounded output capture and reports unavailable memory enforcement.
+Decoder `ResourceLimits` remain active on every platform.
+
+## Technical reference inventory
+
+`normative-coverage.json` is a static inventory of topics and implementation,
+specification, executable contract, proof/view, and test references. Its
+validator checks every present item, including contracts that ensure a listed
+spec and are called by the claimed implementation. Shadow-only links fail.
+It does not assert exhaustive standards-clause coverage, exact progress
+counts, phase completion, or conformance.
 
 ## External official vectors
 
-Official Part 4 assets are never copied into or bundled with this repository.
-The `official` command accepts an authorized, externally managed vector root
-through `--vector-root` or `JPEG2000_OFFICIAL_VECTOR_ROOT`; an external
-manifest may be selected with `--manifest` or
-`JPEG2000_OFFICIAL_VECTOR_MANIFEST`. The default manifest name inside the root
-is `official-vector-manifest.json`.
+Assets remain in an authorized, externally managed directory and are never
+copied into the repository or report artifacts. Use `--vector-root` or
+`JPEG2000_OFFICIAL_VECTOR_ROOT`, and `--manifest` or
+`JPEG2000_OFFICIAL_VECTOR_MANIFEST`. The default external manifest name is
+`official-vector-manifest.json`.
 
-The manifest must validate against
-`official-vector-manifest.schema.json`, bind the original archive and every
-applicable input by SHA-256 and byte length, attest approved internal use with
-redistribution disabled, and state that selected-profile decoder-vector
-selection is complete. Accepted cases also require an independently established
-normalized reference-output hash. Paths are confined to the external root.
-
-```sh
-JPEG2000_OFFICIAL_VECTOR_ROOT=/authorized/ephemeral/root \
-  python3 validation/run-validation.py official
-```
-
-Execution applies per-case and total time, input, output, and address-space
-limits. `validation/results/official-vector-results.json` contains only source
-and acquisition metadata, archive/manifest/file hashes, public identifiers
-when explicitly marked public, counts, pass/fail status, normalized output
-hashes, image geometry/type metrics, and exact source/tool bindings. It never
-records asset paths or decoded samples. The release attestation marks the
-official-vector gate passed only when selection is complete and every
-applicable vector is verified, executed, and passed.
-
-Run script tests with:
+The manifest schema requires source/acquisition metadata, authorized-use and
+license evidence, redistribution disabled, archive and input byte/hash
+bindings, explicit selection, and independently established normalized hashes
+for accepted cases. Paths are confined to the external root. A manifest's
+source URL identifies its suite; no private standards-profile file is needed.
+These declarations must reflect the operator's actual rights and evidence.
 
 ```sh
-python3 -m unittest discover -s validation/tests -v
+JPEG2000_OFFICIAL_VECTOR_ROOT=/authorized/vector-root \
+  .venv/bin/python validation/run-validation.py official
 ```
 
-Install the pinned schema validator first when it is not already available:
+Missing access/configuration produces an explicit `blocked` report and nonzero
+exit. Invalid manifests fail before execution. Reports contain hashes,
+permitted public identifiers, counts, timing, normalized hashes, and geometry,
+not private paths, identifiers, samples, or asset bytes. Archive-integrity,
+execution, and resource failures cannot pass. This optional command is not
+part of clean-clone `all`.
+
+## Proof report
+
+After an actual pinned whole-crate Verus run:
 
 ```sh
-python3 -m pip install -r validation/requirements.txt
+.venv/bin/python validation/generate-proof-coverage.py target/validation/verus-result.json
+.venv/bin/python validation/run-validation.py schemas
 ```
+
+The default report is `target/validation/proof-coverage.json`; `--output-dir`
+selects another directory. The checker requires the pinned commit,
+whole-crate success, zero errors, nonempty project results, and no unmapped
+termination bypasses or trusted proof escapes. It does not compare against
+committed progress output or infer coverage for absent functions. CI retains
+the stable release's `--no-lifetime` boundary explicitly; lifetime verification
+is not claimed.

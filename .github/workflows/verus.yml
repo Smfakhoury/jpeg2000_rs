@@ -15,31 +15,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install pinned validation dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r validation/requirements.txt
       - name: Download pinned Verus
         shell: bash
         run: |
+          mkdir -p .verus-tool target/validation
           curl --fail --location --retry 3 \
-            --output /tmp/verus.zip \
+            --output .verus-tool/verus.zip \
             https://github.com/verus-lang/verus/releases/download/release/0.2026.10.04.426d8b0/verus-0.2026.10.04.426d8b0-x86-linux.zip
-          echo "624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0  /tmp/verus.zip" \
+          echo "624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0  .verus-tool/verus.zip" \
             | sha256sum --check
-          unzip -q /tmp/verus.zip -d /tmp/verus
+          unzip -q .verus-tool/verus.zip -d .verus-tool
       - name: Install Verus Rust toolchain
         shell: bash
         run: rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
-      - name: Verify exact production crate root
+      - name: Verify production crate (stable release; lifetime analysis disabled)
         shell: bash
         run: |
-          /tmp/verus/verus-x86-linux/verus \
+          .verus-tool/verus-x86-linux/verus \
             --no-lifetime \
             --output-json \
             --crate-type lib \
             src/lib.rs \
-            > /tmp/verus-result.json
+            > target/validation/verus-result.json
       - name: Audit proof coverage
         shell: bash
         run: |
-          python3 validation/generate-proof-coverage.py \
-            /tmp/verus-result.json \
-            /tmp/production-proof-coverage.json
-          diff -u production-proof-coverage.json /tmp/production-proof-coverage.json
+          .venv/bin/python validation/generate-proof-coverage.py \
+            target/validation/verus-result.json
+          .venv/bin/python validation/run-validation.py schemas
+          git diff --exit-code
+      - name: Upload Verus reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verus-validation
+          path: target/validation/*.json
+          if-no-files-found: warn
+          retention-days: 14

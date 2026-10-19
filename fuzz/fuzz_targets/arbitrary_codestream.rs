@@ -1,17 +1,19 @@
 #![no_main]
 
 use jpeg2000_rs::{
-    DecodeOptions, ResourceLimits, codestream, decode_codestream,
+    DecodeOptions, codestream,
     decode::{
         decode_progression_prepared_image, derive_component_subbands,
         plan_progression_tile_at_with_component_overrides,
     },
+    decode_codestream,
     packet::decode_progression_tile_packets,
 };
+use jpeg2000_rs_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = ResourceLimits::default();
+    let limits = resource_limits();
     let _ = decode_codestream(data, &DecodeOptions::new(limits));
     let Ok(layout) = codestream::parse_layout(data, &limits) else {
         return;
@@ -23,16 +25,10 @@ fuzz_target!(|data: &[u8]| {
     while component < layout.info.image_size.components {
         if let (Ok(style), Ok(quantization)) = (
             tile_part.component_coding_styles.style(component),
-            tile_part
-                .component_quantizations
-                .quantization(component),
+            tile_part.component_quantizations.quantization(component),
         ) {
-            let _ = derive_component_subbands(
-                &layout.info.image_size,
-                style,
-                &quantization,
-                component,
-            );
+            let _ =
+                derive_component_subbands(&layout.info.image_size, style, &quantization, component);
         }
         component += 1;
     }

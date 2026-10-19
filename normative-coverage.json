@@ -1,8 +1,7 @@
 {
   "$schema": "./normative-coverage.schema.json",
-  "checkpoint": "phase-m-formal-refinement",
-  "part1_closure_complete": true,
-  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "schema_version": 1,
+  "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
       "contract_refs": [
@@ -54,7 +53,6 @@
           "symbol": "part1_clip_end"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -105,7 +103,6 @@
           "symbol": "part1_packet_bit"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/packet.rs",
@@ -156,7 +153,6 @@
           "symbol": "part1_tag_step_value"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/packet.rs",
@@ -215,7 +211,6 @@
           "symbol": "part1_progression_emit_allowed"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/packet.rs",
@@ -266,7 +261,6 @@
           "symbol": "part1_mq_next_mps"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/mq.rs",
@@ -329,7 +323,6 @@
           "symbol": "part1_tier1_refined_magnitude"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -372,7 +365,6 @@
           "symbol": "part1_maxshift_restore"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/transform.rs",
@@ -407,7 +399,6 @@
           "symbol": "part1_reversible_inverse_quantize"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/transform.rs",
@@ -458,7 +449,6 @@
           "symbol": "part1_five_three_update"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/transform.rs",
@@ -521,7 +511,6 @@
           "symbol": "part1_rct_blue"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/image.rs",
@@ -564,7 +553,6 @@
           "symbol": "part1_clip_sample"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/transform.rs",
@@ -631,7 +619,6 @@
           "symbol": "part1_tile_header_boundary"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -714,7 +701,6 @@
           "symbol": "part1_packet_logical_bytes"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/packet.rs",
@@ -825,7 +811,6 @@
           "symbol": "part1_mq_renorm_ct"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/mq.rs",
@@ -875,6 +860,10 @@
         {
           "path": "src/refinement.rs",
           "symbol": "tier1_predicted_negative"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_decoded_sign"
         }
       ],
       "id": "part1-complete-legacy-tier1",
@@ -902,6 +891,10 @@
         {
           "path": "src/tier1.rs",
           "symbol": "decode_cleanup_coefficient"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_sign_and_mark"
         }
       ],
       "proof_refs": [
@@ -946,9 +939,12 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part1_tier1_predicted_negative"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_decoded_sign"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -957,6 +953,10 @@
         {
           "path": "src/tier1.rs",
           "symbol": "raw_bypass_decodes_significance_and_refinement_passes"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_bypass_sign_bits_do_not_use_mq_sign_prediction"
         },
         {
           "path": "src/tier1.rs",
@@ -1035,7 +1035,6 @@
           "symbol": "part1_nine_seven_lift"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/transform.rs",
@@ -1094,7 +1093,6 @@
           "symbol": "part1_wavelet_sample_count"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/decode.rs",
@@ -1169,7 +1167,6 @@
           "symbol": "part1_progression_emit_allowed"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/decode.rs",
@@ -1232,7 +1229,6 @@
           "symbol": "part1_typed_component_denotation"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/decode.rs",
@@ -1299,7 +1295,6 @@
           "symbol": "part2_crg_payload_bytes"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -1358,7 +1353,6 @@
           "symbol": "part2_dfs_direction_code"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -1425,7 +1419,6 @@
           "symbol": "part2_nlt_binary_complement"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -1488,7 +1481,6 @@
           "symbol": "part2_atk_next_parity"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -1599,7 +1591,6 @@
           "symbol": "part2_binary_fixed_shift"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -1686,7 +1677,6 @@
           "symbol": "part2_channel_definition_valid"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jp2.rs",
@@ -1741,7 +1731,6 @@
           "symbol": "part2_signed_to_nominal"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/color.rs",
@@ -1804,7 +1793,6 @@
           "symbol": "part2_effective_layer_count"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jp2.rs",
@@ -1883,7 +1871,6 @@
           "symbol": "part2_chroma_key_alpha"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpx.rs",
@@ -1966,7 +1953,6 @@
           "symbol": "part2_inverse_alpha"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpx.rs",
@@ -2013,7 +1999,6 @@
           "symbol": "part2_metadata_count"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jp2.rs",
@@ -2108,7 +2093,6 @@
           "symbol": "part9_eor_extent"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2163,7 +2147,6 @@
           "symbol": "part9_databin_identity"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2218,7 +2201,6 @@
           "symbol": "consistent_jpip_final_length"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2265,7 +2247,6 @@
           "symbol": "part9_transaction_commit"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2332,7 +2313,6 @@
           "symbol": "complete_jpip_databin"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2399,7 +2379,6 @@
           "symbol": "complete_jpip_range"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2462,7 +2441,6 @@
           "symbol": "jpip_reconstructed_box_length"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2509,7 +2487,6 @@
           "symbol": "part9_reconstruction_length"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2560,7 +2537,6 @@
           "symbol": "part9_precinct_flat_identity"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2635,7 +2611,6 @@
           "symbol": "part9_packet_reframed_length"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2682,7 +2657,6 @@
           "symbol": "jpip_tile_transition_sufficient"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2741,7 +2715,6 @@
           "symbol": "valid_jpip_progressive_update"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jpip.rs",
@@ -2780,7 +2753,6 @@
           "symbol": "valid_jph_branding"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/jp2.rs",
@@ -2835,7 +2807,6 @@
           "symbol": "part15_codestream_class"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -2914,7 +2885,6 @@
           "symbol": "part15_headers_allowed"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/codestream.rs",
@@ -2973,7 +2943,6 @@
           "symbol": "ht_segment_passes"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3012,7 +2981,6 @@
           "symbol": "ht_mixed_selects_legacy"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/packet.rs",
@@ -3055,7 +3023,6 @@
           "symbol": "ht_magsgn_end"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3138,7 +3105,6 @@
           "symbol": "ht_cursors_separated"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3237,7 +3203,6 @@
           "symbol": "ht_quad_origin_valid"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3316,7 +3281,6 @@
           "symbol": "ht_bin_center_odd"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3363,7 +3327,6 @@
           "symbol": "ht_claim_available"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3434,7 +3397,6 @@
           "symbol": "ht_magref_eligible"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/tier1.rs",
@@ -3497,7 +3459,6 @@
           "symbol": "ht_replacement_allowed"
         }
       ],
-      "status": "functionally_linked",
       "test_refs": [
         {
           "path": "src/packet.rs",
@@ -3510,55 +3471,5 @@
       ],
       "topic": "SINGLEHT/MULTIHT enforcement, empty replacement sets, and continued refinement pass accumulation"
     }
-  ],
-  "selected_part2_closure_complete": true,
-  "schema_version": 1,
-  "summary": {
-    "concrete_linked_functions": 160,
-    "functionally_linked_requirements": 54,
-    "unlinked_part1_requirement_groups": 0,
-    "unlinked_selected_part2_requirement_groups": 0,
-    "unlinked_selected_part9_requirement_groups": 0,
-    "unlinked_selected_part15_requirement_groups": 0
-  },
-  "unlinked_part1_requirement_groups": [],
-  "unlinked_selected_part2_requirement_groups": [],
-  "selected_part9_closure_complete": true,
-  "part9_source_accessibility": [
-    {
-      "group": "bounded_non_network_semantics",
-      "selection": "selected",
-      "classification": "authoritative_source_accessible",
-      "basis": "The approved T.808 catalog edition and pinned public implementation cross-checks cover the selected bounded binary-message, databin, reconstruction, metadata, and progression semantics."
-    },
-    {
-      "group": "network_tls_auth_request_server",
-      "selection": "approved_out_of_scope",
-      "classification": "authoritative_source_accessible",
-      "basis": "Transport, TLS, authentication, request generation, scheduling, and server behavior are intentionally outside the decoder API despite accessible protocol-level source material."
-    },
-    {
-      "group": "cache_signaling_syntax",
-      "selection": "approved_out_of_scope",
-      "classification": "authoritative_source_inaccessible",
-      "basis": "The precise cache-model signaling syntax is not available in the locally controlled source set and is therefore neither guessed nor selected."
-    }
-  ],
-  "unlinked_selected_part9_requirement_groups": [],
-  "selected_part15_closure_complete": true,
-  "part15_source_accessibility": [
-    {
-      "group": "selected_executable_htj2k_semantics",
-      "selection": "selected",
-      "classification": "authoritative_source_accessible",
-      "basis": "The selected T.814 executable branding, signaling, packet, cleanup, refinement, and capability semantics are attached to concrete decoder paths through exact executable refinement contracts."
-    },
-    {
-      "group": "profile_number_registry_interpretation",
-      "selection": "approved_out_of_scope",
-      "classification": "authoritative_source_inaccessible",
-      "basis": "PRF/CPF words are parsed and retained and their signaling consistency is enforced, but exact external profile-number registry meanings are not guessed without accessible pinned registry metadata."
-    }
-  ],
-  "unlinked_selected_part15_requirement_groups": []
+  ]
 }

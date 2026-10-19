@@ -2503,6 +2503,7 @@ fn decode_code_block_contribution_body_staged(
     if !decoder.accepts_high_throughput_route(contribution.high_throughput) {
         return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
     }
+    decoder.set_zero_bitplanes(contribution.zero_bitplanes)?;
     if contribution.high_throughput {
         let segment_count = contribution.segment_count();
         if segment_count == 0 {
@@ -2588,7 +2589,7 @@ fn decode_code_block_contribution_body_staged(
         if end > body.len() {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
         }
-        decoder.decode_segment(&body[offset..end], segment.passes, limits)?;
+        decoder.decode_legacy_contribution(&body[offset..end], segment.passes, limits)?;
         decoded_passes = decoded_passes
             .checked_add(u32::from(segment.passes))
             .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
@@ -2941,7 +2942,12 @@ fn read_new_passes(reader: &mut PacketBitReader<'_>) -> Result<u8, DecodeError> 
         2 => Ok(5),
         3 => {
             let extension = reader.read_bits(5)?;
-            let passes = extension.checked_add(6).ok_or_else(|| {
+            let passes = if extension == 31 {
+                reader.read_bits(7)?.checked_add(37)
+            } else {
+                extension.checked_add(6)
+            }
+            .ok_or_else(|| {
                 DecodeError::malformed(
                     reader.bytes_consumed() as u64,
                     MalformedKind::ArithmeticOverflow,
@@ -2962,16 +2968,8 @@ fn read_new_passes(reader: &mut PacketBitReader<'_>) -> Result<u8, DecodeError> 
 }
 
 fn floor_log2(value: u32) -> u8 {
-    if value >= 32 {
-        5
-    } else if value >= 16 {
-        4
-    } else if value >= 8 {
-        3
-    } else if value >= 4 {
-        2
-    } else if value >= 2 {
-        1
+    if value != 0 {
+        (31 - value.leading_zeros()) as u8
     } else {
         0
     }
@@ -3271,18 +3269,20 @@ mod tests {
         let mut bytes = Vec::new();
         let mut current = 0_u8;
         let mut used = 0_u8;
+        let mut capacity = 8_u8;
         for bit in bits {
             current <<= 1;
             current |= u8::from(*bit);
             used += 1;
-            if used == 8 {
+            if used == capacity {
                 bytes.push(current);
+                capacity = if current == 0xff { 7 } else { 8 };
                 current = 0;
                 used = 0;
             }
         }
         if used != 0 {
-            current <<= 8 - used;
+            current <<= capacity - used;
             bytes.push(current);
         }
         bytes
@@ -3302,6 +3302,31 @@ mod tests {
             false, // no Lblock increment
             false, true, false, // two body bytes
         ])
+    }
+
+    #[test]
+    fn decodes_every_packet_coding_pass_count_and_length_width() {
+        for passes in 1_u32..=164 {
+            let (mut bits, suffix, count) = match passes {
+                1 => (vec![false], 0, 0),
+                2 => (vec![true, false], 0, 0),
+                3..=5 => (vec![true, true], passes - 3, 2),
+                6..=36 => (vec![true; 4], passes - 6, 5),
+                _ => (vec![true; 9], passes - 37, 7),
+            };
+            for bit in (0..count).rev() {
+                bits.push(suffix & (1 << bit) != 0);
+            }
+            bits.push(true);
+            let bytes = pack_packet_bits(&bits);
+            let mut reader = PacketBitReader::new(&bytes, &ResourceLimits::default()).unwrap();
+            assert_eq!(u32::from(read_new_passes(&mut reader).unwrap()), passes);
+            assert!(
+                reader.read_bit().unwrap(),
+                "pass count consumed the next field"
+            );
+            assert_eq!(u32::from(floor_log2(passes)), 31 - passes.leading_zeros());
+        }
     }
 
     #[test]
@@ -3755,6 +3780,76 @@ mod tests {
         assert_eq!(extended.new_passes, 2);
         assert_eq!(extended.segment(0).unwrap().passes, 2);
         assert_eq!(extended.data_length, 1);
+    }
+
+    #[test]
+    fn continues_one_legacy_coding_segment_across_quality_layers() {
+        let limits = ResourceLimits::default();
+        let contribution = |passes: u8, bytes: u32, first_inclusion: bool| {
+            let mut segment_passes = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+            let mut segment_lengths = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+            segment_passes[0] = passes;
+            segment_lengths[0] = bytes;
+            CodeBlockContribution {
+                first_inclusion,
+                zero_bitplanes: 2,
+                new_passes: passes,
+                data_length: bytes,
+                high_throughput: false,
+                segment_count: 1,
+                segment_passes,
+                segment_lengths,
+            }
+        };
+        let mut whole = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            9,
+            crate::tier1::SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        let mut layered = whole.clone();
+        decode_code_block_contribution_body(
+            &mut whole,
+            &contribution(19, 2, true),
+            &[0x04, 0x4f],
+            &limits,
+        )
+        .unwrap();
+        decode_code_block_contribution_body(
+            &mut layered,
+            &contribution(1, 1, true),
+            &[0x04],
+            &limits,
+        )
+        .unwrap();
+        let before = layered.plane().coefficients().to_vec();
+        let tight = limits.with_maximum_work_units(22).unwrap();
+        assert!(matches!(
+            decode_code_block_contribution_body(
+                &mut layered,
+                &contribution(18, 1, false),
+                &[0x4f],
+                &tight,
+            ),
+            Err(DecodeError::LimitExceeded {
+                resource: crate::Resource::WorkUnits,
+                ..
+            })
+        ));
+        assert_eq!(layered.plane().coefficients(), before);
+        assert_eq!(layered.next_pass(), 1);
+        decode_code_block_contribution_body(
+            &mut layered,
+            &contribution(18, 1, false),
+            &[0x4f],
+            &limits,
+        )
+        .unwrap();
+        assert_eq!(layered.plane().coefficients(), whole.plane().coefficients());
+        assert_eq!(layered.decoded_bytes(), 2);
+        assert_eq!(layered.next_pass(), 19);
     }
 
     #[test]

@@ -218,8 +218,20 @@ pub fn inverse_5_3(
     low_pass_first: bool,
 ) -> Result<Vec<i64>, DecodeError> {
     let mut output = interleave(low, high, low_pass_first)?;
-    inverse_lift(&mut output, low_pass_first, 0, false)?;
-    inverse_lift(&mut output, !low_pass_first, 0, false)?;
+    if output.len() == 1 && !low_pass_first {
+        output[0] >>= 1;
+        return Ok(output);
+    }
+    inverse_lift(
+        &mut output,
+        low_pass_first,
+        InverseLiftingStep::ReversibleUpdate,
+    )?;
+    inverse_lift(
+        &mut output,
+        !low_pass_first,
+        InverseLiftingStep::ReversiblePredict,
+    )?;
     Ok(output)
 }
 
@@ -229,6 +241,9 @@ pub fn inverse_9_7(
     low_pass_first: bool,
 ) -> Result<Vec<i64>, DecodeError> {
     let mut output = interleave(low, high, low_pass_first)?;
+    if output.len() <= 1 {
+        return Ok(output);
+    }
     scale_parity(
         &mut output,
         low_pass_first,
@@ -242,26 +257,22 @@ pub fn inverse_9_7(
     inverse_lift(
         &mut output,
         low_pass_first,
-        crate::refinement::nine_seven_lift(0),
-        true,
+        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(0)),
     )?;
     inverse_lift(
         &mut output,
         !low_pass_first,
-        crate::refinement::nine_seven_lift(1),
-        true,
+        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(1)),
     )?;
     inverse_lift(
         &mut output,
         low_pass_first,
-        crate::refinement::nine_seven_lift(2),
-        true,
+        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(2)),
     )?;
     inverse_lift(
         &mut output,
         !low_pass_first,
-        crate::refinement::nine_seven_lift(3),
-        true,
+        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(3)),
     )?;
     Ok(output)
 }
@@ -1244,11 +1255,17 @@ fn interleave(low: &[i64], high: &[i64], low_pass_first: bool) -> Result<Vec<i64
     Ok(output)
 }
 
+#[derive(Clone, Copy)]
+enum InverseLiftingStep {
+    ReversibleUpdate,
+    ReversiblePredict,
+    Fixed(i64),
+}
+
 fn inverse_lift(
     samples: &mut [i64],
-    target_low: bool,
-    coefficient: i64,
-    fixed: bool,
+    target_even: bool,
+    step: InverseLiftingStep,
 ) -> Result<(), DecodeError> {
     let mut index = 0_usize;
     #[cfg_attr(
@@ -1259,8 +1276,8 @@ fn inverse_lift(
         )
     )]
     while index < samples.len() {
-        let is_low = index & 1 == 0;
-        if is_low == target_low && samples.len() > 1 {
+        let is_even = index & 1 == 0;
+        if is_even == target_even && samples.len() > 1 {
             let left = if index == 0 {
                 samples[1]
             } else {
@@ -1272,21 +1289,21 @@ fn inverse_lift(
                 samples[index - 1]
             };
             let sum = left.checked_add(right).ok_or_else(arithmetic_overflow)?;
-            let adjustment = if fixed {
-                fixed_mul(sum, coefficient)?
-            } else if target_low {
-                let biased_sum = sum.checked_add(2).ok_or_else(arithmetic_overflow)?;
-                crate::refinement::five_three_update(biased_sum)
-            } else {
-                crate::refinement::five_three_predict(sum)
+            let adjustment = match step {
+                InverseLiftingStep::Fixed(coefficient) => fixed_mul(sum, coefficient)?,
+                InverseLiftingStep::ReversibleUpdate => {
+                    let biased_sum = sum.checked_add(2).ok_or_else(arithmetic_overflow)?;
+                    crate::refinement::five_three_update(biased_sum)
+                }
+                InverseLiftingStep::ReversiblePredict => crate::refinement::five_three_predict(sum),
             };
-            samples[index] = if fixed || target_low {
+            samples[index] = if matches!(step, InverseLiftingStep::ReversiblePredict) {
                 samples[index]
-                    .checked_sub(adjustment)
+                    .checked_add(adjustment)
                     .ok_or_else(arithmetic_overflow)?
             } else {
                 samples[index]
-                    .checked_add(adjustment)
+                    .checked_sub(adjustment)
                     .ok_or_else(arithmetic_overflow)?
             };
         }
@@ -1578,5 +1595,23 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn inverse_lifting_separates_sample_parity_from_predict_update_roles() {
+        assert_eq!(inverse_5_3(&[2], &[-1, 1], false).unwrap(), vec![1, 2, 3]);
+        assert_eq!(inverse_5_3(&[], &[18], false).unwrap(), vec![9]);
+        assert_eq!(inverse_5_3(&[], &[-18], false).unwrap(), vec![-9]);
+    }
+
+    #[test]
+    fn inverse_nine_seven_preserves_constant_and_singleton_samples() {
+        let constant = 72 * FIXED_ONE;
+        let restored = inverse_9_7(&[constant, constant], &[0, 0], true).unwrap();
+        assert!(
+            restored
+                .iter()
+                .all(|sample| (*sample - constant).abs() < 256)
+        );
+        assert_eq!(inverse_9_7(&[constant], &[], true).unwrap(), vec![constant]);
     }
 }
