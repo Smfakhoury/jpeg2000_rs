@@ -4,14 +4,14 @@
     "access_status": "authentication-required",
     "archive_bytes": null,
     "archive_sha256": null,
-    "attempted_at": "2026-10-19T16:25:28.082759Z",
+    "attempted_at": "2026-10-19T17:37:01.659502Z",
     "final_url": "https://www.itu.int/myworkspace/#/t-signals/vectors?val=20",
     "http_status": 200
   },
   "blockers": [
     "ITU MyWorkspace requires authentication and exposed no downloadable vector archive to this non-interactive session"
   ],
-  "immutable_source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60",
+  "immutable_source_revision": "sha256-tree-v1:708e7094d360877eb1b91a64354f23e111dc8cee9860aa07e099a5b5a1e04c1f",
   "limits": {
     "max_address_space_bytes": 536870912,
     "max_case_ms": 10000.0,
@@ -33,7 +33,7 @@
   "status": "blocked",
   "subject": {
     "binary_sha256": null,
-    "source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60"
+    "source_revision": "sha256-tree-v1:708e7094d360877eb1b91a64354f23e111dc8cee9860aa07e099a5b5a1e04c1f"
   },
   "summary": {
     "blocked": 0,

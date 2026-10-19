@@ -31,9 +31,9 @@
       "status": "blocked"
     }
   ],
-  "immutable_source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60",
+  "immutable_source_revision": "sha256-tree-v1:708e7094d360877eb1b91a64354f23e111dc8cee9860aa07e099a5b5a1e04c1f",
   "phase": "phase-i-release-conformance",
-  "release_attestation_sha256": "8cd91e377c5eb26945f4fa6dbbb04bb23cc11e5e08ee093208a6dd3cd38bf3ba",
+  "release_attestation_sha256": "193d02e75df9a4fae069aaa4e7952edf4005786330e95ad2f05168797ec2fa5b",
   "schema_version": 1,
   "status": "blocked"
 }

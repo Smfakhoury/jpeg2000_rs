@@ -7,9 +7,9 @@
       "sha256": "a0a3a5405cc617be40022be3afa438c04ce689d9824786588c4fee9751f019a1"
     },
     {
-      "bytes": 1293,
+      "bytes": 1444,
       "path": ".github/workflows/verus.yml",
-      "sha256": "3de3a0370365ebdac1b652be499359b6824500760e8e3d1c5e6c254994607f6a"
+      "sha256": "a69c04578339da26551f1aa077ac8a5a5e5a7c15bc017332631f7624bf7f58ca"
     },
     {
       "bytes": 155,
@@ -491,5 +491,5 @@
       "validation/tests/**"
     ]
   },
-  "source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60"
+  "source_revision": "sha256-tree-v1:708e7094d360877eb1b91a64354f23e111dc8cee9860aa07e099a5b5a1e04c1f"
 }
