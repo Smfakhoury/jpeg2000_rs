@@ -89,7 +89,7 @@
       "failed": 0,
       "manifest_sha256": null,
       "passed": 0,
-      "result_sha256": "8f9d1a2664d36003f079a5927fb1f3497807631140a3f7dd70d8f602ad66d79e",
+      "result_sha256": "74b25aed6ee1ec6446eaf292cf188200ad48f5113f11c449b0b92054962100d5",
       "selection_complete": false,
       "status": "blocked",
       "vector_count": 0
@@ -118,9 +118,9 @@
       "status": "blocked"
     }
   },
-  "immutable_source_revision": "sha256-tree-v1:11dc7a8d3b486119f98469db24f313f37e11bdd3ef0f56b098651e11ebbc6c80",
+  "immutable_source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60",
   "input_hashes": {
-    "architecture-review.json": "d76ab722b8766f29520d211f1d56ec1bbe0f0c53c9cf871ac414ac5928eed7b0",
+    "architecture-review.json": "9548d0851a6e1c1429cc5c8277d520ba3650df67c8824532cfeade11c8015e3d",
     "conformance-attestation.json": "43591df1b1304cbff7889eddb225c856a7526e0d734aa76e3b40ae5af87f21df",
     "fuzz-attestation.json": "d99d7fa87e21da64168715678fff8aae3b8827d9f91cfe059e5cb4c3d57a771c",
     "legal-publication-review.json": "13df3c4e958709a90230968f99f3929618b5c2aa0659bc5be59ac45ddbe9dc7f",
@@ -131,15 +131,15 @@
     "proof-attestation.json": "6653df886840e74f148ce5eb33e6ef37f340c3b684209984230264af9f3a3cc4",
     "rust-toolchain.toml": "9c49718631623d335354b227f9e53628168cf8cc56e54a6a5087509fb8426753",
     "source-provenance.json": "8b9db25cc72ce361e8d7d71d33f089f49a2e52764ef7ea46175ab8297864dbf6",
-    "source-tree.json": "bd83d2b0600938d496d9057144497eb803a6be42315e9608b8791273e55449c4",
+    "source-tree.json": "d2c6ccc43bd09a5a98b0faae61796b0bc73d0fd84cf7ef5269032a6ab223eae8",
     "standards-profile.json": "c5d3cff9e89e8e5a957e286f310d2681441edca00fce1a2ede36f8cf86d7b3c2",
     "support-matrix.json": "35f9a067544c32cfa7e9414799e241574b23700590f8ee54600e5c2fc5478ec7",
     "unsupported-boundary-audit.json": "a67b0bd72b2b740e36dfd7c7af358523c9d85ddf759dab2514f58ffa47f2108b",
     "validation/corpus.json": "3bf434745e7804a7e6aa62eedeb2f4b87cb0440ea71f8f659f837da70090c285",
-    "validation/expected-package-files.txt": "b31bbf58af44f8aeed2d8ad57499aa5b421b212ddf71cf15597526d17afd2c12",
+    "validation/expected-package-files.txt": "511467735e82de0e101322ef86801eeb7534bfc5aa092bdec5bc4d5602b2976c",
     "validation/requirements.txt": "756cc9e506ae4ee1a6f6c0507088b5cfc0dc8ba350fb2d2d46f1ffa72033adb6",
     "validation/results/budget-results.json": "3e57113fbedba6cb676693ac674b253d38fcb09bb4f60657eea6d310055a03f4",
-    "validation/results/official-vector-results.json": "8f9d1a2664d36003f079a5927fb1f3497807631140a3f7dd70d8f602ad66d79e",
+    "validation/results/official-vector-results.json": "74b25aed6ee1ec6446eaf292cf188200ad48f5113f11c449b0b92054962100d5",
     "validation/results/oracle-adjudications.json": "53379a973ccab7df8cf8072fcf5831d90154c47d13a1c5c39eb56ec34abd991b",
     "validation/results/validation-results.json": "cc0d8258c429a9594f146f56452caadaf8cbf190b43ea7ca2f170c7d8918f63c"
   },
@@ -179,8 +179,8 @@
     "official_vector_evidence": {
       "archive_sha256": null,
       "manifest_sha256": null,
-      "result_sha256": "8f9d1a2664d36003f079a5927fb1f3497807631140a3f7dd70d8f602ad66d79e",
-      "source_revision": "sha256-tree-v1:11dc7a8d3b486119f98469db24f313f37e11bdd3ef0f56b098651e11ebbc6c80",
+      "result_sha256": "74b25aed6ee1ec6446eaf292cf188200ad48f5113f11c449b0b92054962100d5",
+      "source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60",
       "status": "blocked",
       "subject_binary_sha256": null
     },

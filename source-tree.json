@@ -282,9 +282,9 @@
       "sha256": "0c7f1102ed632e2cb4db4992b0d1f57673c7ac79cbe9613882a6c7c07c3493c1"
     },
     {
-      "bytes": 476,
+      "bytes": 497,
       "path": "validation/expected-package-files.txt",
-      "sha256": "b31bbf58af44f8aeed2d8ad57499aa5b421b212ddf71cf15597526d17afd2c12"
+      "sha256": "511467735e82de0e101322ef86801eeb7534bfc5aa092bdec5bc4d5602b2976c"
     },
     {
       "bytes": 82690,
@@ -491,5 +491,5 @@
       "validation/tests/**"
     ]
   },
-  "source_revision": "sha256-tree-v1:11dc7a8d3b486119f98469db24f313f37e11bdd3ef0f56b098651e11ebbc6c80"
+  "source_revision": "sha256-tree-v1:414218aeab30f60f7b4cfd13b46f1b336cf6d1d2cf492778c3e2cac5dbfcbb60"
 }
