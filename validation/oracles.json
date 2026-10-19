@@ -1,0 +1,58 @@
+{
+  "$schema": "./oracle-config.schema.json",
+  "oracles": [
+    {
+      "command": [
+        "{executable}",
+        "-i",
+        "{input}",
+        "-o",
+        "{output}"
+      ],
+      "environment": "OPENJPEG_DECODER",
+      "executable": "opj_decompress",
+      "formats": [
+        "raw",
+        "jp2"
+      ],
+      "name": "openjpeg",
+      "output": "pnm"
+    },
+    {
+      "command": [
+        "{executable}",
+        "-i",
+        "{input}",
+        "-o",
+        "{output}"
+      ],
+      "environment": "GROK_DECODER",
+      "executable": "grk_decompress",
+      "formats": [
+        "raw",
+        "jp2",
+        "jph"
+      ],
+      "name": "grok",
+      "output": "pnm"
+    },
+    {
+      "command": [
+        "{executable}",
+        "--input",
+        "{input}",
+        "--output",
+        "{output}"
+      ],
+      "environment": "JASPER_DECODER",
+      "executable": "jasper",
+      "formats": [
+        "raw",
+        "jp2"
+      ],
+      "name": "jasper",
+      "output": "pnm"
+    }
+  ],
+  "schema_version": 1
+}

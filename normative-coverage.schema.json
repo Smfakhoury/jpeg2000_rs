@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/jpeg2000_rs/normative-coverage.schema.json",
+  "title": "Selected normative functional-refinement coverage",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "profile_id",
+    "checkpoint",
+    "part1_closure_complete",
+    "selected_part2_closure_complete",
+    "selected_part9_closure_complete",
+    "selected_part15_closure_complete",
+    "part9_source_accessibility",
+    "part15_source_accessibility",
+    "summary",
+    "requirements",
+    "unlinked_part1_requirement_groups",
+    "unlinked_selected_part2_requirement_groups",
+    "unlinked_selected_part9_requirement_groups",
+    "unlinked_selected_part15_requirement_groups"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checkpoint": {
+      "const": "phase-m-formal-refinement"
+    },
+    "part1_closure_complete": {
+      "const": true
+    },
+    "selected_part2_closure_complete": {
+      "const": true
+    },
+    "selected_part9_closure_complete": {
+      "const": true
+    },
+    "selected_part15_closure_complete": {
+      "const": true
+    },
+    "part9_source_accessibility": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "$ref": "#/$defs/sourceAccessibility"
+      }
+    },
+    "part15_source_accessibility": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/sourceAccessibility"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "functionally_linked_requirements",
+        "concrete_linked_functions",
+        "unlinked_part1_requirement_groups",
+        "unlinked_selected_part2_requirement_groups",
+        "unlinked_selected_part9_requirement_groups"
+        ,
+        "unlinked_selected_part15_requirement_groups"
+      ],
+      "properties": {
+        "functionally_linked_requirements": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "concrete_linked_functions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unlinked_part1_requirement_groups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unlinked_selected_part2_requirement_groups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unlinked_selected_part9_requirement_groups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unlinked_selected_part15_requirement_groups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/requirement"
+      }
+    },
+    "unlinked_part1_requirement_groups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unlinked_selected_part2_requirement_groups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unlinked_selected_part9_requirement_groups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unlinked_selected_part15_requirement_groups": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sourceAccessibility": {
+      "type": "object",
+      "required": [
+        "group",
+        "selection",
+        "classification",
+        "basis"
+      ],
+      "properties": {
+        "group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "enum": [
+            "selected",
+            "approved_out_of_scope"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "authoritative_source_accessible",
+            "authoritative_source_inaccessible"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceRef": {
+      "type": "object",
+      "required": [
+        "path",
+        "symbol"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_./-]+$"
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_:]*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "refList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/sourceRef"
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": [
+        "id",
+        "topic",
+        "status",
+        "implementation_refs",
+        "spec_refs",
+        "contract_refs",
+        "proof_refs",
+        "test_refs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^part(1|2|9|15)-[a-z0-9-]+$"
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "functionally_linked"
+        },
+        "implementation_refs": {
+          "$ref": "#/$defs/refList"
+        },
+        "spec_refs": {
+          "$ref": "#/$defs/refList"
+        },
+        "contract_refs": {
+          "$ref": "#/$defs/refList"
+        },
+        "proof_refs": {
+          "$ref": "#/$defs/refList"
+        },
+        "test_refs": {
+          "$ref": "#/$defs/refList"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

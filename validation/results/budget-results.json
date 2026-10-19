@@ -1,0 +1,123 @@
+{
+  "$schema": "../budget-result.schema.json",
+  "budgets": {
+    "max_address_space_bytes": 536870912,
+    "max_case_ms": 5000.0,
+    "max_input_bytes": 1048576,
+    "max_output_bytes": 1048576,
+    "max_total_ms": 30000.0
+  },
+  "cases": [
+    {
+      "case_id": "raw-minimal",
+      "elapsed_ms": 4.651,
+      "output_bytes": 33,
+      "status": "passed"
+    },
+    {
+      "case_id": "jp2-minimal",
+      "elapsed_ms": 4.841,
+      "output_bytes": 33,
+      "status": "passed"
+    },
+    {
+      "case_id": "jph-minimal-profile",
+      "elapsed_ms": 4.774,
+      "output_bytes": 23,
+      "status": "passed"
+    },
+    {
+      "case_id": "jpx-minimal",
+      "elapsed_ms": 4.812,
+      "output_bytes": 33,
+      "status": "passed"
+    },
+    {
+      "case_id": "jpip-minimal-response",
+      "elapsed_ms": 3.408,
+      "output_bytes": 33,
+      "status": "passed"
+    },
+    {
+      "case_id": "raw-minimal-truncated-prefix",
+      "elapsed_ms": 4.04,
+      "output_bytes": 56,
+      "status": "passed"
+    },
+    {
+      "case_id": "jp2-minimal-truncated-prefix",
+      "elapsed_ms": 3.824,
+      "output_bytes": 71,
+      "status": "passed"
+    },
+    {
+      "case_id": "jph-minimal-profile-truncated-prefix",
+      "elapsed_ms": 2.942,
+      "output_bytes": 71,
+      "status": "passed"
+    },
+    {
+      "case_id": "jpx-minimal-truncated-prefix",
+      "elapsed_ms": 3.02,
+      "output_bytes": 71,
+      "status": "passed"
+    },
+    {
+      "case_id": "jpip-minimal-response-truncated-prefix",
+      "elapsed_ms": 2.807,
+      "output_bytes": 56,
+      "status": "passed"
+    },
+    {
+      "case_id": "raw-invalid-soc",
+      "elapsed_ms": 3.294,
+      "output_bytes": 60,
+      "status": "passed"
+    },
+    {
+      "case_id": "jp2-invalid-signature",
+      "elapsed_ms": 2.798,
+      "output_bytes": 63,
+      "status": "passed"
+    },
+    {
+      "case_id": "jph-contradictory-brand",
+      "elapsed_ms": 2.863,
+      "output_bytes": 62,
+      "status": "passed"
+    },
+    {
+      "case_id": "jpx-invalid-box-length",
+      "elapsed_ms": 2.787,
+      "output_bytes": 63,
+      "status": "passed"
+    },
+    {
+      "case_id": "jpip-overlong-vbas",
+      "elapsed_ms": 2.673,
+      "output_bytes": 62,
+      "status": "passed"
+    },
+    {
+      "case_id": "raw-comment-metamorphic",
+      "elapsed_ms": 4.02,
+      "output_bytes": 33,
+      "status": "passed"
+    },
+    {
+      "case_id": "jp2-free-box-metamorphic",
+      "elapsed_ms": 4.31,
+      "output_bytes": 33,
+      "status": "passed"
+    }
+  ],
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "schema_version": 1,
+  "summary": {
+    "cases": 17,
+    "failures": [],
+    "memory_enforcement": "POSIX RLIMIT_AS",
+    "status": "passed",
+    "total_ms": 61.864
+  }
+}

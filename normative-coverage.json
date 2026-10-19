@@ -1,0 +1,3564 @@
+{
+  "$schema": "./normative-coverage.schema.json",
+  "checkpoint": "phase-m-formal-refinement",
+  "part1_closure_complete": true,
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "requirements": [
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ceil_div_u32"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tile_clip_start"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tile_clip_end"
+        }
+      ],
+      "id": "part1-checked-geometry",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "ImageSize::tile_bounds"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "ImageSize::tile_component_bounds"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "ceil_div"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "SampleView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_ceil_div"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_clip_start"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_clip_end"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "rejects_impossible_geometry"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "assembles_subsampled_component_tiles"
+        }
+      ],
+      "topic": "Checked ceil division and clipped tile/component dimensions"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_data_bits"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_bit"
+        }
+      ],
+      "id": "part1-packet-bit-reader",
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::load_byte"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "PacketBitReaderView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_data_bits"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_bit"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "enforces_stuffed_bit_after_ff"
+        }
+      ],
+      "topic": "Packet-header bit order and seven-bit stuffing after 0xff"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tag_inherited_low"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tag_step_low"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tag_step_value"
+        }
+      ],
+      "id": "part1-tag-tree-state",
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "TagTreeNodeView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tag_inherited_low"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tag_step_low"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tag_step_value"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "constructs_bounded_tag_tree_topology"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "rejects_invalid_tag_tree_coordinates"
+        }
+      ],
+      "topic": "Tag-tree inherited low value, monotonic node state, and decode decision"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "progression_digit"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "progression_advance"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "progression_emit_allowed"
+        }
+      ],
+      "id": "part1-packet-progression",
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "unravel"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "progression_emit_allowed"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_progression_digit"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_progression_advance"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_progression_emit_allowed"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_iteration_is_order_specific_and_bounded"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "overlapping_progression_windows_skip_previously_emitted_packets"
+        }
+      ],
+      "topic": "Progression coordinate unraveling and duplicate suppression"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_decision"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_next_mps"
+        }
+      ],
+      "id": "part1-mq-transition",
+      "implementation_refs": [
+        {
+          "path": "src/mq.rs",
+          "symbol": "MqDecoder::decode"
+        },
+        {
+          "path": "src/mq.rs",
+          "symbol": "MqDecoder::transition"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "MqContextView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_decision"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_next_mps"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/mq.rs",
+          "symbol": "state_table_transitions_are_bounded"
+        },
+        {
+          "path": "src/mq.rs",
+          "symbol": "decodes_deterministic_symbol_sequence"
+        }
+      ],
+      "topic": "MQ decision polarity and MPS state transition"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_pass_code"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_refinement_context"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_refined_magnitude"
+        }
+      ],
+      "id": "part1-tier1-pass-state",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "pass_kind"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "magnitude_refinement_context"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "CodeBlockPlane::apply_refinement_bit"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "Tier1CoefficientView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_pass_code"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_refinement_context"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_refined_magnitude"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier_one_pass_schedule_repeats_normative_cycle"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "forms_tier_one_contexts_from_neighbors"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "refinement_records_zero_decisions_without_changing_magnitude"
+        }
+      ],
+      "topic": "Tier-1 pass schedule, refinement context, and magnitude update"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "maxshift_restore"
+        }
+      ],
+      "id": "part1-maxshift-restore",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "undo_maxshift"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "maxshift_restore"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_maxshift_restore"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "undoes_maximum_maxshift_before_narrowing_and_quantization"
+        }
+      ],
+      "topic": "Maxshift ROI magnitude restoration"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "reversible_inverse_quantize"
+        }
+      ],
+      "id": "part1-reversible-quantization",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "reversible_inverse_quantize"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_reversible_inverse_quantize"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "applies_quantization_roi_and_output_conversion"
+        }
+      ],
+      "topic": "Reversible inverse quantization identity"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "five_three_predict"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "five_three_update"
+        }
+      ],
+      "id": "part1-reversible-five-three",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "five_three_predict"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "five_three_update"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_five_three_predict"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_five_three_update"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "reverses_five_three_lifting_for_known_samples"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "reconstructs_two_dimensional_reversible_level"
+        }
+      ],
+      "topic": "Reversible 5/3 inverse lifting predict and update rounding"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "rct_green"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "rct_red"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "rct_blue"
+        }
+      ],
+      "id": "part1-reversible-color-transform",
+      "implementation_refs": [
+        {
+          "path": "src/image.rs",
+          "symbol": "apply_reversible_component_transform"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "rct_green"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "rct_red"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "rct_blue"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_rct_green"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_rct_red"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_rct_blue"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/image.rs",
+          "symbol": "applies_reversible_component_transform"
+        }
+      ],
+      "topic": "Part 1 reversible component transform reconstruction"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "level_shift"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "clip_sample"
+        }
+      ],
+      "id": "part1-sample-output",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_samples"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "SampleView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_level_shift"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_clip_sample"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "bounds_output_and_rejects_bad_band_geometry"
+        }
+      ],
+      "topic": "Decoded sample level shift and clipping"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "marker_value"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "parser_progress"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "main_header_boundary"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tile_header_boundary"
+        }
+      ],
+      "id": "part1-complete-marker-parser",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "read_u16"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "Parser::parse_layout"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "Parser::read_tile_part"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "MarkerParserView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_marker_value"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_parser_progress"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_main_header_boundary"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tile_header_boundary"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "rejects_unknown_or_reserved_markers_as_malformed"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "parses_bounded_tile_part"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "rejects_missing_siz_and_trailing_bytes"
+        }
+      ],
+      "topic": "Complete marker value parsing, parser cursor state, and main/tile header order boundaries"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_next_included"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_next_lblock"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_next_passes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "exact_consumption"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_logical_bytes"
+        }
+      ],
+      "id": "part1-packet-body-transitions",
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution_body_staged"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "PacketContributionView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_next_included"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_next_lblock"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_next_passes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_exact_consumption"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_logical_bytes"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decodes_code_block_packet_contributions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "preserves_code_block_state_on_invalid_length"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decodes_bounded_code_block_contribution_body"
+        }
+      ],
+      "topic": "Packet contribution state transitions, segment pass accounting, transactional body decode, and exact consumption"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_interval_subtract"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_code_subtract"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_byte_class"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_byte_addend"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_byte_ct"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_byte_advances"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_renorm_double"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mq_renorm_ct"
+        }
+      ],
+      "id": "part1-mq-register-machine",
+      "implementation_refs": [
+        {
+          "path": "src/mq.rs",
+          "symbol": "MqDecoder::decode"
+        },
+        {
+          "path": "src/mq.rs",
+          "symbol": "MqDecoder::byte_in"
+        },
+        {
+          "path": "src/mq.rs",
+          "symbol": "MqDecoder::renormalize"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "MqRegisterView"
+        },
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "MqContextView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_interval_subtract"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_code_subtract"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_byte_class"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_byte_addend"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_byte_ct"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_byte_advances"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_renorm_double"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_mq_renorm_ct"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/mq.rs",
+          "symbol": "decodes_deterministic_symbol_sequence"
+        },
+        {
+          "path": "src/mq.rs",
+          "symbol": "handles_marker_padding_without_out_of_bounds_reads"
+        },
+        {
+          "path": "src/mq.rs",
+          "symbol": "validates_predictable_termination_bounds"
+        }
+      ],
+      "topic": "MQ interval/code registers, byte-in classes, marker handling, renormalization, and context decisions"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_stripe_rows"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_sigprop_eligible"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_magref_eligible"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_cleanup_eligible"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_pass_complete"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_zero_context"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_sign_offset"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_predicted_negative"
+        }
+      ],
+      "id": "part1-complete-legacy-tier1",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "zero_coding_context"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "sign_context"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_significance_propagation"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_magnitude_refinement"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_cleanup"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_cleanup_coefficient"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "Tier1PassView"
+        },
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "Tier1CoefficientView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_stripe_rows"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_sigprop_eligible"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_magref_eligible"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_cleanup_eligible"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_pass_complete"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_zero_context"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_sign_offset"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_predicted_negative"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "forms_tier_one_contexts_from_neighbors"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_bypass_decodes_significance_and_refinement_passes"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "traverses_all_three_passes_and_preserves_bitplane_eligibility"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "vertical_causal_context_ignores_the_next_stripe"
+        }
+      ],
+      "topic": "Legacy Tier-1 stripe traversal, all three passes, zero/sign/refinement contexts, and coefficient state updates"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "irreversible_centered"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "irreversible_scale"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "fixed_round_q16"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "nine_seven_scale"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "nine_seven_lift"
+        }
+      ],
+      "id": "part1-irreversible-numerical-model",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "fixed_mul"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "WaveletPlaneView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_irreversible_centered"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_irreversible_scale"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_fixed_round_q16"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_nine_seven_scale"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_nine_seven_lift"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "applies_quantization_roi_and_output_conversion"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal_stage_matches_row_synthesis"
+        }
+      ],
+      "topic": "Irreversible inverse quantization and deterministic fixed-point 9/7 implementation model"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "wavelet_detail_advance"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "wavelet_next_resolution"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "wavelet_sample_count"
+        }
+      ],
+      "id": "part1-multilevel-wavelet-synthesis",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "prepare_tile_component_with_kernel"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "WaveletPlaneView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_wavelet_detail_advance"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_wavelet_next_resolution"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_wavelet_sample_count"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "progression_plan_routes_all_subbands_and_prepares_image"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "reduced_selection_uses_native_resolution_and_selected_limits"
+        }
+      ],
+      "topic": "Multi-level two-dimensional inverse wavelet detail consumption, resolution progression, and rectangular planes"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "sop_sequence"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "sop_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "eph_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packet_length_matches"
+        }
+      ],
+      "id": "part1-tile-packet-sequencing",
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "PacketBitReaderView"
+        },
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "PacketContributionView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_sop_sequence"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_sop_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_eph_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_packet_length_matches"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_progression_emit_allowed"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "top_level_apis_decode_poc_with_plm_plt_and_ppm_ppt"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "packed_headers_honor_plt_sop_and_eph"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "top_level_raw_and_jp2_decode_packed_packet_headers"
+        }
+      ],
+      "topic": "Tile-part, SOP/EPH, POC progression, packed headers, and declared packet-length sequencing"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "decode_denotation"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "typed_component_denotation"
+        }
+      ],
+      "id": "part1-end-to-end-denotation",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "decode_codestream"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "decode_codestream_selected"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "validate_part1_decode_denotation"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "Part1DecodeView"
+        },
+        {
+          "path": "proofs/shared/mod.rs",
+          "symbol": "WaveletPlaneView"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_decode_denotation"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_typed_component_denotation"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "top_level_decode_assembles_clipped_tiles_and_typed_samples"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "selected_tiles_and_regions_match_full_decode_crops"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "top_level_jp2_decode_returns_typed_image"
+        }
+      ],
+      "topic": "Selected Part 1 codestream-to-TypedImage structural and component-sample denotation"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tlm_tile_index_bytes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tlm_length_bytes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "crg_payload_bytes"
+        }
+      ],
+      "id": "part2-tlm-crg-parsing",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_tlm"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_crg"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tlm_tile_index_bytes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "crg_payload_bytes"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_tlm_tile_index_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_tlm_length_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_crg_payload_bytes"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "validates_tlm_against_sot_tile_part_length"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "retains_selected_part2_marker_families"
+        }
+      ],
+      "topic": "TLM record widths and CRG per-component registration cardinality"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "packed_two_bit_bytes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "dfs_direction_code"
+        }
+      ],
+      "id": "part2-dfs-ads-decomposition",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_dfs"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_ads"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::resolve_decomposition_structures"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "decomposition_stage_has_bounded_band_count"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_ads_parser_uses_independent_field_padding"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_packed_two_bit_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_dfs_direction_code"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "retains_dfs_and_atk_coding_style_references"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "resolves_mixed_dfs_sequence_into_bounded_topology"
+        }
+      ],
+      "topic": "DFS packed directions and ADS independent packed depth/split arrays with inherited style resolution"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "cbd_precision"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "cbd_signed"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "nlt_binary_complement"
+        }
+      ],
+      "id": "part2-nlt-cbd-execution",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_nlt"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_cbd"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "TypedImage::inverse_nlt_sample"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_cbd_rejects_tile_header_scope"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "nlt_binary_complement"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_cbd_precision"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_cbd_signed"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_nlt_binary_complement"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "parses_uniform_cbd_descriptor"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "parses_bounded_nlt_lookup_table"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "applies_binary_complement_nlt_inverse"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "applies_gamma_nlt_inverse_with_fixed_point_parameters"
+        }
+      ],
+      "topic": "CBD depth/sign decoding and inherited NLT identity, gamma, LUT, and binary-complement execution"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "atk_reconstruction_step"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "atk_next_parity"
+        }
+      ],
+      "id": "part2-atk-execution",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_atk"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_arbitrary"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_atk_inverse_visits_each_step_in_reverse"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_atk_inverse_alternates_subsequences"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_atk_reconstruction_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_atk_next_parity"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "parses_and_executes_extended_atk_forms"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal_stage_matches_row_synthesis"
+        }
+      ],
+      "topic": "ATK coefficient parsing, reverse lifting-step execution, scaling, extension, and alternating subsequences"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mct_fragment_next"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mct_fragment_complete"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "mct_reverse_stage"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "binary_fixed_shift"
+        }
+      ],
+      "id": "part2-mct-mcc-mco-transform-graph",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::consume_mct_fragment"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::consume_mcc_fragment"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_mct"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_mcc"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_mco"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::resolve_multiple_component_transform"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "apply_multiple_component_transform_components"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "apply_mct_decorrelation"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "apply_mct_dependency"
+        },
+        {
+          "path": "src/image.rs",
+          "symbol": "apply_mct_wavelet"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_mct_fragment_index_is_contiguous"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_mct_stage_order_is_dag"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_mct_matrix_is_component_bounded"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_mct_wavelet_partition_preserves_component_count"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_fragment_next"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_fragment_complete"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_mct_reverse_stage"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_binary_fixed_shift"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "reassembles_segmented_mct_and_mcc_with_contiguous_indexes"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "converts_f32_mct_values_to_deterministic_fixed_point"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "converts_finite_binary64_and_rejects_non_finite_or_overflow"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "applies_ordered_part2_mct_stages_to_raw_jp2_and_selected_jpx_decode"
+        }
+      ],
+      "topic": "MCT arrays and binary32/64 conversion, segmented MCC collections, MCO DAG stages, matrices, dependency and component-wavelet inverse transforms"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "palette_coordinates_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "component_mapping_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "channel_definition_valid"
+        }
+      ],
+      "id": "part2-jp2-channel-mapping",
+      "implementation_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "Palette::value"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse_palette"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse_component_mapping"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse_channel_definition"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "map_palette_component"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "valid_palette_lookup_has_bounded_linear_index"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "valid_palette_mapping_has_bounded_column"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "unassociated_channel_is_valid"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_palette_coordinates_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_component_mapping_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_channel_definition_valid"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "validates_palette_mapping_relationships"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "retains_signed_palette_and_channel_definition_records"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "jp2_palette_mapping_preserves_types_channels_and_direct_components"
+        }
+      ],
+      "topic": "JP2 pclr lookup, cmap direct/palette selection, and cdef channel type and association"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "signed_to_nominal"
+        }
+      ],
+      "id": "part2-pinned-color-normalization",
+      "implementation_refs": [
+        {
+          "path": "src/color.rs",
+          "symbol": "nominal_component_at"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "normalize_component"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "convert_jp2_color"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_signed_color_is_shifted_to_nominal"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_color_resampling_is_component_bounded"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_signed_to_nominal"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/color.rs",
+          "symbol": "signed_subsampled_sycc_and_alpha_resample_to_image_grid"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "selected_color_decode_resamples_signed_subsampled_component"
+        }
+      ],
+      "topic": "Signed and subsampled component normalization for pinned sRGB, grayscale, and sYCC spaces"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "first_override_allowed"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "effective_layer_count"
+        }
+      ],
+      "id": "part2-jpx-codestream-header-inheritance",
+      "implementation_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse_codestream_header"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "effective_layer_count"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "inspect_jpx_layers"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "ordinal_codestream_header_association_is_in_range"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_implicit_layers_follow_codestream_count"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_first_override_allowed"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_effective_layer_count"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "inherits_partial_jpx_codestream_header_color_metadata"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "applies_palette_mapping_and_channel_overrides_in_partial_jpch"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "retains_and_inspects_explicit_jpx_codestreams_and_headers"
+        }
+      ],
+      "topic": "JPX multiple codestreams, ordinal jpch association, partial header inheritance, and implicit layers"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "registered_extent"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "registered_source_coordinate"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "chroma_key_alpha"
+        }
+      ],
+      "id": "part2-jpx-general-layer-rendering",
+      "implementation_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "decode_general_compositing_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "register_samples"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "register_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "apply_layer_opacity"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "apply_chroma_key"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "registered_extent_numerator_includes_offset"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_registered_channel_accounting"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_registered_extent"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_registered_source_coordinate"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_chroma_key_alpha"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "scaled_registration_and_mixed_color_spaces_are_bounded"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parses_layer_color_opacity_and_instruction_fields"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "retains_general_layer_cdef_and_nested_metadata"
+        }
+      ],
+      "topic": "General channel maps, layer registration and scaling, cgrp, opct, associated alpha, and chroma key"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "composition_clip"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "loop_frame"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "inverse_alpha"
+        }
+      ],
+      "id": "part2-jpx-composition-rendering",
+      "implementation_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse_instruction_set"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse_composition"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "build_timeline"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_jpx_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composite_placed_layer"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_crop_is_canvas_bounded"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_loop_frame_is_bounded"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_materialization_bound"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_clip"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_loop_frame"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_inverse_alpha"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "source_over_is_deterministic_and_crops_to_canvas"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_expands_repetition_reuse_and_timing_deterministically"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "retains_validated_layer_registration_and_static_composition_options"
+        }
+      ],
+      "topic": "Composition instruction timing, repetitions, loops, source-over alpha, clipping, and frame rendering"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "metadata_count"
+        }
+      ],
+      "id": "part2-jpx-nested-metadata",
+      "implementation_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "inspect_metadata_box"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "parse"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_nested_metadata_accounting"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_metadata_count"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "retains_general_layer_cdef_and_nested_metadata"
+        }
+      ],
+      "topic": "Nested JPX association metadata structure, count, depth, and bounded recursive traversal"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_header_form_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_header_has_explicit_class"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_header_has_explicit_codestream"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_vbas_first_is_canonical"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_vbas_step"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_auxiliary_present"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_eor_extent"
+        }
+      ],
+      "id": "part9-bin-id-vbas-aux-eor",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parse_jpip_message"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "read_vbas"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parse_end_of_response"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_header_and_vbas_contracts_are_exact"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_aux_eor_and_class_contracts_are_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_header_form_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_header_has_explicit_class"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_header_has_explicit_codestream"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_vbas_first_is_canonical"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_vbas_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_auxiliary_present"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_eor_extent"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parses_all_three_standard_header_forms_and_auxiliary"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parses_end_of_response"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "rejects_malformed_prefixes_and_vbas"
+        }
+      ],
+      "topic": "Binary Bin-ID forms 01/10/11, canonical bounded VBAS, auxiliary fields, and EOR framing"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_class_identifier_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_databin_identity"
+        }
+      ],
+      "id": "part9-databin-identity",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinId::new"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinId::same_as"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_identity_contract_is_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_class_identifier_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_databin_identity"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parses_all_three_standard_header_forms_and_auxiliary"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "reassembles_out_of_order_fragments"
+        }
+      ],
+      "topic": "Class, codestream number, and class-relative Bin-ID identity"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_fragment_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_final_length_consistent"
+        }
+      ],
+      "id": "part9-fragment-final-semantics",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "JpipFragment::new"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::insert"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_fragment_is_parent_bounded"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_final_length_conflict_policy_is_deterministic"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "valid_jpip_fragment"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "consistent_jpip_final_length"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "rejects_conflicting_final_lengths_and_bytes_past_final"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "enforces_fragment_limit"
+        }
+      ],
+      "topic": "Bounded fragment offsets, lengths, final-byte announcements, and conflicting final lengths"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_overlap_consistent"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_transaction_commit"
+        }
+      ],
+      "id": "part9-transactional-overlap",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::insert"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_transaction_and_merge_contracts_are_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_overlap_consistent"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_transaction_commit"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "accepts_identical_duplicates_and_overlaps"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "rejects_conflicting_overlap_without_mutation"
+        }
+      ],
+      "topic": "Identical duplicates and overlaps accepted; conflicting overlap rejected before cache mutation"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_merge_start"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_merge_end"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_databin_complete"
+        }
+      ],
+      "id": "part9-interval-completeness",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::insert"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::status"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinStatus::is_complete"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_transaction_and_merge_contracts_are_exact"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_completeness_requires_full_prefix"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_merge_start"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_merge_end"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "complete_jpip_databin"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "reassembles_out_of_order_fragments"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "reports_exact_missing_ranges_for_incomplete_databins"
+        }
+      ],
+      "topic": "Canonical interval merging and complete contiguous prefix through final length"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_missing_length"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_available_bytes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_range_complete"
+        }
+      ],
+      "id": "part9-range-availability",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::availability"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::complete_databin_missing"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::read_packet_ranges"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_range_accounting_is_exact"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_packet_range_requires_all_bytes"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_missing_length"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_available_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "complete_jpip_range"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "reports_exact_missing_ranges_for_incomplete_databins"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "transcodes_precinct_ranges_into_a_decodable_codestream"
+        }
+      ],
+      "topic": "Exact missing and available range planning over sparse databins"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_metadata_descent_allowed"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_box_length"
+        }
+      ],
+      "id": "part9-metadata-placeholder-assembly",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::assemble_semantic_container"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::expand_metadata_bin"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "append_reconstructed_box"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parse_jpip_placeholder"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_metadata_descent_rejects_cycle"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_metadata_box_length_is_header_plus_payload"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_metadata_descent_allowed"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "jpip_reconstructed_box_length"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "placeholder_parser_accepts_standard_bit_flags_and_types_extensions"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "semantic_metadata_assembly_places_nested_boxes_and_codestreams"
+        }
+      ],
+      "topic": "Recursive phld metadata-bin, equivalent-box and codestream assembly with cycle/depth and 32/64-bit box-length control"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_reconstruction_length"
+        }
+      ],
+      "id": "part9-codestream-reconstruction",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::reconstruct_codestream"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::reconstruct"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::transcode_precinct_codestream"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_reconstruction_and_reframing_lengths_are_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_reconstruction_length"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "reconstructs_codestream_and_container_views"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "reconstructed_codestream_is_consumed_by_decode_api"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "transcodes_precinct_ranges_into_a_decodable_codestream"
+        }
+      ],
+      "topic": "Main-header, tile-header, tile-data and precinct packet reconstruction with bounded EOC-complete output"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_precinct_in_class"
+        }
+      ],
+      "id": "part9-automatic-precinct-mapping",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::derive_precinct_map"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_precinct_in_class"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_precinct_identifier_matches_formula"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_flat_precinct_identity_is_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_precinct_flat_identity"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_mapping_decodes_incomplete_precinct_quality_prefixes"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_mapping_interleaves_multiple_tiles_and_collapses_tile_parts"
+        }
+      ],
+      "topic": "Automatic SIZ/COD/COC-derived tile, component, resolution and precinct in-class mapping"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_progression_supported"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_reframed_marker_removed"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_packet_reframed_length"
+        }
+      ],
+      "id": "part9-packet-reframing",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::build_automatic_snapshot"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "normalize_main_header"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "normalize_automatic_tile_headers"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "append_empty_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_packet"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_all_progressions_and_reframed_markers_are_classified"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_part9_reconstruction_and_reframing_lengths_are_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_progression_supported"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_reframed_marker_removed"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part9_packet_reframed_length"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_header_normalization_removes_reframed_markers"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_mapping_supports_progressions_poc_sop_eph_and_reframed_headers"
+        }
+      ],
+      "topic": "All five progression orders and POC windows with PLM/PLT/PPM/PPT removal and SOP/EPH packet reframing"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_tile_transition_sufficient"
+        }
+      ],
+      "id": "part9-later-tile-state",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::tile_part_transitions"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "parse_tile_part_transitions"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "partition_automatic_tile_parts"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_functional_transition_requires_packet_boundary"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "jpip_tile_transition_sufficient"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "tile_part_transition_status_distinguishes_sufficient_packet_boundaries"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_executes_functional_later_tile_part_without_plt"
+        }
+      ],
+      "topic": "Later tile-part functional-state transitions gated by PLT packet count or exact Psot packet consumption"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_quality_prefix_available"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "jpip_progressive_update_valid"
+        }
+      ],
+      "id": "part9-progressive-updates",
+      "implementation_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "JpipProgressiveDecoder::update_inner"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "JpipAutomaticProgressiveDecoder::update_inner"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::progressive_availability"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_progressive_decode_uses_available_prefix"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_jpip_progressive_quality_is_monotonic"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "jpip_quality_prefix_available"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "valid_jpip_progressive_update"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jpip.rs",
+          "symbol": "progressive_decode_advances_only_after_a_complete_layer"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "automatic_mapping_decodes_incomplete_precinct_quality_prefixes"
+        }
+      ],
+      "topic": "Partial quality-prefix discovery and monotonic full or selected progressive decode updates"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_jph_branding"
+        }
+      ],
+      "id": "part15-jph-branding",
+      "implementation_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "validate_file_type_profile"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "canonical_jph_brand_has_one_zero_version_compatibility"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "valid_jph_branding"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "rejects_jph_brand_and_codestream_profile_inconsistencies"
+        }
+      ],
+      "topic": "Canonical JPH primary/compatibility branding and Part 15 codestream consistency"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_cap_payload_length"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_signaling_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_codestream_class"
+        }
+      ],
+      "id": "part15-profile-signaling",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodestreamParser::parse_cap"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "classify_codestream_profile"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "part15_cap_payload_tracks_ordered_ccap_words"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_cap_payload_length"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_signaling_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_codestream_class"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "detects_ht_and_mixed_profiles_without_entering_the_block_decoder"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "rejects_malformed_or_inconsistent_ht_profile_signaling"
+        }
+      ],
+      "topic": "Rsiz, CAP Pcap/ordered Ccap, PRF/CPF presence, and legacy/HT/mixed classification"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_mode_allows"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_magnitude_bound"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_component_allowed"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_capability_fields_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_headers_allowed"
+        }
+      ],
+      "id": "part15-capability-constraints",
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "ExtendedCapabilities::part15_magnitude_bound"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "validate_part15_component_capabilities"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "classify_codestream_profile"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "part15_magnitude_parameter_is_bounded"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_mode_allows"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_magnitude_bound"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_component_allowed"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_capability_fields_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_headers_allowed"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "validates_part15_capability_combinations"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "reconstructs_capability_b74_magnitude_without_narrowing"
+        }
+      ],
+      "topic": "HTONLY/HTDECLARED/MIXED, SINGLEHT/MULTIHT, B=8-74, ROI, transform, and header-homogeneity capability checks"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_placeholder_passes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_substantive_passes"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_segment_passes"
+        }
+      ],
+      "id": "part15-pass-grouping",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtPassGroup::from_packet_passes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_group_partition_is_exact"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_placeholder_passes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_substantive_passes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_segment_passes"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "routes_placeholder_passes_before_first_ht_cleanup"
+        }
+      ],
+      "topic": "Packet pass grouping, placeholder cleanup passes, and substantive cleanup/SigProp/MagRef segments"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_mixed_selects_legacy"
+        }
+      ],
+      "id": "part15-mixed-routing",
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "part15_classification_is_total"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_mixed_selects_legacy"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "mixed_mode_routes_from_first_nonzero_segment_length"
+        }
+      ],
+      "topic": "Mixed legacy/HT packet length discrimination and sticky route classification"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_scup"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_magsgn_end"
+        }
+      ],
+      "id": "part15-cleanup-partition",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "parse_ht_block_segments"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_scup_partitions_cleanup"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_scup"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_magsgn_end"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "rejects_invalid_ht_cleanup_termination_and_limits"
+        }
+      ],
+      "topic": "Scup termination decode and disjoint forward MagSgn/MEL/reverse VLC partition"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_forward_data_bits"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_forward_stuffing_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_mel_stuffing_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_reverse_data_bits"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_cursors_separated"
+        }
+      ],
+      "id": "part15-stuffing-and-cursors",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtForwardMagSgnReader::load_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtMelBitReader::load_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtReverseVlcReader::load_previous_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtCleanupReaders::cursors_separate"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_stuffed_streams_expose_seven_data_bits"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_forward_data_bits"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_forward_stuffing_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_mel_stuffing_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_reverse_data_bits"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_cursors_separated"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_readers_apply_directional_stuffing_and_reject_bad_mel_sequences"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_cleanup_rejects_cursor_collision_and_out_of_bounds_significance"
+        }
+      ],
+      "topic": "Forward MEL/MagSgn and reverse VLC stuffing with strict bidirectional cursor collision checks"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_mel_exponent"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_mel_next_state"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_vlc_table_index"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_vlc_word_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_uvlc_value"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_quad_sample_in_bounds"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_quad_origin_valid"
+        }
+      ],
+      "id": "part15-mel-vlc-uvlc-quads",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtCleanupReaders::mel_event"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtCleanupReaders::decode_quad_word"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtCleanupReaders::decode_initial_u"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_ht_cleanup_segment_metadata"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_mel_state_and_vlc_index_are_bounded"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_mel_exponent"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_mel_next_state"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_vlc_table_index"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_vlc_word_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_uvlc_value"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_quad_sample_in_bounds"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_quad_origin_valid"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decodes_bounded_ht_cleanup_quad_metadata"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_cleanup_rejects_cursor_collision_and_out_of_bounds_significance"
+        }
+      ],
+      "topic": "MEL run state, VLC table words, UVLC completion, and bounded quad metadata"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_magsgn_fill_value"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_kappa_completion"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_magnitude_payload_bits"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_magnitude_sign"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_bin_center_odd"
+        }
+      ],
+      "id": "part15-magsgn-reconstruction",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtForwardMagSgnReader::load_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "complete_ht_kappa"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "reconstruct_ht_magnitude"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_kappa_completion_never_reduces_u"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_magsgn_fill_value"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_kappa_completion"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_magnitude_payload_bits"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_magnitude_sign"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_bin_center_odd"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_magsgn_reader_is_bounded_stuffed_and_termination_checked"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "completes_non_initial_ht_kappa_from_north_exponents"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "reconstructs_positive_ht_cleanup_magnitude_from_physical_bits"
+        }
+      ],
+      "topic": "MagSgn fill, kappa completion, sign extraction, magnitude/bin-center reconstruction, and B=74 retention"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_claim_available"
+        }
+      ],
+      "id": "part15-transactional-stream-writes",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "HtRefinementReaders::claim"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_ht_refinement_plane"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_refinement_claims_cannot_alias"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_claim_available"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_refinement_applies_new_signs_and_magnitude_bits_transactionally"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_refinement_readers_are_stuffed_bounded_and_collision_checked"
+        }
+      ],
+      "topic": "Non-overlapping claimed bits and transactional coefficient/sign writes"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_stripe_rows"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_patch_end"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_sigprop_eligible"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_magref_eligible"
+        }
+      ],
+      "id": "part15-refinement-traversal",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_ht_refinement_plane"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_significance_propagation"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_magnitude_refinement"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_traversal_bounds_stripes_and_patches"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_stripe_rows"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_patch_end"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_sigprop_eligible"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_magref_eligible"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_refinement_applies_new_signs_and_magnitude_bits_transactionally"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "routes_ht_refinement_across_layer_contributions"
+        }
+      ],
+      "topic": "SigProp and MagRef stripe/patch traversal, delayed signs, bin-center eligibility, and pass routing"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_refinement_pass_total"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_multiple_set_allowed"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_replacement_allowed"
+        }
+      ],
+      "id": "part15-pass-sets-and-continuation",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::skip_high_throughput_segment"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_refinement"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution_body_staged"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_refinement_continuation_is_additive"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_refinement_pass_total"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_multiple_set_allowed"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_replacement_allowed"
+        }
+      ],
+      "status": "functionally_linked",
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "enforces_singleht_and_routes_multiple_ht_sets_transactionally"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "routes_ht_refinement_across_layer_contributions"
+        }
+      ],
+      "topic": "SINGLEHT/MULTIHT enforcement, empty replacement sets, and continued refinement pass accumulation"
+    }
+  ],
+  "selected_part2_closure_complete": true,
+  "schema_version": 1,
+  "summary": {
+    "concrete_linked_functions": 160,
+    "functionally_linked_requirements": 54,
+    "unlinked_part1_requirement_groups": 0,
+    "unlinked_selected_part2_requirement_groups": 0,
+    "unlinked_selected_part9_requirement_groups": 0,
+    "unlinked_selected_part15_requirement_groups": 0
+  },
+  "unlinked_part1_requirement_groups": [],
+  "unlinked_selected_part2_requirement_groups": [],
+  "selected_part9_closure_complete": true,
+  "part9_source_accessibility": [
+    {
+      "group": "bounded_non_network_semantics",
+      "selection": "selected",
+      "classification": "authoritative_source_accessible",
+      "basis": "The approved T.808 catalog edition and pinned public implementation cross-checks cover the selected bounded binary-message, databin, reconstruction, metadata, and progression semantics."
+    },
+    {
+      "group": "network_tls_auth_request_server",
+      "selection": "approved_out_of_scope",
+      "classification": "authoritative_source_accessible",
+      "basis": "Transport, TLS, authentication, request generation, scheduling, and server behavior are intentionally outside the decoder API despite accessible protocol-level source material."
+    },
+    {
+      "group": "cache_signaling_syntax",
+      "selection": "approved_out_of_scope",
+      "classification": "authoritative_source_inaccessible",
+      "basis": "The precise cache-model signaling syntax is not available in the locally controlled source set and is therefore neither guessed nor selected."
+    }
+  ],
+  "unlinked_selected_part9_requirement_groups": [],
+  "selected_part15_closure_complete": true,
+  "part15_source_accessibility": [
+    {
+      "group": "selected_executable_htj2k_semantics",
+      "selection": "selected",
+      "classification": "authoritative_source_accessible",
+      "basis": "The selected T.814 executable branding, signaling, packet, cleanup, refinement, and capability semantics are attached to concrete decoder paths through exact executable refinement contracts."
+    },
+    {
+      "group": "profile_number_registry_interpretation",
+      "selection": "approved_out_of_scope",
+      "classification": "authoritative_source_inaccessible",
+      "basis": "PRF/CPF words are parsed and retained and their signaling consistency is enforced, but exact external profile-number registry meanings are not guessed without accessible pinned registry metadata."
+    }
+  ],
+  "unlinked_selected_part15_requirement_groups": []
+}

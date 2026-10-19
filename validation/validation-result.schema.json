@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "corpus_manifest_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "disagreements": {
+      "type": "array"
+    },
+    "failures": {
+      "type": "array"
+    },
+    "oracles": {
+      "type": "array"
+    },
+    "profile_id": {
+      "type": "string"
+    },
+    "records": {
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "summary": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile_id",
+    "corpus_manifest_sha256",
+    "oracles",
+    "summary",
+    "failures",
+    "disagreements",
+    "records"
+  ],
+  "type": "object"
+}

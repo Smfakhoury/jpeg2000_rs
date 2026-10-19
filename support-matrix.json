@@ -1,0 +1,468 @@
+{
+  "$schema": "./support-matrix.schema.json",
+  "schema_version": 1,
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "profile_status": "approved",
+  "implementation_status": "in_progress",
+  "approval": {
+    "required": true,
+    "approved": true,
+    "approved_by": "repository owner via chat",
+    "approved_at": "2026-10-13T18:34:08.678Z",
+    "notes": "The owner authorized execution of the approved plan in chat."
+  },
+  "claims": {
+    "complete_jpeg_2000_codec": false,
+    "decoder": true,
+    "encoder": false,
+    "lossless_functionally_verified": true,
+    "lossy_functionally_verified": false,
+    "lossy_verification_boundary": "Verus proves memory safety, bounds, termination, and control-state correctness. Irreversible 9/7 numerical conformance and error tolerances are validated separately.",
+    "functional_refinement": {
+      "checkpoint": "phase-m-formal-refinement",
+      "status": "done",
+      "scope": "selected executable Parts 1, 2, 9, and 15 groups",
+      "requirement_groups": 54,
+      "contracted_functions": 160,
+      "unlinked_selected_groups": 0,
+      "profile_boundary": "Selected-profile closure only; official Part 4 conformance remains pending, and encoding, network behavior, and ICC execution are out of scope."
+    }
+  },
+  "standards": {
+    "profile": "./standards-profile.json",
+    "part_1": true,
+    "part_2": true,
+    "part_9": true,
+    "part_15": true,
+    "other_parts": false
+  },
+  "decode": {
+    "inputs": {
+      "raw_codestream_extensions": [
+        "j2k",
+        "j2c",
+        "jpc"
+      ],
+      "jp2": true,
+      "jpx": true,
+      "jph_htj2k": true,
+      "jpip_databins": true
+    },
+    "sample_coding": {
+      "lossless_reversible_5_3": true,
+      "lossy_irreversible_9_7": true,
+      "signed_components": true,
+      "unsigned_components": true,
+      "precision_bits": {
+        "minimum": 1,
+        "maximum": 38
+      },
+      "subsampled_components": true,
+      "typed_output_preserves_precision_and_signedness": true
+    },
+    "image_structure": {
+      "single_tile": true,
+      "multiple_tiles": true,
+      "single_component": true,
+      "multiple_components": true,
+      "maximum_components": 64,
+      "multiple_tile_parts": true,
+      "legal_tile_part_orderings": "all"
+    },
+    "part_1_codestream": {
+      "progression_orders": [
+        "LRCP",
+        "RLCP",
+        "RPCL",
+        "PCRL",
+        "CPRL"
+      ],
+      "progression_order_changes": true,
+      "precincts": true,
+      "code_block_styles": "all Part 1 decoder-relevant styles",
+      "sop_markers": true,
+      "eph_markers": true,
+      "packet_length_markers": [
+        "PLM",
+        "PLT"
+      ],
+      "packed_packet_headers": [
+        "PPM",
+        "PPT"
+      ],
+      "region_of_interest": [
+        "Part 1 Maxshift"
+      ],
+      "maxshift_checkpoint": {
+        "status": "implemented",
+        "maximum_sprgn": 255,
+        "maximum_roi_adjusted_tier1_bitplanes": 292,
+        "maximum_declared_code_block_passes": 874,
+        "representation": "six little-endian u64 limbs (384 bits), with checked indexing, shifts, comparison, addition, subtraction, and narrowing only after Maxshift undo",
+        "execution": "legacy significance/refinement and HT cleanup/SigProp/MagRef operate on bounded multi-limb magnitudes; inverse quantization and public typed sample output receive only ROI-restored i64 coefficients"
+      },
+      "decoder_relevant_marker_segments": "all Part 1 marker segments",
+      "unknown_marker_policy": "Reject unknown or reserved markers unless the selected standard explicitly defines skip semantics.",
+      "trailing_bytes_after_eoc": "Reject in raw codestream mode; container parsing is bounded by the containing box or databin."
+    },
+    "part_2_extensions": {
+      "jpx_file_format": "all normative decoder features",
+      "jpx_multi_codestream_checkpoint": {
+        "status": "implemented",
+        "brands": [
+          "jpx ",
+          "jpxb"
+        ],
+        "compatible_brand_lists": true,
+        "bounded_codestream_retention": true,
+        "explicit_indexed_inspection": true,
+        "explicit_indexed_typed_decode": true,
+        "codestream_header_association": "ordinal jpch association retained; full JP2-compatible headers and inherited ihdr/bpcc/colr/pclr/cmap/cdef/res partial headers parsed, applied, and cross-checked",
+        "implicit_selection": false,
+        "composition": "bounded comp/copt/inst target/source geometry, life/persistence, next-use reuse, instruction repetition, loops, timing inspection, and indexed deterministic rendering",
+        "compositing_layers": "bounded jplh/creg inspection and rendering; selected-edition six-byte registration records, scaling, cgrp, opct, concatenated multi-codestream channels, layer cdef, mixed grayscale/sRGB, multiple associated alpha, and variable-precision chroma keys",
+        "static_render_api": [
+          "inspect_jpx_layers",
+          "render_jpx_layer",
+          "render_jpx_composition",
+          "render_jpx_frame"
+        ],
+        "static_render_subset": "header-order source-over into a bounded canvas with clipping, scaled registration, absent/straight/premultiplied/chroma-key alpha, and deterministic grayscale-to-sRGB promotion",
+        "metadata": "nested association boxes are structurally validated and depth/work bounded; labels, XML, UUIDs, and number lists remain opaque metadata rather than codec state",
+        "unsupported_layer_semantics": []
+      },
+      "codestream_extensions": "selected Part 2 decoder features; see explicit marker execution boundaries below",
+      "unknown_box_policy": "Preserve type, offset, and bounded payload access for syntactically valid unknown boxes; never interpret them as codec state."
+    },
+    "part_9_jpip": {
+      "phase": "phase-l-selected-spec-closure",
+      "status": "implemented_selected_bounded_profile",
+      "closed_at": "2026-10-17",
+      "transport_client": false,
+      "transport_server": false,
+      "http_stack": false,
+      "jpip_message_parsing": true,
+      "message_header_subset": "Standard binary Bin-ID forms 01 (inherited class/CSn), 10 (explicit class with inherited/default-zero CSn), and 11 (explicit class/CSn); checked VBAS offset/length and optional odd-class Aux; EOR framing.",
+      "databin_classes": {
+        "0_1": "precinct",
+        "2_3": "tile_header",
+        "4_5": "tile_data",
+        "6_7": "main_header",
+        "8": "metadata"
+      },
+      "databin_reassembly": true,
+      "cache_model": true,
+      "bounded_out_of_order_fragments": true,
+      "duplicate_overlap_policy": "Identical duplicates and overlaps are idempotently merged; differing overlap bytes, conflicting final lengths, or bytes beyond final length fail without cache mutation.",
+      "completeness": "A data-bin is complete only with an announced final length and contiguous coverage from offset zero through that length.",
+      "output": "Owned bounded JpipByteView implementing AsRef<[u8]>; complete-bin codestream layout is main-header bin 0 plus matching ordered tile-header/tile-data pairs with SOC/EOC validation; container layout is caller-ordered complete metadata bins.",
+      "range_availability": "JpipDatabinRange reports deterministic required/available bytes and exact closed missing intervals without requiring a final data-bin length; incomplete main/tile headers additionally report an open-ended missing tail until final length is announced.",
+      "precinct_packet_reconstruction": "Both explicit JpipPrecinctCodestreamPlan ranges and automatic SIZ/COD/COC-derived maps are supported. Automatic in-class ID is tile + tile_count * (component + component_count * (sum of prior-resolution precinct counts + row-major precinct)); class 0/1 auxiliary-bit forms address one logical transactional bin.",
+      "precinct_codestream_transcoding": "JpipAutomaticProgressiveDecoder supports multiple tiles, collapsible header-only multiple tile parts, LRCP/RLCP/RPCL/PCRL/CPRL plus retained POC windows, SOP/EPH, and PLM/PLT/PPM/PPT source signaling. Packet-length and packed-header markers are removed, precinct packets are parsed with the existing packet state machine and reframed inline, absent/unselected/later-quality packets become legal empty packets, Psot/EOC are regenerated, and the existing codestream parser validates output.",
+      "progressive_decode": "Manual and automatic full/selected APIs decode the greatest contiguous available layer prefix, emit deterministic waiting/advanced/complete status plus next-layer missing ranges, and commit decoded_layers only after successful transcode and decode. Automatic selected updates reuse tile/region/reduced-resolution decode and add a component packet mask; output retains the source component schema.",
+      "metadata_semantic_assembly": "assemble_semantic_container recursively expands standard phld metadata (flags=1) and incremental codestream (flags=4) placeholders from metadata-bin 0, preserves leaf versus superbox semantics, recomputes original 32/64-bit box lengths, detects cycles/depth/size failures, reconstructs complete codestreams from precinct bins, and validates JP2/JPX/JPH output with the existing parser. Missing bins/codestream quality return deterministic ranges and typed semantic needs.",
+      "tile_part_transition_metadata": "tile_part_transitions retains each complete SOT-through-SOD header and derives packet counts from ordered PLT segments plus exact packet-data consumption from non-zero Psot. Later functional COD/COC/QCD/QCC/RGN/POC markers execute through effective raw decoder state even without PLT; incomplete precinct prefixes report missing ranges transactionally. Header bytes and derived data lengths are exposed for exact reconstruction.",
+      "unsupported_profile_boundary": [
+        "cache-model signaling syntax",
+        "transport-driven or spatial window scheduling"
+      ],
+      "cache_model_signaling_selection": "Not selected. No pinned public source currently provides sufficient field-level syntax provenance for the selected 2026 edition, so signaling is not guessed.",
+      "notes": "Network transport, request generation, authentication, TLS, server behavior, and request/window scheduling are not exposed and remain out of scope."
+    },
+    "part_15_htj2k": {
+      "decoder": true,
+      "encoder": false,
+      "ht_codeblock_styles": "all normative Part 15 decoder modes",
+      "jph_container_branding": true,
+      "mixed_ht_and_legacy_codestreams": "as permitted by Part 15",
+      "profile_detection_checkpoint": {
+        "status": "implemented",
+        "container": "canonical jph primary brand, minor version zero, and sole jph compatible brand",
+        "codestream_signals": [
+          "SIZ Rsiz Part 15 flag",
+          "CAP Pcap/Ccap with Pcap^15",
+          "PRF and CPF profile-number words",
+          "COD/COC legacy, HT-only, and mixed style prefixes"
+        ],
+        "mixed_legality": "00 legacy, 01 HT-only, and 11 mixed SPcod/SPcoc prefixes accepted; reserved 10 rejected; Ccap15 HTONLY, HTDECLARED, and MIXED constrain effective main/tile component styles and reserved Ccap mode 01 is rejected",
+        "metadata": "bounded retained Rsiz, Pcap/Ccap values, PRF/CPF words, and aggregate block-coding classification",
+        "inspection_api": "inspect_jph",
+        "decode_apis": [
+          "decode_jph",
+          "decode_jph_color",
+          "decode_codestream"
+        ],
+        "execution": "container and codestream inspection complete; cleanup, SigProp, and MagRef HT blocks are decoded through packet/layer routing, coefficient reconstruction, inverse quantization, and raw/top-level JPH output",
+        "malformed_rejections": [
+          "non-canonical JPH brands or compatible-brand lists",
+          "JPH branding on a non-Part-15 codestream (HTDECLARED may legally contain only legacy code-blocks)",
+          "HT codestream in a non-JPH container",
+          "inconsistent Rsiz/CAP/COD-COC Part 15 signals",
+          "malformed or duplicate CAP/PRF/CPF markers",
+          "reserved HT style prefix"
+        ]
+      },
+      "block_segment_checkpoint": {
+        "status": "implemented",
+        "pass_grouping": "zero or more initial three-pass placeholder groups followed by one or more cleanup plus zero-to-two-refinement HT sets are routed across packet and layer contributions; partial final sets and zero-length skipped sets are accepted",
+        "cleanup_termination": "Scup is decoded from the final 12 cleanup bits and constrained to 2..=min(Lcup, 4079); unused physical MagSgn bits must be one-valued cleanup termination fill",
+        "substreams": "MagSgn and combined MEL/VLC physical regions are checked and non-overlapping; bounded forward MagSgn/MEL and reverse VLC readers cannot consume across their physical boundaries",
+        "refinement": "bounded LSB-first forward SigProp and reverse MagRef readers apply directional stuffing, fill, shared-byte collision, and termination checks; legal empty refinement payloads are retained",
+        "limits": "4096 samples, 874 declared passes (292 bit-planes), 65534 cleanup bytes, 2046 refinement bytes, 67580 aggregate code-block bytes, and caller work ceilings",
+        "remaining_boundary": "none for normative Part 15 pass-set shapes; inaccessible profile-number registries remain retained metadata rather than inferred semantics"
+      },
+      "cleanup_metadata_checkpoint": {
+        "status": "implemented",
+        "readers": "forward MSB-first MEL and reverse LSB-first VLC readers apply HT stuffing and reject bit-granular cursor collisions in the shared region",
+        "mel": "bounded 13-state adaptive run decoder emits zero/one events with explicit truncation and work errors",
+        "vlc": "initial and non-initial 1024-word lookup representations are derived from the pinned public BSD-2-Clause OpenJPEG implementation; codeword and UVLC bits are bounded before consumption",
+        "metadata": "checked quad origins, contexts, significance, embedded-magnitude flags, u-offsets, and base-u values for at most 4096 samples",
+        "validation": "rejects malformed stuffing, forward/reverse collisions, truncated codewords, invalid u bounds, significance outside odd block edges, arithmetic overflow, and work-limit exhaustion",
+        "coefficient_boundary": "implemented transactionally for cleanup, SigProp new significance/signs, and MagRef bin-center replacement"
+      },
+      "cleanup_reconstruction_checkpoint": {
+        "status": "implemented",
+        "magsgn": "bounded LSB-first forward reader applies 0xFF stuffing, uses one-valued cleanup termination fill without crossing into MEL, accounts physical and fill bits, and rejects malformed physical termination",
+        "kappa": "non-initial multi-significant quads complete base-u from the maximum retained north-boundary exponent with checked 2-bit threshold subtraction",
+        "coefficients": "embedded magnitude, MagSgn magnitude bits, sign, bin-center reconstruction, bit-plane alignment through 292 planes, bounded six-limb magnitude operations, and transactional plane writes are implemented",
+        "integration": "packet contribution, decode_code_block, raw codestream, and canonical JPH paths produce cleanup and refined HT coefficients and image samples",
+        "remaining": "none for legal placeholder, SINGLEHT, or MULTIHT cleanup/SigProp/MagRef coding-pass sets"
+      },
+      "refinement_checkpoint": {
+        "status": "implemented",
+        "sigprop": "four-row stripes and four-column patches scan columns then rows; newly significant membership propagates within the patch before raw signs are consumed in scan order",
+        "magref": "reverse-coded decisions apply only to cleanup-significant samples and replace the cleanup bin center with checked lower/upper refinement centers",
+        "atomicity": "cleanup and all available refinement contributions decode into private planes; public decoder state, byte/pass accounting, and coefficients commit only after all readers and termination checks succeed",
+        "routing": "cleanup and refinement segments can arrive together or across later packet/layer contributions; accumulated refinement is re-decoded from the retained cleanup plane when MagRef arrives; each later non-empty MULTIHT cleanup starts a lower-precision replacement set",
+        "mixed": "mixed mode defers across zero-length placeholders, then uses Lblock > 3 plus the zero first bit of the first non-zero segment length to select HT; otherwise legacy routing is retained for the code-block lifetime",
+        "capabilities": "Ccap15 reserved bits, HTONLY/HTDECLARED/MIXED, SINGLEHT/MULTIHT, RGNFREE/RGN, HOMOGENEOUS/HETEROGENEOUS, HTREV/HTIRV, and B=8..74 magnitude-bound combinations are parsed and enforced"
+      }
+    },
+    "container_and_color": {
+      "jp2_signature_and_file_type": true,
+      "box_lengths": [
+        "32-bit",
+        "extended 64-bit",
+        "to end of parent"
+      ],
+      "palette": "implemented for JP2 typed output with retained 1-38 bit signed/unsigned columns and range-checked lookup",
+      "component_mapping": "implemented for bounded direct and palette mappings",
+      "channel_definition": "implemented as preserved typed per-output-channel metadata and consumed by explicit bounded color conversion; compositing is not implied",
+      "resolution": true,
+      "uuid": true,
+      "xml": true,
+      "intellectual_property_box": true,
+      "unknown_boxes": true,
+      "component_transforms": [
+        "Part 1 reversible component transform",
+        "Part 1 irreversible component transform",
+        "Part 2 multiple component transforms"
+      ],
+      "part_2_multiple_component_transform_checkpoint": {
+        "status": "implemented",
+        "markers": [
+          "MCT",
+          "MCC",
+          "MCO"
+        ],
+        "scope": "bounded MCT records in main or tile-part headers: segmented MCT arrays and MCC records are reassembled with contiguous fragment indexes, duplicate/conflict rejection, declared final-index completeness, and byte/fragment bounds; up to 255 indexed arrays and MCC records, up to 64 disjoint collections per record, and up to 255 uniquely referenced MCO stages; collections support array decorrelation, reversible/irreversible array dependency, and component-axis 5/3 or 9/7 wavelet synthesis; inverse stages execute in reverse MCO order",
+        "numeric_formats": {
+          "reversible": [
+            "signed int16",
+            "signed int32"
+          ],
+          "irreversible": [
+            "signed int16 converted to deterministic Q32 as required",
+            "signed int32 converted to deterministic Q32 as required",
+            "finite IEEE binary32 converted to Q32 without host floating-point arithmetic",
+            "finite IEEE binary64 converted to Q32 without host floating-point arithmetic"
+          ]
+        },
+        "execution": [
+          "decode_codestream",
+          "decode_codestream_selected",
+          "decode_jp2",
+          "decode_jp2_selected",
+          "decode_jpx_codestream",
+          "decode_jpx_codestream_selected",
+          "decode_jpx_codestream_color"
+        ],
+        "typed_unsupported": [],
+        "malformed_rejection": [
+          "duplicate or missing array, record, and stage references",
+          "duplicate MCO stages (cycle/re-entry)",
+          "overlapping or ordered-within-stage collections",
+          "invalid component references, dimensions, dependency triangular cardinality/denominators, wavelet type/levels/subband partition, reversible floating arrays, non-finite coefficients, Q32 conversion overflow, precision growth, arithmetic overflow, work limits, and decoded scratch-byte limits",
+          "duplicate, discontinuous, conflicting, over-limit, or incomplete MCT/MCC fragment series"
+        ]
+      },
+      "enumerated_color_spaces": {
+        "checkpoint_status": "phase-l full color-conversion checkpoint implemented for pinned registry values",
+        "pinned_values": {
+          "16": "sRGB",
+          "17": "grayscale",
+          "18": "sYCC"
+        },
+        "api": [
+          "convert_jp2_color",
+          "decode_jp2_color",
+          "decode_jpx_codestream_color"
+        ],
+        "output": "typed planar 16-bit ConvertedImage with sRGB or grayscale color model and preserved alpha channels",
+        "arithmetic": "deterministic checked signed-to-nominal conversion, 16-bit precision scaling, origin-aware nearest component-grid resampling, and fixed-point sYCC conversion with bounded clamping",
+        "validated": [
+          "component count and channel association",
+          "signed and unsigned precision and sample range",
+          "signed-to-nominal level shift",
+          "component geometry, nonzero origin, and horizontal/vertical subsampling",
+          "alpha type and association",
+          "selected-region and reduced-resolution grids",
+          "decoded output bytes and conversion work"
+        ],
+        "current_execution_boundary": "pinned spaces 16, 17, and 18 execute signed or unsigned 1-38 bit color and alpha channels at full or subsampled component resolution; ICC and unpinned registry values remain typed UnsupportedColorConversion"
+      },
+      "icc_profiles": {
+        "parse_and_preserve": true,
+        "bounded": true,
+        "color_management_engine": false,
+        "execution": "typed UnsupportedColorConversion"
+      }
+    },
+    "selective_decode": {
+      "full_image": true,
+      "tile": true,
+      "region": true,
+      "reduced_resolution": true,
+      "api": [
+        "decode_codestream_selected",
+        "decode_jp2_selected",
+        "decode_jp2_color_selected",
+        "decode_jph_selected",
+        "decode_jph_color_selected",
+        "decode_jpx_codestream_selected",
+        "decode_jpx_codestream_color_selected"
+      ],
+      "tile_subset": "one tile or a unique rectangular tile-index set fully covering the requested region",
+      "region_coordinates": "absolute SIZ image-reference-grid coordinates, half-open, origin-aware; component bounds use checked subsampling and reduction ceiling division",
+      "resolution_semantics": "discard N highest DWT levels and return the native JPEG 2000 reduced resolution, not a post-decode resize",
+      "execution": "nonintersecting tiles and high-resolution packet bodies are skipped before Tier-1; high-resolution subbands and DWT levels are not allocated or synthesized",
+      "limits": "packet, precinct, code-block, work, and decoded-byte checks charge selected execution; unavoidable packet framing remains input/work accounted",
+      "errors": "InvalidSelection with deterministic SelectionError reason"
+    },
+    "runtime": {
+      "buffered": true,
+      "streaming_incremental": false,
+      "internal_parallelism": false,
+      "global_mutable_state": false,
+      "thread_safety": "Independent decoder instances may be used concurrently. Immutable configuration is Send + Sync; decoder state is Send and not shared during mutation.",
+      "deterministic": true
+    }
+  },
+  "unsupported": {
+    "encoding": "UnsupportedFeature (outside approved first-release scope)",
+    "jpip_network_transport": "UnsupportedFeature",
+    "streaming_incremental_decode": "UnsupportedFeature",
+    "internal_parallel_decode": "UnsupportedFeature",
+    "parts_not_selected": "UnsupportedProfile",
+    "current_top_level_baseline": {
+      "status": "closed_phase_m_formal_refinement",
+      "closed_phase": "phase-m-formal-refinement",
+      "active_phase": "none",
+      "progression_order_changes": "implemented",
+      "packed_packet_headers": "implemented",
+      "part_2_mct_markers": "MCT/MCC/MCO selected-family closure implements bounded contiguous segment reassembly, array decorrelation, reversible/irreversible triangular dependency transforms, component-axis reversible 5/3 and irreversible 9/7 wavelet synthesis, parallel collections, unique ordered stages, subsets/permutations, main/tile overrides, deterministic binary32/binary64 Q32, and combined Part 1/Part 2 inverse execution; reserved type 2 and malformed reserved fields are InvalidTransform",
+      "other_part_2_codestream_markers": {
+        "status": "bounded typed syntax, retention, and selected-profile execution complete",
+        "markers": {
+          "TLM_0xff55": "main-header segmented records require contiguous Ztlm, valid ST/SP widths, legal tile indexes, bounded record cardinality, and exact agreement with each SOT Psot",
+          "CRG_0xff63": "exactly one main-header registration pair per component is retained; zero and nonzero 16-bit fractional offsets execute in full/selected component bounds, tile assembly, and JP2/JPX color resampling with checked integer arithmetic",
+          "DFS_0xff72": "main/tile indexed direction sequences retain up to 32 packed levels with checked references and tile inheritance/replacement; explicit bounded topology drives dynamic quantization cardinality, zero/one/three-band packet resolutions, directional dimensions, precinct/code-block planning, progression, horizontal/vertical/2D/no-DWT inverse stage ordering, and safe isotropic selected reduction while preserving Mallat behavior",
+          "ADS_0xff73": "Sads is parsed as an 8-bit index followed by IOads, independently byte-padded DOads, ISads, and independently byte-padded DSads; 1-3 sublevel depths and terminal/2D/horizontal/vertical split values are bounded, retained, inherited, overridden, and validated",
+          "NLT_0xff76": "main/tile component/all-component selectors, 1-38 bit transformed depth/sign, and bounded parameters are retained; types 0, 1, 2, 3, and 4 execute over inherited/tile-overridden regions, including the five unsigned 8.16 gamma parameters and normative inverse piecewise power/linear branches",
+          "CBD_0xff78": "main-header-only exact component cardinality and 1-38 bit signed/unsigned depths are validated, including the compact repeated-depth form; values replace effective reconstructed-component depth/sign and any tile-header CBD is malformed",
+          "ATK_0xff79": "main/tile indexed reversible/irreversible kernels parse and execute all Oatk/LCatk layouts, coefficient widths through binary128, m_init parities, constant/whole-sample extension, whole-sample/arbitrary filters, multitap lifting, reversible residues/exponents, and irreversible scaling; missing references and reserved descriptors are malformed"
+        },
+        "generic_0xff72_through_0xff79_rejection_removed": true,
+        "raw_jp2_jpx_full_selected_routing": "all routes share parse_layout and typed_layout, so ADS/ATK/NLT/CBD behavior is identical for raw, JP2, JPX, full, and selected decoding",
+        "remaining_precise_semantics": []
+      },
+      "jp2_palette_component_mapping": "implemented",
+      "jp2_channel_definition_application": "implemented as typed metadata preservation and explicit sRGB/grayscale/sYCC conversion with alpha preservation",
+      "icc_color_conversion": "parse-and-preserve only; typed UnsupportedColorConversion for execution",
+      "enumerated_color_conversion_boundary": "pinned values 16, 17, and 18 execute signed/unsigned, subsampled, origin-aware color and alpha conversion across full and selected decode paths; ICC and unpinned values remain typed unsupported",
+      "jpx_jph_typed_decode": "explicit indexed JPX codestream decode implemented; JPH inspect/decode routing, profile validation, and cleanup/SigProp/MagRef coefficient execution implemented",
+      "multiple_jpx_codestreams": "implemented with bounded retention, explicit indices, and no implicit composition",
+      "jpx_compositing_layers": "selected-edition creg scaling, cgrp, opct, mixed grayscale/sRGB, concatenated general multi-codestream cmap/cdef channel associations, multiple/per-colour alpha combination, region registration, and variable-precision chroma keys implemented",
+      "jpx_composition_instructions": "comp/copt/inst target/source geometry, timing, persistence, next-use reuse, repetitions, loops, layer reuse, inspection, and indexed deterministic frame rendering implemented",
+      "jpx_non_jp2_subset_codestream_headers": "full JP2-compatible and inherited ihdr/bpcc/colr/pclr/cmap/cdef/res partial headers decode with malformed override ordering and relationships rejected",
+      "jpip": "bounded message/header, typed transactional databins, exact range availability, explicit and automatic precinct packet/codestream reconstruction, all progression/POC orders, packed/length-header reframing, multi-tile state, semantic placeholder assembly, and progressive selected quality-prefix decode implemented; cache signaling syntax and all network behavior remain out of scope",
+      "htj2k_codeblocks": "all legal bounded placeholder and SINGLEHT/MULTIHT cleanup/SigProp/MagRef pass sets implemented with packet/layer continuation, normative mixed legacy/HT selection, capability enforcement, and transactional coefficient replacement",
+      "selective_decode": "implemented for rectangular explicit tile sets, absolute image-space regions, native reduced resolutions, selected raw/JP2/JPH/JPX codestream APIs, and matching color variants",
+      "encoding": "not_implemented_outside_first_release_scope",
+      "validation": "phase-h generated decoder corpus, malformed-prefix/negative/metamorphic checks, optional external differential adapters, normalized hashes, budgets, and evidence binding complete; an external-root official-vector runner now enforces archive/file hashes, internal-use authorization metadata, complete selected-profile applicability, resource limits, result schemas, and source/tool attestations without bundling assets; official Part 4 execution remains blocked because the ITU MyWorkspace package requires unavailable authentication"
+    },
+    "selected_profile_closure_audit": {
+      "artifact": "unsupported-boundary-audit.json",
+      "class_c_remaining": 0,
+      "class_b_untyped_remaining": 0,
+      "contradictions": 0,
+      "remaining_production_unsupported_constructions": 5,
+      "approved_reasons_only": true
+    }
+  },
+  "errors": [
+    "MalformedInput",
+    "UnsupportedProfile",
+    "UnsupportedFeature",
+    "UnsupportedComposition",
+    "UnsupportedLayer",
+    "UnsupportedTransform",
+    "UnsupportedColorConversion",
+    "CodestreamIndexOutOfRange",
+    "LayerIndexOutOfRange",
+    "FrameIndexOutOfRange",
+    "InvalidSelection",
+    "LimitExceeded",
+    "Io"
+  ],
+  "resource_limits": {
+    "policy": "Defaults are hard upper bounds for the first-release profile. Callers may lower but not raise them.",
+    "maximum_width": 1000000,
+    "maximum_height": 1000000,
+    "maximum_pixels": 100000000,
+    "maximum_components": 64,
+    "maximum_transform_elements": 4096,
+    "maximum_tiles": 16384,
+    "maximum_tile_parts": 16384,
+    "maximum_resolutions_per_component": 33,
+    "maximum_precincts": 16777216,
+    "maximum_code_blocks": 16777216,
+    "maximum_layers": 256,
+    "maximum_frames": 4096,
+    "maximum_packets": 67108864,
+    "maximum_metadata_bytes": 16777216,
+    "maximum_packet_header_bytes": 268435456,
+    "maximum_compressed_input_bytes": 2147483648,
+    "maximum_decoded_bytes": 2147483648,
+    "maximum_jpip_fragments": 1048576,
+    "maximum_box_nesting_depth": 32,
+    "maximum_compatible_brands": 64,
+    "maximum_codestreams": 64,
+    "maximum_tag_tree_nodes": 16777216,
+    "maximum_work_units": 1000000000,
+    "work_unit_definition": "One bounded marker, box, packet, tag-tree node, code-block pass, coefficient, lifting step, MCT matrix multiply, or JPIP fragment operation as specified per module."
+  },
+  "release_gates": {
+    "owner_profile_approval": true,
+    "cela_legal_approval": true,
+    "architecture_approval": false,
+    "normative_assets_approved": false,
+    "implementation_complete": false,
+    "conformance_complete": false,
+    "proof_coverage_complete": false,
+    "fuzz_complete": false,
+    "performance_complete": false,
+    "package_audit_complete": false,
+    "publish_allowed": false
+  }
+}

@@ -1,0 +1,347 @@
+{
+  "$id": "https://example.invalid/jpeg2000_rs/validation/official-vector-result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "const": "jpeg2000-rs-first-release-proposed"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "blocked"
+      ]
+    },
+    "source_url": {
+      "format": "uri",
+      "type": "string"
+    },
+    "acquisition": {
+      "additionalProperties": false,
+      "properties": {
+        "attempted_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "access_status": {
+          "enum": [
+            "acquired",
+            "authentication-required",
+            "license-blocked",
+            "not-configured",
+            "unavailable"
+          ]
+        },
+        "final_url": {
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http_status": {
+          "maximum": 599,
+          "minimum": 100,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "archive_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "archive_bytes": {
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "attempted_at",
+        "access_status",
+        "final_url",
+        "http_status",
+        "archive_sha256",
+        "archive_bytes"
+      ],
+      "type": "object"
+    },
+    "manifest_sha256": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "immutable_source_revision": {
+      "pattern": "^sha256-tree-v1:[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "tool_revision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "subject": {
+      "additionalProperties": false,
+      "properties": {
+        "binary_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_revision": {
+          "pattern": "^sha256-tree-v1:[a-f0-9]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binary_sha256",
+        "source_revision"
+      ],
+      "type": "object"
+    },
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "applicable": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inapplicable": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "complete",
+        "applicable",
+        "inapplicable"
+      ],
+      "type": "object"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "verified": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "executed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "passed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "blocked": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_elapsed_ms": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "verified",
+        "executed",
+        "passed",
+        "failed",
+        "blocked",
+        "total_elapsed_ms"
+      ],
+      "type": "object"
+    },
+    "limits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_case_ms": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "max_total_ms": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "max_input_bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_address_space_bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "memory_enforcement": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "max_case_ms",
+        "max_total_ms",
+        "max_input_bytes",
+        "max_output_bytes",
+        "max_address_space_bytes",
+        "memory_enforcement"
+      ],
+      "type": "object"
+    },
+    "blockers": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "records": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "vector_key": {
+            "pattern": "^official-vector-v1:[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "public_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "file_sha256": {
+            "$ref": "#/$defs/sha256"
+          },
+          "bytes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "format": {
+            "enum": [
+              "raw",
+              "jp2",
+              "jph",
+              "jpx"
+            ]
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "blocked"
+            ]
+          },
+          "accepted": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "normalized_output_sha256": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/sha256"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "elapsed_ms": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "failure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "vector_key",
+          "file_sha256",
+          "bytes",
+          "format",
+          "status",
+          "accepted",
+          "category",
+          "normalized_output_sha256",
+          "metrics",
+          "elapsed_ms",
+          "failure"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile_id",
+    "status",
+    "source_url",
+    "acquisition",
+    "manifest_sha256",
+    "immutable_source_revision",
+    "tool_revision",
+    "subject",
+    "selection",
+    "summary",
+    "limits",
+    "blockers",
+    "records"
+  ],
+  "$defs": {
+    "sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    }
+  },
+  "title": "Official decoder-vector execution result",
+  "type": "object"
+}

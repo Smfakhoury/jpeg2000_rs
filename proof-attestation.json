@@ -1,0 +1,34 @@
+{
+  "$schema": "./release-attestation.schema.json",
+  "attestation_type": "proof",
+  "commands": [
+    "verify pinned release archive SHA-256 624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0; use hash-verified Ubuntu glibc 2.39-0ubuntu8.9, libstdc++/libgcc 14.2.0, and patchelf 0.14.3 packages with local ELF interpreter/RPATH patching for the pinned binaries",
+    "RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu verus --no-lifetime --output-json --crate-type lib src/lib.rs > verus-result.json",
+    "python3 validation/generate-proof-coverage.py verus-result.json production-proof-coverage.new.json --root .",
+    "diff -u production-proof-coverage.json production-proof-coverage.new.json (zero differences)",
+    "verify rolling release/rolling/0.2026.10.16.4fc2653 metadata and x86-linux asset SHA-256 51ab081ce8a8d5e41f7dc666a8b34bcc0b9b23c7004e70a8db93a6fc5de3dceb; apply the same local glibc workaround",
+    "rolling verus --output-json --crate-type lib src/lib.rs > verus-lifetime-result.json (exit 1: VerusErasureCtxt/thir_body internal error persists)",
+    "rolling verus --crate-type lib validation/verus-lifetime-reproducer.rs (exit 1: reduced VerusErasureCtxt/thir_body internal error)"
+  ],
+  "created_at": "2026-10-17T23:54:18Z",
+  "immutable_source_revision": "sha256-tree-v1:799d2016aceb6e4b461343a32aaca1a04e2b40dd96c0a75c1ef3811860d2a3f5",
+  "input_hashes": {
+    "lifetime-analysis-blocker.json": "a5be29894fe31a9dd4123bc7cf7bc804c1319a698aa81139372806fde9c63071",
+    "normative-coverage.json": "7c45215eabb05428a737c28218082ac59657697f4d7b232f28e52572353274a9",
+    "production-proof-coverage.json": "374fc572d94a0de08050009202ecf3eecccf76469744c03e69389c8dd267eb93"
+  },
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "result": {
+    "duplicated_dispositions": 0,
+    "errors": 0,
+    "incomplete_functions": 0,
+    "lifetime_analysis_enabled": false,
+    "missing_dispositions": 0,
+    "trusted_codec_functions": 0,
+    "verified_functions": 2049,
+    "verified_obligations": 2264
+  },
+  "schema_version": 1,
+  "status": "blocked",
+  "tool_revision": "verus 0.2026.10.04.426d8b0 (426d8b01e7ffb910a36c15e1f870ff985bb61eef)"
+}

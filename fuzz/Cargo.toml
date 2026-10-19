@@ -1,0 +1,63 @@
+[package]
+name = "jpeg2000_rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+
+[dependencies.jpeg2000_rs]
+path = ".."
+
+[[bin]]
+name = "arbitrary_jp2"
+path = "fuzz_targets/arbitrary_jp2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "arbitrary_codestream"
+path = "fuzz_targets/arbitrary_codestream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "structured_framing"
+path = "fuzz_targets/structured_framing.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "arbitrary_packet"
+path = "fuzz_targets/arbitrary_packet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "arbitrary_mq"
+path = "fuzz_targets/arbitrary_mq.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "arbitrary_tier1"
+path = "fuzz_targets/arbitrary_tier1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "arbitrary_jpip"
+path = "fuzz_targets/arbitrary_jpip.rs"
+test = false
+doc = false
+bench = false

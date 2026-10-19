@@ -1,0 +1,172 @@
+{
+  "$id": "https://example.invalid/jpeg2000_rs/validation/corpus.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "classification": {
+            "const": "generated"
+          },
+          "expected": {
+            "enum": [
+              "accept",
+              "reject"
+            ]
+          },
+          "format": {
+            "enum": [
+              "raw",
+              "jp2",
+              "jph",
+              "jpx",
+              "jpip"
+            ]
+          },
+          "generator": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "inputs": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "recipe": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "recipe",
+              "inputs"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "positive",
+              "malformed-prefix",
+              "negative",
+              "metamorphic"
+            ]
+          },
+          "license": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "metamorphic": {
+            "additionalProperties": false,
+            "properties": {
+              "parent": {
+                "type": "string"
+              },
+              "relation": {
+                "const": "same-normalized-output"
+              }
+            },
+            "required": [
+              "parent",
+              "relation"
+            ],
+            "type": "object"
+          },
+          "operation": {
+            "enum": [
+              "decode",
+              "inspect",
+              "ingest"
+            ]
+          },
+          "path": {
+            "pattern": "^generated/corpus/[a-z0-9][a-z0-9-]*\\.(j2k|jp2|jph|jpx|jpip)$",
+            "type": "string"
+          },
+          "redistribution": {
+            "const": "approved"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "format",
+          "kind",
+          "operation",
+          "expected",
+          "sha256",
+          "bytes",
+          "classification",
+          "redistribution",
+          "license",
+          "generator"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "generator": {
+      "type": "object"
+    },
+    "policy": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_classifications": {
+          "const": [
+            "generated"
+          ]
+        },
+        "official_vectors_included": {
+          "const": false
+        },
+        "restricted_vectors_included": {
+          "const": false
+        }
+      },
+      "required": [
+        "official_vectors_included",
+        "restricted_vectors_included",
+        "allowed_classifications"
+      ],
+      "type": "object"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile_id",
+    "policy",
+    "generator",
+    "entries"
+  ],
+  "title": "jpeg2000_rs generated decoder corpus",
+  "type": "object"
+}

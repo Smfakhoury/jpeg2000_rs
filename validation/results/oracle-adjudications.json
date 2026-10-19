@@ -1,0 +1,13 @@
+{
+  "$schema": "../oracle-adjudication.schema.json",
+  "records": [],
+  "schema_version": 1,
+  "status": "passed",
+  "summary": {
+    "adjudicated": 0,
+    "external_oracles_available": 1,
+    "total": 0,
+    "unadjudicated": 0
+  },
+  "validation_result_sha256": "cc0d8258c429a9594f146f56452caadaf8cbf190b43ea7ca2f170c7d8918f63c"
+}

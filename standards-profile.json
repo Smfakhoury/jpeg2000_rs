@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "profile_status": "approved",
+  "verified_at": "2026-10-13",
+  "verification_basis": "Official ITU-T recommendation catalog records and corresponding ISO/IEC common-text edition identifiers.",
+  "normative_editions": [
+    {
+      "part": 1,
+      "scope": "Core coding system, J2K/J2C codestream, and JP2",
+      "itu": {
+        "identifier": "ITU-T T.800",
+        "edition": "2024-07",
+        "status": "in force",
+        "url": "https://www.itu.int/rec/T-REC-T.800-202407-I/en"
+      },
+      "iso": {
+        "identifier": "ISO/IEC 15444-1:2024",
+        "catalog_url": "https://www.iso.org/search.html?q=ISO%2FIEC%2015444-1%3A2024"
+      },
+      "selection": "Current consolidated common-text edition. Earlier amendments and corrigenda are consumed only through this integrated edition."
+    },
+    {
+      "part": 2,
+      "scope": "Codestream and JPX extensions",
+      "itu": {
+        "identifier": "ITU-T T.801",
+        "edition": "2023-08",
+        "status": "in force",
+        "url": "https://www.itu.int/rec/T-REC-T.801-202308-I/en"
+      },
+      "iso": {
+        "identifier": "ISO/IEC 15444-2:2023",
+        "catalog_url": "https://www.iso.org/search.html?q=ISO%2FIEC%2015444-2%3A2023"
+      },
+      "selection": "Current consolidated common-text edition. The locally hash-bound authoritative T.801 source recorded in source-provenance.json is the separately acquired 06/2021 publication; it supports the cited unchanged clauses but is not represented as a byte-for-byte copy of the 08/2023 consolidation. Edition-level traceability therefore combines the in-force ITU catalog record with that explicitly bounded source artifact."
+    },
+    {
+      "part": 4,
+      "scope": "Conformance testing",
+      "itu": {
+        "identifier": "ITU-T T.803",
+        "edition": "2024-02",
+        "status": "in force",
+        "url": "https://www.itu.int/rec/T-REC-T.803-202402-I/en"
+      },
+      "iso": {
+        "identifier": "ISO/IEC 15444-4:2024",
+        "catalog_url": "https://www.iso.org/standard/85636.html"
+      },
+      "selection": "Current conformance edition. Test assets require separate acquisition and redistribution review.",
+      "test_asset_url": "https://handle.itu.int/11.1002/2000/6179"
+    },
+    {
+      "part": 9,
+      "scope": "JPIP interactivity tools, APIs, protocols, messages, databins, and cache models",
+      "itu": {
+        "identifier": "ITU-T T.808",
+        "edition": "2026-06",
+        "status": "approved; prepublished catalog record",
+        "url": "https://www.itu.int/rec/T-REC-T.808-202606-P/en"
+      },
+      "iso": {
+        "identifier": "ISO/IEC 15444-9:2026",
+        "catalog_url": "https://www.iso.org/search.html?q=ISO%2FIEC%2015444-9%3A2026"
+      },
+      "selection": "Latest approved common-text edition. The selected bounded profile implements binary messages, transactional databins, explicit and SIZ/COD/COC-derived precinct mapping, multi-tile packet reconstruction across all progression/POC orders, packed/length-header reframing, progressive selected quality-prefix decode, standard metadata/codestream placeholder assembly, and changing tile-part state with PLT or parsed exact Psot consumption boundaries as recorded in support-matrix.json. Cache-model signaling and network syntax are not selected and are not guessed; confirm the final in-force publication record before expanding the profile or release."
+    },
+    {
+      "part": 15,
+      "scope": "High-throughput JPEG 2000 (HTJ2K)",
+      "itu": {
+        "identifier": "ITU-T T.814",
+        "edition": "2019-06",
+        "status": "in force",
+        "url": "https://www.itu.int/rec/T-REC-T.814-201906-I/en"
+      },
+      "iso": {
+        "identifier": "ISO/IEC 15444-15:2019",
+        "catalog_url": "https://www.iso.org/search.html?q=ISO%2FIEC%2015444-15%3A2019"
+      },
+      "selection": "Current common-text edition."
+    }
+  ],
+  "applicable_external_documents": [
+    {
+      "topic": "ICC profile interpretation and color conversion",
+      "status": "required before implementing ICC color management",
+      "decision": "First release parses and preserves bounded profiles but does not provide a color management engine."
+    },
+    {
+      "topic": "Registered JPEG 2000 enumerated color spaces",
+      "status": "bounded checkpoint values pinned",
+      "decision": "Execution is pinned to the registry values already identified by the selected profile: 16 (sRGB), 17 (grayscale), and 18 (sYCC). The selected Part 1 and Part 2 editions define decoding behavior; later registry additions are not accepted implicitly."
+    }
+  ],
+  "legal_controls": {
+    "commit_normative_texts": false,
+    "commit_purchased_vectors": false,
+    "quote_substantial_normative_text": false,
+    "redistribute_vectors_without_approval": false,
+    "cela_approval_required_before_import": false,
+    "cela_approval_required_before_publish": true
+  },
+  "development_approval": {
+    "approved": true,
+    "approved_at": "2026-10-13T21:57:25.900Z",
+    "scope": "Private standards-derived implementation and validation work",
+    "public_open_source_release_approved": false
+  }
+}

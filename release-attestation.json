@@ -1,0 +1,201 @@
+{
+  "$schema": "./release-attestation.schema.json",
+  "attestation_type": "release",
+  "bindings": {
+    "adjudication": [
+      "validation/results/oracle-adjudications.json"
+    ],
+    "approvals": [
+      "legal-publication-review.json",
+      "owner-approval.json"
+    ],
+    "architecture": [
+      "architecture-review.json"
+    ],
+    "budgets": [
+      "validation/results/budget-results.json"
+    ],
+    "corpus": [
+      "validation/corpus.json"
+    ],
+    "fuzz": [
+      "fuzz-attestation.json"
+    ],
+    "package": [
+      "validation/expected-package-files.txt"
+    ],
+    "profile": [
+      "standards-profile.json",
+      "support-matrix.json",
+      "unsupported-boundary-audit.json"
+    ],
+    "proof": [
+      "proof-attestation.json",
+      "production-proof-coverage.json",
+      "normative-coverage.json",
+      "lifetime-analysis-blocker.json"
+    ],
+    "results": [
+      "validation/results/validation-results.json",
+      "validation/results/budget-results.json",
+      "validation/results/official-vector-results.json"
+    ],
+    "source": [
+      "source-tree.json",
+      "source-provenance.json"
+    ],
+    "toolchains": [
+      "rust-toolchain.toml",
+      "validation/requirements.txt",
+      "source-provenance.json"
+    ],
+    "validation": [
+      "conformance-attestation.json",
+      "validation/results/validation-results.json",
+      "validation/results/official-vector-results.json"
+    ]
+  },
+  "commands": [
+    "python3 validation/run-validation.py generate --check",
+    "python3 validation/run-validation.py verify",
+    "python3 validation/run-validation.py run",
+    "python3 validation/run-validation.py budget",
+    "python3 validation/run-validation.py official",
+    "python3 validation/run-validation.py source --check",
+    "python3 validation/run-validation.py architecture --check",
+    "python3 validation/run-validation.py attest",
+    "python3 validation/run-validation.py schemas"
+  ],
+  "created_at": null,
+  "gates": {
+    "architecture": {
+      "evidence": [
+        "architecture-review.json"
+      ],
+      "status": "passed"
+    },
+    "legal_publication": {
+      "evidence": [
+        "legal-publication-review.json"
+      ],
+      "status": "blocked"
+    },
+    "official_vectors": {
+      "archive_sha256": null,
+      "evidence": [
+        "validation/results/official-vector-results.json"
+      ],
+      "executed": 0,
+      "failed": 0,
+      "manifest_sha256": null,
+      "passed": 0,
+      "result_sha256": "aeae8d44df248aec3b661bd3efb3fa4d33cbec6703ea35412ea5a53d097e4079",
+      "selection_complete": false,
+      "status": "blocked",
+      "vector_count": 0
+    },
+    "oracle_adjudication": {
+      "evidence": [
+        "validation/results/validation-results.json",
+        "validation/results/oracle-adjudications.json"
+      ],
+      "external_oracles_available": 1,
+      "status": "passed",
+      "unresolved": 0
+    },
+    "owner_approval": {
+      "evidence": [
+        "owner-approval.json"
+      ],
+      "status": "blocked"
+    },
+    "proof_boundary": {
+      "evidence": [
+        "proof-attestation.json",
+        "production-proof-coverage.json",
+        "lifetime-analysis-blocker.json"
+      ],
+      "status": "blocked"
+    }
+  },
+  "immutable_source_revision": "sha256-tree-v1:708e7094d360877eb1b91a64354f23e111dc8cee9860aa07e099a5b5a1e04c1f",
+  "input_hashes": {
+    "architecture-review.json": "efc998100fd8f2e118754657b3505d2e700aab4536ed81036f985dd6a4975867",
+    "conformance-attestation.json": "43591df1b1304cbff7889eddb225c856a7526e0d734aa76e3b40ae5af87f21df",
+    "fuzz-attestation.json": "d99d7fa87e21da64168715678fff8aae3b8827d9f91cfe059e5cb4c3d57a771c",
+    "legal-publication-review.json": "13df3c4e958709a90230968f99f3929618b5c2aa0659bc5be59ac45ddbe9dc7f",
+    "lifetime-analysis-blocker.json": "a5be29894fe31a9dd4123bc7cf7bc804c1319a698aa81139372806fde9c63071",
+    "normative-coverage.json": "7c45215eabb05428a737c28218082ac59657697f4d7b232f28e52572353274a9",
+    "owner-approval.json": "29bd04c437b245becd89b0a3ee931f768f9cb77256f2894e245d39d11df3ae47",
+    "production-proof-coverage.json": "374fc572d94a0de08050009202ecf3eecccf76469744c03e69389c8dd267eb93",
+    "proof-attestation.json": "6653df886840e74f148ce5eb33e6ef37f340c3b684209984230264af9f3a3cc4",
+    "rust-toolchain.toml": "9c49718631623d335354b227f9e53628168cf8cc56e54a6a5087509fb8426753",
+    "source-provenance.json": "8b9db25cc72ce361e8d7d71d33f089f49a2e52764ef7ea46175ab8297864dbf6",
+    "source-tree.json": "270bf48e05a0cb2e353420036339080b519a6e0674c70571bd9b577d3475f6db",
+    "standards-profile.json": "c5d3cff9e89e8e5a957e286f310d2681441edca00fce1a2ede36f8cf86d7b3c2",
+    "support-matrix.json": "35f9a067544c32cfa7e9414799e241574b23700590f8ee54600e5c2fc5478ec7",
+    "unsupported-boundary-audit.json": "a67b0bd72b2b740e36dfd7c7af358523c9d85ddf759dab2514f58ffa47f2108b",
+    "validation/corpus.json": "3bf434745e7804a7e6aa62eedeb2f4b87cb0440ea71f8f659f837da70090c285",
+    "validation/expected-package-files.txt": "511467735e82de0e101322ef86801eeb7534bfc5aa092bdec5bc4d5602b2976c",
+    "validation/requirements.txt": "756cc9e506ae4ee1a6f6c0507088b5cfc0dc8ba350fb2d2d46f1ffa72033adb6",
+    "validation/results/budget-results.json": "3e57113fbedba6cb676693ac674b253d38fcb09bb4f60657eea6d310055a03f4",
+    "validation/results/official-vector-results.json": "aeae8d44df248aec3b661bd3efb3fa4d33cbec6703ea35412ea5a53d097e4079",
+    "validation/results/oracle-adjudications.json": "53379a973ccab7df8cf8072fcf5831d90154c47d13a1c5c39eb56ec34abd991b",
+    "validation/results/validation-results.json": "cc0d8258c429a9594f146f56452caadaf8cbf190b43ea7ca2f170c7d8918f63c"
+  },
+  "profile_id": "jpeg2000-rs-first-release-proposed",
+  "result": {
+    "blocking_gates": [
+      "official_vectors",
+      "proof_boundary",
+      "legal_publication",
+      "owner_approval"
+    ],
+    "external_oracles": [
+      {
+        "binary_sha256": "3a554471f1cc6b692e218cbda98e5ef49c19a74c051933f448d130bad125bb7e",
+        "executable": "cargo-example:validation_decoder",
+        "name": "jpeg2000_rs",
+        "status": "available"
+      },
+      {
+        "binary_sha256": "73e4fc0b009f8d384456cdcf6063986ca1f23b39e887ea48f14936299c0d1f7e",
+        "executable": "opj_decompress",
+        "name": "openjpeg",
+        "status": "available"
+      },
+      {
+        "name": "grok",
+        "reason": "GROK_DECODER unset and grk_decompress not found",
+        "status": "skipped"
+      },
+      {
+        "name": "jasper",
+        "reason": "JASPER_DECODER unset and jasper not found",
+        "status": "skipped"
+      }
+    ],
+    "official_conformance_claimed": false,
+    "official_vector_evidence": {
+      "archive_sha256": null,
+      "manifest_sha256": null,
+      "result_sha256": "aeae8d44df248aec3b661bd3efb3fa4d33cbec6703ea35412ea5a53d097e4079",
+      "source_revision": "sha256-tree-v1:708e7094d360877eb1b91a64354f23e111dc8cee9860aa07e099a5b5a1e04c1f",
+      "status": "blocked",
+      "subject_binary_sha256": null
+    },
+    "official_vectors": 0,
+    "proof_reference": {
+      "all_proof_input_hashes_match": true,
+      "attestation": "proof-attestation.json",
+      "coverage_hash_matches_attestation": true,
+      "production_source_revision": "sha256-tree-v1:799d2016aceb6e4b461343a32aaca1a04e2b40dd96c0a75c1ef3811860d2a3f5",
+      "status": "verified"
+    },
+    "publish_allowed": false,
+    "validation_framework_complete": true
+  },
+  "schema_version": 2,
+  "status": "blocked",
+  "tool_revision": "python 3.10.12"
+}

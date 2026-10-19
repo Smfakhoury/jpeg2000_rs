@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "project": "jpeg2000_rs",
+  "status": "implementation-in-progress",
+  "immutable_source_revision": "sha256-tree-v1:bc1759231d0168fdae2f37c794517b2633c7e1a79e3c08b03820b591b8ea6399",
+  "repository_url": null,
+  "rust_toolchain": "1.93.1 (01f6ddf75 2026-02-11)",
+  "verus_revision": "426d8b01e7ffb910a36c15e1f870ff985bb61eef",
+  "verus_release": "release/0.2026.10.04.426d8b0",
+  "verus_x86_linux_asset": {
+    "url": "https://github.com/verus-lang/verus/releases/download/release/0.2026.10.04.426d8b0/verus-0.2026.10.04.426d8b0-x86-linux.zip",
+    "sha256": "624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0",
+    "minimum_glibc_observed": "2.39"
+  },
+  "license": null,
+  "standards_profile": "standards-profile.json",
+  "support_matrix": "support-matrix.json",
+  "unsupported_boundary_audit": "unsupported-boundary-audit.json",
+  "native_oracles": [],
+  "normative_references": [
+    {
+      "identifier": "ITU-T T.801 (06/2021)",
+      "url": "https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.801-202106-S!!PDF-E&type=items",
+      "sha256": "8ec28b54b53f5b6898a02d0718566600809e1c86ecbbf64ab0e1e443e7f67f40",
+      "scope": "Word-identical compressed-data syntax and Annex F/G/H/K semantics used to close ADS, ATK, NLT type 1, and CBD scope",
+      "source_committed": false,
+      "selected_normative_edition": "ITU-T T.801 (08/2023), common text ISO/IEC 15444-2:2023",
+      "traceability_status": "edition-caveat-recorded",
+      "traceability_caveat": "The hash binds the separately acquired 06/2021 publication, not the selected consolidated 08/2023 edition. It is authoritative for the cited unchanged syntax and annex semantics only; the ITU catalog record identifies 08/2023 as the selected in-force edition. No claim is made that the 2021 PDF alone proves byte-for-byte coverage of every 2023 consolidation change."
+    }
+  ],
+  "algorithm_references": [
+    {
+      "project": "OpenJPEG",
+      "revision": "8314119b067c0fc77834731168daaebd379fdb12",
+      "files": [
+        "src/lib/openjp2/mqc.c",
+        "src/lib/openjp2/mqc_inl.h"
+      ],
+      "url": "https://github.com/uclouvain/openjpeg/tree/8314119b067c0fc77834731168daaebd379fdb12/src/lib/openjp2",
+      "license": "BSD-2-Clause",
+      "purpose": "Cross-check public MQ probability-state and decoder-control facts",
+      "source_code_imported": false
+    },
+    {
+      "project": "OpenHTJ2K",
+      "revision": "dacb452ecb21f50e88a74bf860c60f4aafa8a602",
+      "files": [
+        "source/core/codestream/j2kmarkers.cpp",
+        "source/core/codestream/j2kmarkers.hpp",
+        "source/core/coding/coding_units.cpp",
+        "source/core/coding/coding_units.hpp",
+        "source/core/common/open_htj2k_typedef.hpp",
+        "source/core/interface/encoder.cpp"
+      ],
+      "url": "https://github.com/osamu620/OpenHTJ2K/tree/dacb452ecb21f50e88a74bf860c60f4aafa8a602/source/core/codestream",
+      "license": "BSD-2-Clause",
+      "purpose": "Cross-check public DFS packed direction fields, ATK descriptor framing, TLM record widths, CRG component registration cardinality, Ccap15 constrained-set fields, HT placeholder and multi-set packet segmentation, mixed first-length routing, and legacy BYPASS/RESTART segmentation",
+      "source_code_imported": false
+    },
+    {
+      "project": "OpenJPH",
+      "revision": "8ca3abdd3b185cd737e70c0d443171205b3e6f15",
+      "files": [
+        "src/core/codestream/ojph_params.cpp",
+        "src/core/codestream/ojph_params_local.h",
+        "src/core/codestream/ojph_resolution.cpp",
+        "src/core/codestream/ojph_tile.cpp",
+        "src/core/transform/ojph_colour.cpp",
+        "src/core/transform/ojph_transform.cpp"
+      ],
+      "url": "https://github.com/aous72/OpenJPH/tree/8ca3abdd3b185cd737e70c0d443171205b3e6f15/src/core",
+      "license": "BSD-2-Clause",
+      "purpose": "Cross-check DFS directional resolution/subband geometry, ATK Satk and lifting-step syntax, NLT type 2/3/4 parsing and inverse conversion, component/all-component precedence, and the precise public implementation boundaries for gamma NLT, arbitrary-filter ATK, odd m_init, constant extension, and multitap lifting",
+      "source_code_imported": false
+    },
+    {
+      "project": "go-jpeg2000",
+      "revision": "2948150e9dea47092d30895492ec1d08ae183b5c",
+      "files": [
+        "encoder.go"
+      ],
+      "url": "https://github.com/mrjoshuak/go-jpeg2000/blob/2948150e9dea47092d30895492ec1d08ae183b5c/encoder.go",
+      "license": "MIT",
+      "purpose": "Independent cross-check of the fixed-width NLT component selector, transformed component depth/sign byte, and binary-complement type framing",
+      "source_code_imported": false
+    },
+    {
+      "project": "CADI",
+      "revision": "43314e890be4f1dde44af7853570ee874c13aac6",
+      "files": [
+        "CADI-3.1/CADI/src/CADI/Common/LogicalTarget/JPEG2000/Codestream/JPCMainHeaderDecoder.java",
+        "CADI-3.1/CADI/src/CADI/Common/LogicalTarget/JPEG2000/Parameters/MCCParameters.java"
+      ],
+      "url": "https://github.com/gici-uab/cadi/tree/43314e890be4f1dde44af7853570ee874c13aac6",
+      "license": "GPL-3.0-or-later",
+      "purpose": "Cross-check public MCC dependency/decorrelation/wavelet type, level, kernel, and component-offset field packing",
+      "source_code_imported": false
+    },
+    {
+      "project": "Kakadu 6.4 public API headers",
+      "revision": "8428c2ba8ecde662753e4437b3f6d8ee1e783467",
+      "files": [
+        "Kakadu6_4/coresys/common/kdu_compressed.h"
+      ],
+      "url": "https://github.com/wallscavesurvey/walls/blob/8428c2ba8ecde662753e4437b3f6d8ee1e783467/Kakadu6_4/coresys/common/kdu_compressed.h",
+      "license": "reference-only upstream notice",
+      "purpose": "Cross-check public dependency-block identity and component-axis DWT subband ordering/canvas semantics",
+      "source_code_imported": false
+    },
+    {
+      "project": "OpenJPEG",
+      "revision": "8314119b067c0fc77834731168daaebd379fdb12",
+      "files": [
+        "src/lib/openjp2/j2k.c",
+        "src/lib/openjp2/j2k.h"
+      ],
+      "url": "https://github.com/uclouvain/openjpeg/tree/8314119b067c0fc77834731168daaebd379fdb12/src/lib/openjp2",
+      "license": "BSD-2-Clause",
+      "purpose": "Cross-check public MCT/MCC/MCO field packing and numeric array type identifiers",
+      "source_code_imported": false
+    },
+    {
+      "project": "OpenJPEG",
+      "revision": "8314119b067c0fc77834731168daaebd379fdb12",
+      "files": [
+        "src/lib/openjp2/ht_dec.c",
+        "src/lib/openjp2/t1_ht_luts.h"
+      ],
+      "url": "https://github.com/uclouvain/openjpeg/tree/8314119b067c0fc77834731168daaebd379fdb12/src/lib/openjp2",
+      "license": "BSD-2-Clause",
+      "purpose": "Cross-check public HT forward/reverse stuffing, MEL state transitions, UVLC control flow, SigProp stripe/patch traversal, MagRef cleanup-significance eligibility and bin-center updates, and derive the VLC lookup-word representation",
+      "source_code_imported": false
+    },
+    {
+      "project": "webjpip.js",
+      "revision": "f4e426de1552d4b515ebbb0531b872fc8c39edee",
+      "files": [
+        "src/protocol/jpip-message-header-parser.js",
+        "src/databins/jpip-databin-parts.js",
+        "src/image-structures/jpip-tile-structure.js",
+        "src/quality-layers/jpip-quality-layers-cache.js",
+        "src/writers/jpip-packets-data-collector.js",
+        "src/writers/jpip-codestream-reconstructor.js"
+      ],
+      "url": "https://github.com/MaMazav/webjpip.js/tree/f4e426de1552d4b515ebbb0531b872fc8c39edee/src",
+      "license": "MIT",
+      "purpose": "Cross-check public JPIP binary message header/VBAS facts, sparse data-bin range accounting, greatest fully available quality-layer prefix behavior, Annex A.3.2 tile/component/resolution/row-major precinct in-class mapping, and packet/header codestream reconstruction. The Rust implementation independently generalizes reconstruction through its existing progression/POC and packet pipelines.",
+      "source_code_imported": false
+    },
+    {
+      "project": "OSSIM",
+      "revision": "d4781a8c895db9bd1dd88b24f5ec498908d4f98d",
+      "files": [
+        "src/support_data/ossimJpipMessageDecoder.cpp"
+      ],
+      "url": "https://github.com/ossimlabs/ossim/blob/d4781a8c895db9bd1dd88b24f5ec498908d4f98d/src/support_data/ossimJpipMessageDecoder.cpp",
+      "license": "MIT",
+      "purpose": "Independent cross-check of JPIP Bin-ID forms, EOR framing, class bounds, and checked VBAS field order",
+      "source_code_imported": false
+    },
+    {
+      "project": "Kakadu 6.4 public JPX sources",
+      "revision": "8428c2ba8ecde662753e4437b3f6d8ee1e783467",
+      "files": [
+        "Kakadu6_4/apps/jp2/jpx.cpp",
+        "Kakadu6_4/apps/jp2/jpx_local.h",
+        "Kakadu6_4/apps/jp2/jp2.cpp",
+        "Kakadu6_4/apps/kdu_client/kdu_clientx.cpp",
+        "Kakadu6_4/apps/kdu_server/kdu_servex.cpp"
+      ],
+      "url": "https://github.com/wallscavesurvey/walls/tree/8428c2ba8ecde662753e4437b3f6d8ee1e783467/Kakadu6_4/apps",
+      "license": "reference-only upstream notice",
+      "purpose": "Cross-check public JPX creg record widths, cgrp nesting, opct modes and chroma-key framing, copt/inst composition fields, and standard JPIP metadata/incremental-codestream placeholder flags, metadata-bin identifiers, original 32/64-bit box headers, and codestream stream-ID placement",
+      "source_code_imported": false
+    }
+  ],
+  "notes": [
+    "This non-git workspace is bound by source-tree.json using the deterministic sha256-tree-v1 content-addressed revision; generated evidence and build output are outside that revision and are hashed separately by the release attestation.",
+    "Phase D Part 2 phase-d-part2-jpx introduced the first MCT/MCC/MCO checkpoint. Phase L selected-family closure now reassembles bounded segmented MCT/MCC series with contiguous indexes and complete conflict-free finals; executes decorrelation, reversible/irreversible triangular dependency, and component-axis 5/3 or 9/7 wavelet collections in the existing ordered MCT DAG; preserves main/tile overrides, deterministic Q32, raw/JP2/JPX full/selected execution, and checked dimensions/precision/scratch/work. Reserved MCC type 2 and malformed reserved fields are InvalidTransform. The same phase closes bounded typed TLM/CRG/DFS/ADS/NLT/CBD/ATK syntax. Official free ITU-T T.801 (06/2021), SHA-256 8ec28b54b53f5b6898a02d0718566600809e1c86ecbbf64ab0e1e443e7f67f40, grounded the independently padded ADS fields, ATK Oatk/LCatk and Annex G/H inverse lifting, NLT type 1 fixed-point grammar and inverse, and main-header-only CBD scope. No normative text, PDF, or vectors are committed.",
+    "Phase E HTJ2K phase-e-htj2k closed on 2026-10-14; its final checkpoint added bounded HT SigProp and MagRef execution after cleanup, including forward/reverse stuffing, bit-granular collision and termination checks, stripe/patch significance propagation with deferred signs, cleanup-significant magnitude refinement, transactional coefficient replacement, packet/layer continuation, mixed legacy/HT selection, and raw/JPH execution. Phase L closes the remaining Part 15 pass-set surface: placeholder-only contributions, partial and zero-length sets, SINGLEHT/MULTIHT replacement sets, first-length mixed routing, legal legacy termination/restart routing, and Ccap15 constrained-set/magnitude capabilities. These facts were checked against selected Rec. ITU-T T.814 (06/2019) Annexes A and B and the already pinned OpenHTJ2K/OpenJPEG sources. The committed lookup words remain a data representation derived from the pinned public implementation; no normative text or vectors were imported.",
+    "Phase F JPIP phase-f-jpip closed on 2026-10-15 with a bounded message-header, typed databin, fragment cache/reassembly, completeness, and reconstructed complete-byte-view PoC. Phase L adds explicit ranges, automatic Annex A.3.2 precinct mapping, multiple tiles and effective later tile-part state, all progression/POC orders, packet-length/packed-header reframing, SOP/EPH, selected progressive quality decode, recursive standard phld metadata/stream-equivalent/codestream placement, and PLT or exact non-zero-Psot transition boundaries. Pinned webjpip.js sources ground precinct mapping/reconstruction and pinned public Kakadu sources ground placeholder bit flags, embedded headers, 64-bit stream identifiers and ranges. Packet parsing rolls back on incomplete precinct prefixes; only absent standard boundaries remain semantic insufficiencies. Cache-model signaling is not selected and is not guessed. Network protocols remain excluded. No normative text or vectors were imported.",
+    "Phase G selective decode phase-g-selective-decode closed on 2026-10-16. Phase H phase-h-encoding-validation closed on 2026-10-16 as decoder-validation hardening only: all committed corpus bytes are deterministically project-generated and redistributable; no official, restricted, or standards-derived vectors were imported. Phase L phase-l-selected-spec-closure closed its selected JPX surface on 2026-10-17: corrected creg framing; scaled multi-codestream registration; cgrp/opct including variable-precision chroma keys; inherited jpch pclr/cmap/cdef/res overrides; concatenated general layer cdef associations; multiple/per-colour alpha collapse; mixed grayscale/sRGB composition; bounded nested association metadata; and comp/copt/inst timing, repetition, reuse, persistence, loops, inspection, and deterministic indexed frame rendering. No normative text or vectors were imported. ICC execution, unpinned registry values, and metadata payload interpretation remain excluded. Encoding remains outside the approved first-release scope, and release conformance is pending official-vector legal approval and release approval.",
+    "The pinned Verus binary was hash-verified and executed on the development host with locally extracted glibc 2.39 and libstdc++ 14 runtimes via temporary ELF interpreter/RPATH patching; all workaround files were removed after verification.",
+    "Verus lifetime analysis remains temporarily disabled: rolling release/rolling/0.2026.10.16.4fc2653 (commit 4fc26539c01ab1c2a42642c662862e37964bd77c) reproduces the pinned VerusErasureCtxt/thir_body internal error on the exact production root and the reduced validation/verus-lifetime-reproducer.rs case. The stable pin and Rust borrow checking remain active; lifetime-analysis-blocker.json records the probe.",
+    "Legal approval for private standards-derived implementation was confirmed by the repository owner on 2026-10-13; public open-source publication remains separately gated."
+  ]
+}

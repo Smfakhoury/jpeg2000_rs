@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "budgets": {
+      "type": "object"
+    },
+    "cases": {
+      "type": "array"
+    },
+    "profile_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "summary": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile_id",
+    "budgets",
+    "summary",
+    "cases"
+  ],
+  "type": "object"
+}
