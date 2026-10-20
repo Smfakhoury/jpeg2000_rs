@@ -9,7 +9,7 @@ import struct
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -185,6 +185,16 @@ def source_image(case: NumericalCase) -> bytes:
     return f"P{6 if case.channels == 3 else 5}\n{case.width} {case.height}\n{peak}\n".encode() + payload
 
 
+def signed_codestream(data: bytes, precision: int) -> bytes:
+    if (len(data) < 45 or data[:4] != b"\xff\x4f\xff\x51"
+            or int.from_bytes(data[4:6], "big") != 41
+            or int.from_bytes(data[40:42], "big") != 1
+            or data[42] != precision - 1):
+        raise ValueError("signed fixture requires a matching unsigned single-component SIZ header")
+    # The offset unsigned input has the same centered coefficients as the signed source.
+    return data[:42] + bytes((data[42] | 0x80,)) + data[43:]
+
+
 def image_error_metrics(reference: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
     if not reference.get("accepted") or not actual.get("accepted"):
         raise ValueError("numerical comparison requires two accepted images")
@@ -304,6 +314,7 @@ def run_numerical(
                     "format": case.format,
                     "precision": case.precision, "signed": case.signed,
                     "source_format": source_extension(case),
+                    "signed_header_authored": case.signed,
                     "pattern": case.pattern,
                     "encoder_options": [*encoder_options, *case.options] if case.codestream is None else [],
                     "encoder_invoked": case.codestream is None,
@@ -317,19 +328,36 @@ def run_numerical(
                 source = work / f"{case.name}.{extension}"
                 encoded_extension = case.format if case.format != "raw" else "j2c" if high_throughput else "j2k"
                 encoded = work / f"{case.name}.{encoded_extension}"
-                codestream = encoded.with_suffix(".j2c") if case.format == "jph" else encoded
+                codestream = (encoded.with_suffix(".j2c")
+                              if case.format == "jph" or (case.signed and case.format == "jp2") else encoded)
                 reference_output = work / f"{case.name}-reference.{extension}"
                 reference = (reference_output.with_stem(reference_output.stem + "_0")
                              if extension == "pgx" else reference_output)
                 source.write_bytes(source_image(case))
                 record["input_sha256"] = framework.sha256_file(source)
+                encoder_source = source
+                if case.signed:
+                    shifted_samples = (tuple(value + (1 << (case.precision - 1)) for value in case.samples)
+                                       if case.samples is not None else None)
+                    shifted_case = replace(case, signed=False, samples=shifted_samples)
+                    encoder_source = source.with_name(source.stem + "-unsigned." + source_extension(shifted_case))
+                    encoder_source.write_bytes(source_image(shifted_case))
+                record["encoder_input_sha256"] = (framework.sha256_file(encoder_source)
+                                                  if case.codestream is None else None)
                 try:
                     encoder_ms: float | None = None
                     if case.codestream is None:
-                        _, encoder_ms = _run_checked([tools["encoder"]["path"], "-i", str(source), "-o", str(codestream),
+                        _, encoder_ms = _run_checked([tools["encoder"]["path"], "-i", str(encoder_source), "-o", str(codestream),
                                                       *record["encoder_options"]], timeout_seconds)
                     else:
                         codestream.write_bytes(case.codestream)
+                    if case.signed:
+                        codestream.write_bytes(signed_codestream(codestream.read_bytes(), case.precision))
+                        if case.format == "jp2":
+                            encoded.write_bytes(framework.jp2_file(
+                                codestream.read_bytes(), width=case.width, height=case.height,
+                                components=case.channels, precision=case.precision, signed=True,
+                            ))
                     if case.format == "jph":
                         encoded.write_bytes(framework.jp2_file(
                             codestream.read_bytes(), b"jph ", width=case.width, height=case.height,
@@ -360,7 +388,7 @@ def run_numerical(
                     record["status"] = "failed"
                     record["error"] = "case execution exceeded declared aggregate time budget"
                 if record["status"] == "failed":
-                    for path in dict.fromkeys((source, codestream, encoded, reference)):
+                    for path in dict.fromkeys((source, encoder_source, codestream, encoded, reference)):
                         if path.is_file():
                             saved = framework.report_path(
                                 output_dir, f"numerical-failures/{case.name}/{path.name}",

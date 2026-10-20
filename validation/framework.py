@@ -282,12 +282,15 @@ def raw_codestream() -> bytes:
 def jp2_file(
     codestream: bytes, brand: bytes = b"jp2 ", *,
     width: int = 1, height: int = 1, components: int = 1, precision: int = 8,
+    signed: bool = False,
 ) -> bytes:
-    if width <= 0 or height <= 0 or components not in (1, 3) or not 1 <= precision <= 38:
-        raise ValueError("generated container requires positive geometry and uniform unsigned grayscale/RGB components")
+    if (width <= 0 or height <= 0 or components not in (1, 3)
+            or not 1 <= precision <= 38 or type(signed) is not bool):
+        raise ValueError("generated container requires positive geometry and uniform grayscale/RGB components")
     signature = box(b"jP  ", b"\x0d\x0a\x87\x0a")
     ftyp = box(b"ftyp", brand + b"\0\0\0\0" + brand)
-    ihdr = box(b"ihdr", struct.pack(">IIH4B", height, width, components, precision - 1, 7, 0, 0))
+    ihdr = box(b"ihdr", struct.pack(">IIH4B", height, width, components,
+                                   (precision - 1) | (0x80 if signed else 0), 7, 0, 0))
     colr = box(b"colr", bytes((1, 0, 0, 0, 0, 0, 17 if components == 1 else 16)))
     return signature + ftyp + box(b"jp2h", ihdr + colr) + box(b"jp2c", codestream)
 

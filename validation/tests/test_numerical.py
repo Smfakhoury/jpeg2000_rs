@@ -167,6 +167,31 @@ class NumericalTests(unittest.TestCase):
             with self.subTest(case=invalid), self.assertRaises(ValueError):
                 numerical.source_image(invalid)
 
+    def test_signed_fixture_changes_only_the_matching_siz_sign_bit(self):
+        unsigned = framework.raw_codestream()
+        signed = numerical.signed_codestream(unsigned, 8)
+        self.assertEqual([index for index, (left, right) in enumerate(zip(unsigned, signed))
+                          if left != right], [42])
+        self.assertEqual(signed[42], 0x87)
+        self.assertEqual(signed[43:], unsigned[43:])
+        for invalid in (b"", unsigned[:44], signed,
+                        unsigned[:40] + b"\x00\x02" + unsigned[42:],
+                        unsigned[:4] + b"\x00\x28" + unsigned[6:]):
+            with self.subTest(data=invalid), self.assertRaises(ValueError):
+                numerical.signed_codestream(invalid, 8)
+        with self.assertRaises(ValueError):
+            numerical.signed_codestream(unsigned, 9)
+
+    def test_signed_jp2_fixture_metadata_matches_the_signed_codestream(self):
+        signed = numerical.signed_codestream(framework.raw_codestream(), 8)
+        container = framework.jp2_file(signed, signed=True)
+        offset = container.index(b"ihdr") + 4
+        self.assertEqual(struct.unpack(">IIH4B", container[offset:offset + 14]),
+                         (1, 1, 1, 0x87, 7, 0, 0))
+        self.assertTrue(container.endswith(signed))
+        with self.assertRaises(ValueError):
+            framework.jp2_file(signed, signed=1)
+
     def test_pgx_reference_mismatch_and_corruption_fail_before_subject_execution(self):
         case = numerical.NumericalCase("signed-reference", width=1, height=1, precision=17, signed=True)
         for payload in ((123).to_bytes(4, "big", signed=True), b"\x00"):
@@ -180,7 +205,9 @@ class NumericalTests(unittest.TestCase):
                 if "reference" in output.stem and output.suffix == ".pgx":
                     output.with_stem(output.stem + "_0").write_bytes(b"PG ML - 17 1 1\n" + payload)
                 else:
-                    output.write_bytes(b"synthetic encoded fixture")
+                    fixture = bytearray(framework.raw_codestream())
+                    fixture[42] = 16
+                    output.write_bytes(fixture)
                 return subprocess.CompletedProcess(command, 0, b"", b""), 0.0
 
             with mock.patch.object(numerical.shutil, "which", return_value=sys.executable), \
@@ -330,6 +357,9 @@ class NumericalTests(unittest.TestCase):
             self.assertEqual(record["precision"], case.precision)
             self.assertEqual(record["signed"], case.signed)
             self.assertEqual(record["source_format"], numerical.source_extension(case))
+            self.assertEqual(record["signed_header_authored"], case.signed)
+            if case.signed:
+                self.assertNotEqual(record["encoder_input_sha256"], record["input_sha256"])
         pgx = [record for record in result["records"] if record["source_format"] == "pgx"]
         self.assertEqual(len(pgx), 9)
         self.assertEqual({record["precision"] for record in pgx}, {8, 9, 12, 16, 17, 20, 24})

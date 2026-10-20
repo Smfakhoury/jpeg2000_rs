@@ -100,8 +100,16 @@ through 16 bits, and four through 32 bits; nominal precision and signedness
 remain separate metadata and are checked exactly. Both PGX byte orders,
 payload lengths, declared ranges and the decoder's indexed component filenames
 are validated.
+Signed fixtures encode the offset unsigned source, whose centered transform
+coefficients are identical, then author the signed SIZ flag and matching JP2
+bit-depth flag. This avoids PGX input converters that recompute precision from
+positive samples and discard the sign bit. Reports explicitly distinguish the
+original signed source from the actual unsigned encoder input and identify
+authored headers. No coefficient or packet-body bytes are changed. The
+independent decoder must still reproduce the original signed metadata and
+samples exactly; a rewritten header alone cannot qualify a fixture.
 Lossless cases must reproduce the original and reference samples bit for bit.
-The independent encoder/decoder must first preserve the original geometry,
+The generated stream must first independently decode to the original geometry,
 precision, signedness and samples; a changed reference is a failure, not a new
 expected image. PGX origin cases use equal nonzero offsets; asymmetric origins
 remain covered by the PNM cases. The generated PGX matrix does not qualify
