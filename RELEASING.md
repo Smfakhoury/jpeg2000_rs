@@ -19,6 +19,32 @@ Do not assume that removing a file from the current tree removes it from Git
 history. An exported source snapshot and a visibility change on an existing
 repository have different disclosure boundaries.
 
+### Candidate checks
+
+Use the same committed candidate for the [CI workflow](.github/workflows/ci.yml),
+the [proof workflow](.github/workflows/verus.yml), and retained validation
+artifacts. Follow the [contributor setup](CONTRIBUTING.md) for tool prerequisites.
+
+| Gate | Required check |
+|---|---|
+| Rust behavior | All-target tests, doctests and release checks on supported platforms |
+| Rust diagnostics | Formatting, strict Clippy and rustdoc |
+| Packaged decoder | Exact package-file inventory and `cargo package --locked`, including its default verification build |
+| General decoder validation | Python regression suite and `python validation/run-validation.py all` |
+| Independent HT validation | Separate `python validation/run-validation.py htj2k` invocation |
+| Representative process bounds | Separate Linux `python validation/run-validation.py resources` invocation |
+| Expressed proof obligations | Exact production-root command and strict coverage checker from [PROOFS.md](PROOFS.md) |
+
+The `all` command does not implicitly run the HT or resource gates. Passing a
+package-file comparison also does not show that the packaged source compiles;
+keep the package verification build enabled. `cargo package` is a local build
+operation, not package-publication authorization.
+
+Perform these checks in a clean checkout, regenerate the corpus without
+changing tracked source, and retain source/tool/input/output hash bindings.
+Keep skipped comparisons and unavailable external conformance inputs visible
+rather than presenting them as passed checks.
+
 ## Conformance evidence
 
 - Reconcile the selected standards editions with the specification inventory.

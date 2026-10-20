@@ -45,6 +45,8 @@ jobs:
       - name: Audit package contents
         shell: bash
         run: diff -u validation/expected-package-files.txt <(cargo package --list --locked)
+      - name: Verify packaged decoder builds
+        run: cargo package --locked
 
   decoder-validation:
     name: Generated decoder validation

@@ -41,12 +41,15 @@ python validation/run-validation.py resources
 cargo check --manifest-path fuzz/Cargo.toml --all-targets --locked
 cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 diff -u validation/expected-package-files.txt <(cargo package --list --locked)
+cargo package --locked
 ```
 
 The package-list comparison uses a Bash-compatible shell. Follow [PROOFS.md](PROOFS.md)
 for the exact Verus command and [validation instructions](validation/VALIDATION.md)
 for optional external oracles and official-vector runs.
 The representative resource gate additionally requires Linux and GNU Time.
+`cargo package` builds and verifies the packaged source locally; it does not
+publish the crate or change `publish = false`.
 
 ## Implementation and review
 
