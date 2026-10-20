@@ -2058,10 +2058,16 @@ pub fn decode_jp2_color_selected(
     {
         return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
     }
-    let decoded =
-        decode_codestream_selected(inspected.file().codestream(0)?.data(), options, selection)?;
+    let codestream = inspected.file().codestream(0)?.data();
+    let (expanded, target) = color_selection(codestream, selection, options.limits())?;
+    let decoded = decode_codestream_selected(codestream, options, &expanded)?;
     let mapped = apply_jp2_output(decoded, inspected.file().header(), options.limits())?;
-    crate::color::convert_jp2_color(&mapped, &inspected.file().header().color, options.limits())
+    convert_selected_color(
+        &mapped,
+        &inspected.file().header().color,
+        target,
+        options.limits(),
+    )
 }
 
 pub fn decode_jph(input: &[u8], options: &DecodeOptions) -> Result<TypedImage, DecodeError> {
@@ -2109,10 +2115,16 @@ pub fn decode_jph_color_selected(
     if inspected.file().codestream_count() != 1 {
         return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
     }
-    let decoded =
-        decode_codestream_selected(inspected.file().codestream(0)?.data(), options, selection)?;
+    let codestream = inspected.file().codestream(0)?.data();
+    let (expanded, target) = color_selection(codestream, selection, options.limits())?;
+    let decoded = decode_codestream_selected(codestream, options, &expanded)?;
     let mapped = apply_jp2_output(decoded, inspected.file().header(), options.limits())?;
-    crate::color::convert_jp2_color(&mapped, &inspected.file().header().color, options.limits())
+    convert_selected_color(
+        &mapped,
+        &inspected.file().header().color,
+        target,
+        options.limits(),
+    )
 }
 
 pub fn decode_jpx_codestream(
@@ -2155,10 +2167,115 @@ pub fn decode_jpx_codestream_color_selected(
     selection: &DecodeSelection,
 ) -> Result<crate::color::ConvertedImage, DecodeError> {
     let file = jp2::parse(input, options.limits())?;
-    let (decoded, header) = decode_jpx_file_selected(&file, codestream_index, options, selection)?;
+    if !file.file_type().is_jpx_compatible() {
+        return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+    }
+    let (expanded, target) = color_selection(
+        file.codestream(codestream_index)?.data(),
+        selection,
+        options.limits(),
+    )?;
+    let (decoded, header) = decode_jpx_file_selected(&file, codestream_index, options, &expanded)?;
     let header =
         header.ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
-    crate::color::convert_jp2_color(&decoded, &header.color, options.limits())
+    convert_selected_color(&decoded, &header.color, target, options.limits())
+}
+
+fn color_selection(
+    input: &[u8],
+    requested: &DecodeSelection,
+    limits: &ResourceLimits,
+) -> Result<(DecodeSelection, [u32; 4]), DecodeError> {
+    let layout = codestream::parse_layout(input, limits)?;
+    let size = &layout.info.image_size;
+    let validated = validate_selection(size, requested)?;
+    let discard_levels = validated.discard_levels;
+    if discard_levels >= 32 {
+        return Err(DecodeError::InvalidSelection {
+            reason: SelectionError::ReductionTooLarge,
+        });
+    }
+    let scale = 1_u32 << u32::from(discard_levels);
+    let target = [
+        ceil_div_u32(validated.region[0], scale)?,
+        ceil_div_u32(validated.region[1], scale)?,
+        ceil_div_u32(validated.region[2], scale)?,
+        ceil_div_u32(validated.region[3], scale)?,
+    ];
+    let mut horizontal = 0_u32;
+    let mut vertical = 0_u32;
+    let mut component = 0_u16;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(decreases size.components - component,)
+    )]
+    while component < size.components {
+        let info = size.component(component)?;
+        let x_step = u64::from(info.x_subsampling)
+            .checked_mul(65_536)
+            .ok_or_else(arithmetic_overflow)?;
+        let y_step = u64::from(info.y_subsampling)
+            .checked_mul(65_536)
+            .ok_or_else(arithmetic_overflow)?;
+        let x = u64::from(target[0])
+            .checked_mul(65_536)
+            .ok_or_else(arithmetic_overflow)?
+            .saturating_sub(u64::from(info.x_registration));
+        let y = u64::from(target[1])
+            .checked_mul(65_536)
+            .ok_or_else(arithmetic_overflow)?
+            .saturating_sub(u64::from(info.y_registration));
+        if x.checked_rem(x_step).ok_or_else(invalid_decode)? != 0 {
+            horizontal = horizontal.max(u32::from(info.x_subsampling));
+        }
+        if y.checked_rem(y_step).ok_or_else(invalid_decode)? != 0 {
+            vertical = vertical.max(u32::from(info.y_subsampling));
+        }
+        component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    let x0 = validated.region[0]
+        .saturating_sub(horizontal.saturating_mul(scale))
+        .max(size.x_origin);
+    let y0 = validated.region[1]
+        .saturating_sub(vertical.saturating_mul(scale))
+        .max(size.y_origin);
+    // Retain resampling context across ROI/tile boundaries; validate the original selection first.
+    let expanded = DecodeSelection::full_image()
+        .with_region(crate::ImageRegion::new(
+            x0,
+            y0,
+            validated.region[2]
+                .checked_sub(x0)
+                .ok_or_else(arithmetic_overflow)?,
+            validated.region[3]
+                .checked_sub(y0)
+                .ok_or_else(arithmetic_overflow)?,
+        ))
+        .with_discard_levels(discard_levels);
+    Ok((expanded, target))
+}
+
+fn convert_selected_color(
+    image: &TypedImage,
+    color: &jp2::ColorSpecification,
+    target: [u32; 4],
+    limits: &ResourceLimits,
+) -> Result<crate::color::ConvertedImage, DecodeError> {
+    let converted = crate::color::convert_jp2_color(image, color, limits)?;
+    converted.crop(
+        target[0]
+            .checked_sub(image.x_origin())
+            .ok_or_else(invalid_decode)?,
+        target[1]
+            .checked_sub(image.y_origin())
+            .ok_or_else(invalid_decode)?,
+        target[2]
+            .checked_sub(target[0])
+            .ok_or_else(invalid_decode)?,
+        target[3]
+            .checked_sub(target[1])
+            .ok_or_else(invalid_decode)?,
+    )
 }
 
 pub(crate) fn decode_jpx_file<'a>(
@@ -4633,13 +4750,11 @@ mod tests {
 
         let empty_packet = bytes.len() - 3;
         bytes[empty_packet] = 0x80;
-        assert!(matches!(
-            decode_codestream(&bytes, &DecodeOptions::default()),
-            Err(DecodeError::MalformedInput {
-                kind: MalformedKind::InvalidPacketHeader,
-                ..
-            })
-        ));
+        let present = decode_codestream(&bytes, &DecodeOptions::default()).unwrap();
+        assert_eq!(
+            present.components()[0].samples(),
+            image.components()[0].samples()
+        );
     }
 
     #[test]

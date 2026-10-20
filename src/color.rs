@@ -58,6 +58,63 @@ impl ConvertedChannel {
 }
 
 impl ConvertedImage {
+    pub(crate) fn crop(self, x: u32, y: u32, width: u32, height: u32) -> Result<Self, DecodeError> {
+        if width == 0 || height == 0 {
+            return Err(invalid_color_input());
+        }
+        let x1 = x.checked_add(width).ok_or_else(arithmetic_overflow)?;
+        let y1 = y.checked_add(height).ok_or_else(arithmetic_overflow)?;
+        if x1 > self.width || y1 > self.height {
+            return Err(invalid_color_input());
+        }
+        if x == 0 && y == 0 && width == self.width && height == self.height {
+            return Ok(self);
+        }
+        let count = checked_area(width, height)?;
+        let mut channels = Vec::with_capacity(self.channels.len());
+        let mut channel_index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(decreases self.channels.len() - channel_index,)
+        )]
+        while channel_index < self.channels.len() {
+            let channel = self
+                .channels
+                .get(channel_index)
+                .ok_or_else(invalid_color_input)?;
+            let mut samples = Vec::with_capacity(count);
+            let mut row = y;
+            #[cfg_attr(verus_keep_ghost, verus_spec(decreases y1 - row,))]
+            while row < y1 {
+                let mut column = x;
+                #[cfg_attr(verus_keep_ghost, verus_spec(decreases x1 - column,))]
+                while column < x1 {
+                    let index = (row as usize)
+                        .checked_mul(self.width as usize)
+                        .and_then(|value| value.checked_add(column as usize))
+                        .ok_or_else(arithmetic_overflow)?;
+                    samples.push(*channel.samples.get(index).ok_or_else(invalid_color_input)?);
+                    column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+                }
+                row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            }
+            channels.push(ConvertedChannel {
+                channel_type: channel.channel_type,
+                samples,
+            });
+            channel_index = channel_index
+                .checked_add(1)
+                .ok_or_else(arithmetic_overflow)?;
+        }
+        Ok(Self {
+            width,
+            height,
+            color_space: self.color_space,
+            precision: self.precision,
+            channels,
+        })
+    }
+
     pub(crate) fn from_composited(
         width: u32,
         height: u32,
@@ -1103,6 +1160,52 @@ mod tests {
         .unwrap();
         for channel in converted.channels() {
             assert_eq!(channel.samples(), &[0, 32_896, 65_535]);
+        }
+    }
+
+    #[test]
+    fn converted_crop_preserves_color_and_alpha_metadata_and_checks_bounds() {
+        let make_image = || {
+            ConvertedImage::from_composited(
+                3,
+                2,
+                ConvertedColorSpace::Srgb,
+                vec![
+                    vec![0, 1, 2, 3, 4, 5],
+                    vec![10, 11, 12, 13, 14, 15],
+                    vec![20, 21, 22, 23, 24, 25],
+                ],
+                vec![0, 100, 200, 300, 400, 500],
+            )
+            .unwrap()
+        };
+        let cropped = make_image().crop(1, 0, 2, 2).unwrap();
+        assert_eq!(
+            (cropped.width(), cropped.height(), cropped.precision()),
+            (2, 2, 16)
+        );
+        assert_eq!(cropped.color_space(), ConvertedColorSpace::Srgb);
+        assert_eq!(cropped.channel(0).unwrap().samples(), &[1, 2, 4, 5]);
+        assert_eq!(cropped.channel(3).unwrap().samples(), &[100, 200, 400, 500]);
+        assert_eq!(
+            cropped.channel(0).unwrap().channel_type(),
+            ConvertedChannelType::Red
+        );
+        assert_eq!(
+            cropped.channel(3).unwrap().channel_type(),
+            ConvertedChannelType::Alpha {
+                premultiplied: false,
+                association: ChannelAssociation::WholeImage,
+            }
+        );
+        assert_eq!(make_image().crop(0, 0, 3, 2).unwrap(), make_image());
+        for (x, y, width, height) in [
+            (0, 0, 0, 1),
+            (3, 0, 1, 1),
+            (0, 2, 1, 1),
+            (u32::MAX, 0, 1, 1),
+        ] {
+            assert!(make_image().crop(x, y, width, height).is_err());
         }
     }
 

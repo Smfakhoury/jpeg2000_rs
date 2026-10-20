@@ -17,6 +17,11 @@ single RFC, and this library does not implement every part of that family.
 Output retains component precision and signedness, image origins, subsampling,
 and channel association metadata. Component sample output and converted color
 output are distinct interfaces.
+Selected color conversion preserves the full-image sampling phase at the
+requested native DWT resolution, including regions starting between component
+samples. It may decode bounded left/top context from neighboring tiles before
+cropping the converted output; resource limits include that context. Component
+selection continues to return the requested native component grids.
 
 ## Coding features
 

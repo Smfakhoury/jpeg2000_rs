@@ -1861,7 +1861,7 @@ fn decode_precinct_packet(
     let packet_present = reader.read_bit()?;
     let mut contributions = vec![None; states.len()];
     let mut contribution_count = 0_u32;
-    if packet_present {
+    if packet_present && !contexts.is_empty() {
         let layer = contexts.first().ok_or_else(invalid_packet_header)?.layer;
         let subband_count = subbands.len();
         let mut subband_index = 0_usize;
@@ -4479,6 +4479,54 @@ mod tests {
         assert_eq!(absent.bytes_consumed, 1);
         assert!(!absent.present);
         assert_eq!(absent.contributions, 0);
+    }
+
+    #[test]
+    fn empty_resolution_precinct_consumes_either_packet_present_flag() {
+        let limits = ResourceLimits::default();
+        for header in [0_u8, 0x80] {
+            let data = [header];
+            let style = coding_style(false, false);
+            let tile = TilePartPayload {
+                tile_index: 0,
+                tile_part_index: 0,
+                tile_part_count: 1,
+                coding_style: style,
+                quantization: Quantization::reversible_default(style),
+                component_coding_styles: component_styles(style).0,
+                component_quantizations: component_styles(style).1,
+                roi_shifts: crate::codestream::RoiShifts::none(),
+                progression_changes: ProgressionChanges::none(),
+                multiple_component_transform: None,
+                part2_extensions: crate::codestream::Part2Extensions::default(),
+                packet_lengths: crate::codestream::PacketLengths::none(),
+                packed_packet_headers: crate::codestream::PackedPacketHeaders::none(),
+                has_functional_header_marker: false,
+                has_roi_marker: false,
+                data: &data,
+            };
+            let mut precinct = PacketPrecinctDecoder::new_subbands(
+                0,
+                1,
+                0,
+                Tier1CodingStyle::default(),
+                Vec::new(),
+                &limits,
+            )
+            .unwrap();
+            let (decoded, consumed, packed) =
+                decode_precinct_packet(&tile, 0, &[], 0, Some(1), 0, &mut precinct, true, &limits)
+                    .unwrap();
+            assert_eq!(decoded.present, header != 0);
+            assert_eq!(decoded.code_blocks, 0);
+            assert_eq!(decoded.passes, 0);
+            assert_eq!(consumed, 1);
+            assert_eq!(packed, 0);
+            assert!(
+                decode_precinct_packet(&tile, 0, &[], 0, Some(2), 0, &mut precinct, true, &limits,)
+                    .is_err()
+            );
+        }
     }
 
     #[test]

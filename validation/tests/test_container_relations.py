@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import shutil
@@ -23,6 +24,37 @@ def image(width, height, planes, precision=16):
                         "signed": False, "sample_kind": "unsigned", "samples": samples}
                        for samples in planes],
     }}
+
+
+def declared_legacy_jph(data):
+    if len(data) < 45 or data[:4] != b"\xff\x4f\xff\x51" or data[6:8] != b"\x00\x00":
+        raise ValueError("fixture requires a legacy codestream starting with SIZ")
+    end = 4 + int.from_bytes(data[4:6], "big")
+    if end > len(data) or end < 45 or end != 42 + 3 * int.from_bytes(data[40:42], "big"):
+        raise ValueError("fixture has truncated SIZ")
+    result = bytearray(data)
+    result[6:8] = b"\x40\x00"
+    return bytes(result[:end]) + framework.segment(0xff50, struct.pack(">IH", 0x00020000, 0x801f)) + bytes(result[end:])
+
+
+def crop_converted(observation, origin, region, discard=0):
+    scale = 1 << discard
+    x, y, width, height = region
+    left = (x + scale - 1) // scale - (origin[0] + scale - 1) // scale
+    top = (y + scale - 1) // scale - (origin[1] + scale - 1) // scale
+    right = (x + width + scale - 1) // scale - (origin[0] + scale - 1) // scale
+    bottom = (y + height + scale - 1) // scale - (origin[1] + scale - 1) // scale
+    source = observation["image"]
+    if not 0 <= left < right <= source["width"] or not 0 <= top < bottom <= source["height"]:
+        raise ValueError("converted fixture crop is empty or outside its frame")
+    result = copy.deepcopy(observation)
+    result["image"]["width"], result["image"]["height"] = right - left, bottom - top
+    for component in result["image"]["components"]:
+        values, stride = component["samples"], component["width"]
+        component["samples"] = [values[row * stride + column]
+                               for row in range(top, bottom) for column in range(left, right)]
+        component["width"], component["height"] = right - left, bottom - top
+    return result
 
 
 def vbas(value):
@@ -193,6 +225,182 @@ class ContainerRelationsTests(unittest.TestCase):
     def assert_image(self, expected, actual):
         self.assertEqual(numerical.image_error_metrics(expected, actual)["maximum_error"], 0)
 
+    def encode_nonuniform(self, directory, sampling, precision, origin, tiled=False):
+        width, height = 32, 32
+        peak = (1 << precision) - 1
+        planes = []
+        for channel, (sx, sy) in enumerate(sampling):
+            cw, ch = width // sx, height // sy
+            values = [(0 if x == 0 and y == 0 else peak if x == 1 and y == 0 else
+                       ((x * 31 + y * 17 + channel * 71 + x * y * 13) % 256) * peak // 255)
+                      for y in range(ch) for x in range(cw)]
+            planes.append({"width": cw, "height": ch, "precision": precision,
+                           "signed": False, "sample_kind": "unsigned", "samples": values})
+        source = {"accepted": True, "image": {"width": width, "height": height, "components": planes}}
+        raw = directory / "source.raw"
+        raw.write_bytes(b"".join(value.to_bytes(precision // 8, "big")
+                                 for plane in planes for value in plane["samples"]))
+        encoder = shutil.which(os.environ.get("OPENJPEG_ENCODER", "opj_compress"))
+        decoder = shutil.which(os.environ.get("OPENJPEG_DECODER", "opj_decompress"))
+        if encoder is None or decoder is None:
+            raise FileNotFoundError("nonuniform reference tools are unavailable")
+        options = ["-F", f"{width},{height},3,{precision},u@" +
+                   ":".join(f"{sx}x{sy}" for sx, sy in sampling),
+                   "-n", "3", "-mct", "0", "-d", ",".join(map(str, origin))]
+        if tiled:
+            options += ["-t", "15,15"]
+        encoded = directory / "encoded.j2k"
+        framework.write_json(directory / "tools.json", {
+            "tools": {role: {"path": path, "sha256": framework.sha256_file(Path(path))}
+                      for role, path in (("encoder", encoder), ("decoder", decoder))},
+            "encoder_options": options, "sampling": sampling,
+            "source_sha256": framework.normalized_hash(source),
+        })
+        numerical._run_checked([encoder, "-i", str(raw), "-o", str(encoded), *options], 10.0)
+        for channel, expected in enumerate(planes):
+            output = directory / f"reference-{channel}.pgx"
+            numerical._run_checked([decoder, "-i", str(encoded), "-o", str(output),
+                                    "-c", str(channel)], 10.0)
+            actual = framework.parse_pgx(output.with_stem(output.stem + "_0"))
+            self.assertEqual(actual["image"]["components"], [expected],
+                             "independent nonuniform roundtrip changed source samples/metadata")
+        self.assert_image(source, self.observe("decode", "raw", encoded))
+        for discard in (1, 2):
+            references = []
+            for channel in range(3):
+                output = directory / f"native-{discard}-{channel}.pgx"
+                numerical._run_checked([decoder, "-i", str(encoded), "-o", str(output),
+                                        "-c", str(channel), "-r", str(discard)], 10.0)
+                references += framework.parse_pgx(output.with_stem(output.stem + "_0"))["image"]["components"]
+            scale = 1 << discard
+            native = {"accepted": True, "image": {
+                "width": (origin[0] + width + scale - 1) // scale - (origin[0] + scale - 1) // scale,
+                "height": (origin[1] + height + scale - 1) // scale - (origin[1] + scale - 1) // scale,
+                "components": references,
+            }}
+            process, _ = numerical._run_checked([
+                str(self.subject), "select", "raw", str(encoded), str(discard), "all", "all",
+            ], 10.0)
+            _, pixels = process.stdout.split(b"\n", 1)
+            self.assert_image(native, framework.parse_subject_output(pixels, process.stderr, process.returncode))
+        return encoded.read_bytes(), source, decoder
+
+    def selected_color(self, path, format_name, discard, tiles, region):
+        process, _ = numerical._run_checked([
+            str(self.subject), "select-color", format_name, str(path), str(discard),
+            str(tiles), "all" if region is None else ",".join(map(str, region)),
+        ], 10.0)
+        return framework.parse_subject_output(process.stdout, process.stderr, process.returncode)
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_nonuniform_components_full_color_and_selection_context(self):
+        for sampling in (((1, 1), (2, 2), (2, 2)), ((1, 1), (2, 1), (2, 1))):
+            for precision, origin, tiled in ((8, (0, 0), False), (16, (2, 4), True),
+                                             (8, (1, 3), True)):
+                name = f"nonuniform-{sampling[1][1]}-{precision}-{origin[0]}"
+                with self.subTest(case=name), self.fixture(name) as directory:
+                    raw, source, decoder = self.encode_nonuniform(directory, sampling, precision, origin, tiled)
+                    peak = (1 << precision) - 1
+                    expected = image(32, 32, [], precision=16)
+                    for channel, (plane, (sx, sy)) in enumerate(zip(source["image"]["components"], sampling)):
+                        cx0, cy0 = (origin[0] + sx - 1) // sx, (origin[1] + sy - 1) // sy
+                        pixels = [
+                            plane["samples"][
+                                max(0, min(plane["height"] - 1, (origin[1] + y) // sy - cy0)) * plane["width"]
+                                + max(0, min(plane["width"] - 1, (origin[0] + x) // sx - cx0))
+                            ] * 65535 // peak for y in range(32) for x in range(32)
+                        ]
+                        expected["image"]["components"].append({
+                            "width": 32, "height": 32, "precision": 16, "signed": False,
+                            "sample_kind": "unsigned", "samples": pixels,
+                        })
+                        if origin[0] % 2 == 0 and origin[1] % 2 == 0:
+                            output = directory / f"upsampled-{channel}.pgx"
+                            numerical._run_checked([decoder, "-i", str(directory / "encoded.j2k"),
+                                                    "-o", str(output), "-c", str(channel), "-upsample"], 10.0)
+                            reference = framework.parse_pgx(output.with_stem(output.stem + "_0"))
+                            self.assertEqual([value * 65535 // peak
+                                              for value in reference["image"]["components"][0]["samples"]], pixels)
+                    for color in (16, 18):
+                        full_by_discard = {}
+                        for format_name, brand in (("jp2", b"jp2 "), ("jph", b"jph "), ("jpx", b"jpx ")):
+                            path = directory / f"image-{color}.{format_name}"
+                            path.write_bytes(framework.jp2_file(
+                                declared_legacy_jph(raw) if format_name == "jph" else raw,
+                                brand, width=32, height=32, components=3,
+                                precision=precision, color_space=color,
+                            ))
+                            full = self.observe("convert", format_name, path)
+                            if color == 16:
+                                self.assert_image(expected, full)
+                            if format_name == "jp2" and color == 18 and origin[0] % 2 == 0 and origin[1] % 2 == 0:
+                                reference = directory / "reference-rgb.ppm"
+                                numerical._run_checked([decoder, "-i", str(path), "-o", str(reference)], 10.0)
+                                normalized = copy.deepcopy(full)
+                                for component in normalized["image"]["components"]:
+                                    component["precision"] = precision
+                                    component["samples"] = [(value * peak + 32767) // 65535
+                                                            for value in component["samples"]]
+                                metrics = numerical.image_error_metrics(framework.parse_pnm(reference), normalized)
+                                self.assertLessEqual(metrics["maximum_error"], 2 if precision == 8 else 12)
+                            for discard in (0, 1, 2):
+                                native = self.selected_color(path, format_name, discard, "all", None)
+                                if discard == 0:
+                                    self.assert_image(full, native)
+                                if discard in full_by_discard:
+                                    self.assert_image(full_by_discard[discard], native)
+                                else:
+                                    full_by_discard[discard] = native
+                                for offset in (1, 2, 7):
+                                    region = (origin[0] + offset, origin[1] + offset, 9, 11)
+                                    self.assert_image(crop_converted(native, origin, region, discard), self.selected_color(
+                                        path, format_name, discard, "all", region))
+                            region = (origin[0] + 1, origin[1] + 1, 1, 1)
+                            self.assert_image(crop_converted(full, origin, region),
+                                              self.selected_color(path, format_name, 0, "all", region))
+                            for reason, discard, tiles, region in (
+                                ("EmptyRegion", 0, "all", (origin[0], origin[1], 0, 1)),
+                                ("RegionOutOfBounds", 0, "all", (origin[0] + 32, origin[1], 1, 1)),
+                                ("ReductionTooLarge", 255, "all", None),
+                            ):
+                                with self.assertRaisesRegex(ValueError, reason):
+                                    self.selected_color(path, format_name, discard, tiles, region)
+                            if tiled:
+                                for tiles, region in (("4", (15, 15, 15, 15)),
+                                                       ("3,4", (origin[0], 15, 30 - origin[0], 15))):
+                                    self.assert_image(crop_converted(full, origin, region),
+                                                      self.selected_color(path, format_name, 0, tiles, None))
+                                with self.assertRaisesRegex(ValueError, "RegionOutsideSelectedTiles"):
+                                    self.selected_color(path, format_name, 0, "4",
+                                                        (origin[0], origin[1], 5, 5))
+                                for tiles, reason in (("0,2", "NonRectangularTileSet"),
+                                                       ("4,4", "DuplicateTile")):
+                                    with self.assertRaisesRegex(ValueError, reason):
+                                        self.selected_color(path, format_name, 0, tiles, None)
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_registered_nonuniform_color_regions_preserve_full_image_phase(self):
+        with self.fixture("registered-nonuniform") as directory:
+            raw, _, _ = self.encode_nonuniform(directory, ((1, 1), (2, 2), (2, 2)), 8, (0, 0))
+            end = 4 + int.from_bytes(raw[4:6], "big")
+            registration = framework.segment(0xff63, struct.pack(">6H", 0, 0, 32768, 32768, 32768, 32768))
+            raw = raw[:end] + registration + raw[end:]
+            for color in (16, 18):
+                for format_name, brand in (("jp2", b"jp2 "), ("jph", b"jph "), ("jpx", b"jpx ")):
+                    path = directory / f"image-{color}.{format_name}"
+                    path.write_bytes(framework.jp2_file(
+                        declared_legacy_jph(raw) if format_name == "jph" else raw, brand,
+                        width=32, height=32, components=3, color_space=color,
+                    ))
+                    for discard in (0, 1):
+                        full = self.selected_color(path, format_name, discard, "all", None)
+                        for offset in (1, 2, 3, 4):
+                            region = (offset, offset, 9, 11)
+                            self.assert_image(crop_converted(full, (0, 0), region, discard),
+                                              self.selected_color(path, format_name, discard, "all", region))
+
     def check_reconstruction(self, directory, raw, original):
         main, tile, body, _, _ = split_single_tile(raw)
         response = bytearray()
@@ -337,6 +545,29 @@ class ContainerRelationsTests(unittest.TestCase):
 
 
 class ContainerFixtureTests(unittest.TestCase):
+    def test_declared_legacy_wrapper_preserves_coding_bytes_and_validates_siz(self):
+        raw = framework.raw_codestream()
+        declared = declared_legacy_jph(raw)
+        end = 4 + int.from_bytes(raw[4:6], "big")
+        self.assertEqual(declared[6:8], b"\x40\x00")
+        self.assertEqual(declared[end:end + 10],
+                         framework.segment(0xff50, struct.pack(">IH", 0x00020000, 0x801f)))
+        self.assertEqual(declared[end + 10:], raw[end:])
+        for invalid in (b"", raw[:44], declared, raw[:4] + b"\xff\xff" + raw[6:]):
+            with self.subTest(data=invalid), self.assertRaises(ValueError):
+                declared_legacy_jph(invalid)
+
+    def test_converted_crop_uses_native_bounds_without_resampling(self):
+        original = image(4, 4, [list(range(16))])
+        self.assertEqual(crop_converted(original, (0, 0), (1, 1, 2, 2)),
+                         image(2, 2, [[5, 6, 9, 10]]))
+        reduced = image(2, 2, [[10, 20, 30, 40]])
+        self.assertEqual(crop_converted(reduced, (0, 0), (1, 1, 2, 2), 1),
+                         image(1, 1, [[40]]))
+        for region in ((0, 0, 0, 1), (3, 3, 2, 2), (-1, 0, 1, 1)):
+            with self.subTest(region=region), self.assertRaises(ValueError):
+                crop_converted(original, (0, 0), region)
+
     def test_vbas_and_single_tile_fixture_boundaries(self):
         for value, expected in ((0, b"\0"), (127, b"\x7f"), (128, b"\x81\0"), (16384, b"\x81\x80\0")):
             self.assertEqual(vbas(value), expected)
