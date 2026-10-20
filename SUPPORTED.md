@@ -28,6 +28,8 @@ The implementation contains:
 - Precincts, inclusion/zero-bitplane tag trees, coding-pass and segment lengths.
 - Main/tile COD, COC, QCD, QCC, and RGN state and precedence.
 - PLM/PLT packet lengths, PPM/PPT packed headers, SOP/EPH, and TLM checks.
+- The five Part 1 progression orders and POC sequencing, not additional Part 2
+  progression-order extensions.
 - Legacy MQ and raw-bypass Tier-1 passes, coding-style routing, and Maxshift undo.
 - HT cleanup, significance propagation, magnitude refinement, placeholder and
   replacement pass sets, and mixed legacy/HT routing.
@@ -56,6 +58,12 @@ fragments, duplicate/overlap consistency, final-length/completeness queries,
 metadata placeholders, precinct mapping, packet reconstruction, and
 transactional progressive decode. Availability and missing-range results
 distinguish incomplete data from successful reconstruction.
+
+Explicit `JpipPrecinctCodestreamPlan` transcodes are restricted to a single
+tile-part with LRCP progression, inline packet headers, and no POC, PLT, or PPT
+in the reconstructed input. Those plans require already-reframed headers;
+original packet-length declarations must not be copied into a shortened
+quality prefix. Automatic reconstruction performs its own header normalization.
 
 ## Selection
 

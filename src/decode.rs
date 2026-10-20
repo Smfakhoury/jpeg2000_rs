@@ -1198,9 +1198,6 @@ fn plan_progression_tile_at_selected(
                         .checked_add(1)
                         .ok_or_else(arithmetic_overflow)?;
                 }
-                if executions.is_empty() {
-                    return Err(invalid_decode());
-                }
                 precincts.push(PacketPrecinctDecoder::new_subbands(
                     component,
                     resolution,
@@ -1452,7 +1449,7 @@ fn prepare_tile_component_with_kernel(
             )]
             while x < plane_width {
                 let coefficient = plane.coefficient(x, y)?;
-                coefficients.push(coefficient.signed_magnitude());
+                coefficients.push(coefficient.signed_magnitude()?);
                 x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -1837,7 +1834,7 @@ pub fn decode_codestream(input: &[u8], options: &DecodeOptions) -> Result<TypedI
         decode_layout(&layout, options.limits())?,
         options.limits(),
     )?;
-    validate_part1_decode_denotation(input.len(), &layout, &image)?;
+    validate_part1_output_shape(input.len(), &layout, &image)?;
     Ok(image)
 }
 
@@ -1852,16 +1849,16 @@ pub fn decode_codestream_selected(
         decode_layout_selected(&layout, selection, options.limits())?,
         options.limits(),
     )?;
-    validate_part1_decode_denotation(input.len(), &layout, &image)?;
+    validate_part1_output_shape(input.len(), &layout, &image)?;
     Ok(image)
 }
 
-fn validate_part1_decode_denotation(
+fn validate_part1_output_shape(
     input_bytes: usize,
     layout: &CodestreamLayout<'_>,
     image: &TypedImage,
 ) -> Result<(), DecodeError> {
-    if !crate::refinement::decode_denotation(
+    if !crate::refinement::decode_output_shape_valid(
         input_bytes,
         layout.tile_parts.len(),
         layout.info.image_size.components,
@@ -1889,8 +1886,11 @@ fn validate_part1_decode_denotation(
             TypedSamples::Signed(samples) => samples.len(),
             TypedSamples::Unsigned(samples) => samples.len(),
         };
-        if !crate::refinement::typed_component_denotation(output.width(), output.height(), samples)
-        {
+        if !crate::refinement::component_output_shape_valid(
+            output.width(),
+            output.height(),
+            samples,
+        ) {
             return Err(invalid_decode());
         }
         component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -3706,7 +3706,7 @@ pub fn decode_code_block(
     )]
     while coefficient_index < coefficients.len() {
         let coefficient = coefficients[coefficient_index];
-        signed.push(coefficient.signed_magnitude());
+        signed.push(coefficient.signed_magnitude()?);
         coefficient_index = coefficient_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
@@ -4467,6 +4467,29 @@ mod tests {
     }
 
     #[test]
+    fn output_shape_contracts_reject_empty_components_and_planes() {
+        assert!(crate::refinement::decode_output_shape_valid(
+            1, 1, 1, 1, 2, 3
+        ));
+        for (input, parts, expected, actual, width, height) in [
+            (0, 1, 1, 1, 2, 3),
+            (1, 0, 1, 1, 2, 3),
+            (1, 1, 0, 0, 2, 3),
+            (1, 1, 1, 2, 2, 3),
+            (1, 1, 1, 1, 0, 3),
+            (1, 1, 1, 1, 2, 0),
+        ] {
+            assert!(!crate::refinement::decode_output_shape_valid(
+                input, parts, expected, actual, width, height
+            ));
+        }
+        assert!(crate::refinement::component_output_shape_valid(2, 3, 6));
+        assert!(!crate::refinement::component_output_shape_valid(0, 3, 0));
+        assert!(!crate::refinement::component_output_shape_valid(2, 0, 0));
+        assert!(!crate::refinement::component_output_shape_valid(2, 3, 5));
+    }
+
+    #[test]
     fn top_level_raw_and_jp2_decode_packed_packet_headers() {
         for ppm in [true, false] {
             let mut codestream = prepared_codestream(1, 1, 1, &[0, 0x40], &[0]);
@@ -4578,6 +4601,40 @@ mod tests {
         packed[sequence + 5] = 1;
         assert!(matches!(
             decode_codestream(&packed, &DecodeOptions::default()),
+            Err(DecodeError::MalformedInput {
+                kind: MalformedKind::InvalidPacketHeader,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn decodes_single_sample_with_empty_detail_resolution_packet() {
+        let mut bytes = prepared_codestream(
+            1,
+            1,
+            1,
+            &[0x20, 0x48, 0x48, 0x48, 0x48],
+            &[0xc0, 0x24, 0x01, 0x07, 0x74, 0x00, 0x00],
+        );
+        bytes[6..8].copy_from_slice(&0x4000_u16.to_be_bytes());
+        let cod = bytes
+            .windows(2)
+            .position(|marker| marker == [0xff, 0x52])
+            .unwrap();
+        bytes[cod + 9] = 1;
+        bytes[cod + 12] = 0x40;
+        bytes.splice(cod..cod, segment(0xff50, &[0, 2, 0, 0, 0, 1]));
+        let image = decode_codestream(&bytes, &DecodeOptions::default()).unwrap();
+        assert_eq!(
+            image.components()[0].samples(),
+            &TypedSamples::Unsigned(vec![0])
+        );
+
+        let empty_packet = bytes.len() - 3;
+        bytes[empty_packet] = 0x80;
+        assert!(matches!(
+            decode_codestream(&bytes, &DecodeOptions::default()),
             Err(DecodeError::MalformedInput {
                 kind: MalformedKind::InvalidPacketHeader,
                 ..

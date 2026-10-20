@@ -51,19 +51,33 @@
         }, {
           "if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]},
           "then": {"properties": {"artifacts": {"minItems": 1}}}
+        }, {
+          "if": {"properties": {"encoder_invoked": {"const": true}}, "required": ["encoder_invoked"]},
+          "then": {"properties": {"timings": {"properties": {"encoder_ms": {"type": "number", "minimum": 0}}}}}
+        }, {
+          "if": {"properties": {"encoder_invoked": {"const": false}}, "required": ["encoder_invoked"]},
+          "then": {
+            "properties": {
+              "encoder_options": {"maxItems": 0},
+              "timings": {"properties": {"encoder_ms": {"type": "null"}}}
+            }
+          }
         }],
         "properties": {
           "id": {"type": "string"},
           "lossless": {"type": "boolean"},
           "width": {"type": "integer", "minimum": 1},
           "height": {"type": "integer", "minimum": 1},
+          "format": {"enum": ["raw", "jp2", "jph"]},
+          "pattern": {"enum": ["varied", "sparse", "fixed"]},
+          "encoder_invoked": {"type": "boolean"},
           "elapsed_ms": {"type": "number", "minimum": 0},
           "timings": {
             "type": "object",
             "additionalProperties": false,
             "required": ["encoder_ms", "reference_ms", "subject_ms"],
             "properties": {
-              "encoder_ms": {"type": "number", "minimum": 0},
+              "encoder_ms": {"type": ["number", "null"], "minimum": 0},
               "reference_ms": {"type": "number", "minimum": 0},
               "subject_ms": {"type": "number", "minimum": 0}
             }

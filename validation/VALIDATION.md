@@ -27,7 +27,7 @@ internal approvals, old results, or committed source snapshots. `--subject`
 selects a different harness; `--no-build` uses the existing default binary.
 
 All reports default to ignored `target/validation/`. The `run`, `budget`,
-`official`, `numerical`, `schemas`, and `all` commands accept `--output-dir`. Existing
+`official`, `numerical`, `htj2k`, `schemas`, and `all` commands accept `--output-dir`. Existing
 tracked report paths are refused. Reports bind the Git commit, dirty flag,
 current source and validation-tool hashes, and subject binary hash when run.
 These describe the current execution, not the validity of historical evidence.
@@ -121,6 +121,130 @@ process failures, invalid output and exceeded thresholds cannot pass.
 `--encoder`, `--decoder`, `OPENJPEG_ENCODER` and `OPENJPEG_DECODER` select trusted
 local tools. `all` includes this gate unless `--no-external` is selected.
 
+### Independent HTJ2K checks
+
+The separate `htj2k` gate uses OpenJPH's `ojph_compress` and `ojph_expand`.
+Build the immutable revision listed in [REFERENCES.md](../REFERENCES.md)
+with Git, CMake, and a C++ compiler available:
+
+```sh
+bash validation/build-openjph.sh
+export OPENJPH_ENCODER="$PWD/target/validation/oracles/openjph-build/src/apps/ojph_compress/ojph_compress"
+export OPENJPH_DECODER="$PWD/target/validation/oracles/openjph-build/src/apps/ojph_expand/ojph_expand"
+.venv/bin/python validation/run-validation.py htj2k
+```
+
+The builder keeps the public reference checkout and build under ignored
+`target/validation/oracles/`, disables SIMD for scalar reproducibility, and
+rejects a modified or different-revision cached checkout. No upstream source
+or binaries are included in the source package.
+
+Generated nonzero cases exercise grayscale/RGB, 8/16-bit samples, sparse
+coefficients, odd dimensions, tiles, nonzero origins, progression orders,
+raw/JPH wrapping, and reversible/irreversible transforms. First-party fixed
+codestream recipes cover positive/negative significance propagation and
+magnitude refinement, combined refinement, and a minimum-value boundary.
+Both the reference decoder and the subject must reproduce each fixed case's
+known samples. Preencoded cases report `encoder_invoked=false`, empty encoder
+options, and a `null` encoder timing; the encoder is not run for those cases.
+
+For live lossless encoding, the reference's decoded samples must match the
+original source before the subject runs. A reference self-roundtrip failure
+is retained as a failure, not accepted as an alternative expected image.
+The pinned reference encoder does not preserve the minimum-valued one-pixel
+input with zero decompositions. Live encoder cases therefore use at least
+one decomposition; an independently decoded fixed stream covers that
+zero-decomposition boundary.
+
+`htj2k-results.json` uses the same numerical schema, per-case engineering
+thresholds, process bounds, hash bindings, and failure retention as the legacy
+numerical gate. These comparisons do not establish official Part 4
+conformance or exhaustive Part 15 coverage. Missing unconfigured tools block
+the gate; an explicitly configured missing tool is an error.
+`all` does not implicitly run `htj2k`; CI runs both commands explicitly.
+
+## Nonzero selection relations
+
+The Python regression suite also exercises the production `*_selected` APIs
+on independently encoded nonzero images. It compares native full-resolution
+and reduced-resolution output with OpenJPEG/OpenJPH, then compares region,
+single-tile, rectangular tile-set, and tile-contained region output with exact
+crops of the corresponding native full decode. Independent reference crops
+must also meet the declared per-case numerical budgets.
+
+```sh
+PYTHONPATH=validation .venv/bin/python -m unittest discover \
+  -s validation/tests -p test_selection.py -v
+```
+
+These tests cover raw, JP2, JPH, and JPX component decoding; grayscale/RGB;
+8/16-bit samples; odd dimensions and nonzero origins; uniformly subsampled
+components; and reversible/irreversible transforms. Reference resolution
+reduction uses `opj_decompress -r` or `ojph_expand -skip_res`, not image
+resizing. Nonzero fixtures additionally distinguish native DWT output from
+simple post-decode decimation. Rectangles and reported output origins use the
+image reference grid; PNM component dimensions are kept separate from the
+subsampled image-grid extent.
+
+Invalid nonrectangular tile sets and regions extending outside selected tiles
+must retain typed selection errors. The tests do not relax those API
+constraints. Tests needing unavailable native tools are explicitly skipped;
+the CI setup installs both reference implementations before running them.
+Disagreements retain source/encoded/reference files and a hash-bound
+reproduction record under ignored `selection-failures/`, included in CI
+artifacts. These component-selection tests do not replace JPX composition,
+JPIP reconstruction, color-resampling, or official conformance checks.
+
+The example harness exposes the same selection controls without changing its
+ordinary full-decode path:
+
+```sh
+cargo run --example validation_decoder -- select raw image.j2k 1 all 4,6,32,24
+cargo run --example validation_decoder -- select jp2 image.jp2 0 0,1 all
+```
+
+The arguments after the input are discard levels, `all` or comma-separated
+tile indices, and `all` or `x,y,width,height`. Selected output begins with a
+`FRAME` line containing the actual output origin, followed by the existing
+image observation.
+
+## Nonzero JPX and JPIP relations
+
+The Python suite also builds first-party JPX and JPIP structures around
+independently encoded nonzero samples:
+
+```sh
+PYTHONPATH=validation .venv/bin/python -m unittest discover \
+  -s validation/tests -p test_container_relations.py -v
+```
+
+JPX relations cover 8-bit grayscale and 16-bit RGB layers, chroma-key
+transparency, overlapping placements, source crops, frame persistence and
+finite frame bounds. Expected canvases are calculated from the original
+samples and authored placement rectangles, not from another subject decode.
+These cases use opaque/binary alpha; they do not establish fractional or
+premultiplied-alpha numerical conformance.
+
+JPIP relations check byte-exact reconstruction from reordered, duplicated,
+explicit/inherited-context fragments, followed by sample-exact legacy and
+HT decoding. Independently decoded OpenJPEG quality prefixes provide expected
+8/16-bit progressive images. Incomplete packets and repeated updates must not
+emit new images; complete layers must advance monotonically and reproduce the
+corresponding independent output. Stored legacy magnitude bits remain a
+prefix while integer coefficient materialization adds the coefficient-local
+truncation midpoint. The last fully decoded bitplane needs no integer offset.
+
+Automatic progressive cases use the original packet-length metadata.
+Explicit-plan cases use authored inline headers without obsolete PLT
+declarations, and separately retain the rejection of unsupported headers;
+tests do not broaden the manual API's supported profile.
+No network transport or service is involved.
+
+Failures retain generated inputs, reference images, tool hashes/options and
+reproduction records under ignored `container-failures/`. Distinct input,
+subject and test hashes select distinct failure directories, so a later
+disagreement does not overwrite an earlier one. CI uploads those directories.
+
 ## Budgets
 
 ```sh
@@ -131,6 +255,46 @@ Defaults are five seconds per case, 30 seconds total, one-MiB input/output
 caps, and 512 MiB address space where POSIX `RLIMIT_AS` is available. Execution
 enforces bounded output capture and reports unavailable memory enforcement.
 Decoder `ResourceLimits` remain active on every platform.
+
+### Representative process measurements
+
+On Linux, install GNU Time alongside the OpenJPEG tools and run:
+
+```sh
+.venv/bin/python validation/run-validation.py resources
+```
+
+This builds the release-mode harness and measures 1024-by-1024 grayscale and
+512-by-512 RGB lossless inputs, each tiled at 128-by-128. Full decode, tile-zero
+selection, and native resolution with two discarded levels must reproduce
+independent OpenJPEG output exactly. Declared-pixel-limit and truncated-header
+cases must produce their expected typed errors, not merely exit unsuccessfully.
+
+Each of the eight cases is measured three times. GNU Time reports actual peak
+process RSS; the bounded runner measures wall time including process startup
+and image-observation serialization. The engineering thresholds are:
+
+| Case | Maximum time per process | Maximum peak RSS |
+|---|---:|---:|
+| Full image | 5 seconds | 512 MiB |
+| Tile/native-resolution selection | 2.5 seconds | 256 MiB |
+| Early typed rejection | 1 second | 128 MiB |
+
+Aggregate measured native time is limited to 30 seconds. Tile-zero peak RSS
+must be at least 25 percent lower than full decode for each generated image.
+Each process also has a one-GiB address-space limit and bounded output capture.
+These measurements are not universal worst-case guarantees. Decoded sample
+storage, address-space enforcement, and measured total-process RSS are distinct
+quantities; the report keeps them separate.
+
+`resource-results.json` retains source/tool/input/output hashes, repetitions,
+individual observations, median times, peak RSS, thresholds and explicit
+failures. Unavailable default tooling/platform support blocks the gate;
+explicitly configured missing tools and absent measurements cannot pass.
+Failed inputs are preserved under ignored `resource-failures/` and uploaded
+by CI. `all` does not implicitly invoke this Linux-specific gate; CI calls it
+separately. `--subject` selects a trusted prebuilt binary; `--no-build` uses
+the existing release harness.
 
 ## Technical reference inventory
 

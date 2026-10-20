@@ -631,7 +631,10 @@ pub struct HtQuadMetadata {
     pub context: u8,
     pub initial_row: bool,
     pub significance: u8,
+    /// Values of the embedded leading bits (e_1), one flag per sample.
     pub embedded_magnitude: u8,
+    /// Flags selecting omitted leading bits (e_k), one flag per sample.
+    pub embedded_bit_mask: u8,
     pub u_offset: bool,
     pub u_base: u8,
     pub codeword_bits: u8,
@@ -1279,6 +1282,9 @@ pub fn parse_ht_block_segments<'a>(
 struct HtCleanupReaders<'a> {
     mel: HtMelBitReader<'a>,
     vlc: HtReverseVlcReader<'a>,
+    mel_last_byte: Option<u16>,
+    vlc_last_byte: Option<u16>,
+    terminal_byte: u16,
     mel_state: u8,
     mel_zero_events: u8,
     mel_terminating_one: bool,
@@ -1292,6 +1298,17 @@ impl<'a> HtCleanupReaders<'a> {
         Ok(Self {
             mel: HtMelBitReader::new(segment.mel().bytes(), limits)?,
             vlc: HtReverseVlcReader::new(segment.vlc().bytes(), limits)?,
+            mel_last_byte: None,
+            vlc_last_byte: None,
+            terminal_byte: u16::try_from(
+                segment
+                    .vlc()
+                    .bytes()
+                    .len()
+                    .checked_sub(2)
+                    .ok_or_else(invalid_code_block)?,
+            )
+            .map_err(|_| arithmetic_overflow())?,
             mel_state: 0,
             mel_zero_events: 0,
             mel_terminating_one: false,
@@ -1316,12 +1333,30 @@ impl<'a> HtCleanupReaders<'a> {
         Ok(())
     }
 
-    fn cursors_separate(&self) -> bool {
-        match (self.mel.next_position(), self.vlc.next_position()) {
-            (Some(mel), Some(vlc)) => {
-                crate::refinement::ht_cursors_separated(mel.byte, mel.bit, vlc.byte, vlc.bit)
-            }
-            _ => false,
+    fn can_claim_byte(&self, direction: HtStreamDirection, byte: u16) -> bool {
+        let value = match self.vlc.input.get(usize::from(byte)) {
+            Some(value) => *value,
+            None => return false,
+        };
+        match direction {
+            HtStreamDirection::Forward => match self.vlc_last_byte {
+                Some(vlc) => crate::refinement::ht_cleanup_byte_claims_valid(
+                    byte,
+                    vlc,
+                    self.terminal_byte,
+                    value,
+                ),
+                None => byte <= self.terminal_byte,
+            },
+            HtStreamDirection::Reverse => match self.mel_last_byte {
+                Some(mel) => crate::refinement::ht_cleanup_byte_claims_valid(
+                    mel,
+                    byte,
+                    self.terminal_byte,
+                    value,
+                ),
+                None => byte <= self.terminal_byte,
+            },
         }
     }
 
@@ -1329,19 +1364,23 @@ impl<'a> HtCleanupReaders<'a> {
         if self.mel.next_position().is_none() {
             self.mel.load_byte()?;
         }
-        if !self.cursors_separate() {
+        let position = self.mel.next_position().ok_or_else(invalid_code_block)?;
+        if !self.can_claim_byte(HtStreamDirection::Forward, position.byte) {
             return Err(invalid_code_block());
         }
         let bit = self.mel.read_bit()?;
+        self.mel_last_byte = Some(position.byte);
         self.tick()?;
         Ok(bit)
     }
 
     fn read_vlc_bit(&mut self) -> Result<bool, DecodeError> {
-        if !self.cursors_separate() {
+        let position = self.vlc.next_position().ok_or_else(invalid_code_block)?;
+        if !self.can_claim_byte(HtStreamDirection::Reverse, position.byte) {
             return Err(invalid_code_block());
         }
         let bit = self.vlc.read_bit()?;
+        self.vlc_last_byte = Some(position.byte);
         self.tick()?;
         Ok(bit)
     }
@@ -1358,13 +1397,11 @@ impl<'a> HtCleanupReaders<'a> {
             )
         )]
         while bit < count {
-            let separated = match (self.mel.next_position(), copy.next_position()) {
-                (Some(mel), Some(vlc)) => {
-                    mel.byte < vlc.byte || (mel.byte == vlc.byte && mel.bit > vlc.bit)
-                }
-                _ => false,
+            let available = match copy.next_position() {
+                Some(vlc) => self.can_claim_byte(HtStreamDirection::Reverse, vlc.byte),
+                None => false,
             };
-            if !separated {
+            if !available {
                 break;
             }
             let Ok(decoded) = copy.read_bit() else {
@@ -1616,11 +1653,23 @@ impl<'a> HtCleanupReaders<'a> {
     }
 
     fn finish(&self) -> Result<(), DecodeError> {
-        match (self.mel.next_position(), self.vlc.next_position()) {
-            (Some(mel), Some(vlc))
-                if mel.byte > vlc.byte || (mel.byte == vlc.byte && mel.bit <= vlc.bit) =>
-            {
-                Err(invalid_code_block())
+        match (self.mel_last_byte, self.vlc_last_byte) {
+            (Some(mel), Some(vlc)) => {
+                let value = *self
+                    .vlc
+                    .input
+                    .get(usize::from(mel))
+                    .ok_or_else(invalid_code_block)?;
+                if crate::refinement::ht_cleanup_byte_claims_valid(
+                    mel,
+                    vlc,
+                    self.terminal_byte,
+                    value,
+                ) {
+                    Ok(())
+                } else {
+                    Err(invalid_code_block())
+                }
             }
             _ => Ok(()),
         }
@@ -1712,15 +1761,24 @@ fn decode_ht_cleanup_segment_metadata(
                     let north_pattern = *previous_patterns
                         .get(quad_index)
                         .ok_or_else(invalid_code_block)?;
-                    let north = north_pattern & 0x0a != 0;
+                    let north_west_pattern = match quad_index.checked_sub(1) {
+                        Some(index) => *previous_patterns
+                            .get(index)
+                            .ok_or_else(invalid_code_block)?,
+                        None => 0,
+                    };
                     let north_east_index =
                         quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
                     let north_east_pattern = match previous_patterns.get(north_east_index) {
                         Some(pattern) => *pattern,
                         None => 0,
                     };
-                    let north_east = north_east_pattern & 0x0a != 0;
-                    left_context | u8::from(north) | (u8::from(north_east) << 2)
+                    crate::refinement::ht_noninitial_vlc_context(
+                        left_context,
+                        north_west_pattern,
+                        north_pattern,
+                        north_east_pattern,
+                    )
                 };
                 let word = readers.decode_quad_word(initial, context)?;
                 let significance = ((word >> 4) & 0x0f) as u8;
@@ -1813,6 +1871,7 @@ fn decode_ht_cleanup_segment_metadata(
                     initial_row: initial,
                     significance,
                     embedded_magnitude: ((word >> 8) & 0x0f) as u8,
+                    embedded_bit_mask: ((word >> 12) & 0x0f) as u8,
                     u_offset: word & 0x08 != 0,
                     u_base: u_value,
                     codeword_bits: (word & 0x07) as u8,
@@ -1867,7 +1926,8 @@ pub fn complete_ht_kappa(
 fn reconstruct_ht_magnitude(
     reader: &mut HtForwardMagSgnReader<'_>,
     completed_u: u8,
-    embedded: bool,
+    embedded_bit: bool,
+    embedded_value: bool,
     decoded_bitplanes: u16,
 ) -> Result<(Magnitude, bool, u8), DecodeError> {
     if completed_u == 0
@@ -1877,7 +1937,7 @@ fn reconstruct_ht_magnitude(
     {
         return Err(invalid_code_block());
     }
-    let magnitude_bits = crate::refinement::ht_magnitude_payload_bits(completed_u, embedded);
+    let magnitude_bits = crate::refinement::ht_magnitude_payload_bits(completed_u, embedded_bit);
     let mut bin_center = Magnitude::ZERO;
     let mut negative = false;
     let mut exponent = 0_u8;
@@ -1899,7 +1959,7 @@ fn reconstruct_ht_magnitude(
         }
         bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if embedded {
+    if embedded_value {
         bin_center = bin_center.checked_add(Magnitude::single_bit(u16::from(magnitude_bits))?)?;
         exponent = magnitude_bits
             .checked_add(1)
@@ -2020,11 +2080,13 @@ fn reconstruct_ht_cleanup_plane(
             if x < metadata.width && y < metadata.height {
                 statistics.scanned(1)?;
                 if quad.significance & (1_u8 << sample) != 0 {
-                    let embedded = quad.embedded_magnitude & (1_u8 << sample) != 0;
+                    let embedded_bit = quad.embedded_bit_mask & (1_u8 << sample) != 0;
+                    let embedded_value = quad.embedded_magnitude & (1_u8 << sample) != 0;
                     let (magnitude, negative, exponent) = reconstruct_ht_magnitude(
                         &mut reader,
                         completed_u,
-                        embedded,
+                        embedded_bit,
+                        embedded_value,
                         decoded_bitplanes,
                     )?;
                     output.mark_significant_magnitude(x, y, magnitude, negative)?;
@@ -2146,7 +2208,13 @@ fn decode_ht_refinement_plane(
                             .ok_or_else(invalid_code_block)?,
                     ) {
                         let bit = readers.read_reverse()?;
-                        output.apply_ht_refinement_decision(x, y, delta, bit)?;
+                        // The final upper half-bin truncates to the existing integer magnitude.
+                        let adjustment = if decoded_bitplanes == 2 && bit {
+                            Magnitude::ZERO
+                        } else {
+                            delta
+                        };
+                        output.apply_ht_refinement_decision(x, y, adjustment, bit)?;
                         statistics.decoded_symbols(1)?;
                         statistics.refined()?;
                     }
@@ -2268,23 +2336,34 @@ pub struct CodeBlockSegmentAccounting {
 #[derive(Clone, Copy, Default)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct CoefficientState {
+    /// Decoded magnitude bits; unfinished legacy passes retain a bit prefix.
     pub magnitude: u64,
     magnitude_high: [u64; 5],
+    legacy_bitplane: Option<u16>,
     pub negative: bool,
     pub significant: bool,
     pub refined: bool,
 }
 
 impl CoefficientState {
-    pub(crate) fn signed_magnitude(&self) -> SignedMagnitude {
-        SignedMagnitude::new(
-            if self.significant {
-                self.wide_magnitude()
+    pub(crate) fn signed_magnitude(&self) -> Result<SignedMagnitude, DecodeError> {
+        let mut magnitude = if self.significant {
+            self.wide_magnitude()
+        } else {
+            Magnitude::ZERO
+        };
+        if let (true, Some(bitplane)) = (self.significant, self.legacy_bitplane) {
+            let midpoint = if bitplane <= 64 {
+                Magnitude::from_u64(crate::refinement::tier1_midpoint_delta(bitplane))
             } else {
-                Magnitude::ZERO
-            },
+                Magnitude::single_bit(bitplane - 1)?
+            };
+            magnitude = magnitude.checked_add(midpoint)?;
+        }
+        Ok(SignedMagnitude::new(
+            magnitude,
             self.significant && self.negative,
-        )
+        ))
     }
     pub fn magnitude_limb(&self, index: usize) -> Option<u64> {
         if index == 0 {
@@ -2326,6 +2405,7 @@ impl CoefficientState {
         let mut output = Self {
             magnitude: magnitude.low_u64(),
             magnitude_high: [0; 5],
+            legacy_bitplane: None,
             negative,
             significant,
             refined,
@@ -3035,11 +3115,12 @@ impl Tier1CodeBlockDecoder {
         }
         let skipped_bitplanes =
             u16::try_from(self.next_pass / 3).map_err(|_| arithmetic_overflow())?;
-        let maximum_u = match u8::try_from(skipped_bitplanes.saturating_add(1)) {
-            Ok(value) => value,
-            Err(_) => MAX_HT_MAGNITUDE_BITS,
-        }
-        .min(self.ht_magnitude_bound);
+        let missing_msbs = self.zero_bitplanes.unwrap_or(0);
+        let maximum_u = crate::refinement::part15_cleanup_u_bound(
+            missing_msbs,
+            skipped_bitplanes,
+            self.ht_magnitude_bound,
+        );
         self.decode_ht_coefficient_symbols(
             segments,
             pass_count,
@@ -3942,10 +4023,10 @@ fn decode_sign_and_mark(
     let sign = sign_context(summary);
     let raw = matches!(decoder, Tier1SymbolDecoder::Raw(_));
     let decoded_sign = decoder.decode(usize::from(sign.context))?;
-    plane.mark_significant_magnitude(
+    plane.mark_significant_at_bitplane(
         x,
         y,
-        Magnitude::single_bit(bitplane)?,
+        bitplane,
         crate::refinement::tier1_decoded_sign(decoded_sign, sign.predicted_negative, raw),
     )
 }
@@ -4111,13 +4192,16 @@ impl CodeBlockPlane {
         &self.coefficients
     }
 
+    /// Returns the reconstructed integer coefficient, including any legacy
+    /// truncation midpoint; `coefficient` retains the decoded magnitude bits.
     pub fn signed_coefficient(&self, x: u16, y: u16) -> Result<i64, DecodeError> {
         let coefficient = self.coefficient(x, y)?;
         if !coefficient.significant {
             return Ok(0);
         }
         let magnitude = coefficient
-            .wide_magnitude()
+            .signed_magnitude()?
+            .magnitude
             .to_u64()
             .and_then(|value| i64::try_from(value).ok())
             .ok_or_else(arithmetic_overflow)?;
@@ -4140,6 +4224,22 @@ impl CodeBlockPlane {
         negative: bool,
     ) -> Result<(), DecodeError> {
         self.mark_significant_magnitude(x, y, Magnitude::from_u64(magnitude), negative)
+    }
+
+    fn mark_significant_at_bitplane(
+        &mut self,
+        x: u16,
+        y: u16,
+        bitplane: u16,
+        negative: bool,
+    ) -> Result<(), DecodeError> {
+        self.mark_significant_magnitude(x, y, Magnitude::single_bit(bitplane)?, negative)?;
+        let index = self.index(x, y)?;
+        self.coefficients
+            .get_mut(index)
+            .ok_or_else(invalid_code_block)?
+            .legacy_bitplane = Some(bitplane);
+        Ok(())
     }
 
     fn mark_significant_magnitude(
@@ -4213,6 +4313,9 @@ impl CodeBlockPlane {
             self.coefficients[index].set_magnitude(magnitude)?;
         }
         self.coefficients[index].refined = true;
+        if coefficient.legacy_bitplane.is_some() {
+            self.coefficients[index].legacy_bitplane = Some(bitplane);
+        }
         Ok(())
     }
 
@@ -4223,7 +4326,7 @@ impl CodeBlockPlane {
         delta: Magnitude,
         refinement_bit: bool,
     ) -> Result<(), DecodeError> {
-        if delta.is_zero() {
+        if delta.is_zero() && !refinement_bit {
             return Err(invalid_code_block());
         }
         let index = self.index(x, y)?;
@@ -4411,6 +4514,18 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ht_cleanup_u_bound_includes_packet_msbs_and_placeholders() {
+        assert_eq!(crate::refinement::part15_cleanup_u_bound(0, 0, 74), 2);
+        assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 0, 8), 8);
+        assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 1, 74), 9);
+        assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 1, 8), 8);
+        assert_eq!(
+            crate::refinement::part15_cleanup_u_bound(u16::MAX, u16::MAX, 74),
+            74
+        );
+    }
 
     #[test]
     fn leading_zero_bitplanes_are_configured_once_before_coding() {
@@ -4613,6 +4728,7 @@ mod tests {
                 initial_row: true,
                 significance: 1,
                 embedded_magnitude: 0,
+                embedded_bit_mask: 0,
                 u_offset: false,
                 u_base: 1,
                 codeword_bits: 4,
@@ -4762,7 +4878,7 @@ mod tests {
             decode_ht_refinement_plane(&cleanup, both, 2, 2, false, &limits).unwrap();
         assert_eq!(statistics.refined_coefficients, 1);
         assert_eq!(statistics.newly_significant, 1);
-        assert_eq!(both_plane.signed_coefficient(0, 0).unwrap(), 4);
+        assert_eq!(both_plane.signed_coefficient(0, 0).unwrap(), 3);
         assert_eq!(both_plane.signed_coefficient(1, 0).unwrap(), 1);
 
         let bad_bytes = [0xff];
@@ -4811,15 +4927,153 @@ mod tests {
     }
 
     #[test]
+    fn ht_embedded_zero_bit_still_reduces_payload_precision() {
+        let mut reader = HtForwardMagSgnReader::new(&[0x04], &ResourceLimits::default()).unwrap();
+        let (magnitude, negative, exponent) =
+            reconstruct_ht_magnitude(&mut reader, 3, true, false, 1).unwrap();
+        assert_eq!(magnitude.to_u64(), Some(1));
+        assert!(!negative);
+        assert_eq!(exponent, 1);
+        assert_eq!(reader.physical_bits_read(), 2);
+    }
+
+    #[test]
     fn reconstructs_capability_b74_magnitude_without_narrowing() {
         let bytes = [0_u8; 10];
         let mut reader = HtForwardMagSgnReader::new(&bytes, &ResourceLimits::default()).unwrap();
         let (magnitude, negative, exponent) =
-            reconstruct_ht_magnitude(&mut reader, 74, false, 1).unwrap();
+            reconstruct_ht_magnitude(&mut reader, 74, false, false, 1).unwrap();
         assert!(!negative);
         assert_eq!(exponent, 1);
         assert_eq!(magnitude.to_u64(), Some(1));
         assert_eq!(reader.physical_bits_read(), 74);
+    }
+
+    #[test]
+    fn ht_noninitial_context_uses_the_northern_boundary_stencil() {
+        assert_eq!(crate::refinement::ht_noninitial_vlc_context(2, 0, 0, 0), 2);
+        assert_eq!(crate::refinement::ht_noninitial_vlc_context(0, 8, 0, 0), 1);
+        assert_eq!(crate::refinement::ht_noninitial_vlc_context(0, 0, 2, 0), 1);
+        assert_eq!(crate::refinement::ht_noninitial_vlc_context(0, 0, 8, 0), 4);
+        assert_eq!(crate::refinement::ht_noninitial_vlc_context(0, 0, 0, 2), 4);
+        assert_eq!(
+            crate::refinement::ht_noninitial_vlc_context(2, 15, 15, 15),
+            7
+        );
+        assert_eq!(crate::refinement::ht_noninitial_vlc_context(0, 0, 5, 0), 0);
+    }
+
+    #[test]
+    fn ht_cleanup_context_preserves_both_northern_columns() {
+        let metadata = decode_ht_cleanup_metadata(
+            &[0x00, 0x00, 0xd5, 0xb4, 0x00],
+            2,
+            4,
+            8,
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(metadata.significant_samples, 8, "{metadata:?}");
+        assert_eq!(metadata.quads[0].significance, 15);
+        assert_eq!(metadata.quads[1].context, 5);
+        assert_eq!(metadata.quads[1].significance, 15);
+    }
+
+    #[test]
+    fn ht_cleanup_accepts_fused_mel_vlc_final_byte() {
+        let metadata = decode_ht_cleanup_metadata(
+            &[0xf0, 0x0c, 0xe3, 0x00],
+            4,
+            1,
+            8,
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(metadata.quads.len(), 2);
+        assert_eq!(metadata.quads[0].significance, 5);
+        assert_eq!(metadata.quads[1].significance, 5);
+    }
+
+    #[test]
+    fn ht_cleanup_fusion_does_not_cross_bytes() {
+        let limits = ResourceLimits::default();
+        let segments = parse_ht_block_segments(&[0x00, 0x00, 0x04, 0x00], None, &limits).unwrap();
+        let mut readers = HtCleanupReaders::new(segments.cleanup(), &limits).unwrap();
+        for _ in 0..4 {
+            readers.read_vlc_bit().unwrap();
+        }
+        for _ in 0..8 {
+            readers.read_mel_bit().unwrap();
+        }
+        for _ in 0..8 {
+            readers.read_vlc_bit().unwrap();
+        }
+        for _ in 0..8 {
+            readers.read_mel_bit().unwrap();
+        }
+        readers.finish().unwrap();
+        assert!(readers.read_mel_bit().is_err());
+        assert!(readers.read_vlc_bit().is_err());
+    }
+
+    #[test]
+    fn ht_cleanup_fusion_excludes_ff() {
+        let limits = ResourceLimits::default();
+        let segments = parse_ht_block_segments(&[0x00, 0xff, 0x04, 0x00], None, &limits).unwrap();
+        let mut readers = HtCleanupReaders::new(segments.cleanup(), &limits).unwrap();
+        for _ in 0..4 {
+            readers.read_vlc_bit().unwrap();
+        }
+        for _ in 0..8 {
+            readers.read_mel_bit().unwrap();
+        }
+        readers.read_vlc_bit().unwrap();
+        assert!(readers.read_mel_bit().is_err());
+    }
+
+    #[test]
+    fn legacy_partial_quality_reconstructs_signed_midpoints_without_changing_prefixes() {
+        for negative in [false, true] {
+            let mut plane = CodeBlockPlane::new(1, 1).unwrap();
+            plane
+                .mark_significant_at_bitplane(0, 0, 4, negative)
+                .unwrap();
+            assert_eq!(plane.coefficient(0, 0).unwrap().magnitude, 16);
+            let sign = if negative { -1 } else { 1 };
+            assert_eq!(plane.signed_coefficient(0, 0).unwrap(), sign * 24);
+            for (bitplane, bit, expected) in
+                [(3, false, 20), (2, true, 22), (1, true, 23), (0, true, 23)]
+            {
+                plane.apply_refinement_bit(0, 0, bitplane, bit).unwrap();
+                assert_eq!(plane.signed_coefficient(0, 0).unwrap(), sign * expected);
+            }
+            assert_eq!(plane.coefficient(0, 0).unwrap().magnitude, 23);
+        }
+    }
+
+    #[test]
+    fn legacy_partial_pass_midpoints_are_coefficient_local() {
+        let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+        plane.mark_significant_at_bitplane(0, 0, 3, false).unwrap();
+        plane.mark_significant_at_bitplane(1, 0, 2, false).unwrap();
+        assert_eq!(plane.signed_coefficient(0, 0).unwrap(), 12);
+        assert_eq!(plane.signed_coefficient(1, 0).unwrap(), 6);
+        plane.apply_refinement_bit(0, 0, 2, false).unwrap();
+        assert_eq!(plane.signed_coefficient(0, 0).unwrap(), 10);
+        assert_eq!(plane.signed_coefficient(1, 0).unwrap(), 6);
+    }
+
+    #[test]
+    fn legacy_midpoint_reconstruction_preserves_wide_magnitudes() {
+        for (bitplane, low, high) in [(64, 1_u64 << 63, 1), (65, 0, 3), (74, 0, 1536)] {
+            let mut plane = CodeBlockPlane::new(1, 1).unwrap();
+            plane
+                .mark_significant_at_bitplane(0, 0, bitplane, false)
+                .unwrap();
+            let reconstructed = plane.coefficient(0, 0).unwrap().signed_magnitude().unwrap();
+            assert_eq!(reconstructed.magnitude.limb(0), Some(low));
+            assert_eq!(reconstructed.magnitude.limb(1), Some(high));
+        }
     }
 
     #[test]
@@ -4990,6 +5244,7 @@ mod tests {
             CoefficientState {
                 magnitude: 8,
                 magnitude_high: [0; 5],
+                legacy_bitplane: None,
                 negative: false,
                 significant: true,
                 refined: true,

@@ -1174,6 +1174,7 @@ impl PacketPrecinctDecoder {
         )
     }
 
+    /// An empty execution list represents a precinct with no nonempty subbands.
     pub fn new_subbands(
         component: u16,
         resolution: u8,
@@ -1182,7 +1183,7 @@ impl PacketPrecinctDecoder {
         mut executions: Vec<PacketSubbandExecution>,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        if executions.is_empty() || executions.len() > 3 {
+        if executions.len() > 3 {
             return Err(invalid_packet_header());
         }
         let mut states = Vec::new();
@@ -1797,10 +1798,9 @@ fn decode_precinct_packet(
         subbands,
         ..
     } = precinct;
-    if states.is_empty()
-        || states.len() != contexts.len()
+    if states.len() != contexts.len()
         || states.len() != decoders.len()
-        || subbands.is_empty()
+        || states.is_empty() != subbands.is_empty()
     {
         return Err(invalid_packet_header());
     }
@@ -1827,7 +1827,6 @@ fn decode_precinct_packet(
         .component_coding_styles
         .style(component)?
         .tier1_coding_style()?;
-    let layer = contexts.first().ok_or_else(invalid_packet_header)?.layer;
     let mut tile_offset = 0_usize;
     let mut packed_bytes_consumed = 0_usize;
     if tile_part.coding_style.sop_markers {
@@ -1863,6 +1862,7 @@ fn decode_precinct_packet(
     let mut contributions = vec![None; states.len()];
     let mut contribution_count = 0_u32;
     if packet_present {
+        let layer = contexts.first().ok_or_else(invalid_packet_header)?.layer;
         let subband_count = subbands.len();
         let mut subband_index = 0_usize;
         #[cfg_attr(
@@ -3915,6 +3915,130 @@ mod tests {
     }
 
     #[test]
+    fn decodes_ht_cleanup_with_packet_missing_msbs() {
+        // Independently encoded one-pixel residuals from OpenJPH 0.33.0.
+        for (body, magnitude) in [
+            ([0x8e, 0x01, 0x07, 0x74, 0x00], 72),
+            ([0xfc, 0x01, 0x07, 0x74, 0x00], 127),
+        ] {
+            let mut segment_passes = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+            let mut segment_lengths = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+            segment_passes[0] = 1;
+            segment_lengths[0] = 5;
+            let contribution = CodeBlockContribution {
+                first_inclusion: true,
+                zero_bitplanes: 6,
+                new_passes: 1,
+                data_length: 5,
+                high_throughput: true,
+                segment_count: 1,
+                segment_passes,
+                segment_lengths,
+            };
+            let mut decoder = Tier1CodeBlockDecoder::new(
+                1,
+                1,
+                7,
+                crate::tier1::SubbandOrientation::Ll,
+                Tier1CodingStyle::from_code_block_style(0x40).unwrap(),
+            )
+            .unwrap();
+            decoder.set_ht_magnitude_bound(8).unwrap();
+            decode_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                &body,
+                &ResourceLimits::default(),
+            )
+            .unwrap();
+            let coefficient = decoder.plane().coefficient(0, 0).unwrap();
+            assert!(coefficient.significant);
+            assert!(!coefficient.negative);
+            assert_eq!(coefficient.magnitude, magnitude);
+            assert_eq!(decoder.next_pass(), 1);
+        }
+    }
+
+    #[test]
+    fn decodes_ht_embedded_precision_separately_from_value() {
+        let mut segment_passes = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+        let mut segment_lengths = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+        segment_passes[0] = 1;
+        segment_lengths[0] = 8;
+        let contribution = CodeBlockContribution {
+            first_inclusion: true,
+            zero_bitplanes: 6,
+            new_passes: 1,
+            data_length: 8,
+            high_throughput: true,
+            segment_count: 1,
+            segment_passes,
+            segment_lengths,
+        };
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            2,
+            2,
+            7,
+            crate::tier1::SubbandOrientation::Ll,
+            Tier1CodingStyle::from_code_block_style(0x40).unwrap(),
+        )
+        .unwrap();
+        decoder.set_ht_magnitude_bound(8).unwrap();
+        let body = [0x00, 0x82, 0xc0, 0xf1, 0x00, 0x43, 0x94, 0x00];
+        decode_code_block_contribution_body(
+            &mut decoder,
+            &contribution,
+            &body,
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        for (x, y, value) in [(0, 0, 1), (1, 0, 2), (0, 1, 3), (1, 1, 72)] {
+            assert_eq!(decoder.plane().signed_coefficient(x, y).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn ht_final_magnitude_refinement_truncates_the_integer_half_bin() {
+        for (bit, magnitude) in [(0, 2), (1, 3)] {
+            let mut segment_passes = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+            let mut segment_lengths = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
+            segment_passes[0] = 1;
+            segment_passes[1] = 2;
+            segment_lengths[0] = 4;
+            segment_lengths[1] = 1;
+            let contribution = CodeBlockContribution {
+                first_inclusion: true,
+                zero_bitplanes: 5,
+                new_passes: 3,
+                data_length: 5,
+                high_throughput: true,
+                segment_count: 2,
+                segment_passes,
+                segment_lengths,
+            };
+            let mut decoder = Tier1CodeBlockDecoder::new(
+                1,
+                1,
+                7,
+                crate::tier1::SubbandOrientation::Ll,
+                Tier1CodingStyle::from_code_block_style(0x40).unwrap(),
+            )
+            .unwrap();
+            decoder.set_ht_magnitude_bound(8).unwrap();
+            let body = [0xfe, 0x00, 0x63, 0x00, bit];
+            decode_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                &body,
+                &ResourceLimits::default(),
+            )
+            .unwrap();
+            assert_eq!(decoder.plane().signed_coefficient(0, 0).unwrap(), magnitude);
+            assert!(decoder.plane().coefficient(0, 0).unwrap().refined);
+        }
+    }
+
+    #[test]
     fn routes_valid_ht_body_after_grouping_to_coefficient_boundary() {
         let limits = ResourceLimits::default();
         let mut segment_passes = [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION];
@@ -4053,7 +4177,7 @@ mod tests {
         };
         decode_code_block_contribution_body(&mut decoder, &magnitude, &[0x01], &limits).unwrap();
         assert_eq!(decoder.next_pass(), 3);
-        assert_eq!(decoder.plane().signed_coefficient(0, 0).unwrap(), -4);
+        assert_eq!(decoder.plane().signed_coefficient(0, 0).unwrap(), -3);
         assert_eq!(decoder.decoded_segments(), 3);
         assert_eq!(decoder.decoded_bytes(), 4);
     }

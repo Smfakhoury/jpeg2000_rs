@@ -217,6 +217,21 @@ pub(crate) const fn tier1_refined_magnitude(
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
+        requires bitplane <= 64,
+        ensures returns crate::specs::part1_tier1_midpoint_delta(bitplane),
+    )
+)]
+pub(crate) const fn tier1_midpoint_delta(bitplane: u16) -> u64 {
+    if bitplane == 0 {
+        0
+    } else {
+        1_u64 << (bitplane - 1)
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
         ensures returns crate::specs::part1_maxshift_restore(magnitude, shift),
     )
 )]
@@ -800,7 +815,7 @@ pub(crate) const fn packet_length_matches(actual: usize, expected: usize) -> boo
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
-        ensures returns crate::specs::part1_decode_denotation(
+        ensures returns crate::specs::part1_decode_output_shape_valid(
             input_bytes,
             tile_parts,
             expected_components,
@@ -810,7 +825,7 @@ pub(crate) const fn packet_length_matches(actual: usize, expected: usize) -> boo
         ),
     )
 )]
-pub(crate) const fn decode_denotation(
+pub(crate) const fn decode_output_shape_valid(
     input_bytes: usize,
     tile_parts: usize,
     expected_components: u16,
@@ -820,6 +835,7 @@ pub(crate) const fn decode_denotation(
 ) -> bool {
     input_bytes > 0
         && tile_parts > 0
+        && expected_components > 0
         && expected_components as usize == output_components
         && width > 0
         && height > 0
@@ -828,11 +844,11 @@ pub(crate) const fn decode_denotation(
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
-        ensures returns crate::specs::part1_typed_component_denotation(width, height, samples),
+        ensures returns crate::specs::part1_component_output_shape_valid(width, height, samples),
     )
 )]
-pub(crate) const fn typed_component_denotation(width: u32, height: u32, samples: usize) -> bool {
-    crate::refinement::wavelet_sample_count(width, height, samples)
+pub(crate) const fn component_output_shape_valid(width: u32, height: u32, samples: usize) -> bool {
+    width > 0 && height > 0 && crate::refinement::wavelet_sample_count(width, height, samples)
 }
 
 #[cfg_attr(
@@ -1271,6 +1287,29 @@ pub(crate) const fn part15_magnitude_bound(parameter: u8) -> u8 {
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
+        ensures returns (
+            crate::specs::part15_cleanup_u_bound(
+                missing_msbs as nat, placeholder_bitplanes as nat, capability_bound as nat,
+            ) as u8
+        ),
+    )
+)]
+pub(crate) const fn part15_cleanup_u_bound(
+    missing_msbs: u16,
+    placeholder_bitplanes: u16,
+    capability_bound: u8,
+) -> u8 {
+    let bound = missing_msbs as u32 + placeholder_bitplanes as u32 + 2;
+    if bound <= capability_bound as u32 {
+        bound as u8
+    } else {
+        capability_bound
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
         ensures returns crate::specs::part15_component_allowed(
             roi_allowed,
             has_roi,
@@ -1471,23 +1510,53 @@ pub(crate) const fn ht_reverse_data_bits(needs_unstuffing: bool, value: u8) -> u
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
-        ensures returns crate::specs::ht_cursors_separated(
+        ensures returns crate::specs::ht_cleanup_byte_claims_valid(
             mel_byte as nat,
-            mel_bit as nat,
             vlc_byte as nat,
-            vlc_bit as nat,
+            terminal_byte as nat,
+            value,
         ),
     )
 )]
-pub(crate) const fn ht_cursors_separated(
+pub(crate) const fn ht_cleanup_byte_claims_valid(
     mel_byte: u16,
-    mel_bit: u8,
     vlc_byte: u16,
-    vlc_bit: u8,
+    terminal_byte: u16,
+    value: u8,
 ) -> bool {
-    mel_bit < 8
-        && vlc_bit < 8
-        && (mel_byte < vlc_byte || (mel_byte == vlc_byte && mel_bit > vlc_bit))
+    // A fused final data byte is shared; the Scup-bearing byte cannot be fused.
+    mel_byte <= terminal_byte
+        && vlc_byte <= terminal_byte
+        && (mel_byte < vlc_byte
+            || (mel_byte == vlc_byte && mel_byte < terminal_byte && value != 0xff))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
+        ensures returns crate::specs::ht_noninitial_vlc_context(
+            west_context, north_west, north, north_east,
+        ),
+    )
+)]
+pub(crate) const fn ht_noninitial_vlc_context(
+    west_context: u8,
+    north_west: u8,
+    north: u8,
+    north_east: u8,
+) -> u8 {
+    let west = if west_context & 2 != 0 { 2_u8 } else { 0 };
+    let left = if north_west & 8 != 0 || north & 2 != 0 {
+        1_u8
+    } else {
+        0
+    };
+    let right = if north & 8 != 0 || north_east & 2 != 0 {
+        4_u8
+    } else {
+        0
+    };
+    west + left + right
 }
 
 #[cfg_attr(

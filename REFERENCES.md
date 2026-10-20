@@ -21,6 +21,20 @@ Its SHA-256 is
 This identifies the acquired reference only, not the selected 2023
 consolidation; edition-difference reconciliation remains necessary.
 
+The [official third-edition summary](https://www.itu.int/dms_pubrec/itu-t/rec/t/T-REC-T.801-202308-I!!SUM-HTM-E.htm)
+identifies progression-order extensions as a change from the 2021 edition.
+The selected implementation supports the five Part 1 progression orders and
+POC sequencing; it does not claim execution of the additional Part 2
+progression-order extensions. The 2023 catalog identifies the full text as
+purchase-controlled. Its public summary is not sufficient for a clause-level
+reconciliation of the acquired 2021 source with the selected 2023 edition.
+That comparison requires an authorized full text.
+
+The T.808 (06/2026) reference above identifies a catalog record, not an acquired
+normative text or completed edition-difference review. Public implementation
+cross-checks and JPIP regression results must not be described as a complete
+normative audit of that edition.
+
 The official conformance-asset entry point is
 [ITU test signals](https://handle.itu.int/11.1002/2000/6179). Access and
 redistribution conditions are independent of access to the recommendation.
@@ -36,7 +50,7 @@ vendored dependencies. Preserve this distinction when adding new material.
 |---|---|---|
 | [OpenJPEG](https://github.com/uclouvain/openjpeg/tree/8314119b067c0fc77834731168daaebd379fdb12) `8314119b...` | `src/lib/openjp2/mqc.c`, `mqc_inl.h`, `j2k.c`, `j2k.h`, `ht_dec.c`, `t1_ht_luts.h` | MQ, MCT, HT control and table cross-checks; HT VLC lookup words are derived data and retain the notices in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). |
 | [OpenHTJ2K](https://github.com/osamu620/OpenHTJ2K/tree/dacb452ecb21f50e88a74bf860c60f4aafa8a602) `dacb452e...` | Codestream marker/coding-unit and common type sources | DFS, ATK framing, TLM/CRG, HT capabilities, pass grouping and mixed routing; no source imported. |
-| [OpenJPH](https://github.com/aous72/OpenJPH/tree/8ca3abdd3b185cd737e70c0d443171205b3e6f15) `8ca3abdd...` | `ojph_params`, `ojph_resolution`, transform and color sources | Directional geometry, lifting syntax, NLT and capability cross-checks; no source imported. |
+| [OpenJPH](https://github.com/aous72/OpenJPH/tree/8ca3abdd3b185cd737e70c0d443171205b3e6f15) `8ca3abdd...` | `ojph_params`, `ojph_resolution`, transform and color sources, scalar CLI encoder/decoder | Directional geometry, lifting syntax, NLT and capability cross-checks; independent generated-image and fixed-stream HTJ2K comparisons; no source imported or vendored. |
 | [go-jpeg2000](https://github.com/mrjoshuak/go-jpeg2000/blob/2948150e9dea47092d30895492ec1d08ae183b5c/encoder.go) `2948150e...` | `encoder.go` | Independent NLT field-framing cross-check; no source imported. |
 | [CADI](https://github.com/gici-uab/cadi/tree/43314e890be4f1dde44af7853570ee874c13aac6) `43314e89...` | Main-header decoder and MCC parameter classes | MCC field-packing cross-check; reference-only, no source imported. |
 | [Kakadu public sources in walls](https://github.com/wallscavesurvey/walls/tree/8428c2ba8ecde662753e4437b3f6d8ee1e783467/Kakadu6_4) `8428c2ba...` | Public API headers and JP2/JPX/client/server sources | Component DWT, JPX field and JPIP placeholder cross-checks; reference-only under upstream terms, no source imported. |

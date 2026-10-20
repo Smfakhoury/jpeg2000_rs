@@ -1,9 +1,11 @@
 import copy
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -134,6 +136,91 @@ class NumericalTests(unittest.TestCase):
             with self.subTest(timeout=timeout), self.assertRaises(ValueError):
                 numerical.run_numerical(output_dir=self.work, timeout_seconds=timeout)
         self.assertFalse((self.work / "numerical-results.json").exists())
+
+    def test_ht_sources_and_container_metadata_cover_real_component_layouts(self):
+        self.assertEqual({case.format for case in numerical.HT_CASES}, {"raw", "jph"})
+        self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16})
+        self.assertEqual({case.channels for case in numerical.HT_CASES}, {1, 3})
+        self.assertEqual({case.pattern for case in numerical.HT_CASES}, {"varied", "sparse", "fixed"})
+        for case in numerical.HT_CASES:
+            data = numerical.source_image(case)
+            self.assertEqual(data, numerical.source_image(case))
+            path = self.work / "ht-source.pnm"
+            path.write_bytes(data)
+            image = framework.parse_pnm(path)["image"]
+            self.assertEqual((image["width"], image["height"]), (case.width, case.height))
+            self.assertEqual(len(image["components"]), case.channels)
+        container = framework.jp2_file(b"generated fixture", b"jph ", width=7, height=5,
+                                       components=3, precision=16)
+        offset = container.index(b"ihdr") + 4
+        self.assertEqual(struct.unpack(">IIH4B", container[offset:offset + 14]),
+                         (5, 7, 3, 15, 7, 0, 0))
+        with self.assertRaises(ValueError):
+            framework.jp2_file(b"", width=0)
+        with self.assertRaises(ValueError):
+            numerical.source_image(numerical.NumericalCase("invalid", pattern="unknown"))
+        with self.assertRaises(ValueError):
+            numerical.source_image(numerical.NumericalCase("invalid", pattern="fixed"))
+        with self.assertRaises(ValueError):
+            numerical.source_image(numerical.NumericalCase("invalid", pattern="fixed", samples=(256,), width=1, height=1))
+
+    def test_missing_ht_reference_is_blocked_without_rewriting_legacy_results(self):
+        with mock.patch.object(numerical.shutil, "which", return_value=None), mock.patch.dict(
+            os.environ, {"OPENJPH_ENCODER": "", "OPENJPH_DECODER": ""}
+        ):
+            result = numerical.run_numerical(output_dir=self.work, high_throughput=True)
+        self.assertEqual(result["status"], "blocked")
+        self.assertTrue((self.work / "htj2k-results.json").is_file())
+        self.assertFalse((self.work / "numerical-results.json").exists())
+        framework.validate_evidence_schemas(self.work)
+
+    def test_reference_sample_mismatch_fails_before_subject_execution(self):
+        calls = []
+        def reference_process(command, timeout_seconds):
+            calls.append(command)
+            if "-o" not in command:
+                self.fail("subject must not run after an invalid lossless reference roundtrip")
+            output = Path(command[command.index("-o") + 1])
+            output.write_bytes(b"P5\n1 1\n255\n\x80" if "reference" in output.stem else b"synthetic encoded fixture")
+            return subprocess.CompletedProcess(command, 0, b"", b""), 0.0
+        case = numerical.NumericalCase("reference-mismatch", width=1, height=1, decomposition_levels=1)
+        with mock.patch.object(numerical.shutil, "which", return_value=sys.executable), \
+                mock.patch.object(numerical, "HT_CASES", (case,)), \
+                mock.patch.object(numerical, "_run_checked", side_effect=reference_process):
+            result = numerical.run_numerical(Path(sys.executable), self.work, high_throughput=True)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("changed original samples", result["records"][0]["error"])
+        self.assertTrue(result["records"][0]["artifacts"])
+
+    @unittest.skipUnless(shutil.which(os.environ.get("OPENJPH_ENCODER", "ojph_compress"))
+                         and shutil.which(os.environ.get("OPENJPH_DECODER", "ojph_expand")),
+                         "independent OpenJPH tools are not installed")
+    def test_independent_ht_lossless_lossy_and_jph_roundtrips(self):
+        result = numerical.run_numerical(framework.build_subject(), self.work, high_throughput=True)
+        self.assertEqual(result["status"], "passed", result["records"])
+        self.assertEqual(result["summary"]["passed"], len(numerical.HT_CASES))
+        self.assertTrue(all(record["metrics"]["maximum_error"] == 0
+                            for record in result["records"] if record["lossless"]))
+        for case, record in zip(numerical.HT_CASES, result["records"]):
+            self.assertEqual(record["encoder_invoked"], case.codestream is None)
+            if case.codestream is not None:
+                self.assertIsNone(record["timings"]["encoder_ms"])
+                self.assertEqual(record["encoder_options"], [])
+            else:
+                self.assertIsInstance(record["timings"]["encoder_ms"], float)
+        framework.validate_evidence_schemas(self.work)
+        for invoked, timing, options in (
+            (False, 0.0, []),
+            (False, None, ["unexpected-option"]),
+            (True, None, []),
+        ):
+            invalid = copy.deepcopy(result)
+            invalid["records"][0]["encoder_invoked"] = invoked
+            invalid["records"][0]["encoder_options"] = options
+            invalid["records"][0]["timings"]["encoder_ms"] = timing
+            with self.subTest(invoked=invoked, timing=timing, options=options), self.assertRaises(ValueError):
+                framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
 
     @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
                          "independent OpenJPEG tools are not installed")

@@ -23,6 +23,10 @@ External numerical checks require OpenJPEG's `opj_compress` and
 `opj_decompress` (Debian/Ubuntu package `libopenjp2-tools`). Use
 `all --no-external` only when intentionally omitting native comparisons;
 that does not establish numerical agreement.
+HTJ2K comparisons additionally use the pinned scalar OpenJPH build described
+in [validation instructions](validation/VALIDATION.md#independent-htj2k-checks).
+Build those tools and configure `OPENJPH_ENCODER` and `OPENJPH_DECODER` before
+running the separate HT gate.
 
 ```sh
 cargo fmt --all -- --check
@@ -32,6 +36,8 @@ cargo clippy --all-targets --all-features --locked -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked
 python -m unittest discover -s validation/tests -v
 python validation/run-validation.py all
+python validation/run-validation.py htj2k
+python validation/run-validation.py resources
 cargo check --manifest-path fuzz/Cargo.toml --all-targets --locked
 cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 diff -u validation/expected-package-files.txt <(cargo package --list --locked)
@@ -40,6 +46,7 @@ diff -u validation/expected-package-files.txt <(cargo package --list --locked)
 The package-list comparison uses a Bash-compatible shell. Follow [PROOFS.md](PROOFS.md)
 for the exact Verus command and [validation instructions](validation/VALIDATION.md)
 for optional external oracles and official-vector runs.
+The representative resource gate additionally requires Linux and GNU Time.
 
 ## Implementation and review
 

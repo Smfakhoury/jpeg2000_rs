@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from numerical import run_numerical
+from resource_benchmarks import run_resources
 from framework import (
     build_subject,
     generate_corpus,
@@ -32,15 +33,17 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("inventory")
     schemas = commands.add_parser("schemas")
     schemas.add_argument("--output-dir", type=Path)
-    for name in ("run", "budget", "official", "numerical", "all"):
+    for name in ("run", "budget", "official", "numerical", "htj2k", "resources", "all"):
         command = commands.add_parser(name)
         command.add_argument("--output-dir", type=Path)
         command.add_argument("--subject", type=Path)
         command.add_argument("--no-build", action="store_true")
-        if name == "numerical":
+        if name in ("numerical", "htj2k", "resources"):
             command.add_argument("--encoder", type=Path)
             command.add_argument("--decoder", type=Path)
             command.add_argument("--timeout-seconds", type=float, default=10.0)
+        if name == "resources":
+            command.add_argument("--time-tool", type=Path)
         if name in ("run", "all"):
             command.add_argument("--no-external", action="store_true")
             command.add_argument("--oracle-config", type=Path)
@@ -103,11 +106,26 @@ def main() -> int:
             )
             emit({key: result[key] for key in ("status", "selection", "summary", "blockers")})
             return int(result["status"] != "passed")
-        elif arguments.command == "numerical":
+        elif arguments.command == "resources":
+            executable = arguments.subject.resolve() if arguments.subject else None
+            if arguments.no_build and executable is None:
+                executable = resolve_subject().parents[2] / "release" / "examples" / resolve_subject().name
+            result = run_resources(
+                executable=executable,
+                output_dir=arguments.output_dir, encoder=arguments.encoder,
+                decoder=arguments.decoder, time_tool=arguments.time_tool,
+                timeout_seconds=arguments.timeout_seconds,
+            )
+            emit({"status": result["status"], "cases": len(result["records"]),
+                  "native_total_ms": result["native_total_ms"], "blockers": result["blockers"],
+                  "errors": result["errors"]})
+            return int(result["status"] != "passed")
+        elif arguments.command in ("numerical", "htj2k"):
             result = run_numerical(
                 executable=subject_for(arguments) if arguments.subject or arguments.no_build else None,
                 output_dir=arguments.output_dir, encoder=arguments.encoder,
                 decoder=arguments.decoder, timeout_seconds=arguments.timeout_seconds,
+                high_throughput=arguments.command == "htj2k",
             )
             emit({"status": result["status"], **result["summary"], "blockers": result["blockers"]})
             return int(result["status"] != "passed")

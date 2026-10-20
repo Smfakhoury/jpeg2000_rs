@@ -66,6 +66,25 @@ contract is only as strong as its model and its relationship to the production
 state/output. Review those relationships independently; symbol links and
 successful obligation counts alone do not prove full standards conformance.
 
+### Concrete contract boundaries
+
+Read each contract according to its inputs and postcondition:
+
+| Contract family | Established relation | Not established by that relation alone |
+|---|---|---|
+| Stream and packet accounting | Consumed offsets, declared lengths, ordering and bounded claims | That accepted syntax has the intended pixel meaning in every standard edition |
+| Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
+| Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
+| Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
+| Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
+
+The `decode_output_shape_valid` and `component_output_shape_valid` helpers are
+structural checks, not a codestream-to-pixel denotation theorem. Neither the
+inventory nor the exact-root verification result establishes a complete
+standards-level parser-to-pixel theorem. Numerical and metamorphic tests
+exercise relations beyond these contracts; their evidence must remain
+separate from formal guarantees.
+
 Numerical agreement of irreversible transforms, fixed-point color conversion,
 and nonlinear transforms requires separate conformance metrics and reference
 outputs. The Rust/Verus toolchains, solver, and reviewed standard-library
