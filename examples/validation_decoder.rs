@@ -5,7 +5,9 @@ use jpeg2000_rs::{
     ImageRegion, JpipAutomaticProgressiveDecoder, JpipFragment, JpipMessage, JpipMessageParser,
     JpipPrecinctCodestreamPlan, JpipPrecinctPacket, JpipProgressiveDecoder, MalformedKind,
     ResourceLimits, TypedImage, TypedSamples, decode_codestream, decode_codestream_selected,
-    decode_jp2, decode_jp2_selected, decode_jph, decode_jph_selected, decode_jpx_codestream,
+    decode_jp2, decode_jp2_color, decode_jp2_color_selected, decode_jp2_selected, decode_jph,
+    decode_jph_color, decode_jph_color_selected, decode_jph_selected, decode_jpx_codestream,
+    decode_jpx_codestream_color, decode_jpx_codestream_color_selected,
     decode_jpx_codestream_selected, ingest_jpip_response, inspect_jph, render_jpx_composition,
     render_jpx_frame, render_jpx_layer,
 };
@@ -213,11 +215,13 @@ fn progressive(input: &[u8], mode: &str, options: &DecodeOptions) -> Result<(), 
 
 fn main() {
     let arguments = env::args().collect::<Vec<_>>();
-    let selecting = arguments.get(1).is_some_and(|value| value == "select");
+    let selecting = arguments
+        .get(1)
+        .is_some_and(|value| matches!(value.as_str(), "select" | "select-color"));
     if arguments.len() != if selecting { 7 } else { 4 } {
         eprintln!(
-            "usage: validation_decoder <decode|inspect|ingest> <format> <input>\n\
-             or: validation_decoder select <format> <input> <discard-levels> \
+            "usage: validation_decoder <decode|convert|inspect|ingest> <format> <input>\n\
+             or: validation_decoder <select|select-color> <format> <input> <discard-levels> \
              <all|tile-indices> <all|x,y,width,height>\n\
              or: validation_decoder <render|render-layer|render-frame|reconstruct|progressive> \
              <jpx|layer-index|frame-index|jpip|auto|packet-lengths> <input>"
@@ -262,6 +266,32 @@ fn main() {
             Ok(image) => print_image(&image),
             Err(error) => print_error(error),
         },
+        ("convert", "jp2") => match decode_jp2_color(&input, &options) {
+            Ok(image) => print_converted_image(&image),
+            Err(error) => print_error(error),
+        },
+        ("convert", "jph") => match decode_jph_color(&input, &options) {
+            Ok(image) => print_converted_image(&image),
+            Err(error) => print_error(error),
+        },
+        ("convert", "jpx") => match decode_jpx_codestream_color(&input, 0, &options) {
+            Ok(image) => print_converted_image(&image),
+            Err(error) => print_error(error),
+        },
+        ("select-color", "jp2") => match decode_jp2_color_selected(&input, &options, &selection) {
+            Ok(image) => print_converted_image(&image),
+            Err(error) => print_error(error),
+        },
+        ("select-color", "jph") => match decode_jph_color_selected(&input, &options, &selection) {
+            Ok(image) => print_converted_image(&image),
+            Err(error) => print_error(error),
+        },
+        ("select-color", "jpx") => {
+            match decode_jpx_codestream_color_selected(&input, 0, &options, &selection) {
+                Ok(image) => print_converted_image(&image),
+                Err(error) => print_error(error),
+            }
+        }
         ("render", "jpx") => match render_jpx_composition(&input, &options) {
             Ok(image) => print_converted_image(&image),
             Err(error) => print_error(error),

@@ -140,6 +140,37 @@ Reports include encoder/reference/subject timings and total case time. Each
 native stage defaults to ten seconds; the aggregate case budget is three
 times that timeout, including normalization. Output capture is limited to one
 MiB and files to two MiB, with 512 MiB address space where available.
+
+### Nonuniform component grids and selected color
+
+Container relation tests generate their own planar 8/16-bit 4:2:0 and 4:2:2
+sources, including nonzero origins and odd tile boundaries. Independent
+component-selective PGX decoding must reproduce every original plane exactly
+before the subject runs. Native discard levels are separately checked against
+independent component decoding, not simple sample decimation.
+
+sRGB resampling is checked exactly, with independent component upsampling at
+aligned origins. Aligned-origin sYCC output has explicit engineering maximum
+errors of 2 samples at 8 bits and 12 at 16 bits after common-depth normalization:
+the reference converter uses rounded matrix coefficients and integer
+truncation. These are not official color-conformance tolerances. Odd-origin
+edge filling is checked against the decoder's documented clamping policy, not
+claimed equivalent to the reference's different boundary policy.
+
+Full and region/tile/tile-set color outputs must agree exactly after cropping
+at the same native DWT resolution, including one-pixel and chroma-unaligned
+regions. Half-grid CRG fixtures separately exercise registration phase.
+The tests cover JP2/JPX and authored HTDECLARED all-legacy JPH wrappers with
+unchanged independently qualified legacy coefficient/packet bytes; they do not
+claim independent nonuniform HT encoding. The existing live HT suite remains
+separate.
+
+Color-selected paths retain required sampling context before conversion and
+crop afterward. Invalid original selections are still rejected before context
+expansion, and ordinary resource limits cover any additional decoded context.
+An empty-resolution precinct consumes its packet header even when its present
+flag is set and it contains no code blocks. Input/tool/source hashes and failing
+fixtures are retained under the existing `container-failures/` artifacts.
 Missing default tools are explicitly `blocked`; configured missing tools,
 process failures, invalid output and exceeded thresholds cannot pass.
 `--encoder`, `--decoder`, `OPENJPEG_ENCODER` and `OPENJPEG_DECODER` select trusted

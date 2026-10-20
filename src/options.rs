@@ -55,6 +55,10 @@ pub enum TileSelection {
 /// `discard_levels` selects the native JPEG 2000 resolution obtained by
 /// omitting that many highest DWT resolution levels. It is not a post-decode
 /// resize operation.
+///
+/// Color-selected APIs retain any neighboring sampling context needed for
+/// resampling before cropping to the requested output. Resource limits also
+/// apply to that context, which can include adjacent tiles.
 #[derive(Clone, Default)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct DecodeSelection {
