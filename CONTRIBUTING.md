@@ -37,6 +37,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked
 python -m unittest discover -s validation/tests -v
 python validation/run-validation.py all
 python validation/run-validation.py htj2k
+python validation/run-validation.py resources
 cargo check --manifest-path fuzz/Cargo.toml --all-targets --locked
 cargo test --manifest-path fuzz/Cargo.toml --lib --locked
 diff -u validation/expected-package-files.txt <(cargo package --list --locked)
@@ -45,6 +46,7 @@ diff -u validation/expected-package-files.txt <(cargo package --list --locked)
 The package-list comparison uses a Bash-compatible shell. Follow [PROOFS.md](PROOFS.md)
 for the exact Verus command and [validation instructions](validation/VALIDATION.md)
 for optional external oracles and official-vector runs.
+The representative resource gate additionally requires Linux and GNU Time.
 
 ## Implementation and review
 

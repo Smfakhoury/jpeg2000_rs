@@ -256,6 +256,46 @@ caps, and 512 MiB address space where POSIX `RLIMIT_AS` is available. Execution
 enforces bounded output capture and reports unavailable memory enforcement.
 Decoder `ResourceLimits` remain active on every platform.
 
+### Representative process measurements
+
+On Linux, install GNU Time alongside the OpenJPEG tools and run:
+
+```sh
+.venv/bin/python validation/run-validation.py resources
+```
+
+This builds the release-mode harness and measures 1024-by-1024 grayscale and
+512-by-512 RGB lossless inputs, each tiled at 128-by-128. Full decode, tile-zero
+selection, and native resolution with two discarded levels must reproduce
+independent OpenJPEG output exactly. Declared-pixel-limit and truncated-header
+cases must produce their expected typed errors, not merely exit unsuccessfully.
+
+Each of the eight cases is measured three times. GNU Time reports actual peak
+process RSS; the bounded runner measures wall time including process startup
+and image-observation serialization. The engineering thresholds are:
+
+| Case | Maximum time per process | Maximum peak RSS |
+|---|---:|---:|
+| Full image | 5 seconds | 512 MiB |
+| Tile/native-resolution selection | 2.5 seconds | 256 MiB |
+| Early typed rejection | 1 second | 128 MiB |
+
+Aggregate measured native time is limited to 30 seconds. Tile-zero peak RSS
+must be at least 25 percent lower than full decode for each generated image.
+Each process also has a one-GiB address-space limit and bounded output capture.
+These measurements are not universal worst-case guarantees. Decoded sample
+storage, address-space enforcement, and measured total-process RSS are distinct
+quantities; the report keeps them separate.
+
+`resource-results.json` retains source/tool/input/output hashes, repetitions,
+individual observations, median times, peak RSS, thresholds and explicit
+failures. Unavailable default tooling/platform support blocks the gate;
+explicitly configured missing tools and absent measurements cannot pass.
+Failed inputs are preserved under ignored `resource-failures/` and uploaded
+by CI. `all` does not implicitly invoke this Linux-specific gate; CI calls it
+separately. `--subject` selects a trusted prebuilt binary; `--no-build` uses
+the existing release harness.
+
 ## Technical reference inventory
 
 `normative-coverage.json` is a static inventory of topics and implementation,

@@ -184,6 +184,7 @@ def validate_evidence_schemas(output_dir: Path | None = None) -> dict[str, Any]:
         ("proof-coverage.json", "proof-coverage.schema.json"),
         ("numerical-results.json", "numerical-result.schema.json"),
         ("htj2k-results.json", "numerical-result.schema.json"),
+        ("resource-results.json", "resource-result.schema.json"),
     ):
         path = (output_dir or RESULTS_DIR) / name
         if path.is_file():
@@ -760,13 +761,15 @@ def resolve_subject() -> Path:
     return ROOT / "target" / "debug" / "examples" / f"validation_decoder{suffix}"
 
 
-def build_subject() -> Path:
+def build_subject(release: bool = False) -> Path:
     subprocess.run(
-        ["cargo", "build", "--example", "validation_decoder", "--locked"],
+        ["cargo", "build", "--example", "validation_decoder", "--locked",
+         *(["--release"] if release else [])],
         cwd=ROOT,
         check=True,
     )
-    executable = resolve_subject()
+    executable = (ROOT / "target" / "release" / "examples" / resolve_subject().name
+                  if release else resolve_subject())
     if not executable.is_file():
         raise FileNotFoundError(f"subject harness not built: {executable}")
     return executable
