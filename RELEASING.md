@@ -19,6 +19,25 @@ Do not assume that removing a file from the current tree removes it from Git
 history. An exported source snapshot and a visibility change on an existing
 repository have different disclosure boundaries.
 
+### Existing repository history and metadata
+
+The owner must explicitly choose whether to retain reviewed history or approve
+an exact cleanup plan before changing visibility. Closing pull requests,
+deleting branches, or rewriting branch history does not by itself remove
+GitHub-maintained PR refs, cached views, conversations, Actions logs, or artifacts.
+
+GitHub marks PR refs as read-only. Its
+[documented history-removal process](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
+also states that Support does not remove non-sensitive data through that
+process. Do not promise complete removal of ordinary development records on
+that basis. Check the applicable platform process and remaining disclosure
+boundary before proposing any destructive operation.
+
+Source-publication approval does not by itself choose a history strategy or
+authorize ref deletion, force-pushing, or repository replacement/renaming.
+Keep the repository private until the actual retained content and any proposed
+operations have the required owner approval.
+
 ### Candidate checks
 
 Use the same committed candidate for the [CI workflow](.github/workflows/ci.yml),
