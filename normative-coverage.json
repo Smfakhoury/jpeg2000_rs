@@ -1215,14 +1215,14 @@
       "contract_refs": [
         {
           "path": "src/refinement.rs",
-          "symbol": "decode_denotation"
+          "symbol": "decode_output_shape_valid"
         },
         {
           "path": "src/refinement.rs",
-          "symbol": "typed_component_denotation"
+          "symbol": "component_output_shape_valid"
         }
       ],
-      "id": "part1-end-to-end-denotation",
+      "id": "part1-decoded-output-shape",
       "implementation_refs": [
         {
           "path": "src/decode.rs",
@@ -1234,7 +1234,7 @@
         },
         {
           "path": "src/decode.rs",
-          "symbol": "validate_part1_decode_denotation"
+          "symbol": "validate_part1_output_shape"
         }
       ],
       "proof_refs": [
@@ -1250,17 +1250,21 @@
       "spec_refs": [
         {
           "path": "specs/mod.rs",
-          "symbol": "part1_decode_denotation"
+          "symbol": "part1_decode_output_shape_valid"
         },
         {
           "path": "specs/mod.rs",
-          "symbol": "part1_typed_component_denotation"
+          "symbol": "part1_component_output_shape_valid"
         }
       ],
       "test_refs": [
         {
           "path": "src/decode.rs",
           "symbol": "top_level_decode_assembles_clipped_tiles_and_typed_samples"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "output_shape_contracts_reject_empty_components_and_planes"
         },
         {
           "path": "src/decode.rs",
@@ -1271,7 +1275,7 @@
           "symbol": "top_level_jp2_decode_returns_typed_image"
         }
       ],
-      "topic": "Selected Part 1 codestream-to-TypedImage structural and component-sample denotation"
+      "topic": "Nonempty decoded-image/component cardinality and rectangular sample counts; not pixel-value denotation"
     },
     {
       "contract_refs": [

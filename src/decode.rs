@@ -1834,7 +1834,7 @@ pub fn decode_codestream(input: &[u8], options: &DecodeOptions) -> Result<TypedI
         decode_layout(&layout, options.limits())?,
         options.limits(),
     )?;
-    validate_part1_decode_denotation(input.len(), &layout, &image)?;
+    validate_part1_output_shape(input.len(), &layout, &image)?;
     Ok(image)
 }
 
@@ -1849,16 +1849,16 @@ pub fn decode_codestream_selected(
         decode_layout_selected(&layout, selection, options.limits())?,
         options.limits(),
     )?;
-    validate_part1_decode_denotation(input.len(), &layout, &image)?;
+    validate_part1_output_shape(input.len(), &layout, &image)?;
     Ok(image)
 }
 
-fn validate_part1_decode_denotation(
+fn validate_part1_output_shape(
     input_bytes: usize,
     layout: &CodestreamLayout<'_>,
     image: &TypedImage,
 ) -> Result<(), DecodeError> {
-    if !crate::refinement::decode_denotation(
+    if !crate::refinement::decode_output_shape_valid(
         input_bytes,
         layout.tile_parts.len(),
         layout.info.image_size.components,
@@ -1886,8 +1886,11 @@ fn validate_part1_decode_denotation(
             TypedSamples::Signed(samples) => samples.len(),
             TypedSamples::Unsigned(samples) => samples.len(),
         };
-        if !crate::refinement::typed_component_denotation(output.width(), output.height(), samples)
-        {
+        if !crate::refinement::component_output_shape_valid(
+            output.width(),
+            output.height(),
+            samples,
+        ) {
             return Err(invalid_decode());
         }
         component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -4461,6 +4464,29 @@ mod tests {
                 actual: 24,
             })
         ));
+    }
+
+    #[test]
+    fn output_shape_contracts_reject_empty_components_and_planes() {
+        assert!(crate::refinement::decode_output_shape_valid(
+            1, 1, 1, 1, 2, 3
+        ));
+        for (input, parts, expected, actual, width, height) in [
+            (0, 1, 1, 1, 2, 3),
+            (1, 0, 1, 1, 2, 3),
+            (1, 1, 0, 0, 2, 3),
+            (1, 1, 1, 2, 2, 3),
+            (1, 1, 1, 1, 0, 3),
+            (1, 1, 1, 1, 2, 0),
+        ] {
+            assert!(!crate::refinement::decode_output_shape_valid(
+                input, parts, expected, actual, width, height
+            ));
+        }
+        assert!(crate::refinement::component_output_shape_valid(2, 3, 6));
+        assert!(!crate::refinement::component_output_shape_valid(0, 3, 0));
+        assert!(!crate::refinement::component_output_shape_valid(2, 0, 0));
+        assert!(!crate::refinement::component_output_shape_valid(2, 3, 5));
     }
 
     #[test]

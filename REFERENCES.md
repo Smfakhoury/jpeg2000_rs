@@ -21,6 +21,20 @@ Its SHA-256 is
 This identifies the acquired reference only, not the selected 2023
 consolidation; edition-difference reconciliation remains necessary.
 
+The [official third-edition summary](https://www.itu.int/dms_pubrec/itu-t/rec/t/T-REC-T.801-202308-I!!SUM-HTM-E.htm)
+identifies progression-order extensions as a change from the 2021 edition.
+The selected implementation supports the five Part 1 progression orders and
+POC sequencing; it does not claim execution of the additional Part 2
+progression-order extensions. The 2023 catalog identifies the full text as
+purchase-controlled. Its public summary is not sufficient for a clause-level
+reconciliation of the acquired 2021 source with the selected 2023 edition.
+That comparison requires an authorized full text.
+
+The T.808 (06/2026) reference above identifies a catalog record, not an acquired
+normative text or completed edition-difference review. Public implementation
+cross-checks and JPIP regression results must not be described as a complete
+normative audit of that edition.
+
 The official conformance-asset entry point is
 [ITU test signals](https://handle.itu.int/11.1002/2000/6179). Access and
 redistribution conditions are independent of access to the recommendation.

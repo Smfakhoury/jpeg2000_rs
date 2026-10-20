@@ -192,7 +192,7 @@ pub struct Part1DecodeView {
 }
 
 impl Part1DecodeView {
-    pub open spec fn denotation_well_formed(self) -> bool {
+    pub open spec fn output_shape_well_formed(self) -> bool {
         self.input_bytes > 0
             && self.tile_parts > 0
             && self.components > 0

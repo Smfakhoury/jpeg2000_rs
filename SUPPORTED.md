@@ -28,6 +28,8 @@ The implementation contains:
 - Precincts, inclusion/zero-bitplane tag trees, coding-pass and segment lengths.
 - Main/tile COD, COC, QCD, QCC, and RGN state and precedence.
 - PLM/PLT packet lengths, PPM/PPT packed headers, SOP/EPH, and TLM checks.
+- The five Part 1 progression orders and POC sequencing, not additional Part 2
+  progression-order extensions.
 - Legacy MQ and raw-bypass Tier-1 passes, coding-style routing, and Maxshift undo.
 - HT cleanup, significance propagation, magnitude refinement, placeholder and
   replacement pass sets, and mixed legacy/HT routing.

@@ -1611,7 +1611,7 @@ pub open spec fn part1_packet_length_matches(actual: usize, expected: usize) -> 
     actual == expected
 }
 
-pub open spec fn part1_decode_denotation(
+pub open spec fn part1_decode_output_shape_valid(
     input_bytes: usize,
     tile_parts: usize,
     expected_components: u16,
@@ -1621,17 +1621,18 @@ pub open spec fn part1_decode_denotation(
 ) -> bool {
     input_bytes > 0
         && tile_parts > 0
+        && expected_components > 0
         && expected_components as usize == output_components
         && width > 0
         && height > 0
 }
 
-pub open spec fn part1_typed_component_denotation(
+pub open spec fn part1_component_output_shape_valid(
     width: u32,
     height: u32,
     samples: usize,
 ) -> bool {
-    part1_wavelet_sample_count(width, height, samples)
+    width > 0 && height > 0 && part1_wavelet_sample_count(width, height, samples)
 }
 
 }

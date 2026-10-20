@@ -815,7 +815,7 @@ pub(crate) const fn packet_length_matches(actual: usize, expected: usize) -> boo
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
-        ensures returns crate::specs::part1_decode_denotation(
+        ensures returns crate::specs::part1_decode_output_shape_valid(
             input_bytes,
             tile_parts,
             expected_components,
@@ -825,7 +825,7 @@ pub(crate) const fn packet_length_matches(actual: usize, expected: usize) -> boo
         ),
     )
 )]
-pub(crate) const fn decode_denotation(
+pub(crate) const fn decode_output_shape_valid(
     input_bytes: usize,
     tile_parts: usize,
     expected_components: u16,
@@ -835,6 +835,7 @@ pub(crate) const fn decode_denotation(
 ) -> bool {
     input_bytes > 0
         && tile_parts > 0
+        && expected_components > 0
         && expected_components as usize == output_components
         && width > 0
         && height > 0
@@ -843,11 +844,11 @@ pub(crate) const fn decode_denotation(
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
-        ensures returns crate::specs::part1_typed_component_denotation(width, height, samples),
+        ensures returns crate::specs::part1_component_output_shape_valid(width, height, samples),
     )
 )]
-pub(crate) const fn typed_component_denotation(width: u32, height: u32, samples: usize) -> bool {
-    crate::refinement::wavelet_sample_count(width, height, samples)
+pub(crate) const fn component_output_shape_valid(width: u32, height: u32, samples: usize) -> bool {
+    width > 0 && height > 0 && crate::refinement::wavelet_sample_count(width, height, samples)
 }
 
 #[cfg_attr(
