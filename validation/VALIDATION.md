@@ -163,6 +163,51 @@ conformance or exhaustive Part 15 coverage. Missing unconfigured tools block
 the gate; an explicitly configured missing tool is an error.
 `all` does not implicitly run `htj2k`; CI runs both commands explicitly.
 
+## Nonzero selection relations
+
+The Python regression suite also exercises the production `*_selected` APIs
+on independently encoded nonzero images. It compares native full-resolution
+and reduced-resolution output with OpenJPEG/OpenJPH, then compares region,
+single-tile, rectangular tile-set, and tile-contained region output with exact
+crops of the corresponding native full decode. Independent reference crops
+must also meet the declared per-case numerical budgets.
+
+```sh
+PYTHONPATH=validation .venv/bin/python -m unittest discover \
+  -s validation/tests -p test_selection.py -v
+```
+
+These tests cover raw, JP2, JPH, and JPX component decoding; grayscale/RGB;
+8/16-bit samples; odd dimensions and nonzero origins; uniformly subsampled
+components; and reversible/irreversible transforms. Reference resolution
+reduction uses `opj_decompress -r` or `ojph_expand -skip_res`, not image
+resizing. Nonzero fixtures additionally distinguish native DWT output from
+simple post-decode decimation. Rectangles and reported output origins use the
+image reference grid; PNM component dimensions are kept separate from the
+subsampled image-grid extent.
+
+Invalid nonrectangular tile sets and regions extending outside selected tiles
+must retain typed selection errors. The tests do not relax those API
+constraints. Tests needing unavailable native tools are explicitly skipped;
+the CI setup installs both reference implementations before running them.
+Disagreements retain source/encoded/reference files and a hash-bound
+reproduction record under ignored `selection-failures/`, included in CI
+artifacts. These component-selection tests do not replace JPX composition,
+JPIP reconstruction, color-resampling, or official conformance checks.
+
+The example harness exposes the same selection controls without changing its
+ordinary full-decode path:
+
+```sh
+cargo run --example validation_decoder -- select raw image.j2k 1 all 4,6,32,24
+cargo run --example validation_decoder -- select jp2 image.jp2 0 0,1 all
+```
+
+The arguments after the input are discard levels, `all` or comma-separated
+tile indices, and `all` or `x,y,width,height`. Selected output begins with a
+`FRAME` line containing the actual output origin, followed by the existing
+image observation.
+
 ## Budgets
 
 ```sh

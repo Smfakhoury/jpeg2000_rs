@@ -91,5 +91,6 @@ jobs:
           path: |
             target/validation/*.json
             target/validation/numerical-failures/**
+            target/validation/selection-failures/**
           if-no-files-found: warn
           retention-days: 14
