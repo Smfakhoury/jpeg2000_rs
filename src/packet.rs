@@ -2856,7 +2856,8 @@ pub fn decode_code_block_contribution(
                 next_state.high_throughput = Some(true);
             }
         }
-        if segment_length == 0 && routing == Some(false) {
+        // A later layer can finish a buffered entropy segment without adding bytes.
+        if segment_length == 0 && routing == Some(false) && first_pass == 0 {
             return Err(DecodeError::malformed(
                 reader.bytes_consumed() as u64,
                 MalformedKind::InvalidPacketHeader,
@@ -3698,6 +3699,63 @@ mod tests {
                 ..
             })
         ));
+        assert_eq!(state, initial);
+    }
+
+    #[test]
+    fn permits_zero_byte_legacy_continuation_without_accepting_an_empty_initial_segment() {
+        let limits = ResourceLimits::default();
+        let mut inclusion = TagTree::new(1, 1, &limits).unwrap();
+        let mut zero_bitplanes = TagTree::new(1, 1, &limits).unwrap();
+        let mut state = CodeBlockPacketState {
+            included: true,
+            zero_bitplanes: Some(0),
+            lblock: 3,
+            total_passes: 9,
+            high_throughput: Some(false),
+        };
+        let mut reader = PacketBitReader::new(&[0x80], &limits).unwrap();
+        let contribution = decode_code_block_contribution(
+            &mut state,
+            &mut inclusion,
+            &mut zero_bitplanes,
+            CodeBlockPacketContext {
+                leaf_x: 0,
+                leaf_y: 0,
+                layer: 1,
+                maximum_zero_bitplanes: 8,
+                tier1_style: Tier1CodingStyle::from_code_block_style(1).unwrap(),
+            },
+            &mut reader,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!contribution.first_inclusion);
+        assert_eq!(contribution.new_passes, 1);
+        assert_eq!(contribution.data_length, 0);
+        assert_eq!(contribution.segment_count(), 1);
+        assert_eq!(contribution.segment(0).unwrap().data_length, 0);
+        assert_eq!(state.total_passes(), 10);
+
+        let initial = CodeBlockPacketState::new();
+        state = initial;
+        let mut reader = PacketBitReader::new(&[0xc0], &limits).unwrap();
+        assert!(
+            decode_code_block_contribution(
+                &mut state,
+                &mut inclusion,
+                &mut zero_bitplanes,
+                CodeBlockPacketContext {
+                    leaf_x: 0,
+                    leaf_y: 0,
+                    layer: 0,
+                    maximum_zero_bitplanes: 8,
+                    tier1_style: Tier1CodingStyle::default(),
+                },
+                &mut reader,
+            )
+            .is_err()
+        );
         assert_eq!(state, initial);
     }
 

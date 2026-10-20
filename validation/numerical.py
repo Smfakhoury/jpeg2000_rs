@@ -9,7 +9,7 @@ import struct
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -33,6 +33,7 @@ class NumericalCase:
     pattern: str = "varied"
     samples: tuple[int, ...] | None = None
     codestream: bytes | None = None
+    signed: bool = False
 
 
 CASES = (
@@ -55,6 +56,17 @@ CASES = (
     NumericalCase("representative-gray", width=256, height=256),
     NumericalCase("representative-rgb", channels=3, width=256, height=256),
     NumericalCase("representative-gray16", precision=16, width=256, height=256),
+    NumericalCase("signed8-lossless", signed=True),
+    NumericalCase("signed9-odd-grid", signed=True, precision=9, width=33, height=29),
+    NumericalCase("signed12-tiles-origin", signed=True, precision=12,
+                  options=("-t", "16,16", "-d", "3,3", "-p", "RPCL", "-M", "8")),
+    NumericalCase("signed16-jp2", signed=True, precision=16, format="jp2"),
+    NumericalCase("signed17-layers-bypass", signed=True, precision=17,
+                  options=("-r", "8,3,1", "-M", "1")),
+    NumericalCase("signed24-lossless", signed=True, precision=24, width=33, height=29),
+    NumericalCase("gray12-lossless", precision=12),
+    NumericalCase("gray20-lossless", precision=20),
+    NumericalCase("gray24-jp2", precision=24, format="jp2"),
 )
 
 def _ht_test_codestream(width: int, packet: bytes, exponent: int = 7) -> bytes:
@@ -133,28 +145,54 @@ HT_CASES = (
 )
 
 
+def source_extension(case: NumericalCase) -> str:
+    if case.signed or case.precision not in (8, 16):
+        if case.channels != 1:
+            raise ValueError("generated PGX profile requires one component")
+        return "pgx"
+    return "ppm" if case.channels == 3 else "pgm"
+
+
 def source_image(case: NumericalCase) -> bytes:
+    if type(case.precision) is not int or not 1 <= case.precision <= 32 or type(case.signed) is not bool:
+        raise ValueError("generated source requires precision 1..32 and boolean signedness")
     if case.pattern not in ("varied", "sparse", "fixed"):
         raise ValueError("unknown generated image pattern")
+    extension = source_extension(case)
     peak = (1 << case.precision) - 1
+    lower = -(1 << (case.precision - 1)) if case.signed else 0
     values: Iterable[int]
     if case.pattern == "fixed":
         if (case.samples is None or len(case.samples) != case.width * case.height * case.channels
-                or any(type(value) is not int or not 0 <= value <= peak for value in case.samples)):
+                or any(type(value) is not int or not lower <= value <= lower + peak for value in case.samples)):
             raise ValueError("fixed generated samples must match geometry and precision")
         values = case.samples
     else:
         if case.samples is not None:
             raise ValueError("explicit generated samples require the fixed pattern")
         values = (
-        (0 if x == 0 and y == 0 else peak if x == 1 and y == 0 else
+        lower + (0 if x == 0 and y == 0 else peak if x == 1 and y == 0 else
          (peak if (x + 3 * y + 17 * channel) % 97 == 0 else (peak + 1) // 2)
          if case.pattern == "sparse" else
          ((x * 31 + y * 17 + channel * 71 + x * y * 13) % 256) * peak // 255)
         for y in range(case.height) for x in range(case.width) for channel in range(case.channels)
         )
-    payload = b"".join(value.to_bytes(case.precision // 8, "big") for value in values)
+    sample_bytes = 1 if case.precision <= 8 else 2 if case.precision <= 16 else 4
+    payload = b"".join(value.to_bytes(sample_bytes, "big", signed=case.signed) for value in values)
+    if extension == "pgx":
+        sign = "-" if case.signed else "+"
+        return f"PG ML {sign} {case.precision} {case.width} {case.height}\n".encode() + payload
     return f"P{6 if case.channels == 3 else 5}\n{case.width} {case.height}\n{peak}\n".encode() + payload
+
+
+def signed_codestream(data: bytes, precision: int) -> bytes:
+    if (len(data) < 45 or data[:4] != b"\xff\x4f\xff\x51"
+            or int.from_bytes(data[4:6], "big") != 41
+            or int.from_bytes(data[40:42], "big") != 1
+            or data[42] != precision - 1):
+        raise ValueError("signed fixture requires a matching unsigned single-component SIZ header")
+    # The offset unsigned input has the same centered coefficients as the signed source.
+    return data[:42] + bytes((data[42] | 0x80,)) + data[43:]
 
 
 def image_error_metrics(reference: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
@@ -274,6 +312,9 @@ def run_numerical(
                     "id": case.name, "lossless": case.lossless,
                     "width": case.width, "height": case.height,
                     "format": case.format,
+                    "precision": case.precision, "signed": case.signed,
+                    "source_format": source_extension(case),
+                    "signed_header_authored": case.signed,
                     "pattern": case.pattern,
                     "encoder_options": [*encoder_options, *case.options] if case.codestream is None else [],
                     "encoder_invoked": case.codestream is None,
@@ -282,30 +323,50 @@ def run_numerical(
                     "status": "failed", "error": None, "metrics": None, "source_metrics": None,
                     "artifacts": [],
                 }
-                extension = "ppm" if case.channels == 3 else "pgm"
+                extension = source_extension(case)
+                parse_image = framework.parse_pgx if extension == "pgx" else framework.parse_pnm
                 source = work / f"{case.name}.{extension}"
                 encoded_extension = case.format if case.format != "raw" else "j2c" if high_throughput else "j2k"
                 encoded = work / f"{case.name}.{encoded_extension}"
-                codestream = encoded.with_suffix(".j2c") if case.format == "jph" else encoded
-                reference = work / f"{case.name}-reference.{extension}"
+                codestream = (encoded.with_suffix(".j2c")
+                              if case.format == "jph" or (case.signed and case.format == "jp2") else encoded)
+                reference_output = work / f"{case.name}-reference.{extension}"
+                reference = (reference_output.with_stem(reference_output.stem + "_0")
+                             if extension == "pgx" else reference_output)
                 source.write_bytes(source_image(case))
                 record["input_sha256"] = framework.sha256_file(source)
+                encoder_source = source
+                if case.signed:
+                    shifted_samples = (tuple(value + (1 << (case.precision - 1)) for value in case.samples)
+                                       if case.samples is not None else None)
+                    shifted_case = replace(case, signed=False, samples=shifted_samples)
+                    encoder_source = source.with_name(source.stem + "-unsigned." + source_extension(shifted_case))
+                    encoder_source.write_bytes(source_image(shifted_case))
+                record["encoder_input_sha256"] = (framework.sha256_file(encoder_source)
+                                                  if case.codestream is None else None)
                 try:
                     encoder_ms: float | None = None
                     if case.codestream is None:
-                        _, encoder_ms = _run_checked([tools["encoder"]["path"], "-i", str(source), "-o", str(codestream),
+                        _, encoder_ms = _run_checked([tools["encoder"]["path"], "-i", str(encoder_source), "-o", str(codestream),
                                                       *record["encoder_options"]], timeout_seconds)
                     else:
                         codestream.write_bytes(case.codestream)
+                    if case.signed:
+                        codestream.write_bytes(signed_codestream(codestream.read_bytes(), case.precision))
+                        if case.format == "jp2":
+                            encoded.write_bytes(framework.jp2_file(
+                                codestream.read_bytes(), width=case.width, height=case.height,
+                                components=case.channels, precision=case.precision, signed=True,
+                            ))
                     if case.format == "jph":
                         encoded.write_bytes(framework.jp2_file(
                             codestream.read_bytes(), b"jph ", width=case.width, height=case.height,
                             components=case.channels, precision=case.precision,
                         ))
                     record["codestream_sha256"] = framework.sha256_file(encoded)
-                    _, reference_ms = _run_checked([tools["decoder"]["path"], "-i", str(encoded), "-o", str(reference)], timeout_seconds)
-                    expected = framework.parse_pnm(reference)
-                    original = framework.parse_pnm(source)
+                    _, reference_ms = _run_checked([tools["decoder"]["path"], "-i", str(encoded), "-o", str(reference_output)], timeout_seconds)
+                    expected = parse_image(reference)
+                    original = parse_image(source)
                     if case.lossless and framework.normalized_hash(original) != framework.normalized_hash(expected):
                         raise ValueError("independent lossless encoder/decoder changed original samples")
                     process, subject_ms = _run_checked([str(executable), "decode", case.format, str(encoded)], timeout_seconds)
@@ -327,7 +388,7 @@ def run_numerical(
                     record["status"] = "failed"
                     record["error"] = "case execution exceeded declared aggregate time budget"
                 if record["status"] == "failed":
-                    for path in dict.fromkeys((source, codestream, encoded, reference)):
+                    for path in dict.fromkeys((source, encoder_source, codestream, encoded, reference)):
                         if path.is_file():
                             saved = framework.report_path(
                                 output_dir, f"numerical-failures/{case.name}/{path.name}",

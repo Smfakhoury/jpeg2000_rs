@@ -80,8 +80,9 @@ external observations its status is `skipped`, not passed.
 
 Install OpenJPEG's `opj_compress` and `opj_decompress` CLI tools (for example,
 `libopenjp2-tools` on Debian/Ubuntu). The suite creates its own deterministic
-nonzero 8/16-bit PGM/PPM images, including channel extrema. It encodes and decodes
-them independently and compares the Rust decoder's sample planes.
+nonzero 8/16-bit PGM/PPM images, including channel extrema, plus monochrome PGX
+inputs retaining signedness and non-byte-aligned precision. It encodes and
+decodes them independently and checks the Rust decoder's typed sample planes.
 It also exercises 256-by-256 grayscale/RGB images with multiple code-blocks.
 
 ```sh
@@ -92,7 +93,30 @@ It also exercises 256-by-256 grayscale/RGB images with multiple code-blocks.
 Cases cover grayscale/RGB, raw/JP2, tiles and nonzero origins, multiple quality
 layers, progression orders, every legacy coding-style flag, SOP/EPH/PLT, and
 reversible/irreversible transforms.
+PGX cases add signed 8/9/12/16/17/24-bit and unsigned 12/20/24-bit samples,
+including signed JP2, odd geometry, tiled nonzero origins, vertical causality,
+and layered raw-bypass coding. PGX storage uses one byte through 8 bits, two
+through 16 bits, and four through 32 bits; nominal precision and signedness
+remain separate metadata and are checked exactly. Both PGX byte orders,
+payload lengths, declared ranges and the decoder's indexed component filenames
+are validated.
+Signed fixtures encode the offset unsigned source, whose centered transform
+coefficients are identical, then author the signed SIZ flag and matching JP2
+bit-depth flag. This avoids PGX input converters that recompute precision from
+positive samples and discard the sign bit. Reports explicitly distinguish the
+original signed source from the actual unsigned encoder input and identify
+authored headers. No coefficient or packet-body bytes are changed. The
+independent decoder must still reproduce the original signed metadata and
+samples exactly; a rewritten header alone cannot qualify a fixture.
 Lossless cases must reproduce the original and reference samples bit for bit.
+The generated stream must first independently decode to the original geometry,
+precision, signedness and samples; a changed reference is a failure, not a new
+expected image. PGX origin cases use equal nonzero offsets; asymmetric origins
+remain covered by the PNM cases. The generated PGX matrix does not qualify
+signed 1-bit, precisions above 24, or high-precision multicomponent images.
+The layered bypass case also covers a zero-byte contribution completing a
+buffered MQ segment. Such a continuation must retain and replay its bounded
+prefix; it does not make an empty initial legacy segment valid.
 Lossy cases record per-component maximum error, MSE, RMSE and PSNR, plus error
 against the original image. PSNR is `null` when MSE is zero, rather than a
 nonfinite JSON value.

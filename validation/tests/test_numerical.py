@@ -79,15 +79,19 @@ class NumericalTests(unittest.TestCase):
             with self.subTest(case=case.name):
                 data = numerical.source_image(case)
                 self.assertEqual(data, numerical.source_image(case))
-                path = self.work / "source.pnm"
+                extension = numerical.source_extension(case)
+                path = self.work / f"source.{extension}"
                 path.write_bytes(data)
-                parsed = framework.parse_pnm(path)
+                parse_image = framework.parse_pgx if extension == "pgx" else framework.parse_pnm
+                parsed = parse_image(path)
                 self.assertEqual(len(parsed["image"]["components"]), case.channels)
                 for component in parsed["image"]["components"]:
                     self.assertEqual(component["precision"], case.precision)
                     self.assertEqual(len(component["samples"]), case.width * case.height)
-                    self.assertEqual(min(component["samples"]), 0)
-                    self.assertEqual(max(component["samples"]), (1 << case.precision) - 1)
+                    self.assertEqual(component["signed"], case.signed)
+                    lower = -(1 << (case.precision - 1)) if case.signed else 0
+                    self.assertEqual(min(component["samples"]), lower)
+                    self.assertEqual(max(component["samples"]), lower + (1 << case.precision) - 1)
 
     def test_missing_tools_are_blocked_and_configured_missing_tool_is_an_error(self):
         with mock.patch.object(numerical.shutil, "which", return_value=None), mock.patch.dict(
@@ -100,6 +104,122 @@ class NumericalTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 numerical.run_numerical(output_dir=self.work, encoder=Path("missing-encoder"))
         framework.validate_evidence_schemas(self.work)
+
+    def test_pgx_preserves_endianness_signedness_and_padded_sample_widths(self):
+        for precision, signed in ((1, True), (8, False), (9, True), (16, True),
+                                  (17, True), (24, False), (32, False)):
+            lower = -(1 << (precision - 1)) if signed else 0
+            values = [lower, lower + (1 << precision) - 1, 0]
+            sample_bytes = 1 if precision <= 8 else 2 if precision <= 16 else 4
+            for marker, byteorder in (("ML", "big"), ("LM", "little")):
+                with self.subTest(precision=precision, signed=signed, byteorder=byteorder):
+                    payload = b"".join(value.to_bytes(sample_bytes, byteorder, signed=signed)
+                                       for value in values)
+                    path = self.work / "samples.pgx"
+                    path.write_bytes(f"PG {marker} {'-' if signed else '+'} {precision} 3 1\n".encode() + payload)
+                    self.assertEqual(framework.parse_pgx(path), image(values, precision, signed))
+        path.write_bytes(b"PG ML + 8 4 1\r\n" + bytes((10, 13, 32, 255)))
+        self.assertEqual(framework.parse_pgx(path), image([10, 13, 32, 255]))
+
+    def test_pgx_rejects_malformed_headers_payloads_and_out_of_range_samples(self):
+        for invalid in (
+            b"PG ML + 8 1 1",
+            b"P5 ML + 8 1 1\n\x00",
+            b"PG XX + 8 1 1\n\x00",
+            b"PG ML ? 8 1 1\n\x00",
+            b"PG ML + 0 1 1\n\x00",
+            b"PG ML + 33 1 1\n\x00",
+            b"PG ML + 8 0 1\n",
+            b"PG ML + 8 1 -1\n",
+            b"PG ML + bad 1 1\n\x00",
+            b"PG ML + 8 1 1 extra\n\x00",
+            b"PG ML + 8 2 1\n\x00",
+            b"PG ML + 8 1 1\n\x00\x00",
+            b"PG ML + 17 1 1\n\x00\x00\x00",
+            b"PG ML + 12 1 1\n\xff\xff",
+            b"PG ML - 9 1 1\n\xfe\x00",
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                path = self.work / "invalid.pgx"
+                path.write_bytes(invalid)
+                framework.parse_pgx(path)
+
+    def test_fixed_and_sparse_pgx_sources_preserve_declared_ranges(self):
+        values = (-(1 << 23), -1, 0, (1 << 23) - 1)
+        case = numerical.NumericalCase("fixed-signed", precision=24, signed=True,
+                                       width=4, height=1, pattern="fixed", samples=values)
+        path = self.work / "source.pgx"
+        path.write_bytes(numerical.source_image(case))
+        self.assertEqual(framework.parse_pgx(path), image(list(values), 24, True))
+        sparse = numerical.NumericalCase("sparse-signed", precision=12, signed=True, pattern="sparse")
+        path.write_bytes(numerical.source_image(sparse))
+        samples = framework.parse_pgx(path)["image"]["components"][0]["samples"]
+        self.assertEqual(set(samples), {-(1 << 11), 0, (1 << 11) - 1})
+        for invalid in (
+            numerical.NumericalCase("invalid", precision=0),
+            numerical.NumericalCase("invalid", precision=33),
+            numerical.NumericalCase("invalid", signed=1),
+            numerical.NumericalCase("invalid", signed=True, channels=3),
+            numerical.NumericalCase("invalid", precision=24, channels=3),
+            numerical.NumericalCase("invalid", signed=True, width=1, height=1,
+                                    pattern="fixed", samples=(128,)),
+        ):
+            with self.subTest(case=invalid), self.assertRaises(ValueError):
+                numerical.source_image(invalid)
+
+    def test_signed_fixture_changes_only_the_matching_siz_sign_bit(self):
+        unsigned = framework.raw_codestream()
+        signed = numerical.signed_codestream(unsigned, 8)
+        self.assertEqual([index for index, (left, right) in enumerate(zip(unsigned, signed))
+                          if left != right], [42])
+        self.assertEqual(signed[42], 0x87)
+        self.assertEqual(signed[43:], unsigned[43:])
+        for invalid in (b"", unsigned[:44], signed,
+                        unsigned[:40] + b"\x00\x02" + unsigned[42:],
+                        unsigned[:4] + b"\x00\x28" + unsigned[6:]):
+            with self.subTest(data=invalid), self.assertRaises(ValueError):
+                numerical.signed_codestream(invalid, 8)
+        with self.assertRaises(ValueError):
+            numerical.signed_codestream(unsigned, 9)
+
+    def test_signed_jp2_fixture_metadata_matches_the_signed_codestream(self):
+        signed = numerical.signed_codestream(framework.raw_codestream(), 8)
+        container = framework.jp2_file(signed, signed=True)
+        offset = container.index(b"ihdr") + 4
+        self.assertEqual(struct.unpack(">IIH4B", container[offset:offset + 14]),
+                         (1, 1, 1, 0x87, 7, 0, 0))
+        self.assertTrue(container.endswith(signed))
+        with self.assertRaises(ValueError):
+            framework.jp2_file(signed, signed=1)
+
+    def test_pgx_reference_mismatch_and_corruption_fail_before_subject_execution(self):
+        case = numerical.NumericalCase("signed-reference", width=1, height=1, precision=17, signed=True)
+        for payload in ((123).to_bytes(4, "big", signed=True), b"\x00"):
+            calls = []
+
+            def reference_process(command, timeout_seconds):
+                calls.append(command)
+                if "-o" not in command:
+                    self.fail("subject must not run after an invalid PGX reference")
+                output = Path(command[command.index("-o") + 1])
+                if "reference" in output.stem and output.suffix == ".pgx":
+                    output.with_stem(output.stem + "_0").write_bytes(b"PG ML - 17 1 1\n" + payload)
+                else:
+                    fixture = bytearray(framework.raw_codestream())
+                    fixture[42] = 16
+                    output.write_bytes(fixture)
+                return subprocess.CompletedProcess(command, 0, b"", b""), 0.0
+
+            with mock.patch.object(numerical.shutil, "which", return_value=sys.executable), \
+                    mock.patch.object(numerical, "CASES", (case,)), \
+                    mock.patch.object(numerical, "_run_checked", side_effect=reference_process):
+                result = numerical.run_numerical(Path(sys.executable), self.work)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(result["status"], "failed")
+            record = result["records"][0]
+            self.assertTrue(record["error"])
+            self.assertTrue(any(name.endswith("-reference_0.pgx") for name in record["artifacts"]))
+            self.assertEqual((record["precision"], record["signed"], record["source_format"]), (17, True, "pgx"))
 
     def test_native_failures_and_timeouts_are_recorded_not_counted_as_success(self):
         for failure in (ValueError("native failure"), subprocess.TimeoutExpired("encoder", 0.01)):
@@ -233,4 +353,23 @@ class NumericalTests(unittest.TestCase):
                             for record in result["records"] if record["lossless"]))
         self.assertTrue(all(record["metrics"] is not None
                             for record in result["records"] if not record["lossless"]))
+        for case, record in zip(numerical.CASES, result["records"]):
+            self.assertEqual(record["precision"], case.precision)
+            self.assertEqual(record["signed"], case.signed)
+            self.assertEqual(record["source_format"], numerical.source_extension(case))
+            self.assertEqual(record["signed_header_authored"], case.signed)
+            if case.signed:
+                self.assertNotEqual(record["encoder_input_sha256"], record["input_sha256"])
+        pgx = [record for record in result["records"] if record["source_format"] == "pgx"]
+        self.assertEqual(len(pgx), 9)
+        self.assertEqual({record["precision"] for record in pgx}, {8, 9, 12, 16, 17, 20, 24})
+        for record in pgx:
+            self.assertEqual(record["source_metrics"]["maximum_error"], 0)
+            self.assertEqual(record["metrics"]["maximum_error"], 0)
+            self.assertEqual(record["reference_sha256"], record["decoded_sha256"])
+        for field in ("precision", "signed"):
+            invalid = copy.deepcopy(result)
+            del next(record for record in invalid["records"] if record["source_format"] == "pgx")[field]
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
         framework.validate_evidence_schemas(self.work)

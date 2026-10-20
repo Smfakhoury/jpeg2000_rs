@@ -39,6 +39,9 @@
         "additionalProperties": false,
         "required": ["id", "lossless", "width", "height", "elapsed_ms", "encoder_options", "thresholds", "status", "error", "metrics", "source_metrics", "input_sha256", "artifacts"],
         "allOf": [{
+          "if": {"properties": {"source_format": {"const": "pgx"}}, "required": ["source_format"]},
+          "then": {"required": ["precision", "signed"]}
+        }, {
           "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
           "then": {
             "required": ["codestream_sha256", "reference_sha256", "decoded_sha256", "timings"],
@@ -69,6 +72,11 @@
           "width": {"type": "integer", "minimum": 1},
           "height": {"type": "integer", "minimum": 1},
           "format": {"enum": ["raw", "jp2", "jph"]},
+          "precision": {"type": "integer", "minimum": 1, "maximum": 32},
+          "signed": {"type": "boolean"},
+          "source_format": {"enum": ["pgm", "ppm", "pgx"]},
+          "signed_header_authored": {"type": "boolean"},
+          "encoder_input_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
           "pattern": {"enum": ["varied", "sparse", "fixed"]},
           "encoder_invoked": {"type": "boolean"},
           "elapsed_ms": {"type": "number", "minimum": 0},
