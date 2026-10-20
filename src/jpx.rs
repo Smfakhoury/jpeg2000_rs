@@ -598,6 +598,8 @@ fn instruction_info(layer_index: usize, instruction: CompositionInstruction) -> 
     }
 }
 
+/// Renders one layer while retaining its straight/premultiplied sample representation.
+/// The alpha channel records that representation; frame/composition output is straight alpha.
 pub fn render_jpx_layer(
     input: &[u8],
     layer_index: usize,
@@ -832,16 +834,17 @@ impl OwnedLayer {
 
     fn into_image(self) -> Result<ConvertedImage, DecodeError> {
         let pixels = checked_area(self.width, self.height)?;
-        let alpha = match self.alpha {
-            Some(value) => value.0,
-            None => vec![u16::MAX; pixels],
+        let (alpha, premultiplied) = match self.alpha {
+            Some(value) => value,
+            None => (vec![u16::MAX; pixels], false),
         };
-        ConvertedImage::from_composited(
+        ConvertedImage::from_layer(
             self.width,
             self.height,
             self.color_space,
             self.colors,
             alpha,
+            premultiplied,
         )
     }
 }
@@ -2401,6 +2404,27 @@ fn invalid_layer() -> DecodeError {
 mod tests {
     use super::*;
     use crate::jp2::{Composition, CompositionInstructionSet};
+
+    #[test]
+    fn single_layer_output_preserves_fractional_premultiplied_representation() {
+        let layer = OwnedLayer {
+            width: 2,
+            height: 1,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![vec![1, 12_345]],
+            alpha: Some((vec![2, 32_768], true)),
+        };
+        let image = layer.into_image().unwrap();
+        assert_eq!(image.channel(0).unwrap().samples(), &[1, 12_345]);
+        assert_eq!(image.channel(1).unwrap().samples(), &[2, 32_768]);
+        assert_eq!(
+            image.channel(1).unwrap().channel_type(),
+            ConvertedChannelType::Alpha {
+                premultiplied: true,
+                association: crate::image::ChannelAssociation::WholeImage,
+            }
+        );
+    }
 
     #[test]
     fn source_over_is_deterministic_and_crops_to_canvas() {

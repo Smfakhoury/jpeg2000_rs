@@ -277,8 +277,29 @@ JPX relations cover 8-bit grayscale and 16-bit RGB layers, chroma-key
 transparency, overlapping placements, source crops, frame persistence and
 finite frame bounds. Expected canvases are calculated from the original
 samples and authored placement rectangles, not from another subject decode.
-These cases use opaque/binary alpha; they do not establish fractional or
-premultiplied-alpha numerical conformance.
+The original cases retain opaque/binary alpha and their separate strict oracle.
+Additional RGBA fixtures independently encode/decode every 8/16-bit color and
+opacity plane before authoring CDEF channel roles or JPX OPCT declarations.
+They cover fractional alpha including near-zero/near-opaque endpoints,
+straight/premultiplied representation, reordered channels, 2-by-2 alpha
+subsampling, and explicit opacity overrides.
+
+A separate oracle uses Python `Fraction` arithmetic for source-over in
+normalized sample space, rounding each output color/alpha to 16 bits after
+each layer. It does not copy the production integer expression or consume
+subject outputs as expectations. Static composition, placed/scaled/clipped
+crops, persistent/nonpersistent frames, and equivalent straight/premultiplied
+encodings must match exactly. Invalid premultiplied samples are rejected by
+composition. Single-layer rendering preserves its samples and alpha
+representation flag rather than pretending premultiplied samples are straight;
+composited transparent pixels are transparent black.
+
+This qualifies selected whole-image/global-alpha sRGB fixtures, not all
+per-color/multiple-opacity associations, higher precision, linear-light
+colorimetric blending, a third-party JPX compositor, or official alpha
+conformance. Authored container metadata and the independently qualified
+coefficient payloads remain distinct evidence. Nested fixture files, tools,
+test sources and subject hashes are included in retained failure records.
 
 JPIP relations check byte-exact reconstruction from reordered, duplicated,
 explicit/inherited-context fragments, followed by sample-exact legacy and

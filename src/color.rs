@@ -122,6 +122,24 @@ impl ConvertedImage {
         color_samples: Vec<Vec<u16>>,
         alpha_samples: Vec<u16>,
     ) -> Result<Self, DecodeError> {
+        Self::from_layer(
+            width,
+            height,
+            color_space,
+            color_samples,
+            alpha_samples,
+            false,
+        )
+    }
+
+    pub(crate) fn from_layer(
+        width: u32,
+        height: u32,
+        color_space: ConvertedColorSpace,
+        color_samples: Vec<Vec<u16>>,
+        alpha_samples: Vec<u16>,
+        premultiplied: bool,
+    ) -> Result<Self, DecodeError> {
         let expected_colors = match color_space {
             ConvertedColorSpace::Srgb => 3_usize,
             ConvertedColorSpace::Grayscale => 1_usize,
@@ -163,7 +181,7 @@ impl ConvertedImage {
         }
         channels.push(ConvertedChannel {
             channel_type: ConvertedChannelType::Alpha {
-                premultiplied: false,
+                premultiplied,
                 association: ChannelAssociation::WholeImage,
             },
             samples: alpha_samples,
