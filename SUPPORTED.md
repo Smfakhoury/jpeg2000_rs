@@ -57,6 +57,12 @@ metadata placeholders, precinct mapping, packet reconstruction, and
 transactional progressive decode. Availability and missing-range results
 distinguish incomplete data from successful reconstruction.
 
+Explicit `JpipPrecinctCodestreamPlan` transcodes are restricted to a single
+tile-part with LRCP progression, inline packet headers, and no POC, PLT, or PPT
+in the reconstructed input. Those plans require already-reframed headers;
+original packet-length declarations must not be copied into a shortened
+quality prefix. Automatic reconstruction performs its own header normalization.
+
 ## Selection
 
 Selected APIs accept a tile index or a unique rectangular tile set, an absolute

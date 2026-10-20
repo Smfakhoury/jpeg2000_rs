@@ -2336,23 +2336,34 @@ pub struct CodeBlockSegmentAccounting {
 #[derive(Clone, Copy, Default)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct CoefficientState {
+    /// Decoded magnitude bits; unfinished legacy passes retain a bit prefix.
     pub magnitude: u64,
     magnitude_high: [u64; 5],
+    legacy_bitplane: Option<u16>,
     pub negative: bool,
     pub significant: bool,
     pub refined: bool,
 }
 
 impl CoefficientState {
-    pub(crate) fn signed_magnitude(&self) -> SignedMagnitude {
-        SignedMagnitude::new(
-            if self.significant {
-                self.wide_magnitude()
+    pub(crate) fn signed_magnitude(&self) -> Result<SignedMagnitude, DecodeError> {
+        let mut magnitude = if self.significant {
+            self.wide_magnitude()
+        } else {
+            Magnitude::ZERO
+        };
+        if let (true, Some(bitplane)) = (self.significant, self.legacy_bitplane) {
+            let midpoint = if bitplane <= 64 {
+                Magnitude::from_u64(crate::refinement::tier1_midpoint_delta(bitplane))
             } else {
-                Magnitude::ZERO
-            },
+                Magnitude::single_bit(bitplane - 1)?
+            };
+            magnitude = magnitude.checked_add(midpoint)?;
+        }
+        Ok(SignedMagnitude::new(
+            magnitude,
             self.significant && self.negative,
-        )
+        ))
     }
     pub fn magnitude_limb(&self, index: usize) -> Option<u64> {
         if index == 0 {
@@ -2394,6 +2405,7 @@ impl CoefficientState {
         let mut output = Self {
             magnitude: magnitude.low_u64(),
             magnitude_high: [0; 5],
+            legacy_bitplane: None,
             negative,
             significant,
             refined,
@@ -4011,10 +4023,10 @@ fn decode_sign_and_mark(
     let sign = sign_context(summary);
     let raw = matches!(decoder, Tier1SymbolDecoder::Raw(_));
     let decoded_sign = decoder.decode(usize::from(sign.context))?;
-    plane.mark_significant_magnitude(
+    plane.mark_significant_at_bitplane(
         x,
         y,
-        Magnitude::single_bit(bitplane)?,
+        bitplane,
         crate::refinement::tier1_decoded_sign(decoded_sign, sign.predicted_negative, raw),
     )
 }
@@ -4180,13 +4192,16 @@ impl CodeBlockPlane {
         &self.coefficients
     }
 
+    /// Returns the reconstructed integer coefficient, including any legacy
+    /// truncation midpoint; `coefficient` retains the decoded magnitude bits.
     pub fn signed_coefficient(&self, x: u16, y: u16) -> Result<i64, DecodeError> {
         let coefficient = self.coefficient(x, y)?;
         if !coefficient.significant {
             return Ok(0);
         }
         let magnitude = coefficient
-            .wide_magnitude()
+            .signed_magnitude()?
+            .magnitude
             .to_u64()
             .and_then(|value| i64::try_from(value).ok())
             .ok_or_else(arithmetic_overflow)?;
@@ -4209,6 +4224,22 @@ impl CodeBlockPlane {
         negative: bool,
     ) -> Result<(), DecodeError> {
         self.mark_significant_magnitude(x, y, Magnitude::from_u64(magnitude), negative)
+    }
+
+    fn mark_significant_at_bitplane(
+        &mut self,
+        x: u16,
+        y: u16,
+        bitplane: u16,
+        negative: bool,
+    ) -> Result<(), DecodeError> {
+        self.mark_significant_magnitude(x, y, Magnitude::single_bit(bitplane)?, negative)?;
+        let index = self.index(x, y)?;
+        self.coefficients
+            .get_mut(index)
+            .ok_or_else(invalid_code_block)?
+            .legacy_bitplane = Some(bitplane);
+        Ok(())
     }
 
     fn mark_significant_magnitude(
@@ -4282,6 +4313,9 @@ impl CodeBlockPlane {
             self.coefficients[index].set_magnitude(magnitude)?;
         }
         self.coefficients[index].refined = true;
+        if coefficient.legacy_bitplane.is_some() {
+            self.coefficients[index].legacy_bitplane = Some(bitplane);
+        }
         Ok(())
     }
 
@@ -4998,6 +5032,51 @@ mod tests {
     }
 
     #[test]
+    fn legacy_partial_quality_reconstructs_signed_midpoints_without_changing_prefixes() {
+        for negative in [false, true] {
+            let mut plane = CodeBlockPlane::new(1, 1).unwrap();
+            plane
+                .mark_significant_at_bitplane(0, 0, 4, negative)
+                .unwrap();
+            assert_eq!(plane.coefficient(0, 0).unwrap().magnitude, 16);
+            let sign = if negative { -1 } else { 1 };
+            assert_eq!(plane.signed_coefficient(0, 0).unwrap(), sign * 24);
+            for (bitplane, bit, expected) in
+                [(3, false, 20), (2, true, 22), (1, true, 23), (0, true, 23)]
+            {
+                plane.apply_refinement_bit(0, 0, bitplane, bit).unwrap();
+                assert_eq!(plane.signed_coefficient(0, 0).unwrap(), sign * expected);
+            }
+            assert_eq!(plane.coefficient(0, 0).unwrap().magnitude, 23);
+        }
+    }
+
+    #[test]
+    fn legacy_partial_pass_midpoints_are_coefficient_local() {
+        let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+        plane.mark_significant_at_bitplane(0, 0, 3, false).unwrap();
+        plane.mark_significant_at_bitplane(1, 0, 2, false).unwrap();
+        assert_eq!(plane.signed_coefficient(0, 0).unwrap(), 12);
+        assert_eq!(plane.signed_coefficient(1, 0).unwrap(), 6);
+        plane.apply_refinement_bit(0, 0, 2, false).unwrap();
+        assert_eq!(plane.signed_coefficient(0, 0).unwrap(), 10);
+        assert_eq!(plane.signed_coefficient(1, 0).unwrap(), 6);
+    }
+
+    #[test]
+    fn legacy_midpoint_reconstruction_preserves_wide_magnitudes() {
+        for (bitplane, low, high) in [(64, 1_u64 << 63, 1), (65, 0, 3), (74, 0, 1536)] {
+            let mut plane = CodeBlockPlane::new(1, 1).unwrap();
+            plane
+                .mark_significant_at_bitplane(0, 0, bitplane, false)
+                .unwrap();
+            let reconstructed = plane.coefficient(0, 0).unwrap().signed_magnitude().unwrap();
+            assert_eq!(reconstructed.magnitude.limb(0), Some(low));
+            assert_eq!(reconstructed.magnitude.limb(1), Some(high));
+        }
+    }
+
+    #[test]
     fn ht_cleanup_rejects_cursor_collision_and_out_of_bounds_significance() {
         let limits = ResourceLimits::default();
         assert!(decode_ht_cleanup_metadata(&[0x02, 0x00], 1, 1, 1, &limits).is_err());
@@ -5165,6 +5244,7 @@ mod tests {
             CoefficientState {
                 magnitude: 8,
                 magnitude_high: [0; 5],
+                legacy_bitplane: None,
                 negative: false,
                 significant: true,
                 refined: true,

@@ -286,6 +286,10 @@
         {
           "path": "src/refinement.rs",
           "symbol": "tier1_refined_magnitude"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "tier1_midpoint_delta"
         }
       ],
       "id": "part1-tier1-pass-state",
@@ -301,6 +305,10 @@
         {
           "path": "src/tier1.rs",
           "symbol": "CodeBlockPlane::apply_refinement_bit"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "CoefficientState::signed_magnitude"
         }
       ],
       "proof_refs": [
@@ -321,6 +329,10 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part1_tier1_refined_magnitude"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_midpoint_delta"
         }
       ],
       "test_refs": [
@@ -335,9 +347,21 @@
         {
           "path": "src/tier1.rs",
           "symbol": "refinement_records_zero_decisions_without_changing_magnitude"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "legacy_partial_quality_reconstructs_signed_midpoints_without_changing_prefixes"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "legacy_partial_pass_midpoints_are_coefficient_local"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "legacy_midpoint_reconstruction_preserves_wide_magnitudes"
         }
       ],
-      "topic": "Tier-1 pass schedule, refinement context, and magnitude update"
+      "topic": "Tier-1 pass schedule, refinement context, magnitude bits, and coefficient-local integer truncation midpoint"
     },
     {
       "contract_refs": [

@@ -1320,6 +1320,10 @@ pub open spec fn part1_maxshift_restore(magnitude: u64, shift: u8) -> u64 {
     }
 }
 
+pub open spec fn part1_tier1_midpoint_delta(bitplane: u16) -> u64 {
+    if bitplane == 0 || bitplane > 64 { 0 } else { 1_u64 << (bitplane - 1) }
+}
+
 pub open spec fn part1_reversible_inverse_quantize(coefficient: int) -> int {
     coefficient
 }

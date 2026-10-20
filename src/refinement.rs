@@ -217,6 +217,21 @@ pub(crate) const fn tier1_refined_magnitude(
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(
+        requires bitplane <= 64,
+        ensures returns crate::specs::part1_tier1_midpoint_delta(bitplane),
+    )
+)]
+pub(crate) const fn tier1_midpoint_delta(bitplane: u16) -> u64 {
+    if bitplane == 0 {
+        0
+    } else {
+        1_u64 << (bitplane - 1)
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
         ensures returns crate::specs::part1_maxshift_restore(magnitude, shift),
     )
 )]

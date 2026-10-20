@@ -1449,7 +1449,7 @@ fn prepare_tile_component_with_kernel(
             )]
             while x < plane_width {
                 let coefficient = plane.coefficient(x, y)?;
-                coefficients.push(coefficient.signed_magnitude());
+                coefficients.push(coefficient.signed_magnitude()?);
                 x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -3703,7 +3703,7 @@ pub fn decode_code_block(
     )]
     while coefficient_index < coefficients.len() {
         let coefficient = coefficients[coefficient_index];
-        signed.push(coefficient.signed_magnitude());
+        signed.push(coefficient.signed_magnitude()?);
         coefficient_index = coefficient_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;

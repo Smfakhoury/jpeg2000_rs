@@ -1,10 +1,13 @@
 use std::{env, fs, process};
 
 use jpeg2000_rs::{
-    DatabinCache, DecodeError, DecodeOptions, DecodeSelection, ImageRegion, ResourceLimits,
-    TypedImage, TypedSamples, decode_codestream, decode_codestream_selected, decode_jp2,
-    decode_jp2_selected, decode_jph, decode_jph_selected, decode_jpx_codestream,
-    decode_jpx_codestream_selected, ingest_jpip_response, inspect_jph,
+    ConvertedImage, DatabinCache, DatabinId, DecodeError, DecodeOptions, DecodeSelection,
+    ImageRegion, JpipAutomaticProgressiveDecoder, JpipFragment, JpipMessage, JpipMessageParser,
+    JpipPrecinctCodestreamPlan, JpipPrecinctPacket, JpipProgressiveDecoder, MalformedKind,
+    ResourceLimits, TypedImage, TypedSamples, decode_codestream, decode_codestream_selected,
+    decode_jp2, decode_jp2_selected, decode_jph, decode_jph_selected, decode_jpx_codestream,
+    decode_jpx_codestream_selected, ingest_jpip_response, inspect_jph, render_jpx_composition,
+    render_jpx_frame, render_jpx_layer,
 };
 
 fn print_error(error: DecodeError) -> ! {
@@ -93,6 +96,121 @@ fn print_selected_image(image: &TypedImage) {
     print_image(image);
 }
 
+fn print_converted_image(image: &ConvertedImage) {
+    println!(
+        "IMAGE\n{} {} {}",
+        image.width(),
+        image.height(),
+        image.channels().len()
+    );
+    for channel in image.channels() {
+        let samples = channel
+            .samples()
+            .iter()
+            .map(u16::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        println!(
+            "{}\t{}\t{}\t0\tunsigned\t{}",
+            image.width(),
+            image.height(),
+            image.precision(),
+            samples
+        );
+    }
+}
+
+fn index_argument(value: &str) -> usize {
+    value.parse().unwrap_or_else(|error| {
+        eprintln!("invalid index: {error}");
+        process::exit(2);
+    })
+}
+
+fn report_progressive(
+    cache: &DatabinCache,
+    manual: &mut Option<JpipProgressiveDecoder>,
+    automatic: &mut JpipAutomaticProgressiveDecoder,
+    options: &DecodeOptions,
+) -> Result<(), DecodeError> {
+    let update = match manual {
+        Some(decoder) => decoder.update(cache, options)?,
+        None => automatic.update(cache, options)?,
+    };
+    println!(
+        "UPDATE\t{:?}\t{}\t{}\t{}\t{}",
+        update.status(),
+        update.previous_layers(),
+        update.available_layers(),
+        u8::from(update.image().is_some()),
+        update.missing_ranges().len()
+    );
+    if let Some(image) = update.image() {
+        print_image(image);
+    }
+    Ok(())
+}
+
+fn progressive(input: &[u8], mode: &str, options: &DecodeOptions) -> Result<(), DecodeError> {
+    let limits = options.limits();
+    let mut manual = if mode == "auto" {
+        None
+    } else {
+        let lengths = mode
+            .split(',')
+            .map(str::parse::<u64>)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_else(|error| {
+                eprintln!("invalid packet lengths: {error}");
+                process::exit(2);
+            });
+        let layers = u16::try_from(lengths.len()).unwrap_or_else(|error| {
+            eprintln!("invalid layer count: {error}");
+            process::exit(2);
+        });
+        let mut packets = Vec::new();
+        let mut offset = 0_u64;
+        for (layer, length) in (0..layers).zip(lengths) {
+            packets.push(JpipPrecinctPacket::new(
+                DatabinId::new(0, 0, 0)?,
+                layer,
+                offset,
+                length,
+            )?);
+            offset = offset
+                .checked_add(length)
+                .ok_or(DecodeError::MalformedInput {
+                    offset,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })?;
+        }
+        Some(JpipProgressiveDecoder::new(
+            JpipPrecinctCodestreamPlan::new(
+                DatabinId::new(6, 0, 0)?,
+                DatabinId::new(2, 0, 0)?,
+                packets,
+                layers,
+                limits,
+            )?,
+        ))
+    };
+    let mut automatic = JpipAutomaticProgressiveDecoder::new(0);
+    let mut cache = DatabinCache::new(*limits);
+    let mut parser = JpipMessageParser::new(*limits);
+    report_progressive(&cache, &mut manual, &mut automatic, options)?;
+    let mut offset = 0;
+    while offset < input.len() {
+        let (message, consumed) = parser.parse(&input[offset..])?;
+        offset += consumed;
+        if let JpipMessage::Data { header, body } = message {
+            cache.insert(JpipFragment::from_message(header, body, limits)?)?;
+            report_progressive(&cache, &mut manual, &mut automatic, options)?;
+            report_progressive(&cache, &mut manual, &mut automatic, options)?;
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let arguments = env::args().collect::<Vec<_>>();
     let selecting = arguments.get(1).is_some_and(|value| value == "select");
@@ -100,7 +218,9 @@ fn main() {
         eprintln!(
             "usage: validation_decoder <decode|inspect|ingest> <format> <input>\n\
              or: validation_decoder select <format> <input> <discard-levels> \
-             <all|tile-indices> <all|x,y,width,height>"
+             <all|tile-indices> <all|x,y,width,height>\n\
+             or: validation_decoder <render|render-layer|render-frame|reconstruct|progressive> \
+             <jpx|layer-index|frame-index|jpip|auto|packet-lengths> <input>"
         );
         process::exit(2);
     }
@@ -142,6 +262,50 @@ fn main() {
             Ok(image) => print_image(&image),
             Err(error) => print_error(error),
         },
+        ("render", "jpx") => match render_jpx_composition(&input, &options) {
+            Ok(image) => print_converted_image(&image),
+            Err(error) => print_error(error),
+        },
+        ("render-layer", index) => {
+            match render_jpx_layer(&input, index_argument(index), &options) {
+                Ok(image) => print_converted_image(&image),
+                Err(error) => print_error(error),
+            }
+        }
+        ("render-frame", index) => {
+            match render_jpx_frame(&input, index_argument(index), &options) {
+                Ok(image) => print_converted_image(&image),
+                Err(error) => print_error(error),
+            }
+        }
+        ("reconstruct", "jpip") => {
+            let mut cache = DatabinCache::new(*options.limits());
+            let result = (|| {
+                ingest_jpip_response(&input, &mut cache)?;
+                let view = cache.reconstruct_codestream(&[
+                    DatabinId::new(6, 0, 0)?,
+                    DatabinId::new(2, 0, 0)?,
+                    DatabinId::new(4, 0, 0)?,
+                ])?;
+                let image = decode_codestream(view.as_ref(), &options)?;
+                let bytes = view
+                    .as_bytes()
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                println!("BYTES\t{bytes}");
+                print_image(&image);
+                Ok::<_, DecodeError>(())
+            })();
+            if let Err(error) = result {
+                print_error(error);
+            }
+        }
+        ("progressive", mode) => {
+            if let Err(error) = progressive(&input, mode, &options) {
+                print_error(error);
+            }
+        }
         ("select", "raw") => match decode_codestream_selected(&input, &options, &selection) {
             Ok(image) => print_selected_image(&image),
             Err(error) => print_error(error),

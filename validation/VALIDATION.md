@@ -208,6 +208,43 @@ tile indices, and `all` or `x,y,width,height`. Selected output begins with a
 `FRAME` line containing the actual output origin, followed by the existing
 image observation.
 
+## Nonzero JPX and JPIP relations
+
+The Python suite also builds first-party JPX and JPIP structures around
+independently encoded nonzero samples:
+
+```sh
+PYTHONPATH=validation .venv/bin/python -m unittest discover \
+  -s validation/tests -p test_container_relations.py -v
+```
+
+JPX relations cover 8-bit grayscale and 16-bit RGB layers, chroma-key
+transparency, overlapping placements, source crops, frame persistence and
+finite frame bounds. Expected canvases are calculated from the original
+samples and authored placement rectangles, not from another subject decode.
+These cases use opaque/binary alpha; they do not establish fractional or
+premultiplied-alpha numerical conformance.
+
+JPIP relations check byte-exact reconstruction from reordered, duplicated,
+explicit/inherited-context fragments, followed by sample-exact legacy and
+HT decoding. Independently decoded OpenJPEG quality prefixes provide expected
+8/16-bit progressive images. Incomplete packets and repeated updates must not
+emit new images; complete layers must advance monotonically and reproduce the
+corresponding independent output. Stored legacy magnitude bits remain a
+prefix while integer coefficient materialization adds the coefficient-local
+truncation midpoint. The last fully decoded bitplane needs no integer offset.
+
+Automatic progressive cases use the original packet-length metadata.
+Explicit-plan cases use authored inline headers without obsolete PLT
+declarations, and separately retain the rejection of unsupported headers;
+tests do not broaden the manual API's supported profile.
+No network transport or service is involved.
+
+Failures retain generated inputs, reference images, tool hashes/options and
+reproduction records under ignored `container-failures/`. Distinct input,
+subject and test hashes select distinct failure directories, so a later
+disagreement does not overwrite an earlier one. CI uploads those directories.
+
 ## Budgets
 
 ```sh
