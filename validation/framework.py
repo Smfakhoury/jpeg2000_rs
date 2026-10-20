@@ -662,6 +662,38 @@ def parse_pnm(path: Path) -> dict[str, Any]:
     }
 
 
+def parse_pgx(path: Path) -> dict[str, Any]:
+    header, delimiter, payload = path.read_bytes().partition(b"\n")
+    fields = header.split()
+    if (not delimiter or len(fields) != 6 or fields[0] != b"PG"
+            or fields[1] not in (b"ML", b"LM") or fields[2] not in (b"+", b"-")):
+        raise ValueError("invalid binary PGX header")
+    precision, width, height = (int(value) for value in fields[3:])
+    if not 1 <= precision <= 32 or width <= 0 or height <= 0:
+        raise ValueError("PGX precision or geometry is outside the supported profile")
+    sample_bytes = 1 if precision <= 8 else 2 if precision <= 16 else 4
+    if len(payload) != width * height * sample_bytes:
+        raise ValueError("PGX payload length mismatch")
+    signed = fields[2] == b"-"
+    byteorder = "big" if fields[1] == b"ML" else "little"
+    values = [
+        int.from_bytes(payload[index:index + sample_bytes], byteorder, signed=signed)
+        for index in range(0, len(payload), sample_bytes)
+    ]
+    lower = -(1 << (precision - 1)) if signed else 0
+    upper = lower + (1 << precision) - 1
+    if any(not lower <= value <= upper for value in values):
+        raise ValueError("PGX sample exceeds declared precision")
+    return {
+        "accepted": True,
+        "image": {"width": width, "height": height, "components": [{
+            "width": width, "height": height, "precision": precision,
+            "signed": signed, "sample_kind": "signed" if signed else "unsigned",
+            "samples": values,
+        }]},
+    }
+
+
 def normalized_hash(outcome: dict[str, Any]) -> str:
     stable = {
         key: value

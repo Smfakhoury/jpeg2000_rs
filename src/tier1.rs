@@ -5054,6 +5054,24 @@ mod tests {
     }
 
     #[test]
+    fn zero_byte_mq_continuation_replays_the_buffered_prefix() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(1).unwrap();
+        let mut whole = Tier1CodeBlockDecoder::new(1, 1, 4, SubbandOrientation::Ll, style).unwrap();
+        let mut split = Tier1CodeBlockDecoder::new(1, 1, 4, SubbandOrientation::Ll, style).unwrap();
+        whole.decode_legacy_contribution(&[0], 10, &limits).unwrap();
+        split.decode_legacy_contribution(&[0], 9, &limits).unwrap();
+        assert!(split.legacy_segment.is_some());
+        split.decode_legacy_contribution(&[], 1, &limits).unwrap();
+        assert_eq!(split.plane(), whole.plane());
+        assert_eq!(split.next_pass(), whole.next_pass());
+        assert_eq!(split.decoded_bytes(), whole.decoded_bytes());
+        assert!(split.legacy_segment.is_none());
+        let mut empty = Tier1CodeBlockDecoder::new(1, 1, 4, SubbandOrientation::Ll, style).unwrap();
+        assert!(empty.decode_legacy_contribution(&[], 1, &limits).is_err());
+    }
+
+    #[test]
     fn legacy_partial_pass_midpoints_are_coefficient_local() {
         let mut plane = CodeBlockPlane::new(2, 1).unwrap();
         plane.mark_significant_at_bitplane(0, 0, 3, false).unwrap();
