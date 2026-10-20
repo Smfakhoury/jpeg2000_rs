@@ -121,6 +121,7 @@ def source_binding(source_root: Path | None = None) -> dict[str, Any]:
         path.relative_to(ROOT).as_posix(): sha256_file(path)
         for path in sorted(
             list(VALIDATION.glob("*.py"))
+            + list(VALIDATION.glob("*.sh"))
             + list(VALIDATION.glob("*.schema.json"))
             + [VALIDATION / "requirements.txt"]
         )
@@ -182,6 +183,7 @@ def validate_evidence_schemas(output_dir: Path | None = None) -> dict[str, Any]:
         ("official-vector-results.json", "official-vector-result.schema.json"),
         ("proof-coverage.json", "proof-coverage.schema.json"),
         ("numerical-results.json", "numerical-result.schema.json"),
+        ("htj2k-results.json", "numerical-result.schema.json"),
     ):
         path = (output_dir or RESULTS_DIR) / name
         if path.is_file():
@@ -276,11 +278,16 @@ def raw_codestream() -> bytes:
     return data + b"\xff\xd9"
 
 
-def jp2_file(codestream: bytes, brand: bytes = b"jp2 ") -> bytes:
+def jp2_file(
+    codestream: bytes, brand: bytes = b"jp2 ", *,
+    width: int = 1, height: int = 1, components: int = 1, precision: int = 8,
+) -> bytes:
+    if width <= 0 or height <= 0 or components not in (1, 3) or not 1 <= precision <= 38:
+        raise ValueError("generated container requires positive geometry and uniform unsigned grayscale/RGB components")
     signature = box(b"jP  ", b"\x0d\x0a\x87\x0a")
     ftyp = box(b"ftyp", brand + b"\0\0\0\0" + brand)
-    ihdr = box(b"ihdr", struct.pack(">IIH4B", 1, 1, 1, 7, 7, 0, 0))
-    colr = box(b"colr", bytes((1, 0, 0, 0, 0, 0, 17)))
+    ihdr = box(b"ihdr", struct.pack(">IIH4B", height, width, components, precision - 1, 7, 0, 0))
+    colr = box(b"colr", bytes((1, 0, 0, 0, 0, 0, 17 if components == 1 else 16)))
     return signature + ftyp + box(b"jp2h", ihdr + colr) + box(b"jp2c", codestream)
 
 

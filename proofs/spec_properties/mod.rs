@@ -7,21 +7,21 @@ use crate::specs::{
     complete_jpip_range, component_index_width, composition_instruction_work,
     composition_output_bytes, consistent_jpip_final_length, consistent_part15_signaling,
     decomposition_graph_cardinality, decomposition_stage_subbands, disjoint_ht_refinement_claims,
-    effective_component_override, effective_jpx_layer_count, ht_completed_u, ht_cursors_separated,
-    ht_kappa_extension, ht_placeholder_passes, ht_quad_count, ht_substantive_passes,
-    jpip_packet_boundary_exact, jpip_packet_boundary_step, jpip_precinct_in_class,
-    jpip_quality_prefix_available, jpip_ranges_overlap, jpip_reconstructed_box_length,
-    jpip_tile_transition_sufficient, magnitude_addition, magnitude_less, magnitude_limb_index,
-    magnitude_limb_offset, magnitude_shift_fits, maxshift_restored_magnitude, nested_metadata_work,
-    packed_header_index_continuous, packed_packet_length_matches, packet_length_index_continuous,
-    packet_length_step, packet_lengths_cover_payload, palette_linear_index, poc_contains,
-    ppm_frame_fits, region_fits, registered_channel_count, registered_sample_numerator,
-    resampled_component_coordinate, signed_color_to_nominal, tile_transform_scope, valid_cbd_scope,
-    valid_channel_association, valid_codestream_header_associations, valid_color_sample,
-    valid_component_mapping, valid_component_override_index, valid_decomposition_direction,
-    valid_ht_cleanup_partition, valid_ht_pass_group, valid_ht_quad_origin,
-    valid_ht_refinement_segment, valid_ht_style_prefix, valid_jp2_primary_brand,
-    valid_jph_branding, valid_jpip_codestream_layout, valid_jpip_fragment,
+    effective_component_override, effective_jpx_layer_count, ht_cleanup_byte_claims_valid,
+    ht_completed_u, ht_kappa_extension, ht_placeholder_passes, ht_quad_count,
+    ht_substantive_passes, jpip_packet_boundary_exact, jpip_packet_boundary_step,
+    jpip_precinct_in_class, jpip_quality_prefix_available, jpip_ranges_overlap,
+    jpip_reconstructed_box_length, jpip_tile_transition_sufficient, magnitude_addition,
+    magnitude_less, magnitude_limb_index, magnitude_limb_offset, magnitude_shift_fits,
+    maxshift_restored_magnitude, nested_metadata_work, packed_header_index_continuous,
+    packed_packet_length_matches, packet_length_index_continuous, packet_length_step,
+    packet_lengths_cover_payload, palette_linear_index, poc_contains, ppm_frame_fits, region_fits,
+    registered_channel_count, registered_sample_numerator, resampled_component_coordinate,
+    signed_color_to_nominal, tile_transform_scope, valid_cbd_scope, valid_channel_association,
+    valid_codestream_header_associations, valid_color_sample, valid_component_mapping,
+    valid_component_override_index, valid_decomposition_direction, valid_ht_cleanup_partition,
+    valid_ht_pass_group, valid_ht_quad_origin, valid_ht_refinement_segment, valid_ht_style_prefix,
+    valid_jp2_primary_brand, valid_jph_branding, valid_jpip_codestream_layout, valid_jpip_fragment,
     valid_jpip_precinct_coordinate, valid_jpip_progressive_update,
     valid_layer_codestream_reference, valid_magnitude_bit, valid_maxshift_roi,
     valid_mct_array_reference, valid_mct_collection_count, valid_mct_dimensions,
@@ -371,21 +371,24 @@ pub proof fn valid_ht_cleanup_has_bounded_disjoint_physical_partition(
     reveal(valid_ht_cleanup_partition);
 }
 
-pub proof fn separated_ht_cursors_do_not_cross(
+pub proof fn ht_cleanup_shared_byte_is_unique(
     mel_byte: nat,
-    mel_bit: nat,
     vlc_byte: nat,
-    vlc_bit: nat,
+    terminal_byte: nat,
+    value: u8,
+    shared_a: nat,
+    shared_b: nat,
 )
     requires
-        ht_cursors_separated(mel_byte, mel_bit, vlc_byte, vlc_bit),
+        ht_cleanup_byte_claims_valid(mel_byte, vlc_byte, terminal_byte, value),
+        vlc_byte <= shared_a <= mel_byte,
+        vlc_byte <= shared_b <= mel_byte,
     ensures
-        mel_byte <= vlc_byte,
-        mel_byte == vlc_byte ==> mel_bit > vlc_bit,
-        mel_bit < 8,
-        vlc_bit < 8,
+        shared_a == shared_b,
+        shared_a < terminal_byte,
+        value != 0xff,
 {
-    reveal(ht_cursors_separated);
+    reveal(ht_cleanup_byte_claims_valid);
 }
 
 pub proof fn valid_ht_quad_origin_is_sample_bounded(

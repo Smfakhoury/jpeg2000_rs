@@ -27,7 +27,7 @@ internal approvals, old results, or committed source snapshots. `--subject`
 selects a different harness; `--no-build` uses the existing default binary.
 
 All reports default to ignored `target/validation/`. The `run`, `budget`,
-`official`, `numerical`, `schemas`, and `all` commands accept `--output-dir`. Existing
+`official`, `numerical`, `htj2k`, `schemas`, and `all` commands accept `--output-dir`. Existing
 tracked report paths are refused. Reports bind the Git commit, dirty flag,
 current source and validation-tool hashes, and subject binary hash when run.
 These describe the current execution, not the validity of historical evidence.
@@ -120,6 +120,48 @@ Missing default tools are explicitly `blocked`; configured missing tools,
 process failures, invalid output and exceeded thresholds cannot pass.
 `--encoder`, `--decoder`, `OPENJPEG_ENCODER` and `OPENJPEG_DECODER` select trusted
 local tools. `all` includes this gate unless `--no-external` is selected.
+
+### Independent HTJ2K checks
+
+The separate `htj2k` gate uses OpenJPH's `ojph_compress` and `ojph_expand`.
+Build the immutable revision listed in [REFERENCES.md](../REFERENCES.md)
+with Git, CMake, and a C++ compiler available:
+
+```sh
+bash validation/build-openjph.sh
+export OPENJPH_ENCODER="$PWD/target/validation/oracles/openjph-build/src/apps/ojph_compress/ojph_compress"
+export OPENJPH_DECODER="$PWD/target/validation/oracles/openjph-build/src/apps/ojph_expand/ojph_expand"
+.venv/bin/python validation/run-validation.py htj2k
+```
+
+The builder keeps the public reference checkout and build under ignored
+`target/validation/oracles/`, disables SIMD for scalar reproducibility, and
+rejects a modified or different-revision cached checkout. No upstream source
+or binaries are included in the source package.
+
+Generated nonzero cases exercise grayscale/RGB, 8/16-bit samples, sparse
+coefficients, odd dimensions, tiles, nonzero origins, progression orders,
+raw/JPH wrapping, and reversible/irreversible transforms. First-party fixed
+codestream recipes cover positive/negative significance propagation and
+magnitude refinement, combined refinement, and a minimum-value boundary.
+Both the reference decoder and the subject must reproduce each fixed case's
+known samples. Preencoded cases report `encoder_invoked=false`, empty encoder
+options, and a `null` encoder timing; the encoder is not run for those cases.
+
+For live lossless encoding, the reference's decoded samples must match the
+original source before the subject runs. A reference self-roundtrip failure
+is retained as a failure, not accepted as an alternative expected image.
+The pinned reference encoder does not preserve the minimum-valued one-pixel
+input with zero decompositions. Live encoder cases therefore use at least
+one decomposition; an independently decoded fixed stream covers that
+zero-decomposition boundary.
+
+`htj2k-results.json` uses the same numerical schema, per-case engineering
+thresholds, process bounds, hash bindings, and failure retention as the legacy
+numerical gate. These comparisons do not establish official Part 4
+conformance or exhaustive Part 15 coverage. Missing unconfigured tools block
+the gate; an explicitly configured missing tool is an error.
+`all` does not implicitly run `htj2k`; CI runs both commands explicitly.
 
 ## Budgets
 

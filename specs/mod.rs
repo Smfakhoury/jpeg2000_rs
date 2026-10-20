@@ -97,15 +97,23 @@ pub open spec fn valid_ht_cleanup_partition(cleanup_length: nat, scup: nat) -> b
     2 <= scup && scup <= cleanup_length && scup <= 4079
 }
 
-pub open spec fn ht_cursors_separated(
+pub open spec fn ht_cleanup_byte_claims_valid(
     mel_byte: nat,
-    mel_bit: nat,
     vlc_byte: nat,
-    vlc_bit: nat,
+    terminal_byte: nat,
+    value: u8,
 ) -> bool {
-    mel_bit < 8
-        && vlc_bit < 8
-        && (mel_byte < vlc_byte || (mel_byte == vlc_byte && mel_bit > vlc_bit))
+    mel_byte <= terminal_byte
+        && vlc_byte <= terminal_byte
+        && (mel_byte < vlc_byte || (mel_byte == vlc_byte && mel_byte < terminal_byte && value != 0xff))
+}
+
+pub open spec fn ht_noninitial_vlc_context(
+    west_context: u8, north_west: u8, north: u8, north_east: u8,
+) -> u8 {
+    ((if west_context & 2 != 0 { 2int } else { 0int })
+        + (if north_west & 8 != 0 || north & 2 != 0 { 1int } else { 0int })
+        + (if north & 8 != 0 || north_east & 2 != 0 { 4int } else { 0int })) as u8
 }
 
 pub open spec fn valid_ht_quad_origin(x: nat, y: nat, width: nat, height: nat) -> bool {
@@ -221,6 +229,13 @@ pub open spec fn part15_magnitude_bound(parameter: nat) -> nat {
     } else {
         74
     }
+}
+
+pub open spec fn part15_cleanup_u_bound(
+    missing_msbs: nat, placeholder_bitplanes: nat, capability_bound: nat,
+) -> nat {
+    let bound = missing_msbs + placeholder_bitplanes + 2;
+    if bound <= capability_bound { bound } else { capability_bound }
 }
 
 pub open spec fn part15_component_allowed(

@@ -20,7 +20,7 @@ environment remain part of the trusted computing base.
 | Packet/progression amplification or duplicate coordinates | Checked cardinalities, bounded candidates, state persistence, packet/work limits and explicit progress measures |
 | Malformed tag trees or coding-pass lengths | Validated topology, bounded indexes, incremental state, checked pass/byte accounting |
 | MQ/Tier-1 state corruption | Bounded state tables, checked arithmetic, directional stuffing, deterministic end handling, significance/refinement eligibility checks |
-| HT cleanup/refinement overlap and forged exponents | Checked Scup partition, physical/fill accounting, forward/reverse bit claims, cursor-collision rejection, bounded reconstruction and transactional writes |
+| HT cleanup/refinement overlap and forged exponents | Checked Scup partition, physical/fill accounting, a single compatible non-FF fused MEL/VLC data byte excluding the Scup-bearing byte, checked refinement bit claims, bounded reconstruction and transactional writes |
 | Transform/decomposition amplification | Bounded references/graphs, stage ordering, checked lifting/matrix arithmetic, scratch/output/work limits |
 | Nonfinite or extreme numerical inputs | Explicit numeric encodings/ranges, deterministic fixed-point paths, typed overflow/rejection, independent numerical validation |
 | Palette/channel/alpha and composition confusion | Explicit selection/association, bounds and precision checks, checked scaling/clipping, canvas/frame/work limits |

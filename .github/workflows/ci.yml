@@ -66,6 +66,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y libopenjp2-tools
+      - name: Build pinned independent HTJ2K reference tools
+        run: |
+          bash validation/build-openjph.sh
+          echo "$GITHUB_WORKSPACE/target/validation/oracles/openjph-build/src/apps/ojph_compress" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/target/validation/oracles/openjph-build/src/apps/ojph_expand" >> "$GITHUB_PATH"
       - name: Framework regression tests
         run: .venv/bin/python -m unittest discover -s validation/tests -v
         env:
@@ -75,6 +80,7 @@ jobs:
       - run: .venv/bin/python validation/run-validation.py inventory
       - run: .venv/bin/python validation/run-validation.py schemas
       - run: .venv/bin/python validation/run-validation.py all
+      - run: .venv/bin/python validation/run-validation.py htj2k
       - name: Check validation did not modify tracked source
         run: git diff --exit-code
       - name: Upload validation reports

@@ -1198,9 +1198,6 @@ fn plan_progression_tile_at_selected(
                         .checked_add(1)
                         .ok_or_else(arithmetic_overflow)?;
                 }
-                if executions.is_empty() {
-                    return Err(invalid_decode());
-                }
                 precincts.push(PacketPrecinctDecoder::new_subbands(
                     component,
                     resolution,
@@ -4578,6 +4575,40 @@ mod tests {
         packed[sequence + 5] = 1;
         assert!(matches!(
             decode_codestream(&packed, &DecodeOptions::default()),
+            Err(DecodeError::MalformedInput {
+                kind: MalformedKind::InvalidPacketHeader,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn decodes_single_sample_with_empty_detail_resolution_packet() {
+        let mut bytes = prepared_codestream(
+            1,
+            1,
+            1,
+            &[0x20, 0x48, 0x48, 0x48, 0x48],
+            &[0xc0, 0x24, 0x01, 0x07, 0x74, 0x00, 0x00],
+        );
+        bytes[6..8].copy_from_slice(&0x4000_u16.to_be_bytes());
+        let cod = bytes
+            .windows(2)
+            .position(|marker| marker == [0xff, 0x52])
+            .unwrap();
+        bytes[cod + 9] = 1;
+        bytes[cod + 12] = 0x40;
+        bytes.splice(cod..cod, segment(0xff50, &[0, 2, 0, 0, 0, 1]));
+        let image = decode_codestream(&bytes, &DecodeOptions::default()).unwrap();
+        assert_eq!(
+            image.components()[0].samples(),
+            &TypedSamples::Unsigned(vec![0])
+        );
+
+        let empty_packet = bytes.len() - 3;
+        bytes[empty_packet] = 0x80;
+        assert!(matches!(
+            decode_codestream(&bytes, &DecodeOptions::default()),
             Err(DecodeError::MalformedInput {
                 kind: MalformedKind::InvalidPacketHeader,
                 ..

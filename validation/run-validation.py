@@ -32,12 +32,12 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("inventory")
     schemas = commands.add_parser("schemas")
     schemas.add_argument("--output-dir", type=Path)
-    for name in ("run", "budget", "official", "numerical", "all"):
+    for name in ("run", "budget", "official", "numerical", "htj2k", "all"):
         command = commands.add_parser(name)
         command.add_argument("--output-dir", type=Path)
         command.add_argument("--subject", type=Path)
         command.add_argument("--no-build", action="store_true")
-        if name == "numerical":
+        if name in ("numerical", "htj2k"):
             command.add_argument("--encoder", type=Path)
             command.add_argument("--decoder", type=Path)
             command.add_argument("--timeout-seconds", type=float, default=10.0)
@@ -103,11 +103,12 @@ def main() -> int:
             )
             emit({key: result[key] for key in ("status", "selection", "summary", "blockers")})
             return int(result["status"] != "passed")
-        elif arguments.command == "numerical":
+        elif arguments.command in ("numerical", "htj2k"):
             result = run_numerical(
                 executable=subject_for(arguments) if arguments.subject or arguments.no_build else None,
                 output_dir=arguments.output_dir, encoder=arguments.encoder,
                 decoder=arguments.decoder, timeout_seconds=arguments.timeout_seconds,
+                high_throughput=arguments.command == "htj2k",
             )
             emit({"status": result["status"], **result["summary"], "blockers": result["blockers"]})
             return int(result["status"] != "passed")

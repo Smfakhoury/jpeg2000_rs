@@ -5,13 +5,13 @@ use crate::specs::{
     bounded_loop_frame, clamp_color_sample, clipped_composition_extent, color_output_bytes,
     complete_jpip_databin, complete_jpip_range, complete_mct_fragment_series,
     composition_instruction_work, composition_output_bytes, consistent_jpip_final_length,
-    consistent_part15_signaling, effective_jpx_layer_count, ht_completed_u, ht_cursors_separated,
-    ht_kappa_extension, ht_placeholder_passes, ht_substantive_passes, jpip_precinct_in_class,
-    jpip_quality_prefix_available, jpip_reconstructed_box_length, jpip_tile_transition_sufficient,
-    magnitude_addition, magnitude_less, magnitude_limb_index, magnitude_limb_offset,
-    magnitude_shift_fits, maxshift_restored_magnitude, mct_dependency_coefficients,
-    mct_wavelet_work_units, mct_work_units, mixed_block_selects_ht, nested_metadata_work,
-    palette_linear_index, part9_auxiliary_present, part9_available_bytes,
+    consistent_part15_signaling, effective_jpx_layer_count, ht_cleanup_byte_claims_valid,
+    ht_completed_u, ht_kappa_extension, ht_placeholder_passes, ht_substantive_passes,
+    jpip_precinct_in_class, jpip_quality_prefix_available, jpip_reconstructed_box_length,
+    jpip_tile_transition_sufficient, magnitude_addition, magnitude_less, magnitude_limb_index,
+    magnitude_limb_offset, magnitude_shift_fits, maxshift_restored_magnitude,
+    mct_dependency_coefficients, mct_wavelet_work_units, mct_work_units, mixed_block_selects_ht,
+    nested_metadata_work, palette_linear_index, part9_auxiliary_present, part9_available_bytes,
     part9_class_identifier_valid, part9_databin_identity, part9_eor_extent,
     part9_header_form_valid, part9_header_has_explicit_class, part9_header_has_explicit_codestream,
     part9_merge_end, part9_merge_start, part9_metadata_descent_allowed, part9_missing_length,
@@ -451,18 +451,26 @@ pub proof fn ht_cleanup_partition_is_parent_bounded(cleanup_length: nat, scup: n
     reveal(valid_ht_cleanup_partition);
 }
 
-pub proof fn production_ht_reader_collision_check_is_strict(
+pub proof fn production_ht_cleanup_fusion_is_single_byte(
     mel_byte: nat,
-    mel_bit: nat,
     vlc_byte: nat,
-    vlc_bit: nat,
+    terminal_byte: nat,
+    value: u8,
+    shared_a: nat,
+    shared_b: nat,
 )
     requires
-        ht_cursors_separated(mel_byte, mel_bit, vlc_byte, vlc_bit),
+        ht_cleanup_byte_claims_valid(mel_byte, vlc_byte, terminal_byte, value),
+        vlc_byte <= shared_a <= mel_byte,
+        vlc_byte <= shared_b <= mel_byte,
     ensures
-        mel_byte < vlc_byte || (mel_byte == vlc_byte && mel_bit > vlc_bit),
+        shared_a == shared_b,
+        shared_a < terminal_byte,
+        value != 0xff,
 {
-    reveal(ht_cursors_separated);
+    crate::proofs::spec_properties::ht_cleanup_shared_byte_is_unique(
+        mel_byte, vlc_byte, terminal_byte, value, shared_a, shared_b,
+    );
 }
 
 pub proof fn production_ht_quad_metadata_has_bounded_origin(

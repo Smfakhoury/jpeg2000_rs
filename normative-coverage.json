@@ -1179,6 +1179,10 @@
         {
           "path": "src/decode.rs",
           "symbol": "top_level_raw_and_jp2_decode_packed_packet_headers"
+        },
+        {
+          "path": "src/decode.rs",
+          "symbol": "decodes_single_sample_with_empty_detail_resolution_packet"
         }
       ],
       "topic": "Tile-part, SOP/EPH, POC progression, packed headers, and declared packet-length sequencing"
@@ -3033,7 +3037,7 @@
           "symbol": "rejects_invalid_ht_cleanup_termination_and_limits"
         }
       ],
-      "topic": "Scup termination decode and disjoint forward MagSgn/MEL/reverse VLC partition"
+      "topic": "Scup termination decode with a MagSgn prefix and bounded shared MEL/VLC suffix"
     },
     {
       "contract_refs": [
@@ -3055,7 +3059,7 @@
         },
         {
           "path": "src/refinement.rs",
-          "symbol": "ht_cursors_separated"
+          "symbol": "ht_cleanup_byte_claims_valid"
         }
       ],
       "id": "part15-stuffing-and-cursors",
@@ -3074,13 +3078,21 @@
         },
         {
           "path": "src/tier1.rs",
-          "symbol": "HtCleanupReaders::cursors_separate"
+          "symbol": "HtCleanupReaders::can_claim_byte"
         }
       ],
       "proof_refs": [
         {
           "path": "proofs/spec_properties/mod.rs",
           "symbol": "ht_stuffed_streams_expose_seven_data_bits"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_cleanup_shared_byte_is_unique"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_ht_cleanup_fusion_is_single_byte"
         }
       ],
       "spec_refs": [
@@ -3102,7 +3114,7 @@
         },
         {
           "path": "specs/mod.rs",
-          "symbol": "ht_cursors_separated"
+          "symbol": "ht_cleanup_byte_claims_valid"
         }
       ],
       "test_refs": [
@@ -3113,9 +3125,21 @@
         {
           "path": "src/tier1.rs",
           "symbol": "ht_cleanup_rejects_cursor_collision_and_out_of_bounds_significance"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_cleanup_accepts_fused_mel_vlc_final_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_cleanup_fusion_does_not_cross_bytes"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_cleanup_fusion_excludes_ff"
         }
       ],
-      "topic": "Forward MEL/MagSgn and reverse VLC stuffing with strict bidirectional cursor collision checks"
+      "topic": "Directional stuffing with at most one non-FF fused MEL/VLC data byte, excluding the Scup-bearing byte"
     },
     {
       "contract_refs": [
@@ -3146,6 +3170,10 @@
         {
           "path": "src/refinement.rs",
           "symbol": "ht_quad_origin_valid"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "ht_noninitial_vlc_context"
         }
       ],
       "id": "part15-mel-vlc-uvlc-quads",
@@ -3201,12 +3229,24 @@
         {
           "path": "specs/mod.rs",
           "symbol": "ht_quad_origin_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_noninitial_vlc_context"
         }
       ],
       "test_refs": [
         {
           "path": "src/tier1.rs",
           "symbol": "decodes_bounded_ht_cleanup_quad_metadata"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_cleanup_context_preserves_both_northern_columns"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_noninitial_context_uses_the_northern_boundary_stencil"
         },
         {
           "path": "src/tier1.rs",
@@ -3236,6 +3276,10 @@
         {
           "path": "src/refinement.rs",
           "symbol": "ht_bin_center_odd"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "part15_cleanup_u_bound"
         }
       ],
       "id": "part15-magsgn-reconstruction",
@@ -3251,6 +3295,10 @@
         {
           "path": "src/tier1.rs",
           "symbol": "reconstruct_ht_magnitude"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"
         }
       ],
       "proof_refs": [
@@ -3279,6 +3327,10 @@
         {
           "path": "specs/mod.rs",
           "symbol": "ht_bin_center_odd"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part15_cleanup_u_bound"
         }
       ],
       "test_refs": [
@@ -3293,6 +3345,18 @@
         {
           "path": "src/tier1.rs",
           "symbol": "reconstructs_positive_ht_cleanup_magnitude_from_physical_bits"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decodes_ht_cleanup_with_packet_missing_msbs"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decodes_ht_embedded_precision_separately_from_value"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_embedded_zero_bit_still_reduces_payload_precision"
         }
       ],
       "topic": "MagSgn fill, kappa completion, sign extraction, magnitude/bin-center reconstruction, and B=74 retention"
@@ -3405,6 +3469,10 @@
         {
           "path": "src/packet.rs",
           "symbol": "routes_ht_refinement_across_layer_contributions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ht_final_magnitude_refinement_truncates_the_integer_half_bin"
         }
       ],
       "topic": "SigProp and MagRef stripe/patch traversal, delayed signs, bin-center eligibility, and pass routing"
