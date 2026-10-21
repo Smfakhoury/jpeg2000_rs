@@ -24,6 +24,7 @@ cmake -S "$source_dir" -B "$build_dir" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_CODEC=ON -DBUILD_TESTING=OFF -DBUILD_JPIP=OFF \
     -DCMAKE_DISABLE_FIND_PACKAGE_PNG=TRUE -DCMAKE_DISABLE_FIND_PACKAGE_TIFF=TRUE \
+    -DCMAKE_DISABLE_FIND_PACKAGE_LCMS2=TRUE -DCMAKE_DISABLE_FIND_PACKAGE_LCMS=TRUE \
     -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$build_dir/bin" \
     -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="$build_dir/bin"
 cmake --build "$build_dir" --config Release --parallel 2 --target opj_compress opj_decompress

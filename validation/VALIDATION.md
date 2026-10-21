@@ -57,7 +57,8 @@ The builders require Git, CMake and a C/C++ toolchain, select Release for both
 single- and multi-configuration generators, and reject modified/wrong-revision
 source checkouts. OpenJPEG is pinned at
 `a5891555eb49ed7cc26b2901ea680acda136d811` (2.5.0); OpenJPH retains its existing
-0.33.0 pin. Windows generators may place OpenJPH `.exe` files in a `Release`
+0.33.0 pin. The OpenJPEG build enables the required PNM/PGX/RAW paths without
+optional PNG/TIFF/ICC-engine libraries. Windows generators may place OpenJPH `.exe` files in a `Release`
 subdirectory; CI requires exactly one matching executable before exporting
 its configured tool path.
 
