@@ -1392,6 +1392,78 @@ pub(crate) fn source_over_pixel(
     Some((colors, u16::try_from(alpha).ok()?))
 }
 
+pub(crate) type CompositionPixelInputs = ([u16; 3], [u16; 3], u16, u16, bool);
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(pixel =>
+        ensures pixel == crate::specs::part2_composition_gather_pixel(
+            source_colors@,
+            match source_alpha {
+                Some((samples, flag)) => Some((samples@, flag)),
+                None => None,
+            },
+            output_colors@, output_alpha@, source_index as nat, destination_index as nat, expand_grayscale,
+        ),
+    )
+)]
+pub(crate) fn gather_composition_pixel(
+    source_colors: &[Vec<u16>],
+    source_alpha: Option<(&[u16], bool)>,
+    output_colors: &[Vec<u16>],
+    output_alpha: &[u16],
+    source_index: usize,
+    destination_index: usize,
+    expand_grayscale: bool,
+) -> Option<CompositionPixelInputs> {
+    let (source_alpha_sample, premultiplied) = match source_alpha {
+        Some((samples, flag)) => (*samples.get(source_index)?, flag),
+        None => (u16::MAX, false),
+    };
+    let destination_alpha = *output_alpha.get(destination_index)?;
+    let channels = output_colors.len();
+    if channels > 3 {
+        return None;
+    }
+    let mut source_pixel = [0_u16; 3];
+    let mut destination_pixel = [0_u16; 3];
+    let mut channel = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant
+                channel <= channels && channels <= 3,
+                channels == output_colors.len(),
+                source_alpha.is_some() ==> source_index < source_alpha.unwrap().0@.len()
+                    && source_alpha_sample == source_alpha.unwrap().0@[source_index as int]
+                    && premultiplied == source_alpha.unwrap().1,
+                source_alpha.is_none() ==> source_alpha_sample == 65535 && !premultiplied,
+                destination_index < output_alpha.len(),
+                destination_alpha == output_alpha@[destination_index as int],
+                channel > 0 ==> crate::specs::part2_composition_gather_channel(source_colors@, output_colors@, source_index as nat, destination_index as nat, expand_grayscale, 0) == Some((source_pixel[0], destination_pixel[0])),
+                channel > 1 ==> crate::specs::part2_composition_gather_channel(source_colors@, output_colors@, source_index as nat, destination_index as nat, expand_grayscale, 1) == Some((source_pixel[1], destination_pixel[1])),
+                channel > 2 ==> crate::specs::part2_composition_gather_channel(source_colors@, output_colors@, source_index as nat, destination_index as nat, expand_grayscale, 2) == Some((source_pixel[2], destination_pixel[2])),
+                channel == 0 ==> source_pixel[0] == 0 && destination_pixel[0] == 0,
+                channel <= 1 ==> source_pixel[1] == 0 && destination_pixel[1] == 0,
+                channel <= 2 ==> source_pixel[2] == 0 && destination_pixel[2] == 0,
+            decreases channels - channel,
+        )
+    )]
+    while channel < channels {
+        let source_channel = if expand_grayscale { 0 } else { channel };
+        source_pixel[channel] = *source_colors.get(source_channel)?.get(source_index)?;
+        destination_pixel[channel] = *output_colors.get(channel)?.get(destination_index)?;
+        channel += 1;
+    }
+    Some((
+        source_pixel,
+        destination_pixel,
+        source_alpha_sample,
+        destination_alpha,
+        premultiplied,
+    ))
+}
+
 #[cfg_attr(
     verus_keep_ghost,
     verus_spec(ensures returns crate::specs::part2_chroma_key_alpha(matches),)

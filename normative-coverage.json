@@ -1951,6 +1951,10 @@
         },
         {
           "path": "src/refinement.rs",
+          "symbol": "gather_composition_pixel"
+        },
+        {
+          "path": "src/refinement.rs",
           "symbol": "composition_mapped_offset"
         },
         {
@@ -2074,6 +2078,14 @@
         },
         {
           "path": "specs/mod.rs",
+          "symbol": "part2_composition_gather_channel"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_gather_pixel"
+        },
+        {
+          "path": "specs/mod.rs",
           "symbol": "part2_composition_mapped_offset"
         },
         {
@@ -2117,6 +2129,14 @@
         {
           "path": "src/jpx.rs",
           "symbol": "complete_pixel_stage_matches_independent_rational_rounding"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "complete_planar_gather_matches_read_routing_and_rejection_oracle"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "missing_late_planar_sample_preserves_current_pixel_and_work_order"
         },
         {
           "path": "src/jpx.rs",
