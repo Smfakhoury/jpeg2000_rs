@@ -22,8 +22,14 @@ fi
 cmake -S "$source_dir" -B "$build_dir" \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
     -DOJPH_BUILD_TESTS=OFF -DOJPH_ENABLE_TIFF_SUPPORT=OFF -DOJPH_DISABLE_SIMD=ON
-cmake --build "$build_dir" --parallel 2 --target ojph_compress ojph_expand
+cmake --build "$build_dir" --config Release --parallel 2 --target ojph_compress ojph_expand
 
-test -x "$build_dir/src/apps/ojph_compress/ojph_compress"
-test -x "$build_dir/src/apps/ojph_expand/ojph_expand"
+for program in ojph_compress ojph_expand; do
+    directory="$build_dir/src/apps/$program"
+    if [ ! -x "$directory/$program" ] && [ ! -x "$directory/$program.exe" ] &&
+        [ ! -x "$directory/Release/$program.exe" ]; then
+        echo "Missing OpenJPH executable: $program" >&2
+        exit 1
+    fi
+done
 printf 'OpenJPH source revision: %s\n' "$revision"

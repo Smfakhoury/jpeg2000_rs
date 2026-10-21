@@ -38,6 +38,37 @@ CI initializes the crate's pinned Rust toolchain in a job-local `RUSTUP_HOME`
 before building the native harness. This keeps validation independent of
 preinstalled runner toolchain/component state.
 
+### Native numerical platform gates
+
+The separate native numerical matrix builds the same pinned OpenJPEG and
+scalar OpenJPH source revisions on Ubuntu, macOS and Windows, then runs the
+legacy/HT numerical commands and numerical/selection/container regressions
+using each platform's native executables. This is independent numerical
+execution, not an inference from portable Rust unit tests. Reports are retained
+in platform-named artifacts, with source/tool/executable hashes and explicit
+execution-platform and requested-limit metadata.
+
+```sh
+bash validation/build-openjpeg.sh
+bash validation/build-openjph.sh
+```
+
+The builders require Git, CMake and a C/C++ toolchain, select Release for both
+single- and multi-configuration generators, and reject modified/wrong-revision
+source checkouts. OpenJPEG is pinned at
+`a5891555eb49ed7cc26b2901ea680acda136d811` (2.5.0); OpenJPH retains its existing
+0.33.0 pin. Windows generators may place OpenJPH `.exe` files in a `Release`
+subdirectory; CI requires exactly one matching executable before exporting
+its configured tool path.
+
+Windows capture uses bounded pipe-reader queues rather than POSIX pipe
+selection. Timeout, combined stdout/stderr capture bounds and nonzero exit
+status remain explicit; POSIX setup callbacks cannot be silently discarded.
+Requested POSIX address-space/file-size limits are reported as `null` where
+the resource API is unavailable. These numerical checks do not claim identical
+OS enforcement or measured memory guarantees: the separate GNU Time/RSS
+resource gate remains Linux-only.
+
 ## Reproducible corpus
 
 `framework.py` deterministically generates 17 minimal raw codestream, JP2,

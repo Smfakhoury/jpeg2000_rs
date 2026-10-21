@@ -257,6 +257,18 @@ class NumericalTests(unittest.TestCase):
                 numerical.run_numerical(output_dir=self.work, timeout_seconds=timeout)
         self.assertFalse((self.work / "numerical-results.json").exists())
 
+    def test_unavailable_posix_enforcement_is_explicit_in_reports(self):
+        with mock.patch.object(framework, "resource", None), \
+                mock.patch.object(numerical.shutil, "which", return_value=None), \
+                mock.patch.dict(numerical.os.environ, {"OPENJPEG_ENCODER": "", "OPENJPEG_DECODER": ""}):
+            result = numerical.run_numerical(output_dir=self.work)
+        self.assertTrue(result["execution_platform"])
+        self.assertEqual(result["process_limits"], {
+            "stage_timeout_seconds": 10.0, "maximum_output_bytes": 1 << 20,
+            "requested_address_space_bytes": None, "requested_file_size_bytes": None,
+        })
+        framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", result)
+
     def test_ht_sources_and_container_metadata_cover_real_component_layouts(self):
         self.assertEqual({case.format for case in numerical.HT_CASES}, {"raw", "jph"})
         self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16})
