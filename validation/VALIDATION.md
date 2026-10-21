@@ -450,6 +450,48 @@ of the full independent lossless decode; native reduction uses independent
 `-skip_res` synthesis, not decimation. The shared crop helper also serves the
 selection tests and rejects inconsistent frame/component geometry.
 
+### R1 finite workload declaration (before measurement)
+
+The original 22 cases, 66 final measurements, four finite budget searches,
+and all existing caps remain mandatory. The following additional Linux
+production-default workloads are declared before collecting R1 measurements.
+All positive streams are reversible, use two decomposition levels and require
+exact original/reference qualification before any subject observation. These
+are safe representatives, not allocations at the production maxima.
+
+| ID/family | Declared workload | Subject observations |
+|---|---|---|
+| `large-gray` | 1536x1536 unsigned8, 128x128 tiles | full, tile zero, native discard 2 |
+| `components8` | 128x128, eight unsigned16 planes, no MCT | full |
+| `precision24` | 256x256 unsigned24 PGX | full |
+| `tiles256` | 512x512 unsigned8, 32x32 tiles (256 tiles) | full, tile zero, native discard 2 |
+| `layers16` | 128x128 RGB16, 16 quality layers, final lossless layer | full |
+| `ht-large` | 768x768 RGB16, 128x128 HT tiles | full, tile zero, native discard 2 |
+| `jpx-components` | 256x256 RGB16 payload in authored JPX metadata | codestream decode |
+| `jpx-compose` | two independently qualified 128x128 RGB16 opaque layers | two-layer composition, exact RGBA16 source oracle |
+| `jpip-fragments` | 256x256 RGB16 single tile; three databins, split/reordered/duplicated fragments | reconstruction bytes and exact decoded image |
+| `jpip-ht-fragments` | same geometry and fragmentation, true HT payload | reconstruction bytes and exact decoded image |
+| `declared-*` | tiny declarations exceeding default width, height, component, tile, layer, JPX-codestream or JPIP-fragment-offset limits | exact typed early rejections |
+
+Every final observation is repeated three times. Existing full/selection/
+rejection wall/RSS caps, selection/full RSS ratio <=0.75, child address space
+<=1 GiB, file <=32 MiB, captured output <=16 MiB and aggregate native wall
+<=30 seconds are unchanged. CPU user/system seconds are measured separately
+with GNU Time; work units are not CPU time. Positive output must fit capture
+without truncation. Unsupported reference formats and original/reference
+disagreements remain unqualified failures, never substituted expectations.
+No giant maximum-sized stream, unbounded stress, fuzz-limit replacement or
+cap tuning is authorized by this matrix.
+
+The existing harness exposes configured byte/work limits only for codestream
+decoding, not selection, JPX composition or JPIP reconstruction. The four
+baseline adjacent budget frontiers remain the directly observed accounting
+evidence; typed output sample storage is not accounted decoder allocation.
+Broader per-path byte/work instrumentation, maximum/default-limit
+characterization beyond these safe declarations, sustained stress and
+non-Linux process measurements remain open R1 work. Passing this finite
+matrix alone does not close R1 or establish a universal resource envelope.
+
 `--ht-encoder` and `--ht-decoder`, or `OPENJPH_ENCODER` and
 `OPENJPH_DECODER`, select trusted HT tools. Missing unconfigured tools block
 the full gate; an explicitly configured missing tool is an error. Legacy and
