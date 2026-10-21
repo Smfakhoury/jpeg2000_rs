@@ -96,8 +96,9 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env, \
                open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as paths:
               for variable, (project, program) in projects.items():
-                  candidates = list((Path("target/validation/oracles") / project).rglob(program + suffix))
-                  if len(candidates) != 1 or not candidates[0].is_file():
+                  candidates = [path for path in (Path("target/validation/oracles") / project).rglob(program + suffix)
+                                if path.is_file()]
+                  if len(candidates) != 1:
                       raise RuntimeError(f"expected one native executable for {variable}: {candidates}")
                   executable = candidates[0].resolve()
                   print(f"{variable}={executable}", file=env)
