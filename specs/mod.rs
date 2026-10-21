@@ -1279,24 +1279,24 @@ pub open spec fn part2_composition_store(samples: Seq<u16>, index: nat, value: u
 }
 
 pub open spec fn part2_composition_gather_channel(
-    source: Seq<Vec<u16>>, destination: Seq<Vec<u16>>,
+    source: Seq<Seq<u16>>, destination: Seq<Seq<u16>>,
     source_index: nat, destination_index: nat, expand_grayscale: bool, channel: nat,
 ) -> Option<(u16, u16)> {
     let source_channel = if expand_grayscale { 0nat } else { channel };
     if source_channel >= source.len() || channel >= destination.len() {
         None
-    } else if source_index >= source[source_channel as int]@.len()
-        || destination_index >= destination[channel as int]@.len() {
+    } else if source_index >= source[source_channel as int].len()
+        || destination_index >= destination[channel as int].len() {
         None
     } else {
-        Some((source[source_channel as int]@[source_index as int],
-            destination[channel as int]@[destination_index as int]))
+        Some((source[source_channel as int][source_index as int],
+            destination[channel as int][destination_index as int]))
     }
 }
 
 pub open spec fn part2_composition_gather_pixel(
-    source: Seq<Vec<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
-    destination: Seq<Vec<u16>>, destination_alpha: Seq<u16>,
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
     source_index: nat, destination_index: nat, expand_grayscale: bool,
 ) -> Option<([u16; 3], [u16; 3], u16, u16, bool)> {
     let channels = destination.len();
@@ -1385,8 +1385,8 @@ pub open spec fn part2_source_over_pixel(
 }
 
 pub open spec fn part2_composition_pixel_transition(
-    source: Seq<Vec<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
-    destination: Seq<Vec<u16>>, destination_alpha: Seq<u16>,
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
     source_index: nat, destination_index: nat, expand_grayscale: bool,
 ) -> (bool, Seq<Seq<u16>>, Seq<u16>) {
     let input = part2_composition_gather_pixel(
@@ -1394,19 +1394,136 @@ pub open spec fn part2_composition_pixel_transition(
         source_index, destination_index, expand_grayscale,
     );
     if input.is_none() {
-        (false, part2_composition_planes(destination), destination_alpha)
+        (false, destination, destination_alpha)
     } else {
         let (s, d, sa, da, premultiplied) = input.unwrap();
         let pixel = part2_source_over_pixel(s, d, sa, da, premultiplied, destination.len() as usize);
         if pixel.is_none() {
-            (false, part2_composition_planes(destination), destination_alpha)
+            (false, destination, destination_alpha)
         } else {
             part2_composition_scatter_pixel(
-                part2_composition_planes(destination), destination_alpha,
+                destination, destination_alpha,
                 destination_index, pixel.unwrap().0, pixel.unwrap().1,
             )
         }
     }
+}
+
+pub struct Part2CompositionGeometry {
+    pub source_width: nat,
+    pub source_x: nat,
+    pub source_y: nat,
+    pub source_crop_width: nat,
+    pub source_crop_height: nat,
+    pub target_x: nat,
+    pub target_y: nat,
+    pub target_width: nat,
+    pub target_height: nat,
+    pub canvas_width: nat,
+    pub copy_width: nat,
+    pub copy_height: nat,
+}
+
+pub open spec fn part2_composition_geometry(
+    source_width: u32, source_height: u32, canvas_width: u32, canvas_height: u32,
+    target_x: u32, target_y: u32, target_width: u32, target_height: u32,
+    source_x: u32, source_y: u32, source_crop_width: u32, source_crop_height: u32,
+) -> Part2CompositionGeometry {
+    let sx = if source_x < source_width { source_x } else { source_width };
+    let sy = if source_y < source_height { source_y } else { source_height };
+    let remaining_width = ((source_width as int) - sx as int) as nat;
+    let remaining_height = ((source_height as int) - sy as int) as nat;
+    Part2CompositionGeometry {
+        source_width: source_width as nat,
+        source_x: sx as nat,
+        source_y: sy as nat,
+        source_crop_width: if source_crop_width == 0 || source_crop_width as nat > remaining_width {
+            remaining_width
+        } else { source_crop_width as nat },
+        source_crop_height: if source_crop_height == 0 || source_crop_height as nat > remaining_height {
+            remaining_height
+        } else { source_crop_height as nat },
+        target_x: target_x as nat,
+        target_y: target_y as nat,
+        target_width: target_width as nat,
+        target_height: target_height as nat,
+        canvas_width: canvas_width as nat,
+        copy_width: part2_composition_clip(target_x, target_width, canvas_width) as nat,
+        copy_height: part2_composition_clip(target_y, target_height, canvas_height) as nat,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_composition_canvas_prefix(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: Part2CompositionGeometry, expand_grayscale: bool, count: nat,
+) -> (bool, Seq<Seq<u16>>, Seq<u16>)
+    recommends geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+    decreases count,
+{
+    if count == 0 {
+        (true, destination, destination_alpha)
+    } else {
+        let previous = part2_composition_canvas_prefix(
+            source, source_alpha, destination, destination_alpha,
+            geometry, expand_grayscale, (count - 1) as nat,
+        );
+        if !previous.0 {
+            previous
+        } else {
+            let x = ((count - 1) as nat) % geometry.copy_width;
+            let y = ((count - 1) as nat) / geometry.copy_width;
+            let sx = geometry.source_x + x * geometry.source_crop_width / geometry.target_width;
+            let sy = geometry.source_y + y * geometry.source_crop_height / geometry.target_height;
+            let source_index = sy * geometry.source_width + sx;
+            let destination_index = (geometry.target_y + y) * geometry.canvas_width + geometry.target_x + x;
+            part2_composition_pixel_transition(
+                source, source_alpha, previous.1, previous.2,
+                source_index, destination_index, expand_grayscale,
+            )
+        }
+    }
+}
+
+pub open spec fn part2_composition_layer_result(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: Part2CompositionGeometry, expand_grayscale: bool,
+) -> (bool, Seq<Seq<u16>>, Seq<u16>) {
+    if geometry.source_crop_width == 0 || geometry.source_crop_height == 0 {
+        (true, destination, destination_alpha)
+    } else if geometry.target_width == 0 || geometry.target_height == 0 {
+        (false, destination, destination_alpha)
+    } else if geometry.copy_width == 0 || geometry.copy_height == 0 {
+        (true, destination, destination_alpha)
+    } else {
+        part2_composition_canvas_prefix(
+            source, source_alpha, destination, destination_alpha,
+            geometry, expand_grayscale, geometry.copy_width * geometry.copy_height,
+        )
+    }
+}
+
+pub open spec fn part2_composition_layer_work(geometry: Part2CompositionGeometry, channels: nat) -> nat {
+    if geometry.source_crop_width == 0 || geometry.source_crop_height == 0
+        || geometry.target_width == 0 || geometry.target_height == 0
+        || geometry.copy_width == 0 || geometry.copy_height == 0 {
+        0
+    } else {
+        geometry.copy_width * geometry.copy_height * (channels + 1)
+    }
+}
+
+pub open spec fn part2_composition_layer_success(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: Part2CompositionGeometry, expand_grayscale: bool, initial_work: nat,
+) -> (bool, Seq<Seq<u16>>, Seq<u16>, nat) {
+    let result = part2_composition_layer_result(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+    );
+    (result.0, result.1, result.2, initial_work + part2_composition_layer_work(geometry, destination.len()))
 }
 
 pub open spec fn part2_chroma_key_alpha(matches: bool) -> u16 {
