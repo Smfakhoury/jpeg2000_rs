@@ -57,17 +57,54 @@ class ResourceTests(unittest.TestCase):
                     benchmarks._measure(["subject"], "time", self.metrics, self.expected,
                                         None if code == 0 else "LimitExceeded",
                                         None if code == 0 else "Pixels", False, 10.0)
-        process = subprocess.CompletedProcess([], 1, b"ERR\tLimitExceeded\tPixels\n", b"")
+        process = subprocess.CompletedProcess(
+            [], 1, b"ERR\tLimitExceeded\tresource limit exceeded for Pixels: limit 100, actual 101\n", b"")
         with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
             measured = benchmarks._measure(["subject"], "time", self.metrics, None,
                                            "LimitExceeded", "Pixels", False, 10.0)
         self.assertIsNone(measured["output_sha256"])
+        self.assertEqual(measured["limit_claim"], {"resource": "Pixels", "limit": 100, "actual": 101})
 
     def test_cpu_metrics_are_required_finite_nonnegative_and_not_work_units(self):
         for text in ("", "4\n", "4\t0.01\n", "4\tNaN\t0\n", "4\t0\tinf\n", "4\t-1\t0\n"):
             self.metrics.write_text(text)
             with self.subTest(text=text), self.assertRaises(ValueError):
                 benchmarks._process_metrics(self.metrics)
+
+    def test_default_pixel_rejection_retains_observed_claim_without_a_configured_limit(self):
+        diagnostic = "ERR\tLimitExceeded\tresource limit exceeded for Pixels: limit 100000000, actual 4294836225"
+        process = subprocess.CompletedProcess([], 1, (diagnostic + "\n").encode(), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, None,
+                                           "LimitExceeded", "Pixels", False, 10.0)
+        self.assertEqual(measured["limit_claim"], {"resource": "Pixels", "limit": 100000000, "actual": 4294836225})
+        self.assertEqual(measured["observed_error"],
+                         {"category": "LimitExceeded", "reason": "Pixels", "diagnostic": diagnostic})
+        changed = diagnostic.replace("4294836225", "4294836224")
+        process = subprocess.CompletedProcess([], 1, (changed + "\n").encode(), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, None,
+                                           "LimitExceeded", "Pixels", False, 10.0)
+        self.assertEqual(measured["limit_claim"]["actual"], 4294836224)
+        self.assertEqual(measured["observed_error"]["diagnostic"], changed)
+
+    def test_malformed_rejection_retains_actual_kind_and_rejects_substring_matches(self):
+        diagnostic = "ERR\tMalformedInput\tmalformed input at byte 6: Truncated"
+        process = subprocess.CompletedProcess([], 1, (diagnostic + "\n").encode(), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, None,
+                                           "MalformedInput", "Truncated", False, 10.0)
+        self.assertEqual(measured["observed_error"],
+                         {"category": "MalformedInput", "reason": "Truncated", "diagnostic": diagnostic})
+        self.assertNotIn("limit_claim", measured)
+        for invalid in (diagnostic.replace("Truncated", "NotTruncated"),
+                        diagnostic.replace("MalformedInput", "LimitExceeded"),
+                        diagnostic + "\nERR\tMalformedInput\tmalformed input at byte 0: Truncated"):
+            process = subprocess.CompletedProcess([], 1, (invalid + "\n").encode(), b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+                with self.subTest(diagnostic=invalid), self.assertRaises(ValueError):
+                    benchmarks._measure(["subject"], "time", self.metrics, None,
+                                        "MalformedInput", "Truncated", False, 10.0)
 
     def test_process_caps_are_unchanged_and_invalid_measurements_cannot_pass(self):
         thresholds = {"maximum_ms": 5000.0, "maximum_peak_rss_bytes": 512 << 20}
@@ -328,8 +365,17 @@ class ResourceTests(unittest.TestCase):
             "error": None, "artifacts": [], "median_ms": 1.0, "peak_rss_bytes": 4096,
             "configured_limit": None, "search_ceiling": None, "search_runs": [],
         }
-        report["records"] = [dict(copy.deepcopy(record), id=name)
-                             for name in sorted(benchmarks._expected_case_ids())]
+        frontier_ids = ["gray24-small-decoded-bytes-at", "rgb16-layered-decoded-bytes-at",
+                        "gray24-small-work-units-at", "rgb16-layered-work-units-at"]
+        below_ids = [name.removesuffix("-at") + "-below" for name in frontier_ids]
+        ids = frontier_ids + below_ids
+        ids += sorted(benchmarks._expected_case_ids() - set(ids))
+        report["records"] = [dict(copy.deepcopy(record), id=name) for name in ids]
+
+        def observed(resource, limit, actual):
+            return {"category": "LimitExceeded", "reason": resource,
+                    "diagnostic": f"ERR\tLimitExceeded\tresource limit exceeded for {resource}: limit {limit}, actual {actual}"}
+
         for index in range(4):
             current = report["records"][index]
             resource = "DecodedBytes" if index < 2 else "WorkUnits"
@@ -339,9 +385,11 @@ class ResourceTests(unittest.TestCase):
             rejected = {"elapsed_ms": 1.0, "peak_rss_bytes": 4096, "returncode": 1,
                         "user_cpu_ms": 0.0, "system_cpu_ms": 0.0, "total_cpu_ms": 0.0,
                         "output_sha256": None, "limit_value": 0,
+                        "observed_error": observed(resource, 0, 9),
                         "limit_claim": {"resource": resource, "limit": 0, "actual": 9}}
             current["search_runs"] = [rejected, {"limit_value": 64, **run},
                                       {**rejected, "limit_value": 8,
+                                       "observed_error": observed(resource, 8, 9),
                                        "limit_claim": {"resource": resource, "limit": 8, "actual": 9}},
                                       {"limit_value": 9, **run}]
             below = report["records"][index + 4]
@@ -353,8 +401,27 @@ class ResourceTests(unittest.TestCase):
                          limit_mode="single-tightened-defaults",
                          thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
             below["runs"] = [{**run, "returncode": 1, "output_sha256": None,
+                              "observed_error": observed(resource, 8, 9),
                               "limit_claim": {"resource": resource, "limit": 8, "actual": 9}}
                              for _ in range(3)]
+        pixel = next(record for record in report["records"] if record["id"] == "declared-pixel-limit")
+        pixel.update(expected_category="LimitExceeded", expected_reason="Pixels",
+                     expected_limit_claim=dict(benchmarks.BASELINE_PIXEL_CLAIM), expected_output_sha256=None,
+                     mode="rejection", qualifications=[], typed_sample_bytes=0, output_width=0,
+                     output_height=0, output_components=0,
+                     thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
+        pixel["runs"] = [{**run, "returncode": 1, "output_sha256": None,
+                          "observed_error": observed("Pixels", 100000000, 4294836225),
+                          "limit_claim": {"resource": "Pixels", "limit": 100000000, "actual": 4294836225}}
+                         for _ in range(3)]
+        truncated = next(record for record in report["records"] if record["id"] == "truncated-main-header")
+        truncated.update(expected_category="MalformedInput", expected_reason="Truncated", expected_output_sha256=None,
+                         mode="rejection", qualifications=[], typed_sample_bytes=0, output_width=0,
+                         output_height=0, output_components=0,
+                         thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
+        truncated["runs"] = [{**run, "returncode": 1, "output_sha256": None, "observed_error": {
+            "category": "MalformedInput", "reason": "Truncated",
+            "diagnostic": "ERR\tMalformedInput\tmalformed input at byte 6: Truncated"}} for _ in range(3)]
         schema = framework.VALIDATION / "resource-result.schema.json"
         framework.validate_schema(schema, report)
         benchmarks._validate_evidence(report)
@@ -416,3 +483,37 @@ class ResourceTests(unittest.TestCase):
                 invalid["records"][4]["expected_limit_claim"] = {"resource": "WorkUnits", "limit": 8, "actual": 10}
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 benchmarks._validate_evidence(invalid)
+        for mutation in ("missing-observation", "missing-limit-claim", "category", "reason", "claim-resource",
+                         "claim-limit", "claim-actual", "diagnostic", "pixel-expectation", "malformed-kind",
+                         "consistent-wrong-pixel-claim", "changed-pixel-declaration"):
+            invalid = copy.deepcopy(report)
+            current = next(record for record in invalid["records"] if record["id"] == "declared-pixel-limit")
+            measured = current["runs"][0]
+            if mutation == "missing-observation":
+                del measured["observed_error"]
+            elif mutation == "missing-limit-claim":
+                del measured["limit_claim"]
+            elif mutation == "category":
+                measured["observed_error"]["category"] = "MalformedInput"
+            elif mutation == "reason":
+                measured["observed_error"]["reason"] = "Width"
+            elif mutation.startswith("claim-"):
+                field = mutation.removeprefix("claim-")
+                measured["limit_claim"][field] = "Width" if field == "resource" else 1
+            elif mutation == "diagnostic":
+                measured["observed_error"]["diagnostic"] = measured["observed_error"]["diagnostic"].replace("Pixels", "Width")
+            elif mutation == "pixel-expectation":
+                current["expected_limit_claim"] = None
+            elif mutation in ("consistent-wrong-pixel-claim", "changed-pixel-declaration"):
+                measured["limit_claim"]["actual"] -= 1
+                measured["observed_error"]["diagnostic"] = measured["observed_error"]["diagnostic"].replace(
+                    "4294836225", "4294836224")
+                if mutation == "changed-pixel-declaration":
+                    current["expected_limit_claim"]["actual"] -= 1
+            else:
+                current = next(record for record in invalid["records"] if record["id"] == "truncated-main-header")
+                current["runs"][0]["observed_error"]["reason"] = "NotTruncated"
+            with self.subTest(typed_mutation=mutation), self.assertRaises(ValueError):
+                benchmarks._validate_evidence(invalid)
+            with self.subTest(schema_typed_mutation=mutation), self.assertRaises(ValueError):
+                framework.validate_schema(schema, invalid)

@@ -23,6 +23,8 @@ REPETITIONS = 3
 MAXIMUM_SEARCH_PROBES = 32
 FILE_BYTES = 32 << 20
 OUTPUT_BYTES = 16 << 20
+BASELINE_PIXEL_SIDE = 65_535
+BASELINE_PIXEL_CLAIM = {"resource": "Pixels", "limit": 100_000_000, "actual": BASELINE_PIXEL_SIDE ** 2}
 R1_CASES = (
     ("large-gray", 1536, 1, 8, 128, 1, False),
     ("components8", 128, 8, 16, 128, 1, False),
@@ -118,6 +120,24 @@ def _qualify(original: dict[str, Any], reference: dict[str, Any], payload: Path,
     }
 
 
+def _parse_typed_error(output: bytes) -> tuple[dict[str, str], dict[str, Any] | None]:
+    diagnostic = output.decode("utf-8").removesuffix("\n").removesuffix("\r")
+    match = re.fullmatch(
+        r"ERR\tLimitExceeded\tresource limit exceeded for ([A-Za-z][A-Za-z0-9]*): "
+        r"limit ([0-9]+), actual ([0-9]+)", diagnostic,
+    )
+    if match is not None:
+        claim = {"resource": match[1], "limit": int(match[2]), "actual": int(match[3])}
+        if claim["actual"] <= claim["limit"]:
+            raise ValueError("typed limit rejection does not report an excessive actual claim")
+        return {"category": "LimitExceeded", "reason": match[1], "diagnostic": diagnostic}, claim
+    match = re.fullmatch(r"ERR\tMalformedInput\tmalformed input at byte [0-9]+: ([A-Za-z][A-Za-z0-9]*)",
+                         diagnostic)
+    if match is not None:
+        return {"category": "MalformedInput", "reason": match[1], "diagnostic": diagnostic}, None
+    raise ValueError("resource observation omitted an exact supported typed error diagnostic")
+
+
 def _measure(command: list[str], time_tool: str, metrics_file: Path,
              expected: dict[str, Any] | None, category: str | None, reason: str | None,
              selected: bool, timeout: float, *, allow_success: bool = False,
@@ -146,31 +166,29 @@ def _measure(command: list[str], time_tool: str, metrics_file: Path,
             raise ValueError("selected resource observation has an unexpected origin")
     actual = framework.parse_subject_output(output, process.stderr, process.returncode)
     claim = None
+    observed_error = None
     if category is None or (allow_success and process.returncode == 0):
         if process.returncode != 0 or numerical.image_error_metrics(expected, actual)["maximum_error"] != 0:
             raise ValueError("resource case did not reproduce independent image samples")
         output_hash = framework.normalized_hash(actual)
     else:
-        if (process.returncode != 1 or actual.get("accepted") or actual.get("execution_failed")
-                or actual.get("category") != category or reason not in output.decode(errors="replace")):
+        if process.returncode != 1 or actual.get("accepted") or actual.get("execution_failed"):
+            raise ValueError(f"resource case did not produce the expected typed {category}/{reason} rejection")
+        observed_error, claim = _parse_typed_error(output)
+        if observed_error["category"] != category or observed_error["reason"] != reason:
             raise ValueError(f"resource case did not produce the expected typed {category}/{reason} rejection")
         output_hash = None
         if configured_value is not None:
-            if category != "LimitExceeded" or reason is None:
-                raise ValueError("configured resource observations require an explicit limit resource")
-            match = re.fullmatch(
-                rf"ERR\tLimitExceeded\tresource limit exceeded for {re.escape(reason)}: "
-                rf"limit {configured_value}, actual ([0-9]+)", output.decode().strip(),
-            )
-            if match is None or int(match[1]) <= configured_value:
+            if claim is None or claim["limit"] != configured_value:
                 raise ValueError("typed rejection does not identify the configured limit and an excessive claim")
-            claim = {"resource": reason, "limit": configured_value, "actual": int(match[1])}
     result: dict[str, Any] = {"elapsed_ms": elapsed, **_process_metrics(metrics_file),
                               "returncode": process.returncode, "output_sha256": output_hash}
     if reconstructed is not None:
         result["reconstructed_sha256"] = reconstructed
     if claim is not None:
         result["limit_claim"] = claim
+    if observed_error is not None:
+        result["observed_error"] = observed_error
     return result
 
 
@@ -391,6 +409,11 @@ def _validate_evidence(result: dict[str, Any]) -> None:
     if result["status"] == "passed" and set(ids) != _expected_case_ids():
         raise ValueError("resource evidence omitted a predeclared case")
     for record in records:
+        if record["id"] == "declared-pixel-limit":
+            if (record["expected_limit_claim"] != BASELINE_PIXEL_CLAIM
+                    or record["configured_limit"] is not None
+                    or record["expected_category"] != "LimitExceeded" or record["expected_reason"] != "Pixels"):
+                raise ValueError("resource evidence changed the baseline production-default Pixels declaration")
         expected_mode = "single-tightened-defaults" if record["configured_limit"] is not None else "production-default"
         if record["limit_mode"] != expected_mode:
             raise ValueError("resource evidence mislabels production-default versus tightened accounting")
@@ -402,11 +425,30 @@ def _validate_evidence(result: dict[str, Any]) -> None:
                                 measured["user_cpu_ms"] + measured["system_cpu_ms"]):
                 raise ValueError("resource evidence CPU sum differs")
             if measured["returncode"] == 0:
+                if "observed_error" in measured or "limit_claim" in measured:
+                    raise ValueError("successful resource observation contains typed error evidence")
                 if measured["output_sha256"] != record["expected_output_sha256"]:
                     raise ValueError("resource evidence output hash differs from its independent expectation")
                 if record["expected_reconstructed_sha256"] is not None:
                     if measured.get("reconstructed_sha256") != record["expected_reconstructed_sha256"]:
                         raise ValueError("resource evidence omitted exact JPIP reconstruction")
+            else:
+                observed_error = measured.get("observed_error")
+                if not isinstance(observed_error, dict) or not isinstance(observed_error.get("diagnostic"), str):
+                    raise ValueError("resource evidence omitted its observed typed error")
+                parsed_error, claim = _parse_typed_error(observed_error["diagnostic"].encode("utf-8"))
+                if observed_error != parsed_error or measured.get("limit_claim") != claim:
+                    raise ValueError("resource evidence typed category/reason/claim differs from its actual diagnostic")
+                configured = record["configured_limit"]
+                if "limit_value" in measured and configured is not None:
+                    category, reason, limit = "LimitExceeded", configured["resource"], measured["limit_value"]
+                else:
+                    category, reason = record["expected_category"], record["expected_reason"]
+                    limit = configured["value"] if configured is not None else None
+                if observed_error["category"] != category or observed_error["reason"] != reason:
+                    raise ValueError("resource evidence observed typed category/reason differs from its expectation")
+                if limit is not None and (claim is None or claim["limit"] != limit):
+                    raise ValueError("resource evidence observed claim differs from its actual configured limit")
             if record["status"] == "passed":
                 _check_thresholds(measured, record["thresholds"])
         if record["status"] == "passed" and record["search_ceiling"] is not None:
@@ -437,7 +479,7 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
     destination = framework.report_path(output_dir, "resource-results.json")
     result: dict[str, Any] = {
         "$schema": framework.report_schema(output_dir, "resource-result.schema.json"),
-        "schema_version": 3, "scope": "Finite Linux production-default engineering CPU/wall/RSS representatives and configured-limit boundaries, not universal resource guarantees or R1 closure.",
+        "schema_version": 4, "scope": "Finite Linux production-default engineering CPU/wall/RSS representatives and configured-limit boundaries, not universal resource guarantees or R1 closure.",
         "provenance": framework.source_binding(), "status": "passed", "blockers": [], "errors": [],
         "tools": {}, "address_space_limit_bytes": ADDRESS_SPACE_BYTES,
         "file_size_limit_bytes": FILE_BYTES, "output_limit_bytes": OUTPUT_BYTES,
@@ -700,11 +742,12 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
                          expected_limit_claim={"resource": resource, "limit": limit, "actual": actual})
             limit_input = work / "declared-pixel-limit.j2k"
             data = bytearray(framework.raw_codestream())
-            struct.pack_into(">II", data, 8, 65535, 65535)
-            struct.pack_into(">II", data, 24, 65535, 65535)
+            struct.pack_into(">II", data, 8, BASELINE_PIXEL_SIDE, BASELINE_PIXEL_SIDE)
+            struct.pack_into(">II", data, 24, BASELINE_PIXEL_SIDE, BASELINE_PIXEL_SIDE)
             limit_input.write_bytes(data)
             run_case("declared-pixel-limit", [str(executable), "decode", "raw", str(limit_input)],
-                     limit_input, None, category="LimitExceeded", reason="Pixels")
+                     limit_input, None, category="LimitExceeded", reason="Pixels",
+                     expected_limit_claim=dict(BASELINE_PIXEL_CLAIM))
             truncated = work / "truncated-main-header.j2k"
             truncated.write_bytes(framework.raw_codestream()[:12])
             run_case("truncated-main-header", [str(executable), "decode", "raw", str(truncated)],

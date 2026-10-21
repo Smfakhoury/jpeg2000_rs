@@ -558,7 +558,7 @@ implementation accounting threshold, not a CPU-time or instruction count.
 These finite fixtures do not characterize all production-default or worst-case
 inputs, every high-component/precision/HT/container combination or every supported platform.
 
-Resource report schema version 3 records the declared matrix, original/reference
+Resource report schema version 4 records the declared matrix, original/reference
 qualification hashes (including source/reference files), CPU measurements,
 default typed declaration claims, exact JPIP reconstructed-byte hashes,
 configured budgets, finite search evidence and repeated frontier observations.
@@ -566,6 +566,17 @@ The runner rejects omitted/duplicate cases, changed declarations, mismatched
 hashes/CPU aggregates and absent adjacent search observations. Schema checks
 also fix the original wall/RSS/aggregate/process caps rather than accepting
 report-specific relaxed values.
+Every nonzero final measurement or search probe retains its actual parsed
+typed category, reason and diagnostic in `observed_error`, independently of
+the row's expected metadata. Every actual `LimitExceeded` observation also
+retains its parsed resource/limit/actual claim, even when no limit was
+configured. The unchanged baseline `declared-pixel-limit` fixture declares
+65535-by-65535 pixels against the production default of 100,000,000 pixels;
+each observation must report `Pixels`, limit 100,000,000 and actual
+4,294,836,225. The truncated-header case retains its actual
+`MalformedInput/Truncated` diagnostic. Missing observations are not inferred
+from expectations or backfilled into earlier reports; category/reason/claim
+disagreements fail validation.
 `resource-results.json` retains source/tool/input/output hashes, repetitions,
 individual observations, median times, peak RSS, thresholds and explicit
 failures. Positive records also report typed-output/input-byte expansion and
