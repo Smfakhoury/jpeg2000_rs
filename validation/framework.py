@@ -204,6 +204,29 @@ def _coverage_symbol_present(path: Path, symbol: str) -> bool:
     ))
 
 
+def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
+    """Check another formatted function body, not the callee declaration."""
+    short = caller.rsplit("::", 1)[-1]
+    if short == callee:
+        return False
+    header = re.search(
+        rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
+        rf"fn[ \t]+{re.escape(short)}\b", text,
+    )
+    if header is None:
+        return False
+    body_start = text.find("{", header.end())
+    if body_start < 0:
+        return False
+    closing = re.search(
+        rf"(?m)^{re.escape(header[1])}\}}[ \t]*(?://[^\n]*)?$", text[body_start + 1:],
+    )
+    if closing is None:
+        return False
+    body = text[body_start + 1:body_start + 1 + closing.start()]
+    return re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+
+
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -251,12 +274,18 @@ def validate_normative_coverage(
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
             state_term = (
                 r"(?:final\(\s*\w+\s*\)@|"
-                r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\))"
+                r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
+                r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
+            state_tail = r"\s*,\s*" + state_term + r"(?:\s*,\s*" + state_term + r")*\s*\))"
             state_result = re.search(
-                named_prefix + r"(?P<state>\(\s*\1\s*,\s*" + state_term
-                + r"(?:\s*,\s*" + state_term + r")*\s*\))" + model_suffix, contract,
+                named_prefix + r"(?P<state>\(\s*\1" + state_tail + model_suffix, contract,
             )
+            if state_result is None:
+                state_result = re.search(
+                    named_prefix + r"\1\.is_ok\(\)\s*==>\s*"
+                    + r"(?P<state>\(\s*\1\.is_ok\(\)" + state_tail + model_suffix, contract,
+                )
             final_parameters = set(re.findall(
                 r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
             )) if state_result is not None else set()
@@ -270,9 +299,10 @@ def validate_normative_coverage(
             if not any(re.search(rf"\b{re.escape(symbol)}\b", contract) for symbol in spec_symbols):
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if not any(
-                re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
+                (re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
+                 if ref["path"] != reference["path"] else
+                 _coverage_same_file_call(text, ref["symbol"], short))
                 for ref in entry["implementation_refs"]
-                if ref["path"] != reference["path"]
             ):
                 raise ValueError(f"linked function is not used by claimed implementation: {short}")
             contract_functions.add((reference["path"], reference["symbol"]))

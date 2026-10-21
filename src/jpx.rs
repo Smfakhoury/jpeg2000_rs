@@ -2010,6 +2010,24 @@ fn layer_channels(image: &ConvertedImage) -> Result<LayerChannels<'_>, DecodeErr
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result.is_ok() ==> (result.is_ok(), crate::specs::part2_composition_planes(final(output_colors)@), final(output_alpha)@, *final(work_units) as nat)
+            == crate::specs::part2_composition_layer_success(
+                crate::specs::part2_composition_planes(source.colors@),
+                match &source.alpha { Some(value) => Some((value.0@, value.1)), None => None },
+                crate::specs::part2_composition_planes(old(output_colors)@), old(output_alpha)@,
+                crate::specs::part2_composition_geometry(
+                    source.width, source.height, canvas_width, canvas_height,
+                    instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+                    instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+                ),
+                matches!((output_space, source.color_space), (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)),
+                *old(work_units) as nat,
+            ),
+    )
+)]
 fn composite_placed_layer(
     canvas_width: u32,
     canvas_height: u32,
@@ -2021,6 +2039,31 @@ fn composite_placed_layer(
     work_units: &mut u64,
     limits: &ResourceLimits,
 ) -> Result<(), DecodeError> {
+    let expand_grayscale = matches!(
+        (output_space, source.color_space),
+        (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)
+    );
+    #[allow(
+        clippy::manual_map,
+        reason = "Explicit cases preserve the verified slice and representation relation"
+    )]
+    let source_alpha = match source.alpha.as_ref() {
+        Some((samples, flag)) => Some((samples.as_slice(), *flag)),
+        None => None,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost geometry = crate::specs::part2_composition_geometry(
+            source.width, source.height, canvas_width, canvas_height,
+            instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+            instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+        );
+        let ghost source_planes = crate::specs::part2_composition_planes(source.colors@);
+        let ghost layer_alpha = match &source.alpha { Some(value) => Some((value.0@, value.1)), None => None };
+        let ghost initial_colors = crate::specs::part2_composition_planes(output_colors@);
+        let ghost initial_alpha = output_alpha@;
+        let ghost initial_work = *work_units;
+    }
     let source_x = instruction.source_x.min(source.width);
     let source_y = instruction.source_y.min(source.height);
     let source_width = if instruction.source_width == 0 {
@@ -2049,12 +2092,42 @@ fn composite_placed_layer(
         crate::refinement::composition_clip(instruction.target_x, target_width, canvas_width);
     let copy_height =
         crate::refinement::composition_clip(instruction.target_y, target_height, canvas_height);
+    if copy_width == 0 || copy_height == 0 {
+        return Ok(());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_composition_canvas_empty(
+            source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale,
+        );
+    }
     let mut y = 0_u32;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant
                 y <= copy_height,
+                copy_width > 0 && copy_height > 0,
+                geometry == crate::specs::part2_composition_geometry(
+                    source.width, source.height, canvas_width, canvas_height,
+                    instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+                    instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+                ),
+                geometry.source_x == source_x as nat && geometry.source_y == source_y as nat,
+                geometry.source_crop_width == source_width as nat && geometry.source_crop_height == source_height as nat,
+                geometry.target_width == target_width as nat && geometry.target_height == target_height as nat,
+                geometry.copy_width == copy_width as nat && geometry.copy_height == copy_height as nat,
+                source_planes == crate::specs::part2_composition_planes(source.colors@),
+                layer_alpha == match &source.alpha { Some(value) => Some((value.0@, value.1)), None => None },
+                layer_alpha == match source_alpha { Some((samples, flag)) => Some((samples@, flag)), None => None },
+                expand_grayscale == matches!((output_space, source.color_space), (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)),
+                initial_colors == crate::specs::part2_composition_planes(old(output_colors)@),
+                initial_alpha == old(output_alpha)@,
+                initial_work == *old(work_units),
+                output_colors.len() == initial_colors.len(),
+                (true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
+                    == crate::specs::part2_composition_canvas_prefix(source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, (y as nat) * (copy_width as nat)),
+                *work_units as nat == initial_work as nat + (y as nat) * (copy_width as nat) * (initial_colors.len() + 1),
                 target_width > 0 && target_height > 0,
                 copy_width <= target_width && copy_height <= target_height,
                 source_x <= source.width && source_y <= source.height,
@@ -2087,6 +2160,27 @@ fn composite_placed_layer(
             verus_spec(
                 invariant
                     x <= copy_width,
+                    copy_width > 0 && copy_height > 0,
+                    geometry == crate::specs::part2_composition_geometry(
+                        source.width, source.height, canvas_width, canvas_height,
+                        instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+                        instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+                    ),
+                    geometry.source_x == source_x as nat && geometry.source_y == source_y as nat,
+                    geometry.source_crop_width == source_width as nat && geometry.source_crop_height == source_height as nat,
+                    geometry.target_width == target_width as nat && geometry.target_height == target_height as nat,
+                    geometry.copy_width == copy_width as nat && geometry.copy_height == copy_height as nat,
+                    source_planes == crate::specs::part2_composition_planes(source.colors@),
+                    layer_alpha == match &source.alpha { Some(value) => Some((value.0@, value.1)), None => None },
+                    layer_alpha == match source_alpha { Some((samples, flag)) => Some((samples@, flag)), None => None },
+                    expand_grayscale == matches!((output_space, source.color_space), (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)),
+                    initial_colors == crate::specs::part2_composition_planes(old(output_colors)@),
+                    initial_alpha == old(output_alpha)@,
+                    initial_work == *old(work_units),
+                    output_colors.len() == initial_colors.len(),
+                    (true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
+                        == crate::specs::part2_composition_canvas_prefix(source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, (y as nat) * (copy_width as nat) + x as nat),
+                    *work_units as nat == initial_work as nat + ((y as nat) * (copy_width as nat) + x as nat) * (initial_colors.len() + 1),
                     target_width > 0 && target_height > 0,
                     copy_width <= target_width,
                     y < copy_height && copy_height <= target_height,
@@ -2105,6 +2199,20 @@ fn composite_placed_layer(
             )
         )]
         while x < copy_width {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! {
+                let ghost completed = (y as nat) * (copy_width as nat) + x as nat;
+                let ghost previous_state = crate::specs::part2_composition_canvas_prefix(
+                    source_planes, layer_alpha, initial_colors, initial_alpha,
+                    geometry, expand_grayscale, completed,
+                );
+                let ghost previous_work = *work_units;
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(previous_state == (true, crate::specs::part2_composition_planes(output_colors@), output_alpha@));
+                assert(previous_work as nat == initial_work as nat + completed * (initial_colors.len() + 1));
+            }
             let mapped_x =
                 crate::refinement::composition_mapped_offset(x, source_width, target_width);
             let sx = source_x
@@ -2133,23 +2241,31 @@ fn composite_placed_layer(
                 assert(destination_index as nat == crate::specs::part2_row_major_index(canvas_width, destination_x, destination_y));
                 assert((source_index as nat) < (source.width as nat) * (source.height as nat));
                 assert((destination_index as nat) < (canvas_width as nat) * (canvas_height as nat));
+                crate::proofs::production_impl::production_composition_canvas_step(
+                    source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale,
+                    x as nat, y as nat, source_index as nat, destination_index as nat,
+                );
             }
             if !crate::refinement::compose_planar_pixel(
                 &source.colors,
-                source
-                    .alpha
-                    .as_ref()
-                    .map(|(samples, flag)| (samples.as_slice(), *flag)),
+                source_alpha,
                 output_colors,
                 output_alpha,
                 source_index,
                 destination_index,
-                matches!(
-                    (output_space, source.color_space),
-                    (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)
-                ),
+                expand_grayscale,
             ) {
                 return Err(invalid_layer());
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert((true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
+                    == crate::specs::part2_composition_pixel_transition(
+                        source_planes, layer_alpha, previous_state.1, previous_state.2,
+                        source_index as nat, destination_index as nat, expand_grayscale,
+                    ));
+                assert((true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
+                    == crate::specs::part2_composition_canvas_prefix(source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, completed + 1));
             }
             let pixel_work = (output_colors.len() as u64)
                 .checked_add(1)
@@ -2162,9 +2278,26 @@ fn composite_placed_layer(
                 limits.maximum_work_units(),
                 *work_units,
             )?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(pixel_work as nat == initial_colors.len() + 1);
+                assert((completed + 1) * (initial_colors.len() + 1)
+                    == completed * (initial_colors.len() + 1) + (initial_colors.len() + 1)) by(nonlinear_arith);
+                assert(*work_units as nat == initial_work as nat + (completed + 1) * (initial_colors.len() + 1));
+            }
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert((y as nat) * (copy_width as nat) + (copy_width as nat)
+                == ((y as nat) + 1) * (copy_width as nat)) by(nonlinear_arith);
+        }
         y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((copy_height as nat) * (copy_width as nat)
+            == (copy_width as nat) * (copy_height as nat)) by(nonlinear_arith);
     }
     Ok(())
 }
@@ -2953,6 +3086,110 @@ mod tests {
                 }
             }
             assert_eq!(work, 7 + copied * 4);
+        }
+    }
+
+    #[test]
+    fn placed_layer_zero_width_clip_does_not_traverse_unvisited_rows() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let source = OwnedLayer {
+                width: 1,
+                height: 1,
+                color_space: ConvertedColorSpace::Grayscale,
+                colors: vec![],
+                alpha: Some((vec![], true)),
+            };
+            let instruction = JpxInstructionInfo {
+                layer_index: 0,
+                target_x: 1,
+                target_y: 0,
+                target_width: 1,
+                target_height: u32::MAX,
+                source_x: 0,
+                source_y: 0,
+                source_width: 0,
+                source_height: 0,
+                persistent: true,
+                next_reuse: 0,
+            };
+            let mut colors = vec![vec![17], vec![], vec![23, 29], vec![31]];
+            let mut alpha = vec![];
+            let mut work = u64::MAX;
+            let result = composite_placed_layer(
+                1,
+                u32::MAX,
+                ConvertedColorSpace::Srgb,
+                &source,
+                instruction,
+                &mut colors,
+                &mut alpha,
+                &mut work,
+                &ResourceLimits::default()
+                    .with_maximum_work_units(0)
+                    .unwrap(),
+            );
+            sender.send((result, colors, alpha, work)).unwrap();
+        });
+        let (result, colors, alpha, work) = receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("an empty clipped rectangle must not traverse unvisited rows");
+        worker.join().unwrap();
+        assert_eq!(result, Ok(()));
+        assert_eq!(colors, [vec![17], vec![], vec![23, 29], vec![31]]);
+        assert!(alpha.is_empty());
+        assert_eq!(work, u64::MAX);
+    }
+
+    #[test]
+    fn placed_layer_work_rejections_preserve_post_store_order() {
+        let source = OwnedLayer {
+            width: 1,
+            height: 1,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![vec![2_345]],
+            alpha: None,
+        };
+        let instruction = JpxInstructionInfo {
+            layer_index: 0,
+            target_x: 0,
+            target_y: 0,
+            target_width: 1,
+            target_height: 1,
+            source_x: 0,
+            source_y: 0,
+            source_width: 0,
+            source_height: 0,
+            persistent: true,
+            next_reuse: 0,
+        };
+        for (initial, limit, expected, final_work) in [
+            (u64::MAX, 7, Err(arithmetic_overflow()), u64::MAX),
+            (5, 6, Err(DecodeError::limit(Resource::WorkUnits, 6, 7)), 7),
+            (5, 7, Ok(()), 7),
+        ] {
+            let mut colors = vec![vec![111]];
+            let mut alpha = vec![0];
+            let mut work = initial;
+            assert_eq!(
+                composite_placed_layer(
+                    1,
+                    1,
+                    ConvertedColorSpace::Grayscale,
+                    &source,
+                    instruction,
+                    &mut colors,
+                    &mut alpha,
+                    &mut work,
+                    &ResourceLimits::default()
+                        .with_maximum_work_units(limit)
+                        .unwrap(),
+                ),
+                expected
+            );
+            assert_eq!(colors, [vec![2_345]]);
+            assert_eq!(alpha, [u16::MAX]);
+            assert_eq!(work, final_work);
         }
     }
 

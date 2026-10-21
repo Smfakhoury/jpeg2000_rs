@@ -1496,12 +1496,12 @@ pub(crate) fn scatter_composition_pixel(
     verus_keep_ghost,
     verus_spec(pixel =>
         ensures pixel == crate::specs::part2_composition_gather_pixel(
-            source_colors@,
+            crate::specs::part2_composition_planes(source_colors@),
             match source_alpha {
                 Some((samples, flag)) => Some((samples@, flag)),
                 None => None,
             },
-            output_colors@, output_alpha@, source_index as nat, destination_index as nat, expand_grayscale,
+            crate::specs::part2_composition_planes(output_colors@), output_alpha@, source_index as nat, destination_index as nat, expand_grayscale,
         ),
     )
 )]
@@ -1538,9 +1538,9 @@ pub(crate) fn gather_composition_pixel(
                 source_alpha.is_none() ==> source_alpha_sample == 65535 && !premultiplied,
                 destination_index < output_alpha.len(),
                 destination_alpha == output_alpha@[destination_index as int],
-                channel > 0 ==> crate::specs::part2_composition_gather_channel(source_colors@, output_colors@, source_index as nat, destination_index as nat, expand_grayscale, 0) == Some((source_pixel[0], destination_pixel[0])),
-                channel > 1 ==> crate::specs::part2_composition_gather_channel(source_colors@, output_colors@, source_index as nat, destination_index as nat, expand_grayscale, 1) == Some((source_pixel[1], destination_pixel[1])),
-                channel > 2 ==> crate::specs::part2_composition_gather_channel(source_colors@, output_colors@, source_index as nat, destination_index as nat, expand_grayscale, 2) == Some((source_pixel[2], destination_pixel[2])),
+                channel > 0 ==> crate::specs::part2_composition_gather_channel(crate::specs::part2_composition_planes(source_colors@), crate::specs::part2_composition_planes(output_colors@), source_index as nat, destination_index as nat, expand_grayscale, 0) == Some((source_pixel[0], destination_pixel[0])),
+                channel > 1 ==> crate::specs::part2_composition_gather_channel(crate::specs::part2_composition_planes(source_colors@), crate::specs::part2_composition_planes(output_colors@), source_index as nat, destination_index as nat, expand_grayscale, 1) == Some((source_pixel[1], destination_pixel[1])),
+                channel > 2 ==> crate::specs::part2_composition_gather_channel(crate::specs::part2_composition_planes(source_colors@), crate::specs::part2_composition_planes(output_colors@), source_index as nat, destination_index as nat, expand_grayscale, 2) == Some((source_pixel[2], destination_pixel[2])),
                 channel == 0 ==> source_pixel[0] == 0 && destination_pixel[0] == 0,
                 channel <= 1 ==> source_pixel[1] == 0 && destination_pixel[1] == 0,
                 channel <= 2 ==> source_pixel[2] == 0 && destination_pixel[2] == 0,
@@ -1567,12 +1567,12 @@ pub(crate) fn gather_composition_pixel(
     verus_spec(composed =>
         ensures (composed, crate::specs::part2_composition_planes(final(output_colors)@), final(output_alpha)@)
             == crate::specs::part2_composition_pixel_transition(
-                source_colors@,
+                crate::specs::part2_composition_planes(source_colors@),
                 match source_alpha {
                     Some((samples, flag)) => Some((samples@, flag)),
                     None => None,
                 },
-                old(output_colors)@, old(output_alpha)@,
+                crate::specs::part2_composition_planes(old(output_colors)@), old(output_alpha)@,
                 source_index as nat, destination_index as nat, expand_grayscale,
             ),
             final(output_colors)@.len() == old(output_colors)@.len(),
