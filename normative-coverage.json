@@ -1947,6 +1947,10 @@
         },
         {
           "path": "src/refinement.rs",
+          "symbol": "source_over_pixel"
+        },
+        {
+          "path": "src/refinement.rs",
           "symbol": "composition_mapped_offset"
         },
         {
@@ -2062,6 +2066,14 @@
         },
         {
           "path": "specs/mod.rs",
+          "symbol": "part2_source_over_pixel_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_source_over_pixel"
+        },
+        {
+          "path": "specs/mod.rs",
           "symbol": "part2_composition_mapped_offset"
         },
         {
@@ -2101,6 +2113,14 @@
         {
           "path": "src/jpx.rs",
           "symbol": "composition_store_respects_subslice_offsets_and_repeated_writes"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "complete_pixel_stage_matches_independent_rational_rounding"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "invalid_late_channel_rejects_only_the_current_pixel_before_any_store"
         },
         {
           "path": "src/jpx.rs",
