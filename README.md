@@ -22,7 +22,9 @@ cargo test --all-targets --locked
 ```
 
 The Rust toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml).
-Production Rust has no external Cargo dependencies and forbids unsafe code.
+The default decoder build has no external Cargo dependencies and forbids unsafe
+code. The optional `verus` feature supplies pinned verification tooling only;
+see the [Cargo-Verus instructions](PROOFS.md#reproduce-verification).
 Package publication is disabled.
 
 ## Decode a JP2 image

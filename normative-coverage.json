@@ -2102,6 +2102,18 @@
         },
         {
           "path": "specs/mod.rs",
+          "symbol": "PART2_NORMALIZED_SAMPLE_BITS"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "PART2_NORMALIZED_SAMPLE_MAX"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "PART2_NORMALIZED_SAMPLE_HALF"
+        },
+        {
+          "path": "specs/mod.rs",
           "symbol": "part2_source_over_color_numerator"
         },
         {
@@ -2181,12 +2193,20 @@
           "symbol": "part2_composition_layer_success"
         },
         {
-          "path": "specs/mod.rs",
+          "path": "proofs/internal_specs.rs",
           "symbol": "part2_composition_layer_prefix_matches"
         },
         {
-          "path": "specs/mod.rs",
+          "path": "proofs/internal_specs.rs",
           "symbol": "part2_composition_layer_prefix_safe"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "normalized_composition_domain_matches_binary_width"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "symbolic_source_over_matches_word_normalization"
         },
         {
           "path": "specs/mod.rs",

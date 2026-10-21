@@ -2,6 +2,11 @@
 #![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 #![doc = include_str!("../README.md")]
 
+#[cfg(all(verus_keep_ghost, not(feature = "verus")))]
+compile_error!(
+    "Enable the verification feature: cargo verus verify --features verus -- --no-lifetime"
+);
+
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 

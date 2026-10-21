@@ -4,6 +4,12 @@ These references identify the technical basis for the decoder. They do not
 grant rights to redistribute standards text, reference software, or test
 vectors. The repository contains no normative PDF or purchased vector archive.
 
+The [specification audit guide](specs/README.md) maps these reference editions
+to semantic model entry points and explains variables, ranges, normalization,
+rounding and checked presentation equivalences. It separates implementation
+resource policies and invariant-only support from coding semantics. It does
+not invent clause anchors or resolve unavailable edition text.
+
 ## Standards
 
 | Topic | Selected reference |

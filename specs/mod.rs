@@ -1,7 +1,15 @@
 use vstd::arithmetic::power2::pow2;
 use vstd::prelude::*;
 
+pub use crate::proofs::internal_specs::{
+    part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
+};
+
 verus! {
+
+pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
+pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
+pub const PART2_NORMALIZED_SAMPLE_HALF: u16 = PART2_NORMALIZED_SAMPLE_MAX / 2;
 
 pub open spec fn region_fits(parent_length: nat, offset: nat, length: nat) -> bool {
     offset <= parent_length && length <= parent_length - offset
@@ -1233,23 +1241,25 @@ pub open spec fn part2_loop_frame(index: usize, frames: usize) -> usize
 }
 
 pub open spec fn part2_inverse_alpha(source_alpha: u16) -> u16 {
-    (65535 - source_alpha as int) as u16
+    ((PART2_NORMALIZED_SAMPLE_MAX as int) - source_alpha as int) as u16
 }
 
 pub open spec fn part2_source_over_alpha_numerator(source_alpha: u16, destination_alpha: u16) -> nat {
-    let inverse = (65535 - source_alpha as int) as nat;
-    (source_alpha as nat) * 65535 + (destination_alpha as nat) * inverse
+    let maximum = PART2_NORMALIZED_SAMPLE_MAX as nat;
+    let inverse = ((maximum as int) - source_alpha as int) as nat;
+    (source_alpha as nat) * maximum + (destination_alpha as nat) * inverse
 }
 
 pub open spec fn part2_source_over_color_numerator(
     source: u16, destination: u16, source_alpha: u16, destination_alpha: u16, premultiplied: bool,
 ) -> nat {
+    let maximum = PART2_NORMALIZED_SAMPLE_MAX as nat;
     let source_term = if premultiplied {
-        (source as nat) * 65535 * 65535
+        (source as nat) * maximum * maximum
     } else {
-        (source as nat) * (source_alpha as nat) * 65535
+        (source as nat) * (source_alpha as nat) * maximum
     };
-    let inverse = (65535 - source_alpha as int) as nat;
+    let inverse = ((maximum as int) - source_alpha as int) as nat;
     source_term + (destination as nat) * (destination_alpha as nat) * inverse
 }
 
@@ -1271,7 +1281,8 @@ pub open spec fn part2_source_over_color_sample(
 }
 
 pub open spec fn part2_source_over_alpha_sample(source_alpha: u16, destination_alpha: u16) -> nat {
-    (part2_source_over_alpha_numerator(source_alpha, destination_alpha) + 32767) / 65535
+    (part2_source_over_alpha_numerator(source_alpha, destination_alpha)
+        + PART2_NORMALIZED_SAMPLE_HALF as nat) / PART2_NORMALIZED_SAMPLE_MAX as nat
 }
 
 pub open spec fn part2_composition_store(samples: Seq<u16>, index: nat, value: u16) -> (bool, Seq<u16>) {
@@ -1319,7 +1330,7 @@ pub open spec fn part2_composition_gather_pixel(
                 if channels > 0 { first.unwrap().1 } else { 0 },
                 if channels > 1 { second.unwrap().1 } else { 0 },
                 if channels > 2 { third.unwrap().1 } else { 0 },
-            ], if source_alpha.is_some() { source_alpha.unwrap().0[source_index as int] } else { 65535 },
+            ], if source_alpha.is_some() { source_alpha.unwrap().0[source_index as int] } else { PART2_NORMALIZED_SAMPLE_MAX },
                 destination_alpha[destination_index as int],
                 source_alpha.is_some() && source_alpha.unwrap().1))
         }
@@ -1524,39 +1535,6 @@ pub open spec fn part2_composition_layer_success(
         source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
     );
     (result.0, result.1, result.2, initial_work + part2_composition_layer_work(geometry, destination.len()))
-}
-
-pub open spec fn part2_composition_layer_prefix_matches(
-    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
-    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
-    geometry: Part2CompositionGeometry, expand_grayscale: bool, initial_work: nat,
-    final_colors: Seq<Seq<u16>>, final_alpha: Seq<u16>, final_work: nat, completed: nat,
-) -> bool {
-    let state = part2_composition_canvas_prefix(
-        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, completed,
-    );
-    completed <= geometry.copy_width * geometry.copy_height
-        && state.0 && final_colors == state.1 && final_alpha == state.2
-        && (final_work == initial_work + completed * (destination.len() + 1)
-            || (completed > 0 && final_work == initial_work + ((completed - 1) as nat) * (destination.len() + 1)))
-}
-
-pub open spec fn part2_composition_layer_prefix_safe(
-    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
-    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
-    geometry: Part2CompositionGeometry, expand_grayscale: bool, initial_work: nat,
-    final_colors: Seq<Seq<u16>>, final_alpha: Seq<u16>, final_work: nat,
-) -> bool {
-    if geometry.source_crop_width == 0 || geometry.source_crop_height == 0
-        || geometry.target_width == 0 || geometry.target_height == 0
-        || geometry.copy_width == 0 || geometry.copy_height == 0 {
-        final_colors == destination && final_alpha == destination_alpha && final_work == initial_work
-    } else {
-        exists |completed: nat| part2_composition_layer_prefix_matches(
-            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, initial_work,
-            final_colors, final_alpha, final_work, completed,
-        )
-    }
 }
 
 pub type Part2CompositionBudgetedState = (Result<(), crate::DecodeError>, Seq<Seq<u16>>, Seq<u16>, nat);

@@ -14,6 +14,13 @@ Verus-only attributes and modules are enabled with `verus_keep_ghost`:
 - [proofs/shared/](proofs/shared/) contains representation views.
 - [proofs/spec_properties/](proofs/spec_properties/) contains model lemmas.
 - [proofs/production_impl/](proofs/production_impl/) contains refinement lemmas.
+- [proofs/internal_specs.rs](proofs/internal_specs.rs) contains auxiliary
+  prefix-membership witnesses, not algorithm denotations.
+
+Start semantic review with the [specification audit guide](specs/README.md),
+which distinguishes selected reference editions, normalization policies and
+internal proof support. Essential raster/first-failure semantics remain on
+that reading path.
 
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
@@ -25,21 +32,62 @@ checksum, required Rust toolchain, and command. Use the same versions when
 reproducing it locally. Do not substitute a rolling compiler without
 revalidating the source and standard-library specifications.
 
-After installing the workflow's verifier and Rust toolchain:
+The pinned release includes `cargo-verus` beside `verus`; put that directory
+on `PATH`. Use its required Rust toolchain (`1.98.1` for the pinned release),
+separately from the ordinary decoder toolchain. The root manifest opts the
+same production crate into verification.
+
+The `verus` Cargo feature supplies the exact pinned `vstd` dependency.
+It is deliberately not a default feature: ordinary decoder builds retain an
+empty dependency graph. The frontend does not enable optional features
+automatically, so include `--features verus`. The released lifetime boundary
+below still requires `--no-lifetime`; it is not hidden by a wrapper script.
+
+From the repository root:
 
 ```sh
-/path/to/verus --no-lifetime --output-json --crate-type lib src/lib.rs \
-  > target/validation/verus-result.json
-python3 validation/generate-proof-coverage.py \
-  target/validation/verus-result.json
+RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
+  cargo verus verify --features verus --locked --fwd-verus-args-to roots -- \
+  --no-lifetime
 ```
 
-Create the output directory first. Reports are generated artifacts, not
-committed snapshots.
+To collect the same whole-crate evidence as CI:
 
-The checker rejects failed or partial verification and unaccounted termination
-bypasses or forbidden trusted codec escapes. Keep this gate enabled; removing
-old report files must not weaken the source checks.
+```sh
+mkdir -p target/validation
+RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
+  cargo verus verify --features verus --locked --fwd-verus-args-to roots \
+  --target-dir target/verus --lib -- --no-lifetime --output-json \
+  > target/validation/cargo-verus-output.log
+python3 validation/generate-proof-coverage.py \
+  target/validation/cargo-verus-output.log
+```
+
+The collector extracts exactly one root result, writes normalized
+`verus-result.json` and schema-v2 `proof-coverage.json`, and binds both the raw
+Cargo output and normalized result by hash. The expected crate namespace is
+`jpeg2000_rs`, not the standalone compiler's default `lib`.
+
+Cargo can reuse an already verified artifact without emitting fresh JSON.
+For a fresh local report, clean only this crate's verification artifacts with
+`cargo clean -p jpeg2000_rs --target-dir target/verus`, then repeat the report
+command. CI uses a fresh checkout. Reports are generated evidence, not
+committed snapshots; an empty/cached output cannot become a new proof report.
+
+The checker rejects missing/zero/dependency-only/wrong-crate/ambiguous/partial
+results, any termination opt-out, and forbidden trusted codec escapes.
+Cargo's exit code alone is not proof evidence. Keep this gate enabled.
+
+For module debugging, the pinned frontend requires `focus`:
+
+```sh
+RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
+  cargo verus focus --features verus --locked --fwd-verus-args-to roots -- \
+  --no-lifetime --verify-module refinement
+```
+
+Module-only results are not accepted by the whole-crate collector. CI
+explicitly exercises that rejection before its complete verification.
 
 ## Current lifetime-analysis limitation
 
