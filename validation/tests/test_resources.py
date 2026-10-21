@@ -70,6 +70,85 @@ class ResourceTests(unittest.TestCase):
                 benchmarks.run_resources(output_dir=self.work, encoder=Path("missing"))
         framework.validate_evidence_schemas(self.work)
 
+    def test_configured_rejections_require_exact_resource_limit_and_excessive_claim(self):
+        output = b"ERR\tLimitExceeded\tresource limit exceeded for WorkUnits: limit 8, actual 9\n"
+        process = subprocess.CompletedProcess([], 1, output, b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                           "LimitExceeded", "WorkUnits", False, 10.0,
+                                           allow_success=True, configured_value=8)
+        self.assertEqual(measured["limit_claim"], {"resource": "WorkUnits", "limit": 8, "actual": 9})
+        for invalid in (
+            output.replace(b"limit 8", b"limit 7"),
+            output.replace(b"actual 9", b"actual 8"),
+            output.replace(b"WorkUnits", b"DecodedBytes"),
+            output.replace(b"LimitExceeded", b"MalformedInput"),
+            output.replace(b"actual 9", b"actual unknown"),
+        ):
+            process = subprocess.CompletedProcess([], 1, invalid, b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+                with self.subTest(output=invalid), self.assertRaises(ValueError):
+                    benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                        "LimitExceeded", "WorkUnits", False, 10.0,
+                                        allow_success=True, configured_value=8)
+        process = subprocess.CompletedProcess([], 0, self.output, b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                           "LimitExceeded", "WorkUnits", False, 10.0,
+                                           allow_success=True, configured_value=9)
+        self.assertEqual(measured["output_sha256"], framework.normalized_hash(self.expected))
+        self.assertNotIn("limit_claim", measured)
+        process = subprocess.CompletedProcess([], 0, self.output.replace(b"0,255", b"0,254"), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            with self.assertRaises(ValueError):
+                benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                    "LimitExceeded", "WorkUnits", False, 10.0,
+                                    allow_success=True, configured_value=9)
+
+    def test_limit_search_measures_both_endpoints_and_finds_adjacent_outcomes(self):
+        observations = []
+        def measured(command, *args, **kwargs):
+            value = int(command[-1])
+            self.assertTrue(kwargs["allow_success"])
+            self.assertEqual(kwargs["configured_value"], value)
+            return {"elapsed_ms": 1.0, "peak_rss_bytes": 4096,
+                    "returncode": 0 if value >= 9 else 1,
+                    "output_sha256": framework.normalized_hash(self.expected) if value >= 9 else None}
+        with mock.patch.object(benchmarks, "_measure", side_effect=measured):
+            accepted = benchmarks._find_limit_boundary(
+                ["subject", "decode-limited"], "WorkUnits", 64, self.expected, "time",
+                self.metrics, 10.0, {"maximum_ms": 100.0, "maximum_peak_rss_bytes": 8192}, observations,
+            )
+        self.assertEqual(accepted, 9)
+        self.assertEqual([run["limit_value"] for run in observations[:2]], [0, 64])
+        self.assertTrue(any(run["limit_value"] == 8 and run["returncode"] == 1 for run in observations))
+        self.assertTrue(any(run["limit_value"] == 9 and run["returncode"] == 0 for run in observations))
+        self.assertLessEqual(len(observations), benchmarks.MAXIMUM_SEARCH_PROBES)
+
+    def test_limit_search_fails_for_unbracketed_inputs_and_probe_time_rss_or_count_excess(self):
+        thresholds = {"maximum_ms": 100.0, "maximum_peak_rss_bytes": 8192}
+        def search(upper=64):
+            return benchmarks._find_limit_boundary(
+                ["subject"], "WorkUnits", upper, self.expected, "time", self.metrics,
+                10.0, thresholds, [],
+            )
+        for upper in (0, -1, True, 1.5):
+            with self.subTest(upper=upper), self.assertRaises(ValueError):
+                search(upper)
+        for returncode, elapsed, rss in ((0, 1.0, 4096), (1, 1.0, 4096),
+                                          (1, 101.0, 4096), (1, 1.0, 8193)):
+            measured = {"elapsed_ms": elapsed, "peak_rss_bytes": rss, "returncode": returncode,
+                        "output_sha256": None}
+            with mock.patch.object(benchmarks, "_measure", return_value=measured):
+                with self.subTest(measured=measured), self.assertRaises(ValueError):
+                    search()
+        def many_probes(command, *args, **kwargs):
+            return {"elapsed_ms": 1.0, "peak_rss_bytes": 4096,
+                    "returncode": 1 if int(command[-1]) == 0 else 0, "output_sha256": None}
+        with mock.patch.object(benchmarks, "_measure", side_effect=many_probes):
+            with self.assertRaisesRegex(ValueError, "finite probe budget"):
+                search(1 << 40)
+
     def test_invalid_timeouts_do_not_generate_reports(self):
         for value in (0, -1, math.inf, math.nan):
             with self.subTest(timeout=value), self.assertRaises(ValueError):
@@ -79,7 +158,7 @@ class ResourceTests(unittest.TestCase):
     def test_success_schema_requires_three_measured_runs_and_output_hashes(self):
         with mock.patch.object(shutil, "which", return_value=None):
             report = benchmarks.run_resources(output_dir=self.work)
-        report.update(status="passed", blockers=[], native_total_ms=24.0)
+        report.update(status="passed", blockers=[], native_total_ms=65.0)
         tool = {"path": sys.executable, "sha256": framework.sha256_file(Path(sys.executable))}
         report["tools"] = {name: tool for name in ("encoder", "decoder", "time", "subject")}
         run = {"elapsed_ms": 1.0, "peak_rss_bytes": 4096, "returncode": 0,
@@ -92,11 +171,29 @@ class ResourceTests(unittest.TestCase):
             "thresholds": {"maximum_ms": 5000.0, "maximum_peak_rss_bytes": 1 << 20},
             "runs": [copy.deepcopy(run) for _ in range(3)], "status": "passed",
             "error": None, "artifacts": [], "median_ms": 1.0, "peak_rss_bytes": 4096,
+            "configured_limit": None, "search_ceiling": None, "search_runs": [],
         }
-        report["records"] = [dict(copy.deepcopy(record), id=f"case-{index}") for index in range(8)]
+        report["records"] = [dict(copy.deepcopy(record), id=f"case-{index}") for index in range(19)]
+        for index in range(4):
+            current = report["records"][index]
+            resource = "DecodedBytes" if index < 2 else "WorkUnits"
+            current["configured_limit"] = {"resource": resource, "value": 9}
+            current["search_ceiling"] = 64
+            rejected = {"elapsed_ms": 1.0, "peak_rss_bytes": 4096, "returncode": 1,
+                        "output_sha256": None, "limit_value": 0,
+                        "limit_claim": {"resource": resource, "limit": 0, "actual": 9}}
+            current["search_runs"] = [rejected, {"limit_value": 64, **run}]
+            below = report["records"][index + 4]
+            below.update(configured_limit={"resource": resource, "value": 8},
+                         expected_category="LimitExceeded", expected_reason=resource,
+                         expected_output_sha256=None, typed_sample_bytes=0,
+                         output_width=0, output_height=0, output_components=0)
+            below["runs"] = [{**run, "returncode": 1, "output_sha256": None,
+                              "limit_claim": {"resource": resource, "limit": 8, "actual": 9}}
+                             for _ in range(3)]
         schema = framework.VALIDATION / "resource-result.schema.json"
         framework.validate_schema(schema, report)
-        for mutation in ("rss", "count", "hash", "exit"):
+        for mutation in ("rss", "count", "hash", "exit", "claim", "search", "probe-count", "probe-claim"):
             invalid = copy.deepcopy(report)
             current = invalid["records"][0]
             if mutation == "rss":
@@ -105,7 +202,15 @@ class ResourceTests(unittest.TestCase):
                 current["runs"].pop()
             elif mutation == "hash":
                 current["runs"][0]["output_sha256"] = None
-            else:
+            elif mutation == "exit":
                 current["runs"][0]["returncode"] = 2
+            elif mutation == "claim":
+                del invalid["records"][4]["runs"][0]["limit_claim"]
+            elif mutation == "search":
+                current["search_runs"].clear()
+            elif mutation == "probe-count":
+                current["search_runs"] = [current["search_runs"][0]] * 33
+            else:
+                del current["search_runs"][0]["limit_claim"]
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 framework.validate_schema(schema, invalid)

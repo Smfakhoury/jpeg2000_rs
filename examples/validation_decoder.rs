@@ -93,6 +93,22 @@ fn parse_selection(arguments: &[String]) -> Result<DecodeSelection, String> {
     Ok(selection.with_region(ImageRegion::new(*x, *y, *width, *height)))
 }
 
+fn parse_resource_limit(arguments: &[String]) -> Result<ResourceLimits, String> {
+    let [resource, value] = arguments else {
+        return Err("expected resource name and limit".to_owned());
+    };
+    let value = value
+        .parse::<u64>()
+        .map_err(|error| format!("invalid resource limit: {error}"))?;
+    let limits = ResourceLimits::default();
+    match resource.as_str() {
+        "decoded-bytes" => limits.with_maximum_decoded_bytes(value),
+        "work-units" => limits.with_maximum_work_units(value),
+        _ => return Err(format!("unsupported resource limit: {resource}")),
+    }
+    .map_err(|error| error.to_string())
+}
+
 fn print_selected_image(image: &TypedImage) {
     println!("FRAME\t{}\t{}", image.x_origin(), image.y_origin());
     print_image(image);
@@ -218,17 +234,34 @@ fn main() {
     let selecting = arguments
         .get(1)
         .is_some_and(|value| matches!(value.as_str(), "select" | "select-color"));
-    if arguments.len() != if selecting { 7 } else { 4 } {
+    let limited = arguments
+        .get(1)
+        .is_some_and(|value| value == "decode-limited");
+    if arguments.len()
+        != if selecting {
+            7
+        } else if limited {
+            6
+        } else {
+            4
+        }
+    {
         eprintln!(
             "usage: validation_decoder <decode|convert|inspect|ingest> <format> <input>\n\
              or: validation_decoder <select|select-color> <format> <input> <discard-levels> \
              <all|tile-indices> <all|x,y,width,height>\n\
+             or: validation_decoder decode-limited <format> <input> \
+             <decoded-bytes|work-units> <limit>\n\
              or: validation_decoder <render|render-layer|render-frame|reconstruct|progressive> \
              <jpx|layer-index|frame-index|jpip|auto|packet-lengths> <input>"
         );
         process::exit(2);
     }
-    let operation = arguments[1].as_str();
+    let operation = if limited {
+        "decode"
+    } else {
+        arguments[1].as_str()
+    };
     let format = arguments[2].as_str();
     let selection = if selecting {
         match parse_selection(&arguments[4..]) {
@@ -248,7 +281,17 @@ fn main() {
             process::exit(2);
         }
     };
-    let options = DecodeOptions::default();
+    let options = if limited {
+        match parse_resource_limit(&arguments[4..]) {
+            Ok(limits) => DecodeOptions::new(limits),
+            Err(error) => {
+                eprintln!("invalid resource configuration: {error}");
+                process::exit(2);
+            }
+        }
+    } else {
+        DecodeOptions::default()
+    };
     match (operation, format) {
         ("decode", "raw") => match decode_codestream(&input, &options) {
             Ok(image) => print_image(&image),
@@ -386,6 +429,38 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn parses_only_tightened_resource_limits_without_changing_other_defaults() {
+        let defaults = ResourceLimits::default();
+        for value in [0, 1, defaults.maximum_decoded_bytes()] {
+            let limits =
+                parse_resource_limit(&arguments(&["decoded-bytes", &value.to_string()])).unwrap();
+            assert_eq!(limits.maximum_decoded_bytes(), value);
+            assert_eq!(limits.maximum_work_units(), defaults.maximum_work_units());
+        }
+        for value in [0, 1, defaults.maximum_work_units()] {
+            let limits =
+                parse_resource_limit(&arguments(&["work-units", &value.to_string()])).unwrap();
+            assert_eq!(limits.maximum_work_units(), value);
+            assert_eq!(
+                limits.maximum_decoded_bytes(),
+                defaults.maximum_decoded_bytes()
+            );
+        }
+        for values in [
+            vec![],
+            vec!["decoded-bytes"],
+            vec!["decoded-bytes", "1", "extra"],
+            vec!["pixels", "1"],
+            vec!["decoded-bytes", "-1"],
+            vec!["work-units", "not-a-number"],
+            vec!["decoded-bytes", "18446744073709551615"],
+            vec!["work-units", "18446744073709551615"],
+        ] {
+            assert!(parse_resource_limit(&arguments(&values)).is_err());
+        }
     }
 
     #[test]

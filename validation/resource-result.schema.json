@@ -5,7 +5,7 @@
   "required": ["$schema", "schema_version", "scope", "provenance", "status", "blockers", "errors", "tools", "address_space_limit_bytes", "repetitions", "records", "native_total_ms", "maximum_native_total_ms", "maximum_selection_rss_ratio", "subject_build"],
   "properties": {
     "$schema": {"type": "string"},
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "scope": {"type": "string", "minLength": 1},
     "provenance": {"type": "object"},
     "status": {"enum": ["passed", "failed", "blocked"]},
@@ -32,14 +32,59 @@
       "tools": {"required": ["encoder", "decoder", "time", "subject"]},
       "blockers": {"maxItems": 0},
       "errors": {"maxItems": 0},
-      "records": {"minItems": 8, "maxItems": 8, "items": {"properties": {"status": {"const": "passed"}}}}
-    }}
+      "records": {
+        "minItems": 19, "maxItems": 19,
+        "items": {"properties": {"status": {"const": "passed"}}},
+        "contains": {"properties": {"search_ceiling": {"type": "integer"}}, "required": ["search_ceiling"]},
+        "minContains": 4, "maxContains": 4
+      }
+    }, "allOf": [{"properties": {"records": {
+      "contains": {
+        "properties": {"configured_limit": {"type": "object"}, "expected_category": {"const": "LimitExceeded"}},
+        "required": ["configured_limit", "expected_category"]
+      },
+      "minContains": 4, "maxContains": 4
+    }}}]}
   }],
   "$defs": {
     "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "limit": {
+      "type": "object", "additionalProperties": false, "required": ["resource", "value"],
+      "properties": {
+        "resource": {"enum": ["DecodedBytes", "WorkUnits"]},
+        "value": {"type": "integer", "minimum": 0}
+      }
+    },
+    "measurement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["elapsed_ms", "peak_rss_bytes", "returncode", "output_sha256"],
+      "properties": {
+        "elapsed_ms": {"type": "number", "minimum": 0},
+        "peak_rss_bytes": {"type": "integer", "minimum": 1},
+        "returncode": {"enum": [0, 1]},
+        "output_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "limit_value": {"type": "integer", "minimum": 0},
+        "limit_claim": {
+          "type": "object", "additionalProperties": false, "required": ["resource", "limit", "actual"],
+          "properties": {
+            "resource": {"enum": ["DecodedBytes", "WorkUnits"]},
+            "limit": {"type": "integer", "minimum": 0},
+            "actual": {"type": "integer", "minimum": 1}
+          }
+        }
+      },
+      "allOf": [{
+        "if": {"properties": {"returncode": {"const": 0}}, "required": ["returncode"]},
+        "then": {"properties": {"output_sha256": {"$ref": "#/$defs/hash"}},
+                 "not": {"required": ["limit_claim"]}}
+      }, {
+        "if": {"properties": {"returncode": {"const": 1}}, "required": ["returncode"]},
+        "then": {"properties": {"output_sha256": {"type": "null"}}}
+      }]
+    },
     "record": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "input_bytes", "input_sha256", "expected_category", "expected_reason", "expected_output_sha256", "typed_sample_bytes", "output_width", "output_height", "output_components", "thresholds", "runs", "status", "error", "artifacts"],
+      "required": ["id", "input_bytes", "input_sha256", "expected_category", "expected_reason", "expected_output_sha256", "typed_sample_bytes", "output_width", "output_height", "output_components", "thresholds", "runs", "status", "error", "artifacts", "configured_limit", "search_ceiling", "search_runs"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "input_bytes": {"type": "integer", "minimum": 1},
@@ -51,6 +96,21 @@
         "output_width": {"type": "integer", "minimum": 0},
         "output_height": {"type": "integer", "minimum": 0},
         "output_components": {"type": "integer", "minimum": 0},
+        "configured_limit": {"anyOf": [{"$ref": "#/$defs/limit"}, {"type": "null"}]},
+        "search_ceiling": {"type": ["integer", "null"], "minimum": 1},
+        "search_runs": {
+          "type": "array", "maxItems": 32,
+          "items": {
+            "allOf": [
+              {"$ref": "#/$defs/measurement"},
+              {"required": ["limit_value"]},
+              {
+                "if": {"properties": {"returncode": {"const": 1}}, "required": ["returncode"]},
+                "then": {"required": ["limit_claim"]}
+              }
+            ]
+          }
+        },
         "thresholds": {
           "type": "object", "additionalProperties": false,
           "required": ["maximum_ms", "maximum_peak_rss_bytes"],
@@ -61,16 +121,7 @@
         },
         "runs": {
           "type": "array",
-          "items": {
-            "type": "object", "additionalProperties": false,
-            "required": ["elapsed_ms", "peak_rss_bytes", "returncode", "output_sha256"],
-            "properties": {
-              "elapsed_ms": {"type": "number", "minimum": 0},
-              "peak_rss_bytes": {"type": "integer", "minimum": 1},
-              "returncode": {"type": "integer"},
-              "output_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}
-            }
-          }
+          "items": {"$ref": "#/$defs/measurement"}
         },
         "status": {"enum": ["passed", "failed"]},
         "error": {"type": ["string", "null"]},
@@ -79,6 +130,24 @@
         "peak_rss_bytes": {"type": "integer", "minimum": 1}
       },
       "allOf": [{
+        "if": {"properties": {"search_ceiling": {"type": "integer"}}, "required": ["search_ceiling"]},
+        "then": {"properties": {"configured_limit": {
+                   "allOf": [{"$ref": "#/$defs/limit"}, {"properties": {"value": {"minimum": 1}}}]
+                 }},
+                 "allOf": [{
+                   "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
+                   "then": {"properties": {"search_runs": {"minItems": 2}}}
+                 }]},
+        "else": {"properties": {"search_runs": {"maxItems": 0}}}
+      }, {
+        "if": {"properties": {"configured_limit": {"type": "object"}, "expected_category": {"type": "string"}},
+               "required": ["configured_limit", "expected_category"]},
+        "then": {"properties": {
+          "expected_category": {"const": "LimitExceeded"},
+          "expected_reason": {"enum": ["DecodedBytes", "WorkUnits"]},
+          "runs": {"items": {"required": ["limit_claim"]}}
+        }}
+      }, {
         "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
         "then": {"required": ["median_ms", "peak_rss_bytes"], "properties": {
           "runs": {"minItems": 3, "maxItems": 3}, "error": {"type": "null"}, "artifacts": {"maxItems": 0}
