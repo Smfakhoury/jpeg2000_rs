@@ -75,14 +75,33 @@ Read each contract according to its inputs and postcondition:
 | Stream and packet accounting | Consumed offsets, declared lengths, ordering and bounded claims | That accepted syntax has the intended pixel meaning in every standard edition |
 | Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
 | JPX source-over arithmetic | Exact natural-valued numerators and rounded scalar color/alpha results, proved in the 16-bit range at production conversion sites, with upward ties and transparent zero | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
+| Complete finite-channel pixel evaluation | One total model for all active colors and alpha, preserved unused slots, and exact invalid-input rejection for up to three normalized color channels | A complete theorem for planar gather/scatter, canvas traversal, layer order or whole-render transactionality |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
-The production placed-layer compositor and the test-only unplaced compositor
-share the source-over helpers. Ghost-only proof calls in the executable helpers
+The production placed-layer compositor uses the complete `source_over_pixel`
+evaluator. Its executable contract equates the entire optional color/alpha
+result with one model: invalid channel counts or active premultiplied samples
+above alpha return no pixel; valid inputs produce all specified rounded
+channels and alpha, preserving unused array slots. The loop invariant connects
+all processed channels and untouched slots, not just one arbitrary scalar.
+Checked conversions remain in the evaluator, and its contract rules out a
+spurious conversion failure on valid inputs.
+
+Fixed-size stack buffers gather the supported grayscale/RGB pixel before
+evaluation and scattering; no per-pixel heap allocation is introduced.
+Malformed premultiplied data is rejected before destination writes for that
+pixel, including a malformed later channel. This intentionally strengthens
+the previous private intermediate-buffer behavior; public render APIs still
+return the same typed error and do not expose a partial image. Earlier pixels
+may already be written, and work-limit checks retain their existing position
+after successful pixel stores. No whole-render transaction is claimed.
+The test-only unplaced compositor remains a separate scalar reference path.
+
+The evaluator and scalar reference share the source-over helpers. Ghost-only proof calls in the executable helpers
 instantiate multiplication bounds; ordinary Cargo builds erase those calls.
 The paired models establish alpha numerator at most `65535^2` and color
 numerator at most `65535 * alpha_numerator` for straight samples or valid
@@ -94,10 +113,11 @@ numbers, without truncating the models to machine words. Numerator bounds and
 the nearest-integer interval are exposed in these executable contracts; a
 proved bounded numerator also yields a rounded result at most `65535`.
 
-The production placed-layer color loop retains the alpha numerator relation
-as an invariant. After rejecting invalid premultiplied samples, proof assertions
-establish that each computed color and alpha result equals its composed scalar
-model and fits `u16`, immediately before the existing checked conversions.
+The pixel evaluator's loop retains the alpha numerator relation and complete
+processed-channel prefix as invariants. Its proof assertions establish that
+each computed color and alpha result equals its composed scalar model and fits
+`u16`, immediately before the checked conversions. The production scatter loop
+retains the evaluator's channel/alpha results and geometric addressing facts.
 Both color and alpha stores use the same executable checked slice-store helper.
 Its contract equates the returned flag and complete final slice with a model of
 the initial slice and requested update. Successful writes preserve every other
@@ -108,7 +128,7 @@ conversion, to the composed scalar models. Rejected stores propagate the usual
 typed invalid-layer error; resource/work accounting remains in its original
 order.
 
-These relations connect the scalar models to production mutations, not just
+These relations connect the complete pixel and scalar models to production mutations, not just
 standalone arithmetic lemmas. They do not specify the entire mutable canvas,
 prove all index/channel selections semantically correct, or establish a
 layer/frame composition theorem. No-change rejection of one store does not

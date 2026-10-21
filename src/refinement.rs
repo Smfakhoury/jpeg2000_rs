@@ -1317,6 +1317,83 @@ pub(crate) fn try_store_composition_sample(samples: &mut [u16], index: usize, va
 
 #[cfg_attr(
     verus_keep_ghost,
+    verus_spec(pixel =>
+        ensures pixel == crate::specs::part2_source_over_pixel(
+            source, destination, source_alpha, destination_alpha, premultiplied, channels,
+        ),
+            pixel.is_some() <==> crate::specs::part2_source_over_pixel_valid(source, source_alpha, premultiplied, channels),
+            pixel.is_some() ==> pixel.unwrap().1 as nat == crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha),
+            pixel.is_some() && channels > 0 ==> pixel.unwrap().0[0] as nat == crate::specs::part2_source_over_color_sample(source[0], destination[0], source_alpha, destination_alpha, premultiplied),
+            pixel.is_some() && channels > 1 ==> pixel.unwrap().0[1] as nat == crate::specs::part2_source_over_color_sample(source[1], destination[1], source_alpha, destination_alpha, premultiplied),
+            pixel.is_some() && channels > 2 ==> pixel.unwrap().0[2] as nat == crate::specs::part2_source_over_color_sample(source[2], destination[2], source_alpha, destination_alpha, premultiplied),
+    )
+)]
+pub(crate) fn source_over_pixel(
+    source: [u16; 3],
+    destination: [u16; 3],
+    source_alpha: u16,
+    destination_alpha: u16,
+    premultiplied: bool,
+    channels: usize,
+) -> Option<([u16; 3], u16)> {
+    if channels > 3 {
+        return None;
+    }
+    let alpha_numerator = source_over_alpha_numerator(source_alpha, destination_alpha);
+    let mut colors = destination;
+    let mut i = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant
+                i <= channels && channels <= 3,
+                alpha_numerator as nat == crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
+                alpha_numerator <= 4294836225,
+                i > 0 ==> (!premultiplied || source[0] <= source_alpha)
+                    && colors[0] as nat == crate::specs::part2_source_over_color_sample(source[0], destination[0], source_alpha, destination_alpha, premultiplied),
+                i > 1 ==> (!premultiplied || source[1] <= source_alpha)
+                    && colors[1] as nat == crate::specs::part2_source_over_color_sample(source[1], destination[1], source_alpha, destination_alpha, premultiplied),
+                i > 2 ==> (!premultiplied || source[2] <= source_alpha)
+                    && colors[2] as nat == crate::specs::part2_source_over_color_sample(source[2], destination[2], source_alpha, destination_alpha, premultiplied),
+                i == 0 ==> colors[0] == destination[0],
+                i <= 1 ==> colors[1] == destination[1],
+                i <= 2 ==> colors[2] == destination[2],
+            decreases channels - i,
+        )
+    )]
+    while i < channels {
+        if premultiplied && source[i] > source_alpha {
+            return None;
+        }
+        let numerator = source_over_color_numerator(
+            source[i],
+            destination[i],
+            source_alpha,
+            destination_alpha,
+            premultiplied,
+        );
+        let rounded = source_over_rounded_ratio(numerator, alpha_numerator);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(rounded <= 65535);
+            assert(rounded as nat == crate::specs::part2_source_over_color_sample(
+                source[i as int], destination[i as int], source_alpha, destination_alpha, premultiplied,
+            ));
+        }
+        colors[i] = u16::try_from(rounded).ok()?;
+        i += 1;
+    }
+    let alpha = source_over_rounded_ratio(alpha_numerator, u16::MAX as u64);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(alpha <= 65535);
+        assert(alpha as nat == crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha));
+    }
+    Some((colors, u16::try_from(alpha).ok()?))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
     verus_spec(ensures returns crate::specs::part2_chroma_key_alpha(matches),)
 )]
 pub(crate) const fn chroma_key_alpha(matches: bool) -> u16 {

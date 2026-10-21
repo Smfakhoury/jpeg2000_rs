@@ -1278,6 +1278,28 @@ pub open spec fn part2_composition_store(samples: Seq<u16>, index: nat, value: u
     if index < samples.len() { (true, samples.update(index as int, value)) } else { (false, samples) }
 }
 
+pub open spec fn part2_source_over_pixel_valid(source: [u16; 3], source_alpha: u16, premultiplied: bool, channels: usize) -> bool {
+    channels <= 3 && (!premultiplied
+        || ((channels == 0 || source[0] <= source_alpha)
+            && (channels <= 1 || source[1] <= source_alpha)
+            && (channels <= 2 || source[2] <= source_alpha)))
+}
+
+pub open spec fn part2_source_over_pixel(
+    source: [u16; 3], destination: [u16; 3], source_alpha: u16, destination_alpha: u16,
+    premultiplied: bool, channels: usize,
+) -> Option<([u16; 3], u16)> {
+    if !part2_source_over_pixel_valid(source, source_alpha, premultiplied, channels) {
+        None
+    } else {
+        Some(([
+            if channels > 0 { part2_source_over_color_sample(source[0], destination[0], source_alpha, destination_alpha, premultiplied) as u16 } else { destination[0] },
+            if channels > 1 { part2_source_over_color_sample(source[1], destination[1], source_alpha, destination_alpha, premultiplied) as u16 } else { destination[1] },
+            if channels > 2 { part2_source_over_color_sample(source[2], destination[2], source_alpha, destination_alpha, premultiplied) as u16 } else { destination[2] },
+        ], part2_source_over_alpha_sample(source_alpha, destination_alpha) as u16))
+    }
+}
+
 pub open spec fn part2_chroma_key_alpha(matches: bool) -> u16 {
     if matches { 0 } else { u16::MAX }
 }

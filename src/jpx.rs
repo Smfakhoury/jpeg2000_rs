@@ -2144,17 +2144,58 @@ fn composite_placed_layer(
             let destination_alpha = *output_alpha
                 .get(destination_index)
                 .ok_or_else(invalid_layer)?;
-            let output_alpha_numerator =
-                crate::refinement::source_over_alpha_numerator(source_alpha, destination_alpha);
+            let channels = output_colors.len();
+            if channels > 3 {
+                return Err(invalid_layer());
+            }
+            let mut source_pixel = [0_u16; 3];
+            let mut destination_pixel = [0_u16; 3];
+            let mut channel = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant channel <= channels && channels <= 3,
+                    decreases channels - channel,
+                )
+            )]
+            while channel < channels {
+                let source_channel = match (output_space, source.color_space) {
+                    (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale) => 0,
+                    _ => channel,
+                };
+                source_pixel[channel] = *source
+                    .colors
+                    .get(source_channel)
+                    .and_then(|samples| samples.get(source_index))
+                    .ok_or_else(invalid_layer)?;
+                destination_pixel[channel] = *output_colors
+                    .get(channel)
+                    .and_then(|samples| samples.get(destination_index))
+                    .ok_or_else(invalid_layer)?;
+                channel += 1;
+            }
+            let source_pixel = source_pixel;
+            let destination_pixel = destination_pixel;
+            let (pixel, alpha) = crate::refinement::source_over_pixel(
+                source_pixel,
+                destination_pixel,
+                source_alpha,
+                destination_alpha,
+                premultiplied,
+                channels,
+            )
+            .ok_or_else(invalid_layer)?;
             let mut color_index = 0_usize;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant
-                        color_index <= output_colors.len(),
-                        output_alpha_numerator as nat
-                            == crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
-                        output_alpha_numerator <= 4294836225,
+                        color_index <= channels && channels <= 3,
+                        channels == output_colors.len(),
+                        alpha as nat == crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha),
+                        channels > 0 ==> pixel[0] as nat == crate::specs::part2_source_over_color_sample(source_pixel[0], destination_pixel[0], source_alpha, destination_alpha, premultiplied),
+                        channels > 1 ==> pixel[1] as nat == crate::specs::part2_source_over_color_sample(source_pixel[1], destination_pixel[1], source_alpha, destination_alpha, premultiplied),
+                        channels > 2 ==> pixel[2] as nat == crate::specs::part2_source_over_color_sample(source_pixel[2], destination_pixel[2], source_alpha, destination_alpha, premultiplied),
                         target_width > 0 && target_height > 0,
                         x < copy_width && copy_width <= target_width,
                         y < copy_height && copy_height <= target_height,
@@ -2174,49 +2215,15 @@ fn composite_placed_layer(
                         (destination_index as nat) < (canvas_width as nat) * (canvas_height as nat),
                         destination_x as nat == (instruction.target_x as nat) + x as nat,
                         destination_y as nat == (instruction.target_y as nat) + y as nat,
-                    decreases output_colors.len() - color_index,
+                    decreases channels - color_index,
                 )
             )]
-            while color_index < output_colors.len() {
-                let source_color_index = match (output_space, source.color_space) {
-                    (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale) => 0,
-                    _ => color_index,
-                };
-                let source_sample = *source
-                    .colors
-                    .get(source_color_index)
-                    .and_then(|samples| samples.get(source_index))
-                    .ok_or_else(invalid_layer)?;
-                if premultiplied && source_sample > source_alpha {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents));
-                }
-                let destination_sample = *output_colors
-                    .get(color_index)
-                    .and_then(|samples| samples.get(destination_index))
-                    .ok_or_else(invalid_layer)?;
-                let color_numerator = crate::refinement::source_over_color_numerator(
-                    source_sample,
-                    destination_sample,
-                    source_alpha,
-                    destination_alpha,
-                    premultiplied,
-                );
-                let output_sample = crate::refinement::source_over_rounded_ratio(
-                    color_numerator,
-                    output_alpha_numerator,
-                );
-                #[cfg(verus_keep_ghost)]
-                proof! {
-                    assert(output_sample <= 65535);
-                    assert(output_sample as nat == crate::specs::part2_source_over_color_sample(
-                        source_sample, destination_sample, source_alpha, destination_alpha, premultiplied,
-                    ));
-                }
+            while color_index < channels {
+                let sample = pixel[color_index];
                 let destination_samples = output_colors
                     .get_mut(color_index)
                     .ok_or_else(invalid_layer)?
                     .as_mut_slice();
-                let sample = u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
                 if !crate::refinement::try_store_composition_sample(
                     destination_samples,
                     destination_index,
@@ -2228,27 +2235,15 @@ fn composite_placed_layer(
                 proof! {
                     assert(destination_samples@[destination_index as int] as nat
                         == crate::specs::part2_source_over_color_sample(
-                            source_sample, destination_sample, source_alpha, destination_alpha, premultiplied,
+                            source_pixel[color_index as int], destination_pixel[color_index as int], source_alpha, destination_alpha, premultiplied,
                         ));
                 }
                 color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
-            let alpha = crate::refinement::source_over_rounded_ratio(
-                output_alpha_numerator,
-                u64::from(u16::MAX),
-            );
-            #[cfg(verus_keep_ghost)]
-            proof! {
-                assert(alpha <= 65535);
-                assert(alpha as nat == crate::specs::part2_source_over_alpha_sample(
-                    source_alpha, destination_alpha,
-                ));
-            }
-            let sample = u16::try_from(alpha).map_err(|_| arithmetic_overflow())?;
             if !crate::refinement::try_store_composition_sample(
                 output_alpha,
                 destination_index,
-                sample,
+                alpha,
             ) {
                 return Err(invalid_layer());
             }
@@ -2461,6 +2456,112 @@ mod tests {
     use crate::refinement::{
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    #[test]
+    fn complete_pixel_stage_matches_independent_rational_rounding() {
+        let maximum = u128::from(u16::MAX);
+        let nearest = |n: u128, d: u128| {
+            if d == 0 {
+                0
+            } else {
+                u16::try_from(n / d + u128::from(2 * (n % d) >= d)).unwrap()
+            }
+        };
+        for channels in 0..=4 {
+            for premultiplied in [false, true] {
+                for source_alpha in [0, 1, 32_767, 32_768, u16::MAX] {
+                    for destination_alpha in [0, 1, 32_767, 32_768, u16::MAX] {
+                        for source in [[0, source_alpha / 2, source_alpha], [u16::MAX, 1, 32_768]] {
+                            for destination in [[0, 1, u16::MAX], [u16::MAX, 32_768, 0]] {
+                                let actual = crate::refinement::source_over_pixel(
+                                    source,
+                                    destination,
+                                    source_alpha,
+                                    destination_alpha,
+                                    premultiplied,
+                                    channels,
+                                );
+                                if channels > 3
+                                    || (premultiplied
+                                        && source[..channels]
+                                            .iter()
+                                            .any(|value| *value > source_alpha))
+                                {
+                                    assert_eq!(actual, None);
+                                    continue;
+                                }
+                                let a = u128::from(source_alpha);
+                                let d = u128::from(destination_alpha);
+                                let alpha_numerator = a * maximum + d * (maximum - a);
+                                let mut expected = destination;
+                                for i in 0..channels {
+                                    let s = u128::from(source[i]);
+                                    let c = u128::from(destination[i]);
+                                    let source_term = if premultiplied {
+                                        s * maximum * maximum
+                                    } else {
+                                        s * a * maximum
+                                    };
+                                    expected[i] = nearest(
+                                        source_term + c * d * (maximum - a),
+                                        alpha_numerator,
+                                    );
+                                }
+                                assert_eq!(
+                                    actual,
+                                    Some((expected, nearest(alpha_numerator, maximum)))
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_late_channel_rejects_only_the_current_pixel_before_any_store() {
+        let source = OwnedLayer {
+            width: 2,
+            height: 1,
+            color_space: ConvertedColorSpace::Srgb,
+            colors: vec![vec![32_768, 32_768], vec![0, 1], vec![16_384, 32_769]],
+            alpha: Some((vec![32_768, 32_768], true)),
+        };
+        let instruction = JpxInstructionInfo {
+            layer_index: 0,
+            target_x: 0,
+            target_y: 0,
+            target_width: 2,
+            target_height: 1,
+            source_x: 0,
+            source_y: 0,
+            source_width: 0,
+            source_height: 0,
+            persistent: true,
+            next_reuse: 0,
+        };
+        let mut colors = vec![vec![0, 17], vec![0, 23], vec![0, 29]];
+        let mut alpha = vec![0, 31];
+        let mut work = 0;
+        assert_eq!(
+            composite_placed_layer(
+                2,
+                1,
+                ConvertedColorSpace::Srgb,
+                &source,
+                instruction,
+                &mut colors,
+                &mut alpha,
+                &mut work,
+                &ResourceLimits::default()
+            ),
+            Err(invalid_layer())
+        );
+        assert_eq!(colors, [vec![u16::MAX, 17], vec![0, 23], vec![32_768, 29]]);
+        assert_eq!(alpha, [32_768, 31]);
+        assert_eq!(work, 4);
+    }
 
     #[test]
     fn composition_mapped_offsets_match_wide_floor_division() {
