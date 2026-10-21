@@ -664,11 +664,12 @@ impl ComponentCodingStyles {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
+/// Bounded per-component quantization snapshots, stored off-stack.
 pub struct ComponentQuantizations {
     components: u16,
-    quantizations: [Quantization; MAX_COMPONENTS],
+    quantizations: Vec<Quantization>,
 }
 
 impl ComponentQuantizations {
@@ -682,7 +683,7 @@ impl ComponentQuantizations {
 
         Ok(Self {
             components,
-            quantizations: [default; MAX_COMPONENTS],
+            quantizations: vec![default; usize::from(components)],
         })
     }
 
@@ -2796,7 +2797,8 @@ impl<'a> Parser<'a> {
         let mut tile_coding_styles = vec![None; tile_state_count];
         let mut tile_quantizations = vec![None; tile_state_count];
         let mut tile_component_coding_styles = vec![None; tile_state_count];
-        let mut tile_component_quantizations = vec![None; tile_state_count];
+        let mut tile_component_quantizations: Vec<Option<ComponentQuantizations>> =
+            vec![None; tile_state_count];
         let mut tile_progression_changes: Vec<Option<ProgressionChanges>> =
             vec![None; tile_state_count];
         let mut tile_mct_parameters: Vec<Option<MctParameters>> = vec![None; tile_state_count];
@@ -2906,8 +2908,8 @@ impl<'a> Parser<'a> {
                         };
                     let inherited_component_quantizations =
                         match tile_component_quantizations.get(tile_index) {
-                            Some(Some(quantizations)) => *quantizations,
-                            _ => component_quantizations,
+                            Some(Some(quantizations)) => quantizations.clone(),
+                            _ => component_quantizations.clone(),
                         };
                     let inherited_progression_changes =
                         match tile_progression_changes.get(tile_index) {
@@ -2964,7 +2966,7 @@ impl<'a> Parser<'a> {
                     *tile_component_quantizations
                         .get_mut(tile_index)
                         .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
-                        Some(payload.component_quantizations);
+                        Some(payload.component_quantizations.clone());
                     *tile_progression_changes
                         .get_mut(tile_index)
                         .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
@@ -10148,6 +10150,34 @@ mod tests {
         let tile_one_quantization = tile.component_quantizations.quantization(1).unwrap();
         assert_eq!(tile_one_quantization.step_count, 7);
         assert_eq!(tile_one_quantization.step(6).unwrap().exponent, 11);
+    }
+
+    #[test]
+    fn component_quantization_storage_scales_with_components_and_clones_independently() {
+        assert!(core::mem::size_of::<ComponentQuantizations>() <= 64);
+        let info = parse(&codestream(&[0], false), &ResourceLimits::default()).unwrap();
+        let default = info.component_quantizations.quantization(0).unwrap();
+        for count in [1_u16, 3, MAX_COMPONENTS as u16] {
+            let mut table = ComponentQuantizations::uniform(count, default).unwrap();
+            assert_eq!(table.quantizations.len(), usize::from(count));
+            let snapshot = table.clone();
+            let mut changed = default;
+            changed.guard_bits += 1;
+            table.set(count - 1, changed).unwrap();
+            assert_eq!(
+                snapshot.quantization(count - 1).unwrap().guard_bits,
+                default.guard_bits
+            );
+            assert_eq!(
+                table.quantization(count - 1).unwrap().guard_bits,
+                changed.guard_bits
+            );
+            assert!(!table.equals(&snapshot));
+            assert!(table.quantization(count).is_err());
+            assert!(table.set(count, default).is_err());
+        }
+        assert!(ComponentQuantizations::uniform(0, default).is_err());
+        assert!(ComponentQuantizations::uniform((MAX_COMPONENTS + 1) as u16, default).is_err());
     }
 
     #[test]

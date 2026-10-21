@@ -8,6 +8,7 @@ import platform
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, replace
@@ -243,7 +244,8 @@ def image_error_metrics(reference: dict[str, Any], actual: dict[str, Any]) -> di
 
 def _limit_native_process() -> None:
     if framework.resource is not None:
-        framework.resource.setrlimit(framework.resource.RLIMIT_AS, (NATIVE_ADDRESS_BYTES, NATIVE_ADDRESS_BYTES))
+        if sys.platform.startswith("linux"):
+            framework.resource.setrlimit(framework.resource.RLIMIT_AS, (NATIVE_ADDRESS_BYTES, NATIVE_ADDRESS_BYTES))
         framework.resource.setrlimit(framework.resource.RLIMIT_FSIZE, (NATIVE_FILE_BYTES, NATIVE_FILE_BYTES))
 
 
@@ -298,7 +300,9 @@ def run_numerical(
         "process_limits": {
             "stage_timeout_seconds": timeout_seconds,
             "maximum_output_bytes": NATIVE_OUTPUT_BYTES,
-            "requested_address_space_bytes": NATIVE_ADDRESS_BYTES if framework.resource is not None else None,
+            "requested_address_space_bytes": (NATIVE_ADDRESS_BYTES
+                                              if framework.resource is not None and sys.platform.startswith("linux")
+                                              else None),
             "requested_file_size_bytes": NATIVE_FILE_BYTES if framework.resource is not None else None,
         },
         "provenance": framework.source_binding(),

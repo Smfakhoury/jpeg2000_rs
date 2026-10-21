@@ -269,6 +269,14 @@ class NumericalTests(unittest.TestCase):
         })
         framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", result)
 
+    def test_macos_does_not_request_the_unsupported_address_space_limit(self):
+        limits = mock.Mock()
+        with mock.patch.object(framework, "resource", limits), \
+                mock.patch.object(numerical.sys, "platform", "darwin"):
+            numerical._limit_native_process()
+        limits.setrlimit.assert_called_once_with(
+            limits.RLIMIT_FSIZE, (numerical.NATIVE_FILE_BYTES, numerical.NATIVE_FILE_BYTES))
+
     def test_ht_sources_and_container_metadata_cover_real_component_layouts(self):
         self.assertEqual({case.format for case in numerical.HT_CASES}, {"raw", "jph"})
         self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16})

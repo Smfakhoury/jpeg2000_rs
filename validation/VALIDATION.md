@@ -65,10 +65,19 @@ its configured tool path.
 Windows capture uses bounded pipe-reader queues rather than POSIX pipe
 selection. Timeout, combined stdout/stderr capture bounds and nonzero exit
 status remain explicit; POSIX setup callbacks cannot be silently discarded.
-Requested POSIX address-space/file-size limits are reported as `null` where
-the resource API is unavailable. These numerical checks do not claim identical
+Address-space limits are requested on Linux only; macOS rejects that setup.
+File-size limits are requested where the POSIX resource API is available.
+Unavailable limits are reported as `null`, including both on Windows.
+These numerical checks do not claim identical
 OS enforcement or measured memory guarantees: the separate GNU Time/RSS
 resource gate remains Linux-only.
+
+Per-component quantization snapshots use bounded heap storage sized to the
+actual component count, avoiding large fixed-array copies on the default
+Windows main-thread stack. `ComponentQuantizations` is `Clone`, not `Copy`;
+borrow it for reads or explicitly clone an owned snapshot. A one-MiB-stack
+decoder regression checks this on Linux, while Windows numerical execution
+uses the native default stack rather than a larger configured stack.
 
 ## Reproducible corpus
 

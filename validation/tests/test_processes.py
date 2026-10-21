@@ -80,3 +80,21 @@ class ProcessBoundsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "POSIX process setup"):
                 framework._run_process_bounded(["not-run"], 1.0, 1024, lambda: None)
             start.assert_not_called()
+
+    @unittest.skipUnless(sys.platform.startswith("linux") and framework.resource is not None,
+                         "Linux small-stack regression; Windows numerical jobs use its native default")
+    def test_decoder_runs_with_a_one_mib_stack_without_increasing_the_budget(self):
+        def small_stack():
+            framework.resource.setrlimit(framework.resource.RLIMIT_STACK, (1 << 20, 1 << 20))
+            framework.resource.setrlimit(framework.resource.RLIMIT_CORE, (0, 0))
+
+        subject = framework.build_subject()
+        source = framework.CORPUS_DIR / "raw-minimal.j2k"
+        process, _, limited = framework._run_process_bounded(
+            [str(subject), "decode", "raw", str(source)], 10.0, 1 << 20, small_stack,
+        )
+        self.assertFalse(limited)
+        self.assertEqual(process.returncode, 0, process.stderr.decode(errors="replace"))
+        observation = framework.parse_subject_output(process.stdout, process.stderr, process.returncode)
+        self.assertTrue(observation["accepted"])
+        self.assertEqual(observation["image"]["components"][0]["samples"], [128])

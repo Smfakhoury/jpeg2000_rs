@@ -607,7 +607,7 @@ fn decode_jpip_precinct_packet_inner(
         coding_style: template.coding_style,
         quantization: template.quantization,
         component_coding_styles: template.component_coding_styles,
-        component_quantizations: template.component_quantizations,
+        component_quantizations: template.component_quantizations.clone(),
         roi_shifts: template.roi_shifts,
         progression_changes: template.progression_changes.clone(),
         multiple_component_transform: template.multiple_component_transform.clone(),
