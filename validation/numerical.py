@@ -41,6 +41,8 @@ class NumericalCase:
     codestream: bytes | None = None
     signed: bool = False
     sample_representation: str = "integer"
+    native_raw: bool = False
+    prequalify_irreversible: bool = False
 
 
 CASES = (
@@ -95,6 +97,12 @@ CASES = (
     NumericalCase("roi-signed17", signed=True, precision=17, options=("-ROI", "c=0,U=3")),
     NumericalCase("roi-signed17-layers", signed=True, precision=17,
                   options=("-r", "8,3,1", "-ROI", "c=0,U=1")),
+    NumericalCase("rgb16-independent", channels=3, precision=16, options=("-mct", "0")),
+    NumericalCase("rgb16-lossless", channels=3, precision=16, options=("-mct", "1")),
+    NumericalCase("rgb16-irreversible", channels=3, precision=16,
+                  options=("-mct", "1", "-I", "-r", "1"),
+                  lossless=False, maximum_error=8, maximum_rmse=2.0,
+                  prequalify_irreversible=True),
 )
 
 def _ht_test_codestream(width: int, packet: bytes, exponent: int = 7) -> bytes:
@@ -188,6 +196,10 @@ HT_CASES = (
                       for value in (-16.0, -1.0, -0.25, -0.0, 0.0, 0.25, 1.0, 16.0)) * 8,
         options=("-signed", "true", "-bit_depth", "32"),
     ) for levels in (0, 1, 2)),
+    *(NumericalCase(
+        f"ht-{'signed' if signed else 'gray'}{precision}-dwt2",
+        precision=precision, signed=signed, native_raw=True,
+    ) for precision in (25, 26, 28, 31) for signed in (False, True)),
 )
 
 
@@ -250,6 +262,36 @@ def signed_codestream(data: bytes, precision: int) -> bytes:
     return data[:42] + bytes((data[42] | 0x80,)) + data[43:]
 
 
+def raw_source(case: NumericalCase, source: Path) -> bytes:
+    if not case.native_raw or case.channels != 1 or source_extension(case) != "pgx":
+        raise ValueError("native RAW fixtures require a single integer PGX component")
+    component = framework.parse_pgx(source)["image"]["components"][0]
+    if (component["precision"], component["signed"], component["width"], component["height"]) != (
+        case.precision, case.signed, case.width, case.height,
+    ):
+        raise ValueError("native RAW source metadata differs from the declared fixture")
+    sample_bytes = 1 if case.precision <= 8 else 2 if case.precision <= 16 else 4
+    return b"".join(value.to_bytes(sample_bytes, "little", signed=case.signed)
+                    for value in component["samples"])
+
+
+def parse_raw_reference(path: Path, case: NumericalCase) -> dict[str, Any]:
+    if not case.native_raw or case.channels != 1:
+        raise ValueError("native RAW reference requires a single declared component")
+    sample_bytes = 1 if case.precision <= 8 else 2 if case.precision <= 16 else 4
+    payload = path.read_bytes()
+    if len(payload) != case.width * case.height * sample_bytes:
+        raise ValueError("native RAW reference payload length mismatch")
+    samples = [int.from_bytes(payload[offset:offset + sample_bytes], "little", signed=case.signed)
+               for offset in range(0, len(payload), sample_bytes)]
+    result = {"accepted": True, "image": {"width": case.width, "height": case.height, "components": [{
+        "width": case.width, "height": case.height, "precision": case.precision, "signed": case.signed,
+        "sample_kind": "signed" if case.signed else "unsigned", "samples": samples,
+    }]}}
+    image_error_metrics(result, result)
+    return result
+
+
 def _main_header_segments(data: bytes) -> list[tuple[int, bytes]]:
     if not data.startswith(b"\xff\x4f"):
         if not data.startswith(b"\x00\x00\x00\x0cjP  \x0d\x0a\x87\x0a"):
@@ -294,13 +336,33 @@ def _main_header_segments(data: bytes) -> list[tuple[int, bytes]]:
     raise ValueError("reference codestream has no tile-part marker")
 
 
+def validate_image_headers(case: NumericalCase, data: bytes) -> list[str]:
+    features = validate_required_headers(case, data)
+    segments = _main_header_segments(data)
+    sizes = [payload for marker, payload in segments if marker == 0xff51]
+    if len(sizes) != 1 or len(sizes[0]) < 36:
+        raise ValueError("independent encoder omitted the required SIZ component metadata")
+    siz = sizes[0]
+    components = int.from_bytes(siz[34:36], "big")
+    width, height, x_origin, y_origin = struct.unpack(">IIII", siz[2:18])
+    if (components != case.channels or len(siz) != 36 + 3 * components
+            or siz[36:] != bytes(((case.precision - 1) | (0x80 if case.signed else 0), 1, 1)) * components
+            or (width - x_origin, height - y_origin) != (case.width, case.height)):
+        raise ValueError("independent encoder SIZ geometry, precision, signedness or components differ")
+    coding = next(payload for marker, payload in segments if marker == 0xff52)
+    if coding[9] != int(case.lossless):
+        raise ValueError("independent encoder omitted the required COD wavelet transform")
+    return features
+
+
 def validate_required_headers(case: NumericalCase, data: bytes) -> list[str]:
     segments = _main_header_segments(data)
     coding = [payload for marker, payload in segments if marker == 0xff52]
     if len(coding) != 1 or len(coding[0]) < 10 or coding[0][5] != case.decomposition_levels:
         raise ValueError("independent encoder omitted the required COD decomposition level")
     for option, actual in (("-r", int.from_bytes(coding[0][2:4], "big")),
-                            ("-M", coding[0][8]), ("-colour_trans", coding[0][4])):
+                            ("-M", coding[0][8]), ("-colour_trans", coding[0][4]),
+                            ("-mct", coding[0][4])):
         if option in case.options:
             position = case.options.index(option) + 1
             if position >= len(case.options):
@@ -463,7 +525,8 @@ def run_numerical(
                     "format": case.format,
                     "precision": case.precision, "signed": case.signed,
                     "source_format": source_extension(case),
-                    "signed_header_authored": case.signed and case.sample_representation == "integer",
+                    "signed_header_authored": (case.signed and case.sample_representation == "integer"
+                                               and not case.native_raw),
                     "sample_representation": case.sample_representation,
                     "pattern": case.pattern,
                     "encoder_options": [*encoder_options, *case.options] if case.codestream is None else [],
@@ -482,11 +545,23 @@ def run_numerical(
                 codestream = (encoded.with_suffix(".j2c")
                               if case.format == "jph" or (record["signed_header_authored"] and case.format == "jp2") else encoded)
                 reference_output = work / f"{case.name}-reference.{extension}"
+                if case.native_raw:
+                    if not high_throughput:
+                        raise ValueError("native RAW transport is qualified only for OpenJPH")
+                    reference_output = reference_output.with_suffix(".raw")
                 reference = (reference_output.with_stem(reference_output.stem + "_0")
-                             if extension == "pgx" else reference_output)
+                             if extension == "pgx" and not case.native_raw else reference_output)
                 source.write_bytes(source_image(case))
                 record["input_sha256"] = framework.sha256_file(source)
                 encoder_source = source
+                if case.native_raw:
+                    encoder_source = source.with_name(source.stem + "-encoder.raw")
+                    encoder_source.write_bytes(raw_source(case, source))
+                    record["encoder_options"] += [
+                        "-dims", f"{{{case.width},{case.height}}}", "-num_comps", "1",
+                        "-signed", str(case.signed).lower(), "-bit_depth", str(case.precision),
+                        "-downsamp", "{1,1}",
+                    ]
                 if record["signed_header_authored"]:
                     shifted_samples = (tuple(value + (1 << (case.precision - 1)) for value in case.samples)
                                        if case.samples is not None else None)
@@ -523,13 +598,18 @@ def run_numerical(
                             components=case.channels, precision=case.precision,
                             signed=case.signed,
                         ))
-                    record["verified_features"] = validate_required_headers(case, codestream.read_bytes())
+                    record["verified_features"] = validate_image_headers(case, codestream.read_bytes())
                     record["codestream_sha256"] = framework.sha256_file(encoded)
                     _, reference_ms = _run_checked([tools["decoder"]["path"], "-i", str(encoded), "-o", str(reference_output)], timeout_seconds)
-                    expected = parse_image(reference)
+                    expected = parse_raw_reference(reference, case) if case.native_raw else parse_image(reference)
                     original = parse_image(source)
                     if case.lossless and framework.normalized_hash(original) != framework.normalized_hash(expected):
                         raise ValueError("independent lossless encoder/decoder changed original samples")
+                    if case.prequalify_irreversible:
+                        reference_metrics = image_error_metrics(original, expected)
+                        if (reference_metrics["maximum_error"] > case.maximum_error
+                                or reference_metrics["worst_component_rmse"] > case.maximum_rmse):
+                            raise ValueError("independent irreversible encoder/decoder exceeds declared engineering error thresholds")
                     process, subject_ms = _run_checked([str(executable), "decode", case.format, str(encoded)], timeout_seconds)
                     record["timings"] = {"encoder_ms": encoder_ms, "reference_ms": reference_ms, "subject_ms": subject_ms}
                     actual = framework.parse_subject_output(process.stdout, process.stderr, process.returncode)

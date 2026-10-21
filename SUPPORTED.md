@@ -52,6 +52,10 @@ qualified only at zero DWT decomposition, including tiled, layered and JP2
 variants. Its RGB cases remain unsigned 8/16-bit. This evidence does not qualify the
 entire implemented 1..38-bit range. See [validation](validation/VALIDATION.md)
 for exact cases, metadata checks, reference-roundtrip guards and limitations.
+The legacy RGB16 cases explicitly check enabled/disabled component transforms
+with exact reversible output, plus enabled-transform irreversible output with
+maximum error 8 and per-component RMSE 2.0. The latter budget is applied to both
+the original/reference prequalification and reference/subject comparison.
 Independent fixtures also check selected component-wide Maxshift upshifts and
 binary-complement NLT type 3 on finite IEEE binary32 bit patterns, including
 negative zero. The latter checks exact integer bit representations, not a
@@ -60,6 +64,27 @@ Selected live HT RGB16 profiles also qualify enabled/disabled component
 transforms, sparse/multi-code-block images, tiled nonzero origins and JPH,
 with exact lossless planes and explicit engineering budgets for irreversible
 output. These do not qualify every higher-precision multicomponent profile.
+Additional full-range HT monochrome profiles cover signed/unsigned
+25/26/28/31-bit integers at exactly two DWT decomposition levels, with exact
+original/reference and reference/subject equality. Their canonical PGX originals
+are transported as little-endian native RAW samples to the pinned scalar
+OpenJPH tools; source, encoder input, codestream and tool hashes are recorded.
+The runner validates actual SIZ geometry, component count, precision, signedness
+and sampling, and COD decomposition, wavelet and explicitly requested component
+transform settings before numerical comparison.
+
+These additions came from a finite 44-candidate precision/component
+qualification matrix, including zero/two-level DWT, 25/26/28/31-bit full-range
+monochrome, selected higher-precision RGB and fixed irreversible budgets.
+Thirteen candidates qualified, including two existing 25-bit zero-DWT legacy
+controls; eleven add regression coverage. The other 31 remain unqualified
+reference paths, not subject defects, passing cases or skipped qualification
+tests. In particular, legacy 25-bit DWT and higher full-range precision,
+HT zero-DWT at these precisions, and selected RGB17/RGB24 paths remain outside
+this independent evidence. No thresholds were relaxed to admit them.
+This is not completion of broader precision/component qualification: those
+reference gaps remain open, and local measurements do not replace exact-candidate
+three-OS evidence or the remaining integration/publication gates.
 
 ## Containers, color, and JPIP
 
