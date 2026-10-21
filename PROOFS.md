@@ -76,6 +76,7 @@ Read each contract according to its inputs and postcondition:
 | Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
 | JPX source-over arithmetic | Exact natural-valued numerators and rounded scalar color/alpha results, proved in the 16-bit range at production conversion sites, with upward ties and transparent zero | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
+| JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
@@ -113,6 +114,21 @@ prove all index/channel selections semantically correct, or establish a
 layer/frame composition theorem. No-change rejection of one store does not
 establish transactional failure semantics for an entire render. Caller
 rejection and checked conversions remain in place.
+Placement uses the selected edge-aligned nearest-neighbor equation
+`floor(position * source_extent / target_extent)`, with the full target extent
+retained when the canvas clips the copy. Its executable helper proves the
+natural-valued result and source-offset bound; the actual row/column/color
+loops carry crop, canvas and addressing relations through to sample access.
+The row-major helper computes `y * width + x` with proved `u64` intermediates
+and a checked conversion to the platform's `usize`. The existing fallible
+wrapper preserves its arithmetic-error behavior.
+
+A flattening helper is not itself a coordinate validator: the placement loops
+separately establish geometric bounds. Other callers receive the exact address
+contract without a new blanket claim about their coordinate selection.
+Geometric index bounds also do not prove that every supplied sample plane has
+the declared cardinality; checked buffer access remains active. Empty-source,
+zero-target and off-canvas behavior, and resource accounting order, are retained.
 Independent rational-oracle composition tests are separate numerical evidence,
 not a formal theorem about the entire compositor.
 

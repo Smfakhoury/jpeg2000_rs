@@ -1944,6 +1944,14 @@
         {
           "path": "src/refinement.rs",
           "symbol": "try_store_composition_sample"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "composition_mapped_offset"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "composition_pixel_index"
         }
       ],
       "id": "part2-jpx-composition-rendering",
@@ -1967,6 +1975,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "composite_placed_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "index_of"
         }
       ],
       "proof_refs": [
@@ -1997,6 +2009,18 @@
         {
           "path": "proofs/spec_properties/mod.rs",
           "symbol": "source_over_rounding_preserves_sample_bound"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_u32_product_bounds"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_mapped_bounds"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_index_bounds"
         }
       ],
       "spec_refs": [
@@ -2035,6 +2059,18 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part2_composition_store"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_mapped_offset"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_row_major_index"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_pixel_index"
         }
       ],
       "test_refs": [
@@ -2068,6 +2104,22 @@
         },
         {
           "path": "src/jpx.rs",
+          "symbol": "composition_mapped_offsets_match_wide_floor_division"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composition_pixel_indices_match_wide_row_major_arithmetic"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_composition_scaled_crop_and_clipping_match_coordinate_oracle"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_composition_preserves_empty_zero_target_and_off_canvas_behavior"
+        },
+        {
+          "path": "src/jpx.rs",
           "symbol": "timeline_expands_repetition_reuse_and_timing_deterministically"
         },
         {
@@ -2075,7 +2127,7 @@
           "symbol": "retains_validated_layer_registration_and_static_composition_options"
         }
       ],
-      "topic": "Composition instruction timing, repetitions, loops, source-over alpha, clipping, and frame rendering"
+      "topic": "Composition instruction timing, repetitions, loops, source-over alpha, clipping, scaled sampling, row-major addressing, and frame rendering"
     },
     {
       "contract_refs": [

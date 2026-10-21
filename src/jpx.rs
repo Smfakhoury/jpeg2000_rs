@@ -2045,11 +2045,6 @@ fn composite_placed_layer(
     if target_width == 0 || target_height == 0 {
         return Err(invalid_layer());
     }
-    let target_width_u64 = u64::from(target_width);
-    let target_height_u64 = u64::from(target_height);
-    if target_width_u64 == 0 || target_height_u64 == 0 {
-        return Err(invalid_layer());
-    }
     let copy_width =
         crate::refinement::composition_clip(instruction.target_x, target_width, canvas_width);
     let copy_height =
@@ -2058,49 +2053,87 @@ fn composite_placed_layer(
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant y <= copy_height && target_height_u64 > 0,
+            invariant
+                y <= copy_height,
+                target_width > 0 && target_height > 0,
+                copy_width <= target_width && copy_height <= target_height,
+                source_x <= source.width && source_y <= source.height,
+                source_width > 0 && source_height > 0,
+                source_width <= source.width - source_x,
+                source_height <= source.height - source_y,
+                copy_width > 0 ==> instruction.target_x < canvas_width
+                    && copy_width <= canvas_width - instruction.target_x,
+                copy_height > 0 ==> instruction.target_y < canvas_height
+                    && copy_height <= canvas_height - instruction.target_y,
             decreases copy_height - y,
         )
     )]
     while y < copy_height {
-        let mapped_y = u64::from(y)
-            .checked_mul(u64::from(source_height))
-            .ok_or_else(arithmetic_overflow)?
-            / target_height_u64;
+        let mapped_y =
+            crate::refinement::composition_mapped_offset(y, source_height, target_height);
         let sy = source_y
             .checked_add(u32::try_from(mapped_y).map_err(|_| arithmetic_overflow())?)
             .ok_or_else(arithmetic_overflow)?;
-        let mut x = 0_u32;
-        if target_width_u64 == 0 {
-            return Err(invalid_layer());
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(source_y <= sy && sy < source.height);
+            assert((sy as nat) < (source_y as nat) + source_height as nat);
+            assert(sy as nat == (source_y as nat)
+                + crate::specs::part2_composition_mapped_offset(y, source_height, target_height));
         }
+        let mut x = 0_u32;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant x <= copy_width && target_width_u64 > 0,
+                invariant
+                    x <= copy_width,
+                    target_width > 0 && target_height > 0,
+                    copy_width <= target_width,
+                    y < copy_height && copy_height <= target_height,
+                    source_height > 0,
+                    source_x <= source.width && source_width > 0,
+                    source_width <= source.width - source_x,
+                    copy_width > 0 ==> instruction.target_x < canvas_width
+                        && copy_width <= canvas_width - instruction.target_x,
+                    sy < source.height,
+                    source_y <= sy,
+                    (sy as nat) < (source_y as nat) + source_height as nat,
+                    sy as nat == (source_y as nat)
+                        + crate::specs::part2_composition_mapped_offset(y, source_height, target_height),
+                    (instruction.target_y as nat) + (y as nat) < canvas_height as nat,
                 decreases copy_width - x,
             )
         )]
         while x < copy_width {
-            let mapped_x = u64::from(x)
-                .checked_mul(u64::from(source_width))
-                .ok_or_else(arithmetic_overflow)?
-                / target_width_u64;
+            let mapped_x =
+                crate::refinement::composition_mapped_offset(x, source_width, target_width);
             let sx = source_x
                 .checked_add(u32::try_from(mapped_x).map_err(|_| arithmetic_overflow())?)
                 .ok_or_else(arithmetic_overflow)?;
             let source_index = index_of(source.width, sx, sy)?;
-            let destination_index = index_of(
-                canvas_width,
-                instruction
-                    .target_x
-                    .checked_add(x)
-                    .ok_or_else(arithmetic_overflow)?,
-                instruction
-                    .target_y
-                    .checked_add(y)
-                    .ok_or_else(arithmetic_overflow)?,
-            )?;
+            let destination_x = instruction
+                .target_x
+                .checked_add(x)
+                .ok_or_else(arithmetic_overflow)?;
+            let destination_y = instruction
+                .target_y
+                .checked_add(y)
+                .ok_or_else(arithmetic_overflow)?;
+            let destination_index = index_of(canvas_width, destination_x, destination_y)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(source_x <= sx && sx < source.width);
+                assert((sx as nat) < (source_x as nat) + source_width as nat);
+                assert(sx as nat == (source_x as nat)
+                    + crate::specs::part2_composition_mapped_offset(x, source_width, target_width));
+                assert(destination_x < canvas_width && destination_y < canvas_height);
+                crate::proofs::production_impl::production_composition_index_bounds(source.width, source.height, sx, sy);
+                crate::proofs::production_impl::production_composition_index_bounds(canvas_width, canvas_height, destination_x, destination_y);
+                assert(source_index as nat == crate::specs::part2_row_major_index(source.width, sx, sy));
+                assert(destination_index as nat == crate::specs::part2_row_major_index(canvas_width, destination_x, destination_y));
+                assert((source_index as nat) < (source.width as nat) * (source.height as nat));
+                assert((destination_index as nat) < (canvas_width as nat) * (canvas_height as nat));
+            }
             let (source_alpha, premultiplied) = match source.alpha.as_ref() {
                 Some(value) => (
                     *value.0.get(source_index).ok_or_else(invalid_layer)?,
@@ -2122,6 +2155,25 @@ fn composite_placed_layer(
                         output_alpha_numerator as nat
                             == crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
                         output_alpha_numerator <= 4294836225,
+                        target_width > 0 && target_height > 0,
+                        x < copy_width && copy_width <= target_width,
+                        y < copy_height && copy_height <= target_height,
+                        source_width > 0 && source_height > 0,
+                        sx < source.width && sy < source.height,
+                        source_x <= sx && source_y <= sy,
+                        (sx as nat) < (source_x as nat) + source_width as nat,
+                        (sy as nat) < (source_y as nat) + source_height as nat,
+                        destination_x < canvas_width && destination_y < canvas_height,
+                        sx as nat == (source_x as nat)
+                            + crate::specs::part2_composition_mapped_offset(x, source_width, target_width),
+                        sy as nat == (source_y as nat)
+                            + crate::specs::part2_composition_mapped_offset(y, source_height, target_height),
+                        source_index as nat == crate::specs::part2_row_major_index(source.width, sx, sy),
+                        destination_index as nat == crate::specs::part2_row_major_index(canvas_width, destination_x, destination_y),
+                        (source_index as nat) < (source.width as nat) * (source.height as nat),
+                        (destination_index as nat) < (canvas_width as nat) * (canvas_height as nat),
+                        destination_x as nat == (instruction.target_x as nat) + x as nat,
+                        destination_y as nat == (instruction.target_y as nat) + y as nat,
                     decreases output_colors.len() - color_index,
                 )
             )]
@@ -2350,12 +2402,14 @@ fn composite_layer(
     Ok(())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(index =>
+        ensures index.ok() == crate::specs::part2_composition_pixel_index(width, x, y),
+    )
+)]
 fn index_of(width: u32, x: u32, y: u32) -> Result<usize, DecodeError> {
-    let index = u64::from(y)
-        .checked_mul(u64::from(width))
-        .and_then(|row| row.checked_add(u64::from(x)))
-        .ok_or_else(arithmetic_overflow)?;
-    usize::try_from(index).map_err(|_| arithmetic_overflow())
+    crate::refinement::composition_pixel_index(width, x, y).ok_or_else(arithmetic_overflow)
 }
 
 fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
@@ -2407,6 +2461,276 @@ mod tests {
     use crate::refinement::{
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    #[test]
+    fn composition_mapped_offsets_match_wide_floor_division() {
+        let check = |position: u32, source: u32, target: u32| {
+            let mapped = crate::refinement::composition_mapped_offset(position, source, target);
+            let numerator = u128::from(position) * u128::from(source);
+            let denominator = u128::from(target);
+            assert_eq!(u128::from(mapped), numerator / denominator);
+            assert!(u128::from(mapped) * denominator <= numerator);
+            assert!(numerator < (u128::from(mapped) + 1) * denominator);
+            if position < target && source > 0 {
+                assert!(mapped < u64::from(source));
+            }
+        };
+        for source in 0..=16 {
+            for target in 1..=16 {
+                for position in 0..=target + 1 {
+                    check(position, source, target);
+                }
+            }
+        }
+        for position in [0, 1, 2, 65_535, 65_536, u32::MAX - 1, u32::MAX] {
+            for source in [0, 1, 2, 65_535, 65_536, u32::MAX - 1, u32::MAX] {
+                for target in [1, 2, 65_535, 65_536, u32::MAX] {
+                    check(position, source, target);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn composition_pixel_indices_match_wide_row_major_arithmetic() {
+        for width in [0, 1, 2, 65_535, 65_536, u32::MAX - 1, u32::MAX] {
+            for x in [0, 1, 2, 65_535, 65_536, u32::MAX - 1, u32::MAX] {
+                for y in [0, 1, 2, 65_535, 65_536, u32::MAX - 1, u32::MAX] {
+                    let wide = u128::from(y) * u128::from(width) + u128::from(x);
+                    assert!(wide <= u128::from(u64::MAX));
+                    let expected = usize::try_from(wide).ok();
+                    assert_eq!(
+                        crate::refinement::composition_pixel_index(width, x, y),
+                        expected
+                    );
+                    let actual = index_of(width, x, y);
+                    assert_eq!(actual.as_ref().ok().copied(), expected);
+                    if expected.is_none() {
+                        assert_eq!(actual, Err(arithmetic_overflow()));
+                    }
+                }
+            }
+        }
+        for width in 1..=16 {
+            for height in 1..=16 {
+                for y in 0..height {
+                    for x in 0..width {
+                        let index = index_of(width, x, y).unwrap();
+                        assert!((index as u128) < u128::from(width) * u128::from(height));
+                        assert_eq!(
+                            u32::try_from(index / usize::try_from(width).unwrap()).unwrap(),
+                            y
+                        );
+                        assert_eq!(
+                            u32::try_from(index % usize::try_from(width).unwrap()).unwrap(),
+                            x
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn placed_composition_scaled_crop_and_clipping_match_coordinate_oracle() {
+        let source_values: Vec<u16> = (0..20).map(|i| i * 1999 + 31).collect();
+        let source = OwnedLayer {
+            width: 5,
+            height: 4,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![source_values.clone()],
+            alpha: None,
+        };
+        let base = JpxInstructionInfo {
+            layer_index: 0,
+            target_x: 4,
+            target_y: 3,
+            target_width: 6,
+            target_height: 4,
+            source_x: 1,
+            source_y: 1,
+            source_width: 3,
+            source_height: 2,
+            persistent: true,
+            next_reuse: 0,
+        };
+        for (instruction, crop) in [
+            (base, [1_u32, 1, 3, 2]),
+            (
+                JpxInstructionInfo {
+                    source_x: 4,
+                    source_y: 3,
+                    source_width: 99,
+                    source_height: 99,
+                    target_width: u32::MAX,
+                    target_height: u32::MAX,
+                    ..base
+                },
+                [4, 3, 1, 1],
+            ),
+            (
+                JpxInstructionInfo {
+                    source_y: 0,
+                    source_width: 0,
+                    source_height: 0,
+                    target_x: 0,
+                    target_y: 0,
+                    target_width: 2,
+                    target_height: 2,
+                    ..base
+                },
+                [1, 0, 4, 4],
+            ),
+            (
+                JpxInstructionInfo {
+                    source_x: 0,
+                    source_y: 0,
+                    source_width: 0,
+                    source_height: 0,
+                    target_x: 1,
+                    target_y: 1,
+                    target_width: 5,
+                    target_height: 4,
+                    ..base
+                },
+                [0, 0, 5, 4],
+            ),
+        ] {
+            let before: Vec<Vec<u16>> = (0..3)
+                .map(|channel| (0..42).map(|i| 10_000 + channel * 1000 + i).collect())
+                .collect();
+            let before_alpha: Vec<u16> = (0..42).map(|i| 3 + i * 7).collect();
+            let mut colors = before.clone();
+            let mut alpha = before_alpha.clone();
+            let mut work = 7;
+            composite_placed_layer(
+                7,
+                6,
+                ConvertedColorSpace::Srgb,
+                &source,
+                instruction,
+                &mut colors,
+                &mut alpha,
+                &mut work,
+                &ResourceLimits::default(),
+            )
+            .unwrap();
+            let mut copied = 0;
+            for y in 0..6_u32 {
+                for x in 0..7_u32 {
+                    let index = usize::try_from(y * 7 + x).unwrap();
+                    let covered = x >= instruction.target_x
+                        && y >= instruction.target_y
+                        && x - instruction.target_x < instruction.target_width
+                        && y - instruction.target_y < instruction.target_height;
+                    if covered {
+                        let sx = u128::from(crop[0])
+                            + u128::from(x - instruction.target_x) * u128::from(crop[2])
+                                / u128::from(instruction.target_width);
+                        let sy = u128::from(crop[1])
+                            + u128::from(y - instruction.target_y) * u128::from(crop[3])
+                                / u128::from(instruction.target_height);
+                        let sample = source_values[usize::try_from(sy * 5 + sx).unwrap()];
+                        for samples in &colors {
+                            assert_eq!(samples[index], sample);
+                        }
+                        assert_eq!(alpha[index], u16::MAX);
+                        copied += 1;
+                    } else {
+                        for (samples, previous) in colors.iter().zip(&before) {
+                            assert_eq!(samples[index], previous[index]);
+                        }
+                        assert_eq!(alpha[index], before_alpha[index]);
+                    }
+                }
+            }
+            assert_eq!(work, 7 + copied * 4);
+        }
+    }
+
+    #[test]
+    fn placed_composition_preserves_empty_zero_target_and_off_canvas_behavior() {
+        let source = OwnedLayer {
+            width: 1,
+            height: 1,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![vec![123]],
+            alpha: None,
+        };
+        let base = JpxInstructionInfo {
+            layer_index: 0,
+            target_x: 0,
+            target_y: 0,
+            target_width: 1,
+            target_height: 1,
+            source_x: 0,
+            source_y: 0,
+            source_width: 0,
+            source_height: 0,
+            persistent: true,
+            next_reuse: 0,
+        };
+        for (instruction, expected) in [
+            (
+                JpxInstructionInfo {
+                    source_x: 1,
+                    target_width: 0,
+                    target_height: 0,
+                    ..base
+                },
+                Ok(()),
+            ),
+            (
+                JpxInstructionInfo {
+                    target_width: 0,
+                    ..base
+                },
+                Err(invalid_layer()),
+            ),
+            (
+                JpxInstructionInfo {
+                    target_height: 0,
+                    ..base
+                },
+                Err(invalid_layer()),
+            ),
+            (
+                JpxInstructionInfo {
+                    target_x: u32::MAX,
+                    ..base
+                },
+                Ok(()),
+            ),
+            (
+                JpxInstructionInfo {
+                    target_y: u32::MAX,
+                    ..base
+                },
+                Ok(()),
+            ),
+        ] {
+            let mut colors = vec![vec![17]];
+            let mut alpha = vec![23];
+            let mut work = 29;
+            assert_eq!(
+                composite_placed_layer(
+                    1,
+                    1,
+                    ConvertedColorSpace::Grayscale,
+                    &source,
+                    instruction,
+                    &mut colors,
+                    &mut alpha,
+                    &mut work,
+                    &ResourceLimits::default()
+                ),
+                expected
+            );
+            assert_eq!(colors, [vec![17]]);
+            assert_eq!(alpha, [23]);
+            assert_eq!(work, 29);
+        }
+    }
 
     #[test]
     fn composition_store_has_exact_single_slot_effect() {

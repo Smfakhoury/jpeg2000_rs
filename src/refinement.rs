@@ -1133,7 +1133,12 @@ pub(crate) const fn registered_source_coordinate(
 
 #[cfg_attr(
     verus_keep_ghost,
-    verus_spec(ensures returns crate::specs::part2_composition_clip(offset, extent, canvas),)
+    verus_spec(clipped =>
+        ensures clipped == crate::specs::part2_composition_clip(offset, extent, canvas),
+            clipped <= extent,
+            offset < canvas ==> clipped <= canvas - offset,
+            offset >= canvas ==> clipped == 0,
+    )
 )]
 pub(crate) const fn composition_clip(offset: u32, extent: u32, canvas: u32) -> u32 {
     if offset >= canvas {
@@ -1143,6 +1148,43 @@ pub(crate) const fn composition_clip(offset: u32, extent: u32, canvas: u32) -> u
     } else {
         canvas - offset
     }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(mapped =>
+        requires target_extent > 0,
+        ensures mapped as nat == crate::specs::part2_composition_mapped_offset(position, source_extent, target_extent),
+            position < target_extent && source_extent > 0 ==> mapped < source_extent,
+    )
+)]
+pub(crate) const fn composition_mapped_offset(
+    position: u32,
+    source_extent: u32,
+    target_extent: u32,
+) -> u64 {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_u32_product_bounds(position, source_extent);
+        crate::proofs::production_impl::production_composition_mapped_bounds(position, source_extent, target_extent);
+    }
+    (position as u64) * (source_extent as u64) / (target_extent as u64)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(index =>
+        ensures index == crate::specs::part2_composition_pixel_index(width, x, y),
+    )
+)]
+pub(crate) fn composition_pixel_index(width: u32, x: u32, y: u32) -> Option<usize> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_u32_product_bounds(y, width);
+    }
+    let row = (y as u64) * (width as u64);
+    let index = row + (x as u64);
+    usize::try_from(index).ok()
 }
 
 #[cfg_attr(
