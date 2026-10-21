@@ -1166,6 +1166,72 @@ pub(crate) const fn inverse_alpha(source_alpha: u16) -> u16 {
 
 #[cfg_attr(
     verus_keep_ghost,
+    verus_spec(
+        ensures returns (crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha) as u64),
+    )
+)]
+pub(crate) const fn source_over_alpha_numerator(source_alpha: u16, destination_alpha: u16) -> u64 {
+    let source = source_alpha as u64;
+    let destination = destination_alpha as u64;
+    let inverse = inverse_alpha(source_alpha) as u64;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_source_over_term_bounds(source, 65535, 0);
+        crate::proofs::production_impl::production_source_over_term_bounds(destination, inverse, 0);
+    }
+    source * 65_535 + destination * inverse
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
+        ensures returns (crate::specs::part2_source_over_color_numerator(
+            source, destination, source_alpha, destination_alpha, premultiplied,
+        ) as u64),
+    )
+)]
+pub(crate) const fn source_over_color_numerator(
+    source: u16,
+    destination: u16,
+    source_alpha: u16,
+    destination_alpha: u16,
+    premultiplied: bool,
+) -> u64 {
+    let source = source as u64;
+    let destination = destination as u64;
+    let inverse = inverse_alpha(source_alpha) as u64;
+    let source_alpha = source_alpha as u64;
+    let destination_alpha = destination_alpha as u64;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_source_over_term_bounds(source, 65535, 65535);
+        crate::proofs::production_impl::production_source_over_term_bounds(source, source_alpha, 65535);
+        crate::proofs::production_impl::production_source_over_term_bounds(destination, destination_alpha, inverse);
+    }
+    let source_term = if premultiplied {
+        source * 65_535 * 65_535
+    } else {
+        source * source_alpha * 65_535
+    };
+    source_term + destination * destination_alpha * inverse
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(
+        ensures returns (crate::specs::part2_source_over_rounded_ratio(numerator, denominator) as u128),
+    )
+)]
+pub(crate) const fn source_over_rounded_ratio(numerator: u64, denominator: u64) -> u128 {
+    if denominator == 0 {
+        0
+    } else {
+        ((numerator as u128) + (denominator as u128) / 2) / (denominator as u128)
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
     verus_spec(ensures returns crate::specs::part2_chroma_key_alpha(matches),)
 )]
 pub(crate) const fn chroma_key_alpha(matches: bool) -> u16 {

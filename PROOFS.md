@@ -74,9 +74,22 @@ Read each contract according to its inputs and postcondition:
 |---|---|---|
 | Stream and packet accounting | Consumed offsets, declared lengths, ordering and bounded claims | That accepted syntax has the intended pixel meaning in every standard edition |
 | Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
+| JPX source-over arithmetic | Exact 16-bit alpha/color numerators and nearest-integer division, with ties rounded upward and zero output for zero alpha | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
+
+The production placed-layer compositor and the test-only unplaced compositor
+share the source-over helpers. Ghost-only proof calls in the executable helpers
+instantiate multiplication bounds; ordinary Cargo builds erase those calls.
+The paired models establish alpha numerator at most `65535^2` and color
+numerator at most `65535 * alpha_numerator` for straight samples or valid
+premultiplied samples (`color <= alpha`). The division model establishes the
+nearest-integer interval, including upward ties, for every positive denominator.
+The executable division widens to `u128`, including for full-width `u64` inputs.
+Caller rejection of invalid premultiplied samples and checked output conversions
+remain in place. Independent rational-oracle composition tests are separate
+numerical evidence, not a formal theorem about the entire compositor.
 
 The `decode_output_shape_valid` and `component_output_shape_valid` helpers are
 structural checks, not a codestream-to-pixel denotation theorem. Neither the

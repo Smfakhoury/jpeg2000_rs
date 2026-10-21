@@ -1931,7 +1931,15 @@
         },
         {
           "path": "src/refinement.rs",
-          "symbol": "inverse_alpha"
+          "symbol": "source_over_alpha_numerator"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "source_over_color_numerator"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "source_over_rounded_ratio"
         }
       ],
       "id": "part2-jpx-composition-rendering",
@@ -1969,6 +1977,18 @@
         {
           "path": "proofs/production_impl/mod.rs",
           "symbol": "production_frame_materialization_bound"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_source_over_term_bounds"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "source_over_numerators_are_bounded"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "source_over_rounding_is_nearest"
         }
       ],
       "spec_refs": [
@@ -1983,12 +2003,36 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part2_inverse_alpha"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_source_over_alpha_numerator"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_source_over_color_numerator"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_source_over_rounded_ratio"
         }
       ],
       "test_refs": [
         {
           "path": "src/jpx.rs",
           "symbol": "source_over_is_deterministic_and_crops_to_canvas"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "source_over_alpha_bounds_cover_every_source_alpha"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "source_over_color_bounds_and_representations_match_wide_arithmetic"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "source_over_rounding_handles_ties_zero_and_full_width_inputs"
         },
         {
           "path": "src/jpx.rs",

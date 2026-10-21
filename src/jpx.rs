@@ -2111,15 +2111,8 @@ fn composite_placed_layer(
             let destination_alpha = *output_alpha
                 .get(destination_index)
                 .ok_or_else(invalid_layer)?;
-            let inverse_source_alpha = u128::from(crate::refinement::inverse_alpha(source_alpha));
-            let output_alpha_numerator = u128::from(source_alpha)
-                .checked_mul(SAMPLE_MAXIMUM)
-                .and_then(|source_term| {
-                    u128::from(destination_alpha)
-                        .checked_mul(inverse_source_alpha)
-                        .and_then(|destination_term| source_term.checked_add(destination_term))
-                })
-                .ok_or_else(arithmetic_overflow)?;
+            let output_alpha_numerator =
+                crate::refinement::source_over_alpha_numerator(source_alpha, destination_alpha);
             let mut color_index = 0_usize;
             #[cfg_attr(
                 verus_keep_ghost,
@@ -2133,46 +2126,29 @@ fn composite_placed_layer(
                     (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale) => 0,
                     _ => color_index,
                 };
-                let source_sample = u128::from(
-                    *source
-                        .colors
-                        .get(source_color_index)
-                        .and_then(|samples| samples.get(source_index))
-                        .ok_or_else(invalid_layer)?,
-                );
-                if premultiplied && source_sample > u128::from(source_alpha) {
+                let source_sample = *source
+                    .colors
+                    .get(source_color_index)
+                    .and_then(|samples| samples.get(source_index))
+                    .ok_or_else(invalid_layer)?;
+                if premultiplied && source_sample > source_alpha {
                     return Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents));
                 }
-                let destination_sample = u128::from(
-                    *output_colors
-                        .get(color_index)
-                        .and_then(|samples| samples.get(destination_index))
-                        .ok_or_else(invalid_layer)?,
+                let destination_sample = *output_colors
+                    .get(color_index)
+                    .and_then(|samples| samples.get(destination_index))
+                    .ok_or_else(invalid_layer)?;
+                let color_numerator = crate::refinement::source_over_color_numerator(
+                    source_sample,
+                    destination_sample,
+                    source_alpha,
+                    destination_alpha,
+                    premultiplied,
                 );
-                let source_premultiplied = if premultiplied {
-                    source_sample
-                        .checked_mul(SAMPLE_MAXIMUM)
-                        .and_then(|value| value.checked_mul(SAMPLE_MAXIMUM))
-                        .ok_or_else(arithmetic_overflow)?
-                } else {
-                    source_sample
-                        .checked_mul(u128::from(source_alpha))
-                        .and_then(|value| value.checked_mul(SAMPLE_MAXIMUM))
-                        .ok_or_else(arithmetic_overflow)?
-                };
-                let destination_premultiplied = destination_sample
-                    .checked_mul(u128::from(destination_alpha))
-                    .and_then(|value| value.checked_mul(inverse_source_alpha))
-                    .ok_or_else(arithmetic_overflow)?;
-                let output_sample = if output_alpha_numerator == 0 {
-                    0
-                } else {
-                    source_premultiplied
-                        .checked_add(destination_premultiplied)
-                        .and_then(|value| value.checked_add(output_alpha_numerator / 2))
-                        .ok_or_else(arithmetic_overflow)?
-                        / output_alpha_numerator
-                };
+                let output_sample = crate::refinement::source_over_rounded_ratio(
+                    color_numerator,
+                    output_alpha_numerator,
+                );
                 let destination_samples = output_colors
                     .get_mut(color_index)
                     .ok_or_else(invalid_layer)?;
@@ -2182,13 +2158,12 @@ fn composite_placed_layer(
                     u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
                 color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
-            output_alpha[destination_index] = u16::try_from(
-                output_alpha_numerator
-                    .checked_add(SAMPLE_MAXIMUM / 2)
-                    .ok_or_else(arithmetic_overflow)?
-                    / SAMPLE_MAXIMUM,
-            )
-            .map_err(|_| arithmetic_overflow())?;
+            output_alpha[destination_index] =
+                u16::try_from(crate::refinement::source_over_rounded_ratio(
+                    output_alpha_numerator,
+                    u64::from(u16::MAX),
+                ))
+                .map_err(|_| arithmetic_overflow())?;
             let pixel_work = (output_colors.len() as u64)
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
@@ -2256,17 +2231,8 @@ fn composite_layer(
             let destination_alpha = *output_alpha
                 .get(destination_index)
                 .ok_or_else(invalid_layer)?;
-            let inverse_source_alpha = SAMPLE_MAXIMUM
-                .checked_sub(u128::from(source_alpha))
-                .ok_or_else(arithmetic_overflow)?;
-            let output_alpha_numerator = u128::from(source_alpha)
-                .checked_mul(SAMPLE_MAXIMUM)
-                .and_then(|source_term| {
-                    u128::from(destination_alpha)
-                        .checked_mul(inverse_source_alpha)
-                        .and_then(|destination_term| source_term.checked_add(destination_term))
-                })
-                .ok_or_else(arithmetic_overflow)?;
+            let output_alpha_numerator =
+                crate::refinement::source_over_alpha_numerator(source_alpha, destination_alpha);
             let mut color_index = 0_usize;
             #[cfg_attr(
                 verus_keep_ghost,
@@ -2276,46 +2242,29 @@ fn composite_layer(
                 )
             )]
             while color_index < source.colors.len() {
-                let source_sample = u128::from(
-                    *source
-                        .colors
-                        .get(color_index)
-                        .and_then(|samples| samples.get(source_index))
-                        .ok_or_else(invalid_layer)?,
-                );
-                if premultiplied && source_sample > u128::from(source_alpha) {
+                let source_sample = *source
+                    .colors
+                    .get(color_index)
+                    .and_then(|samples| samples.get(source_index))
+                    .ok_or_else(invalid_layer)?;
+                if premultiplied && source_sample > source_alpha {
                     return Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents));
                 }
-                let destination_sample = u128::from(
-                    *output_colors
-                        .get(color_index)
-                        .and_then(|samples| samples.get(destination_index))
-                        .ok_or_else(invalid_layer)?,
+                let destination_sample = *output_colors
+                    .get(color_index)
+                    .and_then(|samples| samples.get(destination_index))
+                    .ok_or_else(invalid_layer)?;
+                let color_numerator = crate::refinement::source_over_color_numerator(
+                    source_sample,
+                    destination_sample,
+                    source_alpha,
+                    destination_alpha,
+                    premultiplied,
                 );
-                let source_premultiplied = if premultiplied {
-                    source_sample
-                        .checked_mul(SAMPLE_MAXIMUM)
-                        .and_then(|value| value.checked_mul(SAMPLE_MAXIMUM))
-                        .ok_or_else(arithmetic_overflow)?
-                } else {
-                    source_sample
-                        .checked_mul(u128::from(source_alpha))
-                        .and_then(|value| value.checked_mul(SAMPLE_MAXIMUM))
-                        .ok_or_else(arithmetic_overflow)?
-                };
-                let destination_premultiplied = destination_sample
-                    .checked_mul(u128::from(destination_alpha))
-                    .and_then(|value| value.checked_mul(inverse_source_alpha))
-                    .ok_or_else(arithmetic_overflow)?;
-                let output_sample = if output_alpha_numerator == 0 {
-                    0
-                } else {
-                    source_premultiplied
-                        .checked_add(destination_premultiplied)
-                        .and_then(|value| value.checked_add(output_alpha_numerator / 2))
-                        .ok_or_else(arithmetic_overflow)?
-                        / output_alpha_numerator
-                };
+                let output_sample = crate::refinement::source_over_rounded_ratio(
+                    color_numerator,
+                    output_alpha_numerator,
+                );
                 let slot = output_colors
                     .get_mut(color_index)
                     .and_then(|samples| samples.get_mut(destination_index))
@@ -2323,10 +2272,10 @@ fn composite_layer(
                 *slot = u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
                 color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
-            let alpha = output_alpha_numerator
-                .checked_add(SAMPLE_MAXIMUM / 2)
-                .ok_or_else(arithmetic_overflow)?
-                / SAMPLE_MAXIMUM;
+            let alpha = crate::refinement::source_over_rounded_ratio(
+                output_alpha_numerator,
+                u64::from(u16::MAX),
+            );
             *output_alpha
                 .get_mut(destination_index)
                 .ok_or_else(invalid_layer)? =
@@ -2404,6 +2353,129 @@ fn invalid_layer() -> DecodeError {
 mod tests {
     use super::*;
     use crate::jp2::{Composition, CompositionInstructionSet};
+    use crate::refinement::{
+        source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
+    };
+
+    #[test]
+    fn source_over_alpha_bounds_cover_every_source_alpha() {
+        let maximum = u64::from(u16::MAX);
+        for source_alpha in 0..=u16::MAX {
+            for destination_alpha in [0, 1, 2, 32_767, 32_768, 65_534, u16::MAX] {
+                let numerator = source_over_alpha_numerator(source_alpha, destination_alpha);
+                let expected = u128::from(source_alpha) * u128::from(u16::MAX)
+                    + u128::from(destination_alpha) * u128::from(u16::MAX - source_alpha);
+                assert_eq!(u128::from(numerator), expected);
+                assert!(numerator <= maximum * maximum);
+                assert_eq!(numerator == 0, source_alpha == 0 && destination_alpha == 0);
+            }
+        }
+    }
+
+    #[test]
+    fn source_over_color_bounds_and_representations_match_wide_arithmetic() {
+        let values = [
+            0,
+            1,
+            2,
+            127,
+            128,
+            255,
+            256,
+            32_767,
+            32_768,
+            65_534,
+            u16::MAX,
+        ];
+        let maximum = u128::from(u16::MAX);
+        for source in values {
+            for destination in values {
+                for source_alpha in values {
+                    for destination_alpha in values {
+                        let alpha = source_over_alpha_numerator(source_alpha, destination_alpha);
+                        for premultiplied in [false, true] {
+                            let numerator = source_over_color_numerator(
+                                source,
+                                destination,
+                                source_alpha,
+                                destination_alpha,
+                                premultiplied,
+                            );
+                            let source_term = if premultiplied {
+                                u128::from(source) * maximum * maximum
+                            } else {
+                                u128::from(source) * u128::from(source_alpha) * maximum
+                            };
+                            let expected = source_term
+                                + u128::from(destination)
+                                    * u128::from(destination_alpha)
+                                    * u128::from(u16::MAX - source_alpha);
+                            assert_eq!(u128::from(numerator), expected);
+                            if !premultiplied || source <= source_alpha {
+                                assert!(expected <= maximum * u128::from(alpha));
+                                let output = source_over_rounded_ratio(numerator, alpha);
+                                assert!(output <= maximum);
+                                if source_alpha == u16::MAX {
+                                    assert_eq!(output, u128::from(source));
+                                }
+                                if source_alpha == 0 {
+                                    assert_eq!(
+                                        output,
+                                        if destination_alpha == 0 {
+                                            0
+                                        } else {
+                                            u128::from(destination)
+                                        }
+                                    );
+                                }
+                            }
+                        }
+                        if source == 0 || source == u16::MAX {
+                            let premultiplied_source = if source == 0 { 0 } else { source_alpha };
+                            assert_eq!(
+                                source_over_color_numerator(
+                                    source,
+                                    destination,
+                                    source_alpha,
+                                    destination_alpha,
+                                    false,
+                                ),
+                                source_over_color_numerator(
+                                    premultiplied_source,
+                                    destination,
+                                    source_alpha,
+                                    destination_alpha,
+                                    true,
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn source_over_rounding_handles_ties_zero_and_full_width_inputs() {
+        let values = [0, 1, 2, 3, 4, u64::MAX / 2, u64::MAX - 1, u64::MAX];
+        for numerator in values {
+            for denominator in values {
+                let actual = source_over_rounded_ratio(numerator, denominator);
+                let expected = if denominator == 0 {
+                    0
+                } else {
+                    let n = u128::from(numerator);
+                    let d = u128::from(denominator);
+                    n / d + u128::from(2 * (n % d) >= d)
+                };
+                assert_eq!(actual, expected);
+            }
+        }
+        assert_eq!(source_over_rounded_ratio(1, 2), 1);
+        assert_eq!(source_over_rounded_ratio(3, 2), 2);
+        assert_eq!(source_over_rounded_ratio(1, 3), 0);
+        assert_eq!(source_over_rounded_ratio(2, 3), 1);
+    }
 
     #[test]
     fn single_layer_output_preserves_fractional_premultiplied_representation() {

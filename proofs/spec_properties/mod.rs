@@ -421,6 +421,58 @@ pub proof fn ht_quad_count_is_bounded_by_samples(width: nat, height: nat)
     assert(((width + 1) / 2) * ((height + 1) / 2) <= width * height) by (nonlinear_arith);
 }
 
+pub proof fn source_over_numerators_are_bounded(
+    source: u16, destination: u16, source_alpha: u16, destination_alpha: u16, premultiplied: bool,
+)
+    requires
+        !premultiplied || source <= source_alpha,
+    ensures
+        crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha)
+            <= 4294836225,
+        crate::specs::part2_source_over_color_numerator(
+            source, destination, source_alpha, destination_alpha, premultiplied,
+        ) <= 65535 * crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
+{
+    let s = source as int;
+    let c = destination as int;
+    let a = source_alpha as int;
+    let d = destination_alpha as int;
+    assert(a * 65535 + d * (65535 - a) <= 4294836225) by (nonlinear_arith)
+        requires 0 <= a <= 65535, 0 <= d <= 65535,
+    {}
+    if premultiplied {
+        assert(s * 65535 * 65535 + c * d * (65535 - a)
+            <= 65535 * (a * 65535 + d * (65535 - a))) by (nonlinear_arith)
+            requires 0 <= s <= a <= 65535, 0 <= c <= 65535, 0 <= d <= 65535,
+        {}
+    } else {
+        assert(s * a * 65535 + c * d * (65535 - a)
+            <= 65535 * (a * 65535 + d * (65535 - a))) by (nonlinear_arith)
+            requires 0 <= s <= 65535, 0 <= a <= 65535, 0 <= c <= 65535, 0 <= d <= 65535,
+        {}
+    }
+}
+
+pub proof fn source_over_rounding_is_nearest(numerator: u64, denominator: u64)
+    ensures
+        denominator == 0 ==> crate::specs::part2_source_over_rounded_ratio(numerator, denominator) == 0,
+        denominator > 0 ==> 2 * ((denominator as nat)
+            * crate::specs::part2_source_over_rounded_ratio(numerator, denominator))
+            <= 2 * (numerator as nat) + denominator as nat,
+        denominator > 0 ==> 2 * (numerator as nat) < 2 * ((denominator as nat)
+            * crate::specs::part2_source_over_rounded_ratio(numerator, denominator))
+            + denominator as nat,
+{
+    if denominator > 0 {
+        let d = denominator as int;
+        let biased = numerator as int + d / 2;
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(d, 2);
+        vstd::arithmetic::div_mod::lemma_mod_bound(d, 2);
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(biased, d);
+        vstd::arithmetic::div_mod::lemma_mod_bound(biased, d);
+    }
+}
+
 pub proof fn ht_kappa_completion_never_reduces_base_u(
     u_base: nat,
     gamma: bool,

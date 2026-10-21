@@ -696,6 +696,21 @@ pub proof fn production_composition_storage_accounting(pixels: nat, colors: nat)
 {
 }
 
+pub proof fn production_source_over_term_bounds(left: u64, right: u64, other: u64)
+    requires
+        left <= 65535,
+        right <= 65535,
+        other <= 65535,
+    ensures
+        (left as int) * (right as int) <= 4294836225,
+        (left as int) * (right as int) * (other as int) <= 281462092005375,
+{
+    vstd::arithmetic::mul::lemma_mul_upper_bound(left as int, 65535, right as int, 65535);
+    vstd::arithmetic::mul::lemma_mul_upper_bound(
+        (left as int) * (right as int), 4294836225, other as int, 65535,
+    );
+}
+
 pub proof fn production_frame_materialization_bound(frames: nat, layers: nat)
     ensures
         composition_instruction_work(frames, layers)
