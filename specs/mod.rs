@@ -1221,6 +1221,29 @@ pub open spec fn part2_inverse_alpha(source_alpha: u16) -> u16 {
     (65535 - source_alpha as int) as u16
 }
 
+pub open spec fn part2_source_over_alpha_numerator(source_alpha: u16, destination_alpha: u16) -> nat {
+    let inverse = (65535 - source_alpha as int) as nat;
+    (source_alpha as nat) * 65535 + (destination_alpha as nat) * inverse
+}
+
+pub open spec fn part2_source_over_color_numerator(
+    source: u16, destination: u16, source_alpha: u16, destination_alpha: u16, premultiplied: bool,
+) -> nat {
+    let source_term = if premultiplied {
+        (source as nat) * 65535 * 65535
+    } else {
+        (source as nat) * (source_alpha as nat) * 65535
+    };
+    let inverse = (65535 - source_alpha as int) as nat;
+    source_term + (destination as nat) * (destination_alpha as nat) * inverse
+}
+
+pub open spec fn part2_source_over_rounded_ratio(numerator: u64, denominator: u64) -> nat {
+    if denominator == 0 { 0 } else {
+        ((numerator as nat) + (denominator as nat) / 2) / (denominator as nat)
+    }
+}
+
 pub open spec fn part2_chroma_key_alpha(matches: bool) -> u16 {
     if matches { 0 } else { u16::MAX }
 }
