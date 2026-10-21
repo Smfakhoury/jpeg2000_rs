@@ -2134,48 +2134,24 @@ fn composite_placed_layer(
                 assert((source_index as nat) < (source.width as nat) * (source.height as nat));
                 assert((destination_index as nat) < (canvas_width as nat) * (canvas_height as nat));
             }
-            let (source_alpha, premultiplied) = match source.alpha.as_ref() {
-                Some(value) => (
-                    *value.0.get(source_index).ok_or_else(invalid_layer)?,
-                    value.1,
-                ),
-                None => (u16::MAX, false),
-            };
-            let destination_alpha = *output_alpha
-                .get(destination_index)
+            let (source_pixel, destination_pixel, source_alpha, destination_alpha, premultiplied) =
+                crate::refinement::gather_composition_pixel(
+                    &source.colors,
+                    source
+                        .alpha
+                        .as_ref()
+                        .map(|(samples, flag)| (samples.as_slice(), *flag)),
+                    output_colors,
+                    output_alpha,
+                    source_index,
+                    destination_index,
+                    matches!(
+                        (output_space, source.color_space),
+                        (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)
+                    ),
+                )
                 .ok_or_else(invalid_layer)?;
             let channels = output_colors.len();
-            if channels > 3 {
-                return Err(invalid_layer());
-            }
-            let mut source_pixel = [0_u16; 3];
-            let mut destination_pixel = [0_u16; 3];
-            let mut channel = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant channel <= channels && channels <= 3,
-                    decreases channels - channel,
-                )
-            )]
-            while channel < channels {
-                let source_channel = match (output_space, source.color_space) {
-                    (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale) => 0,
-                    _ => channel,
-                };
-                source_pixel[channel] = *source
-                    .colors
-                    .get(source_channel)
-                    .and_then(|samples| samples.get(source_index))
-                    .ok_or_else(invalid_layer)?;
-                destination_pixel[channel] = *output_colors
-                    .get(channel)
-                    .and_then(|samples| samples.get(destination_index))
-                    .ok_or_else(invalid_layer)?;
-                channel += 1;
-            }
-            let source_pixel = source_pixel;
-            let destination_pixel = destination_pixel;
             let (pixel, alpha) = crate::refinement::source_over_pixel(
                 source_pixel,
                 destination_pixel,
@@ -2454,8 +2430,181 @@ mod tests {
     use super::*;
     use crate::jp2::{Composition, CompositionInstructionSet};
     use crate::refinement::{
-        source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
+        gather_composition_pixel, source_over_alpha_numerator, source_over_color_numerator,
+        source_over_rounded_ratio,
     };
+
+    #[test]
+    fn complete_planar_gather_matches_read_routing_and_rejection_oracle() {
+        let shapes: [&[usize]; 8] = [
+            &[],
+            &[0],
+            &[1],
+            &[2],
+            &[2, 1, 2],
+            &[2, 2, 0],
+            &[2, 2, 2],
+            &[2, 2, 2, 2],
+        ];
+        let planes = |shape: &[usize], base: u16| {
+            shape
+                .iter()
+                .enumerate()
+                .map(|(channel, &len)| {
+                    (0..len)
+                        .map(|i| base + u16::try_from(10 * channel + i).unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        };
+        let alphas = [
+            None,
+            Some((vec![], false)),
+            Some((vec![], true)),
+            Some((vec![41], false)),
+            Some((vec![41], true)),
+            Some((vec![41, 43], false)),
+            Some((vec![41, 43], true)),
+        ];
+        let spaces = [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb];
+        let mut cases = 0;
+        for source_shape in shapes {
+            for destination_shape in shapes {
+                for source_alpha in &alphas {
+                    for alpha_length in 0..=2 {
+                        for source_space in spaces {
+                            for output_space in spaces {
+                                let source = OwnedLayer {
+                                    width: 2,
+                                    height: 1,
+                                    color_space: source_space,
+                                    colors: planes(source_shape, 100),
+                                    alpha: source_alpha.clone(),
+                                };
+                                let colors = planes(destination_shape, 200);
+                                let alpha = vec![47; alpha_length];
+                                for source_index in [0, 1, 2, usize::MAX] {
+                                    for destination_index in [0, 1, 2, usize::MAX] {
+                                        let expected = (|| {
+                                            if colors.len() > 3 {
+                                                return None;
+                                            }
+                                            let mut input = [0; 3];
+                                            let mut destination = [0; 3];
+                                            for (channel, samples) in colors.iter().enumerate() {
+                                                let selected = if output_space
+                                                    == ConvertedColorSpace::Srgb
+                                                    && source_space
+                                                        == ConvertedColorSpace::Grayscale
+                                                {
+                                                    0
+                                                } else {
+                                                    channel
+                                                };
+                                                input[channel] = *source
+                                                    .colors
+                                                    .get(selected)?
+                                                    .get(source_index)?;
+                                                destination[channel] =
+                                                    *samples.get(destination_index)?;
+                                            }
+                                            let (a, premultiplied) = match &source.alpha {
+                                                Some((samples, flag)) => {
+                                                    (*samples.get(source_index)?, *flag)
+                                                }
+                                                None => (u16::MAX, false),
+                                            };
+                                            Some((
+                                                input,
+                                                destination,
+                                                a,
+                                                *alpha.get(destination_index)?,
+                                                premultiplied,
+                                            ))
+                                        })();
+                                        assert_eq!(
+                                            gather_composition_pixel(
+                                                &source.colors,
+                                                source.alpha.as_ref().map(|(samples, flag)| (
+                                                    samples.as_slice(),
+                                                    *flag
+                                                )),
+                                                &colors,
+                                                &alpha,
+                                                source_index,
+                                                destination_index,
+                                                output_space == ConvertedColorSpace::Srgb
+                                                    && source_space
+                                                        == ConvertedColorSpace::Grayscale,
+                                            ),
+                                            expected
+                                        );
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 86_016);
+    }
+
+    #[test]
+    fn missing_late_planar_sample_preserves_current_pixel_and_work_order() {
+        for missing_source in [false, true] {
+            let mut source = OwnedLayer {
+                width: 2,
+                height: 1,
+                color_space: ConvertedColorSpace::Srgb,
+                colors: vec![vec![101, 201], vec![102, 202], vec![103, 203]],
+                alpha: None,
+            };
+            let mut colors = vec![vec![0, 17], vec![0, 23], vec![0, 29]];
+            if missing_source {
+                source.colors[2].truncate(1);
+            } else {
+                colors[2].truncate(1);
+            }
+            let mut expected = colors.clone();
+            for (channel, samples) in expected.iter_mut().enumerate() {
+                samples[0] = 101 + u16::try_from(channel).unwrap();
+            }
+            let instruction = JpxInstructionInfo {
+                layer_index: 0,
+                target_x: 0,
+                target_y: 0,
+                target_width: 2,
+                target_height: 1,
+                source_x: 0,
+                source_y: 0,
+                source_width: 0,
+                source_height: 0,
+                persistent: true,
+                next_reuse: 0,
+            };
+            let mut alpha = vec![0, 31];
+            let mut work = 0;
+            assert_eq!(
+                composite_placed_layer(
+                    2,
+                    1,
+                    ConvertedColorSpace::Srgb,
+                    &source,
+                    instruction,
+                    &mut colors,
+                    &mut alpha,
+                    &mut work,
+                    &ResourceLimits::default(),
+                ),
+                Err(invalid_layer())
+            );
+            assert_eq!(colors, expected);
+            assert_eq!(alpha, [u16::MAX, 31]);
+            assert_eq!(work, 4);
+        }
+    }
 
     #[test]
     fn complete_pixel_stage_matches_independent_rational_rounding() {

@@ -76,6 +76,7 @@ Read each contract according to its inputs and postcondition:
 | Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
 | JPX source-over arithmetic | Exact natural-valued numerators and rounded scalar color/alpha results, proved in the 16-bit range at production conversion sites, with upward ties and transparent zero | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
 | Complete finite-channel pixel evaluation | One total model for all active colors and alpha, preserved unused slots, and exact invalid-input rejection for up to three normalized color channels | A complete theorem for planar gather/scatter, canvas traversal, layer order or whole-render transactionality |
+| JPX planar pixel gathers | The complete optional pair of stack pixels, alpha values and representation flag equals the model of the actual source/destination planes and indices, including grayscale expansion, absent source alpha and all missing-sample rejection cases | That earlier channel-map resolution is normative, or that subsequent scatter, canvas traversal or layer/frame composition is completely correct |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
@@ -93,6 +94,18 @@ spurious conversion failure on valid inputs.
 
 Fixed-size stack buffers gather the supported grayscale/RGB pixel before
 evaluation and scattering; no per-pixel heap allocation is introduced.
+The production `gather_composition_pixel` contract covers the entire optional
+input tuple, not just individual successful reads. Its model uses the actual
+planar sequence views and indices: grayscale-to-RGB expansion reads source
+plane zero for every active destination color, other cases select the matching
+plane, absent source alpha supplies opaque straight samples, and inactive
+stack slots are zero. Missing active planes, color/alpha samples or excessive
+destination channel counts return no tuple; valid reads cannot spuriously fail.
+The finite-channel loop preserves each processed read pair and every untouched
+slot. The gathered tuple is passed directly to the verified pixel evaluator;
+missing reads still become the existing typed invalid-layer error before any
+current-pixel store or work charge. This does not establish earlier layer
+channel-map resolution or complete mutable planar/canvas/layer semantics.
 Malformed premultiplied data is rejected before destination writes for that
 pixel, including a malformed later channel. This intentionally strengthens
 the previous private intermediate-buffer behavior; public render APIs still

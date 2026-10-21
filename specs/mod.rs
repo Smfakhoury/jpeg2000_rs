@@ -1278,6 +1278,54 @@ pub open spec fn part2_composition_store(samples: Seq<u16>, index: nat, value: u
     if index < samples.len() { (true, samples.update(index as int, value)) } else { (false, samples) }
 }
 
+pub open spec fn part2_composition_gather_channel(
+    source: Seq<Vec<u16>>, destination: Seq<Vec<u16>>,
+    source_index: nat, destination_index: nat, expand_grayscale: bool, channel: nat,
+) -> Option<(u16, u16)> {
+    let source_channel = if expand_grayscale { 0nat } else { channel };
+    if source_channel >= source.len() || channel >= destination.len() {
+        None
+    } else if source_index >= source[source_channel as int]@.len()
+        || destination_index >= destination[channel as int]@.len() {
+        None
+    } else {
+        Some((source[source_channel as int]@[source_index as int],
+            destination[channel as int]@[destination_index as int]))
+    }
+}
+
+pub open spec fn part2_composition_gather_pixel(
+    source: Seq<Vec<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Vec<u16>>, destination_alpha: Seq<u16>,
+    source_index: nat, destination_index: nat, expand_grayscale: bool,
+) -> Option<([u16; 3], [u16; 3], u16, u16, bool)> {
+    let channels = destination.len();
+    if channels > 3 || destination_index >= destination_alpha.len()
+        || (source_alpha.is_some() && source_index >= source_alpha.unwrap().0.len()) {
+        None
+    } else {
+        let first = part2_composition_gather_channel(source, destination, source_index, destination_index, expand_grayscale, 0);
+        let second = part2_composition_gather_channel(source, destination, source_index, destination_index, expand_grayscale, 1);
+        let third = part2_composition_gather_channel(source, destination, source_index, destination_index, expand_grayscale, 2);
+        if (channels > 0 && first.is_none()) || (channels > 1 && second.is_none())
+            || (channels > 2 && third.is_none()) {
+            None
+        } else {
+            Some(([
+                if channels > 0 { first.unwrap().0 } else { 0 },
+                if channels > 1 { second.unwrap().0 } else { 0 },
+                if channels > 2 { third.unwrap().0 } else { 0 },
+            ], [
+                if channels > 0 { first.unwrap().1 } else { 0 },
+                if channels > 1 { second.unwrap().1 } else { 0 },
+                if channels > 2 { third.unwrap().1 } else { 0 },
+            ], if source_alpha.is_some() { source_alpha.unwrap().0[source_index as int] } else { 65535 },
+                destination_alpha[destination_index as int],
+                source_alpha.is_some() && source_alpha.unwrap().1))
+        }
+    }
+}
+
 pub open spec fn part2_source_over_pixel_valid(source: [u16; 3], source_alpha: u16, premultiplied: bool, channels: usize) -> bool {
     channels <= 3 && (!premultiplied
         || ((channels == 0 || source[0] <= source_alpha)
