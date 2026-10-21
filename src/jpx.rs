@@ -2162,11 +2162,23 @@ fn composite_placed_layer(
                 }
                 let destination_samples = output_colors
                     .get_mut(color_index)
-                    .ok_or_else(invalid_layer)?;
-                *destination_samples
-                    .get_mut(destination_index)
-                    .ok_or_else(invalid_layer)? =
-                    u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
+                    .ok_or_else(invalid_layer)?
+                    .as_mut_slice();
+                let sample = u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
+                if !crate::refinement::try_store_composition_sample(
+                    destination_samples,
+                    destination_index,
+                    sample,
+                ) {
+                    return Err(invalid_layer());
+                }
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(destination_samples@[destination_index as int] as nat
+                        == crate::specs::part2_source_over_color_sample(
+                            source_sample, destination_sample, source_alpha, destination_alpha, premultiplied,
+                        ));
+                }
                 color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             let alpha = crate::refinement::source_over_rounded_ratio(
@@ -2180,8 +2192,19 @@ fn composite_placed_layer(
                     source_alpha, destination_alpha,
                 ));
             }
-            output_alpha[destination_index] =
-                u16::try_from(alpha).map_err(|_| arithmetic_overflow())?;
+            let sample = u16::try_from(alpha).map_err(|_| arithmetic_overflow())?;
+            if !crate::refinement::try_store_composition_sample(
+                output_alpha,
+                destination_index,
+                sample,
+            ) {
+                return Err(invalid_layer());
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(output_alpha@[destination_index as int] as nat
+                    == crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha));
+            }
             let pixel_work = (output_colors.len() as u64)
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
@@ -2283,21 +2306,31 @@ fn composite_layer(
                     color_numerator,
                     output_alpha_numerator,
                 );
-                let slot = output_colors
+                let destination_samples = output_colors
                     .get_mut(color_index)
-                    .and_then(|samples| samples.get_mut(destination_index))
                     .ok_or_else(invalid_layer)?;
-                *slot = u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
+                let sample = u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
+                if !crate::refinement::try_store_composition_sample(
+                    destination_samples,
+                    destination_index,
+                    sample,
+                ) {
+                    return Err(invalid_layer());
+                }
                 color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             let alpha = crate::refinement::source_over_rounded_ratio(
                 output_alpha_numerator,
                 u64::from(u16::MAX),
             );
-            *output_alpha
-                .get_mut(destination_index)
-                .ok_or_else(invalid_layer)? =
-                u16::try_from(alpha).map_err(|_| arithmetic_overflow())?;
+            let sample = u16::try_from(alpha).map_err(|_| arithmetic_overflow())?;
+            if !crate::refinement::try_store_composition_sample(
+                output_alpha,
+                destination_index,
+                sample,
+            ) {
+                return Err(invalid_layer());
+            }
             *work_units = work_units
                 .checked_add(
                     (source.colors.len() as u64)
@@ -2374,6 +2407,61 @@ mod tests {
     use crate::refinement::{
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    #[test]
+    fn composition_store_has_exact_single_slot_effect() {
+        for length in 0..=8 {
+            let before: Vec<u16> = (0..length)
+                .map(|i| u16::try_from(i).unwrap() * 4093)
+                .collect();
+            for index in (0..length + 2).chain(std::iter::once(usize::MAX)) {
+                for value in [0, 1, 255, 32_768, u16::MAX] {
+                    let mut samples = before.clone();
+                    let stored =
+                        crate::refinement::try_store_composition_sample(&mut samples, index, value);
+                    let mut expected = before.clone();
+                    if index < length {
+                        expected[index] = value;
+                    }
+                    assert_eq!(stored, index < length);
+                    assert_eq!(samples.len(), before.len());
+                    assert_eq!(samples, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn composition_store_respects_subslice_offsets_and_repeated_writes() {
+        let mut samples = vec![111, 222, 3, 4, 5, 666, 777];
+        assert!(crate::refinement::try_store_composition_sample(
+            &mut samples[2..5],
+            0,
+            u16::MAX
+        ));
+        assert!(crate::refinement::try_store_composition_sample(
+            &mut samples[2..5],
+            2,
+            0
+        ));
+        assert!(!crate::refinement::try_store_composition_sample(
+            &mut samples[2..5],
+            3,
+            999
+        ));
+        assert!(!crate::refinement::try_store_composition_sample(
+            &mut samples[2..5],
+            usize::MAX,
+            999
+        ));
+        assert_eq!(samples, [111, 222, u16::MAX, 4, 0, 666, 777]);
+        assert!(crate::refinement::try_store_composition_sample(
+            &mut samples[2..5],
+            0,
+            17
+        ));
+        assert_eq!(samples, [111, 222, 17, 4, 0, 666, 777]);
+    }
 
     #[test]
     fn placed_source_over_samples_match_wide_rational_rounding_and_preserve_guards() {

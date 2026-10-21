@@ -1259,6 +1259,22 @@ pub(crate) const fn source_over_rounded_ratio(numerator: u64, denominator: u64) 
 
 #[cfg_attr(
     verus_keep_ghost,
+    verus_spec(stored =>
+        ensures (stored, final(samples)@) == crate::specs::part2_composition_store(old(samples)@, index as nat, value),
+            final(samples)@.len() == old(samples)@.len(),
+    )
+)]
+pub(crate) fn try_store_composition_sample(samples: &mut [u16], index: usize, value: u16) -> bool {
+    if index < samples.len() {
+        samples[index] = value;
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
     verus_spec(ensures returns crate::specs::part2_chroma_key_alpha(matches),)
 )]
 pub(crate) const fn chroma_key_alpha(matches: bool) -> u16 {
