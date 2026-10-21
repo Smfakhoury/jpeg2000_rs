@@ -411,12 +411,27 @@ On Linux, install GNU Time alongside the OpenJPEG tools and run:
 ```
 
 This builds the release-mode harness and measures 1024-by-1024 grayscale and
-512-by-512 RGB lossless inputs, each tiled at 128-by-128. Full decode, tile-zero
+512-by-512 RGB8 and RGB16 lossless inputs, each tiled at 128-by-128. Full decode, tile-zero
 selection, and native resolution with two discarded levels must reproduce
 independent OpenJPEG output exactly. Declared-pixel-limit and truncated-header
 cases must produce their expected typed errors, not merely exit unsuccessfully.
 
-Each of the eight cases is measured three times. GNU Time reports actual peak
+The gate also independently qualifies 32-by-32 unsigned24 grayscale and RGB16
+fixtures. The latter has three quality layers, 16-by-16 tiles and an asymmetric
+origin; the required SIZ/COD fields are checked, not inferred from encoder flags.
+For each fixture, a bounded search finds an observed adjacent decoded-byte
+success/rejection pair and an observed adjacent work-unit pair. The test-only
+`decode-limited` operation tightens exactly one `ResourceLimits` value; other
+limits retain their hardened defaults. The search first requires typed rejection
+at zero and exact independently decoded output at its ceiling (16 MiB decoded
+bytes or 10,000,000 work units). It uses at most 32 probes per fixture/resource.
+Each accepted frontier and the budget one unit below it are then rerun three
+times. The lower budget must report the exact configured resource/limit and an
+excessive claim; process failure or a different typed error cannot qualify.
+
+Each of the nineteen final cases is measured three times. Every search probe
+also retains its budget, wall time, peak RSS, return code and exact output hash
+or typed limit claim. GNU Time reports actual peak
 process RSS; the bounded runner measures wall time including process startup
 and image-observation serialization. The engineering thresholds are:
 
@@ -426,13 +441,23 @@ and image-observation serialization. The engineering thresholds are:
 | Tile/native-resolution selection | 2.5 seconds | 256 MiB |
 | Early typed rejection | 1 second | 128 MiB |
 
-Aggregate measured native time is limited to 30 seconds. Tile-zero peak RSS
+Aggregate measured native time, including search probes, is limited to 30 seconds.
+Search probes obey the same per-process thresholds as their accepted-frontier
+case. Tile-zero peak RSS
 must be at least 25 percent lower than full decode for each generated image.
 Each process also has a one-GiB address-space limit and bounded output capture.
 These measurements are not universal worst-case guarantees. Decoded sample
 storage, address-space enforcement, and measured total-process RSS are distinct
 quantities; the report keeps them separate.
+An observed adjacent budget pair is not a theorem that all lower values fail
+for every decoder path, nor a universal minimum budget. A decoded-byte limit
+controls accounted decoder claims, not total process RSS. Work units are an
+implementation accounting threshold, not a CPU-time or instruction count.
+These finite fixtures do not characterize all production-default or worst-case
+inputs, high-component layouts, HT/container paths or every supported platform.
 
+Resource report schema version 2 records configured budgets, finite search
+evidence and the separate repeated frontier observations.
 `resource-results.json` retains source/tool/input/output hashes, repetitions,
 individual observations, median times, peak RSS, thresholds and explicit
 failures. Unavailable default tooling/platform support blocks the gate;
