@@ -77,6 +77,8 @@ Read each contract according to its inputs and postcondition:
 | JPX source-over arithmetic | Exact natural-valued numerators and rounded scalar color/alpha results, proved in the 16-bit range at production conversion sites, with upward ties and transparent zero | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
 | Complete finite-channel pixel evaluation | One total model for all active colors and alpha, preserved unused slots, and exact invalid-input rejection for up to three normalized color channels | A complete theorem for planar gather/scatter, canvas traversal, layer order or whole-render transactionality |
 | JPX planar pixel gathers | The complete optional pair of stack pixels, alpha values and representation flag equals the model of the actual source/destination planes and indices, including grayscale expansion, absent source alpha and all missing-sample rejection cases | That earlier channel-map resolution is normative, or that subsequent scatter, canvas traversal or layer/frame composition is completely correct |
+| JPX planar scatter | Exact status and complete final color/alpha sequences, including the successfully written color prefix on a failed raw scatter, preserved other samples and plane lengths | That an arbitrary caller prevalidated every destination, or that an entire render is transactional |
+| Complete normalized planar pixel transition | The actual gather/evaluate/scatter status and entire final planar state equal one composed model; rejected pixel inputs leave both color and alpha state unchanged | Earlier channel normalization, complete canvas traversal, work-limit transactionality, layer/frame order or a parser-to-pixel theorem |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
@@ -104,8 +106,35 @@ destination channel counts return no tuple; valid reads cannot spuriously fail.
 The finite-channel loop preserves each processed read pair and every untouched
 slot. The gathered tuple is passed directly to the verified pixel evaluator;
 missing reads still become the existing typed invalid-layer error before any
-current-pixel store or work charge. This does not establish earlier layer
-channel-map resolution or complete mutable planar/canvas/layer semantics.
+current-pixel store or work charge. This gather relation alone does not
+establish earlier layer channel-map resolution or mutable canvas/layer semantics.
+
+The production compositor calls `compose_planar_pixel`, whose contract equates
+the status, all final color-plane sample sequences and the final alpha sequence
+with `part2_composition_pixel_transition`. That model composes the actual
+planar gathers, complete pixel evaluation and planar scatter. Both mutable
+outputs participate in the same equality; it is not just a result flag or
+one stored sample. The projection uses the real nested vector views.
+Its contract also explicitly states that a rejected pixel leaves both entire
+outputs unchanged. Destination prevalidation in the gather rules out a
+late scatter failure in this complete transition.
+
+The raw scatter helper separately models all outcomes: excess channel counts
+write nothing, a missing destination sample leaves the already stored color
+prefix intact, and a missing alpha slot leaves all successful color writes
+intact. Its model identifies every changed sample and preserves all others.
+Its loop relates the complete current nested-plane state to the initial
+state plus the processed prefix. Ghost snapshots and pointwise frame
+assertions connect nested mutable borrows to that relation; those snapshots
+and assertions erase from Cargo builds. No new trusted codec body is added.
+The complete transition validates before invoking this raw scatter and has
+the stronger no-change rejection property described above.
+
+The independent read/rational/store oracle checks 159,744 shape/representation
+cases and the entire resulting buffers, including valid and invalid
+premultiplied samples; 864 raw-scatter cases check successful and partial
+failure states, unchanged-value stores, missing slots and extreme indices.
+The existing placed-layer rational/geometry and work-order tests remain.
 Malformed premultiplied data is rejected before destination writes for that
 pixel, including a malformed later channel. This intentionally strengthens
 the previous private intermediate-buffer behavior; public render APIs still
@@ -129,17 +158,17 @@ proved bounded numerator also yields a rounded result at most `65535`.
 The pixel evaluator's loop retains the alpha numerator relation and complete
 processed-channel prefix as invariants. Its proof assertions establish that
 each computed color and alpha result equals its composed scalar model and fits
-`u16`, immediately before the checked conversions. The production scatter loop
-retains the evaluator's channel/alpha results and geometric addressing facts.
+`u16`, immediately before the checked conversions. The complete transition
+passes those exact color/alpha results to the proved scatter.
 Both color and alpha stores use the same executable checked slice-store helper.
 Its contract equates the returned flag and complete final slice with a model of
 the initial slice and requested update. Successful writes preserve every other
 sample, including when the requested value equals the existing value; rejected
-indices preserve the entire slice. Production assertions after
-successful writes connect the actual stored values, through the checked
-conversion, to the composed scalar models. Rejected stores propagate the usual
-typed invalid-layer error; resource/work accounting remains in its original
-order.
+indices preserve the entire slice. The composed transition contract connects
+the complete stored planar state, through the checked conversions, to the
+source-over models. Rejected transitions propagate the usual typed invalid-layer
+error; resource/work accounting remains in its original order, after successful
+pixel stores.
 
 These relations connect the complete pixel and scalar models to production mutations, not just
 standalone arithmetic lemmas. They do not specify the entire mutable canvas,
@@ -150,8 +179,9 @@ rejection and checked conversions remain in place.
 Placement uses the selected edge-aligned nearest-neighbor equation
 `floor(position * source_extent / target_extent)`, with the full target extent
 retained when the canvas clips the copy. Its executable helper proves the
-natural-valued result and source-offset bound; the actual row/column/color
-loops carry crop, canvas and addressing relations through to sample access.
+natural-valued result and source-offset bound; the actual row/column loops
+establish crop, canvas and addressing relations before passing the resulting
+indices to the complete planar pixel transition.
 The row-major helper computes `y * width + x` with proved `u64` intermediates
 and a checked conversion to the platform's `usize`. The existing fallible
 wrapper preserves its arithmetic-error behavior.

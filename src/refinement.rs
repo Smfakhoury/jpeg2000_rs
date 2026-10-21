@@ -1396,6 +1396,104 @@ pub(crate) type CompositionPixelInputs = ([u16; 3], [u16; 3], u16, u16, bool);
 
 #[cfg_attr(
     verus_keep_ghost,
+    verus_spec(stored =>
+        ensures (stored, crate::specs::part2_composition_planes(final(output_colors)@), final(output_alpha)@)
+            == crate::specs::part2_composition_scatter_pixel(
+                crate::specs::part2_composition_planes(old(output_colors)@),
+                old(output_alpha)@, index as nat, pixel, alpha,
+            ),
+            final(output_colors)@.len() == old(output_colors)@.len(),
+            final(output_alpha)@.len() == old(output_alpha)@.len(),
+    )
+)]
+pub(crate) fn scatter_composition_pixel(
+    output_colors: &mut [Vec<u16>],
+    output_alpha: &mut [u16],
+    index: usize,
+    pixel: [u16; 3],
+    alpha: u16,
+) -> bool {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial_colors = crate::specs::part2_composition_planes(output_colors@);
+        let ghost initial_alpha = output_alpha@;
+    }
+    let channels = output_colors.len();
+    if channels > 3 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part2_composition_color_prefix(initial_colors, index as nat, pixel, 0) =~= initial_colors);
+        }
+        return false;
+    }
+    let mut channel = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant
+                channel <= channels && channels <= 3,
+                channels == output_colors.len(),
+                channels == old(output_colors)@.len(),
+                initial_colors.len() == channels,
+                initial_colors == crate::specs::part2_composition_planes(old(output_colors)@),
+                initial_alpha == old(output_alpha)@,
+                output_alpha@ == initial_alpha,
+                channel <= crate::specs::part2_composition_scatter_count(initial_colors, index as nat),
+                crate::specs::part2_composition_planes(output_colors@)
+                    == crate::specs::part2_composition_color_prefix(initial_colors, index as nat, pixel, channel as nat),
+            decreases channels - channel,
+        )
+    )]
+    while channel < channels {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost before_colors = output_colors@;
+            let ghost before_planes = crate::specs::part2_composition_planes(output_colors@);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(before_planes[channel as int] == before_colors[channel as int]@);
+            assert(before_colors[channel as int]@ == initial_colors[channel as int]);
+        }
+        let stored = {
+            let samples = output_colors[channel].as_mut_slice();
+            try_store_composition_sample(samples, index, pixel[channel])
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(output_colors@[channel as int]@ ==
+                if stored { initial_colors[channel as int].update(index as int, pixel[channel as int]) }
+                else { initial_colors[channel as int] });
+        }
+        if !stored {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(index >= initial_colors[channel as int].len());
+                assert(crate::specs::part2_composition_scatter_count(initial_colors, index as nat) == channel);
+            }
+            return false;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert forall |other: int| 0 <= other < channels implies
+                #[trigger] crate::specs::part2_composition_planes(output_colors@)[other]
+                    == crate::specs::part2_composition_color_prefix(initial_colors, index as nat, pixel, (channel + 1) as nat)[other] by {
+                if other != channel {
+                    assert(output_colors@[other] == before_colors[other]);
+                    assert(before_planes[other]
+                        == crate::specs::part2_composition_color_prefix(initial_colors, index as nat, pixel, channel as nat)[other]);
+                }
+            }
+            assert(crate::specs::part2_composition_planes(output_colors@)
+                =~= crate::specs::part2_composition_color_prefix(initial_colors, index as nat, pixel, (channel + 1) as nat));
+        }
+        channel += 1;
+    }
+    try_store_composition_sample(output_alpha, index, alpha)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
     verus_spec(pixel =>
         ensures pixel == crate::specs::part2_composition_gather_pixel(
             source_colors@,
@@ -1462,6 +1560,54 @@ pub(crate) fn gather_composition_pixel(
         destination_alpha,
         premultiplied,
     ))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(composed =>
+        ensures (composed, crate::specs::part2_composition_planes(final(output_colors)@), final(output_alpha)@)
+            == crate::specs::part2_composition_pixel_transition(
+                source_colors@,
+                match source_alpha {
+                    Some((samples, flag)) => Some((samples@, flag)),
+                    None => None,
+                },
+                old(output_colors)@, old(output_alpha)@,
+                source_index as nat, destination_index as nat, expand_grayscale,
+            ),
+            final(output_colors)@.len() == old(output_colors)@.len(),
+            final(output_alpha)@.len() == old(output_alpha)@.len(),
+            !composed ==> crate::specs::part2_composition_planes(final(output_colors)@)
+                == crate::specs::part2_composition_planes(old(output_colors)@)
+                && final(output_alpha)@ == old(output_alpha)@,
+    )
+)]
+pub(crate) fn compose_planar_pixel(
+    source_colors: &[Vec<u16>],
+    source_alpha: Option<(&[u16], bool)>,
+    output_colors: &mut [Vec<u16>],
+    output_alpha: &mut [u16],
+    source_index: usize,
+    destination_index: usize,
+    expand_grayscale: bool,
+) -> bool {
+    let (s, d, sa, da, premultiplied) = match gather_composition_pixel(
+        source_colors,
+        source_alpha,
+        output_colors,
+        output_alpha,
+        source_index,
+        destination_index,
+        expand_grayscale,
+    ) {
+        Some(value) => value,
+        None => return false,
+    };
+    let (pixel, alpha) = match source_over_pixel(s, d, sa, da, premultiplied, output_colors.len()) {
+        Some(value) => value,
+        None => return false,
+    };
+    scatter_composition_pixel(output_colors, output_alpha, destination_index, pixel, alpha)
 }
 
 #[cfg_attr(

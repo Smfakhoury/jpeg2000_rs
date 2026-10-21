@@ -188,6 +188,40 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-jpx-composition-rendering"
+        ]
+        coverage["requirements"][0]["contract_refs"] = [
+            {"path": "src/refinement.rs", "symbol": symbol}
+            for symbol in ("scatter_composition_pixel", "compose_planar_pixel")
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("verus_spec(composed =>", "verus_spec(unrelated =>"),
+            ("ensures (composed,", "ensures (true,"),
+            ("part2_composition_planes(final(output_colors)@), final(output_alpha)@)",
+             "part2_composition_planes(final(output_colors)@))"),
+            ("part2_composition_planes(final(output_colors)@), final(output_alpha)@)",
+             "part2_composition_planes(final(output_colors)@), final(output_colors)@)"),
+            ("part2_composition_planes(final(output_colors)@)",
+             "part2_composition_planes(old(output_colors)@)"),
+            ("final(output_alpha)@", "old(output_alpha)@"),
+            ("part2_composition_planes(final(output_colors)@)",
+             "unlisted_projection(final(output_colors)@)"),
+            ("== crate::specs::part2_composition_pixel_transition",
+             "== crate::specs::unlisted_model"),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/refinement.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_checks_typed_result_model_equalities(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

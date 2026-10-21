@@ -1955,6 +1955,14 @@
         },
         {
           "path": "src/refinement.rs",
+          "symbol": "scatter_composition_pixel"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "compose_planar_pixel"
+        },
+        {
+          "path": "src/refinement.rs",
           "symbol": "composition_mapped_offset"
         },
         {
@@ -1983,6 +1991,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "composite_placed_layer"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "compose_planar_pixel"
         },
         {
           "path": "src/jpx.rs",
@@ -2086,6 +2098,26 @@
         },
         {
           "path": "specs/mod.rs",
+          "symbol": "part2_composition_planes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_color_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_scatter_count"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_scatter_pixel"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_pixel_transition"
+        },
+        {
+          "path": "specs/mod.rs",
           "symbol": "part2_composition_mapped_offset"
         },
         {
@@ -2132,7 +2164,11 @@
         },
         {
           "path": "src/jpx.rs",
-          "symbol": "complete_planar_gather_matches_read_routing_and_rejection_oracle"
+          "symbol": "complete_planar_transition_matches_independent_read_rational_and_store_oracle"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "planar_scatter_matches_exact_success_and_partial_failure_states"
         },
         {
           "path": "src/jpx.rs",

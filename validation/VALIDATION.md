@@ -516,10 +516,15 @@ For scalar contracts it recognizes both `ensures returns (...)` and a named
 return value whose typed or natural-number equality directly names a listed
 model, including contracts with a `requires` clause.
 For checked slice stores it also recognizes an equality between
-`(named_result, final(slice)@)` and a listed state-transition model. Unrelated
+`(named_result, final(slice)@)` and a listed state-transition model. Complete
+planar transitions can include multiple final outputs, with the explicit
+`part2_composition_planes(final(colors)@)` projection for nested color vectors.
+Every named mutable-reference parameter must occur in that final-state tuple;
+an omitted alpha output or a duplicate color output cannot stand in for it.
+Unrelated
 return binders, pre-state-only tuples, missing final-state relations and mere
 model mentions do not qualify. Functions taking mutable references must still
-provide the final-state relation; a bare return equality cannot replace it.
+provide the complete final-state relation; a bare return equality cannot replace it.
 This is a conservative source-link check, not a
 replacement for Verus.
 It does not assert exhaustive standards-clause coverage, exact progress

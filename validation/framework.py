@@ -243,17 +243,29 @@ def validate_normative_coverage(
             if body_start < 0:
                 raise ValueError(f"linked contract function lacks an executable body: {short}")
             mutating = re.search(r"&\s*(?:'\w+\s+)?mut\b", text[signature:body_start]) is not None
+            mutable_parameters = set(re.findall(
+                r"\b(\w+)\s*:\s*&\s*(?:'\w+\s+)?mut\b", text[signature:body_start],
+            ))
             named_prefix = r"\bverus_spec\(\s*(\w+)\s*=>\s*(?:requires\b[\s\S]*?)?ensures\s+"
-            model_suffix = r"\s*==\s*crate::specs::(\w+)\s*\("
+            model_suffix = r"\s*==\s*crate::specs::(?P<model>\w+)\s*\("
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
-            state_result = re.search(
-                named_prefix + r"\(\s*\1\s*,\s*final\(\s*\w+\s*\)@\s*\)" + model_suffix, contract,
+            state_term = (
+                r"(?:final\(\s*\w+\s*\)@|"
+                r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\))"
             )
+            state_result = re.search(
+                named_prefix + r"(?P<state>\(\s*\1\s*,\s*" + state_term
+                + r"(?:\s*,\s*" + state_term + r")*\s*\))" + model_suffix, contract,
+            )
+            final_parameters = set(re.findall(
+                r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
+            )) if state_result is not None else set()
+            complete_state = bool(mutable_parameters) and final_parameters == mutable_parameters
             named_result = state_result if mutating else scalar_result or state_result
             if ("verus_spec(" not in contract
-                    or (mutating and state_result is None)
+                    or (mutating and (state_result is None or not complete_state))
                     or not ("ensures returns" in contract
-                            or (named_result is not None and named_result[2] in spec_symbols))):
+                            or (named_result is not None and named_result["model"] in spec_symbols))):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")
             if not any(re.search(rf"\b{re.escape(symbol)}\b", contract) for symbol in spec_symbols):
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
