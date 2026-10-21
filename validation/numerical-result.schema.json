@@ -50,6 +50,23 @@
         "additionalProperties": false,
         "required": ["id", "lossless", "width", "height", "elapsed_ms", "encoder_options", "thresholds", "status", "error", "metrics", "source_metrics", "input_sha256", "artifacts"],
         "allOf": [{
+          "if": {"properties": {"source_format": {"const": "pfm"}}, "required": ["source_format"]},
+          "then": {
+            "required": ["sample_representation", "precision", "signed", "signed_header_authored"],
+            "properties": {
+              "sample_representation": {"const": "ieee754-binary32-bits"},
+              "precision": {"const": 32}, "signed": {"const": true},
+              "signed_header_authored": {"const": false}, "lossless": {"const": true},
+              "thresholds": {"properties": {"maximum_error": {"const": 0}, "maximum_rmse": {"const": 0}}}
+            },
+            "allOf": [{
+              "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
+              "then": {"required": ["verified_features"], "properties": {
+                "verified_features": {"contains": {"const": "binary-complement-nlt"}}
+              }}
+            }]
+          }
+        }, {
           "if": {"properties": {"source_format": {"const": "pgx"}}, "required": ["source_format"]},
           "then": {"required": ["precision", "signed"]}
         }, {
@@ -85,7 +102,9 @@
           "format": {"enum": ["raw", "jp2", "jph"]},
           "precision": {"type": "integer", "minimum": 1, "maximum": 32},
           "signed": {"type": "boolean"},
-          "source_format": {"enum": ["pgm", "ppm", "pgx"]},
+          "source_format": {"enum": ["pgm", "ppm", "pgx", "pfm"]},
+          "sample_representation": {"enum": ["integer", "ieee754-binary32-bits"]},
+          "verified_features": {"type": "array", "items": {"enum": ["component-maxshift", "binary-complement-nlt"]}, "uniqueItems": true},
           "signed_header_authored": {"type": "boolean"},
           "encoder_input_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
           "pattern": {"enum": ["varied", "sparse", "fixed"]},

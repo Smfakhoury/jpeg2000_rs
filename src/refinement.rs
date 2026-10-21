@@ -1300,10 +1300,16 @@ pub(crate) const fn part15_cleanup_u_bound(
     capability_bound: u8,
 ) -> u8 {
     let bound = missing_msbs as u32 + placeholder_bitplanes as u32 + 2;
-    if bound <= capability_bound as u32 {
+    // MagSgn precision includes one sign-coding bit beyond the coefficient bound.
+    let capability_limit = if capability_bound < u8::MAX {
+        capability_bound + 1
+    } else {
+        u8::MAX
+    };
+    if bound <= capability_limit as u32 {
         bound as u8
     } else {
-        capability_bound
+        capability_limit
     }
 }
 

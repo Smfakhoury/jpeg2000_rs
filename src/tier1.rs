@@ -21,6 +21,7 @@ const MAX_HT_SCUP: usize = 4_079;
 const MAX_HT_CLEANUP_BYTES: usize = 65_534;
 const MAX_HT_REFINEMENT_BYTES: usize = 2_046;
 const MAX_HT_MAGNITUDE_BITS: u8 = 74;
+const MAX_HT_MAGSGN_BITS: u8 = MAX_HT_MAGNITUDE_BITS + 1;
 
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
@@ -1694,7 +1695,7 @@ fn decode_ht_cleanup_segment_metadata(
     maximum_u: u8,
     limits: &ResourceLimits,
 ) -> Result<HtCleanupMetadata, DecodeError> {
-    if width == 0 || height == 0 || maximum_u == 0 || maximum_u > MAX_HT_MAGNITUDE_BITS {
+    if width == 0 || height == 0 || maximum_u == 0 || maximum_u > MAX_HT_MAGSGN_BITS {
         return Err(invalid_code_block());
     }
     let samples = u32::from(width)
@@ -1904,11 +1905,7 @@ pub fn complete_ht_kappa(
     north_east_exponent: u8,
     maximum_u: u8,
 ) -> Result<u8, DecodeError> {
-    if u_base == 0
-        || significance & 0xf0 != 0
-        || maximum_u == 0
-        || maximum_u > MAX_HT_MAGNITUDE_BITS
-    {
+    if u_base == 0 || significance & 0xf0 != 0 || maximum_u == 0 || maximum_u > MAX_HT_MAGSGN_BITS {
         return Err(invalid_code_block());
     }
     let gamma = significance & significance.wrapping_sub(1) != 0;
@@ -1931,7 +1928,7 @@ fn reconstruct_ht_magnitude(
     decoded_bitplanes: u16,
 ) -> Result<(Magnitude, bool, u8), DecodeError> {
     if completed_u == 0
-        || completed_u > MAX_HT_MAGNITUDE_BITS
+        || completed_u > MAX_HT_MAGSGN_BITS
         || decoded_bitplanes == 0
         || decoded_bitplanes > MAX_TIER1_BITPLANES
     {
@@ -4522,10 +4519,11 @@ mod tests {
         assert_eq!(crate::refinement::part15_cleanup_u_bound(0, 0, 74), 2);
         assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 0, 8), 8);
         assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 1, 74), 9);
-        assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 1, 8), 8);
+        assert_eq!(crate::refinement::part15_cleanup_u_bound(6, 1, 8), 9);
+        assert_eq!(crate::refinement::part15_cleanup_u_bound(30, 0, 31), 32);
         assert_eq!(
             crate::refinement::part15_cleanup_u_bound(u16::MAX, u16::MAX, 74),
-            74
+            75
         );
     }
 
@@ -4944,11 +4942,22 @@ mod tests {
         let bytes = [0_u8; 10];
         let mut reader = HtForwardMagSgnReader::new(&bytes, &ResourceLimits::default()).unwrap();
         let (magnitude, negative, exponent) =
-            reconstruct_ht_magnitude(&mut reader, 74, false, false, 1).unwrap();
+            reconstruct_ht_magnitude(&mut reader, 75, false, false, 1).unwrap();
         assert!(!negative);
         assert_eq!(exponent, 1);
         assert_eq!(magnitude.to_u64(), Some(1));
-        assert_eq!(reader.physical_bits_read(), 74);
+        assert_eq!(reader.physical_bits_read(), 75);
+        assert!(complete_ht_kappa(1, 1, 0, 0, 76).is_err());
+        assert!(reconstruct_ht_magnitude(&mut reader, 76, false, false, 1).is_err());
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        assert!(decoder.set_ht_magnitude_bound(75).is_err());
     }
 
     #[test]

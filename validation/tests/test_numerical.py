@@ -167,6 +167,42 @@ class NumericalTests(unittest.TestCase):
             with self.subTest(case=invalid), self.assertRaises(ValueError):
                 numerical.source_image(invalid)
 
+    def test_binary32_fixture_words_preserve_endianness_and_negative_zero(self):
+        values = [0x3f800000, -(1 << 31), -1082130432]
+        for scale, byteorder in ((b"-1.0", "<"), (b"1.0", ">")):
+            path = self.work / "source.pfm"
+            path.write_bytes(b"Pf\n3 1\n" + scale + b"\n" + struct.pack(byteorder + "3i", *values))
+            self.assertEqual(framework.parse_pfm_bit_patterns(path), image(values, 32, True))
+        case = next(case for case in numerical.HT_CASES if case.sample_representation != "integer")
+        path.write_bytes(numerical.source_image(case))
+        parsed = framework.parse_pfm_bit_patterns(path)["image"]["components"][0]
+        self.assertEqual(parsed["samples"], list(case.samples))
+        self.assertIn(-(1 << 31), parsed["samples"])
+        self.assertIn(0, parsed["samples"])
+
+    def test_binary32_fixture_headers_and_payloads_are_strict(self):
+        path = self.work / "invalid.pfm"
+        for data in (b"Pf\n1 1\n-1.0", b"P5\n1 1\n-1.0\n\0\0\0\0",
+                     b"Pf\n0 1\n-1.0\n", b"Pf\n1 1\n2.0\n\0\0\0\0",
+                     b"Pf\n1 1\nnan\n\0\0\0\0", b"Pf\n1 1\n-1.0\n\0\0\0",
+                     b"Pf\n1 1\n-1.0\n\0\0\0\0\0"):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                path.write_bytes(data)
+                framework.parse_pfm_bit_patterns(path)
+
+    def test_required_roi_and_nlt_headers_cannot_be_silently_omitted(self):
+        roi = next(case for case in numerical.CASES if case.name == "roi-gray-shift3")
+        segment = framework.segment(0xff5e, b"\x00\x00\x03")
+        self.assertEqual(numerical.validate_required_headers(roi, b"\xff\x4f" + segment + b"\xff\x90"),
+                         ["component-maxshift"])
+        nlt = next(case for case in numerical.HT_CASES if case.sample_representation != "integer")
+        segment = framework.segment(0xff76, b"\xff\xff\x9f\x03")
+        self.assertEqual(numerical.validate_required_headers(nlt, b"\xff\x4f" + segment + b"\xff\x90"),
+                         ["binary-complement-nlt"])
+        for case in (roi, nlt):
+            with self.subTest(case=case.name), self.assertRaises(ValueError):
+                numerical.validate_required_headers(case, framework.raw_codestream())
+
     def test_signed_fixture_changes_only_the_matching_siz_sign_bit(self):
         unsigned = framework.raw_codestream()
         signed = numerical.signed_codestream(unsigned, 8)
@@ -279,7 +315,7 @@ class NumericalTests(unittest.TestCase):
 
     def test_ht_sources_and_container_metadata_cover_real_component_layouts(self):
         self.assertEqual({case.format for case in numerical.HT_CASES}, {"raw", "jph"})
-        self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16})
+        self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16, 32})
         self.assertEqual({case.channels for case in numerical.HT_CASES}, {1, 3})
         self.assertEqual({case.pattern for case in numerical.HT_CASES}, {"varied", "sparse", "fixed"})
         for case in numerical.HT_CASES:
@@ -287,7 +323,9 @@ class NumericalTests(unittest.TestCase):
             self.assertEqual(data, numerical.source_image(case))
             path = self.work / "ht-source.pnm"
             path.write_bytes(data)
-            image = framework.parse_pnm(path)["image"]
+            parse_image = (framework.parse_pfm_bit_patterns if numerical.source_extension(case) == "pfm"
+                           else framework.parse_pnm)
+            image = parse_image(path)["image"]
             self.assertEqual((image["width"], image["height"]), (case.width, case.height))
             self.assertEqual(len(image["components"]), case.channels)
         container = framework.jp2_file(b"generated fixture", b"jph ", width=7, height=5,
@@ -349,6 +387,19 @@ class NumericalTests(unittest.TestCase):
                 self.assertEqual(record["encoder_options"], [])
             else:
                 self.assertIsInstance(record["timings"]["encoder_ms"], float)
+        binary32 = [record for record in result["records"] if record["source_format"] == "pfm"]
+        self.assertEqual(len(binary32), 3)
+        for record in binary32:
+            self.assertEqual(record["verified_features"], ["binary-complement-nlt"])
+            self.assertEqual(record["sample_representation"], "ieee754-binary32-bits")
+            self.assertFalse(record["signed_header_authored"])
+            self.assertEqual(record["encoder_input_sha256"], record["input_sha256"])
+            self.assertEqual(record["source_metrics"]["maximum_error"], 0)
+            self.assertEqual(record["reference_sha256"], record["decoded_sha256"])
+        invalid = copy.deepcopy(result)
+        next(record for record in invalid["records"] if record["source_format"] == "pfm")["verified_features"] = []
+        with self.assertRaises(ValueError):
+            framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
         framework.validate_evidence_schemas(self.work)
         for invoked, timing, options in (
             (False, 0.0, []),
@@ -381,7 +432,7 @@ class NumericalTests(unittest.TestCase):
             if case.signed:
                 self.assertNotEqual(record["encoder_input_sha256"], record["input_sha256"])
         pgx = [record for record in result["records"] if record["source_format"] == "pgx"]
-        self.assertEqual(len(pgx), 9)
+        self.assertEqual(len(pgx), 11)
         self.assertEqual({record["precision"] for record in pgx}, {8, 9, 12, 16, 17, 20, 24})
         for record in pgx:
             self.assertEqual(record["source_metrics"]["maximum_error"], 0)
@@ -392,4 +443,7 @@ class NumericalTests(unittest.TestCase):
             del next(record for record in invalid["records"] if record["source_format"] == "pgx")[field]
             with self.subTest(field=field), self.assertRaises(ValueError):
                 framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
+        roi = [record for record in result["records"] if record["id"].startswith("roi-")]
+        self.assertEqual(len(roi), 9)
+        self.assertTrue(all(record["verified_features"] == ["component-maxshift"] for record in roi))
         framework.validate_evidence_schemas(self.work)

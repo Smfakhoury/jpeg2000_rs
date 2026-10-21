@@ -102,7 +102,8 @@ class SelectionTests(unittest.TestCase):
                 options += ["-I"]
         context = {"stage": "encoding"}
         try:
-            numerical._run_checked([encoder, "-i", str(source), "-o", str(raw), *options], 10.0)
+            numerical._run_checked([encoder, "-i", str(source), "-o", str(raw), *options, *case.options], 10.0)
+            numerical.validate_required_headers(case, raw.read_bytes())
             encoded = raw
             if case.format != "raw":
                 encoded = directory / f"encoded.{case.format}"
@@ -236,6 +237,19 @@ class SelectionTests(unittest.TestCase):
                     f"subsampled-{channels}", width=47, height=35,
                     format=format_name, channels=channels,
                 ), False, (4, 6), True, sampling=(2, 3))
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_component_maxshift_regions_tiles_and_native_resolutions(self):
+        for format_name, precision, channels, component, shift in (
+            ("raw", 8, 1, 0, 3), ("jp2", 16, 3, 1, 1), ("jpx", 8, 3, 2, 5),
+        ):
+            with self.subTest(format=format_name, precision=precision, component=component):
+                self.check_case(numerical.NumericalCase(
+                    f"maxshift-{format_name}", width=47, height=35, format=format_name,
+                    precision=precision, channels=channels,
+                    options=("-ROI", f"c={component},U={shift}"),
+                ), False, (3, 5), True)
 
 
 class SelectionGeometryTests(unittest.TestCase):

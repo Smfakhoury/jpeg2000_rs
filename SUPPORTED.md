@@ -50,6 +50,10 @@ The independent generated legacy numerical suite covers selected signed
 its RGB cases remain unsigned 8/16-bit. This evidence does not qualify the
 entire implemented 1..38-bit range. See [validation](validation/VALIDATION.md)
 for exact cases, metadata checks, reference-roundtrip guards and limitations.
+Independent fixtures also check selected component-wide Maxshift upshifts and
+binary-complement NLT type 3 on finite IEEE binary32 bit patterns, including
+negative zero. The latter checks exact integer bit representations, not a
+floating-point image API or arbitrary 32-bit pixel/color conformance.
 
 ## Containers, color, and JPIP
 
