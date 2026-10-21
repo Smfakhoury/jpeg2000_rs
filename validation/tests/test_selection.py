@@ -228,6 +228,17 @@ class SelectionTests(unittest.TestCase):
                     maximum_error=0 if lossless else 1, maximum_rmse=0 if lossless else 0.25,
                 ), True, origin, tiled)
 
+    @unittest.skipUnless(shutil.which(os.environ.get("OPENJPH_ENCODER", "ojph_compress"))
+                         and shutil.which(os.environ.get("OPENJPH_DECODER", "ojph_expand")),
+                         "independent OpenJPH tools are not installed")
+    def test_ht_rgb16_transform_modes_at_nonzero_tiled_origins(self):
+        for transform in ("true", "false"):
+            with self.subTest(transform=transform):
+                self.check_case(numerical.NumericalCase(
+                    f"ht-rgb16-origin-{transform}", width=47, height=35, format="jph",
+                    precision=16, channels=3, options=("-colour_trans", transform),
+                ), True, (3, 5), True)
+
     @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
                          "independent OpenJPEG tools are not installed")
     def test_subsampled_regions_tiles_and_native_resolutions(self):

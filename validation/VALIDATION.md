@@ -290,13 +290,24 @@ Both the reference decoder and the subject must reproduce each fixed case's
 known samples. Preencoded cases report `encoder_invoked=false`, empty encoder
 options, and a `null` encoder timing; the encoder is not run for those cases.
 
+Selected RGB16 cases additionally cover sparse and multi-code-block images,
+odd tiled nonzero origins, JPH wrapping, and both enabled component transforms
+and independently coded components. An explicit `-colour_trans` setting must
+agree with the actual COD field. Lossless cases require exact original,
+reference and subject planes. The irreversible RGB16 case uses a fixed
+engineering ceiling of 8 samples maximum error and 2.0 worst-component RMSE
+against the independent output; these are not official conformance tolerances.
+Region/tile/tile-set/native-resolution tests separately exercise both lossless
+transform modes at asymmetric nonzero tiled origins, including JPH.
+
 For live lossless encoding, the reference's decoded samples must match the
 original source before the subject runs. A reference self-roundtrip failure
 is retained as a failure, not accepted as an alternative expected image.
 The pinned reference encoder does not preserve the minimum-valued one-pixel
-input with zero decompositions. Live encoder cases therefore use at least
-one decomposition; an independently decoded fixed stream covers that
-zero-decomposition boundary.
+input with zero decompositions. Live cases for that ordinary unsigned
+minimum-valued profile therefore use at least one decomposition; an
+independently decoded fixed stream covers its zero-decomposition boundary.
+Separately qualified binary32 NLT cases include live zero-DWT encoding.
 
 `htj2k-results.json` uses the same numerical schema, per-case engineering
 thresholds, process bounds, hash bindings, and failure retention as the legacy
