@@ -1211,6 +1211,21 @@ pub open spec fn part2_composition_clip(offset: u32, extent: u32, canvas: u32) -
     }
 }
 
+pub open spec fn part2_composition_mapped_offset(position: u32, source_extent: u32, target_extent: u32) -> nat
+    recommends target_extent > 0,
+{
+    (position as nat) * (source_extent as nat) / (target_extent as nat)
+}
+
+pub open spec fn part2_row_major_index(width: u32, x: u32, y: u32) -> nat {
+    (y as nat) * (width as nat) + x as nat
+}
+
+pub open spec fn part2_composition_pixel_index(width: u32, x: u32, y: u32) -> Option<usize> {
+    let index = part2_row_major_index(width, x, y);
+    if index <= usize::MAX as nat { Some(index as usize) } else { None }
+}
+
 pub open spec fn part2_loop_frame(index: usize, frames: usize) -> usize
     recommends frames > 0,
 {

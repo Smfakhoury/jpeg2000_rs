@@ -238,13 +238,19 @@ def validate_normative_coverage(
             signature = signature_match.start()
             contract_start = text.rfind("#[cfg_attr", 0, signature)
             contract = text[contract_start:signature] if contract_start >= 0 else ""
-            named_result = re.search(
-                r"\bverus_spec\(\s*(\w+)\s*=>\s*ensures\s+"
-                r"(?:\1\s+as\s+nat|\(\s*\1\s*,\s*final\(\s*\w+\s*\)@\s*\))"
-                r"\s*==\s*crate::specs::(\w+)\s*\(",
-                contract,
+            body_start = text.find("{", signature)
+            if body_start < 0:
+                raise ValueError(f"linked contract function lacks an executable body: {short}")
+            mutating = re.search(r"&\s*(?:'\w+\s+)?mut\b", text[signature:body_start]) is not None
+            named_prefix = r"\bverus_spec\(\s*(\w+)\s*=>\s*(?:requires\b[\s\S]*?)?ensures\s+"
+            model_suffix = r"\s*==\s*crate::specs::(\w+)\s*\("
+            scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
+            state_result = re.search(
+                named_prefix + r"\(\s*\1\s*,\s*final\(\s*\w+\s*\)@\s*\)" + model_suffix, contract,
             )
+            named_result = state_result if mutating else scalar_result or state_result
             if ("verus_spec(" not in contract
+                    or (mutating and state_result is None)
                     or not ("ensures returns" in contract
                             or (named_result is not None and named_result[2] in spec_symbols))):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")

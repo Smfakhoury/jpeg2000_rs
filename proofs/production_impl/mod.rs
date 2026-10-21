@@ -696,6 +696,47 @@ pub proof fn production_composition_storage_accounting(pixels: nat, colors: nat)
 {
 }
 
+pub proof fn production_u32_product_bounds(left: u32, right: u32)
+    ensures
+        (left as int) * (right as int) <= 18446744065119617025,
+{
+    vstd::arithmetic::mul::lemma_mul_upper_bound(left as int, 4294967295, right as int, 4294967295);
+}
+
+pub proof fn production_composition_mapped_bounds(position: u32, source_extent: u32, target_extent: u32)
+    requires
+        target_extent > 0,
+    ensures
+        position < target_extent && source_extent > 0 ==>
+            crate::specs::part2_composition_mapped_offset(position, source_extent, target_extent) < source_extent,
+{
+    if position < target_extent && source_extent > 0 {
+        let p = position as int;
+        let s = source_extent as int;
+        let t = target_extent as int;
+        let n = p * s;
+        vstd::arithmetic::mul::lemma_mul_strict_inequality(p, t, s);
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(n, t);
+        vstd::arithmetic::div_mod::lemma_mod_bound(n, t);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(n / t, t);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(t, s);
+        vstd::arithmetic::mul::lemma_mul_strict_inequality_converse(n / t, s, t);
+    }
+}
+
+pub proof fn production_composition_index_bounds(width: u32, height: u32, x: u32, y: u32)
+    requires
+        x < width,
+        y < height,
+    ensures
+        crate::specs::part2_row_major_index(width, x, y) < (width as nat) * (height as nat),
+{
+    assert((y as int) * (width as int) + (x as int) < (width as int) * (height as int))
+        by (nonlinear_arith)
+        requires 0 <= x < width, 0 <= y < height,
+    {}
+}
+
 pub proof fn production_source_over_term_bounds(left: u64, right: u64, other: u64)
     requires
         left <= 65535,
