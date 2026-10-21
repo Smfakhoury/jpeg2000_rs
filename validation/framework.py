@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -578,6 +579,33 @@ def verify_manifest(manifest: dict[str, Any] | None = None) -> dict[str, Any]:
         "entries": len(entries),
         "manifest_sha256": sha256_file(MANIFEST_PATH),
     }
+
+
+def crop_image(observation: dict[str, Any], frame: tuple[int, int, int, int],
+               rectangle: tuple[int, int, int, int], sampling: tuple[int, int] = (1, 1)) -> dict[str, Any]:
+    x0, y0, x1, y1 = rectangle
+    sx, sy = sampling
+    image = observation.get("image")
+    if (not observation.get("accepted") or not isinstance(image, dict) or not image.get("components")
+            or sx <= 0 or sy <= 0
+            or not frame[0] <= x0 < x1 <= frame[2] or not frame[1] <= y0 < y1 <= frame[3]):
+        raise ValueError("reference crop requires an accepted image and a nonempty in-frame rectangle")
+    result = copy.deepcopy(observation)
+    result["image"]["width"] = x1 - x0
+    result["image"]["height"] = y1 - y0
+    for component in result["image"]["components"]:
+        width, height = component["width"], component["height"]
+        samples = component["samples"]
+        cx0, cy0 = (frame[0] + sx - 1) // sx, (frame[1] + sy - 1) // sy
+        cx1, cy1 = (frame[2] + sx - 1) // sx, (frame[3] + sy - 1) // sy
+        if width != cx1 - cx0 or height != cy1 - cy0 or len(samples) != width * height:
+            raise ValueError("reference crop component geometry or sample count differs from its frame")
+        left, right = (x0 + sx - 1) // sx, (x1 + sx - 1) // sx
+        top, bottom = (y0 + sy - 1) // sy, (y1 + sy - 1) // sy
+        component["samples"] = [samples[(y - cy0) * width + x - cx0]
+                                for y in range(top, bottom) for x in range(left, right)]
+        component["width"], component["height"] = right - left, bottom - top
+    return result
 
 
 def parse_subject_output(stdout: bytes, stderr: bytes, returncode: int) -> dict[str, Any]:

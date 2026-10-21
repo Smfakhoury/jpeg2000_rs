@@ -56,6 +56,10 @@ Independent fixtures also check selected component-wide Maxshift upshifts and
 binary-complement NLT type 3 on finite IEEE binary32 bit patterns, including
 negative zero. The latter checks exact integer bit representations, not a
 floating-point image API or arbitrary 32-bit pixel/color conformance.
+Selected live HT RGB16 profiles also qualify enabled/disabled component
+transforms, sparse/multi-code-block images, tiled nonzero origins and JPH,
+with exact lossless planes and explicit engineering budgets for irreversible
+output. These do not qualify every higher-precision multicomponent profile.
 
 ## Containers, color, and JPIP
 

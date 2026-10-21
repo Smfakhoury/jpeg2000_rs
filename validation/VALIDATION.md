@@ -290,13 +290,24 @@ Both the reference decoder and the subject must reproduce each fixed case's
 known samples. Preencoded cases report `encoder_invoked=false`, empty encoder
 options, and a `null` encoder timing; the encoder is not run for those cases.
 
+Selected RGB16 cases additionally cover sparse and multi-code-block images,
+odd tiled nonzero origins, JPH wrapping, and both enabled component transforms
+and independently coded components. An explicit `-colour_trans` setting must
+agree with the actual COD field. Lossless cases require exact original,
+reference and subject planes. The irreversible RGB16 case uses a fixed
+engineering ceiling of 8 samples maximum error and 2.0 worst-component RMSE
+against the independent output; these are not official conformance tolerances.
+Region/tile/tile-set/native-resolution tests separately exercise both lossless
+transform modes at asymmetric nonzero tiled origins, including JPH.
+
 For live lossless encoding, the reference's decoded samples must match the
 original source before the subject runs. A reference self-roundtrip failure
 is retained as a failure, not accepted as an alternative expected image.
 The pinned reference encoder does not preserve the minimum-valued one-pixel
-input with zero decompositions. Live encoder cases therefore use at least
-one decomposition; an independently decoded fixed stream covers that
-zero-decomposition boundary.
+input with zero decompositions. Live cases for that ordinary unsigned
+minimum-valued profile therefore use at least one decomposition; an
+independently decoded fixed stream covers its zero-decomposition boundary.
+Separately qualified binary32 NLT cases include live zero-DWT encoding.
 
 `htj2k-results.json` uses the same numerical schema, per-case engineering
 thresholds, process bounds, hash bindings, and failure retention as the legacy
@@ -421,17 +432,28 @@ Decoder `ResourceLimits` remain active on every platform.
 
 ### Representative process measurements
 
-On Linux, install GNU Time alongside the OpenJPEG tools and run:
+On Linux, install GNU Time alongside the OpenJPEG tools, build the pinned
+scalar OpenJPH tools as above, and run:
 
 ```sh
 .venv/bin/python validation/run-validation.py resources
 ```
 
 This builds the release-mode harness and measures 1024-by-1024 grayscale and
-512-by-512 RGB8 and RGB16 lossless inputs, each tiled at 128-by-128. Full decode, tile-zero
+512-by-512 legacy RGB8/RGB16 and HT RGB16 lossless inputs, each tiled at 128-by-128. Full decode, tile-zero
 selection, and native resolution with two discarded levels must reproduce
-independent OpenJPEG output exactly. Declared-pixel-limit and truncated-header
+independent reference output exactly. Declared-pixel-limit and truncated-header
 cases must produce their expected typed errors, not merely exit unsuccessfully.
+HT cases require exact original/OpenJPH agreement and actual SIZ/CAP/COD
+geometry and HT coding signals. Their tile-zero expectation is a checked crop
+of the full independent lossless decode; native reduction uses independent
+`-skip_res` synthesis, not decimation. The shared crop helper also serves the
+selection tests and rejects inconsistent frame/component geometry.
+
+`--ht-encoder` and `--ht-decoder`, or `OPENJPH_ENCODER` and
+`OPENJPH_DECODER`, select trusted HT tools. Missing unconfigured tools block
+the full gate; an explicitly configured missing tool is an error. Legacy and
+HT reference executable hashes are recorded separately.
 
 The gate also independently qualifies 32-by-32 unsigned24 grayscale and RGB16
 fixtures. The latter has three quality layers, 16-by-16 tiles and an asymmetric
@@ -446,7 +468,7 @@ Each accepted frontier and the budget one unit below it are then rerun three
 times. The lower budget must report the exact configured resource/limit and an
 excessive claim; process failure or a different typed error cannot qualify.
 
-Each of the nineteen final cases is measured three times. Every search probe
+Each of the twenty-two final cases is measured three times. Every search probe
 also retains its budget, wall time, peak RSS, return code and exact output hash
 or typed limit claim. GNU Time reports actual peak
 process RSS; the bounded runner measures wall time including process startup
@@ -471,7 +493,7 @@ for every decoder path, nor a universal minimum budget. A decoded-byte limit
 controls accounted decoder claims, not total process RSS. Work units are an
 implementation accounting threshold, not a CPU-time or instruction count.
 These finite fixtures do not characterize all production-default or worst-case
-inputs, high-component layouts, HT/container paths or every supported platform.
+inputs, high-component layouts, broader HT/container paths or every supported platform.
 
 Resource report schema version 2 records configured budgets, finite search
 evidence and the separate repeated frontier observations.

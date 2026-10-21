@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 import shutil
 import statistics
@@ -122,9 +123,25 @@ def _find_limit_boundary(command: list[str], resource: str, upper: int, expected
     return upper
 
 
+def _validate_ht_resource_headers(data: bytes, size: int) -> None:
+    numerical.validate_required_headers(numerical.NumericalCase("ht-resource", channels=3, precision=16), data)
+    headers = dict(numerical._main_header_segments(data))
+    coding, siz, capability = headers.get(0xff52), headers.get(0xff51), headers.get(0xff50)
+    if coding is None or siz is None or capability is None:
+        raise ValueError("independent HT resource fixture omitted required header markers")
+    if (not coding[8] & 0x40 or len(siz) < 45
+            or struct.unpack_from(">IIII", siz, 2) != (size, size, 0, 0)
+            or struct.unpack_from(">II", siz, 18) != (128, 128)
+            or struct.unpack_from(">II", siz, 26) != (0, 0)
+            or siz[34:] != b"\x00\x03" + bytes((15, 1, 1)) * 3
+            or len(capability) < 4 or not int.from_bytes(capability[:4], "big") & 0x20000):
+        raise ValueError("independent HT resource fixture omitted required RGB16 geometry/HT signaling")
+
+
 def run_resources(executable: Path | None = None, output_dir: Path | None = None,
                   encoder: Path | None = None, decoder: Path | None = None,
-                  time_tool: Path | None = None, timeout_seconds: float = 10.0) -> dict[str, Any]:
+                  time_tool: Path | None = None, timeout_seconds: float = 10.0, *,
+                  ht_encoder: Path | None = None, ht_decoder: Path | None = None) -> dict[str, Any]:
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("resource timeout must be positive and finite")
     destination = framework.report_path(output_dir, "resource-results.json")
@@ -141,12 +158,14 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
     if sys.platform != "linux" or framework.resource is None:
         result["blockers"].append("Linux GNU Time and POSIX address-space enforcement are required")
     for role, explicit, default in (("encoder", encoder, "opj_compress"),
-                                    ("decoder", decoder, "opj_decompress"), ("time", time_tool, "time")):
+                                    ("decoder", decoder, "opj_decompress"), ("time", time_tool, "time"),
+                                    ("ht_encoder", ht_encoder, os.environ.get("OPENJPH_ENCODER") or "ojph_compress"),
+                                    ("ht_decoder", ht_decoder, os.environ.get("OPENJPH_DECODER") or "ojph_expand")):
         resolved = shutil.which(str(explicit or default))
         if resolved is None:
-            if explicit is not None:
-                raise FileNotFoundError(f"configured resource {role} is unavailable: {explicit}")
-            result["blockers"].append(f"resource tool unavailable: {default}")
+            if explicit is not None or (role.startswith("ht_") and os.environ.get("OPENJPH_" + role[3:].upper())):
+                raise FileNotFoundError(f"configured resource {role} is unavailable: {explicit or default}")
+            result["blockers"].append(f"resource {role} unavailable: {default}")
         else:
             result["tools"][role] = {"path": resolved, "sha256": framework.sha256_file(Path(resolved))}
     if result["blockers"]:
@@ -208,26 +227,40 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
                 result["records"].append(record)
                 return record
 
-            for label, size, channels, precision in (
-                ("gray-1024", 1024, 1, 8), ("rgb-512", 512, 3, 8), ("rgb16-512", 512, 3, 16),
+            for label, size, channels, precision, high_throughput in (
+                ("gray-1024", 1024, 1, 8, False), ("rgb-512", 512, 3, 8, False),
+                ("rgb16-512", 512, 3, 16, False), ("ht-rgb16-512", 512, 3, 16, True),
             ):
                 case = numerical.NumericalCase(label, width=size, height=size, channels=channels, precision=precision)
                 suffix = "ppm" if channels == 3 else "pgm"
                 source, encoded = work / f"{label}.{suffix}", work / f"{label}.j2k"
                 source.write_bytes(numerical.source_image(case))
-                numerical._run_checked([tools["encoder"]["path"], "-i", str(source), "-o", str(encoded),
-                                        "-n", "3", "-t", "128,128"], timeout_seconds)
+                encode = tools["ht_encoder" if high_throughput else "encoder"]["path"]
+                decode = tools["ht_decoder" if high_throughput else "decoder"]["path"]
+                encoding_options = (["-num_decomps", "2", "-reversible", "true", "-tile_size", "{128,128}"]
+                                    if high_throughput else ["-n", "3", "-t", "128,128"])
+                numerical._run_checked([encode, "-i", str(source), "-o", str(encoded), *encoding_options], timeout_seconds)
+                if high_throughput:
+                    _validate_ht_resource_headers(encoded.read_bytes(), size)
+                full_reference = work / f"{label}-full-reference.{suffix}"
+                numerical._run_checked([decode, "-i", str(encoded), "-o", str(full_reference)], timeout_seconds)
+                full_expected = framework.parse_pnm(full_reference)
+                if framework.normalized_hash(full_expected) != framework.normalized_hash(framework.parse_pnm(source)):
+                    raise ValueError("independent resource fixture failed its lossless self-roundtrip")
                 records = []
                 for mode, reference_options, selection in (
                     ("full", [], None), ("tile0", ["-d", "0,0,128,128"], ["0", "0", "all"]),
-                    ("native2", ["-r", "2"], ["2", "all", "all"]),
+                    ("native2", ["-skip_res" if high_throughput else "-r", "2"], ["2", "all", "all"]),
                 ):
-                    reference = work / f"{label}-{mode}.{suffix}"
-                    numerical._run_checked([tools["decoder"]["path"], "-i", str(encoded), "-o", str(reference),
-                                            *reference_options], timeout_seconds)
-                    expected = framework.parse_pnm(reference)
-                    if mode == "full" and framework.normalized_hash(expected) != framework.normalized_hash(framework.parse_pnm(source)):
-                        raise ValueError("independent resource fixture failed its lossless self-roundtrip")
+                    if mode == "full":
+                        expected = full_expected
+                    elif high_throughput and mode == "tile0":
+                        expected = framework.crop_image(full_expected, (0, 0, size, size), (0, 0, 128, 128))
+                    else:
+                        reference = work / f"{label}-{mode}.{suffix}"
+                        numerical._run_checked([decode, "-i", str(encoded), "-o", str(reference),
+                                                *reference_options], timeout_seconds)
+                        expected = framework.parse_pnm(reference)
                     command = [str(executable), "select" if selection else "decode", "raw", str(encoded),
                                *(selection or [])]
                     records.append(run_case(f"{label}-{mode}", command, encoded, expected, selected=selection is not None))

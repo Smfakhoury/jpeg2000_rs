@@ -20,25 +20,7 @@ def native_rectangle(rectangle, discard):
     return tuple((value + scale - 1) // scale for value in rectangle)
 
 
-def crop_image(observation, frame, rectangle, sampling=(1, 1)):
-    x0, y0, x1, y1 = rectangle
-    result = copy.deepcopy(observation)
-    result["image"]["width"] = x1 - x0
-    result["image"]["height"] = y1 - y0
-    for component in result["image"]["components"]:
-        width = component["width"]
-        samples = component["samples"]
-        sx, sy = sampling
-        cx0, cy0 = (frame[0] + sx - 1) // sx, (frame[1] + sy - 1) // sy
-        left, right = (x0 + sx - 1) // sx, (x1 + sx - 1) // sx
-        top, bottom = (y0 + sy - 1) // sy, (y1 + sy - 1) // sy
-        component["samples"] = [
-            samples[(y - cy0) * width + x - cx0]
-            for y in range(top, bottom) for x in range(left, right)
-        ]
-        component["width"] = right - left
-        component["height"] = bottom - top
-    return result
+crop_image = framework.crop_image
 
 
 class SelectionTests(unittest.TestCase):
@@ -227,6 +209,17 @@ class SelectionTests(unittest.TestCase):
                     channels=channels, lossless=lossless,
                     maximum_error=0 if lossless else 1, maximum_rmse=0 if lossless else 0.25,
                 ), True, origin, tiled)
+
+    @unittest.skipUnless(shutil.which(os.environ.get("OPENJPH_ENCODER", "ojph_compress"))
+                         and shutil.which(os.environ.get("OPENJPH_DECODER", "ojph_expand")),
+                         "independent OpenJPH tools are not installed")
+    def test_ht_rgb16_transform_modes_at_nonzero_tiled_origins(self):
+        for transform in ("true", "false"):
+            with self.subTest(transform=transform):
+                self.check_case(numerical.NumericalCase(
+                    f"ht-rgb16-origin-{transform}", width=47, height=35, format="jph",
+                    precision=16, channels=3, options=("-colour_trans", transform),
+                ), True, (3, 5), True)
 
     @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
                          "independent OpenJPEG tools are not installed")
