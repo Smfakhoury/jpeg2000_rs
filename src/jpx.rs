@@ -2117,7 +2117,11 @@ fn composite_placed_layer(
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant color_index <= output_colors.len(),
+                    invariant
+                        color_index <= output_colors.len(),
+                        output_alpha_numerator as nat
+                            == crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
+                        output_alpha_numerator <= 4294836225,
                     decreases output_colors.len() - color_index,
                 )
             )]
@@ -2149,6 +2153,13 @@ fn composite_placed_layer(
                     color_numerator,
                     output_alpha_numerator,
                 );
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(output_sample <= 65535);
+                    assert(output_sample as nat == crate::specs::part2_source_over_color_sample(
+                        source_sample, destination_sample, source_alpha, destination_alpha, premultiplied,
+                    ));
+                }
                 let destination_samples = output_colors
                     .get_mut(color_index)
                     .ok_or_else(invalid_layer)?;
@@ -2158,12 +2169,19 @@ fn composite_placed_layer(
                     u16::try_from(output_sample).map_err(|_| arithmetic_overflow())?;
                 color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            let alpha = crate::refinement::source_over_rounded_ratio(
+                output_alpha_numerator,
+                u64::from(u16::MAX),
+            );
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(alpha <= 65535);
+                assert(alpha as nat == crate::specs::part2_source_over_alpha_sample(
+                    source_alpha, destination_alpha,
+                ));
+            }
             output_alpha[destination_index] =
-                u16::try_from(crate::refinement::source_over_rounded_ratio(
-                    output_alpha_numerator,
-                    u64::from(u16::MAX),
-                ))
-                .map_err(|_| arithmetic_overflow())?;
+                u16::try_from(alpha).map_err(|_| arithmetic_overflow())?;
             let pixel_work = (output_colors.len() as u64)
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
@@ -2358,6 +2376,120 @@ mod tests {
     };
 
     #[test]
+    fn placed_source_over_samples_match_wide_rational_rounding_and_preserve_guards() {
+        let maximum = u128::from(u16::MAX);
+        let nearest = |numerator: u128, denominator: u128| {
+            if denominator == 0 {
+                0
+            } else {
+                u16::try_from(
+                    numerator / denominator
+                        + u128::from(2 * (numerator % denominator) >= denominator),
+                )
+                .unwrap()
+            }
+        };
+        let instruction = JpxInstructionInfo {
+            layer_index: 0,
+            target_x: 1,
+            target_y: 0,
+            target_width: 5,
+            target_height: 1,
+            source_x: 0,
+            source_y: 0,
+            source_width: 0,
+            source_height: 0,
+            persistent: true,
+            next_reuse: 0,
+        };
+        for premultiplied in [false, true] {
+            let samples = if premultiplied {
+                vec![0, 1, 16_384, 12_345, 0]
+            } else {
+                vec![u16::MAX, 1, 32_767, 12_345, 0]
+            };
+            let source_alpha = vec![0, 1, 32_768, u16::MAX, 32_767];
+            let mut source = OwnedLayer {
+                width: 5,
+                height: 1,
+                color_space: ConvertedColorSpace::Grayscale,
+                colors: vec![samples.clone()],
+                alpha: Some((source_alpha.clone(), premultiplied)),
+            };
+            let before_colors = vec![
+                vec![7, u16::MAX, 3, 32_768, 34_567, 60_000, 11],
+                vec![13, 1, u16::MAX, 123, 45_678, 2, 19],
+                vec![17, 32_767, 1, 54_321, 0, u16::MAX, 23],
+            ];
+            let before_alpha = vec![17, 0, u16::MAX, 32_767, 0, 12_345, 19];
+            let mut colors = before_colors.clone();
+            let mut alpha = before_alpha.clone();
+            let mut work = 0;
+            composite_placed_layer(
+                7,
+                1,
+                ConvertedColorSpace::Srgb,
+                &source,
+                instruction,
+                &mut colors,
+                &mut alpha,
+                &mut work,
+                &ResourceLimits::default(),
+            )
+            .unwrap();
+            assert_eq!(work, 20);
+            for index in 0..7 {
+                if index == 0 || index == 6 {
+                    assert_eq!(alpha[index], before_alpha[index]);
+                    for channel in 0..3 {
+                        assert_eq!(colors[channel][index], before_colors[channel][index]);
+                    }
+                    continue;
+                }
+                let a = u128::from(source_alpha[index - 1]);
+                let d = u128::from(before_alpha[index]);
+                let alpha_numerator = a * maximum + d * (maximum - a);
+                assert_eq!(alpha[index], nearest(alpha_numerator, maximum));
+                for channel in 0..3 {
+                    let s = u128::from(samples[index - 1]);
+                    let c = u128::from(before_colors[channel][index]);
+                    let source_term = if premultiplied {
+                        s * maximum * maximum
+                    } else {
+                        s * a * maximum
+                    };
+                    assert_eq!(
+                        colors[channel][index],
+                        nearest(source_term + c * d * (maximum - a), alpha_numerator)
+                    );
+                }
+            }
+            if premultiplied {
+                source.colors[0][0] = 1;
+                let before_invalid_colors = colors.clone();
+                let before_invalid_alpha = alpha.clone();
+                assert_eq!(
+                    composite_placed_layer(
+                        7,
+                        1,
+                        ConvertedColorSpace::Srgb,
+                        &source,
+                        instruction,
+                        &mut colors,
+                        &mut alpha,
+                        &mut work,
+                        &ResourceLimits::default(),
+                    ),
+                    Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents)),
+                );
+                assert_eq!(colors, before_invalid_colors);
+                assert_eq!(alpha, before_invalid_alpha);
+                assert_eq!(work, 20);
+            }
+        }
+    }
+
+    #[test]
     fn source_over_alpha_bounds_cover_every_source_alpha() {
         let maximum = u64::from(u16::MAX);
         for source_alpha in 0..=u16::MAX {
@@ -2368,6 +2500,7 @@ mod tests {
                 assert_eq!(u128::from(numerator), expected);
                 assert!(numerator <= maximum * maximum);
                 assert_eq!(numerator == 0, source_alpha == 0 && destination_alpha == 0);
+                assert!(source_over_rounded_ratio(numerator, maximum) <= u128::from(u16::MAX));
             }
         }
     }
@@ -2469,6 +2602,12 @@ mod tests {
                     n / d + u128::from(2 * (n % d) >= d)
                 };
                 assert_eq!(actual, expected);
+                if denominator > 0 {
+                    let n = u128::from(numerator);
+                    let d = u128::from(denominator);
+                    assert!(2 * d * actual <= 2 * n + d);
+                    assert!(2 * n < 2 * d * actual + d);
+                }
             }
         }
         assert_eq!(source_over_rounded_ratio(1, 2), 1);

@@ -448,6 +448,10 @@ the existing release harness.
 specification, executable contract, proof/view, and test references. Its
 validator checks every present item, including contracts that ensure a listed
 spec and are called by the claimed implementation. Shadow-only links fail.
+For scalar contracts it recognizes both `ensures returns (...)` and a named
+return value whose natural-number equality directly names a listed model.
+An unrelated return binder or a mere model mention does not satisfy the latter
+form. This is a conservative source-link check, not a replacement for Verus.
 It does not assert exhaustive standards-clause coverage, exact progress
 counts, phase completion, or conformance.
 

@@ -238,7 +238,13 @@ def validate_normative_coverage(
             signature = signature_match.start()
             contract_start = text.rfind("#[cfg_attr", 0, signature)
             contract = text[contract_start:signature] if contract_start >= 0 else ""
-            if "verus_spec(" not in contract or "ensures returns" not in contract:
+            named_result = re.search(
+                r"\bverus_spec\(\s*(\w+)\s*=>\s*ensures\s+\1\s+as\s+nat\s*==\s*crate::specs::(\w+)\s*\(",
+                contract,
+            )
+            if ("verus_spec(" not in contract
+                    or not ("ensures returns" in contract
+                            or (named_result is not None and named_result[2] in spec_symbols))):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")
             if not any(re.search(rf"\b{re.escape(symbol)}\b", contract) for symbol in spec_symbols):
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")

@@ -74,7 +74,7 @@ Read each contract according to its inputs and postcondition:
 |---|---|---|
 | Stream and packet accounting | Consumed offsets, declared lengths, ordering and bounded claims | That accepted syntax has the intended pixel meaning in every standard edition |
 | Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
-| JPX source-over arithmetic | Exact 16-bit alpha/color numerators and nearest-integer division, with ties rounded upward and zero output for zero alpha | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
+| JPX source-over arithmetic | Exact natural-valued numerators and rounded scalar color/alpha results, proved in the 16-bit range at production conversion sites, with upward ties and transparent zero | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
@@ -87,9 +87,21 @@ numerator at most `65535 * alpha_numerator` for straight samples or valid
 premultiplied samples (`color <= alpha`). The division model establishes the
 nearest-integer interval, including upward ties, for every positive denominator.
 The executable division widens to `u128`, including for full-width `u64` inputs.
-Caller rejection of invalid premultiplied samples and checked output conversions
-remain in place. Independent rational-oracle composition tests are separate
-numerical evidence, not a formal theorem about the entire compositor.
+The helper postconditions identify their actual return values as natural
+numbers, without truncating the models to machine words. Numerator bounds and
+the nearest-integer interval are exposed in these executable contracts; a
+proved bounded numerator also yields a rounded result at most `65535`.
+
+The production placed-layer color loop retains the alpha numerator relation
+as an invariant. After rejecting invalid premultiplied samples, proof assertions
+establish that each computed color and alpha result equals its composed scalar
+model and fits `u16`, immediately before the existing checked conversions.
+This connects the scalar models to production values, not just standalone
+arithmetic lemmas. It does not specify the entire mutable canvas, prove all
+index/channel selections semantically correct, or establish a layer/frame
+composition theorem. Caller rejection and checked conversions remain in place.
+Independent rational-oracle composition tests are separate numerical evidence,
+not a formal theorem about the entire compositor.
 
 The `decode_output_shape_valid` and `component_output_shape_valid` helpers are
 structural checks, not a codestream-to-pixel denotation theorem. Neither the

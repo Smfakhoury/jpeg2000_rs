@@ -1166,8 +1166,9 @@ pub(crate) const fn inverse_alpha(source_alpha: u16) -> u16 {
 
 #[cfg_attr(
     verus_keep_ghost,
-    verus_spec(
-        ensures returns (crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha) as u64),
+    verus_spec(output =>
+        ensures output as nat == crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
+            output <= 4294836225,
     )
 )]
 pub(crate) const fn source_over_alpha_numerator(source_alpha: u16, destination_alpha: u16) -> u64 {
@@ -1178,16 +1179,21 @@ pub(crate) const fn source_over_alpha_numerator(source_alpha: u16, destination_a
     proof! {
         crate::proofs::production_impl::production_source_over_term_bounds(source, 65535, 0);
         crate::proofs::production_impl::production_source_over_term_bounds(destination, inverse, 0);
+        crate::proofs::spec_properties::source_over_numerators_are_bounded(
+            0, 0, source_alpha, destination_alpha, false,
+        );
     }
     source * 65_535 + destination * inverse
 }
 
 #[cfg_attr(
     verus_keep_ghost,
-    verus_spec(
-        ensures returns (crate::specs::part2_source_over_color_numerator(
-            source, destination, source_alpha, destination_alpha, premultiplied,
-        ) as u64),
+    verus_spec(output =>
+        ensures output as nat == crate::specs::part2_source_over_color_numerator(
+                source, destination, source_alpha, destination_alpha, premultiplied,
+            ),
+            (!premultiplied || source <= source_alpha) ==> output as nat
+                <= 65535 * crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha),
     )
 )]
 pub(crate) const fn source_over_color_numerator(
@@ -1197,6 +1203,14 @@ pub(crate) const fn source_over_color_numerator(
     destination_alpha: u16,
     premultiplied: bool,
 ) -> u64 {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        if !premultiplied || source <= source_alpha {
+            crate::proofs::spec_properties::source_over_numerators_are_bounded(
+                source, destination, source_alpha, destination_alpha, premultiplied,
+            );
+        }
+    }
     let source = source as u64;
     let destination = destination as u64;
     let inverse = inverse_alpha(source_alpha) as u64;
@@ -1218,11 +1232,24 @@ pub(crate) const fn source_over_color_numerator(
 
 #[cfg_attr(
     verus_keep_ghost,
-    verus_spec(
-        ensures returns (crate::specs::part2_source_over_rounded_ratio(numerator, denominator) as u128),
+    verus_spec(output =>
+        ensures output as nat == crate::specs::part2_source_over_rounded_ratio(numerator, denominator),
+            denominator == 0 ==> output == 0,
+            denominator > 0 ==> 2 * ((denominator as nat) * (output as nat))
+                <= 2 * (numerator as nat) + denominator as nat,
+            denominator > 0 ==> 2 * (numerator as nat)
+                < 2 * ((denominator as nat) * (output as nat)) + denominator as nat,
+            numerator as nat <= 65535 * (denominator as nat) ==> output <= 65535,
     )
 )]
 pub(crate) const fn source_over_rounded_ratio(numerator: u64, denominator: u64) -> u128 {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::source_over_rounding_is_nearest(numerator, denominator);
+        if numerator as nat <= 65535 * (denominator as nat) {
+            crate::proofs::spec_properties::source_over_rounding_preserves_sample_bound(numerator, denominator);
+        }
+    }
     if denominator == 0 {
         0
     } else {
