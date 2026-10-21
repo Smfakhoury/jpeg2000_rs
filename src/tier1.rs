@@ -4939,13 +4939,16 @@ mod tests {
 
     #[test]
     fn reconstructs_capability_b74_magnitude_without_narrowing() {
-        let bytes = [0_u8; 10];
+        let mut bytes = [0_u8; 10];
+        bytes[9] = 0x04;
         let mut reader = HtForwardMagSgnReader::new(&bytes, &ResourceLimits::default()).unwrap();
         let (magnitude, negative, exponent) =
             reconstruct_ht_magnitude(&mut reader, 75, false, false, 1).unwrap();
         assert!(!negative);
-        assert_eq!(exponent, 1);
-        assert_eq!(magnitude.to_u64(), Some(1));
+        assert_eq!(exponent, 75);
+        assert_eq!(magnitude.low_u64(), 1);
+        assert_eq!(magnitude.limb(1), Some(512));
+        assert_eq!(magnitude.to_u64(), None);
         assert_eq!(reader.physical_bits_read(), 75);
         assert!(complete_ht_kappa(1, 1, 0, 0, 76).is_err());
         assert!(reconstruct_ht_magnitude(&mut reader, 76, false, false, 1).is_err());
