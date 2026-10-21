@@ -134,13 +134,21 @@ It also exercises 256-by-256 grayscale/RGB images with multiple code-blocks.
 Cases cover grayscale/RGB, raw/JP2, tiles and nonzero origins, multiple quality
 layers, progression orders, every legacy coding-style flag, SOP/EPH/PLT, and
 reversible/irreversible transforms.
-PGX cases add signed 8/9/12/16/17/24-bit and unsigned 12/20/24-bit samples,
+PGX observations add signed 1/2/4/7/8/9/12/16/17/24-bit and unsigned
+1/2/4/7/12/20/24-bit samples,
 including signed JP2, odd geometry, tiled nonzero origins, vertical causality,
 and layered raw-bypass coding. PGX storage uses one byte through 8 bits, two
 through 16 bits, and four through 32 bits; nominal precision and signedness
 remain separate metadata and are checked exactly. Both PGX byte orders,
 payload lengths, declared ranges and the decoder's indexed component filenames
 are validated.
+For the selected sub-8-bit cases, PGX remains the original/reference format,
+but the encoder receives unsigned RAW sample bytes with explicit precision
+through `-F`. The pinned PGX/PNM input converters promote those inputs to
+8 bits, so their direct output is not substituted for the intended low-bit
+image. RAW inputs preserve the actual sample words and SIZ precision.
+Reports identify `encoder_input_format`, actual input hashes and encoder
+options, separately from the original source format.
 Signed fixtures encode the offset unsigned source, whose centered transform
 coefficients are identical, then author the signed SIZ flag and matching JP2
 bit-depth flag. This avoids PGX input converters that recompute precision from
@@ -149,12 +157,21 @@ original signed source from the actual unsigned encoder input and identify
 authored headers. No coefficient or packet-body bytes are changed. The
 independent decoder must still reproduce the original signed metadata and
 samples exactly; a rewritten header alone cannot qualify a fixture.
+Selected signed/unsigned 25-bit profiles qualify at zero DWT decomposition,
+including layered raw-bypass, odd tiled geometry and signed JP2. Main-header
+segments are traversed by their lengths, including inside JP2 wrappers.
+The actual COD decomposition level must match the case; declared quality-layer
+and coding-style options are also checked against COD. Marker-like bytes
+inside comments do not satisfy required RGN/NLT checks.
 Lossless cases must reproduce the original and reference samples bit for bit.
 The generated stream must first independently decode to the original geometry,
 precision, signedness and samples; a changed reference is a failure, not a new
 expected image. PGX origin cases use equal nonzero offsets; asymmetric origins
-remain covered by the PNM cases. The generated PGX matrix does not qualify
-signed 1-bit, precisions above 24, or high-precision multicomponent images.
+remain covered by the PNM cases. The generated matrix does not qualify
+25-bit DWT transforms, precisions above 25, every intermediate precision/style,
+or high-precision multicomponent images. Wider full-range probes that failed
+the independent original/reference roundtrip were not adopted as expected
+outputs or successful cases.
 The layered bypass case also covers a zero-byte contribution completing a
 buffered MQ segment. Such a continuation must retain and replay its bounded
 prefix; it does not make an empty initial legacy segment valid.

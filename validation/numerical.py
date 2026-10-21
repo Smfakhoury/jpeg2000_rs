@@ -74,6 +74,17 @@ CASES = (
     NumericalCase("gray12-lossless", precision=12),
     NumericalCase("gray20-lossless", precision=20),
     NumericalCase("gray24-jp2", precision=24, format="jp2"),
+    *(NumericalCase(
+        f"{'signed' if signed else 'gray'}{precision}-{'jp2' if signed and precision == 1 else 'lossless'}",
+        precision=precision, signed=signed, format="jp2" if signed and precision == 1 else "raw",
+    ) for precision in (1, 2, 4, 7) for signed in (False, True)),
+    NumericalCase("gray25-zero-dwt-layers", precision=25, decomposition_levels=0,
+                  options=("-r", "8,3,1", "-M", "1")),
+    NumericalCase("signed25-zero-dwt-jp2", precision=25, signed=True, decomposition_levels=0, format="jp2"),
+    NumericalCase("gray25-zero-dwt-tiles", precision=25, decomposition_levels=0, width=33, height=29,
+                  options=("-t", "16,16", "-d", "3,3")),
+    NumericalCase("signed25-zero-dwt-layers", precision=25, signed=True, decomposition_levels=0,
+                  options=("-r", "8,3,1", "-M", "1")),
     NumericalCase("roi-gray-shift3", options=("-ROI", "c=0,U=3")),
     NumericalCase("roi-gray16-shift3", precision=16, options=("-ROI", "c=0,U=3")),
     NumericalCase("roi-rgb-component0", channels=3, options=("-ROI", "c=0,U=3")),
@@ -229,7 +240,63 @@ def signed_codestream(data: bytes, precision: int) -> bytes:
     return data[:42] + bytes((data[42] | 0x80,)) + data[43:]
 
 
+def _main_header_segments(data: bytes) -> list[tuple[int, bytes]]:
+    if not data.startswith(b"\xff\x4f"):
+        if not data.startswith(b"\x00\x00\x00\x0cjP  \x0d\x0a\x87\x0a"):
+            raise ValueError("reference fixture requires a raw codestream or JP2 wrapper")
+        offset = 0
+        while offset < len(data):
+            if offset + 8 > len(data):
+                raise ValueError("truncated reference container box")
+            length = int.from_bytes(data[offset:offset + 4], "big")
+            kind = data[offset + 4:offset + 8]
+            header = 8
+            if length == 1:
+                if offset + 16 > len(data):
+                    raise ValueError("truncated extended reference container box")
+                length = int.from_bytes(data[offset + 8:offset + 16], "big")
+                header = 16
+            elif length == 0:
+                length = len(data) - offset
+            if length < header or offset + length > len(data):
+                raise ValueError("invalid reference container box length")
+            if kind == b"jp2c":
+                data = data[offset + header:offset + length]
+                break
+            offset += length
+        else:
+            raise ValueError("reference container has no codestream")
+    if not data.startswith(b"\xff\x4f"):
+        raise ValueError("reference codestream has no SOC marker")
+    segments = []
+    offset = 2
+    while offset + 2 <= len(data):
+        marker = int.from_bytes(data[offset:offset + 2], "big")
+        if marker == 0xff90:
+            return segments
+        if marker >> 8 != 0xff or offset + 4 > len(data):
+            raise ValueError("invalid or truncated reference main-header marker")
+        length = int.from_bytes(data[offset + 2:offset + 4], "big")
+        if length < 2 or offset + 2 + length > len(data):
+            raise ValueError("invalid reference main-header segment length")
+        segments.append((marker, data[offset + 4:offset + 2 + length]))
+        offset += 2 + length
+    raise ValueError("reference codestream has no tile-part marker")
+
+
 def validate_required_headers(case: NumericalCase, data: bytes) -> list[str]:
+    segments = _main_header_segments(data)
+    coding = [payload for marker, payload in segments if marker == 0xff52]
+    if len(coding) != 1 or len(coding[0]) < 10 or coding[0][5] != case.decomposition_levels:
+        raise ValueError("independent encoder omitted the required COD decomposition level")
+    for option, actual in (("-r", int.from_bytes(coding[0][2:4], "big")), ("-M", coding[0][8])):
+        if option in case.options:
+            position = case.options.index(option) + 1
+            if position >= len(case.options):
+                raise ValueError(f"fixture is missing its {option} argument")
+            expected = len(case.options[position].split(",")) if option == "-r" else int(case.options[position])
+            if actual != expected:
+                raise ValueError(f"independent encoder omitted the required {option} coding setting")
     required = []
     if "-ROI" in case.options:
         index = case.options.index("-ROI") + 1
@@ -243,7 +310,7 @@ def validate_required_headers(case: NumericalCase, data: bytes) -> list[str]:
         required.append(("component-maxshift", framework.segment(0xff5e, payload)))
     if case.sample_representation == "ieee754-binary32-bits":
         required.append(("binary-complement-nlt", framework.segment(0xff76, b"\xff\xff\x9f\x03")))
-    header = data.split(b"\xff\x90", 1)[0]
+    header = {framework.segment(marker, payload) for marker, payload in segments}
     for name, segment in required:
         if segment not in header:
             raise ValueError(f"independent encoder omitted the required {name} header")
@@ -409,6 +476,14 @@ def run_numerical(
                     shifted_case = replace(case, signed=False, samples=shifted_samples)
                     encoder_source = source.with_name(source.stem + "-unsigned." + source_extension(shifted_case))
                     encoder_source.write_bytes(source_image(shifted_case))
+                if case.codestream is None and not high_throughput and case.precision < 8:
+                    component = framework.parse_pgx(encoder_source)["image"]["components"][0]
+                    if component["signed"] or component["precision"] != case.precision:
+                        raise ValueError("low-bit RAW encoder input requires matching unsigned PGX samples")
+                    encoder_source = source.with_name(source.stem + "-encoder.raw")
+                    encoder_source.write_bytes(bytes(component["samples"]))
+                    record["encoder_options"] += ["-F", f"{case.width},{case.height},1,{case.precision},u"]
+                record["encoder_input_format"] = encoder_source.suffix[1:] if case.codestream is None else None
                 record["encoder_input_sha256"] = (framework.sha256_file(encoder_source)
                                                   if case.codestream is None else None)
                 try:

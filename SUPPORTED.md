@@ -46,8 +46,10 @@ Every feature is subject to resource, geometry, numeric-range, and profile
 validation. A list of implemented code paths is not an independent proof that
 every normative requirement of their standard editions is represented.
 The independent generated legacy numerical suite covers selected signed
-8/9/12/16/17/24-bit monochrome profiles and unsigned 8/12/16/20/24-bit profiles;
-its RGB cases remain unsigned 8/16-bit. This evidence does not qualify the
+1/2/4/7/8/9/12/16/17/24-bit monochrome profiles and unsigned
+1/2/4/7/8/12/16/20/24-bit profiles. Selected signed/unsigned 25-bit cases are
+qualified only at zero DWT decomposition, including tiled, layered and JP2
+variants. Its RGB cases remain unsigned 8/16-bit. This evidence does not qualify the
 entire implemented 1..38-bit range. See [validation](validation/VALIDATION.md)
 for exact cases, metadata checks, reference-roundtrip guards and limitations.
 Independent fixtures also check selected component-wide Maxshift upshifts and
