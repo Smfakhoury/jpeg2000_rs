@@ -158,7 +158,11 @@ authored headers. No coefficient or packet-body bytes are changed. The
 independent decoder must still reproduce the original signed metadata and
 samples exactly; a rewritten header alone cannot qualify a fixture.
 Selected signed/unsigned 25-bit profiles qualify at zero DWT decomposition,
-including layered raw-bypass, odd tiled geometry and signed JP2. Main-header
+including layered raw-bypass, odd tiled geometry and signed JP2.
+Selected RGB16 reversible cases cover enabled and disabled component
+transforms at two decompositions. A separate RGB16 irreversible case retains
+fixed ceilings of 8 samples maximum error and 2.0 worst-component RMSE.
+Main-header
 segments are traversed by their lengths, including inside JP2 wrappers.
 The actual COD decomposition level must match the case; declared quality-layer
 and coding-style options are also checked against COD. Marker-like bytes
@@ -167,9 +171,9 @@ Lossless cases must reproduce the original and reference samples bit for bit.
 The generated stream must first independently decode to the original geometry,
 precision, signedness and samples; a changed reference is a failure, not a new
 expected image. PGX origin cases use equal nonzero offsets; asymmetric origins
-remain covered by the PNM cases. The generated matrix does not qualify
+remain covered by the PNM cases. The legacy generated matrix does not qualify
 25-bit DWT transforms, precisions above 25, every intermediate precision/style,
-or high-precision multicomponent images. Wider full-range probes that failed
+or multicomponent precision above 16 bits. Wider full-range probes that failed
 the independent original/reference roundtrip were not adopted as expected
 outputs or successful cases.
 The layered bypass case also covers a zero-byte contribution completing a
@@ -299,6 +303,16 @@ engineering ceiling of 8 samples maximum error and 2.0 worst-component RMSE
 against the independent output; these are not official conformance tolerances.
 Region/tile/tile-set/native-resolution tests separately exercise both lossless
 transform modes at asymmetric nonzero tiled origins, including JPH.
+
+Selected signed and unsigned monochrome 25-, 26-, 28- and 31-bit HT cases
+additionally cover full-range samples at two reversible decompositions.
+Canonical PGX sources and native little-endian RAW encoder inputs have
+separate hashes and signedness provenance; the RAW path is not described as
+authored signed metadata. Actual SIZ geometry, component precision/sign and
+sampling, and COD decomposition/wavelet/component-transform fields must match
+the declared case. This does not qualify full-range zero-DWT encoding at those
+precisions or multicomponent precision above 16 bits; unsuccessful
+original/reference probes are not installed as passing or skipped cases.
 
 For live lossless encoding, the reference's decoded samples must match the
 original source before the subject runs. A reference self-roundtrip failure
