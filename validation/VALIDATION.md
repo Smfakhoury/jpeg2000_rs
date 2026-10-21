@@ -473,6 +473,9 @@ are safe representatives, not allocations at the production maxima.
 | `jpip-ht-fragments` | same geometry and fragmentation, true HT payload | reconstruction bytes and exact decoded image |
 | `declared-*` | tiny declarations exceeding default width, height, component, tile, layer, JPX-codestream or JPIP-fragment-offset limits | exact typed early rejections |
 
+The implementation adds 16 positive observations and seven early rejections
+to the 22-case baseline: 45 cases and 135 final measurements, in addition to
+the unchanged four bounded searches (104 probes for these baseline fixtures).
 Every final observation is repeated three times. Existing full/selection/
 rejection wall/RSS caps, selection/full RSS ratio <=0.75, child address space
 <=1 GiB, file <=32 MiB, captured output <=16 MiB and aggregate native wall
@@ -482,6 +485,18 @@ without truncation. Unsupported reference formats and original/reference
 disagreements remain unqualified failures, never substituted expectations.
 No giant maximum-sized stream, unbounded stress, fuzz-limit replacement or
 cap tuning is authorized by this matrix.
+
+The eight-component case uses independently encoded planar unsigned16 raw
+samples (`-mct 0`), with each original plane compared exactly against an
+independent PGX decode. Other positive payloads likewise require exact
+original/reference agreement and checked SIZ/COD geometry, precision,
+component count, tiling and layer count; HT additionally requires CAP/style
+signaling. JPX metadata is first-party authored, not third-party composition
+evidence. Its opaque full-canvas foreground expectation is calculated from
+the qualified source samples with an explicit RGBA16 alpha plane. JPIP checks
+both the reconstructed codestream hash and decoded sample hash, with no
+replacement by subject-derived expectations. A reference disagreement is
+retained as an unqualified failure with source/encoded/reference artifacts.
 
 The existing harness exposes configured byte/work limits only for codestream
 decoding, not selection, JPX composition or JPIP reconstruction. The four
@@ -510,10 +525,12 @@ Each accepted frontier and the budget one unit below it are then rerun three
 times. The lower budget must report the exact configured resource/limit and an
 excessive claim; process failure or a different typed error cannot qualify.
 
-Each of the twenty-two final cases is measured three times. Every search probe
+Each of the forty-five final cases is measured three times. Every search probe
 also retains its budget, wall time, peak RSS, return code and exact output hash
 or typed limit claim. GNU Time reports actual peak
-process RSS; the bounded runner measures wall time including process startup
+instrumented-subject process RSS and user/system CPU time (seconds converted
+to milliseconds, with the tool's native 0.01-second CPU granularity, so short
+calls can report zero CPU). The bounded runner measures wall time including process startup
 and image-observation serialization. The engineering thresholds are:
 
 | Case | Maximum time per process | Maximum peak RSS |
@@ -522,7 +539,11 @@ and image-observation serialization. The engineering thresholds are:
 | Tile/native-resolution selection | 2.5 seconds | 256 MiB |
 | Early typed rejection | 1 second | 128 MiB |
 
-Aggregate measured native time, including search probes, is limited to 30 seconds.
+Aggregate measured native wall time, including search probes, is limited to 30 seconds.
+User CPU, system CPU and their sum are aggregated separately, not inferred from
+wall time or work units. These aggregates exclude reference fixture generation
+and the Python driver's image comparison; peak RSS is not a sum over the
+driver/reference/subject process tree.
 Search probes obey the same per-process thresholds as their accepted-frontier
 case. Tile-zero peak RSS
 must be at least 25 percent lower than full decode for each generated image.
@@ -535,13 +556,28 @@ for every decoder path, nor a universal minimum budget. A decoded-byte limit
 controls accounted decoder claims, not total process RSS. Work units are an
 implementation accounting threshold, not a CPU-time or instruction count.
 These finite fixtures do not characterize all production-default or worst-case
-inputs, high-component layouts, broader HT/container paths or every supported platform.
+inputs, every high-component/precision/HT/container combination or every supported platform.
 
-Resource report schema version 2 records configured budgets, finite search
-evidence and the separate repeated frontier observations.
+Resource report schema version 3 records the declared matrix, original/reference
+qualification hashes (including source/reference files), CPU measurements,
+default typed declaration claims, exact JPIP reconstructed-byte hashes,
+configured budgets, finite search evidence and repeated frontier observations.
+The runner rejects omitted/duplicate cases, changed declarations, mismatched
+hashes/CPU aggregates and absent adjacent search observations. Schema checks
+also fix the original wall/RSS/aggregate/process caps rather than accepting
+report-specific relaxed values.
 `resource-results.json` retains source/tool/input/output hashes, repetitions,
 individual observations, median times, peak RSS, thresholds and explicit
-failures. Unavailable default tooling/platform support blocks the gate;
+failures. Positive records also report typed-output/input-byte expansion and
+peak-RSS/typed-output-byte ratios, and tile cases report selection/full RSS.
+These are diagnostic amplification ratios, not new resource guarantees or
+post-measurement thresholds. The larger grayscale fixture exercises
+whole-image output/serialization growth; the 256-tile fixture makes fixed
+per-process/tile metadata overhead visible even for tiny selected outputs;
+HT JPIP additionally exercises reconstruction/hex-observation storage.
+Their exact-output, unchanged RSS/time and tile/full-ratio gates are actionable
+regressions without pretending typed output accounts for those other costs.
+Unavailable default tooling/platform support blocks the gate;
 explicitly configured missing tools and absent measurements cannot pass.
 Failed inputs are preserved under ignored `resource-failures/` and uploaded
 by CI. `all` does not implicitly invoke this Linux-specific gate; CI calls it
