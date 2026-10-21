@@ -1962,6 +1962,10 @@
           "symbol": "compose_planar_pixel"
         },
         {
+          "path": "src/jpx.rs",
+          "symbol": "composite_placed_layer"
+        },
+        {
           "path": "src/refinement.rs",
           "symbol": "composition_mapped_offset"
         },
@@ -1987,6 +1991,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "render_jpx_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_decoded_layers"
         },
         {
           "path": "src/jpx.rs",
@@ -2041,6 +2049,22 @@
         {
           "path": "proofs/production_impl/mod.rs",
           "symbol": "production_composition_index_bounds"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_canvas_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_canvas_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_raster_prefix_bound"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_prefix_observation"
         }
       ],
       "spec_refs": [
@@ -2115,6 +2139,38 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part2_composition_pixel_transition"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "Part2CompositionGeometry"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_geometry"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_canvas_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_result"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_work"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_success"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_prefix_matches"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_prefix_safe"
         },
         {
           "path": "specs/mod.rs",
@@ -2193,6 +2249,18 @@
         {
           "path": "src/jpx.rs",
           "symbol": "placed_composition_preserves_empty_zero_target_and_off_canvas_behavior"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_layer_zero_width_clip_does_not_traverse_unvisited_rows"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_layer_work_rejections_preserve_post_store_order"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_layer_failures_preserve_multirow_raster_prefixes"
         },
         {
           "path": "src/jpx.rs",

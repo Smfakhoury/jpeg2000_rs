@@ -521,12 +521,20 @@ planar transitions can include multiple final outputs, with the explicit
 `part2_composition_planes(final(colors)@)` projection for nested color vectors.
 Every named mutable-reference parameter must occur in that final-state tuple;
 an omitted alpha output or a duplicate color output cannot stand in for it.
+Success-only `Result` relations must use the same named `is_ok()` value in
+both the guard and the tuple. Scalar final values, such as the work counter,
+must participate in that same relation; an unrelated guard, old counter or
+omitted output is rejected.
 Unrelated
 return binders, pre-state-only tuples, missing final-state relations and mere
 model mentions do not qualify. Functions taking mutable references must still
 provide the complete final-state relation; a bare return equality cannot replace it.
 This is a conservative source-link check, not a
 replacement for Verus.
+Same-file links are checked inside another listed, formatted function body;
+the contract's own declaration, an unrelated function or an indirect caller
+does not qualify as a direct same-file call. Unsupported formatting can fail
+this conservative check; it is not a full Rust parser.
 It does not assert exhaustive standards-clause coverage, exact progress
 counts, phase completion, or conformance.
 

@@ -79,6 +79,8 @@ Read each contract according to its inputs and postcondition:
 | JPX planar pixel gathers | The complete optional pair of stack pixels, alpha values and representation flag equals the model of the actual source/destination planes and indices, including grayscale expansion, absent source alpha and all missing-sample rejection cases | That earlier channel-map resolution is normative, or that subsequent scatter, canvas traversal or layer/frame composition is completely correct |
 | JPX planar scatter | Exact status and complete final color/alpha sequences, including the successfully written color prefix on a failed raw scatter, preserved other samples and plane lengths | That an arbitrary caller prevalidated every destination, or that an entire render is transactional |
 | Complete normalized planar pixel transition | The actual gather/evaluate/scatter status and entire final planar state equal one composed model; rejected pixel inputs leave both color and alpha state unchanged | Earlier channel normalization, complete canvas traversal, work-limit transactionality, layer/frame order or a parser-to-pixel theorem |
+| Successful placed-layer composition | On success, the complete final planar canvas state and exact work count equal a raster-prefix fold of normalized pixel transitions at the selected clipped, floor-scaled crop addresses | Complete error-state semantics, sufficient-budget success, earlier channel normalization, layer/frame ordering or a parser-to-pixel theorem |
+| All-return placed-layer prefix safety | On every return, all buffers equal a valid raster prefix, and work accounts for that prefix or all but its final stored pixel; inactive geometry leaves the complete initial state unchanged | Which prefix must fail, exact error classification, sufficient-budget success, normalization or layer/frame ordering |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
@@ -135,6 +137,52 @@ cases and the entire resulting buffers, including valid and invalid
 premultiplied samples; 864 raw-scatter cases check successful and partial
 failure states, unchanged-value stores, missing slots and extreme indices.
 The existing placed-layer rational/geometry and work-order tests remain.
+The pixel models use pure nested sample sequences. Their production contracts
+project actual vector views at the boundary, so the modeled resulting state
+can feed the next pixel without reconstructing executable vectors.
+
+The actual `composite_placed_layer` return contract is explicitly guarded by
+`result.is_ok()`. On that path it equates all final color/alpha samples and
+the final work counter with one complete placed-layer success model. The
+row/column loops retain the exact raster-prefix state and the affine charge
+`initial_work + completed_pixels * (color_channels + 1)`. The prefix model
+selects every source coordinate with the existing crop/scale equation and
+every destination with the actual row-major canvas address. Its base and
+successor lemmas are proved and invoked from the production loops; the
+recursive definition is opaque by default to bound solver expansion, not
+trusted or skipped. No verifier resource budget was increased.
+
+The cached alpha-slice/representation pair and grayscale expansion flag are
+explicitly connected to the supplied normalized layer. The alpha cache
+retains explicit option cases for that proof relation, with
+a statement-local `manual_map` style-lint allowance; verification is not
+suppressed. Empty source and
+zero-target error priority remain unchanged. Empty clipped rectangles now
+return before row traversal: a regression with `u32::MAX` unvisited rows
+must return within five seconds while preserving even unvisited malformed
+planes and an already exhausted work counter. This removes work-free empty
+row iteration without adding new accepted pixel data. Work overflow and
+work-limit rejection still occur after pixel stores, with their existing
+counter behavior; exact tests preserve that ordering. The success theorem alone
+does not specify partial buffers on `Err`, prove valid inputs always succeed,
+or establish normalization, layer/frame order or standard-edition conformance.
+An additional, unconditional placed-layer postcondition now constrains every
+return, including `Err`: the complete output buffers equal some valid prefix
+of that same raster fold. The work counter is the initial count plus either
+all stored pixels' charges or all but the last pixel's charge. The latter
+case preserves the existing checked-work-overflow behavior after a store.
+Empty source, invalid zero target and empty clipping preserve all initial
+buffers and work. A constructive prefix witness and raster bound are proved
+and used before rejection, after stores, and after charging, so no error exit
+is justified only by the success guard.
+
+This is a prefix-safety theorem, not an exact failure-position or error-cause
+model. It does not assert whole-render rollback or sufficient-budget success.
+Independent multirow RGB regressions check every work-limit cut in a six-pixel
+rectangle, a missing sample on the second row, an uncharged pixel on overflow,
+and the exact-budget success case, comparing all stored and untouched samples
+and the exact counter/error. Runtime instructions and error ordering are
+unchanged; the new witness assertions erase from Cargo builds.
 Malformed premultiplied data is rejected before destination writes for that
 pixel, including a malformed later channel. This intentionally strengthens
 the previous private intermediate-buffer behavior; public render APIs still
@@ -170,10 +218,12 @@ source-over models. Rejected transitions propagate the usual typed invalid-layer
 error; resource/work accounting remains in its original order, after successful
 pixel stores.
 
-These relations connect the complete pixel and scalar models to production mutations, not just
-standalone arithmetic lemmas. They do not specify the entire mutable canvas,
-prove all index/channel selections semantically correct, or establish a
-layer/frame composition theorem. No-change rejection of one store does not
+These relations connect the pixel models and successful placed-layer canvas
+traversal to production mutations, not just standalone arithmetic lemmas.
+They do not prove earlier channel normalization, all caller index/channel
+selections or layer/frame ordering correct. The canvas theorem covers the
+selected successful placed-layer transition, not every failing render path.
+No-change rejection of one store does not
 establish transactional failure semantics for an entire render. Caller
 rejection and checked conversions remain in place.
 Placement uses the selected edge-aligned nearest-neighbor equation

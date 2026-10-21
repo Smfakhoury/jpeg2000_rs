@@ -32,6 +32,93 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_composition_canvas_empty(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: crate::specs::Part2CompositionGeometry, expand_grayscale: bool,
+)
+    requires geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+    ensures crate::specs::part2_composition_canvas_prefix(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, 0,
+    ) == (true, destination, destination_alpha),
+{
+    reveal(crate::specs::part2_composition_canvas_prefix);
+}
+
+pub proof fn production_composition_canvas_step(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: crate::specs::Part2CompositionGeometry, expand_grayscale: bool,
+    x: nat, y: nat, source_index: nat, destination_index: nat,
+)
+    requires
+        geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+        x < geometry.copy_width,
+        crate::specs::part2_composition_canvas_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            y * geometry.copy_width + x,
+        ).0,
+        source_index == (geometry.source_y + y * geometry.source_crop_height / geometry.target_height) * geometry.source_width
+            + geometry.source_x + x * geometry.source_crop_width / geometry.target_width,
+        destination_index == (geometry.target_y + y) * geometry.canvas_width + geometry.target_x + x,
+    ensures
+        crate::specs::part2_composition_canvas_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            y * geometry.copy_width + x + 1,
+        ) == crate::specs::part2_composition_pixel_transition(
+            source, source_alpha,
+            crate::specs::part2_composition_canvas_prefix(
+                source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+                y * geometry.copy_width + x,
+            ).1,
+            crate::specs::part2_composition_canvas_prefix(
+                source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+                y * geometry.copy_width + x,
+            ).2,
+            source_index, destination_index, expand_grayscale,
+        ),
+{
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse(
+        (y * geometry.copy_width + x) as int, geometry.copy_width as int, y as int, x as int,
+    );
+    reveal_with_fuel(crate::specs::part2_composition_canvas_prefix, 2);
+}
+
+pub proof fn production_composition_raster_prefix_bound(width: nat, height: nat, x: nat, y: nat)
+    requires width > 0 && height > 0 && x < width && y < height,
+    ensures y * width + x + 1 <= width * height,
+{
+    assert(x + 1 <= width && y + 1 <= height);
+    assert((y + 1) * width == y * width + width) by(nonlinear_arith);
+    vstd::arithmetic::mul::lemma_mul_inequality((y + 1) as int, height as int, width as int);
+    assert(height * width == width * height) by(nonlinear_arith);
+}
+
+pub proof fn production_composition_prefix_observation(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: crate::specs::Part2CompositionGeometry, expand_grayscale: bool, initial_work: nat,
+    final_colors: Seq<Seq<u16>>, final_alpha: Seq<u16>, final_work: nat, completed: nat,
+)
+    requires
+        geometry.source_crop_width > 0 && geometry.source_crop_height > 0,
+        geometry.target_width > 0 && geometry.target_height > 0,
+        geometry.copy_width > 0 && geometry.copy_height > 0,
+        crate::specs::part2_composition_layer_prefix_matches(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, initial_work,
+            final_colors, final_alpha, final_work, completed,
+        ),
+    ensures crate::specs::part2_composition_layer_prefix_safe(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, initial_work,
+        final_colors, final_alpha, final_work,
+    ),
+{
+    assert(exists |count: nat| count == completed && crate::specs::part2_composition_layer_prefix_matches(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, initial_work,
+        final_colors, final_alpha, final_work, count,
+    ));
+}
+
 pub proof fn production_ads_parser_uses_independent_field_padding(depths: nat, splits: nat)
     ensures
         ads_payload_bytes(depths, splits)

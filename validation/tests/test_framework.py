@@ -222,6 +222,50 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_checks_success_guard_and_all_layer_outputs(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-jpx-composition-rendering"
+        ]
+        coverage["requirements"][0]["contract_refs"] = [{
+            "path": "src/jpx.rs", "symbol": "composite_placed_layer",
+        }]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("verus_spec(result =>", "verus_spec(unrelated =>"),
+            ("ensures result.is_ok() ==>", "ensures unrelated.is_ok() ==>"),
+            ("ensures result.is_ok() ==>", "ensures"),
+            ("(result.is_ok(), crate::specs::", "(true, crate::specs::"),
+            (", *final(work_units) as nat)", ")"),
+            ("*final(work_units) as nat", "*old(work_units) as nat"),
+            ("*final(work_units) as nat", "final(output_alpha)@"),
+            ("== crate::specs::part2_composition_layer_success", "== crate::specs::unlisted_model"),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/jpx.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
+    def test_inventory_same_file_usage_requires_another_listed_function_body(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-jpx-composition-rendering"
+        ]
+        entry = coverage["requirements"][0]
+        entry["contract_refs"] = [{"path": "src/jpx.rs", "symbol": "composite_placed_layer"}]
+        entry["implementation_refs"] = [{"path": "src/jpx.rs", "symbol": "render_decoded_layers"}]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        for symbol in ("index_of", "render_jpx_frame", "composite_placed_layer"):
+            entry["implementation_refs"] = [{"path": "src/jpx.rs", "symbol": symbol}]
+            with self.subTest(symbol=symbol), \
+                    self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_checks_typed_result_model_equalities(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [
