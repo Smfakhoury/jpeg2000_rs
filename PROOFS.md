@@ -81,6 +81,7 @@ Read each contract according to its inputs and postcondition:
 | Complete normalized planar pixel transition | The actual gather/evaluate/scatter status and entire final planar state equal one composed model; rejected pixel inputs leave both color and alpha state unchanged | Earlier channel normalization, complete canvas traversal, work-limit transactionality, layer/frame order or a parser-to-pixel theorem |
 | Successful placed-layer composition | On success, the complete final planar canvas state and exact work count equal a raster-prefix fold of normalized pixel transitions at the selected clipped, floor-scaled crop addresses | Complete error-state semantics, sufficient-budget success, earlier channel normalization, layer/frame ordering or a parser-to-pixel theorem |
 | All-return placed-layer prefix safety | On every return, all buffers equal a valid raster prefix, and work accounts for that prefix or all but its final stored pixel; inactive geometry leaves the complete initial state unchanged | Which prefix must fail, exact error classification, sufficient-budget success, normalization or layer/frame ordering |
+| Deterministic budgeted placed-layer execution | On every return, the exact typed `Result`, complete final buffers and work counter equal a raster fold that stops at the first checked-address, invalid-pixel, work-overflow or actual work-limit failure | Earlier channel normalization, layer/frame ordering, parser-to-pixel correctness or official conformance |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
@@ -183,6 +184,28 @@ rectangle, a missing sample on the second row, an uncharged pixel on overflow,
 and the exact-budget success case, comparing all stored and untouched samples
 and the exact counter/error. Runtime instructions and error ordering are
 unchanged; the new witness assertions erase from Cargo builds.
+The compositor additionally has an unconditional equality to a deterministic
+budgeted transition model. Its state includes the actual typed result, every
+color/alpha sample and the work counter. The model checks address fit before
+reading pixels, validates the complete pixel before storing, then checks work
+overflow and the configured work limit in the existing production order.
+It retains the stored pixel with the old counter on overflow, and retains
+both stores and the incremented counter on a work-limit error. The recursive
+fold stops on the first error; a verified absorption lemma proves later
+nominal raster positions leave that exact error/state unchanged.
+
+The work-limit model is a closed projection of the real `ResourceLimits`
+field, connected by the executable getter's proved return contract. Local
+typed error helpers and the limit checker have exact result contracts; no
+new error kind or offset is introduced. Explicit propagation branches keep
+their frame proofs before returning, with statement-local `question_mark`
+style allowances rather than suppressed verification. The previous complete
+success and all-return prefix-safety contracts remain separate postconditions.
+An independent 1,260-case replay grid checks color/alpha truncation positions,
+work-limit cuts, initial counters near `u64::MAX`, exact typed error precedence,
+all buffers and counters using widened arithmetic. This establishes selected
+normalized placed-layer execution, not earlier normalization, layer/frame
+order, parser-to-pixel semantics or standard-edition conformance.
 Malformed premultiplied data is rejected before destination writes for that
 pixel, including a malformed later channel. This intentionally strengthens
 the previous private intermediate-buffer behavior; public render APIs still

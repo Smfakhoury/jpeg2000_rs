@@ -2007,6 +2007,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "index_of"
+        },
+        {
+          "path": "src/limits.rs",
+          "symbol": "maximum_work_units"
         }
       ],
       "proof_refs": [
@@ -2065,6 +2069,18 @@
         {
           "path": "proofs/production_impl/mod.rs",
           "symbol": "production_composition_prefix_observation"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_budgeted_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_budgeted_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_budgeted_failure_absorbs"
         }
       ],
       "spec_refs": [
@@ -2174,6 +2190,30 @@
         },
         {
           "path": "specs/mod.rs",
+          "symbol": "Part2CompositionBudgetedState"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_error"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_budgeted_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_budgeted_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_transition"
+        },
+        {
+          "path": "src/limits.rs",
+          "symbol": "resource_work_limit"
+        },
+        {
+          "path": "specs/mod.rs",
           "symbol": "part2_composition_mapped_offset"
         },
         {
@@ -2261,6 +2301,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "placed_layer_failures_preserve_multirow_raster_prefixes"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_layer_exact_error_precedence_matches_independent_replay"
         },
         {
           "path": "src/jpx.rs",

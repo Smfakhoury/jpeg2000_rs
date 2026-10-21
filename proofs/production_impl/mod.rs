@@ -119,6 +119,90 @@ pub proof fn production_composition_prefix_observation(
     ));
 }
 
+pub proof fn production_composition_budgeted_empty(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: crate::specs::Part2CompositionGeometry, expand_grayscale: bool,
+    initial_work: nat, work_limit: u64,
+)
+    requires geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+    ensures crate::specs::part2_composition_budgeted_prefix(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale, initial_work, work_limit, 0,
+    ) == (Ok(()), destination, destination_alpha, initial_work),
+{
+    reveal(crate::specs::part2_composition_budgeted_prefix);
+}
+
+pub proof fn production_composition_budgeted_step(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: crate::specs::Part2CompositionGeometry, expand_grayscale: bool,
+    initial_work: nat, work_limit: u64, x: nat, y: nat,
+)
+    requires
+        geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+        x < geometry.copy_width,
+        crate::specs::part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            initial_work, work_limit, y * geometry.copy_width + x,
+        ).0.is_ok(),
+    ensures crate::specs::part2_composition_budgeted_prefix(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+        initial_work, work_limit, y * geometry.copy_width + x + 1,
+    ) == crate::specs::part2_composition_budgeted_step(
+        source, source_alpha,
+        crate::specs::part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            initial_work, work_limit, y * geometry.copy_width + x,
+        ).1,
+        crate::specs::part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            initial_work, work_limit, y * geometry.copy_width + x,
+        ).2,
+        geometry, expand_grayscale,
+        crate::specs::part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            initial_work, work_limit, y * geometry.copy_width + x,
+        ).3, work_limit, x, y,
+    ),
+{
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse(
+        (y * geometry.copy_width + x) as int, geometry.copy_width as int, y as int, x as int,
+    );
+    reveal_with_fuel(crate::specs::part2_composition_budgeted_prefix, 2);
+}
+
+pub proof fn production_composition_budgeted_failure_absorbs(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: crate::specs::Part2CompositionGeometry, expand_grayscale: bool,
+    initial_work: nat, work_limit: u64, stopped: nat, count: nat,
+)
+    requires
+        geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+        stopped <= count,
+        crate::specs::part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            initial_work, work_limit, stopped,
+        ).0.is_err(),
+    ensures crate::specs::part2_composition_budgeted_prefix(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+        initial_work, work_limit, count,
+    ) == crate::specs::part2_composition_budgeted_prefix(
+        source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+        initial_work, work_limit, stopped,
+    ),
+    decreases count,
+{
+    if count > stopped {
+        production_composition_budgeted_failure_absorbs(
+            source, source_alpha, destination, destination_alpha, geometry, expand_grayscale,
+            initial_work, work_limit, stopped, (count - 1) as nat,
+        );
+        reveal_with_fuel(crate::specs::part2_composition_budgeted_prefix, 2);
+    }
+}
+
 pub proof fn production_ads_parser_uses_independent_field_padding(depths: nat, splits: nat)
     ensures
         ads_payload_bytes(depths, splits)
