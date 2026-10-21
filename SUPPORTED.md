@@ -62,6 +62,11 @@ JPX exposes codestream/header association, layer registration, channel
 association, opacity, composition instructions, timing, and indexed frame
 rendering. Rendering is bounded and deterministic; it does not provide a
 wall-clock animation player or interpret arbitrary application metadata.
+Single-layer output retains its straight/premultiplied color samples and the
+corresponding alpha flag, consistent with color conversion. Composition/frame
+output is straight alpha, with transparent composed pixels represented as
+transparent black. Selected global-alpha RGBA profiles are checked against
+an exact rational source-over oracle; this is not colorimetric certification.
 
 JPIP supports checked binary message headers and VBAS fields, out-of-order
 fragments, duplicate/overlap consistency, final-length/completeness queries,

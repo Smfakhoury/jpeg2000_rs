@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import contextmanager
+from fractions import Fraction
 from pathlib import Path
 from unittest import mock
 
@@ -109,16 +110,51 @@ def split_single_tile(data):
     raise ValueError("fixture has no SOD")
 
 
-def jpx_file(codestreams, case, instructions=None, chroma=False):
+def rgba_header(case, premultiplied, order=(0, 1, 2, 3)):
+    if sorted(order) != [0, 1, 2, 3]:
+        raise ValueError("RGBA fixture requires a permutation of its four channels")
+    header = framework.box(b"ihdr", struct.pack(">IIH4B", case.height, case.width, 4,
+                                               case.precision - 1, 7, 0, 0))
+    header += framework.box(b"colr", bytes((1, 0, 0, 0, 0, 0, 16)))
+    definitions = struct.pack(">H", 4)
+    for physical, logical in enumerate(order):
+        definitions += struct.pack(">HHH", physical,
+                                   (2 if premultiplied else 1) if logical == 3 else 0,
+                                   0 if logical == 3 else logical + 1)
+    return header + framework.box(b"cdef", definitions)
+
+
+def rgba_container(raw, case, premultiplied, format_name="jp2", order=(0, 1, 2, 3)):
+    header = rgba_header(case, premultiplied, order)
+    if format_name == "jpx":
+        return jpx_file([raw], case, headers=[header])
+    if format_name not in ("jp2", "jph"):
+        raise ValueError("unsupported RGBA fixture container")
+    brand = b"jp2 " if format_name == "jp2" else b"jph "
+    codestream = raw if format_name == "jp2" else declared_legacy_jph(raw)
+    return (framework.box(b"jP  ", b"\x0d\x0a\x87\x0a") +
+            framework.box(b"ftyp", brand + b"\0\0\0\0" + brand) +
+            framework.box(b"jp2h", header) + framework.box(b"jp2c", codestream))
+
+
+def jpx_file(codestreams, case, instructions=None, chroma=False, headers=None, opacities=None):
     box = framework.box
     header = box(b"ihdr", struct.pack(">IIH4B", case.height, case.width, case.channels,
                                      case.precision - 1, 7, 0, 0))
     header += box(b"colr", bytes([1, 0, 0, 0, 0, 0, 17 if case.channels == 1 else 16]))
+    headers = [header] * len(codestreams) if headers is None else headers
+    if not headers or len(headers) != len(codestreams):
+        raise ValueError("JPX fixture headers must match its codestreams")
+    if opacities is not None and (chroma or len(opacities) != len(codestreams)
+                                  or any(value not in (0, 1) for value in opacities)):
+        raise ValueError("JPX fixture opacity declarations must match its layers")
     result = box(b"jP  ", b"\x0d\x0a\x87\x0a") + box(b"ftyp", b"jpxb\0\0\0\0jpxb")
-    result += box(b"jp2h", header)
-    result += b"".join(box(b"jpch", header) for _ in codestreams)
+    result += box(b"jp2h", headers[0])
+    result += b"".join(box(b"jpch", current) for current in headers)
     for index in range(len(codestreams)):
         layer = box(b"creg", struct.pack(">HHH4B", 1, 1, index, 1, 1, 0, 0))
+        if opacities is not None:
+            layer += box(b"opct", bytes((opacities[index],)))
         if chroma and index == 1:
             layer += box(b"opct", bytes([2, case.channels]) + bytes(case.channels * (case.precision // 8)))
         result += box(b"jplh", layer)
@@ -162,6 +198,38 @@ def canvas(width, height, placements):
     return image(width, height, planes)
 
 
+def fractional_canvas(width, height, placements):
+    output = [[0] * (width * height) for _ in range(4)]
+    for observation, premultiplied, target, source in placements:
+        components = observation["image"]["components"]
+        if len(components) != 4 or any(component["precision"] != 16 for component in components):
+            raise ValueError("fractional fixture compositor requires 16-bit RGBA")
+        tx, ty, tw, th = target
+        sx, sy, sw, sh = source
+        for y in range(th):
+            for x in range(tw):
+                if tx + x >= width or ty + y >= height:
+                    continue
+                index = (sy + y * sh // th) * observation["image"]["width"] + sx + x * sw // tw
+                pixel = (ty + y) * width + tx + x
+                alpha_sample = components[3]["samples"][index]
+                source_alpha = Fraction(alpha_sample, 65535)
+                destination_alpha = Fraction(output[3][pixel], 65535)
+                alpha = source_alpha + (1 - source_alpha) * destination_alpha
+                for channel in range(3):
+                    sample = components[channel]["samples"][index]
+                    if premultiplied and sample > alpha_sample:
+                        raise ValueError("premultiplied fixture sample exceeds alpha")
+                    value = Fraction(sample, 65535)
+                    source_color = value if premultiplied else value * source_alpha
+                    destination_color = Fraction(output[channel][pixel], 65535)
+                    numerator = source_color + destination_color * destination_alpha * (1 - source_alpha)
+                    color = numerator / alpha if alpha else Fraction(0)
+                    output[channel][pixel] = int(color * 65535 + Fraction(1, 2))
+                output[3][pixel] = int(alpha * 65535 + Fraction(1, 2))
+    return image(width, height, output)
+
+
 class ContainerRelationsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -181,7 +249,8 @@ class ContainerRelationsTests(unittest.TestCase):
         try:
             yield directory
         except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
-            files = {path.name: framework.sha256_file(path) for path in directory.iterdir() if path.is_file()}
+            files = {path.relative_to(directory).as_posix(): framework.sha256_file(path)
+                     for path in directory.rglob("*") if path.is_file()}
             test_hash = framework.sha256_file(Path(__file__))
             subject_hash = framework.sha256_file(self.subject)
             failure = framework.sha256_bytes(framework.canonical_bytes({
@@ -236,6 +305,16 @@ class ContainerRelationsTests(unittest.TestCase):
                       for y in range(ch) for x in range(cw)]
             planes.append({"width": cw, "height": ch, "precision": precision,
                            "signed": False, "sample_kind": "unsigned", "samples": values})
+        return self.encode_planar(directory, planes, sampling, origin, tiled)
+
+    def encode_planar(self, directory, planes, sampling, origin=(0, 0), tiled=False):
+        width, height = 32, 32
+        if not planes or len(planes) != len(sampling):
+            raise ValueError("planar fixture components must match their sampling descriptors")
+        precision = planes[0]["precision"]
+        if precision not in (8, 16) or any(
+                plane["precision"] != precision or plane["signed"] for plane in planes):
+            raise ValueError("planar fixtures require uniform unsigned 8/16-bit components")
         source = {"accepted": True, "image": {"width": width, "height": height, "components": planes}}
         raw = directory / "source.raw"
         raw.write_bytes(b"".join(value.to_bytes(precision // 8, "big")
@@ -244,7 +323,7 @@ class ContainerRelationsTests(unittest.TestCase):
         decoder = shutil.which(os.environ.get("OPENJPEG_DECODER", "opj_decompress"))
         if encoder is None or decoder is None:
             raise FileNotFoundError("nonuniform reference tools are unavailable")
-        options = ["-F", f"{width},{height},3,{precision},u@" +
+        options = ["-F", f"{width},{height},{len(planes)},{precision},u@" +
                    ":".join(f"{sx}x{sy}" for sx, sy in sampling),
                    "-n", "3", "-mct", "0", "-d", ",".join(map(str, origin))]
         if tiled:
@@ -267,7 +346,7 @@ class ContainerRelationsTests(unittest.TestCase):
         self.assert_image(source, self.observe("decode", "raw", encoded))
         for discard in (1, 2):
             references = []
-            for channel in range(3):
+            for channel in range(len(planes)):
                 output = directory / f"native-{discard}-{channel}.pgx"
                 numerical._run_checked([decoder, "-i", str(encoded), "-o", str(output),
                                         "-c", str(channel), "-r", str(discard)], 10.0)
@@ -291,6 +370,141 @@ class ContainerRelationsTests(unittest.TestCase):
             str(tiles), "all" if region is None else ",".join(map(str, region)),
         ], 10.0)
         return framework.parse_subject_output(process.stdout, process.stderr, process.returncode)
+
+    def encode_alpha(self, directory, precision, premultiplied, alpha_step, seed, order):
+        directory.mkdir()
+        peak = (1 << precision) - 1
+        alpha_width = 32 // alpha_step
+        levels = (0, 1, 2, peak // 4, peak // 2, peak // 2 + 1, peak - 1, peak)
+        alpha = [levels[(x + 3 * y + seed) % len(levels)]
+                 for y in range(alpha_width) for x in range(alpha_width)]
+        full_alpha = [alpha[(y // alpha_step) * alpha_width + x // alpha_step]
+                      for y in range(32) for x in range(32)]
+        colors = [[((x * 31 + y * 17 + channel * 71 + x * y * 13 + seed * 29) % 256) * peak // 255
+                   for y in range(32) for x in range(32)] for channel in range(3)]
+        if premultiplied:
+            colors = [[value * opacity // peak for value, opacity in zip(plane, full_alpha)]
+                      for plane in colors]
+        planes = [{"width": 32, "height": 32, "precision": precision, "signed": False,
+                   "sample_kind": "unsigned", "samples": plane} for plane in colors]
+        planes.append({"width": alpha_width, "height": alpha_width, "precision": precision,
+                       "signed": False, "sample_kind": "unsigned", "samples": alpha})
+        sampling = ((1, 1), (1, 1), (1, 1), (alpha_step, alpha_step))
+        raw, _, _ = self.encode_planar(directory, [planes[index] for index in order],
+                                        [sampling[index] for index in order])
+        expected = image(32, 32, [[value * 65535 // peak for value in plane]
+                                 for plane in colors + [full_alpha]])
+        return raw, expected
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_fractional_and_premultiplied_alpha_color_layers_and_frames(self):
+        full = (0, 0, 32, 32)
+        for precision in (8, 16):
+            for premultiplied in (False, True):
+                for alpha_step in (1, 2):
+                    name = f"alpha-{precision}-{premultiplied}-{alpha_step}"
+                    with self.subTest(case=name), self.fixture(name) as directory:
+                        case = numerical.NumericalCase("rgba", channels=4, precision=precision)
+                        order = (3, 2, 0, 1)
+                        background, back_pixels = self.encode_alpha(
+                            directory / "background", precision, not premultiplied, 1, 0, (0, 1, 2, 3))
+                        foreground, front_pixels = self.encode_alpha(
+                            directory / "foreground", precision, premultiplied, alpha_step, 1, order)
+                        headers = [rgba_header(case, not premultiplied),
+                                   rgba_header(case, premultiplied, order)]
+                        for format_name in ("jp2", "jph", "jpx"):
+                            path = directory / f"foreground.{format_name}"
+                            path.write_bytes(rgba_container(foreground, case, premultiplied, format_name, order))
+                            self.assert_image(front_pixels, self.observe("convert", format_name, path))
+                            for region in ((1, 1, 9, 11), (1, 1, 1, 1)):
+                                self.assert_image(crop_converted(front_pixels, (0, 0), region),
+                                                  self.selected_color(path, format_name, 0, "all", region))
+                        path = directory / "static.jpx"
+                        path.write_bytes(jpx_file([background, foreground], case, headers=headers))
+                        for index, pixels in enumerate((back_pixels, front_pixels)):
+                            self.assert_image(pixels, self.observe("render-layer", str(index), path))
+                        placements = [(back_pixels, not premultiplied, full, full),
+                                      (front_pixels, premultiplied, full, full)]
+                        self.assert_image(fractional_canvas(36, 35, placements),
+                                          self.observe("render", "jpx", path))
+                        target, source = (3, 2, 24, 20), (1, 3, 12, 10)
+                        records = [(0, 0, 32, 32, 0x80000000, 0, *full),
+                                   (*target, 100, 0, *source)]
+                        path = directory / "placed.jpx"
+                        path.write_bytes(jpx_file([background, foreground], case, records, headers=headers))
+                        expected = fractional_canvas(36, 35, [
+                            (back_pixels, not premultiplied, full, full),
+                            (front_pixels, premultiplied, target, source),
+                        ])
+                        self.assert_image(expected, self.observe("render-frame", "0", path))
+                        self.assert_image(expected, self.observe("render", "jpx", path))
+                        for persistent in (False, True):
+                            records = [(0, 0, 32, 32, 100 | (0x80000000 if persistent else 0), 0, *full),
+                                       (*target, 100, 0, *source)]
+                            path = directory / f"frames-{persistent}.jpx"
+                            path.write_bytes(jpx_file([background, foreground], case, records, headers=headers))
+                            placements = [(back_pixels, not premultiplied, full, full)] if persistent else []
+                            placements.append((front_pixels, premultiplied, target, source))
+                            self.assert_image(fractional_canvas(36, 35, placements),
+                                              self.observe("render-frame", "1", path))
+                            with self.assertRaisesRegex(ValueError, "FrameIndexOutOfRange"):
+                                self.observe("render-frame", "2", path)
+                        if not premultiplied:
+                            path = directory / "invalid-premultiplied.jpx"
+                            path.write_bytes(jpx_file([foreground], case, headers=[rgba_header(case, True, order)]))
+                            with self.assertRaisesRegex(ValueError, "InvalidBoxContents"):
+                                self.observe("render", "jpx", path)
+                        path = directory / "opacity-override.jpx"
+                        path.write_bytes(jpx_file(
+                            [foreground], case, headers=[rgba_header(case, not premultiplied, order)],
+                            opacities=[1 if premultiplied else 0],
+                        ))
+                        self.assert_image(
+                            fractional_canvas(36, 35, [(front_pixels, premultiplied, full, full)]),
+                            self.observe("render", "jpx", path))
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_equivalent_straight_and_premultiplied_encodings_render_identically(self):
+        for precision in (8, 16):
+            with self.subTest(precision=precision), self.fixture(f"alpha-equivalence-{precision}") as directory:
+                peak = (1 << precision) - 1
+                alpha = [(0, 1, 2, peak // 2, peak - 1, peak)[(x + 3 * y) % 6]
+                         for y in range(16) for x in range(16)]
+                full_alpha = [alpha[(y // 2) * 16 + x // 2] for y in range(32) for x in range(32)]
+                colors = [[peak if (x + y + channel) % 2 else 0
+                           for y in range(32) for x in range(32)] for channel in range(3)]
+                expected_pixels = image(32, 32, [[value * 65535 // peak for value in plane]
+                                                for plane in colors + [full_alpha]])
+                case = numerical.NumericalCase("equivalent", channels=4, precision=precision)
+                full = (0, 0, 32, 32)
+                target, crop = (28, 30, 24, 20), (3, 1, 12, 10)
+                observed = {}
+                for premultiplied in (False, True):
+                    place = directory / str(premultiplied)
+                    place.mkdir()
+                    encoded_colors = ([[value * opacity // peak for value, opacity in zip(plane, full_alpha)]
+                                       for plane in colors] if premultiplied else colors)
+                    planes = [{"width": 32, "height": 32, "precision": precision, "signed": False,
+                               "sample_kind": "unsigned", "samples": plane} for plane in encoded_colors]
+                    planes.append({"width": 16, "height": 16, "precision": precision, "signed": False,
+                                   "sample_kind": "unsigned", "samples": alpha})
+                    raw, _, _ = self.encode_planar(place, planes, ((1, 1), (1, 1), (1, 1), (2, 2)))
+                    path = directory / f"static-{premultiplied}.jpx"
+                    header = rgba_header(case, premultiplied)
+                    path.write_bytes(jpx_file([raw], case, headers=[header]))
+                    observed[premultiplied] = self.observe("render", "jpx", path)
+                    self.assert_image(
+                        fractional_canvas(36, 35, [(expected_pixels, False, full, full)]),
+                        observed[premultiplied])
+                    path = directory / f"placed-{premultiplied}.jpx"
+                    records = [(*target, 100, 0, *crop)]
+                    path.write_bytes(jpx_file([raw], case, records, headers=[header]))
+                    self.assert_image(
+                        fractional_canvas(36, 35, [(expected_pixels, False, target, crop)]),
+                        self.observe("render-frame", "0", path))
+                self.assert_image(observed[False], observed[True])
 
     @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
                          "independent OpenJPEG tools are not installed")
@@ -545,6 +759,42 @@ class ContainerRelationsTests(unittest.TestCase):
 
 
 class ContainerFixtureTests(unittest.TestCase):
+    def test_fractional_oracle_matches_known_straight_and_premultiplied_results(self):
+        full = (0, 0, 1, 1)
+        black = image(1, 1, [[0], [0], [0], [65535]])
+        half_white = image(1, 1, [[65535], [65535], [65535], [32768]])
+        self.assertEqual(fractional_canvas(1, 1, [(black, False, full, full),
+                                                 (half_white, False, full, full)]),
+                         image(1, 1, [[32768], [32768], [32768], [65535]]))
+        premultiplied = image(1, 1, [[32768], [32768], [32768], [32768]])
+        self.assertEqual(fractional_canvas(1, 1, [(premultiplied, True, full, full)]), half_white)
+        transparent = image(1, 1, [[123], [456], [789], [0]])
+        self.assertEqual(fractional_canvas(1, 1, [(transparent, False, full, full)]),
+                         image(1, 1, [[0], [0], [0], [0]]))
+        with self.assertRaisesRegex(ValueError, "exceeds alpha"):
+            fractional_canvas(1, 1, [(transparent, True, full, full)])
+
+    def test_fractional_oracle_equivalent_representations_match_at_alpha_boundaries(self):
+        full = (0, 0, 1, 1)
+        background = image(1, 1, [[1234], [4567], [8901], [32123]])
+        for alpha in (0, 1, 2, 32767, 32768, 65534, 65535):
+            straight = image(1, 1, [[0], [65535], [65535], [alpha]])
+            premultiplied = image(1, 1, [[0], [alpha], [alpha], [alpha]])
+            self.assertEqual(
+                fractional_canvas(1, 1, [(background, False, full, full), (straight, False, full, full)]),
+                fractional_canvas(1, 1, [(background, False, full, full), (premultiplied, True, full, full)]))
+
+    def test_alpha_fixture_metadata_rejects_invalid_orders_and_layer_counts(self):
+        case = numerical.NumericalCase("invalid", channels=4)
+        with self.assertRaises(ValueError):
+            rgba_header(case, False, (0, 1, 2, 2))
+        with self.assertRaises(ValueError):
+            jpx_file([b""], case, headers=[])
+        with self.assertRaises(ValueError):
+            jpx_file([b""], case, opacities=[])
+        with self.assertRaises(ValueError):
+            jpx_file([b""], case, opacities=[2])
+
     def test_declared_legacy_wrapper_preserves_coding_bytes_and_validates_siz(self):
         raw = framework.raw_codestream()
         declared = declared_legacy_jph(raw)
