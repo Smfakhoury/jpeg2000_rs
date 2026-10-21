@@ -653,7 +653,13 @@ pub fn render_jpx_composition(
         ));
         layer_index = layer_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    render_decoded_layers(width, height, &layers, options.limits())
+    render_decoded_layers(
+        width,
+        height,
+        &layers,
+        options.limits().maximum_decoded_bytes(),
+        options.limits(),
+    )
 }
 
 pub fn render_jpx_frame(
@@ -680,19 +686,96 @@ fn render_inspected_frame(
             index: requested_frame,
             frames: 0,
         })?;
-    let frames = composition.frames();
+    let instructions = select_frame_instructions(
+        composition.frames(),
+        composition.loop_count(),
+        requested_frame,
+    )?;
+    let mut placements = Vec::new();
+    let mut index = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant index <= instructions.len(),
+            decreases instructions.len() - index,
+        )
+    )]
+    while index < instructions.len() {
+        let instruction = instructions[index];
+        placements.push((
+            decode_effective_layer(file, instruction.layer_index(), options)?,
+            instruction,
+        ));
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    render_decoded_layers(
+        composition.width(),
+        composition.height(),
+        &placements,
+        options.limits().maximum_decoded_bytes(),
+        options.limits(),
+    )
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn instruction_view(instruction: JpxInstructionInfo) -> crate::specs::Part2Instruction {
+        (instruction.layer_index, instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+            instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+            instruction.persistent, instruction.next_reuse)
+    }
+
+    #[verifier::inline]
+    spec fn instruction_views(instructions: Seq<JpxInstructionInfo>) -> Seq<crate::specs::Part2Instruction> {
+        Seq::new(instructions.len(), |i: int| instruction_view(instructions[i]))
+    }
+
+    proof fn instruction_views_push(instructions: Seq<JpxInstructionInfo>, instruction: JpxInstructionInfo)
+        ensures instruction_views(instructions.push(instruction)) == instruction_views(instructions).push(instruction_view(instruction)),
+    {
+        assert(instruction_views(instructions.push(instruction)) =~= instruction_views(instructions).push(instruction_view(instruction)));
+    }
+
+    #[verifier::inline]
+    spec fn frame_views(frames: Seq<JpxFrameInfo>) -> Seq<crate::specs::Part2Frame> {
+        Seq::new(frames.len(), |i: int| (frames[i].index, frames[i].start_milliseconds,
+            frames[i].duration_milliseconds, frames[i].persistent, instruction_views(frames[i].instructions@)))
+    }
+
+    #[verifier::inline]
+    spec fn frame_selection_result(result: Result<Vec<JpxInstructionInfo>, DecodeError>)
+        -> Result<Seq<crate::specs::Part2Instruction>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(instructions) => Ok(instruction_views(instructions@)) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures frame_selection_result(result) == crate::specs::part2_select_frame(frame_views(frames@), requested_frame, loop_count),
+    )
+)]
+fn select_frame_instructions(
+    frames: &[JpxFrameInfo],
+    loop_count: u8,
+    requested_frame: usize,
+) -> Result<Vec<JpxInstructionInfo>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = frame_views(frames@); }
     if frames.is_empty() {
         return Err(DecodeError::FrameIndexOutOfRange {
             index: requested_frame,
             frames: 0,
         });
     }
-    let frame_index = if composition.loop_count() == 0 {
+    let frame_index = if loop_count == 0 {
         crate::refinement::loop_frame(requested_frame, frames.len())
     } else {
         let total = frames
             .len()
-            .checked_mul(usize::from(composition.loop_count()))
+            .checked_mul(usize::from(loop_count))
             .ok_or_else(arithmetic_overflow)?;
         if requested_frame >= total {
             return Err(DecodeError::FrameIndexOutOfRange {
@@ -704,34 +787,62 @@ fn render_inspected_frame(
     };
     let mut placements = Vec::new();
     let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part2_frame_index(requested_frame, input.len(), loop_count) == Ok(frame_index));
+        crate::proofs::production_impl::production_frame_sequence_empty(input, frame_index as nat);
+        assert(instruction_views(placements@) =~= Seq::<crate::specs::Part2Instruction>::empty());
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= frame_index + 1,
+                frame_index < frames.len(),
+                input == frame_views(frames@),
+                crate::specs::part2_frame_index(requested_frame, input.len(), loop_count) == Ok(frame_index),
+                instruction_views(placements@) == crate::specs::part2_frame_instruction_sequence(input, frame_index as nat, index as nat),
             decreases frame_index + 1 - index,
         )
     )]
     while index <= frame_index {
         let frame = frames.get(index).ok_or_else(arithmetic_overflow)?;
-        if index == frame_index || frame.persistent() {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_frame_sequence_step(input, frame_index as nat, index as nat); }
+        if index == frame_index || frame.persistent {
             let mut instruction_index = 0_usize;
             let instruction_count = frame.instructions.len();
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost prior = instruction_views(placements@); }
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant instruction_index <= instruction_count,
+                        index <= frame_index < frames.len(),
+                        input == frame_views(frames@),
+                        frame == frames@[index as int],
+                        instruction_count == frame.instructions.len(),
+                        index == frame_index || frame.persistent,
+                        prior == crate::specs::part2_frame_instruction_sequence(input, frame_index as nat, index as nat),
+                        instruction_views(placements@) == prior + instruction_views(frame.instructions@).take(instruction_index as int),
                     decreases instruction_count - instruction_index,
                 )
             )]
             while instruction_index < instruction_count {
                 let instruction = *frame
-                    .instructions()
+                    .instructions
                     .get(instruction_index)
                     .ok_or_else(arithmetic_overflow)?;
-                placements.push((
-                    decode_effective_layer(file, instruction.layer_index(), options)?,
-                    instruction,
-                ));
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    instruction_views_push(placements@, instruction);
+                    assert(instruction_views(frame.instructions@).take(instruction_index as int + 1)
+                        =~= instruction_views(frame.instructions@).take(instruction_index as int).push(instruction_view(instruction)));
+                }
+                placements.push(instruction);
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(instruction_views(placements@) =~= prior + instruction_views(frame.instructions@).take(instruction_index as int + 1));
+                }
                 instruction_index = instruction_index
                     .checked_add(1)
                     .ok_or_else(arithmetic_overflow)?;
@@ -739,12 +850,7 @@ fn render_inspected_frame(
         }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    render_decoded_layers(
-        composition.width(),
-        composition.height(),
-        &placements,
-        options.limits(),
-    )
+    Ok(placements)
 }
 
 fn ensure_jpx(file: &Jp2File<'_>) -> Result<(), DecodeError> {
@@ -853,6 +959,22 @@ verus! {
                 crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha))),
         }
     }
+
+        #[verifier::inline]
+        spec fn placement_view(placement: &(OwnedLayer, JpxInstructionInfo)) -> crate::specs::Part2Placement {
+            let layer = &placement.0;
+            let instruction = placement.1;
+            ((layer.width, layer.height, layer.color_space, crate::specs::part2_composition_planes(layer.colors@),
+                layer_owned_alpha(layer.alpha)),
+                (instruction.layer_index, instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+                    instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+                    instruction.persistent, instruction.next_reuse))
+        }
+
+        #[verifier::inline]
+        spec fn placement_views(placements: Seq<(OwnedLayer, JpxInstructionInfo)>) -> Seq<crate::specs::Part2Placement> {
+            Seq::new(placements.len(), |i: int| placement_view(&placements[i]))
+    }
 }
 
 #[cfg_attr(
@@ -921,7 +1043,7 @@ impl OwnedLayer {
             Some(value) => value,
             None => (vec![u16::MAX; pixels], false),
         };
-        ConvertedImage::from_layer(
+        crate::color::from_layer(
             self.width,
             self.height,
             self.color_space,
@@ -1837,65 +1959,148 @@ fn normalized_chroma_keys(
     Ok(keys)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::converted_image_result(result) == crate::specs::part2_render_layers(
+            width, height, placement_views(layers@), maximum_decoded_bytes, crate::limits::resource_work_limit(limits),
+        ),
+    )
+)]
 fn render_decoded_layers(
     width: u32,
     height: u32,
     layers: &[(OwnedLayer, JpxInstructionInfo)],
+    maximum_decoded_bytes: u64,
     limits: &ResourceLimits,
 ) -> Result<ConvertedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = placement_views(layers@);
+        let ghost initial = crate::specs::part2_render_initial(width, height, input);
+        let ghost work_limit = crate::limits::resource_work_limit(limits);
+    }
     if layers.is_empty() {
         return Err(invalid_layer());
     }
-    let output_space = if layers
-        .iter()
-        .any(|layer| matches!(layer.0.color_space, ConvertedColorSpace::Srgb))
-    {
-        ConvertedColorSpace::Srgb
-    } else {
-        ConvertedColorSpace::Grayscale
-    };
+    let mut output_space = ConvertedColorSpace::Grayscale;
+    let mut scan = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant scan <= layers.len(), input == placement_views(layers@),
+                matches!(output_space, ConvertedColorSpace::Srgb)
+                    <==> exists|i: int| 0 <= i < scan && #[trigger] input[i].0.2 == ConvertedColorSpace::Srgb,
+            decreases layers.len() - scan,
+        )
+    )]
+    while scan < layers.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(input[scan as int].0.2 == layers@[scan as int].0.color_space);
+        }
+        if matches!(layers[scan].0.color_space, ConvertedColorSpace::Srgb) {
+            output_space = ConvertedColorSpace::Srgb;
+        }
+        scan += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(output_space == crate::specs::part2_render_space(input));
+        crate::proofs::production_impl::production_render_empty(width, height, input, initial, maximum_decoded_bytes, work_limit);
+    }
     let color_count = if matches!(output_space, ConvertedColorSpace::Srgb) {
         3
     } else {
         1
     };
-    let pixels = checked_area(width, height)?;
-    let mut output_colors = vec![vec![0_u16; pixels]; color_count];
+    let pixels = match checked_area(width, height) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_render_error(width, height, input, initial, maximum_decoded_bytes, work_limit, 0);
+            }
+            return Err(error);
+        }
+    };
+    let mut output_colors = Vec::with_capacity(color_count);
+    let mut color = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant color <= color_count,
+                input == placement_views(layers@),
+                initial == crate::specs::part2_render_initial(width, height, input),
+                crate::specs::part2_layer_area(width, height) == Ok(pixels),
+                output_space == crate::specs::part2_render_space(input),
+                color_count as nat == crate::specs::part2_layer_color_count(output_space),
+                crate::specs::part2_composition_planes(output_colors@) == Seq::new(color as nat, |i: int| Seq::new(pixels as nat, |j: int| 0u16)),
+            decreases color_count - color,
+        )
+    )]
+    while color < color_count {
+        let samples = vec![0_u16; pixels];
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(samples@ =~= Seq::new(pixels as nat, |j: int| 0u16));
+            layer_owned_planes_push(output_colors@, samples);
+        }
+        output_colors.push(samples);
+        color += 1;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part2_composition_planes(output_colors@) =~= Seq::new(color as nat, |i: int| Seq::new(pixels as nat, |j: int| 0u16)));
+        }
+    }
     let mut output_alpha = vec![0_u16; pixels];
-    let output_channels = (color_count as u64)
-        .checked_add(1)
-        .and_then(|value| value.checked_mul(2))
-        .ok_or_else(arithmetic_overflow)?;
-    let mut decoded_bytes = (pixels as u64)
-        .checked_mul(output_channels)
-        .ok_or_else(arithmetic_overflow)?;
+    let output_channels = (color_count as u64 + 1) * 2;
+    let mut decoded_bytes = match (pixels as u64).checked_mul(output_channels) {
+        Some(bytes) => bytes,
+        None => {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_render_error(width, height, input, initial, maximum_decoded_bytes, work_limit, 0);
+            }
+            return Err(arithmetic_overflow());
+        }
+    };
     let mut work = pixels as u64;
     let mut layer_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant layer_index <= layers.len(),
+                input == placement_views(layers@),
+                initial == crate::specs::part2_render_initial(width, height, input),
+                output_space == crate::specs::part2_render_space(input),
+                work_limit == crate::limits::resource_work_limit(limits),
+                crate::specs::part2_render_prefix(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat)
+                    == (Ok(()), crate::specs::part2_composition_planes(output_colors@), output_alpha@, work as nat, decoded_bytes as nat),
             decreases layers.len() - layer_index,
         )
     )]
     while layer_index < layers.len() {
-        let (layer, instruction) = layers.get(layer_index).ok_or_else(invalid_layer)?;
-        let layer_channels = (layer.colors.len() as u64)
-            .checked_add(1)
-            .and_then(|value| value.checked_mul(2))
-            .ok_or_else(arithmetic_overflow)?;
-        let layer_bytes = (checked_area(layer.width, layer.height)? as u64)
-            .checked_mul(layer_channels)
-            .ok_or_else(arithmetic_overflow)?;
-        decoded_bytes = decoded_bytes
-            .checked_add(layer_bytes)
-            .ok_or_else(arithmetic_overflow)?;
-        enforce_limit(
-            Resource::DecodedBytes,
-            limits.maximum_decoded_bytes(),
-            decoded_bytes,
-        )?;
-        composite_placed_layer(
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost before = (Ok::<(), DecodeError>(()), crate::specs::part2_composition_planes(output_colors@), output_alpha@, work as nat, decoded_bytes as nat);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_render_step(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat);
+        }
+        let (layer, instruction) = &layers[layer_index];
+        let charge = charge_layer_bytes(layer, &mut decoded_bytes, maximum_decoded_bytes);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if charge.is_err() {
+                assert(crate::specs::part2_render_prefix(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat + 1)
+                    == (charge, crate::specs::part2_composition_planes(output_colors@), output_alpha@, work as nat, decoded_bytes as nat));
+                crate::proofs::production_impl::production_render_error(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat + 1);
+            }
+        }
+        charge?;
+        let outcome = composite_placed_layer(
             width,
             height,
             output_space,
@@ -1905,10 +2110,83 @@ fn render_decoded_layers(
             &mut output_alpha,
             &mut work,
             limits,
-        )?;
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part2_render_step(width, height, output_space, input[layer_index as int], before,
+                maximum_decoded_bytes, work_limit) == (outcome, crate::specs::part2_composition_planes(output_colors@), output_alpha@, work as nat, decoded_bytes as nat));
+            assert(crate::specs::part2_render_prefix(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat + 1)
+                == (outcome, crate::specs::part2_composition_planes(output_colors@), output_alpha@, work as nat, decoded_bytes as nat));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if outcome.is_err() {
+                crate::proofs::production_impl::production_render_error(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat + 1);
+            }
+        }
+        outcome?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(outcome == Ok(()));
+            assert(crate::specs::part2_render_prefix(width, height, input, initial, maximum_decoded_bytes, work_limit, layer_index as nat + 1)
+                == (Ok(()), crate::specs::part2_composition_planes(output_colors@), output_alpha@, work as nat, decoded_bytes as nat));
+        }
         layer_index = layer_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    ConvertedImage::from_composited(width, height, output_space, output_colors, output_alpha)
+    crate::color::from_composited(width, height, output_space, output_colors, output_alpha)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, *final(decoded_bytes) as nat) == crate::specs::part2_charge_layer_bytes(
+            (layer.width, layer.height, layer.color_space, crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha)),
+            *old(decoded_bytes) as nat, maximum_decoded_bytes),
+    )
+)]
+fn charge_layer_bytes(
+    layer: &OwnedLayer,
+    decoded_bytes: &mut u64,
+    maximum_decoded_bytes: u64,
+) -> Result<(), DecodeError> {
+    let layer_bytes = layer_decoded_bytes(layer)?;
+    *decoded_bytes = decoded_bytes
+        .checked_add(layer_bytes)
+        .ok_or_else(arithmetic_overflow)?;
+    enforce_limit(
+        Resource::DecodedBytes,
+        maximum_decoded_bytes,
+        *decoded_bytes,
+    )
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures match result {
+            Ok(bytes) => crate::specs::part2_render_layer_bytes(
+                (layer.width, layer.height, layer.color_space, crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha)))
+                == Ok(bytes as nat),
+            Err(error) => crate::specs::part2_render_layer_bytes(
+                (layer.width, layer.height, layer.color_space, crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha)))
+                == Err(error),
+        },
+    )
+)]
+fn layer_decoded_bytes(layer: &OwnedLayer) -> Result<u64, DecodeError> {
+    let channels = match (layer.colors.len() as u64).checked_add(1) {
+        Some(channels) => channels,
+        None => return Err(arithmetic_overflow()),
+    };
+    let bytes_per_pixel = match channels.checked_mul(2) {
+        Some(bytes) => bytes,
+        None => return Err(arithmetic_overflow()),
+    };
+    let pixels = checked_area(layer.width, layer.height)?;
+    match (pixels as u64).checked_mul(bytes_per_pixel) {
+        Some(bytes) => Ok(bytes),
+        None => Err(arithmetic_overflow()),
+    }
 }
 
 fn composition_dimensions(
@@ -4502,7 +4780,7 @@ mod tests {
 
     #[test]
     fn source_over_is_deterministic_and_crops_to_canvas() {
-        let black = ConvertedImage::from_composited(
+        let black = crate::color::from_composited(
             2,
             1,
             ConvertedColorSpace::Grayscale,
@@ -4510,7 +4788,7 @@ mod tests {
             vec![u16::MAX, u16::MAX],
         )
         .unwrap();
-        let white = ConvertedImage::from_composited(
+        let white = crate::color::from_composited(
             2,
             1,
             ConvertedColorSpace::Grayscale,
@@ -4644,6 +4922,520 @@ mod tests {
     }
 
     #[test]
+    fn normalized_frame_selection_matches_ordered_sequence_model() {
+        for mask in 0_u8..16 {
+            let frames: Vec<_> = (0..4)
+                .map(|index| JpxFrameInfo {
+                    index: 99 - index,
+                    start_milliseconds: index as u64 * 11,
+                    duration_milliseconds: 11,
+                    persistent: mask & (1 << index) != 0,
+                    instructions: (0..index)
+                        .map(|local| {
+                            let mut instruction = test_unit_instruction((index + local) % 3, 1);
+                            instruction.target_x = (index * 10 + local) as u32;
+                            instruction.persistent = local % 2 == 0;
+                            instruction.next_reuse = local as u32;
+                            instruction
+                        })
+                        .collect(),
+                })
+                .collect();
+            for loops in [0, 1, 3] {
+                for requested in (0..14).chain([usize::MAX]) {
+                    let selected = select_frame_instructions(&frames, loops, requested);
+                    if loops != 0 && requested >= 4 * usize::from(loops) {
+                        assert_eq!(
+                            selected.err(),
+                            Some(DecodeError::FrameIndexOutOfRange {
+                                index: requested,
+                                frames: 4 * usize::from(loops),
+                            })
+                        );
+                        continue;
+                    }
+                    let current = requested % 4;
+                    let selected = selected.unwrap();
+                    let expected: Vec<_> = (0..=current)
+                        .filter(|&index| index == current || mask & (1 << index) != 0)
+                        .flat_map(|index| {
+                            (0..index).map(move |local| {
+                                (
+                                    (index * 10 + local) as u32,
+                                    (index + local) % 3,
+                                    local % 2 == 0,
+                                    local as u32,
+                                )
+                            })
+                        })
+                        .collect();
+                    assert_eq!(
+                        selected
+                            .iter()
+                            .map(|instruction| (
+                                instruction.target_x,
+                                instruction.layer_index,
+                                instruction.persistent,
+                                instruction.next_reuse
+                            ))
+                            .collect::<Vec<_>>(),
+                        expected
+                    );
+                }
+            }
+        }
+        for requested in [0, 1, usize::MAX] {
+            assert_eq!(
+                select_frame_instructions(&[], 0, requested).err(),
+                Some(DecodeError::FrameIndexOutOfRange {
+                    index: requested,
+                    frames: 0
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn normalized_multiframe_reuse_persistence_and_reset_match_rational_images() {
+        let mut instructions = Vec::new();
+        for (index, (life, persistent, next_reuse)) in
+            [(10, true, 2), (20, false, 0), (30, true, 1), (40, false, 0)]
+                .into_iter()
+                .enumerate()
+        {
+            instructions.push(CompositionInstruction {
+                target_x: u32::from(index == 3),
+                target_y: 0,
+                target_width: 1,
+                target_height: 1,
+                life,
+                persistent,
+                next_reuse,
+                source_x: 0,
+                source_y: 0,
+                source_width: 0,
+                source_height: 0,
+            });
+        }
+        let composition = Composition {
+            width: 2,
+            height: 1,
+            loop_count: 0,
+            has_unknown_boxes: false,
+            instruction_sets: vec![CompositionInstructionSet {
+                flags: 7,
+                repeat: 0,
+                tick: 1,
+                instructions,
+            }],
+        };
+        let frames = build_timeline(&composition, 2, 4).unwrap();
+        assert_eq!(
+            frames
+                .iter()
+                .map(|frame| (
+                    frame.index,
+                    frame.start_milliseconds,
+                    frame.duration_milliseconds,
+                    frame.persistent,
+                    frame.instructions[0].layer_index
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (0, 0, 10, true, 0),
+                (1, 10, 20, false, 1),
+                (2, 30, 30, true, 0),
+                (3, 60, 40, false, 0)
+            ]
+        );
+        let limits = ResourceLimits::default();
+        for requested in [0, 1, 2, 3, 4, 7, 6, 2, 0, usize::MAX] {
+            let selected =
+                select_frame_instructions(&frames, composition.loop_count, requested).unwrap();
+            let expected_indices: &[usize] = match requested % 4 {
+                0 => &[0],
+                1 => &[0, 1],
+                2 => &[0, 2],
+                _ => &[0, 2, 3],
+            };
+            assert_eq!(
+                selected
+                    .iter()
+                    .map(|instruction| (instruction.layer_index, instruction.target_x))
+                    .collect::<Vec<_>>(),
+                expected_indices
+                    .iter()
+                    .map(|&index| (usize::from(index == 1), u32::from(index == 3)))
+                    .collect::<Vec<_>>()
+            );
+            let layers: Vec<_> = selected
+                .into_iter()
+                .map(|instruction| {
+                    let layer = if instruction.layer_index == 0 {
+                        OwnedLayer {
+                            width: 1,
+                            height: 1,
+                            color_space: ConvertedColorSpace::Grayscale,
+                            colors: vec![vec![12_345]],
+                            alpha: Some((vec![32_768], false)),
+                        }
+                    } else {
+                        OwnedLayer {
+                            width: 1,
+                            height: 1,
+                            color_space: ConvertedColorSpace::Srgb,
+                            colors: vec![vec![u16::MAX], vec![0], vec![1]],
+                            alpha: None,
+                        }
+                    };
+                    (layer, instruction)
+                })
+                .collect();
+            let image =
+                render_decoded_layers(2, 1, &layers, limits.maximum_decoded_bytes(), &limits)
+                    .unwrap();
+            let color_count = if requested % 4 == 1 { 3 } else { 1 };
+            assert_eq!(
+                (
+                    image.width(),
+                    image.height(),
+                    image.precision(),
+                    image.channels().len()
+                ),
+                (2, 1, 16, color_count + 1)
+            );
+            assert_eq!(
+                image.color_space(),
+                if color_count == 3 {
+                    ConvertedColorSpace::Srgb
+                } else {
+                    ConvertedColorSpace::Grayscale
+                }
+            );
+            let mut expected_colors = vec![vec![0_u16; 2]; color_count];
+            let mut expected_alpha = vec![0_u16; 2];
+            let maximum = u128::from(u16::MAX);
+            let nearest = |n: u128, d: u128| -> u16 {
+                if d == 0 {
+                    0
+                } else {
+                    (n / d + u128::from(n % d * 2 >= d)) as u16
+                }
+            };
+            for &index in expected_indices {
+                let pixel = usize::from(index == 3);
+                let source_alpha = if index == 1 { maximum } else { 32_768 };
+                let destination_alpha = u128::from(expected_alpha[pixel]);
+                let denominator =
+                    source_alpha * maximum + destination_alpha * (maximum - source_alpha);
+                for (channel, samples) in expected_colors.iter_mut().enumerate() {
+                    let source = if index == 1 {
+                        [maximum, 0, 1][channel]
+                    } else {
+                        12_345
+                    };
+                    samples[pixel] = nearest(
+                        source * source_alpha * maximum
+                            + u128::from(samples[pixel])
+                                * destination_alpha
+                                * (maximum - source_alpha),
+                        denominator,
+                    );
+                }
+                expected_alpha[pixel] = nearest(denominator, maximum);
+            }
+            for (channel, samples) in expected_colors.iter().enumerate() {
+                assert_eq!(image.channel(channel as u16).unwrap().samples(), samples);
+            }
+            assert_eq!(
+                image.channel(color_count as u16).unwrap().samples(),
+                expected_alpha
+            );
+            assert_eq!(
+                image.channel(color_count as u16).unwrap().channel_type(),
+                ConvertedChannelType::Alpha {
+                    premultiplied: false,
+                    association: ChannelAssociation::WholeImage,
+                }
+            );
+        }
+        assert_eq!(
+            select_frame_instructions(&frames, 2, 8).err(),
+            Some(DecodeError::FrameIndexOutOfRange {
+                index: 8,
+                frames: 8
+            })
+        );
+    }
+
+    #[test]
+    fn normalized_layer_sequence_matches_independent_rational_stack() {
+        let maximum = u128::from(u16::MAX);
+        let nearest = |n: u128, d: u128| -> u16 {
+            if d == 0 {
+                0
+            } else {
+                (n / d + u128::from(n % d * 2 >= d)) as u16
+            }
+        };
+        for order in [[0, 1, 2], [2, 1, 0], [1, 0, 2], [0, 2, 1]] {
+            for premultiplied in [false, true] {
+                let mut layers = Vec::new();
+                let mut expected = [vec![0_u16; 2], vec![0_u16; 2], vec![0_u16; 2]];
+                let mut expected_alpha = vec![0_u16; 2];
+                for index in order {
+                    let alpha = [[32_768, 0], [12_345, u16::MAX], [54_321, 1]][index];
+                    let straight = [[60_000, 7], [1, 30_000], [45_000, 60_000]][index];
+                    let gray = index != 1;
+                    let plane_count = if gray { 1 } else { 3 };
+                    let colors: Vec<Vec<u16>> = (0..plane_count)
+                        .map(|channel| {
+                            (0..2)
+                                .map(|pixel| {
+                                    let sample = straight[pixel] / (channel + 1) as u16;
+                                    if premultiplied {
+                                        nearest(
+                                            u128::from(sample) * u128::from(alpha[pixel]),
+                                            maximum,
+                                        )
+                                    } else {
+                                        sample
+                                    }
+                                })
+                                .collect()
+                        })
+                        .collect();
+                    for pixel in 0..2 {
+                        let a = u128::from(alpha[pixel]);
+                        let d = u128::from(expected_alpha[pixel]);
+                        let denominator = a * maximum + d * (maximum - a);
+                        for channel in 0..3 {
+                            let s = u128::from(colors[if gray { 0 } else { channel }][pixel]);
+                            let old = u128::from(expected[channel][pixel]);
+                            expected[channel][pixel] = nearest(
+                                if premultiplied {
+                                    s * maximum * maximum
+                                } else {
+                                    s * a * maximum
+                                } + old * d * (maximum - a),
+                                denominator,
+                            );
+                        }
+                        expected_alpha[pixel] = nearest(denominator, maximum);
+                    }
+                    layers.push((
+                        OwnedLayer {
+                            width: 2,
+                            height: 1,
+                            color_space: if gray {
+                                ConvertedColorSpace::Grayscale
+                            } else {
+                                ConvertedColorSpace::Srgb
+                            },
+                            colors,
+                            alpha: Some((alpha.to_vec(), premultiplied)),
+                        },
+                        test_unit_instruction(index, 2),
+                    ));
+                }
+                let limits = ResourceLimits::default();
+                let image =
+                    render_decoded_layers(2, 1, &layers, limits.maximum_decoded_bytes(), &limits)
+                        .unwrap();
+                assert_eq!(
+                    (
+                        image.width(),
+                        image.height(),
+                        image.precision(),
+                        image.color_space()
+                    ),
+                    (2, 1, 16, ConvertedColorSpace::Srgb)
+                );
+                assert_eq!(image.channels().len(), 4);
+                for (channel, expected_samples) in expected.iter().enumerate() {
+                    assert_eq!(
+                        image.channel(channel as u16).unwrap().samples(),
+                        expected_samples
+                    );
+                    assert_eq!(
+                        image.channel(channel as u16).unwrap().channel_type(),
+                        [
+                            ConvertedChannelType::Red,
+                            ConvertedChannelType::Green,
+                            ConvertedChannelType::Blue
+                        ][channel]
+                    );
+                }
+                assert_eq!(image.channel(3).unwrap().samples(), expected_alpha);
+                assert_eq!(
+                    image.channel(3).unwrap().channel_type(),
+                    ConvertedChannelType::Alpha {
+                        premultiplied: false,
+                        association: ChannelAssociation::WholeImage,
+                    }
+                );
+            }
+        }
+    }
+
+    fn test_unit_instruction(layer_index: usize, width: u32) -> JpxInstructionInfo {
+        JpxInstructionInfo {
+            layer_index,
+            target_x: 0,
+            target_y: 0,
+            target_width: width,
+            target_height: 1,
+            source_x: 0,
+            source_y: 0,
+            source_width: 0,
+            source_height: 0,
+            persistent: true,
+            next_reuse: 0,
+        }
+    }
+
+    #[test]
+    fn normalized_layer_sequence_preserves_resource_and_first_error_precedence() {
+        let gray = |samples: Vec<u16>| OwnedLayer {
+            width: 1,
+            height: 1,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![samples],
+            alpha: None,
+        };
+        let limits = ResourceLimits::default();
+        let layers = [
+            (gray(vec![7]), test_unit_instruction(0, 1)),
+            (gray(vec![9]), test_unit_instruction(1, 1)),
+        ];
+        for (cap, actual) in [(0, 8), (7, 8), (8, 12), (11, 12)] {
+            assert_eq!(
+                render_decoded_layers(1, 1, &layers, cap, &limits).err(),
+                Some(DecodeError::LimitExceeded {
+                    resource: Resource::DecodedBytes,
+                    limit: cap,
+                    actual
+                })
+            );
+        }
+        for (cap, actual) in [(0, 3), (2, 3), (3, 5), (4, 5)] {
+            let tight = limits.with_maximum_work_units(cap).unwrap();
+            assert_eq!(
+                render_decoded_layers(1, 1, &layers, 12, &tight).err(),
+                Some(DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: cap,
+                    actual
+                })
+            );
+        }
+        let image = render_decoded_layers(
+            1,
+            1,
+            &layers,
+            12,
+            &limits.with_maximum_work_units(5).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(image.channel(0).unwrap().samples(), [9]);
+        let invalid = [
+            (gray(vec![]), test_unit_instruction(0, 1)),
+            (gray(vec![9]), test_unit_instruction(1, 1)),
+        ];
+        assert_eq!(
+            render_decoded_layers(1, 1, &invalid, 7, &limits).err(),
+            Some(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 7,
+                actual: 8
+            })
+        );
+        assert_eq!(
+            render_decoded_layers(1, 1, &invalid, 8, &limits).err(),
+            Some(invalid_layer())
+        );
+        let mut invalid_target = test_unit_instruction(0, 0);
+        invalid_target.source_width = 0;
+        let invalid_first = [
+            (gray(vec![7]), invalid_target),
+            (gray(vec![]), test_unit_instruction(1, 1)),
+        ];
+        assert_eq!(
+            render_decoded_layers(1, 1, &invalid_first, 12, &limits).err(),
+            Some(invalid_layer())
+        );
+        assert_eq!(
+            render_decoded_layers(0, 0, &[], 0, &limits).err(),
+            Some(invalid_layer())
+        );
+        let huge = [(
+            OwnedLayer {
+                width: u32::MAX,
+                height: u32::MAX,
+                color_space: ConvertedColorSpace::Srgb,
+                colors: vec![vec![], vec![], vec![]],
+                alpha: None,
+            },
+            test_unit_instruction(0, 1),
+        )];
+        assert_eq!(
+            render_decoded_layers(1, 1, &huge, u64::MAX, &limits).err(),
+            Some(arithmetic_overflow())
+        );
+    }
+
+    #[test]
+    fn normalized_layer_sequence_selects_space_globally_and_preserves_empty_canvas_metadata() {
+        let mut hidden = test_unit_instruction(1, 1);
+        hidden.target_x = 10;
+        let layers = [
+            (
+                OwnedLayer {
+                    width: 1,
+                    height: 1,
+                    color_space: ConvertedColorSpace::Grayscale,
+                    colors: vec![vec![12_345]],
+                    alpha: None,
+                },
+                test_unit_instruction(0, 1),
+            ),
+            (
+                OwnedLayer {
+                    width: 1,
+                    height: 1,
+                    color_space: ConvertedColorSpace::Srgb,
+                    colors: vec![vec![], vec![], vec![]],
+                    alpha: None,
+                },
+                hidden,
+            ),
+        ];
+        let limits = ResourceLimits::default();
+        let image = render_decoded_layers(1, 1, &layers, 20, &limits).unwrap();
+        assert_eq!(image.color_space(), ConvertedColorSpace::Srgb);
+        for channel in 0..3 {
+            assert_eq!(image.channel(channel).unwrap().samples(), [12_345]);
+        }
+        assert_eq!(image.channel(3).unwrap().samples(), [u16::MAX]);
+        let image = render_decoded_layers(0, 0, &layers, 12, &limits).unwrap();
+        assert_eq!(
+            (
+                image.width(),
+                image.height(),
+                image.precision(),
+                image.channels().len()
+            ),
+            (0, 0, 16, 4)
+        );
+        assert!(
+            image
+                .channels()
+                .iter()
+                .all(|channel| channel.samples().is_empty())
+        );
+    }
+
+    #[test]
     fn scaled_registration_and_mixed_color_spaces_are_bounded() {
         let gray = OwnedLayer {
             width: 1,
@@ -4691,6 +5483,7 @@ mod tests {
             1,
             1,
             &[(gray, placement(0)), (red, placement(1))],
+            ResourceLimits::default().maximum_decoded_bytes(),
             &ResourceLimits::default(),
         )
         .unwrap();

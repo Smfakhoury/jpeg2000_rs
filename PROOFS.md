@@ -130,6 +130,9 @@ Read each contract according to its inputs and postcondition:
 | Successful placed-layer composition | On success, the complete final planar canvas state and exact work count equal a raster-prefix fold of normalized pixel transitions at the selected clipped, floor-scaled crop addresses | Complete error-state semantics, sufficient-budget success, earlier channel normalization, layer/frame ordering or a parser-to-pixel theorem |
 | All-return placed-layer prefix safety | On every return, all buffers equal a valid raster prefix, and work accounts for that prefix or all but its final stored pixel; inactive geometry leaves the complete initial state unchanged | Which prefix must fail, exact error classification, sufficient-budget success, normalization or layer/frame ordering |
 | Deterministic budgeted placed-layer execution | On every return, the exact typed `Result`, complete final buffers and work counter equal a raster fold that stops at the first checked-address, invalid-pixel, work-overflow or actual work-limit failure | Earlier channel normalization, layer/frame ordering, parser-to-pixel correctness or official conformance |
+| Supplied normalized layer sequence | `render_decoded_layers` returns exactly `part2_render_layers`: global output-space choice, transparent canvas initialization, ordered cumulative byte checks, carried placed-layer buffers/work, first failure and complete final image metadata/samples | Which compressed layers/instructions are supplied, normalization/registration/opacity/chroma-key correctness, or complete frame/timeline orchestration |
+| Supplied frame-table selection | `select_frame_instructions` returns exactly `part2_select_frame`: finite/indefinite modulo selection, exact selection errors, ordered persistent predecessors/current frame, and all instruction fields | Building the frame table, interpreting reuse, or a composed selected-frame-to-image theorem |
+| Normalized image construction | `from_layer`/`from_composited` return exactly `part2_image_from_planes`: checked dimensions/plane cardinalities, exact errors, 16-bit precision, ordered channel kinds, whole-image alpha association and all buffers | The origin or correctness of supplied normalized samples |
 | Complete converted-image layer construction | Exact typed result, dimensions, ordered color planes, optional sequentially combined alpha and representation flag for actual borrowed selection and owned copies | Earlier component/color conversion or association validation, registration/opacity/chroma-key, layer/frame ordering or a parser-to-pixel theorem |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
@@ -154,6 +157,53 @@ layout. There is still one production implementation and no public API change.
 The existing placed-layer theorem uses a fresh solver context
 (`spinoff_prover`) to avoid accumulated solver-state sensitivity as the model
 grows; its obligations and resource limit are not relaxed.
+
+### F3 completed stages and remaining acceptance
+
+The actual layer renderer now carries a deterministic sequence denotation
+across every placement; no validity, budget sufficiency or trace assumption
+is required. The render invariant includes every mutable buffer and both
+counters; the byte-charge and placed-layer contracts cover **all** returns.
+Byte charging precedes placement validation;
+placed-layer stores/charges retain their existing error ordering. The final
+image constructor is proved rather than treated as an unmodeled adapter.
+The constructors are free functions for the same pinned attribute limitation
+as the F1 owned-layer constructor; their bodies remain production code.
+
+The internal renderer receives the byte cap explicitly. Each production
+caller supplies `options.limits().maximum_decoded_bytes()`; the work cap is
+still related directly to `ResourceLimits` by `resource_work_limit`.
+This avoids adding an unproved/private-field limit accessor assumption or
+changing the shared limits module. The theorem is relative to the supplied
+byte cap and the actual work-limit view, not a proof of all caller code.
+
+`render_inspected_frame` uses the proved selector before decoding its ordered
+instructions. Selection copies instructions only; it does not cache decoded
+layers or infer any normalization semantics. The previous per-placement
+decode order and first decoder error remain intact. Tests compare all
+four-frame persistence masks, finite/indefinite looping and extreme requests
+against independent sequences. A separate reuse/timing fixture feeds actual
+selection and normalized rendering, checking rational images, buffers,
+metadata, repeated-call determinism and loop reset.
+
+**F3 remains open.** The two closed stages are whole supplied-layer rendering
+and whole supplied-frame-table instruction selection. Acceptance still needs:
+
+1. An exact all-return theorem for `build_timeline`, including instruction-set
+   repetition, layer exhaustion, reuse targets/conflicts, frame grouping,
+   persistence assignment, duration/start accumulation and frame/work limits.
+2. A composed input-relative theorem connecting selected layer references
+   to supplied normalized layer results and the complete final frame image,
+   preserving first supplied-layer failure; compressed decoding itself is
+   outside that input-relative boundary.
+3. Any resulting timeline/bridge independent error, reuse and image cases.
+
+The normative inventory links the complete mutable byte-charge contract
+and the new models/proofs/tests. Its existing narrow result-projection
+scanner does not yet recognize the new constructor, whole-image and
+frame-selection projections as `contract_refs`; adding those exact
+allowlisted projections is a parent-owned validation follow-up, not a
+relaxation or a claim that these solver-verified contracts are absent.
 
 The production placed-layer compositor uses the complete `source_over_pixel`
 evaluator. Its executable contract equates the entire optional color/alpha

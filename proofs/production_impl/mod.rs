@@ -32,6 +32,61 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_frame_sequence_empty(frames: Seq<crate::specs::Part2Frame>, selected: nat)
+    requires selected < frames.len(),
+    ensures crate::specs::part2_frame_instruction_sequence(frames, selected, 0) == Seq::<crate::specs::Part2Instruction>::empty(),
+{
+    reveal(crate::specs::part2_frame_instruction_sequence);
+}
+
+pub proof fn production_frame_sequence_step(frames: Seq<crate::specs::Part2Frame>, selected: nat, count: nat)
+    requires selected < frames.len(), count <= selected,
+    ensures crate::specs::part2_frame_instruction_sequence(frames, selected, count + 1)
+        == if count == selected || frames[count as int].3 {
+            crate::specs::part2_frame_instruction_sequence(frames, selected, count) + frames[count as int].4
+        } else { crate::specs::part2_frame_instruction_sequence(frames, selected, count) },
+{
+    reveal_with_fuel(crate::specs::part2_frame_instruction_sequence, 1);
+}
+
+pub proof fn production_render_empty(
+    width: u32, height: u32, layers: Seq<crate::specs::Part2Placement>,
+    initial: crate::specs::Part2RenderState, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, 0) == initial,
+{
+    reveal(crate::specs::part2_render_prefix);
+}
+
+pub proof fn production_render_step(
+    width: u32, height: u32, layers: Seq<crate::specs::Part2Placement>,
+    initial: crate::specs::Part2RenderState, byte_limit: u64, work_limit: u64, count: nat,
+)
+    requires count < layers.len(),
+    ensures crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count + 1)
+        == crate::specs::part2_render_step(width, height, crate::specs::part2_render_space(layers), layers[count as int],
+            crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count),
+            byte_limit, work_limit),
+{
+    reveal_with_fuel(crate::specs::part2_render_prefix, 1);
+}
+
+pub proof fn production_render_error(
+    width: u32, height: u32, layers: Seq<crate::specs::Part2Placement>,
+    initial: crate::specs::Part2RenderState, byte_limit: u64, work_limit: u64, count: nat,
+)
+    requires count <= layers.len(),
+        crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count).0.is_err(),
+    ensures crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, layers.len())
+        == crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count),
+    decreases layers.len() - count,
+{
+    if count < layers.len() {
+        production_render_step(width, height, layers, initial, byte_limit, work_limit, count);
+        production_render_error(width, height, layers, initial, byte_limit, work_limit, count + 1);
+    }
+}
+
 pub proof fn production_layer_scan_empty(channels: Seq<crate::specs::Part2LayerChannel>, color_count: nat)
     ensures crate::specs::part2_layer_channel_scan(channels, color_count, 0)
         == Ok((Seq::new(color_count, |i: int| None), Seq::empty())),

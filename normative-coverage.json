@@ -2108,6 +2108,10 @@
         },
         {
           "path": "src/jpx.rs",
+          "symbol": "charge_layer_bytes"
+        },
+        {
+          "path": "src/jpx.rs",
           "symbol": "composite_placed_layer"
         },
         {
@@ -2446,6 +2450,132 @@
         }
       ],
       "topic": "Composition instruction timing, repetitions, loops, source-over alpha, clipping, scaled sampling, row-major addressing, and frame rendering"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "charge_layer_bytes"
+        }
+      ],
+      "id": "part2-normalized-layer-frame-stages",
+      "implementation_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_decoded_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_inspected_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "select_frame_instructions"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_layer"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_composited"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_error"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_sequence_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_sequence_step"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_image_from_planes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_space"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_layer_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_charge_layer_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_initial"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_frame_index"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_frame_instruction_sequence"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_select_frame"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/color.rs",
+          "symbol": "normalized_plane_constructor_preserves_all_metadata_and_rejects_each_shape_fault"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_matches_independent_rational_stack"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_preserves_resource_and_first_error_precedence"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_selects_space_globally_and_preserves_empty_canvas_metadata"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_frame_selection_matches_ordered_sequence_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_multiframe_reuse_persistence_and_reset_match_rational_images"
+        }
+      ],
+      "topic": "Complete supplied-layer rendering and supplied-frame-table selection stages; timeline construction and selected-layer-to-image theorem remain open F3 surfaces"
     },
     {
       "contract_refs": [

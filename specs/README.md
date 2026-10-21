@@ -22,6 +22,7 @@ has been reconciled or proved.
 | T.800 (2024-07), core coding/JP2 | `part1_*`, marker/packet, geometry, MQ and transform models | Check encoded field widths, sample precision, signedness, coordinate grids and arithmetic domains against the selected reference. |
 | T.801 (2023-08), extensions/JPX | `part2_*`, ADS/ATK/NLT/CBD and composition models | Some syntax interpretation used acquired T.801 (2021). The selected 2023 reconciliation still requires authorized text; no missing clause numbers are invented here. |
 | Selected normalized composition profile | `part2_layer_input`, `part2_owned_layer_input`, `part2_source_over_pixel`, `part2_composition_geometry`, `part2_composition_layer_transition` | Normalization to 16 bits, channel/alpha construction, floor-scaled sampling, checked addresses, typed errors and work limits are explicit selected implementation policies, not blanket claims about all JPEG 2000 profiles. |
+| Supplied normalized layers and frame tables | `part2_render_layers`, `part2_image_from_planes`, `part2_select_frame` | Complete layer rendering and frame-instruction selection are separate input-relative stages. Timeline construction, compressed decoding and the bridge from selected instructions to decoded placements are not proved by these models. |
 | T.808 (2026-06), JPIP | `part9_*` and databin/range models | The cited catalog record is not an acquired normative text or a completed edition audit. |
 | T.814 (2019-06), HTJ2K | `part15_*`, `valid_ht_*` and HT cleanup/refinement models | Separate coding semantics from implementation capacity bounds and generated-image qualification. |
 
@@ -70,6 +71,42 @@ rejections. Optional alpha is an **ordered fold** of
 product rounded once. One plane preserves its representation flag; two or
 more produce straight alpha. Association validation and earlier normalization
 are outside this stage's input-relative theorem.
+
+`part2_render_layers` denotes rendering the **supplied ordered placements**,
+not an execution trace supplied as an assumption. Its initial canvas is
+transparent black, its output space is sRGB if any supplied layer is sRGB
+(even an inactive layer), and its layer fold stops at the first failure.
+Each step first charges that layer's complete nominal decoded size, checks
+the supplied byte cap, then invokes the budgeted placed-layer transition with
+the carried canvas and work counter. Canvas initialization contributes its
+pixel count to work and its planar storage to decoded bytes. As in the actual
+implementation, the initial byte charge is checked together with the first
+layer, not separately. The complete image result includes dimensions,
+precision, channel kinds/association, and every color and alpha sample.
+`part2_image_from_planes` also specifies the production constructor's exact
+shape errors, including the accepted zero-area case.
+
+`part2_select_frame` selects a modulo frame for indefinite playback or a
+bounded repeated sequence, with exact empty/out-of-range/overflow errors.
+`part2_frame_instruction_sequence` concatenates persistent predecessors and
+the current frame in table order, preserving every instruction field. Frame
+table positions, not stored frame indices or timestamps, determine selection.
+The current frame is included regardless of its persistence flag; a transient
+predecessor is skipped without erasing older persistent frames. Each render
+starts afresh, and looping does not retain the preceding loop's canvas.
+Instruction-level persistence and `next_reuse` are preserved as input metadata;
+their interpretation by `build_timeline` is not established by selection.
+
+These are two complete stages of F3, **not full F3 closure**. Remaining work is
+the production timeline builder (set/repetition expansion, layer exhaustion,
+reuse assignments/conflicts, grouping/timing and frame/work errors) and the
+input-relative connection from selected layer references through supplied
+normalized layer results to the final render. Parsing, compressed-data
+correctness, normalization, registration, opacity and chroma-key policies
+remain separate packages. Independent tests exercise multilayer rational
+rounding, all four-frame persistence masks, finite/indefinite selection,
+timeline reuse fixtures and complete multiframe image buffers; those tests
+do not turn the unproved timeline builder into a theorem.
 
 The actual raster and first-failure definitions remain here. In particular,
 `part2_composition_budgeted_prefix` determines execution order and error/state
