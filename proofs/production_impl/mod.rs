@@ -32,6 +32,84 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_layer_scan_empty(channels: Seq<crate::specs::Part2LayerChannel>, color_count: nat)
+    ensures crate::specs::part2_layer_channel_scan(channels, color_count, 0)
+        == Ok((Seq::new(color_count, |i: int| None), Seq::empty())),
+{
+    reveal(crate::specs::part2_layer_channel_scan);
+}
+
+pub proof fn production_layer_scan_step(
+    channels: Seq<crate::specs::Part2LayerChannel>, color_count: nat, count: nat,
+)
+    requires count < channels.len(),
+    ensures crate::specs::part2_layer_channel_scan(channels, color_count, count + 1)
+        == match crate::specs::part2_layer_channel_scan(channels, color_count, count) {
+            Err(error) => Err(error),
+            Ok((colors, alphas)) => crate::specs::part2_layer_channel_scan_step(colors, alphas, channels[count as int]),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_layer_channel_scan, 1);
+}
+
+pub proof fn production_layer_scan_error(
+    channels: Seq<crate::specs::Part2LayerChannel>, color_count: nat, count: nat, end: nat,
+    error: crate::DecodeError,
+)
+    requires count <= end <= channels.len(),
+        crate::specs::part2_layer_channel_scan(channels, color_count, count) == Err(error),
+    ensures crate::specs::part2_layer_channel_scan(channels, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_layer_scan_error(channels, color_count, count, (end - 1) as nat, error);
+        production_layer_scan_step(channels, color_count, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_layer_alpha_empty(alphas: Seq<crate::specs::Part2LayerAlpha>, area: nat)
+    ensures crate::specs::part2_layer_alpha_fold(alphas, area, 0) == Ok(None),
+{
+    reveal(crate::specs::part2_layer_alpha_fold);
+}
+
+pub proof fn production_layer_alpha_product_step(first: Seq<u16>, second: Seq<u16>, count: nat)
+    requires count < first.len(), first.len() == second.len(),
+    ensures crate::proofs::internal_specs::part2_layer_alpha_product_prefix(first, second, count + 1)
+        == crate::proofs::internal_specs::part2_layer_alpha_product_prefix(first, second, count)
+            .update(count as int, crate::specs::part2_normalized_sample_product(first[count as int], second[count as int]) as u16),
+{
+    assert(crate::proofs::internal_specs::part2_layer_alpha_product_prefix(first, second, count + 1)
+        =~= crate::proofs::internal_specs::part2_layer_alpha_product_prefix(first, second, count)
+            .update(count as int, crate::specs::part2_normalized_sample_product(first[count as int], second[count as int]) as u16));
+}
+
+pub proof fn production_layer_alpha_step(alphas: Seq<crate::specs::Part2LayerAlpha>, area: nat, count: nat)
+    requires count < alphas.len(),
+    ensures crate::specs::part2_layer_alpha_fold(alphas, area, count + 1)
+        == match crate::specs::part2_layer_alpha_fold(alphas, area, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part2_layer_alpha_merge(previous, alphas[count as int], area),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_layer_alpha_fold, 1);
+}
+
+pub proof fn production_layer_alpha_error(
+    alphas: Seq<crate::specs::Part2LayerAlpha>, area: nat, count: nat, end: nat,
+    error: crate::DecodeError,
+)
+    requires count <= end <= alphas.len(),
+        crate::specs::part2_layer_alpha_fold(alphas, area, count) == Err(error),
+    ensures crate::specs::part2_layer_alpha_fold(alphas, area, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_layer_alpha_error(alphas, area, count, (end - 1) as nat, error);
+        production_layer_alpha_step(alphas, area, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_composition_canvas_empty(
     source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
     destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,

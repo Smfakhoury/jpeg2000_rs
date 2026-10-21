@@ -188,6 +188,30 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_known_complete_projection_of_the_bound_result(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-jpx-layer-input-construction"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures layer_channels_outcome(result)", "ensures layer_channels_outcome(unrelated)"),
+            ("ensures layer_channels_outcome(result)", "ensures unlisted_projection(result)"),
+            ("ensures layer_channels_outcome(result)", "ensures owned_layer_outcome(result)"),
+            ("ensures owned_layer_outcome(result)", "ensures layer_channels_outcome(result)"),
+            ("ensures owned_layer_outcome(result)", "ensures owned_layer_outcome(unrelated)"),
+            ("== crate::specs::part2_layer_input(", "== crate::specs::unlisted_model("),
+            ("== crate::specs::part2_owned_layer_input(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/jpx.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [
