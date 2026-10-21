@@ -40,6 +40,7 @@ class NumericalCase:
     samples: tuple[int, ...] | None = None
     codestream: bytes | None = None
     signed: bool = False
+    sample_representation: str = "integer"
 
 
 CASES = (
@@ -73,6 +74,16 @@ CASES = (
     NumericalCase("gray12-lossless", precision=12),
     NumericalCase("gray20-lossless", precision=20),
     NumericalCase("gray24-jp2", precision=24, format="jp2"),
+    NumericalCase("roi-gray-shift3", options=("-ROI", "c=0,U=3")),
+    NumericalCase("roi-gray16-shift3", precision=16, options=("-ROI", "c=0,U=3")),
+    NumericalCase("roi-rgb-component0", channels=3, options=("-ROI", "c=0,U=3")),
+    NumericalCase("roi-rgb-component1", channels=3, options=("-ROI", "c=1,U=3")),
+    NumericalCase("roi-rgb-jp2-component2", channels=3, format="jp2", options=("-ROI", "c=2,U=5")),
+    NumericalCase("roi-tiles-origin", options=("-ROI", "c=0,U=3", "-t", "16,16", "-d", "3,5", "-p", "CPRL")),
+    NumericalCase("roi-gray-layers", options=("-r", "8,3,1", "-ROI", "c=0,U=3")),
+    NumericalCase("roi-signed17", signed=True, precision=17, options=("-ROI", "c=0,U=3")),
+    NumericalCase("roi-signed17-layers", signed=True, precision=17,
+                  options=("-r", "8,3,1", "-ROI", "c=0,U=1")),
 )
 
 def _ht_test_codestream(width: int, packet: bytes, exponent: int = 7) -> bytes:
@@ -148,10 +159,22 @@ HT_CASES = (
     NumericalCase("ht-representative-rgb", channels=3, width=256, height=256),
     NumericalCase("ht-representative-gray16", precision=16, width=256, height=256),
     *_ht_refinement_cases(),
+    *(NumericalCase(
+        f"ht-nlt-binary32-{levels}", width=8, height=8, precision=32, signed=True,
+        format="jph" if levels == 1 else "raw", decomposition_levels=levels,
+        pattern="fixed", sample_representation="ieee754-binary32-bits",
+        samples=tuple(struct.unpack("<i", struct.pack("<f", value))[0]
+                      for value in (-16.0, -1.0, -0.25, -0.0, 0.0, 0.25, 1.0, 16.0)) * 8,
+        options=("-signed", "true", "-bit_depth", "32"),
+    ) for levels in (0, 1, 2)),
 )
 
 
 def source_extension(case: NumericalCase) -> str:
+    if case.sample_representation == "ieee754-binary32-bits":
+        return "pfm"
+    if case.sample_representation != "integer":
+        raise ValueError("unknown generated sample representation")
     if case.signed or case.precision not in (8, 16):
         if case.channels != 1:
             raise ValueError("generated PGX profile requires one component")
@@ -183,6 +206,11 @@ def source_image(case: NumericalCase) -> bytes:
          ((x * 31 + y * 17 + channel * 71 + x * y * 13) % 256) * peak // 255)
         for y in range(case.height) for x in range(case.width) for channel in range(case.channels)
         )
+    if extension == "pfm":
+        if case.precision != 32 or not case.signed or case.channels not in (1, 3) or case.pattern != "fixed":
+            raise ValueError("PFM bit-pattern fixtures require fixed signed binary32 words")
+        payload = b"".join(struct.pack("<i", value) for value in values)
+        return f"{'Pf' if case.channels == 1 else 'PF'}\n{case.width} {case.height}\n-1.0\n".encode() + payload
     sample_bytes = 1 if case.precision <= 8 else 2 if case.precision <= 16 else 4
     payload = b"".join(value.to_bytes(sample_bytes, "big", signed=case.signed) for value in values)
     if extension == "pgx":
@@ -199,6 +227,27 @@ def signed_codestream(data: bytes, precision: int) -> bytes:
         raise ValueError("signed fixture requires a matching unsigned single-component SIZ header")
     # The offset unsigned input has the same centered coefficients as the signed source.
     return data[:42] + bytes((data[42] | 0x80,)) + data[43:]
+
+
+def validate_required_headers(case: NumericalCase, data: bytes) -> list[str]:
+    required = []
+    if "-ROI" in case.options:
+        index = case.options.index("-ROI") + 1
+        if index >= len(case.options):
+            raise ValueError("ROI fixture is missing its component/upshift argument")
+        value = case.options[index]
+        component, shift = value.split(",")
+        if not component.startswith("c=") or not shift.startswith("U="):
+            raise ValueError("ROI fixture requires explicit component and upshift")
+        payload = bytes((int(component[2:]), 0, int(shift[2:])))
+        required.append(("component-maxshift", framework.segment(0xff5e, payload)))
+    if case.sample_representation == "ieee754-binary32-bits":
+        required.append(("binary-complement-nlt", framework.segment(0xff76, b"\xff\xff\x9f\x03")))
+    header = data.split(b"\xff\x90", 1)[0]
+    for name, segment in required:
+        if segment not in header:
+            raise ValueError(f"independent encoder omitted the required {name} header")
+    return [name for name, _ in required]
 
 
 def image_error_metrics(reference: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
@@ -330,7 +379,8 @@ def run_numerical(
                     "format": case.format,
                     "precision": case.precision, "signed": case.signed,
                     "source_format": source_extension(case),
-                    "signed_header_authored": case.signed,
+                    "signed_header_authored": case.signed and case.sample_representation == "integer",
+                    "sample_representation": case.sample_representation,
                     "pattern": case.pattern,
                     "encoder_options": [*encoder_options, *case.options] if case.codestream is None else [],
                     "encoder_invoked": case.codestream is None,
@@ -340,19 +390,20 @@ def run_numerical(
                     "artifacts": [],
                 }
                 extension = source_extension(case)
-                parse_image = framework.parse_pgx if extension == "pgx" else framework.parse_pnm
+                parse_image = (framework.parse_pgx if extension == "pgx" else
+                               framework.parse_pfm_bit_patterns if extension == "pfm" else framework.parse_pnm)
                 source = work / f"{case.name}.{extension}"
                 encoded_extension = case.format if case.format != "raw" else "j2c" if high_throughput else "j2k"
                 encoded = work / f"{case.name}.{encoded_extension}"
                 codestream = (encoded.with_suffix(".j2c")
-                              if case.format == "jph" or (case.signed and case.format == "jp2") else encoded)
+                              if case.format == "jph" or (record["signed_header_authored"] and case.format == "jp2") else encoded)
                 reference_output = work / f"{case.name}-reference.{extension}"
                 reference = (reference_output.with_stem(reference_output.stem + "_0")
                              if extension == "pgx" else reference_output)
                 source.write_bytes(source_image(case))
                 record["input_sha256"] = framework.sha256_file(source)
                 encoder_source = source
-                if case.signed:
+                if record["signed_header_authored"]:
                     shifted_samples = (tuple(value + (1 << (case.precision - 1)) for value in case.samples)
                                        if case.samples is not None else None)
                     shifted_case = replace(case, signed=False, samples=shifted_samples)
@@ -367,7 +418,7 @@ def run_numerical(
                                                       *record["encoder_options"]], timeout_seconds)
                     else:
                         codestream.write_bytes(case.codestream)
-                    if case.signed:
+                    if record["signed_header_authored"]:
                         codestream.write_bytes(signed_codestream(codestream.read_bytes(), case.precision))
                         if case.format == "jp2":
                             encoded.write_bytes(framework.jp2_file(
@@ -378,7 +429,9 @@ def run_numerical(
                         encoded.write_bytes(framework.jp2_file(
                             codestream.read_bytes(), b"jph ", width=case.width, height=case.height,
                             components=case.channels, precision=case.precision,
+                            signed=case.signed,
                         ))
+                    record["verified_features"] = validate_required_headers(case, codestream.read_bytes())
                     record["codestream_sha256"] = framework.sha256_file(encoded)
                     _, reference_ms = _run_checked([tools["decoder"]["path"], "-i", str(encoded), "-o", str(reference_output)], timeout_seconds)
                     expected = parse_image(reference)

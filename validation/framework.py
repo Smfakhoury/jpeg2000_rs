@@ -703,6 +703,32 @@ def parse_pgx(path: Path) -> dict[str, Any]:
     }
 
 
+def parse_pfm_bit_patterns(path: Path) -> dict[str, Any]:
+    """Read binary32 words in stored scanline order, not floating-point values."""
+    fields = path.read_bytes().split(b"\n", 3)
+    if len(fields) != 4 or fields[0] not in (b"Pf", b"PF"):
+        raise ValueError("invalid binary32 PFM fixture header")
+    dimensions = fields[1].split()
+    if len(dimensions) != 2:
+        raise ValueError("invalid PFM fixture dimensions")
+    width, height = (int(value) for value in dimensions)
+    scale = float(fields[2])
+    if width <= 0 or height <= 0 or scale not in (-1.0, 1.0):
+        raise ValueError("PFM fixture requires positive dimensions and unit scale")
+    channels = 1 if fields[0] == b"Pf" else 3
+    payload = fields[3]
+    if len(payload) != width * height * channels * 4:
+        raise ValueError("PFM fixture payload length mismatch")
+    values = [value for (value,) in struct.iter_unpack("<i" if scale < 0 else ">i", payload)]
+    return {
+        "accepted": True,
+        "image": {"width": width, "height": height, "components": [{
+            "width": width, "height": height, "precision": 32,
+            "signed": True, "sample_kind": "signed", "samples": values[channel::channels],
+        } for channel in range(channels)]},
+    }
+
+
 def normalized_hash(outcome: dict[str, Any]) -> str:
     stable = {
         key: value

@@ -212,6 +212,35 @@ expansion, and ordinary resource limits cover any additional decoded context.
 An empty-resolution precinct consumes its packet header even when its present
 flag is set and it contains no code blocks. Input/tool/source hashes and failing
 fixtures are retained under the existing `container-failures/` artifacts.
+
+### Component Maxshift and binary-complement NLT
+
+Additional legacy cases exercise component-wide `RGN` upshifts for grayscale,
+16-bit data, different RGB component indices, JP2, nonzero tiled origins,
+quality layers and selected signed data. The requested RGN component/style/
+shift header must actually be present. This CLI mechanism upshifts a whole
+component; it is not evidence for arbitrary spatial ROI masks. Native
+resolution, region, tile and tile-set relations are checked separately.
+
+Live OpenJPH cases encode finite signed binary32 patterns with NLT type 3 at
+zero, one and two DWT decompositions, including a signed JPH container. The
+required NLT header must be present; signed-header authoring is not substituted
+for this live transform. The independent PFM output and the subject's typed
+32-bit signed words must preserve every original bit, including distinct
+positive and negative zero. Reports label the representation
+`ieee754-binary32-bits`; integer-word error metrics here are bit-exactness
+diagnostics, not floating-point intensity or PSNR claims.
+
+The PFM helper reads words in stored scanline order and only supports unit
+scale and binary32 fixture payloads. Repeated rows isolate the nonlinear
+sample transform; this is not general PFM orientation, NaN/infinity, color
+management, other NLT-type or full floating-point codec qualification.
+Failures still retain original/encoded/reference inputs and source/tool hashes.
+
+HT cleanup U/MagSgn precision includes the sign-coding bit in addition to the
+coefficient magnitude bound. The paired implementation/specification and
+boundary regressions keep these limits distinct: up to 74 coefficient
+magnitude bits and 75 MagSgn bits, with out-of-range values still rejected.
 Missing default tools are explicitly `blocked`; configured missing tools,
 process failures, invalid output and exceeded thresholds cannot pass.
 `--encoder`, `--decoder`, `OPENJPEG_ENCODER` and `OPENJPEG_DECODER` select trusted

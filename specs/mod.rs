@@ -137,7 +137,7 @@ pub open spec fn ht_completed_u(u_base: nat, gamma: bool, exponent: nat) -> nat 
 }
 
 pub open spec fn valid_ht_magnitude_width(completed_u: nat) -> bool {
-    completed_u > 0 && completed_u <= 74
+    completed_u > 0 && completed_u <= 75
 }
 
 pub open spec fn ht_placeholder_passes(packet_passes: nat) -> nat {
@@ -235,7 +235,8 @@ pub open spec fn part15_cleanup_u_bound(
     missing_msbs: nat, placeholder_bitplanes: nat, capability_bound: nat,
 ) -> nat {
     let bound = missing_msbs + placeholder_bitplanes + 2;
-    if bound <= capability_bound { bound } else { capability_bound }
+    let capability_limit = if capability_bound < 255 { capability_bound + 1 } else { 255 };
+    if bound <= capability_limit { bound } else { capability_limit }
 }
 
 pub open spec fn part15_component_allowed(
