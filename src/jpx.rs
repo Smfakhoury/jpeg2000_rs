@@ -2134,99 +2134,22 @@ fn composite_placed_layer(
                 assert((source_index as nat) < (source.width as nat) * (source.height as nat));
                 assert((destination_index as nat) < (canvas_width as nat) * (canvas_height as nat));
             }
-            let (source_pixel, destination_pixel, source_alpha, destination_alpha, premultiplied) =
-                crate::refinement::gather_composition_pixel(
-                    &source.colors,
-                    source
-                        .alpha
-                        .as_ref()
-                        .map(|(samples, flag)| (samples.as_slice(), *flag)),
-                    output_colors,
-                    output_alpha,
-                    source_index,
-                    destination_index,
-                    matches!(
-                        (output_space, source.color_space),
-                        (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)
-                    ),
-                )
-                .ok_or_else(invalid_layer)?;
-            let channels = output_colors.len();
-            let (pixel, alpha) = crate::refinement::source_over_pixel(
-                source_pixel,
-                destination_pixel,
-                source_alpha,
-                destination_alpha,
-                premultiplied,
-                channels,
-            )
-            .ok_or_else(invalid_layer)?;
-            let mut color_index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant
-                        color_index <= channels && channels <= 3,
-                        channels == output_colors.len(),
-                        alpha as nat == crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha),
-                        channels > 0 ==> pixel[0] as nat == crate::specs::part2_source_over_color_sample(source_pixel[0], destination_pixel[0], source_alpha, destination_alpha, premultiplied),
-                        channels > 1 ==> pixel[1] as nat == crate::specs::part2_source_over_color_sample(source_pixel[1], destination_pixel[1], source_alpha, destination_alpha, premultiplied),
-                        channels > 2 ==> pixel[2] as nat == crate::specs::part2_source_over_color_sample(source_pixel[2], destination_pixel[2], source_alpha, destination_alpha, premultiplied),
-                        target_width > 0 && target_height > 0,
-                        x < copy_width && copy_width <= target_width,
-                        y < copy_height && copy_height <= target_height,
-                        source_width > 0 && source_height > 0,
-                        sx < source.width && sy < source.height,
-                        source_x <= sx && source_y <= sy,
-                        (sx as nat) < (source_x as nat) + source_width as nat,
-                        (sy as nat) < (source_y as nat) + source_height as nat,
-                        destination_x < canvas_width && destination_y < canvas_height,
-                        sx as nat == (source_x as nat)
-                            + crate::specs::part2_composition_mapped_offset(x, source_width, target_width),
-                        sy as nat == (source_y as nat)
-                            + crate::specs::part2_composition_mapped_offset(y, source_height, target_height),
-                        source_index as nat == crate::specs::part2_row_major_index(source.width, sx, sy),
-                        destination_index as nat == crate::specs::part2_row_major_index(canvas_width, destination_x, destination_y),
-                        (source_index as nat) < (source.width as nat) * (source.height as nat),
-                        (destination_index as nat) < (canvas_width as nat) * (canvas_height as nat),
-                        destination_x as nat == (instruction.target_x as nat) + x as nat,
-                        destination_y as nat == (instruction.target_y as nat) + y as nat,
-                    decreases channels - color_index,
-                )
-            )]
-            while color_index < channels {
-                let sample = pixel[color_index];
-                let destination_samples = output_colors
-                    .get_mut(color_index)
-                    .ok_or_else(invalid_layer)?
-                    .as_mut_slice();
-                if !crate::refinement::try_store_composition_sample(
-                    destination_samples,
-                    destination_index,
-                    sample,
-                ) {
-                    return Err(invalid_layer());
-                }
-                #[cfg(verus_keep_ghost)]
-                proof! {
-                    assert(destination_samples@[destination_index as int] as nat
-                        == crate::specs::part2_source_over_color_sample(
-                            source_pixel[color_index as int], destination_pixel[color_index as int], source_alpha, destination_alpha, premultiplied,
-                        ));
-                }
-                color_index = color_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            if !crate::refinement::try_store_composition_sample(
+            if !crate::refinement::compose_planar_pixel(
+                &source.colors,
+                source
+                    .alpha
+                    .as_ref()
+                    .map(|(samples, flag)| (samples.as_slice(), *flag)),
+                output_colors,
                 output_alpha,
+                source_index,
                 destination_index,
-                alpha,
+                matches!(
+                    (output_space, source.color_space),
+                    (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)
+                ),
             ) {
                 return Err(invalid_layer());
-            }
-            #[cfg(verus_keep_ghost)]
-            proof! {
-                assert(output_alpha@[destination_index as int] as nat
-                    == crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha));
             }
             let pixel_work = (output_colors.len() as u64)
                 .checked_add(1)
@@ -2430,12 +2353,12 @@ mod tests {
     use super::*;
     use crate::jp2::{Composition, CompositionInstructionSet};
     use crate::refinement::{
-        gather_composition_pixel, source_over_alpha_numerator, source_over_color_numerator,
-        source_over_rounded_ratio,
+        compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
+        source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
 
     #[test]
-    fn complete_planar_gather_matches_read_routing_and_rejection_oracle() {
+    fn complete_planar_transition_matches_independent_read_rational_and_store_oracle() {
         let shapes: [&[usize]; 8] = [
             &[],
             &[0],
@@ -2465,6 +2388,12 @@ mod tests {
             Some((vec![41], true)),
             Some((vec![41, 43], false)),
             Some((vec![41, 43], true)),
+            Some((vec![0, 1], false)),
+            Some((vec![0, 1], true)),
+            Some((vec![32_768, u16::MAX], false)),
+            Some((vec![32_768, u16::MAX], true)),
+            Some((vec![u16::MAX, u16::MAX], false)),
+            Some((vec![u16::MAX, u16::MAX], true)),
         ];
         let spaces = [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb];
         let mut cases = 0;
@@ -2539,6 +2468,66 @@ mod tests {
                                             ),
                                             expected
                                         );
+                                        let mut expected_colors = colors.clone();
+                                        let mut expected_alpha = alpha.clone();
+                                        let composed = match expected {
+                                            Some((s, d, sa, da, premultiplied))
+                                                if !premultiplied
+                                                    || s[..colors.len()]
+                                                        .iter()
+                                                        .all(|&sample| sample <= sa) =>
+                                            {
+                                                let maximum = u128::from(u16::MAX);
+                                                let sa = u128::from(sa);
+                                                let da = u128::from(da);
+                                                let denominator =
+                                                    sa * maximum + da * (maximum - sa);
+                                                for (channel, samples) in
+                                                    expected_colors.iter_mut().enumerate()
+                                                {
+                                                    let source = u128::from(s[channel]);
+                                                    let numerator = if premultiplied {
+                                                        source * maximum * maximum
+                                                    } else {
+                                                        source * sa * maximum
+                                                    } + u128::from(d[channel])
+                                                        * da
+                                                        * (maximum - sa);
+                                                    samples[destination_index] =
+                                                        u16::try_from(if denominator == 0 {
+                                                            0
+                                                        } else {
+                                                            (numerator + denominator / 2)
+                                                                / denominator
+                                                        })
+                                                        .unwrap();
+                                                }
+                                                expected_alpha[destination_index] = u16::try_from(
+                                                    (denominator + maximum / 2) / maximum,
+                                                )
+                                                .unwrap();
+                                                true
+                                            }
+                                            _ => false,
+                                        };
+                                        let mut actual_colors = colors.clone();
+                                        let mut actual_alpha = alpha.clone();
+                                        let actual = compose_planar_pixel(
+                                            &source.colors,
+                                            source
+                                                .alpha
+                                                .as_ref()
+                                                .map(|(samples, flag)| (samples.as_slice(), *flag)),
+                                            &mut actual_colors,
+                                            &mut actual_alpha,
+                                            source_index,
+                                            destination_index,
+                                            output_space == ConvertedColorSpace::Srgb
+                                                && source_space == ConvertedColorSpace::Grayscale,
+                                        );
+                                        assert_eq!(actual, composed);
+                                        assert_eq!(actual_colors, expected_colors);
+                                        assert_eq!(actual_alpha, expected_alpha);
                                         cases += 1;
                                     }
                                 }
@@ -2548,7 +2537,76 @@ mod tests {
                 }
             }
         }
-        assert_eq!(cases, 86_016);
+        assert_eq!(cases, 159_744);
+    }
+
+    #[test]
+    fn planar_scatter_matches_exact_success_and_partial_failure_states() {
+        let shapes: [&[usize]; 8] = [
+            &[],
+            &[0],
+            &[1],
+            &[2],
+            &[2, 1, 2],
+            &[2, 2, 0],
+            &[2, 2, 2],
+            &[2, 2, 2, 2],
+        ];
+        let mut cases = 0;
+        for shape in shapes {
+            for alpha_length in 0..=2 {
+                for index in [0, 1, 2, usize::MAX] {
+                    for pixel in [[0; 3], [u16::MAX; 3], [200, 210, 220]] {
+                        for alpha in [0, 47, u16::MAX] {
+                            let mut colors = shape
+                                .iter()
+                                .enumerate()
+                                .map(|(channel, &len)| {
+                                    (0..len)
+                                        .map(|i| 200 + u16::try_from(channel * 10 + i).unwrap())
+                                        .collect::<Vec<_>>()
+                                })
+                                .collect::<Vec<_>>();
+                            let mut alphas = vec![47; alpha_length];
+                            let mut expected_colors = colors.clone();
+                            let mut expected_alpha = alphas.clone();
+                            let mut stored = colors.len() <= 3;
+                            if stored {
+                                for (channel, samples) in expected_colors.iter_mut().enumerate() {
+                                    match samples.get_mut(index) {
+                                        Some(sample) => *sample = pixel[channel],
+                                        None => {
+                                            stored = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if stored {
+                                    match expected_alpha.get_mut(index) {
+                                        Some(sample) => *sample = alpha,
+                                        None => stored = false,
+                                    }
+                                }
+                            }
+                            assert_eq!(
+                                scatter_composition_pixel(
+                                    &mut colors,
+                                    &mut alphas,
+                                    index,
+                                    pixel,
+                                    alpha,
+                                ),
+                                stored
+                            );
+                            assert_eq!(colors, expected_colors);
+                            assert_eq!(alphas, expected_alpha);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 864);
     }
 
     #[test]

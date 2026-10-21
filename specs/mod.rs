@@ -1333,6 +1333,42 @@ pub open spec fn part2_source_over_pixel_valid(source: [u16; 3], source_alpha: u
             && (channels <= 2 || source[2] <= source_alpha)))
 }
 
+pub open spec fn part2_composition_planes(colors: Seq<Vec<u16>>) -> Seq<Seq<u16>> {
+    Seq::new(colors.len(), |channel: int| colors[channel]@)
+}
+
+pub open spec fn part2_composition_scatter_count(colors: Seq<Seq<u16>>, index: nat) -> nat {
+    if colors.len() > 3 || (colors.len() > 0 && index >= colors[0].len()) {
+        0
+    } else if colors.len() > 1 && index >= colors[1].len() {
+        1
+    } else if colors.len() > 2 && index >= colors[2].len() {
+        2
+    } else {
+        colors.len()
+    }
+}
+
+pub open spec fn part2_composition_color_prefix(
+    colors: Seq<Seq<u16>>, index: nat, pixel: [u16; 3], count: nat,
+) -> Seq<Seq<u16>> {
+    Seq::new(colors.len(), |channel: int|
+        if channel < count && channel < 3 && index < colors[channel].len() {
+            colors[channel].update(index as int, pixel[channel])
+        } else {
+            colors[channel]
+        })
+}
+
+pub open spec fn part2_composition_scatter_pixel(
+    colors: Seq<Seq<u16>>, alpha: Seq<u16>, index: nat, pixel: [u16; 3], value: u16,
+) -> (bool, Seq<Seq<u16>>, Seq<u16>) {
+    let count = part2_composition_scatter_count(colors, index);
+    let stored = colors.len() <= 3 && count == colors.len() && index < alpha.len();
+    (stored, part2_composition_color_prefix(colors, index, pixel, count),
+        if stored { alpha.update(index as int, value) } else { alpha })
+}
+
 pub open spec fn part2_source_over_pixel(
     source: [u16; 3], destination: [u16; 3], source_alpha: u16, destination_alpha: u16,
     premultiplied: bool, channels: usize,
@@ -1345,6 +1381,31 @@ pub open spec fn part2_source_over_pixel(
             if channels > 1 { part2_source_over_color_sample(source[1], destination[1], source_alpha, destination_alpha, premultiplied) as u16 } else { destination[1] },
             if channels > 2 { part2_source_over_color_sample(source[2], destination[2], source_alpha, destination_alpha, premultiplied) as u16 } else { destination[2] },
         ], part2_source_over_alpha_sample(source_alpha, destination_alpha) as u16))
+    }
+}
+
+pub open spec fn part2_composition_pixel_transition(
+    source: Seq<Vec<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Vec<u16>>, destination_alpha: Seq<u16>,
+    source_index: nat, destination_index: nat, expand_grayscale: bool,
+) -> (bool, Seq<Seq<u16>>, Seq<u16>) {
+    let input = part2_composition_gather_pixel(
+        source, source_alpha, destination, destination_alpha,
+        source_index, destination_index, expand_grayscale,
+    );
+    if input.is_none() {
+        (false, part2_composition_planes(destination), destination_alpha)
+    } else {
+        let (s, d, sa, da, premultiplied) = input.unwrap();
+        let pixel = part2_source_over_pixel(s, d, sa, da, premultiplied, destination.len() as usize);
+        if pixel.is_none() {
+            (false, part2_composition_planes(destination), destination_alpha)
+        } else {
+            part2_composition_scatter_pixel(
+                part2_composition_planes(destination), destination_alpha,
+                destination_index, pixel.unwrap().0, pixel.unwrap().1,
+            )
+        }
     }
 }
 
