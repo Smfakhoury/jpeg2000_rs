@@ -272,6 +272,14 @@ def validate_normative_coverage(
             named_prefix = r"\bverus_spec\(\s*(\w+)\s*=>\s*(?:requires\b[\s\S]*?)?ensures\s+"
             model_suffix = r"\s*==\s*crate::specs::(?P<model>\w+)\s*\("
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
+            result_projection = {
+                ("src/jpx.rs", "layer_channels"): "layer_channels_outcome",
+                ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
+            }.get((reference["path"], short))
+            projected_result = re.search(
+                named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
+                contract,
+            ) if result_projection else None
             state_term = (
                 r"(?:final\(\s*\w+\s*\)@|"
                 r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
@@ -290,7 +298,7 @@ def validate_normative_coverage(
                 r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
             )) if state_result is not None else set()
             complete_state = bool(mutable_parameters) and final_parameters == mutable_parameters
-            named_result = state_result if mutating else scalar_result or state_result
+            named_result = state_result if mutating else scalar_result or projected_result or state_result
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
                     or not ("ensures returns" in contract

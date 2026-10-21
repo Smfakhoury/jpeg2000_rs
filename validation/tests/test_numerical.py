@@ -252,6 +252,87 @@ class NumericalTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 numerical._main_header_segments(data)
 
+    def test_siz_precision_signedness_geometry_and_component_layout_are_required(self):
+        case = numerical.NumericalCase("headers", width=1, height=1, decomposition_levels=0)
+        raw = framework.raw_codestream()
+        numerical.validate_image_headers(case, raw)
+        for index, value in ((42, 6), (42, 0x87), (43, 2), (44, 2), (41, 2),
+                             (11, 2), (15, 2), (19, 1), (23, 1)):
+            with self.subTest(index=index, value=value), self.assertRaisesRegex(ValueError, "SIZ"):
+                changed = bytearray(raw)
+                changed[index] = value
+                numerical.validate_image_headers(case, bytes(changed))
+        before_tile = raw.index(b"\xff\x90")
+        siz = next(payload for marker, payload in numerical._main_header_segments(raw) if marker == 0xff51)
+        with self.assertRaisesRegex(ValueError, "SIZ"):
+            numerical.validate_image_headers(
+                case, raw[:before_tile] + framework.segment(0xff51, siz) + raw[before_tile:])
+        with self.assertRaisesRegex(ValueError, "wavelet transform"):
+            numerical.validate_image_headers(replace(case, lossless=False), raw)
+        with self.assertRaisesRegex(ValueError, "-mct"):
+            numerical.validate_required_headers(replace(case, options=("-mct", "1")), raw)
+        numerical.validate_required_headers(replace(case, options=("-mct", "0")), raw)
+
+    def test_native_raw_conversion_preserves_full_range_signed_and_unsigned_samples(self):
+        cases = [case for case in numerical.HT_CASES if case.native_raw]
+        self.assertEqual(len(cases), 8)
+        self.assertEqual({(case.precision, case.signed) for case in cases},
+                         {(precision, signed) for precision in (25, 26, 28, 31) for signed in (False, True)})
+        for case in cases:
+            with self.subTest(case=case.name):
+                source = self.work / "original.pgx"
+                source.write_bytes(numerical.source_image(case))
+                raw = self.work / "native.raw"
+                raw.write_bytes(numerical.raw_source(case, source))
+                self.assertEqual(len(raw.read_bytes()), case.width * case.height * 4)
+                original = framework.parse_pgx(source)
+                samples = original["image"]["components"][0]["samples"]
+                lower = -(1 << (case.precision - 1)) if case.signed else 0
+                self.assertEqual(min(samples), lower)
+                self.assertEqual(max(samples), lower + (1 << case.precision) - 1)
+                self.assertEqual(numerical.parse_raw_reference(raw, case), original)
+                for payload in (raw.read_bytes()[:-1], raw.read_bytes() + b"\0",
+                                (1 << 31).to_bytes(4, "little") + raw.read_bytes()[4:]):
+                    raw.write_bytes(payload)
+                    with self.assertRaises(ValueError):
+                        numerical.parse_raw_reference(raw, case)
+                    raw.write_bytes(numerical.raw_source(case, source))
+                with self.assertRaisesRegex(ValueError, "metadata"):
+                    numerical.raw_source(replace(case, precision=24), source)
+        with self.assertRaisesRegex(ValueError, "single"):
+            numerical.raw_source(numerical.NumericalCase("invalid"), source)
+        with self.assertRaisesRegex(ValueError, "single"):
+            numerical.parse_raw_reference(raw, numerical.NumericalCase("invalid"))
+
+    def test_irreversible_prequalification_uses_fixed_budgets_before_subject(self):
+        case = numerical.NumericalCase("prequalified-lossy", width=1, height=1, decomposition_levels=0,
+                                       lossless=False, maximum_error=1, maximum_rmse=0.5,
+                                       prequalify_irreversible=True)
+        for value in (1, 2):
+            calls = []
+            def reference_process(command, timeout_seconds):
+                calls.append(command)
+                if "-o" not in command:
+                    self.fail("subject must not run after an unqualified irreversible reference")
+                output = Path(command[command.index("-o") + 1])
+                if output.stem.endswith("-reference"):
+                    output.write_bytes(b"P5\n1 1\n255\n" + bytes((value,)))
+                else:
+                    data = bytearray(framework.raw_codestream())
+                    data[data.index(b"\xff\x52") + 13] = 0
+                    output.write_bytes(data)
+                return subprocess.CompletedProcess(command, 0, b"", b""), 0.0
+            with self.subTest(value=value), \
+                    mock.patch.object(numerical.shutil, "which", return_value=sys.executable), \
+                    mock.patch.object(numerical, "CASES", (case,)), \
+                    mock.patch.object(numerical, "_run_checked", side_effect=reference_process):
+                result = numerical.run_numerical(Path(sys.executable), self.work)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(result["status"], "failed")
+            self.assertIn("independent irreversible", result["records"][0]["error"])
+            self.assertIsNone(result["records"][0]["metrics"])
+            framework.validate_evidence_schemas(self.work)
+
     def test_low_bit_raw_encoder_input_is_explicit_and_preserved_on_failure(self):
         case = numerical.NumericalCase("low-fixed", precision=1, signed=True, width=2, height=1,
                                        decomposition_levels=0, pattern="fixed", samples=(-1, 0))
@@ -385,7 +466,7 @@ class NumericalTests(unittest.TestCase):
 
     def test_ht_sources_and_container_metadata_cover_real_component_layouts(self):
         self.assertEqual({case.format for case in numerical.HT_CASES}, {"raw", "jph"})
-        self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16, 32})
+        self.assertEqual({case.precision for case in numerical.HT_CASES}, {8, 16, 25, 26, 28, 31, 32})
         self.assertEqual({case.channels for case in numerical.HT_CASES}, {1, 3})
         self.assertEqual({case.pattern for case in numerical.HT_CASES}, {"varied", "sparse", "fixed"})
         for case in numerical.HT_CASES:
@@ -393,8 +474,9 @@ class NumericalTests(unittest.TestCase):
             self.assertEqual(data, numerical.source_image(case))
             path = self.work / "ht-source.pnm"
             path.write_bytes(data)
-            parse_image = (framework.parse_pfm_bit_patterns if numerical.source_extension(case) == "pfm"
-                           else framework.parse_pnm)
+            extension = numerical.source_extension(case)
+            parse_image = (framework.parse_pfm_bit_patterns if extension == "pfm"
+                           else framework.parse_pgx if extension == "pgx" else framework.parse_pnm)
             image = parse_image(path)["image"]
             self.assertEqual((image["width"], image["height"]), (case.width, case.height))
             self.assertEqual(len(image["components"]), case.channels)
@@ -457,7 +539,8 @@ class NumericalTests(unittest.TestCase):
                 self.assertIsNone(record["timings"]["encoder_ms"])
                 self.assertEqual(record["encoder_options"], [])
             else:
-                self.assertEqual(record["encoder_input_format"], numerical.source_extension(case))
+                self.assertEqual(record["encoder_input_format"],
+                                 "raw" if case.native_raw else numerical.source_extension(case))
                 self.assertIsInstance(record["timings"]["encoder_ms"], float)
         rgb16 = [record for record in result["records"] if record["id"].startswith("ht-rgb16-")]
         self.assertEqual(len(rgb16), 7)
@@ -475,6 +558,30 @@ class NumericalTests(unittest.TestCase):
                 self.assertEqual(record["thresholds"]["maximum_rmse"], 2.0)
                 self.assertLessEqual(record["metrics"]["maximum_error"], 8)
                 self.assertLessEqual(record["metrics"]["worst_component_rmse"], 2.0)
+        high = [record for record in result["records"] if record["precision"] in (25, 26, 28, 31)]
+        self.assertEqual(len(high), 8)
+        self.assertEqual(result["tools"]["encoder"]["sha256"],
+                         framework.sha256_file(Path(result["tools"]["encoder"]["path"])))
+        self.assertEqual(result["tools"]["decoder"]["sha256"],
+                         framework.sha256_file(Path(result["tools"]["decoder"]["path"])))
+        self.assertEqual(result["tools"]["subject"]["sha256"],
+                         framework.sha256_file(Path(result["tools"]["subject"]["path"])))
+        for record in high:
+            case = next(case for case in numerical.HT_CASES if case.name == record["id"])
+            self.assertEqual(record["source_format"], "pgx")
+            self.assertEqual(record["encoder_input_format"], "raw")
+            self.assertFalse(record["signed_header_authored"])
+            self.assertEqual(record["source_metrics"]["maximum_error"], 0)
+            self.assertEqual(record["reference_sha256"], record["decoded_sha256"])
+            self.assertEqual(record["input_sha256"], framework.sha256_bytes(numerical.source_image(case)))
+            self.assertNotEqual(record["input_sha256"], record["encoder_input_sha256"])
+            source = self.work / "source.pgx"
+            source.write_bytes(numerical.source_image(case))
+            self.assertEqual(record["encoder_input_sha256"], framework.sha256_bytes(numerical.raw_source(case, source)))
+            options = record["encoder_options"]
+            self.assertEqual(options[options.index("-num_decomps") + 1], "2")
+            self.assertEqual(options[options.index("-bit_depth") + 1], str(case.precision))
+            self.assertEqual(options[options.index("-signed") + 1], str(case.signed).lower())
         binary32 = [record for record in result["records"] if record["source_format"] == "pfm"]
         self.assertEqual(len(binary32), 3)
         for record in binary32:
@@ -548,6 +655,13 @@ class NumericalTests(unittest.TestCase):
             case = next(case for case in numerical.CASES if case.name == record["id"])
             self.assertEqual(case.decomposition_levels, 0)
             self.assertEqual(record["encoder_options"][:2], ["-n", "1"])
+        rgb16 = [record for record in result["records"] if record["id"].startswith("rgb16-")]
+        self.assertEqual(len(rgb16), 3)
+        for record in rgb16:
+            self.assertEqual(record["precision"], 16)
+            self.assertEqual(len(record["metrics"]["components"]), 3)
+            self.assertEqual(record["thresholds"]["maximum_error"], 0 if record["lossless"] else 8)
+            self.assertEqual(record["thresholds"]["maximum_rmse"], 0 if record["lossless"] else 2.0)
         for mutation in ("format", "options", "missing"):
             invalid = copy.deepcopy(result)
             record = next(record for record in invalid["records"] if record["precision"] < 8)

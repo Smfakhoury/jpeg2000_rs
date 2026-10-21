@@ -130,11 +130,30 @@ Read each contract according to its inputs and postcondition:
 | Successful placed-layer composition | On success, the complete final planar canvas state and exact work count equal a raster-prefix fold of normalized pixel transitions at the selected clipped, floor-scaled crop addresses | Complete error-state semantics, sufficient-budget success, earlier channel normalization, layer/frame ordering or a parser-to-pixel theorem |
 | All-return placed-layer prefix safety | On every return, all buffers equal a valid raster prefix, and work accounts for that prefix or all but its final stored pixel; inactive geometry leaves the complete initial state unchanged | Which prefix must fail, exact error classification, sufficient-budget success, normalization or layer/frame ordering |
 | Deterministic budgeted placed-layer execution | On every return, the exact typed `Result`, complete final buffers and work counter equal a raster fold that stops at the first checked-address, invalid-pixel, work-overflow or actual work-limit failure | Earlier channel normalization, layer/frame ordering, parser-to-pixel correctness or official conformance |
+| Complete converted-image layer construction | Exact typed result, dimensions, ordered color planes, optional sequentially combined alpha and representation flag for actual borrowed selection and owned copies | Earlier component/color conversion or association validation, registration/opacity/chroma-key, layer/frame ordering or a parser-to-pixel theorem |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
+
+`layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
+and `part2_owned_layer_input` on every return, without assuming canonical
+channel order or valid plane lengths. Their result projections include every
+output field and preserve the exact error variant. Channel scanning precedes
+area checking, required-color resolution and alpha validation. Red and gray
+both select slot zero, and duplicate or out-of-range slots are rejected.
+Alpha planes are combined in source order, rounding after **each** product;
+one alpha retains its premultiplication flag, while multiple alphas produce
+straight representation. Association metadata is already an input to earlier
+conversion policy and is not revalidated by this stage.
+
+The private constructor is a free function because the pinned `verus_spec`
+attribute cannot infer an associated static method in this conditional-macro
+layout. There is still one production implementation and no public API change.
+The existing placed-layer theorem uses a fresh solver context
+(`spinoff_prover`) to avoid accumulated solver-state sensitivity as the model
+grows; its obligations and resource limit are not relaxed.
 
 The production placed-layer compositor uses the complete `source_over_pixel`
 evaluator. Its executable contract equates the entire optional color/alpha
