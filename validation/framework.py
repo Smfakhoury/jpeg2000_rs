@@ -239,7 +239,9 @@ def validate_normative_coverage(
             contract_start = text.rfind("#[cfg_attr", 0, signature)
             contract = text[contract_start:signature] if contract_start >= 0 else ""
             named_result = re.search(
-                r"\bverus_spec\(\s*(\w+)\s*=>\s*ensures\s+\1\s+as\s+nat\s*==\s*crate::specs::(\w+)\s*\(",
+                r"\bverus_spec\(\s*(\w+)\s*=>\s*ensures\s+"
+                r"(?:\1\s+as\s+nat|\(\s*\1\s*,\s*final\(\s*\w+\s*\)@\s*\))"
+                r"\s*==\s*crate::specs::(\w+)\s*\(",
                 contract,
             )
             if ("verus_spec(" not in contract

@@ -475,8 +475,11 @@ validator checks every present item, including contracts that ensure a listed
 spec and are called by the claimed implementation. Shadow-only links fail.
 For scalar contracts it recognizes both `ensures returns (...)` and a named
 return value whose natural-number equality directly names a listed model.
-An unrelated return binder or a mere model mention does not satisfy the latter
-form. This is a conservative source-link check, not a replacement for Verus.
+For checked slice stores it also recognizes an equality between
+`(named_result, final(slice)@)` and a listed state-transition model. Unrelated
+return binders, pre-state-only tuples, missing final-state relations and mere
+model mentions do not qualify. This is a conservative source-link check, not a
+replacement for Verus.
 It does not assert exhaustive standards-clause coverage, exact progress
 counts, phase completion, or conformance.
 

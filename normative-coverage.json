@@ -1940,6 +1940,10 @@
         {
           "path": "src/refinement.rs",
           "symbol": "source_over_rounded_ratio"
+        },
+        {
+          "path": "src/refinement.rs",
+          "symbol": "try_store_composition_sample"
         }
       ],
       "id": "part2-jpx-composition-rendering",
@@ -2027,6 +2031,10 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part2_source_over_alpha_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_store"
         }
       ],
       "test_refs": [
@@ -2049,6 +2057,14 @@
         {
           "path": "src/jpx.rs",
           "symbol": "placed_source_over_samples_match_wide_rational_rounding_and_preserve_guards"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composition_store_has_exact_single_slot_effect"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composition_store_respects_subslice_offsets_and_repeated_writes"
         },
         {
           "path": "src/jpx.rs",

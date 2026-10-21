@@ -163,6 +163,31 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_named_result_and_final_state_in_mutation_relation(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-jpx-composition-rendering"
+        ]
+        coverage["requirements"][0]["contract_refs"] = [{
+            "path": "src/refinement.rs", "symbol": "try_store_composition_sample",
+        }]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("verus_spec(stored =>", "verus_spec(unrelated =>"),
+            ("ensures (stored, final(samples)@)", "ensures (true, final(samples)@)"),
+            ("ensures (stored, final(samples)@)", "ensures (stored, old(samples)@)"),
+            ("ensures (stored, final(samples)@)", "ensures stored"),
+            ("== crate::specs::part2_composition_store", "== crate::specs::unlisted_model"),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/refinement.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_build_subject_is_locked(self):
         executable = self.work / "built-subject"
         executable.touch()

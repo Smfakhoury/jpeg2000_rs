@@ -1259,6 +1259,10 @@ pub open spec fn part2_source_over_alpha_sample(source_alpha: u16, destination_a
     (part2_source_over_alpha_numerator(source_alpha, destination_alpha) + 32767) / 65535
 }
 
+pub open spec fn part2_composition_store(samples: Seq<u16>, index: nat, value: u16) -> (bool, Seq<u16>) {
+    if index < samples.len() { (true, samples.update(index as int, value)) } else { (false, samples) }
+}
+
 pub open spec fn part2_chroma_key_alpha(matches: bool) -> u16 {
     if matches { 0 } else { u16::MAX }
 }
