@@ -75,7 +75,7 @@ Read each contract according to its inputs and postcondition:
 | Stream and packet accounting | Consumed offsets, declared lengths, ordering and bounded claims | That accepted syntax has the intended pixel meaning in every standard edition |
 | Scalar refinement helpers | The implemented bounded arithmetic/bit operation agrees with its listed model | That callers chose the normative context, stencil, scale or traversal order |
 | JPX source-over arithmetic | Exact natural-valued numerators and rounded scalar color/alpha results, proved in the 16-bit range at production conversion sites, with upward ties and transparent zero | Layer ordering, placement, sampling, persistence, or a complete composed-image theorem |
-| JPX destination stores | Exact success flag and final slice: one indexed sample changes, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
+| JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
@@ -100,7 +100,8 @@ model and fits `u16`, immediately before the existing checked conversions.
 Both color and alpha stores use the same executable checked slice-store helper.
 Its contract equates the returned flag and complete final slice with a model of
 the initial slice and requested update. Successful writes preserve every other
-sample; rejected indices preserve the entire slice. Production assertions after
+sample, including when the requested value equals the existing value; rejected
+indices preserve the entire slice. Production assertions after
 successful writes connect the actual stored values, through the checked
 conversion, to the composed scalar models. Rejected stores propagate the usual
 typed invalid-layer error; resource/work accounting remains in its original
