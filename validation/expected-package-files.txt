@@ -12,6 +12,7 @@ SECURITY.md
 SUPPORTED.md
 THIRD_PARTY_NOTICES
 THREAT_MODEL.md
+specs/README.md
 src/codestream.rs
 src/color.rs
 src/decode.rs
