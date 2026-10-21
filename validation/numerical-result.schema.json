@@ -7,6 +7,17 @@
     "$schema": {"type": "string"},
     "schema_version": {"const": 1},
     "scope": {"type": "string", "minLength": 1},
+    "execution_platform": {"type": "string", "minLength": 1},
+    "process_limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage_timeout_seconds", "maximum_output_bytes", "requested_address_space_bytes", "requested_file_size_bytes"],
+      "properties": {
+        "stage_timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "maximum_output_bytes": {"type": "integer", "minimum": 1},
+        "requested_address_space_bytes": {"type": ["integer", "null"], "minimum": 1},
+        "requested_file_size_bytes": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
     "provenance": {"type": "object"},
     "tools": {
       "type": "object",

@@ -7,17 +7,19 @@ import hashlib
 import json
 import math
 import os
+import queue
 import re
 import selectors
 import shutil
 import struct
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from urllib.parse import urlsplit
 
 try:
@@ -918,12 +920,99 @@ def _image_metrics(outcome: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _run_process_bounded_threaded(
+    command: list[str],
+    timeout_seconds: float,
+    max_output_bytes: int,
+) -> tuple[subprocess.CompletedProcess[bytes], float, bool]:
+    start = time.monotonic()
+    process = subprocess.Popen(
+        command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
+    )
+    streams = {"stdout": process.stdout, "stderr": process.stderr}
+    output = {"stdout": bytearray(), "stderr": bytearray()}
+    events: queue.Queue[tuple[str, bytes | OSError | ValueError]] = queue.Queue(maxsize=4)
+    stopped = threading.Event()
+    readers = []
+
+    def publish(name: str, data: bytes | OSError | ValueError) -> None:
+        while not stopped.is_set():
+            try:
+                events.put((name, data), timeout=0.05)
+                return
+            except queue.Full:
+                continue
+
+    def read_stream(name: str, stream: BinaryIO) -> None:
+        try:
+            while not stopped.is_set():
+                chunk = stream.read(64 * 1024)
+                publish(name, chunk)
+                if not chunk:
+                    return
+        except (OSError, ValueError) as error:
+            publish(name, error)
+
+    output_limited = False
+    try:
+        for name, stream in streams.items():
+            if stream is not None:
+                reader = threading.Thread(target=read_stream, args=(name, stream),
+                                          name=f"jpeg2000-capture-{name}", daemon=True)
+                reader.start()
+                readers.append(reader)
+        closed = 0
+        while closed < len(readers):
+            remaining = timeout_seconds - (time.monotonic() - start)
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout_seconds)
+            try:
+                name, chunk = events.get(timeout=min(remaining, 0.1))
+            except queue.Empty:
+                continue
+            if isinstance(chunk, (OSError, ValueError)):
+                raise chunk
+            if not chunk:
+                closed += 1
+                continue
+            if len(output["stdout"]) + len(output["stderr"]) + len(chunk) > max_output_bytes:
+                output_limited = True
+                break
+            output[name].extend(chunk)
+        if not output_limited:
+            remaining = timeout_seconds - (time.monotonic() - start)
+            try:
+                process.wait(timeout=max(remaining, 0.001))
+            except subprocess.TimeoutExpired:
+                raise subprocess.TimeoutExpired(command, timeout_seconds) from None
+    finally:
+        stopped.set()
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        for stream in streams.values():
+            if stream is not None:
+                stream.close()
+        for reader in readers:
+            reader.join(timeout=1.0)
+        if any(reader.is_alive() for reader in readers):
+            raise RuntimeError("bounded process capture did not shut down its pipe readers")
+    completed = subprocess.CompletedProcess(
+        command, process.returncode, bytes(output["stdout"]), bytes(output["stderr"]),
+    )
+    return completed, (time.monotonic() - start) * 1000, output_limited
+
+
 def _run_process_bounded(
     command: list[str],
     timeout_seconds: float,
     max_output_bytes: int,
     preexec_fn: Any,
 ) -> tuple[subprocess.CompletedProcess[bytes], float, bool]:
+    if sys.platform == "win32":
+        if preexec_fn is not None:
+            raise ValueError("POSIX process setup is not supported on Windows")
+        return _run_process_bounded_threaded(command, timeout_seconds, max_output_bytes)
     start = time.monotonic()
     process = subprocess.Popen(
         command,

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import math
 import os
+import platform
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, replace
@@ -15,6 +17,10 @@ from pathlib import Path
 from typing import Any
 
 import framework
+
+NATIVE_ADDRESS_BYTES = 512 << 20
+NATIVE_FILE_BYTES = 2 << 20
+NATIVE_OUTPUT_BYTES = 1 << 20
 
 
 @dataclass(frozen=True)
@@ -238,13 +244,14 @@ def image_error_metrics(reference: dict[str, Any], actual: dict[str, Any]) -> di
 
 def _limit_native_process() -> None:
     if framework.resource is not None:
-        framework.resource.setrlimit(framework.resource.RLIMIT_AS, (512 << 20, 512 << 20))
-        framework.resource.setrlimit(framework.resource.RLIMIT_FSIZE, (2 << 20, 2 << 20))
+        if sys.platform.startswith("linux"):
+            framework.resource.setrlimit(framework.resource.RLIMIT_AS, (NATIVE_ADDRESS_BYTES, NATIVE_ADDRESS_BYTES))
+        framework.resource.setrlimit(framework.resource.RLIMIT_FSIZE, (NATIVE_FILE_BYTES, NATIVE_FILE_BYTES))
 
 
 def _run_checked(command: list[str], timeout_seconds: float) -> tuple[subprocess.CompletedProcess[bytes], float]:
     process, elapsed_ms, limited = framework._run_process_bounded(
-        command, timeout_seconds, 1 << 20,
+        command, timeout_seconds, NATIVE_OUTPUT_BYTES,
         _limit_native_process if framework.resource is not None else None,
     )
     if limited or process.returncode != 0:
@@ -289,6 +296,15 @@ def run_numerical(
         "$schema": framework.report_schema(output_dir, "numerical-result.schema.json"),
         "schema_version": 1,
         "scope": f"{reference_name} generated-image engineering regression thresholds, not official numerical conformance.",
+        "execution_platform": platform.platform(),
+        "process_limits": {
+            "stage_timeout_seconds": timeout_seconds,
+            "maximum_output_bytes": NATIVE_OUTPUT_BYTES,
+            "requested_address_space_bytes": (NATIVE_ADDRESS_BYTES
+                                              if framework.resource is not None and sys.platform.startswith("linux")
+                                              else None),
+            "requested_file_size_bytes": NATIVE_FILE_BYTES if framework.resource is not None else None,
+        },
         "provenance": framework.source_binding(),
         "tools": tools,
         "status": "blocked" if missing else "passed",

@@ -48,6 +48,92 @@ jobs:
       - name: Verify packaged decoder builds
         run: cargo package --locked
 
+  native-numerics:
+    name: Native numerical (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: python3
+            venv: .venv/bin/python
+          - os: macos-latest
+            python: python3
+            venv: .venv/bin/python
+          - os: windows-latest
+            python: python
+            venv: .venv/Scripts/python.exe
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Initialize the pinned crate toolchain
+        run: |
+          cargo --version
+          rustc --version
+      - name: Install pinned validation dependencies
+        run: |
+          ${{ matrix.python }} -m venv .venv
+          ${{ matrix.venv }} -m pip install -r validation/requirements.txt
+      - name: Build pinned independent reference tools
+        run: |
+          bash validation/build-openjpeg.sh
+          bash validation/build-openjph.sh
+      - name: Locate native reference executables
+        run: |
+          ${{ matrix.venv }} - <<'PY'
+          import os
+          from pathlib import Path
+          suffix = ".exe" if os.name == "nt" else ""
+          projects = {
+              "OPENJPEG_ENCODER": ("openjpeg-build", "opj_compress"),
+              "OPENJPEG_DECODER": ("openjpeg-build", "opj_decompress"),
+              "OPENJPH_ENCODER": ("openjph-build", "ojph_compress"),
+              "OPENJPH_DECODER": ("openjph-build", "ojph_expand"),
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env, \
+               open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as paths:
+              for variable, (project, program) in projects.items():
+                  candidates = [path for path in (Path("target/validation/oracles") / project).rglob(program + suffix)
+                                if path.is_file()]
+                  if len(candidates) != 1:
+                      raise RuntimeError(f"expected one native executable for {variable}: {candidates}")
+                  executable = candidates[0].resolve()
+                  print(f"{variable}={executable}", file=env)
+                  print(executable.parent, file=paths)
+          PY
+      - name: Bounded subprocess regression tests
+        run: ${{ matrix.venv }} -m unittest -v validation.tests.test_processes
+      - name: Independent legacy numerical checks
+        run: ${{ matrix.venv }} validation/run-validation.py numerical
+      - name: Independent HT numerical checks
+        run: ${{ matrix.venv }} validation/run-validation.py htj2k
+      - name: Native numerical, selection and container regressions
+        run: |
+          ${{ matrix.venv }} -m unittest -v \
+            validation.tests.test_numerical \
+            validation.tests.test_selection \
+            validation.tests.test_container_relations
+      - name: Verify reports and unchanged tracked source
+        run: |
+          ${{ matrix.venv }} validation/run-validation.py schemas
+          git diff --exit-code
+      - name: Upload platform numerical reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-numerics-${{ matrix.os }}
+          path: |
+            target/validation/numerical-results.json
+            target/validation/htj2k-results.json
+            target/validation/numerical-failures/**
+            target/validation/selection-failures/**
+            target/validation/container-failures/**
+          if-no-files-found: warn
+          retention-days: 14
+
   decoder-validation:
     name: Generated decoder validation
     runs-on: ubuntu-latest

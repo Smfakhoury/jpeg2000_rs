@@ -2975,7 +2975,7 @@ fn decode_layout_selected(
         let prepared_start = prepared.len();
         let coding_style = first.coding_style;
         let component_coding_styles = first.component_coding_styles;
-        let component_quantizations = first.component_quantizations;
+        let component_quantizations = &first.component_quantizations;
         let transform = (
             coding_style.multiple_component_transform,
             match coding_style.transform {
@@ -3029,7 +3029,7 @@ fn decode_layout_selected(
             tile_index,
             coding_style,
             &component_coding_styles,
-            &component_quantizations,
+            component_quantizations,
             &first.roi_shifts,
             selection.discard_levels,
             layout.info.profile.part15_allows_multiple_ht_sets(),
@@ -3418,7 +3418,7 @@ fn decode_layout(
         let prepared_start = prepared.len();
         let coding_style = first.coding_style;
         let component_coding_styles = first.component_coding_styles;
-        let component_quantizations = first.component_quantizations;
+        let component_quantizations = &first.component_quantizations;
         let transform = (
             coding_style.multiple_component_transform,
             match coding_style.transform {
@@ -3460,7 +3460,7 @@ fn decode_layout(
             tile_index,
             coding_style,
             &component_coding_styles,
-            &component_quantizations,
+            component_quantizations,
             &roi_shifts,
             0,
             layout.info.profile.part15_allows_multiple_ht_sets(),
