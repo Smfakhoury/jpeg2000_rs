@@ -1559,6 +1559,98 @@ pub open spec fn part2_composition_layer_prefix_safe(
     }
 }
 
+pub type Part2CompositionBudgetedState = (Result<(), crate::DecodeError>, Seq<Seq<u16>>, Seq<u16>, nat);
+
+pub open spec fn part2_composition_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow } else { crate::MalformedKind::InvalidBoxContents },
+    }
+}
+
+pub open spec fn part2_composition_budgeted_step(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: Part2CompositionGeometry, expand_grayscale: bool,
+    work: nat, work_limit: u64, x: nat, y: nat,
+) -> Part2CompositionBudgetedState
+    recommends geometry.target_width > 0 && geometry.target_height > 0,
+{
+    let sx = geometry.source_x + x * geometry.source_crop_width / geometry.target_width;
+    let sy = geometry.source_y + y * geometry.source_crop_height / geometry.target_height;
+    let si = sy * geometry.source_width + sx;
+    let di = (geometry.target_y + y) * geometry.canvas_width + geometry.target_x + x;
+    if si > usize::MAX as nat || di > usize::MAX as nat {
+        (Err(part2_composition_error(true)), destination, destination_alpha, work)
+    } else {
+        let pixel = part2_composition_pixel_transition(
+            source, source_alpha, destination, destination_alpha, si, di, expand_grayscale,
+        );
+        if !pixel.0 {
+            (Err(part2_composition_error(false)), pixel.1, pixel.2, work)
+        } else {
+            let next = work + destination.len() + 1;
+            if next > u64::MAX as nat {
+                (Err(part2_composition_error(true)), pixel.1, pixel.2, work)
+            } else if next > work_limit as nat {
+                (Err(crate::DecodeError::LimitExceeded {
+                    resource: crate::Resource::WorkUnits, limit: work_limit, actual: next as u64,
+                }), pixel.1, pixel.2, next)
+            } else {
+                (Ok(()), pixel.1, pixel.2, next)
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_composition_budgeted_prefix(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: Part2CompositionGeometry, expand_grayscale: bool,
+    initial_work: nat, work_limit: u64, count: nat,
+) -> Part2CompositionBudgetedState
+    recommends geometry.copy_width > 0 && geometry.target_width > 0 && geometry.target_height > 0,
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), destination, destination_alpha, initial_work)
+    } else {
+        let previous = part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha,
+            geometry, expand_grayscale, initial_work, work_limit, (count - 1) as nat,
+        );
+        if previous.0.is_err() {
+            previous
+        } else {
+            part2_composition_budgeted_step(
+                source, source_alpha, previous.1, previous.2, geometry, expand_grayscale,
+                previous.3, work_limit, ((count - 1) as nat) % geometry.copy_width,
+                ((count - 1) as nat) / geometry.copy_width,
+            )
+        }
+    }
+}
+
+pub open spec fn part2_composition_layer_transition(
+    source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
+    destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
+    geometry: Part2CompositionGeometry, expand_grayscale: bool, initial_work: nat, work_limit: u64,
+) -> Part2CompositionBudgetedState {
+    if geometry.source_crop_width == 0 || geometry.source_crop_height == 0 {
+        (Ok(()), destination, destination_alpha, initial_work)
+    } else if geometry.target_width == 0 || geometry.target_height == 0 {
+        (Err(part2_composition_error(false)), destination, destination_alpha, initial_work)
+    } else if geometry.copy_width == 0 || geometry.copy_height == 0 {
+        (Ok(()), destination, destination_alpha, initial_work)
+    } else {
+        part2_composition_budgeted_prefix(
+            source, source_alpha, destination, destination_alpha,
+            geometry, expand_grayscale, initial_work, work_limit, geometry.copy_width * geometry.copy_height,
+        )
+    }
+}
+
 pub open spec fn part2_chroma_key_alpha(matches: bool) -> u16 {
     if matches { 0 } else { u16::MAX }
 }

@@ -1,5 +1,8 @@
 use crate::{DecodeError, Resource};
 
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct ResourceLimits {
@@ -27,6 +30,13 @@ pub struct ResourceLimits {
     maximum_jpip_fragments: u64,
     maximum_tag_tree_nodes: u64,
     maximum_work_units: u64,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn resource_work_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_work_units
+    }
 }
 
 impl ResourceLimits {
@@ -149,6 +159,10 @@ impl ResourceLimits {
         self.maximum_tag_tree_nodes
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == resource_work_limit(self),)
+    )]
     pub const fn maximum_work_units(&self) -> u64 {
         self.maximum_work_units
     }
