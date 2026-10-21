@@ -20,25 +20,7 @@ def native_rectangle(rectangle, discard):
     return tuple((value + scale - 1) // scale for value in rectangle)
 
 
-def crop_image(observation, frame, rectangle, sampling=(1, 1)):
-    x0, y0, x1, y1 = rectangle
-    result = copy.deepcopy(observation)
-    result["image"]["width"] = x1 - x0
-    result["image"]["height"] = y1 - y0
-    for component in result["image"]["components"]:
-        width = component["width"]
-        samples = component["samples"]
-        sx, sy = sampling
-        cx0, cy0 = (frame[0] + sx - 1) // sx, (frame[1] + sy - 1) // sy
-        left, right = (x0 + sx - 1) // sx, (x1 + sx - 1) // sx
-        top, bottom = (y0 + sy - 1) // sy, (y1 + sy - 1) // sy
-        component["samples"] = [
-            samples[(y - cy0) * width + x - cx0]
-            for y in range(top, bottom) for x in range(left, right)
-        ]
-        component["width"] = right - left
-        component["height"] = bottom - top
-    return result
+crop_image = framework.crop_image
 
 
 class SelectionTests(unittest.TestCase):

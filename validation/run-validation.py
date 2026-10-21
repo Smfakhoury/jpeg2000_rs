@@ -44,6 +44,8 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--timeout-seconds", type=float, default=10.0)
         if name == "resources":
             command.add_argument("--time-tool", type=Path)
+            command.add_argument("--ht-encoder", type=Path)
+            command.add_argument("--ht-decoder", type=Path)
         if name in ("run", "all"):
             command.add_argument("--no-external", action="store_true")
             command.add_argument("--oracle-config", type=Path)
@@ -115,6 +117,7 @@ def main() -> int:
                 output_dir=arguments.output_dir, encoder=arguments.encoder,
                 decoder=arguments.decoder, time_tool=arguments.time_tool,
                 timeout_seconds=arguments.timeout_seconds,
+                ht_encoder=arguments.ht_encoder, ht_decoder=arguments.ht_decoder,
             )
             emit({"status": result["status"], "cases": len(result["records"]),
                   "native_total_ms": result["native_total_ms"], "blockers": result["blockers"],

@@ -2,6 +2,7 @@ import copy
 import math
 import shutil
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
@@ -60,7 +61,9 @@ class ResourceTests(unittest.TestCase):
         self.assertIsNone(measured["output_sha256"])
 
     def test_missing_tools_are_blocked_not_successful_or_built(self):
-        with mock.patch.object(shutil, "which", return_value=None), mock.patch.object(framework, "build_subject") as build:
+        with mock.patch.object(shutil, "which", return_value=None), \
+                mock.patch.dict(benchmarks.os.environ, {"OPENJPH_ENCODER": "", "OPENJPH_DECODER": ""}), \
+                mock.patch.object(framework, "build_subject") as build:
             report = benchmarks.run_resources(output_dir=self.work)
             build.assert_not_called()
             self.assertEqual(report["status"], "blocked")
@@ -69,6 +72,43 @@ class ResourceTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 benchmarks.run_resources(output_dir=self.work, encoder=Path("missing"))
         framework.validate_evidence_schemas(self.work)
+
+    def test_ht_tools_are_required_and_explicit_missing_paths_are_errors(self):
+        def which(command):
+            return None if str(command).endswith("ojph_expand") else sys.executable
+        with mock.patch.object(shutil, "which", side_effect=which), \
+                mock.patch.dict(benchmarks.os.environ, {"OPENJPH_ENCODER": "", "OPENJPH_DECODER": ""}), \
+                mock.patch.object(framework, "build_subject") as build:
+            report = benchmarks.run_resources(output_dir=self.work)
+            self.assertEqual(report["status"], "blocked")
+            self.assertTrue(any("ht_decoder" in blocker for blocker in report["blockers"]))
+            build.assert_not_called()
+        with mock.patch.object(shutil, "which", return_value=None):
+            with self.assertRaises(FileNotFoundError):
+                benchmarks.run_resources(output_dir=self.work, ht_encoder=Path("missing-ht-encoder"))
+
+    def test_ht_resource_geometry_and_coding_signals_cannot_be_omitted(self):
+        def fixture(tile=128, depth=15, style=0x40, capability=True):
+            siz = struct.pack(">HIIIIIIIIH", 0x4000, 512, 512, 0, 0, tile, tile, 0, 0, 3)
+            data = b"\xff\x4f" + framework.segment(0xff51, siz + bytes((depth, 1, 1)) * 3)
+            if capability:
+                data += framework.segment(0xff50, bytes((0, 2, 0, 0, 0, 0)))
+            return data + framework.segment(0xff52, bytes((0, 0, 0, 1, 1, 2, 4, 4, style, 1))) + b"\xff\x90"
+        benchmarks._validate_ht_resource_headers(fixture(), 512)
+        for invalid in (fixture(tile=64), fixture(depth=7), fixture(style=0), fixture(capability=False)):
+            with self.subTest(data=invalid), self.assertRaises(ValueError):
+                benchmarks._validate_ht_resource_headers(invalid, 512)
+
+    def test_shared_reference_crop_is_exact_and_rejects_invalid_geometry(self):
+        cropped = framework.crop_image(self.expected, (0, 0, 2, 1), (0, 0, 1, 1))
+        self.assertEqual(cropped["image"]["components"][0]["samples"], [0])
+        self.assertEqual(self.expected["image"]["components"][0]["samples"], [0, 255])
+        for rectangle, sampling in (((0, 0, 3, 1), (1, 1)), ((0, 0, 0, 1), (1, 1)),
+                                    ((0, 0, 1, 1), (0, 1))):
+            with self.subTest(rectangle=rectangle, sampling=sampling), self.assertRaises(ValueError):
+                framework.crop_image(self.expected, (0, 0, 2, 1), rectangle, sampling)
+        with self.assertRaises(ValueError):
+            framework.crop_image(self.expected, (0, 0, 3, 1), (0, 0, 1, 1))
 
     def test_configured_rejections_require_exact_resource_limit_and_excessive_claim(self):
         output = b"ERR\tLimitExceeded\tresource limit exceeded for WorkUnits: limit 8, actual 9\n"
@@ -156,11 +196,12 @@ class ResourceTests(unittest.TestCase):
         self.assertFalse((self.work / "resource-results.json").exists())
 
     def test_success_schema_requires_three_measured_runs_and_output_hashes(self):
-        with mock.patch.object(shutil, "which", return_value=None):
+        with mock.patch.object(shutil, "which", return_value=None), \
+                mock.patch.dict(benchmarks.os.environ, {"OPENJPH_ENCODER": "", "OPENJPH_DECODER": ""}):
             report = benchmarks.run_resources(output_dir=self.work)
-        report.update(status="passed", blockers=[], native_total_ms=65.0)
+        report.update(status="passed", blockers=[], native_total_ms=74.0)
         tool = {"path": sys.executable, "sha256": framework.sha256_file(Path(sys.executable))}
-        report["tools"] = {name: tool for name in ("encoder", "decoder", "time", "subject")}
+        report["tools"] = {name: tool for name in ("encoder", "decoder", "time", "subject", "ht_encoder", "ht_decoder")}
         run = {"elapsed_ms": 1.0, "peak_rss_bytes": 4096, "returncode": 0,
                "output_sha256": framework.normalized_hash(self.expected)}
         record = {
@@ -173,7 +214,7 @@ class ResourceTests(unittest.TestCase):
             "error": None, "artifacts": [], "median_ms": 1.0, "peak_rss_bytes": 4096,
             "configured_limit": None, "search_ceiling": None, "search_runs": [],
         }
-        report["records"] = [dict(copy.deepcopy(record), id=f"case-{index}") for index in range(19)]
+        report["records"] = [dict(copy.deepcopy(record), id=f"case-{index}") for index in range(22)]
         for index in range(4):
             current = report["records"][index]
             resource = "DecodedBytes" if index < 2 else "WorkUnits"

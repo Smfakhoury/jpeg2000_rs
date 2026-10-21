@@ -29,11 +29,11 @@
   "allOf": [{
     "if": {"properties": {"status": {"const": "passed"}}, "required": ["status"]},
     "then": {"properties": {
-      "tools": {"required": ["encoder", "decoder", "time", "subject"]},
+      "tools": {"required": ["encoder", "decoder", "time", "subject", "ht_encoder", "ht_decoder"]},
       "blockers": {"maxItems": 0},
       "errors": {"maxItems": 0},
       "records": {
-        "minItems": 19, "maxItems": 19,
+        "minItems": 22, "maxItems": 22,
         "items": {"properties": {"status": {"const": "passed"}}},
         "contains": {"properties": {"search_ceiling": {"type": "integer"}}, "required": ["search_ceiling"]},
         "minContains": 4, "maxContains": 4
