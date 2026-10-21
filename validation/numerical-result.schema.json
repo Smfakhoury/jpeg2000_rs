@@ -67,6 +67,18 @@
             }]
           }
         }, {
+          "if": {
+            "properties": {"source_format": {"const": "pgx"}, "precision": {"maximum": 7}, "encoder_invoked": {"const": true}},
+            "required": ["source_format", "precision", "encoder_invoked"]
+          },
+          "then": {
+            "required": ["encoder_input_format"],
+            "properties": {
+              "encoder_input_format": {"const": "raw"},
+              "encoder_options": {"contains": {"const": "-F"}}
+            }
+          }
+        }, {
           "if": {"properties": {"source_format": {"const": "pgx"}}, "required": ["source_format"]},
           "then": {"required": ["precision", "signed"]}
         }, {
@@ -84,12 +96,16 @@
           "then": {"properties": {"artifacts": {"minItems": 1}}}
         }, {
           "if": {"properties": {"encoder_invoked": {"const": true}}, "required": ["encoder_invoked"]},
-          "then": {"properties": {"timings": {"properties": {"encoder_ms": {"type": "number", "minimum": 0}}}}}
+          "then": {"properties": {
+            "encoder_input_format": {"enum": ["pgm", "ppm", "pgx", "pfm", "raw"]},
+            "timings": {"properties": {"encoder_ms": {"type": "number", "minimum": 0}}}
+          }}
         }, {
           "if": {"properties": {"encoder_invoked": {"const": false}}, "required": ["encoder_invoked"]},
           "then": {
             "properties": {
               "encoder_options": {"maxItems": 0},
+              "encoder_input_format": {"type": "null"},
               "timings": {"properties": {"encoder_ms": {"type": "null"}}}
             }
           }
@@ -107,6 +123,7 @@
           "verified_features": {"type": "array", "items": {"enum": ["component-maxshift", "binary-complement-nlt"]}, "uniqueItems": true},
           "signed_header_authored": {"type": "boolean"},
           "encoder_input_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+          "encoder_input_format": {"enum": ["pgm", "ppm", "pgx", "pfm", "raw", null]},
           "pattern": {"enum": ["varied", "sparse", "fixed"]},
           "encoder_invoked": {"type": "boolean"},
           "elapsed_ms": {"type": "number", "minimum": 0},

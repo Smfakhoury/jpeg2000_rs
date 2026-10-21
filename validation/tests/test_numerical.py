@@ -8,6 +8,7 @@ import sys
 import struct
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -191,17 +192,83 @@ class NumericalTests(unittest.TestCase):
                 framework.parse_pfm_bit_patterns(path)
 
     def test_required_roi_and_nlt_headers_cannot_be_silently_omitted(self):
+        def fixture(case, segment=b""):
+            data = bytearray(framework.raw_codestream())
+            data[data.index(b"\xff\x52") + 9] = case.decomposition_levels
+            offset = data.index(b"\xff\x90")
+            return bytes(data[:offset]) + segment + bytes(data[offset:])
         roi = next(case for case in numerical.CASES if case.name == "roi-gray-shift3")
         segment = framework.segment(0xff5e, b"\x00\x00\x03")
-        self.assertEqual(numerical.validate_required_headers(roi, b"\xff\x4f" + segment + b"\xff\x90"),
+        self.assertEqual(numerical.validate_required_headers(roi, fixture(roi, segment)),
                          ["component-maxshift"])
         nlt = next(case for case in numerical.HT_CASES if case.sample_representation != "integer")
         segment = framework.segment(0xff76, b"\xff\xff\x9f\x03")
-        self.assertEqual(numerical.validate_required_headers(nlt, b"\xff\x4f" + segment + b"\xff\x90"),
+        self.assertEqual(numerical.validate_required_headers(nlt, fixture(nlt, segment)),
                          ["binary-complement-nlt"])
         for case in (roi, nlt):
             with self.subTest(case=case.name), self.assertRaises(ValueError):
-                numerical.validate_required_headers(case, framework.raw_codestream())
+                numerical.validate_required_headers(case, fixture(case))
+
+    def test_decomposition_metadata_and_real_marker_segments_are_required(self):
+        case = numerical.NumericalCase("zero-dwt", decomposition_levels=0)
+        raw = framework.raw_codestream()
+        wrapped = framework.jp2_file(raw)
+        box_start = wrapped.index(b"jp2c") - 4
+        for data in (
+            raw, wrapped,
+            wrapped[:box_start] + struct.pack(">I4sQ", 1, b"jp2c", 16 + len(raw)) + raw,
+            wrapped[:box_start] + struct.pack(">I4s", 0, b"jp2c") + raw,
+        ):
+            self.assertEqual(numerical.validate_required_headers(case, data), [])
+        wrong = bytearray(raw)
+        wrong[wrong.index(b"\xff\x52") + 9] = 1
+        with self.assertRaisesRegex(ValueError, "decomposition level"):
+            numerical.validate_required_headers(case, bytes(wrong))
+        for options in (("-r", "8,3,1"), ("-M", "1"), ("-r",), ("-M",)):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                numerical.validate_required_headers(replace(case, options=options), raw)
+        before_tile = raw.index(b"\xff\x90")
+        roi = replace(case, options=("-ROI", "c=0,U=3"))
+        fake_feature = framework.segment(0xff64, framework.segment(0xff5e, b"\x00\x00\x03"))
+        with self.assertRaisesRegex(ValueError, "component-maxshift"):
+            numerical.validate_required_headers(roi, raw[:before_tile] + fake_feature + raw[before_tile:])
+        with self.assertRaisesRegex(ValueError, "decomposition level"):
+            numerical.validate_required_headers(case, raw[:before_tile] +
+                                               framework.segment(0xff52, bytes((0, 0, 0, 1, 0, 0))) +
+                                               raw[before_tile:])
+
+    def test_reference_main_header_and_box_truncations_fail_explicitly(self):
+        raw = framework.raw_codestream()
+        signature = framework.jp2_file(raw)[:12]
+        for data in (
+            b"", b"\xff\x4f", raw[:5], raw[:raw.index(b"\xff\x90")],
+            signature, signature + struct.pack(">I4s", 1, b"jp2c"),
+            signature + struct.pack(">I4s", 10000, b"jp2c") + raw,
+            signature + struct.pack(">I4s", 8, b"jp2c"),
+            b"\xff\x4f\xff\x52\x00\x01",
+        ):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                numerical._main_header_segments(data)
+
+    def test_low_bit_raw_encoder_input_is_explicit_and_preserved_on_failure(self):
+        case = numerical.NumericalCase("low-fixed", precision=1, signed=True, width=2, height=1,
+                                       decomposition_levels=0, pattern="fixed", samples=(-1, 0))
+        def encoder(command, timeout_seconds):
+            source = Path(command[command.index("-i") + 1])
+            self.assertEqual(source.suffix, ".raw")
+            self.assertEqual(source.read_bytes(), b"\x00\x01")
+            self.assertEqual(command[command.index("-F") + 1], "2,1,1,1,u")
+            raise ValueError("intentional encoder failure")
+        with mock.patch.object(numerical.shutil, "which", return_value=sys.executable), \
+                mock.patch.object(numerical, "CASES", (case,)), \
+                mock.patch.object(numerical, "_run_checked", side_effect=encoder):
+            result = numerical.run_numerical(Path(sys.executable), self.work)
+        record = result["records"][0]
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["encoder_input_format"], "raw")
+        self.assertEqual(record["encoder_input_sha256"], framework.sha256_bytes(b"\x00\x01"))
+        self.assertTrue(any(name.endswith("-encoder.raw") for name in record["artifacts"]))
+        framework.validate_evidence_schemas(self.work)
 
     def test_signed_fixture_changes_only_the_matching_siz_sign_bit(self):
         unsigned = framework.raw_codestream()
@@ -229,7 +296,8 @@ class NumericalTests(unittest.TestCase):
             framework.jp2_file(signed, signed=1)
 
     def test_pgx_reference_mismatch_and_corruption_fail_before_subject_execution(self):
-        case = numerical.NumericalCase("signed-reference", width=1, height=1, precision=17, signed=True)
+        case = numerical.NumericalCase("signed-reference", width=1, height=1, precision=17, signed=True,
+                                       decomposition_levels=0)
         for payload in ((123).to_bytes(4, "big", signed=True), b"\x00"):
             calls = []
 
@@ -359,9 +427,9 @@ class NumericalTests(unittest.TestCase):
             if "-o" not in command:
                 self.fail("subject must not run after an invalid lossless reference roundtrip")
             output = Path(command[command.index("-o") + 1])
-            output.write_bytes(b"P5\n1 1\n255\n\x80" if "reference" in output.stem else b"synthetic encoded fixture")
+            output.write_bytes(b"P5\n1 1\n255\n\x80" if output.stem.endswith("-reference") else framework.raw_codestream())
             return subprocess.CompletedProcess(command, 0, b"", b""), 0.0
-        case = numerical.NumericalCase("reference-mismatch", width=1, height=1, decomposition_levels=1)
+        case = numerical.NumericalCase("reference-mismatch", width=1, height=1, decomposition_levels=0)
         with mock.patch.object(numerical.shutil, "which", return_value=sys.executable), \
                 mock.patch.object(numerical, "HT_CASES", (case,)), \
                 mock.patch.object(numerical, "_run_checked", side_effect=reference_process):
@@ -383,9 +451,11 @@ class NumericalTests(unittest.TestCase):
         for case, record in zip(numerical.HT_CASES, result["records"]):
             self.assertEqual(record["encoder_invoked"], case.codestream is None)
             if case.codestream is not None:
+                self.assertIsNone(record["encoder_input_format"])
                 self.assertIsNone(record["timings"]["encoder_ms"])
                 self.assertEqual(record["encoder_options"], [])
             else:
+                self.assertEqual(record["encoder_input_format"], numerical.source_extension(case))
                 self.assertIsInstance(record["timings"]["encoder_ms"], float)
         binary32 = [record for record in result["records"] if record["source_format"] == "pfm"]
         self.assertEqual(len(binary32), 3)
@@ -400,6 +470,11 @@ class NumericalTests(unittest.TestCase):
         next(record for record in invalid["records"] if record["source_format"] == "pfm")["verified_features"] = []
         with self.assertRaises(ValueError):
             framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
+        for invoked, input_format in ((True, None), (False, "pgm")):
+            invalid = copy.deepcopy(result)
+            next(record for record in invalid["records"] if record["encoder_invoked"] == invoked)["encoder_input_format"] = input_format
+            with self.subTest(invoked=invoked, input_format=input_format), self.assertRaises(ValueError):
+                framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
         framework.validate_evidence_schemas(self.work)
         for invoked, timing, options in (
             (False, 0.0, []),
@@ -429,15 +504,43 @@ class NumericalTests(unittest.TestCase):
             self.assertEqual(record["signed"], case.signed)
             self.assertEqual(record["source_format"], numerical.source_extension(case))
             self.assertEqual(record["signed_header_authored"], case.signed)
+            self.assertIn(record["encoder_input_format"], ("pgm", "ppm", "pgx", "raw"))
             if case.signed:
                 self.assertNotEqual(record["encoder_input_sha256"], record["input_sha256"])
         pgx = [record for record in result["records"] if record["source_format"] == "pgx"]
-        self.assertEqual(len(pgx), 11)
-        self.assertEqual({record["precision"] for record in pgx}, {8, 9, 12, 16, 17, 20, 24})
+        self.assertEqual(len(pgx), 23)
+        self.assertEqual({record["precision"] for record in pgx}, {1, 2, 4, 7, 8, 9, 12, 16, 17, 20, 24, 25})
         for record in pgx:
             self.assertEqual(record["source_metrics"]["maximum_error"], 0)
             self.assertEqual(record["metrics"]["maximum_error"], 0)
             self.assertEqual(record["reference_sha256"], record["decoded_sha256"])
+        low = [record for record in pgx if record["precision"] < 8]
+        self.assertEqual(len(low), 8)
+        for record in low:
+            case = next(case for case in numerical.CASES if case.name == record["id"])
+            unsigned = numerical.source_image(replace(case, signed=False))
+            self.assertEqual(record["encoder_input_format"], "raw")
+            self.assertEqual(record["encoder_input_sha256"], framework.sha256_bytes(unsigned.split(b"\n", 1)[1]))
+            self.assertNotEqual(record["encoder_input_sha256"], record["input_sha256"])
+            self.assertEqual(record["encoder_options"][record["encoder_options"].index("-F") + 1],
+                             f"{case.width},{case.height},1,{case.precision},u")
+        high = [record for record in pgx if record["precision"] == 25]
+        self.assertEqual(len(high), 4)
+        for record in high:
+            case = next(case for case in numerical.CASES if case.name == record["id"])
+            self.assertEqual(case.decomposition_levels, 0)
+            self.assertEqual(record["encoder_options"][:2], ["-n", "1"])
+        for mutation in ("format", "options", "missing"):
+            invalid = copy.deepcopy(result)
+            record = next(record for record in invalid["records"] if record["precision"] < 8)
+            if mutation == "format":
+                record["encoder_input_format"] = "pgx"
+            elif mutation == "options":
+                record["encoder_options"] = []
+            else:
+                del record["encoder_input_format"]
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                framework.validate_schema(framework.VALIDATION / "numerical-result.schema.json", invalid)
         for field in ("precision", "signed"):
             invalid = copy.deepcopy(result)
             del next(record for record in invalid["records"] if record["source_format"] == "pgx")[field]
