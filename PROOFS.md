@@ -80,6 +80,7 @@ Read each contract according to its inputs and postcondition:
 | JPX planar scatter | Exact status and complete final color/alpha sequences, including the successfully written color prefix on a failed raw scatter, preserved other samples and plane lengths | That an arbitrary caller prevalidated every destination, or that an entire render is transactional |
 | Complete normalized planar pixel transition | The actual gather/evaluate/scatter status and entire final planar state equal one composed model; rejected pixel inputs leave both color and alpha state unchanged | Earlier channel normalization, complete canvas traversal, work-limit transactionality, layer/frame order or a parser-to-pixel theorem |
 | Successful placed-layer composition | On success, the complete final planar canvas state and exact work count equal a raster-prefix fold of normalized pixel transitions at the selected clipped, floor-scaled crop addresses | Complete error-state semantics, sufficient-budget success, earlier channel normalization, layer/frame ordering or a parser-to-pixel theorem |
+| All-return placed-layer prefix safety | On every return, all buffers equal a valid raster prefix, and work accounts for that prefix or all but its final stored pixel; inactive geometry leaves the complete initial state unchanged | Which prefix must fail, exact error classification, sufficient-budget success, normalization or layer/frame ordering |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
@@ -162,9 +163,26 @@ must return within five seconds while preserving even unvisited malformed
 planes and an already exhausted work counter. This removes work-free empty
 row iteration without adding new accepted pixel data. Work overflow and
 work-limit rejection still occur after pixel stores, with their existing
-counter behavior; exact tests preserve that ordering. The success theorem
+counter behavior; exact tests preserve that ordering. The success theorem alone
 does not specify partial buffers on `Err`, prove valid inputs always succeed,
 or establish normalization, layer/frame order or standard-edition conformance.
+An additional, unconditional placed-layer postcondition now constrains every
+return, including `Err`: the complete output buffers equal some valid prefix
+of that same raster fold. The work counter is the initial count plus either
+all stored pixels' charges or all but the last pixel's charge. The latter
+case preserves the existing checked-work-overflow behavior after a store.
+Empty source, invalid zero target and empty clipping preserve all initial
+buffers and work. A constructive prefix witness and raster bound are proved
+and used before rejection, after stores, and after charging, so no error exit
+is justified only by the success guard.
+
+This is a prefix-safety theorem, not an exact failure-position or error-cause
+model. It does not assert whole-render rollback or sufficient-budget success.
+Independent multirow RGB regressions check every work-limit cut in a six-pixel
+rectangle, a missing sample on the second row, an uncharged pixel on overflow,
+and the exact-budget success case, comparing all stored and untouched samples
+and the exact counter/error. Runtime instructions and error ordering are
+unchanged; the new witness assertions erase from Cargo builds.
 Malformed premultiplied data is rejected before destination writes for that
 pixel, including a malformed later channel. This intentionally strengthens
 the previous private intermediate-buffer behavior; public render APIs still

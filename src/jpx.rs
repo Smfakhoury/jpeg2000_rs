@@ -2026,6 +2026,19 @@ fn layer_channels(image: &ConvertedImage) -> Result<LayerChannels<'_>, DecodeErr
                 matches!((output_space, source.color_space), (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)),
                 *old(work_units) as nat,
             ),
+            crate::specs::part2_composition_layer_prefix_safe(
+                crate::specs::part2_composition_planes(source.colors@),
+                match &source.alpha { Some(value) => Some((value.0@, value.1)), None => None },
+                crate::specs::part2_composition_planes(old(output_colors)@), old(output_alpha)@,
+                crate::specs::part2_composition_geometry(
+                    source.width, source.height, canvas_width, canvas_height,
+                    instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+                    instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+                ),
+                matches!((output_space, source.color_space), (ConvertedColorSpace::Srgb, ConvertedColorSpace::Grayscale)),
+                *old(work_units) as nat,
+                crate::specs::part2_composition_planes(final(output_colors)@), final(output_alpha)@, *final(work_units) as nat,
+            ),
     )
 )]
 fn composite_placed_layer(
@@ -2100,6 +2113,10 @@ fn composite_placed_layer(
         crate::proofs::production_impl::production_composition_canvas_empty(
             source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale,
         );
+        crate::proofs::production_impl::production_composition_prefix_observation(
+            source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, initial_work as nat,
+            crate::specs::part2_composition_planes(output_colors@), output_alpha@, *work_units as nat, 0,
+        );
     }
     let mut y = 0_u32;
     #[cfg_attr(
@@ -2128,6 +2145,10 @@ fn composite_placed_layer(
                 (true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
                     == crate::specs::part2_composition_canvas_prefix(source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, (y as nat) * (copy_width as nat)),
                 *work_units as nat == initial_work as nat + (y as nat) * (copy_width as nat) * (initial_colors.len() + 1),
+                crate::specs::part2_composition_layer_prefix_safe(
+                    source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, initial_work as nat,
+                    crate::specs::part2_composition_planes(output_colors@), output_alpha@, *work_units as nat,
+                ),
                 target_width > 0 && target_height > 0,
                 copy_width <= target_width && copy_height <= target_height,
                 source_x <= source.width && source_y <= source.height,
@@ -2181,6 +2202,10 @@ fn composite_placed_layer(
                     (true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
                         == crate::specs::part2_composition_canvas_prefix(source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, (y as nat) * (copy_width as nat) + x as nat),
                     *work_units as nat == initial_work as nat + ((y as nat) * (copy_width as nat) + x as nat) * (initial_colors.len() + 1),
+                    crate::specs::part2_composition_layer_prefix_safe(
+                        source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, initial_work as nat,
+                        crate::specs::part2_composition_planes(output_colors@), output_alpha@, *work_units as nat,
+                    ),
                     target_width > 0 && target_height > 0,
                     copy_width <= target_width,
                     y < copy_height && copy_height <= target_height,
@@ -2212,6 +2237,7 @@ fn composite_placed_layer(
             proof! {
                 assert(previous_state == (true, crate::specs::part2_composition_planes(output_colors@), output_alpha@));
                 assert(previous_work as nat == initial_work as nat + completed * (initial_colors.len() + 1));
+                crate::proofs::production_impl::production_composition_raster_prefix_bound(copy_width as nat, copy_height as nat, x as nat, y as nat);
             }
             let mapped_x =
                 crate::refinement::composition_mapped_offset(x, source_width, target_width);
@@ -2255,6 +2281,13 @@ fn composite_placed_layer(
                 destination_index,
                 expand_grayscale,
             ) {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_composition_prefix_observation(
+                        source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, initial_work as nat,
+                        crate::specs::part2_composition_planes(output_colors@), output_alpha@, *work_units as nat, completed,
+                    );
+                }
                 return Err(invalid_layer());
             }
             #[cfg(verus_keep_ghost)]
@@ -2266,6 +2299,10 @@ fn composite_placed_layer(
                     ));
                 assert((true, crate::specs::part2_composition_planes(output_colors@), output_alpha@)
                     == crate::specs::part2_composition_canvas_prefix(source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, completed + 1));
+                crate::proofs::production_impl::production_composition_prefix_observation(
+                    source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, initial_work as nat,
+                    crate::specs::part2_composition_planes(output_colors@), output_alpha@, *work_units as nat, completed + 1,
+                );
             }
             let pixel_work = (output_colors.len() as u64)
                 .checked_add(1)
@@ -2273,18 +2310,22 @@ fn composite_placed_layer(
             *work_units = work_units
                 .checked_add(pixel_work)
                 .ok_or_else(arithmetic_overflow)?;
-            enforce_limit(
-                Resource::WorkUnits,
-                limits.maximum_work_units(),
-                *work_units,
-            )?;
             #[cfg(verus_keep_ghost)]
             proof! {
                 assert(pixel_work as nat == initial_colors.len() + 1);
                 assert((completed + 1) * (initial_colors.len() + 1)
                     == completed * (initial_colors.len() + 1) + (initial_colors.len() + 1)) by(nonlinear_arith);
                 assert(*work_units as nat == initial_work as nat + (completed + 1) * (initial_colors.len() + 1));
+                crate::proofs::production_impl::production_composition_prefix_observation(
+                    source_planes, layer_alpha, initial_colors, initial_alpha, geometry, expand_grayscale, initial_work as nat,
+                    crate::specs::part2_composition_planes(output_colors@), output_alpha@, *work_units as nat, completed + 1,
+                );
             }
+            enforce_limit(
+                Resource::WorkUnits,
+                limits.maximum_work_units(),
+                *work_units,
+            )?;
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         #[cfg(verus_keep_ghost)]
@@ -3190,6 +3231,94 @@ mod tests {
             assert_eq!(colors, [vec![2_345]]);
             assert_eq!(alpha, [u16::MAX]);
             assert_eq!(work, final_work);
+        }
+    }
+
+    #[test]
+    fn placed_layer_failures_preserve_multirow_raster_prefixes() {
+        let mut cases = Vec::new();
+        for count in 1..=6_usize {
+            let work = 9 + u64::try_from(count).unwrap() * 4;
+            cases.push((
+                count,
+                9,
+                work - 1,
+                false,
+                Err(DecodeError::limit(Resource::WorkUnits, work - 1, work)),
+                work,
+            ));
+        }
+        cases.push((4, 9, 1_000, true, Err(invalid_layer()), 25));
+        cases.push((
+            1,
+            u64::MAX - 3,
+            1_000,
+            false,
+            Err(arithmetic_overflow()),
+            u64::MAX - 3,
+        ));
+        cases.push((6, 9, 33, false, Ok(()), 33));
+        for (stored, initial_work, limit, missing_sample, expected_result, expected_work) in cases {
+            let mut source = OwnedLayer {
+                width: 3,
+                height: 2,
+                color_space: ConvertedColorSpace::Srgb,
+                colors: (0..3)
+                    .map(|channel| {
+                        (0..6)
+                            .map(|i| u16::try_from((channel + 1) * 100 + i).unwrap())
+                            .collect::<Vec<_>>()
+                    })
+                    .collect(),
+                alpha: None,
+            };
+            if missing_sample {
+                source.colors[2].truncate(4);
+            }
+            let instruction = JpxInstructionInfo {
+                layer_index: 0,
+                target_x: 1,
+                target_y: 1,
+                target_width: 3,
+                target_height: 2,
+                source_x: 0,
+                source_y: 0,
+                source_width: 0,
+                source_height: 0,
+                persistent: true,
+                next_reuse: 0,
+            };
+            let mut colors = vec![vec![31; 20], vec![32; 20], vec![33; 20]];
+            let mut alpha = vec![17; 20];
+            let mut expected_colors = colors.clone();
+            let mut expected_alpha = alpha.clone();
+            for rank in 0..stored {
+                let destination = (rank / 3 + 1) * 5 + rank % 3 + 1;
+                for (channel, samples) in expected_colors.iter_mut().enumerate() {
+                    samples[destination] = source.colors[channel][rank];
+                }
+                expected_alpha[destination] = u16::MAX;
+            }
+            let mut work = initial_work;
+            assert_eq!(
+                composite_placed_layer(
+                    5,
+                    4,
+                    ConvertedColorSpace::Srgb,
+                    &source,
+                    instruction,
+                    &mut colors,
+                    &mut alpha,
+                    &mut work,
+                    &ResourceLimits::default()
+                        .with_maximum_work_units(limit)
+                        .unwrap(),
+                ),
+                expected_result
+            );
+            assert_eq!(colors, expected_colors);
+            assert_eq!(alpha, expected_alpha);
+            assert_eq!(work, expected_work);
         }
     }
 

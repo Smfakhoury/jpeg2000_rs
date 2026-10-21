@@ -2057,6 +2057,14 @@
         {
           "path": "proofs/production_impl/mod.rs",
           "symbol": "production_composition_canvas_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_raster_prefix_bound"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_composition_prefix_observation"
         }
       ],
       "spec_refs": [
@@ -2158,6 +2166,14 @@
         },
         {
           "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_prefix_matches"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_layer_prefix_safe"
+        },
+        {
+          "path": "specs/mod.rs",
           "symbol": "part2_composition_mapped_offset"
         },
         {
@@ -2241,6 +2257,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "placed_layer_work_rejections_preserve_post_store_order"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_layer_failures_preserve_multirow_raster_prefixes"
         },
         {
           "path": "src/jpx.rs",
