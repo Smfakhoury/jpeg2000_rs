@@ -1844,6 +1844,116 @@
     {
       "contract_refs": [
         {
+          "path": "src/jpx.rs",
+          "symbol": "layer_channels"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "owned_layer_from_image"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "checked_area"
+        }
+      ],
+      "id": "part2-jpx-layer-input-construction",
+      "implementation_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "decode_general_compositing_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "owned_layer_from_image"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_channels"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_scan_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_scan_error"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_alpha_product_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_alpha_error"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_channels_outcome"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "owned_layer_outcome"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_input"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_owned_layer_input"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_area"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_channel_scan"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_resolve_colors"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_alpha_fold"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_normalized_sample_product"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_permutations_preserve_complete_planes_and_metadata"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_absent_and_single_alpha_preserve_representation_and_color_aliases"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_alpha_combination_rounds_each_ordered_step"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_rejects_missing_duplicate_out_of_range_and_malformed_planes"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_alpha_products_match_wide_integer_reference_at_boundaries"
+        }
+      ],
+      "topic": "Complete converted-channel selection, ordered alpha combination, metadata and typed layer-input rejection"
+    },
+    {
+      "contract_refs": [
+        {
           "path": "src/refinement.rs",
           "symbol": "registered_extent"
         },

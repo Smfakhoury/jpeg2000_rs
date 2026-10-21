@@ -47,11 +47,38 @@ pub struct ConvertedImage {
     channels: Vec<ConvertedChannel>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn converted_channel_view(channel: &ConvertedChannel) -> (ConvertedChannelType, Seq<u16>) {
+        (channel.channel_type, channel.samples@)
+    }
+
+    pub closed spec fn converted_image_view(image: &ConvertedImage)
+        -> (u32, u32, ConvertedColorSpace, u8, Seq<ConvertedChannel>)
+    {
+        (image.width, image.height, image.color_space, image.precision, image.channels@)
+    }
+
+    pub open spec fn converted_channel_views(channels: Seq<ConvertedChannel>)
+        -> Seq<(ConvertedChannelType, Seq<u16>)>
+    {
+        Seq::new(channels.len(), |i: int| converted_channel_view(&channels[i]))
+    }
+}
+
 impl ConvertedChannel {
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(kind => ensures kind == converted_channel_view(self).0,)
+    )]
     pub const fn channel_type(&self) -> ConvertedChannelType {
         self.channel_type
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(samples => ensures samples@ == converted_channel_view(self).1,)
+    )]
     pub fn samples(&self) -> &[u16] {
         &self.samples
     }
@@ -113,6 +140,28 @@ impl ConvertedImage {
             precision: self.precision,
             channels,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_test_channels(
+        width: u32,
+        height: u32,
+        color_space: ConvertedColorSpace,
+        channels: Vec<(ConvertedChannelType, Vec<u16>)>,
+    ) -> Self {
+        Self {
+            width,
+            height,
+            color_space,
+            precision: 16,
+            channels: channels
+                .into_iter()
+                .map(|(channel_type, samples)| ConvertedChannel {
+                    channel_type,
+                    samples,
+                })
+                .collect(),
+        }
     }
 
     pub(crate) fn from_composited(
@@ -195,22 +244,42 @@ impl ConvertedImage {
         })
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(width => ensures width == converted_image_view(self).0,)
+    )]
     pub const fn width(&self) -> u32 {
         self.width
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(height => ensures height == converted_image_view(self).1,)
+    )]
     pub const fn height(&self) -> u32 {
         self.height
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(space => ensures space == converted_image_view(self).2,)
+    )]
     pub const fn color_space(&self) -> ConvertedColorSpace {
         self.color_space
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(precision => ensures precision == converted_image_view(self).3,)
+    )]
     pub const fn precision(&self) -> u8 {
         self.precision
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(channels => ensures channels@ == converted_image_view(self).4,)
+    )]
     pub fn channels(&self) -> &[ConvertedChannel] {
         &self.channels
     }

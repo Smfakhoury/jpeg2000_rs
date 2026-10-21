@@ -1301,6 +1301,24 @@ pub(crate) const fn source_over_rounded_ratio(numerator: u64, denominator: u64) 
 
 #[cfg_attr(
     verus_keep_ghost,
+    verus_spec(product =>
+        ensures product == Some(crate::specs::part2_normalized_sample_product(first, second) as u16),
+            crate::specs::part2_normalized_sample_product(first, second) <= 65535,
+    )
+)]
+pub(crate) fn normalized_sample_product(first: u16, second: u16) -> Option<u16> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        vstd::arithmetic::mul::lemma_mul_inequality(first as int, 65535, second as int);
+        vstd::arithmetic::mul::lemma_mul_inequality(second as int, 65535, 65535);
+        assert((first as int) * (second as int) <= 4294836225) by(nonlinear_arith);
+    }
+    let numerator = u64::from(first) * u64::from(second);
+    u16::try_from(source_over_rounded_ratio(numerator, u64::from(u16::MAX))).ok()
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
     verus_spec(stored =>
         ensures (stored, final(samples)@) == crate::specs::part2_composition_store(old(samples)@, index as nat, value),
             final(samples)@.len() == old(samples)@.len(),
