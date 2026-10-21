@@ -169,6 +169,16 @@ HT_CASES = (
     NumericalCase("ht-representative-gray", width=256, height=256),
     NumericalCase("ht-representative-rgb", channels=3, width=256, height=256),
     NumericalCase("ht-representative-gray16", precision=16, width=256, height=256),
+    NumericalCase("ht-rgb16-lossless", channels=3, precision=16, options=("-colour_trans", "true")),
+    NumericalCase("ht-rgb16-tiled-origin", channels=3, precision=16, width=37, height=29,
+                  options=("-colour_trans", "true", "-tile_size", "{16,16}", "-image_offset", "{3,5}", "-prog_order", "CPRL")),
+    NumericalCase("ht-rgb16-jph", channels=3, precision=16, format="jph", options=("-colour_trans", "true")),
+    NumericalCase("ht-rgb16-sparse", channels=3, precision=16, pattern="sparse", options=("-colour_trans", "true")),
+    NumericalCase("ht-rgb16-independent", channels=3, precision=16, options=("-colour_trans", "false")),
+    NumericalCase("ht-rgb16-multiblock", channels=3, precision=16, width=192, height=192,
+                  options=("-colour_trans", "true")),
+    NumericalCase("ht-rgb16-lossy", channels=3, precision=16, lossless=False,
+                  maximum_error=8, maximum_rmse=2.0, options=("-colour_trans", "true")),
     *_ht_refinement_cases(),
     *(NumericalCase(
         f"ht-nlt-binary32-{levels}", width=8, height=8, precision=32, signed=True,
@@ -289,12 +299,19 @@ def validate_required_headers(case: NumericalCase, data: bytes) -> list[str]:
     coding = [payload for marker, payload in segments if marker == 0xff52]
     if len(coding) != 1 or len(coding[0]) < 10 or coding[0][5] != case.decomposition_levels:
         raise ValueError("independent encoder omitted the required COD decomposition level")
-    for option, actual in (("-r", int.from_bytes(coding[0][2:4], "big")), ("-M", coding[0][8])):
+    for option, actual in (("-r", int.from_bytes(coding[0][2:4], "big")),
+                            ("-M", coding[0][8]), ("-colour_trans", coding[0][4])):
         if option in case.options:
             position = case.options.index(option) + 1
             if position >= len(case.options):
                 raise ValueError(f"fixture is missing its {option} argument")
-            expected = len(case.options[position].split(",")) if option == "-r" else int(case.options[position])
+            value = case.options[position]
+            if option == "-colour_trans":
+                if value not in ("true", "false"):
+                    raise ValueError("component-transform fixture requires an explicit boolean setting")
+                expected = int(value == "true")
+            else:
+                expected = len(value.split(",")) if option == "-r" else int(value)
             if actual != expected:
                 raise ValueError(f"independent encoder omitted the required {option} coding setting")
     required = []

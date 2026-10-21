@@ -224,9 +224,11 @@ class NumericalTests(unittest.TestCase):
         wrong[wrong.index(b"\xff\x52") + 9] = 1
         with self.assertRaisesRegex(ValueError, "decomposition level"):
             numerical.validate_required_headers(case, bytes(wrong))
-        for options in (("-r", "8,3,1"), ("-M", "1"), ("-r",), ("-M",)):
+        for options in (("-r", "8,3,1"), ("-M", "1"), ("-r",), ("-M",),
+                        ("-colour_trans", "true"), ("-colour_trans", "invalid"), ("-colour_trans",)):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 numerical.validate_required_headers(replace(case, options=options), raw)
+        self.assertEqual(numerical.validate_required_headers(replace(case, options=("-colour_trans", "false")), raw), [])
         before_tile = raw.index(b"\xff\x90")
         roi = replace(case, options=("-ROI", "c=0,U=3"))
         fake_feature = framework.segment(0xff64, framework.segment(0xff5e, b"\x00\x00\x03"))
@@ -457,6 +459,22 @@ class NumericalTests(unittest.TestCase):
             else:
                 self.assertEqual(record["encoder_input_format"], numerical.source_extension(case))
                 self.assertIsInstance(record["timings"]["encoder_ms"], float)
+        rgb16 = [record for record in result["records"] if record["id"].startswith("ht-rgb16-")]
+        self.assertEqual(len(rgb16), 7)
+        self.assertEqual({record["format"] for record in rgb16}, {"raw", "jph"})
+        for record in rgb16:
+            self.assertEqual(record["precision"], 16)
+            self.assertEqual(record["source_format"], "ppm")
+            self.assertEqual(len(record["metrics"]["components"]), 3)
+            self.assertIn("-colour_trans", record["encoder_options"])
+            if record["lossless"]:
+                self.assertEqual(record["source_metrics"]["maximum_error"], 0)
+                self.assertEqual(record["reference_sha256"], record["decoded_sha256"])
+            else:
+                self.assertEqual(record["thresholds"]["maximum_error"], 8)
+                self.assertEqual(record["thresholds"]["maximum_rmse"], 2.0)
+                self.assertLessEqual(record["metrics"]["maximum_error"], 8)
+                self.assertLessEqual(record["metrics"]["worst_component_rmse"], 2.0)
         binary32 = [record for record in result["records"] if record["source_format"] == "pfm"]
         self.assertEqual(len(binary32), 3)
         for record in binary32:
