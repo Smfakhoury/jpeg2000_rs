@@ -23,12 +23,21 @@ include = [
     "src/**/*.rs",
 ]
 
+[features]
+default = []
+verus = ["dep:vstd"]
+
 [dependencies]
+vstd = { version = "=0.0.0-2026-10-04-0306", optional = true }
+
+[package.metadata.verus]
+verify = true
 
 [lints.rust]
 unsafe_code = "forbid"
 unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(verus_keep_ghost)",
+    "cfg(verus_only)",
 ] }
 
 [lints.clippy]

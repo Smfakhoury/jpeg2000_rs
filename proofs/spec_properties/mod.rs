@@ -32,6 +32,32 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn normalized_composition_domain_matches_binary_width()
+    ensures
+        crate::specs::PART2_NORMALIZED_SAMPLE_MAX as nat + 1
+            == vstd::arithmetic::power2::pow2(crate::specs::PART2_NORMALIZED_SAMPLE_BITS as nat),
+        crate::specs::PART2_NORMALIZED_SAMPLE_HALF as nat
+            == (crate::specs::PART2_NORMALIZED_SAMPLE_MAX as nat) / 2,
+{
+    vstd::arithmetic::power2::lemma2_to64();
+}
+
+pub proof fn symbolic_source_over_matches_word_normalization(
+    source: u16, destination: u16, source_alpha: u16, destination_alpha: u16, premultiplied: bool,
+)
+    ensures
+        crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha)
+            == (source_alpha as nat) * 65535
+                + (destination_alpha as nat) * ((65535 - source_alpha as int) as nat),
+        crate::specs::part2_source_over_color_numerator(source, destination, source_alpha, destination_alpha, premultiplied)
+            == (if premultiplied { (source as nat) * 65535 * 65535 }
+                else { (source as nat) * (source_alpha as nat) * 65535 })
+                + (destination as nat) * (destination_alpha as nat) * ((65535 - source_alpha as int) as nat),
+        crate::specs::part2_source_over_alpha_sample(source_alpha, destination_alpha)
+            == (crate::specs::part2_source_over_alpha_numerator(source_alpha, destination_alpha) + 32767) / 65535,
+{
+}
+
 pub proof fn region_end_is_bounded(parent_length: nat, offset: nat, length: nat)
     requires
         region_fits(parent_length, offset, length),

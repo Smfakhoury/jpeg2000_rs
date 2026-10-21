@@ -6,7 +6,8 @@ vulnerabilities or sensitive input files.
 ## Development setup
 
 Install rustup; the checked-in toolchain selects the tested Rust version.
-The production crate has no external Cargo dependencies. Validation tooling
+The default decoder build has no external Cargo dependencies. The optional
+`verus` feature enables the pinned verification dependency. Validation tooling
 has its own pinned Python requirements.
 
 ```sh
@@ -45,7 +46,9 @@ cargo package --locked
 ```
 
 The package-list comparison uses a Bash-compatible shell. Follow [PROOFS.md](PROOFS.md)
-for the exact Verus command and [validation instructions](validation/VALIDATION.md)
+for the root `cargo verus verify --features verus` command, required pinned
+toolchain/arguments and fail-closed report collection, and
+[validation instructions](validation/VALIDATION.md)
 for optional external oracles and official-vector runs.
 The representative resource gate additionally requires Linux and GNU Time.
 `cargo package` builds and verifies the packaged source locally; it does not
@@ -57,6 +60,9 @@ publish the crate or change `publish = false`.
 - Preserve typed failure and resource-limit behavior.
 - Add a focused regression before changing decoder semantics.
 - Keep specification helpers connected to concrete implementation behavior.
+- Keep normative/selected-policy models on the [auditor reading path](specs/README.md);
+  put invariant-only witnesses in proof support, and prove presentation
+  equivalences instead of making auditors infer numeric normalization.
 - Pin public reference revisions and preserve required third-party notices.
 - Do not commit standards text, purchased vectors, personal credentials, native
   oracle binaries, local research material, or generated run reports.

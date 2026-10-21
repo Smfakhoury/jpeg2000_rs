@@ -4,12 +4,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "source_root", "source_hashes", "provenance", "verus",
+    "schema_version", "crate_name", "verification_entrypoint", "source_root", "source_hashes", "provenance", "verus",
     "results", "known_proof_boundary", "functions", "rust_only_adapters", "scope"
   ],
   "properties": {
     "$schema": {"type": "string"},
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
+    "crate_name": {"const": "jpeg2000_rs"},
+    "verification_entrypoint": {"const": "cargo verus verify"},
     "source_root": {"const": "src/lib.rs"},
     "source_hashes": {
       "type": "object",
@@ -17,6 +19,7 @@
       "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
     },
     "verus_result_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "cargo_verus_output_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "provenance": {
       "type": "object",
       "required": ["git_commit", "git_dirty", "source_revision", "source_hashes", "tool_hashes", "python"]
@@ -31,7 +34,7 @@
         "profile": {"type": "string", "minLength": 1},
         "toolchain": {"type": "string", "minLength": 1},
         "workflow_flags": {
-          "const": ["--no-lifetime", "--crate-type", "lib"]
+          "const": ["--no-lifetime"]
         }
       }
     },
@@ -48,7 +51,7 @@
         "verus_errors": {"const": 0},
         "documented_rust_only_adapters": {"type": "integer", "minimum": 0},
         "verified_project_functions": {"type": "integer", "minimum": 1},
-        "incomplete_production_functions": {"type": "integer", "minimum": 0}
+        "incomplete_production_functions": {"const": 0}
       }
     },
     "known_proof_boundary": {
@@ -56,7 +59,7 @@
       "required": ["lifetime_analysis", "termination"],
       "properties": {
         "lifetime_analysis": {"type": "string", "minLength": 1},
-        "termination": {"type": "array", "items": {"type": "string"}}
+        "termination": {"type": "array", "maxItems": 0}
       },
       "additionalProperties": false
     },
@@ -69,8 +72,8 @@
         "required": ["function", "disposition"],
         "additionalProperties": false,
         "properties": {
-          "function": {"type": "string", "pattern": "^lib::"},
-          "disposition": {"enum": ["verified", "verified-with-termination-gap"]}
+          "function": {"type": "string", "pattern": "^jpeg2000_rs::"},
+          "disposition": {"const": "verified"}
         }
       }
     },
@@ -80,7 +83,7 @@
         "type": "object",
         "required": ["function", "disposition"],
         "properties": {
-          "function": {"type": "string", "pattern": "^lib::"},
+          "function": {"type": "string", "pattern": "^jpeg2000_rs::"},
           "disposition": {"type": "string", "minLength": 1}
         },
         "additionalProperties": false
