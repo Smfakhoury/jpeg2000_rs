@@ -1989,6 +1989,10 @@
         {
           "path": "proofs/spec_properties/mod.rs",
           "symbol": "source_over_rounding_is_nearest"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "source_over_rounding_preserves_sample_bound"
         }
       ],
       "spec_refs": [
@@ -2015,6 +2019,14 @@
         {
           "path": "specs/mod.rs",
           "symbol": "part2_source_over_rounded_ratio"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_source_over_color_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_source_over_alpha_sample"
         }
       ],
       "test_refs": [
@@ -2033,6 +2045,10 @@
         {
           "path": "src/jpx.rs",
           "symbol": "source_over_rounding_handles_ties_zero_and_full_width_inputs"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "placed_source_over_samples_match_wide_rational_rounding_and_preserve_guards"
         },
         {
           "path": "src/jpx.rs",

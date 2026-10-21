@@ -1244,6 +1244,21 @@ pub open spec fn part2_source_over_rounded_ratio(numerator: u64, denominator: u6
     }
 }
 
+pub open spec fn part2_source_over_color_sample(
+    source: u16, destination: u16, source_alpha: u16, destination_alpha: u16, premultiplied: bool,
+) -> nat {
+    let alpha = part2_source_over_alpha_numerator(source_alpha, destination_alpha);
+    if alpha == 0 { 0 } else {
+        (part2_source_over_color_numerator(
+            source, destination, source_alpha, destination_alpha, premultiplied,
+        ) + alpha / 2) / alpha
+    }
+}
+
+pub open spec fn part2_source_over_alpha_sample(source_alpha: u16, destination_alpha: u16) -> nat {
+    (part2_source_over_alpha_numerator(source_alpha, destination_alpha) + 32767) / 65535
+}
+
 pub open spec fn part2_chroma_key_alpha(matches: bool) -> u16 {
     if matches { 0 } else { u16::MAX }
 }

@@ -473,6 +473,23 @@ pub proof fn source_over_rounding_is_nearest(numerator: u64, denominator: u64)
     }
 }
 
+pub proof fn source_over_rounding_preserves_sample_bound(numerator: u64, denominator: u64)
+    requires
+        numerator as nat <= 65535 * (denominator as nat),
+    ensures
+        crate::specs::part2_source_over_rounded_ratio(numerator, denominator) <= 65535,
+{
+    source_over_rounding_is_nearest(numerator, denominator);
+    if denominator > 0 {
+        let output = crate::specs::part2_source_over_rounded_ratio(numerator, denominator) as int;
+        if output > 65535 {
+            vstd::arithmetic::mul::lemma_mul_inequality(65536, output, denominator as int);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(output, denominator as int);
+            assert(false);
+        }
+    }
+}
+
 pub proof fn ht_kappa_completion_never_reduces_base_u(
     u_base: nat,
     gamma: bool,
