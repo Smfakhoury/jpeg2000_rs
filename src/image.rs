@@ -2245,6 +2245,133 @@ fn apply_mct_collection(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_validate_layout(
+        transform_components_view(components), source_indexes@, destination_indexes@, reversible,
+    ),
+))]
+fn validate_mct_components_layout(
+    components: &[TransformComponentMut<'_>],
+    source_indexes: &[usize],
+    destination_indexes: &[usize],
+    reversible: bool,
+) -> Result<usize, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    let first_index = *source_indexes.first().ok_or_else(invalid_transform)?;
+    let first = components.get(first_index).ok_or_else(invalid_transform)?;
+    let sample_count = first.samples.len();
+    let width = first.width;
+    let height = first.height;
+    let x = first.x;
+    let y = first.y;
+    let x_subsampling = first.x_subsampling;
+    let y_subsampling = first.y_subsampling;
+    let mut list = 0_u8;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant list <= 2,
+            MCT_FIXED_BITS == 32,
+            before == transform_components_view(components),
+            source_indexes@.len() > 0,
+            source_indexes@[0] == first_index,
+            first_index < before.len(),
+            before[first_index as int].1 == (x, y, width, height, x_subsampling, y_subsampling),
+            before[first_index as int].3.len() == sample_count,
+            list > 0 ==> forall |position: int| 0 <= position < source_indexes@.len()
+                ==> crate::specs::part2_mct_layout_index_valid(before, first_index, source_indexes@[position]),
+            list > 1 ==> forall |position: int| 0 <= position < destination_indexes@.len()
+                ==> crate::specs::part2_mct_layout_index_valid(before, first_index, destination_indexes@[position]),
+            decreases 2 - list,
+        )
+    )]
+    while list < 2 {
+        let indexes = if list == 0 {
+            source_indexes
+        } else {
+            destination_indexes
+        };
+        let mut index_index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant index_index <= indexes.len(),
+                list < 2,
+                MCT_FIXED_BITS == 32,
+                before == transform_components_view(components),
+                source_indexes@.len() > 0,
+                source_indexes@[0] == first_index,
+                first_index < before.len(),
+                before[first_index as int].1 == (x, y, width, height, x_subsampling, y_subsampling),
+                before[first_index as int].3.len() == sample_count,
+                indexes@ == if list == 0 { source_indexes@ } else { destination_indexes@ },
+                list > 0 ==> forall |position: int| 0 <= position < source_indexes@.len()
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, source_indexes@[position]),
+                forall |position: int| 0 <= position < index_index
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, indexes@[position]),
+                decreases indexes.len() - index_index,
+            )
+        )]
+        while index_index < indexes.len() {
+            let index = *indexes.get(index_index).ok_or_else(invalid_transform)?;
+            let component = components.get(index).ok_or_else(invalid_transform)?;
+            if component.width != width
+                || component.height != height
+                || component.x != x
+                || component.y != y
+                || component.x_subsampling != x_subsampling
+                || component.y_subsampling != y_subsampling
+                || component.samples.len() != sample_count
+                || *component.fraction_bits > MCT_FIXED_BITS
+            {
+                return Err(invalid_transform());
+            }
+            index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        list = list.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    if reversible {
+        let mut index_index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant index_index <= source_indexes.len(),
+                reversible,
+                before == transform_components_view(components),
+                source_indexes@.len() > 0,
+                source_indexes@[0] == first_index,
+                first_index < before.len(),
+                before[first_index as int].3.len() == sample_count,
+                forall |position: int| 0 <= position < source_indexes@.len()
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, source_indexes@[position]),
+                forall |position: int| 0 <= position < destination_indexes@.len()
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, destination_indexes@[position]),
+                forall |position: int| 0 <= position < index_index
+                    ==> before[source_indexes@[position] as int].2 == 0,
+                decreases source_indexes.len() - index_index,
+            )
+        )]
+        while index_index < source_indexes.len() {
+            let index = *source_indexes
+                .get(index_index)
+                .ok_or_else(invalid_transform)?;
+            if *components
+                .get(index)
+                .ok_or_else(invalid_transform)?
+                .fraction_bits
+                != 0
+            {
+                return Err(invalid_transform());
+            }
+            index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+    }
+    Ok(sample_count)
+}
+
 fn apply_mct_decorrelation(
     components: &mut [TransformComponentMut<'_>],
     collection: &MctCollection,
@@ -2308,79 +2435,12 @@ fn apply_mct_decorrelation(
         )?);
         row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    let first_index = *source_indexes.first().ok_or_else(invalid_transform)?;
-    let first = components.get(first_index).ok_or_else(invalid_transform)?;
-    let sample_count = first.samples.len();
-    let width = first.width;
-    let height = first.height;
-    let x = first.x;
-    let y = first.y;
-    let x_subsampling = first.x_subsampling;
-    let y_subsampling = first.y_subsampling;
-    let mut list = 0_u8;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant list <= 2,
-            decreases 2 - list,
-        )
-    )]
-    while list < 2 {
-        let indexes = if list == 0 {
-            &source_indexes
-        } else {
-            &destination_indexes
-        };
-        let mut index_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index_index <= indexes.len(),
-                decreases indexes.len() - index_index,
-            )
-        )]
-        while index_index < indexes.len() {
-            let index = *indexes.get(index_index).ok_or_else(invalid_transform)?;
-            let component = components.get(index).ok_or_else(invalid_transform)?;
-            if component.width != width
-                || component.height != height
-                || component.x != x
-                || component.y != y
-                || component.x_subsampling != x_subsampling
-                || component.y_subsampling != y_subsampling
-                || component.samples.len() != sample_count
-                || *component.fraction_bits > MCT_FIXED_BITS
-            {
-                return Err(invalid_transform());
-            }
-            index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        list = list.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    if collection.reversible() {
-        let mut index_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index_index <= source_indexes.len(),
-                decreases source_indexes.len() - index_index,
-            )
-        )]
-        while index_index < source_indexes.len() {
-            let index = *source_indexes
-                .get(index_index)
-                .ok_or_else(invalid_transform)?;
-            if *components
-                .get(index)
-                .ok_or_else(invalid_transform)?
-                .fraction_bits
-                != 0
-            {
-                return Err(invalid_transform());
-            }
-            index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-    }
+    let sample_count = validate_mct_components_layout(
+        components,
+        &source_indexes,
+        &destination_indexes,
+        collection.reversible(),
+    )?;
     let operations = (sample_count as u64)
         .checked_mul(rows as u64)
         .and_then(|value| value.checked_mul(columns as u64))
@@ -4448,6 +4508,114 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_layout_matches_raw_geometry_precision_and_index_reference() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let base = (u32::MAX, 0_u32, 0_u32, u32::MAX, 0_u8, u8::MAX);
+        let sources = [
+            vec![],
+            vec![0],
+            vec![1],
+            vec![0, 1],
+            vec![1, 0],
+            vec![2, 2],
+            vec![3],
+            vec![usize::MAX],
+        ];
+        let destinations = [vec![], vec![0], vec![1, 2], vec![0, 3], vec![usize::MAX]];
+        for perturbation in 0..9 {
+            let mut geometry = [base; 3];
+            let mut lengths = [2, 2, 2];
+            match perturbation {
+                1 => geometry[1].0 = 0,
+                2 => geometry[1].1 = u32::MAX,
+                3 => geometry[1].2 = 1,
+                4 => geometry[1].3 = 0,
+                5 => geometry[1].4 = 1,
+                6 => geometry[1].5 = 0,
+                7 => lengths[1] = 1,
+                8 => lengths[0] = 0,
+                _ => {}
+            }
+            for first_bits in [0, 1, 32, 33, u8::MAX] {
+                for second_bits in [0, 1, 32, 33, u8::MAX] {
+                    for third_bits in [0, 32, u8::MAX] {
+                        for source in &sources {
+                            for destination in &destinations {
+                                for reversible in [false, true] {
+                                    let mut fractions = [first_bits, second_bits, third_bits];
+                                    let before_fractions = fractions;
+                                    let expected = source
+                                        .first()
+                                        .and_then(|first| {
+                                            let first_geometry = geometry.get(*first)?;
+                                            let valid = source
+                                                .iter()
+                                                .chain(destination.iter())
+                                                .all(|index| {
+                                                    geometry.get(*index).is_some_and(|candidate| {
+                                                        candidate == first_geometry
+                                                            && lengths[*index] == lengths[*first]
+                                                            && fractions[*index] <= 32
+                                                    })
+                                                });
+                                            (valid
+                                                && (!reversible
+                                                    || source
+                                                        .iter()
+                                                        .all(|index| fractions[*index] == 0)))
+                                            .then_some(lengths[*first])
+                                        })
+                                        .ok_or(invalid);
+                                    let mut samples = lengths.map(|length| vec![i64::MIN; length]);
+                                    let before_samples = samples.clone();
+                                    let components: Vec<_> = samples
+                                        .iter_mut()
+                                        .zip(fractions.iter_mut())
+                                        .zip(geometry)
+                                        .map(
+                                            |(
+                                                (samples, fraction_bits),
+                                                (x, y, width, height, x_subsampling, y_subsampling),
+                                            )| {
+                                                TransformComponentMut {
+                                                    component: u16::MAX,
+                                                    x,
+                                                    y,
+                                                    width,
+                                                    height,
+                                                    x_subsampling,
+                                                    y_subsampling,
+                                                    fraction_bits,
+                                                    samples,
+                                                }
+                                            },
+                                        )
+                                        .collect();
+                                    assert_eq!(
+                                        validate_mct_components_layout(
+                                            &components,
+                                            source,
+                                            destination,
+                                            reversible
+                                        ),
+                                        expected
+                                    );
+                                    drop(components);
+                                    assert_eq!(samples, before_samples);
+                                    assert_eq!(fractions, before_fractions);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn native_mct_array_store_frames_every_unselected_component_and_error() {

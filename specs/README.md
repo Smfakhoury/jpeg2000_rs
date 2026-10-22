@@ -34,6 +34,15 @@ collection proofs, not an assumed write or a normalized component premise.
 The actual array store additionally frames every unselected component and
 all metadata/precision/sample values on a destination or sample-index error.
 
+`part2_mct_validate_layout` describes the actual readonly decorrelation
+admission phase, including empty/invalid first sources, every source then
+destination geometry/subsampling/sample-count/precision check, and reversible
+source-zero precision. Matching zero dimensions/subsampling are not silently
+rejected or treated as valid planes. The sole native phase was moved without
+new allocation or execution-order changes and is called by the real collection.
+This establishes its actual result from full raw component/index values,
+not a supplied validation outcome.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

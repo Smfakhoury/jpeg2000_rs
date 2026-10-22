@@ -16,6 +16,35 @@ pub type Part2MctCollection = (
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
 
+pub open spec fn part2_mct_layout_index_valid(
+    components: Seq<Part2MctComponent>, first: usize, index: usize,
+) -> bool {
+    if first >= components.len() || index >= components.len() { false }
+    else { components[index as int].1 == components[first as int].1
+        && components[index as int].3.len() == components[first as int].3.len()
+        && components[index as int].2 <= 32 }
+}
+
+pub open spec fn part2_mct_validate_layout(
+    components: Seq<Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>, reversible: bool,
+) -> Result<usize, crate::DecodeError> {
+    if source.len() == 0 { Err(part1_transform_error(false)) }
+    else if source[0] >= components.len() { Err(part1_transform_error(false)) }
+    else {
+        let first = source[0];
+        if !(forall |position: int| 0 <= position < source.len()
+            ==> part2_mct_layout_index_valid(components, first, source[position])) {
+            Err(part1_transform_error(false))
+        } else if !(forall |position: int| 0 <= position < destination.len()
+            ==> part2_mct_layout_index_valid(components, first, destination[position])) {
+            Err(part1_transform_error(false))
+        } else if reversible && !(forall |position: int| 0 <= position < source.len()
+            ==> components[source[position] as int].2 == 0) {
+            Err(part1_transform_error(false))
+        } else { Ok(components[first as int].3.len() as usize) }
+    }
+}
+
 pub open spec fn part2_mct_store_component_sample(
     before: Part2MctComponent, index: usize, value: i64,
 ) -> (Result<(), crate::DecodeError>, Part2MctComponent) {
