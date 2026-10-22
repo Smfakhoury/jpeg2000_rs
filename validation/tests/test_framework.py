@@ -334,6 +334,34 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_bound_result_and_complete_mutable_reader_view(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-raw-bitstream-state"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures raw_reader_outcome(result)", "ensures raw_reader_outcome(unrelated)"),
+            ("ensures raw_reader_outcome(result)", "ensures unlisted_projection(result)"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (true, raw_bit_reader_view(final(self)))"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (result, raw_bit_reader_view(old(self)))"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (result, raw_bit_reader_view(final(self)).bits_remaining)"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (result, unlisted_projection(final(self)))"),
+            ("== crate::specs::part1_raw_reader_read(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/tier1.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_checks_success_guard_and_all_layer_outputs(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [
