@@ -2534,6 +2534,13 @@ impl CodeBlockContribution {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures !code_block_contribution_view(contribution).high_throughput ==>
+        (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_legacy_code_block_transaction(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
 pub fn decode_code_block_contribution_body(
     decoder: &mut Tier1CodeBlockDecoder,
     contribution: &CodeBlockContribution,
@@ -2570,12 +2577,21 @@ fn prepare_code_block_contribution_body(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures !code_block_contribution_view(contribution).high_throughput ==>
+        (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_legacy_code_block_staged(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
 fn decode_code_block_contribution_body_staged(
     decoder: &mut Tier1CodeBlockDecoder,
     contribution: &CodeBlockContribution,
     body: &[u8],
     limits: &ResourceLimits,
 ) -> Result<CodeBlockBodyDecode, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_staged); }
     prepare_code_block_contribution_body(decoder, contribution, body)?;
     if contribution.high_throughput {
         let segment_count = contribution.segment_count();
@@ -2589,6 +2605,7 @@ fn decode_code_block_contribution_body_staged(
             verus_keep_ghost,
             verus_spec(
                 invariant segment_index <= segment_count,
+                    code_block_contribution_view(contribution).high_throughput,
                 decreases segment_count - segment_index,
             )
         )]

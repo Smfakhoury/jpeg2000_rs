@@ -238,9 +238,22 @@ The shared prefix and the original HT branch are not duplicated by this
 extraction. Independent tests cover real MQ bytes through the full legacy call
 chain, late total mismatches, physical lookup before range overflow, pass-counter
 overflow after actual decoding, shared preparation and observed public rollback.
-The mathematical staged/transactional legacy caller models are supplied for the
-next join, but a public clone/commit refinement is not claimed until it is joined
-to the actual faithful whole-decoder Clone producer.
+The coherent owner join now supplies the actual faithful whole-decoder Clone.
+Both the actual staged caller and public `decode_code_block_contribution_body`
+refine their complete legacy-profile Result/full-state models. The profile is
+the actual `!contribution.high_throughput` branch selection, not a valid-header,
+successful-decode, normalized-state or adequate-budget premise; every other
+native descriptor/body/decoder/cap input remains admitted. Public errors leave
+the original entire decoder unchanged, while successful staged output is
+committed. The real shared preparation and actual legacy packet loop produce
+the staged outcome; no clone trace or supplied legacy outcome is an input.
+
+The one true-selector invariant in the still-inline HT loop only retains its
+actual immutable branch guard for that disjoint legacy-profile result. It
+changes no runtime operation or HT effect. This closes the selected legacy
+packet-body-to-coefficient call chain. The combined HT/legacy public packet
+relation, header parser/retained packet associations and full-codestream joins
+remain separate owner/integration obligations; this is not all of F5L.
 
 ## Reproduce verification
 

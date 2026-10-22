@@ -119,10 +119,25 @@ native `u16`, with unchanged field commits. Header validity is not a premise.
 
 The internal contribution entry is not transactional: work charging can precede
 a later arithmetic error, and a taken retained record need not be restored on
-replay failure. The outer foreign packet caller's real clone/commit stage is a
-separate obligation. Packet/header associations, exact body/pass-total joins,
-whole-packet transactional results and the public mixed dispatcher union are
-not established by these complete actual legacy producers.
+replay failure. These Tier-1 results alone do not establish outer clone/commit,
+body/pass-total joins, packet/header associations or the public mixed dispatcher;
+the next actual packet stage closes the selected code-block caller boundary.
+
+The next actual packet stage is now in [packet.rs](packet.rs). Its sole raw
+contribution projection includes every public field, the stored count and both
+complete 164-entry arrays. Real descriptor lookup, checked body subranges,
+actual legacy contribution execution and ordered pass/offset/index commits
+form the complete legacy packet-body model. Final consumption/pass-total
+errors occur after decoder effects, not before them.
+
+Shared preparation models actual length/route/zero-setting admission. On the
+actual legacy selector `!contribution.high_throughput`, the staged and public
+packet-body callers now have complete Result/full-state refinements through the
+actual faithful whole-decoder Clone. Staged errors can expose partial work;
+public errors roll back every decoder field. This profile predicate selects a
+real format branch only: it adds no header validity, geometry, normalization,
+success, budget or trace premise. The HT packet branch and whole packet/header
+association remain separate integration obligations, not guessed outcomes.
 
 ## Frozen full F5H refinement-plane profile
 
