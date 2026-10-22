@@ -251,6 +251,18 @@ def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
     return re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
 
 
+def _coverage_result_arguments(
+    contract: str,
+    result: re.Match[str] | None,
+    model: str,
+    arguments: str,
+) -> bool:
+    if result is None or result["model"] != model:
+        return False
+    # Bind this returned-result clause, not a later occurrence of the model.
+    return re.match(r"\s*" + arguments + r"\s*,?\s*\)", contract[result.end():]) is not None
+
+
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -336,6 +348,13 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_plane_outcome",
                 ("src/tier1.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare_outcome",
                 ("src/tier1.rs", "duplicate"): "code_block_plane_outcome",
+                ("src/tier1.rs", "decode_ht_refinement_plane"): "ht_plane_outcome",
+                ("src/tier1.rs", "run_ht_significance_stripe"): "ht_sigprop_plane_outcome",
+                ("src/tier1.rs", "run_ht_significance_pass"): "ht_sigprop_plane_outcome",
+                ("src/tier1.rs", "ht_significance_magnitude"): "ht_refinement_magnitude_outcome",
+                ("src/tier1.rs", "ht_refinement_delta"): "ht_refinement_magnitude_outcome",
+                ("src/tier1.rs", "ht_collect_cleanup_significance"): "ht_boolean_vector_view",
+                ("src/tier1.rs", "copy_ht_refinement_bytes"): "ht_byte_vector_outcome",
                 ("src/tier1.rs", "code_block_plane_from_dimensions"): "code_block_plane_outcome",
                 ("src/tier1.rs", "coefficient_from_magnitude"): "coefficient_raw_outcome",
                 ("src/tier1.rs", "coefficient"): "coefficient_raw_outcome",
@@ -379,6 +398,33 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare",
                 ("src/tier1.rs", "store_ht_coefficient_symbols"): "ht_store_coefficient_symbols",
                 ("src/tier1.rs", "duplicate"): "tier1_duplicate_plane",
+                ("src/tier1.rs", "decode_ht_refinement_plane"): "ht_refinement_plane",
+                ("src/tier1.rs", "magnitude_sample"): "ht_magref_sample",
+                ("src/tier1.rs", "magnitude_column"): "ht_magref_rows",
+                ("src/tier1.rs", "magnitude_stripe"): "ht_magref_columns",
+                ("src/tier1.rs", "magnitude_pass"): "ht_magref_stripes",
+                ("src/tier1.rs", "discover_sample"): "ht_discover_sample",
+                ("src/tier1.rs", "discover_column"): "ht_discovery_rows",
+                ("src/tier1.rs", "discover_patch"): "ht_discovery_columns",
+                ("src/tier1.rs", "sign_sample"): "ht_patch_sign_sample",
+                ("src/tier1.rs", "signs"): "ht_pending_signs",
+                ("src/tier1.rs", "run_ht_significance_stripe"): "ht_sigprop_patches",
+                ("src/tier1.rs", "run_ht_significance_pass"): "ht_sigprop_stripes",
+                ("src/tier1.rs", "ht_significance_magnitude"): "ht_significance_magnitude",
+                ("src/tier1.rs", "ht_refinement_delta"): "ht_refinement_delta",
+                ("src/tier1.rs", "ht_collect_cleanup_significance"): "ht_cleanup_significance",
+                ("src/tier1.rs", "apply_ht_refinement_decision"): "ht_apply_refinement",
+                ("src/tier1.rs", "neighbor_summary_with_causality"): "ht_neighbors",
+                ("src/tier1.rs", "accumulate_neighbor"): "ht_accumulate_neighbor",
+                ("src/tier1.rs", "ht_neighbor_summary_zero"): "ht_neighbor_zero",
+                ("src/tier1.rs", "significant_neighbor_count"): "ht_significant_neighbor_count",
+                ("src/tier1.rs", "refined"): "tier1_statistics_increment",
+                ("src/tier1.rs", "decode_high_throughput_segments"): "ht_decode_segments",
+                ("src/tier1.rs", "decode_ht_coefficient_symbols"): "ht_coefficient_symbols",
+                ("src/tier1.rs", "ht_significant_bitplanes"): "ht_significant_bitplanes",
+                ("src/tier1.rs", "uses_high_throughput"): "ht_block_coding_enabled",
+                ("src/tier1.rs", "copy_ht_refinement_bytes"): "ht_copy_refinement_bytes",
+                ("src/tier1.rs", "merge"): "tier1_statistics_merge",
                 ("src/tier1.rs", "code_block_plane_from_dimensions"): "tier1_empty_plane",
                 ("src/tier1.rs", "coefficient_from_magnitude"): "tier1_coefficient_new_outcome",
                 ("src/tier1.rs", "complete_ht_kappa"): "ht_complete_kappa",
@@ -428,6 +474,18 @@ def validate_normative_coverage(
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
             reader_contracts = {
+                "HtRefinementPlaneState::magnitude_sample": ("ht_refinement_core_view", "ht_magref_sample"),
+                "HtRefinementPlaneState::magnitude_column": ("ht_refinement_core_view", "ht_magref_rows"),
+                "HtRefinementPlaneState::magnitude_stripe": ("ht_refinement_core_view", "ht_magref_columns"),
+                "HtRefinementPlaneState::magnitude_pass": ("ht_refinement_core_view", "ht_magref_stripes"),
+                "HtSignificancePatchState::discover_sample": ("ht_sigprop_patch_view", "ht_discover_sample"),
+                "HtSignificancePatchState::discover_column": ("ht_sigprop_patch_view", "ht_discovery_rows"),
+                "HtSignificancePatchState::discover_patch": ("ht_sigprop_patch_view", "ht_discovery_columns"),
+                "HtSignificancePatchState::sign_sample": ("ht_sigprop_patch_view", "ht_patch_sign_sample"),
+                "HtSignificancePatchState::signs": ("ht_sigprop_patch_view", "ht_pending_signs"),
+                "CodeBlockPlane::apply_ht_refinement_decision": ("code_block_plane_view", "ht_apply_refinement"),
+                "Tier1CodeBlockDecoder::decode_high_throughput_segments": ("tier1_decoder_state", "ht_decode_segments"),
+                "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols": ("tier1_decoder_state", "ht_coefficient_symbols"),
                 "Tier1CodeBlockDecoder::store_ht_coefficient_symbols": (
                     "tier1_decoder_state", "ht_store_coefficient_symbols",
                 ),
@@ -534,21 +592,19 @@ def validate_normative_coverage(
                     )
             metadata_arguments_bound = (
                 (reference["path"], short) != ("src/tier1.rs", "decode_ht_cleanup_segment_metadata")
-                or re.search(
-                    r"\bht_cleanup_segment_metadata\s*\(\s*"
+                or _coverage_result_arguments(
+                    contract, named_result, "ht_cleanup_segment_metadata",
                     r"ht_cleanup_segment_view\s*\(\s*&\s*cleanup\s*\)\s*,\s*"
                     r"width\s*,\s*height\s*,\s*maximum_u\s*,\s*"
-                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)\s*,?\s*\)",
-                    contract,
-                ) is not None
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                )
             )
             palette_arguments_bound = (
                 (reference["path"], reference["symbol"]) != ("src/jp2.rs", "Palette::value")
-                or re.search(
-                    r"\bpart2_palette_value\s*\(\s*palette_view\s*\(\s*self\s*\)\s*,\s*"
-                    r"entry\s*,\s*column\s*,?\s*\)",
-                    contract,
-                ) is not None
+                or _coverage_result_arguments(
+                    contract, named_result, "part2_palette_value",
+                    r"palette_view\s*\(\s*self\s*\)\s*,\s*entry\s*,\s*column",
+                )
             )
             cleanup_contract_arguments = {
                 "prepare_ht_cleanup_symbols": (
@@ -571,11 +627,129 @@ def validate_normative_coverage(
             }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
             cleanup_arguments_bound = (
                 cleanup_contract_arguments is None
-                or re.search(
-                    r"crate::specs::" + re.escape(cleanup_contract_arguments[0])
-                    + r"\s*\(\s*" + cleanup_contract_arguments[1] + r"\s*,?\s*\)",
-                    contract,
-                ) is not None
+                or _coverage_result_arguments(
+                    contract, named_result, cleanup_contract_arguments[0], cleanup_contract_arguments[1],
+                )
+            )
+            refinement_contract_arguments = {
+                "decode_ht_refinement_plane": (
+                    "ht_refinement_plane",
+                    r"code_block_plane_view\s*\(\s*cleanup_plane\s*\)\s*,\s*"
+                    r"ht_refinement_segment_view\s*\(\s*&\s*segment\s*\)\s*,\s*"
+                    r"refinement_passes\s*,\s*decoded_bitplanes\s*,\s*vertical_causal_context\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "HtRefinementPlaneState::magnitude_sample": (
+                    "ht_magref_sample",
+                    r"ht_refinement_core_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"x\s*,\s*y\s*,\s*crate::magnitude::magnitude_value\s*\(\s*delta\s*\)\s*,\s*decoded_bitplanes",
+                ),
+                "HtRefinementPlaneState::magnitude_column": (
+                    "ht_magref_rows",
+                    r"ht_refinement_core_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"x\s*,\s*stripe_y\s*,\s*rows\s+as\s+nat\s*,\s*0\s*,\s*"
+                    r"crate::magnitude::magnitude_value\s*\(\s*delta\s*\)\s*,\s*decoded_bitplanes",
+                ),
+                "HtRefinementPlaneState::magnitude_stripe": (
+                    "ht_magref_columns",
+                    r"ht_refinement_core_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"width\s*,\s*stripe_y\s*,\s*rows\s+as\s+nat\s*,\s*0\s*,\s*"
+                    r"crate::magnitude::magnitude_value\s*\(\s*delta\s*\)\s*,\s*decoded_bitplanes",
+                ),
+                "HtRefinementPlaneState::magnitude_pass": (
+                    "ht_magref_stripes",
+                    r"ht_refinement_core_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"width\s*,\s*height\s*,\s*0\s*,\s*"
+                    r"crate::magnitude::magnitude_value\s*\(\s*delta\s*\)\s*,\s*decoded_bitplanes",
+                ),
+                "HtSignificancePatchState::discover_sample": (
+                    "ht_discover_sample",
+                    r"ht_sigprop_patch_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"x\s*,\s*y\s*,\s*ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)\s*,\s*vertical_causal_context",
+                ),
+                "HtSignificancePatchState::discover_column": (
+                    "ht_discovery_rows",
+                    r"ht_sigprop_patch_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"x\s*,\s*stripe_y\s*,\s*rows\s+as\s+nat\s*,\s*0\s*,\s*"
+                    r"ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)\s*,\s*causal",
+                ),
+                "HtSignificancePatchState::discover_patch": (
+                    "ht_discovery_columns",
+                    r"ht_sigprop_patch_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"end\s*,\s*stripe_y\s*,\s*rows\s+as\s+nat\s*,\s*start\s+as\s+nat\s*,\s*"
+                    r"ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)\s*,\s*causal",
+                ),
+                "HtSignificancePatchState::sign_sample": (
+                    "ht_patch_sign_sample",
+                    r"ht_sigprop_patch_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"index\s+as\s+nat\s*,\s*ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)",
+                ),
+                "HtSignificancePatchState::signs": (
+                    "ht_pending_signs",
+                    r"ht_sigprop_patch_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"0\s*,\s*ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)",
+                ),
+                "run_ht_significance_stripe": (
+                    "ht_sigprop_patches",
+                    r"ht_sigprop_plane_view\s*\(\s*&\s*input\s*\)\s*,\s*"
+                    r"width\s*,\s*stripe_y\s*,\s*rows\s+as\s+nat\s*,\s*0\s*,\s*"
+                    r"ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)\s*,\s*causal",
+                ),
+                "run_ht_significance_pass": (
+                    "ht_sigprop_stripes",
+                    r"ht_sigprop_plane_view\s*\(\s*&\s*input\s*\)\s*,\s*"
+                    r"width\s*,\s*height\s*,\s*0\s*,\s*"
+                    r"ht_refinement_magnitude_view\s*\(\s*magnitude\s*\)\s*,\s*causal",
+                ),
+                "ht_significance_magnitude": ("ht_significance_magnitude", r"decoded_bitplanes"),
+                "ht_refinement_delta": ("ht_refinement_delta", r"decoded_bitplanes"),
+                "ht_collect_cleanup_significance": (
+                    "ht_cleanup_significance", r"coefficient_raw_views\s*\(\s*coefficients@\s*\)",
+                ),
+                "CodeBlockPlane::apply_ht_refinement_decision": (
+                    "ht_apply_refinement",
+                    r"code_block_plane_view\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"x\s*,\s*y\s*,\s*crate::magnitude::magnitude_value\s*\(\s*delta\s*\)\s*,\s*refinement_bit",
+                ),
+                "CodeBlockPlane::neighbor_summary_with_causality": (
+                    "ht_neighbors",
+                    r"code_block_plane_view\s*\(\s*self\s*\)\s*,\s*x\s*,\s*y\s*,\s*vertical_causal_context",
+                ),
+                "CodeBlockPlane::accumulate_neighbor": (
+                    "ht_accumulate_neighbor",
+                    r"code_block_plane_view\s*\(\s*self\s*\)\s*,\s*x\s*,\s*y\s*,\s*"
+                    r"delta\.0\s*,\s*delta\.1\s*,\s*neighbor_kind_tag\s*\(\s*kind\s*\)\s*,\s*"
+                    r"\*\s*old\s*\(\s*summary\s*\)",
+                ),
+                "ht_neighbor_summary_zero": ("ht_neighbor_zero", r""),
+                "significant_neighbor_count": ("ht_significant_neighbor_count", r"summary"),
+                "Tier1CodeBlockDecoder::decode_high_throughput_segments": (
+                    "ht_decode_segments",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"cleanup@\s*,\s*cleanup_passes\s*,\s*ht_optional_bytes_view\s*\(\s*refinement\s*\)\s*,\s*"
+                    r"refinement_passes\s*,\s*crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols": (
+                    "ht_coefficient_symbols",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"ht_block_segments_view\s*\(\s*&\s*segments\s*\)\s*,\s*"
+                    r"pass_count\s*,\s*maximum_u\s*,\s*skipped_bitplanes\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "ht_significant_bitplanes": ("ht_significant_bitplanes", r"maximum_passes"),
+                "Tier1BlockCoding::uses_high_throughput": ("ht_block_coding_enabled", r"self"),
+                "copy_ht_refinement_bytes": ("ht_copy_refinement_bytes", r"input@"),
+                "Tier1PassStatistics::merge": (
+                    "tier1_statistics_merge", r"\*\s*old\s*\(\s*self\s*\)\s*,\s*other",
+                ),
+            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            refinement_arguments_bound = (
+                refinement_contract_arguments is None
+                or _coverage_result_arguments(
+                    contract, named_result, refinement_contract_arguments[0], refinement_contract_arguments[1],
+                )
             )
             prepare_contract_arguments = {
                 "prepare_tile_component": (
@@ -613,11 +787,9 @@ def validate_normative_coverage(
             }.get(reference["symbol"]) if reference["path"] == "src/decode.rs" else None
             prepare_arguments_bound = (
                 prepare_contract_arguments is None
-                or re.search(
-                    r"crate::specs::" + re.escape(prepare_contract_arguments[0])
-                    + r"\s*\(\s*" + prepare_contract_arguments[1] + r"\s*,?\s*\)",
-                    contract,
-                ) is not None
+                or _coverage_result_arguments(
+                    contract, named_result, prepare_contract_arguments[0], prepare_contract_arguments[1],
+                )
             )
             component_contract_arguments = {
                 ("src/decode.rs", "copy_typed_component"): (
@@ -638,31 +810,31 @@ def validate_normative_coverage(
             }.get((reference["path"], reference["symbol"]))
             component_arguments_bound = (
                 component_contract_arguments is None
-                or re.search(
-                    r"crate::specs::" + re.escape(component_contract_arguments[0])
-                    + r"\s*\(\s*" + component_contract_arguments[1] + r"\s*,?\s*\)",
-                    contract,
-                ) is not None
+                or _coverage_result_arguments(
+                    contract, named_result, component_contract_arguments[0], component_contract_arguments[1],
+                )
             )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
                 "Tier1PassStatistics::became_significant": (2, "1"),
+                "Tier1PassStatistics::refined": (3, "1"),
             }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
             statistic_arguments_bound = (
                 statistic_arguments is None
-                or re.search(
-                    r"crate::specs::tier1_statistics_increment\s*\(\s*\*\s*old\(\s*self\s*\)\s*,\s*"
+                or _coverage_result_arguments(
+                    contract, named_result, "tier1_statistics_increment",
+                    r"\*\s*old\(\s*self\s*\)\s*,\s*"
                     + str(statistic_arguments[0]) + r"\s*,\s*"
-                    + re.escape(statistic_arguments[1]) + r"\s*,?\s*\)",
-                    contract,
-                ) is not None
+                    + re.escape(statistic_arguments[1]),
+                )
             )
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
                     or not metadata_arguments_bound
                     or not palette_arguments_bound
                     or not cleanup_arguments_bound
+                    or not refinement_arguments_bound
                     or not prepare_arguments_bound
                     or not component_arguments_bound
                     or not statistic_arguments_bound

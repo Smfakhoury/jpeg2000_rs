@@ -39,9 +39,9 @@ the real owner contracts, including complete native subtraction and zero.
 Continuation/empty replay, placeholder skipping, replacement orchestration and
 mixed HT/legacy routing remain outside this completed entry profile.
 
-## Frozen F5H cleanup symbol-caller composition
+## Earlier cleanup-only symbol-caller subprofile
 
-The next bounded caller profile is the **cleanup-only** branch of the actual
+The earlier bounded caller profile was the **cleanup-only** branch of the actual
 `Tier1CodeBlockDecoder::decode_ht_coefficient_symbols`: the supplied parsed
 segment has `refinement == None`. This is an explicit format-profile selection,
 not a valid-stream, normalized-coefficient, successful-decode or budget premise.
@@ -54,13 +54,13 @@ assignments precede checked set/pass/segment/byte accounting, so a later overflo
 can expose earlier committed fields. Every decoder field, including untouched
 legacy/MQ/bitplane state, must be framed.
 
-The shared cleanup preparation and final state-store stages are unconditional
-over their native inputs. The original caller's theorem is conditional only on
-the selected absent-refinement profile; a supplied refinement segment is
-explicitly outside this stage, not represented by an assumed refinement trace.
-The public byte-input dispatch/pass-limit preflight, actual refinement plane
-passes, and placeholder/replacement/mixed sequencing remain separate closure
-obligations. No additional foreign source edits are authorized here.
+The shared cleanup preparation and final state-store stages remain unconditional
+over their native inputs. The earlier caller theorem selected absent refinement
+only; it did not assume a refinement trace. The complete current refinement and
+substantive public-byte profiles above now subsume this subset and provide their
+own unconditional production relations. Continuation/replay, placeholder
+skipping, replacement/mixed sequencing and whole-decoder composition remain
+separate closure obligations.
 
 ## Actual raw palette lookup
 
