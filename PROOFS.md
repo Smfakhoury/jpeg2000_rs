@@ -25,6 +25,29 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native palette lookup boundary
+
+The actual `jp2::Palette::value` returns exactly `part2_palette_value` on its
+private stored entries, complete physical column descriptors and value sequence,
+for every native entry/column pair. No parsed-header, rectangular-table,
+valid-coordinate or successful-lookup premise is imposed. Actual physical column
+count conversion is checked before logical coordinates, followed by checked
+row-major address computation and physical value access. Invalid descriptor
+precision/sign does not itself make this raw lookup fail.
+
+The stored representation stays private behind its owner view and exact public
+getter contracts. Explicit matches retain the original conversion/multiplication/
+addition/error order while exposing every real error, rather than relying on
+uncontracted callback results. The shared local error producer is verified, not
+trusted. Independent tests cover 8,820 complete supplied-state/native-coordinate
+contexts, signed extrema, physical stride and first-error priority. The source
+index binds the full Result, actual owner view, entry and column, with negative
+tests for wrong, partial, unrelated and reordered bindings.
+
+This boundary does not establish palette parsing, source-sample interpretation,
+output component mapping, CDEF application or their composition with selected
+pixels. Those actual callers remain separate F7 work.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

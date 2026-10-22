@@ -353,6 +353,8 @@ def validate_normative_coverage(
                 ("src/packet.rs", "decoder"): "packet_decoder_outcome",
             }.get((reference["path"], short))
             expected_result_model = {
+                ("src/jp2.rs", "value"): "part2_palette_value",
+                ("src/jp2.rs", "palette_value_error"): "part2_composition_error",
                 ("src/image.rs", "typed_samples"): "part1_decoded_component_typed_samples",
                 ("src/image.rs", "typed"): "part1_decoded_image_typed",
                 ("src/packet.rs", "decoder"): "part1_packet_precinct_decoder",
@@ -510,6 +512,14 @@ def validate_normative_coverage(
                     contract,
                 ) is not None
             )
+            palette_arguments_bound = (
+                (reference["path"], reference["symbol"]) != ("src/jp2.rs", "Palette::value")
+                or re.search(
+                    r"\bpart2_palette_value\s*\(\s*palette_view\s*\(\s*self\s*\)\s*,\s*"
+                    r"entry\s*,\s*column\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -527,6 +537,7 @@ def validate_normative_coverage(
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
                     or not metadata_arguments_bound
+                    or not palette_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

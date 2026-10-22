@@ -477,6 +477,46 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_palette_lookup_to_actual_result_and_inputs(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-complete-native-palette-lookup"
+        ]
+        self.assertEqual(len(coverage["requirements"]), 1)
+        reference = {"path": "src/jp2.rs", "symbol": "Palette::value"}
+        self.assertIn(reference, coverage["requirements"][0]["contract_refs"])
+        coverage["requirements"][0]["contract_refs"] = [reference]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        source = framework.ROOT / reference["path"]
+        read_text = Path.read_text
+        original = source.read_text()
+        signature = original.find(
+            "fn", framework._coverage_function_header(original, reference["symbol"]).start(),
+        )
+        start = original.rfind("#[cfg_attr", 0, signature)
+        contract = original[start:signature]
+        for before, after in (
+            ("ensures result ==", "ensures unrelated =="),
+            ("ensures result ==", "ensures result.is_ok() =="),
+            ("crate::specs::part2_palette_value(", "crate::specs::part2_composition_error("),
+            ("crate::specs::part2_palette_value(", "crate::specs::unlisted_model("),
+            ("palette_view(self)", "palette_view(unrelated)"),
+            ("palette_view(self), entry, column", "palette_view(self), column, entry"),
+            ("palette_view(self), entry, column", "palette_view(self), entry, 0"),
+            ("ensures result ==", "ensures result.is_ok() ==> result =="),
+        ):
+            self.assertIn(before, contract)
+            modified = original[:start] + contract.replace(before, after) + original[signature:]
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(after=after), \
+                    mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_typed_conversion_and_packet_access_to_exact_results(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         read_text = Path.read_text
