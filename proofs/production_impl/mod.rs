@@ -164,6 +164,38 @@ pub proof fn production_subband_count_error_persists(
     }
 }
 
+pub proof fn production_ht_low_word_parity(value: nat)
+    ensures (value % 18446744073709551616) % 2 == value % 2,
+{
+    vstd::arithmetic::div_mod::lemma_mod_mod(value as int, 2, 9223372036854775808);
+}
+
+pub proof fn production_ht_numeric_payload_unfold(
+    reader: crate::specs::HtMagSgnState, remaining: nat, index: nat, value: nat, negative: bool, exponent: u8,
+)
+    requires index + remaining <= 75, value < crate::specs::part1_magnitude_capacity(),
+    ensures crate::specs::ht_numeric_payload(reader, remaining, index, value, negative, exponent)
+        == if remaining == 0 { (Ok((value, negative, exponent)), reader) } else {
+            let read = crate::specs::ht_magsgn_read(reader);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => if bit {
+                    let changed = value + vstd::arithmetic::power2::pow2(index);
+                    if changed >= crate::specs::part1_magnitude_capacity() {
+                        (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), read.1)
+                    } else {
+                        crate::specs::ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, changed,
+                            negative || index == 0, (index + 1) as u8)
+                    }
+                } else {
+                    crate::specs::ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, value, negative, exponent)
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_numeric_payload, 1);
+}
+
 pub proof fn production_crop_columns_empty(samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>)
     ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, 0) == Ok(initial),
 {

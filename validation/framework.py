@@ -347,6 +347,7 @@ def validate_normative_coverage(
                 ("src/image.rs", "assemble_selected_image"): "part1_assemble_selected_image",
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
                 ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
+                ("src/tier1.rs", "reconstruct_ht_magnitude"): "ht_reconstruct_numeric_magnitude",
                 ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
@@ -415,6 +416,16 @@ def validate_normative_coverage(
                 state_result = re.search(
                     named_prefix + r"\1\.is_ok\(\)\s*==>\s*"
                     + r"(?P<state>\(\s*\1\.is_ok\(\)" + state_tail + model_suffix, contract,
+                )
+            if (reference["path"], short) == ("src/tier1.rs", "reconstruct_ht_magnitude"):
+                state_result = re.search(
+                    named_prefix
+                    + r"(?P<state>\(\s*ht_numeric_magnitude_outcome\(\s*\1\s*\)\s*,\s*"
+                    r"ht_magsgn_view\(\s*final\(\s*reader\s*\)\s*\)\s*\))"
+                    + model_suffix
+                    + r"\s*ht_magsgn_view\(\s*old\(\s*reader\s*\)\s*\)\s*,\s*"
+                    r"completed_u\s*,\s*embedded_bit\s*,\s*embedded_value\s*,\s*decoded_bitplanes\s*,?\s*\)",
+                    contract,
                 )
             final_parameters = set(re.findall(
                 r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],

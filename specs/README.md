@@ -233,6 +233,17 @@ is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
 
+The frozen numerical MagSgn substage is the actual complete
+`reconstruct_ht_magnitude` operation for every native completed-U,
+embedded-bit/value flag and decoded-bitplane input, with every initial
+directional-reader state admitted. Original parameter rejection precedes
+any read. The exact result includes the full 384-bit numeric value, sign,
+exponent and every final reader field on success or first error. Accumulation,
+embedding, odd-center correction, centering, checked left scaling, right
+division and zero rejection use the real published F6 contracts. No stream
+validity, sufficient budget or successful arithmetic/read is assumed.
+This substage is numerical reconstruction, not complete plane placement.
+
 The frozen cleanup-metadata stage is the complete actual segment traversal,
 not coefficient reconstruction. Inputs retain all native width, height and
 maximum-U values, the actual supplied segment views and actual work limit.

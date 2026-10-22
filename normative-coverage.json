@@ -4722,6 +4722,45 @@
     },
     {
       "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::read_bit"},
+        {"path": "src/refinement.rs", "symbol": "ht_magnitude_payload_bits"},
+        {"path": "src/refinement.rs", "symbol": "ht_magnitude_sign"},
+        {"path": "src/refinement.rs", "symbol": "ht_bin_center_odd"}
+      ],
+      "id": "part15-numeric-magnitude-reader-state",
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "center_ht_numeric_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_numeric_payload_unfold"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_low_word_parity"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_numeric_invalid_parameters_preserve_complete_reader"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_numeric_zero_payload_needs_no_reader_budget"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_numeric_payload"},
+        {"path": "specs/mod.rs", "symbol": "ht_numeric_center"},
+        {"path": "specs/mod.rs", "symbol": "ht_numeric_finish"},
+        {"path": "specs/mod.rs", "symbol": "ht_reconstruct_numeric_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "ht_numeric_magnitude_outcome"},
+        {"path": "specs/mod.rs", "symbol": "ht_magsgn_read"},
+        {"path": "specs/mod.rs", "symbol": "ht_magnitude_payload_bits"},
+        {"path": "specs/mod.rs", "symbol": "ht_magnitude_sign"},
+        {"path": "specs/mod.rs", "symbol": "ht_bin_center_odd"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_numeric_reconstruction_has_independent_full_value_sign_and_exponent_fixtures"},
+        {"path": "src/tier1.rs", "symbol": "ht_numeric_reconstruction_preserves_wide_bits_at_the_native_precision_ceiling"},
+        {"path": "src/tier1.rs", "symbol": "ht_numeric_first_reader_failures_keep_every_actual_cursor_and_counter"},
+        {"path": "src/tier1.rs", "symbol": "ht_numeric_header_and_native_overflow_order_do_not_assume_a_valid_reader"}
+      ],
+      "topic": "Complete actual full-value numeric magnitude/sign/exponent and every first-error MagSgn reader state using real F6 arithmetic; exact bound outcome/final-reader/old-reader/model/argument recipe and real caller indexed, no coefficient-plane or mixed-sequencer completion"
+    },
+    {
+      "contract_refs": [
         {
           "path": "src/refinement.rs",
           "symbol": "ht_magsgn_fill_value"
@@ -4749,6 +4788,7 @@
       ],
       "id": "part15-magsgn-reconstruction",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "center_ht_numeric_magnitude"},
         {
           "path": "src/tier1.rs",
           "symbol": "HtForwardMagSgnReader::load_byte"

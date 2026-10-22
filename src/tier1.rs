@@ -3249,6 +3249,75 @@ pub fn complete_ht_kappa(
     Ok(completed)
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn ht_numeric_magnitude_outcome(result: Result<(Magnitude, bool, u8), DecodeError>)
+        -> Result<(nat, bool, u8), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok((magnitude, negative, exponent)) => Ok((crate::magnitude::magnitude_value(magnitude), negative, exponent)),
+        }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires magnitude_bits <= 75, 1 <= decoded_bitplanes <= 292,
+        ensures ht_numeric_magnitude_outcome(result) == crate::specs::ht_numeric_center(
+            crate::magnitude::magnitude_value(bin), negative, initial_exponent,
+            magnitude_bits, embedded_value, decoded_bitplanes),
+    )
+)]
+fn center_ht_numeric_magnitude(
+    bin: Magnitude,
+    negative: bool,
+    initial_exponent: u8,
+    magnitude_bits: u8,
+    embedded_value: bool,
+    decoded_bitplanes: u16,
+) -> Result<(Magnitude, bool, u8), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { vstd::arithmetic::power2::lemma2_to64(); }
+    let mut bin_center = bin;
+    let mut exponent = initial_exponent;
+    if embedded_value {
+        bin_center = bin_center.checked_add(crate::magnitude::magnitude_single_bit(u16::from(
+            magnitude_bits,
+        ))?)?;
+        exponent = magnitude_bits
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    let low = bin_center.low_u64();
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_low_word_parity(crate::magnitude::magnitude_value(bin_center));
+        assert((low as nat % 2) == crate::magnitude::magnitude_value(bin_center) % 2);
+    }
+    if crate::refinement::ht_bin_center_odd(low) != low {
+        bin_center = bin_center.checked_add(crate::magnitude::magnitude_from_u64(1))?;
+        exponent = exponent.max(1);
+    }
+    let centered = bin_center.checked_add(crate::magnitude::magnitude_from_u64(2))?;
+    let shift = decoded_bitplanes - 1;
+    let magnitude = centered.checked_shl(shift)?.shift_right(1);
+    if magnitude.is_zero() {
+        return Err(invalid_code_block());
+    }
+    Ok((magnitude, negative, exponent))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (ht_numeric_magnitude_outcome(result), ht_magsgn_view(final(reader)))
+            == crate::specs::ht_reconstruct_numeric_magnitude(ht_magsgn_view(old(reader)),
+                completed_u, embedded_bit, embedded_value, decoded_bitplanes),
+    )
+)]
 fn reconstruct_ht_magnitude(
     reader: &mut HtForwardMagSgnReader<'_>,
     completed_u: u8,
@@ -3256,6 +3325,13 @@ fn reconstruct_ht_magnitude(
     embedded_value: bool,
     decoded_bitplanes: u16,
 ) -> Result<(Magnitude, bool, u8), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost start = ht_magsgn_view(reader); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        vstd::arithmetic::power2::lemma_pow2_pos(384);
+        vstd::arithmetic::power2::lemma2_to64();
+    }
     if completed_u == 0
         || completed_u > MAX_HT_MAGSGN_BITS
         || decoded_bitplanes == 0
@@ -3264,44 +3340,71 @@ fn reconstruct_ht_magnitude(
         return Err(invalid_code_block());
     }
     let magnitude_bits = crate::refinement::ht_magnitude_payload_bits(completed_u, embedded_bit);
-    let mut bin_center = Magnitude::ZERO;
+    let mut bin_center = crate::magnitude::magnitude_zero();
     let mut negative = false;
     let mut exponent = 0_u8;
     let mut bit = 0_u8;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant bit <= magnitude_bits,
+            invariant bit <= magnitude_bits, magnitude_bits <= 75,
+                1 <= completed_u <= 75, 1 <= decoded_bitplanes <= 292,
+                start == ht_magsgn_view(old(reader)),
+                magnitude_bits as nat == crate::specs::ht_magnitude_payload_bits(completed_u as nat, embedded_bit),
+                crate::magnitude::magnitude_value(bin_center) < crate::specs::part1_magnitude_capacity(),
+                vstd::arithmetic::power2::pow2(1) == 2,
+                crate::specs::ht_reconstruct_numeric_magnitude(start, completed_u, embedded_bit, embedded_value, decoded_bitplanes)
+                    == crate::specs::ht_numeric_finish(
+                        crate::specs::ht_numeric_payload(ht_magsgn_view(reader), (magnitude_bits - bit) as nat,
+                            bit as nat, crate::magnitude::magnitude_value(bin_center), negative, exponent),
+                        magnitude_bits, embedded_value, decoded_bitplanes),
             decreases magnitude_bits - bit,
         )
     )]
     while bit < magnitude_bits {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_numeric_payload_unfold(
+                ht_magsgn_view(reader), (magnitude_bits - bit) as nat, bit as nat,
+                crate::magnitude::magnitude_value(bin_center), negative, exponent,
+            );
+        }
         if reader.read_bit()? {
             if crate::refinement::ht_magnitude_sign(bit, true) {
                 negative = true;
             }
-            bin_center = bin_center.checked_add(Magnitude::single_bit(u16::from(bit))?)?;
+            bin_center =
+                bin_center.checked_add(crate::magnitude::magnitude_single_bit(u16::from(bit))?)?;
             exponent = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if embedded_value {
-        bin_center = bin_center.checked_add(Magnitude::single_bit(u16::from(magnitude_bits))?)?;
-        exponent = magnitude_bits
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(bit == magnitude_bits);
+        crate::proofs::production_impl::production_ht_numeric_payload_unfold(
+            ht_magsgn_view(reader), 0, bit as nat,
+            crate::magnitude::magnitude_value(bin_center), negative, exponent,
+        );
     }
-    if crate::refinement::ht_bin_center_odd(bin_center.low_u64()) != bin_center.low_u64() {
-        bin_center = bin_center.checked_add(Magnitude::from_u64(1))?;
-        exponent = exponent.max(1);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost final_value = crate::magnitude::magnitude_value(bin_center);
     }
-    let centered = bin_center.checked_add(Magnitude::from_u64(2))?;
-    let shift = decoded_bitplanes - 1;
-    let magnitude = centered.checked_shl(shift)?.shift_right(1);
-    if magnitude.is_zero() {
-        return Err(invalid_code_block());
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::ht_reconstruct_numeric_magnitude(start, completed_u, embedded_bit, embedded_value, decoded_bitplanes)
+            == (crate::specs::ht_numeric_center(final_value, negative, exponent, magnitude_bits, embedded_value, decoded_bitplanes),
+                ht_magsgn_view(reader)));
     }
-    Ok((magnitude, negative, exponent))
+    center_ht_numeric_magnitude(
+        bin_center,
+        negative,
+        exponent,
+        magnitude_bits,
+        embedded_value,
+        decoded_bitplanes,
+    )
 }
 
 fn reconstruct_ht_cleanup_plane(
@@ -6445,6 +6548,267 @@ mod tests {
             HtStreamDirection::Reverse
         );
         assert_eq!(retained.significance_propagation().offset(), 4);
+    }
+
+    #[test]
+    fn ht_numeric_reconstruction_has_independent_full_value_sign_and_exponent_fixtures() {
+        let limits = ResourceLimits::default();
+        for (
+            data,
+            completed,
+            embedded_bit,
+            embedded_value,
+            planes,
+            low,
+            negative,
+            exponent,
+            bits,
+        ) in [
+            (&[0x01][..], 3, false, false, 1, 1, true, 1, 3),
+            (&[0x06][..], 3, false, false, 3, 18, false, 3, 3),
+            (&[0x00][..], 1, false, true, 1, 2, false, 2, 1),
+            (&[][..], 3, false, false, 1, 4, true, 3, 3),
+            (&[][..], 3, true, true, 1, 4, true, 3, 2),
+            (&[][..], 3, true, false, 1, 2, true, 2, 2),
+            (&[][..], 3, false, true, 1, 8, true, 4, 3),
+        ] {
+            let mut reader = HtForwardMagSgnReader::new(data, &limits).unwrap();
+            let result = reconstruct_ht_magnitude(
+                &mut reader,
+                completed,
+                embedded_bit,
+                embedded_value,
+                planes,
+            )
+            .unwrap();
+            assert_eq!(
+                (result.0.to_u64(), result.1, result.2),
+                (Some(low), negative, exponent)
+            );
+            for index in 1..6 {
+                assert_eq!(result.0.limb(index), Some(0));
+            }
+            assert_eq!(reader.work_units, bits);
+            assert_eq!(reader.physical_bits_read + reader.fill_bits_read, bits);
+        }
+        let mut no_read = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        no_read.work_units = u64::MAX;
+        no_read.fill_bits_read = u64::MAX;
+        let before = no_read;
+        let result = reconstruct_ht_magnitude(&mut no_read, 1, true, false, 1).unwrap();
+        assert_eq!((result.0.to_u64(), result.1, result.2), (Some(1), false, 1));
+        assert_eq!(no_read, before);
+    }
+
+    #[test]
+    fn ht_numeric_reconstruction_preserves_wide_bits_at_the_native_precision_ceiling() {
+        let data = [0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f];
+        let limits = ResourceLimits::default();
+        let mut unscaled = HtForwardMagSgnReader::new(&data, &limits).unwrap();
+        let (magnitude, negative, exponent) =
+            reconstruct_ht_magnitude(&mut unscaled, 75, false, false, 1).unwrap();
+        for (index, expected) in [0, 1024, 0, 0, 0, 0].into_iter().enumerate() {
+            assert_eq!(magnitude.limb(index), Some(expected));
+        }
+        assert_eq!(
+            (
+                negative,
+                exponent,
+                unscaled.physical_bits_read,
+                unscaled.fill_bits_read
+            ),
+            (true, 75, 75, 0)
+        );
+        let mut scaled = HtForwardMagSgnReader::new(&data, &limits).unwrap();
+        let (magnitude, negative, exponent) =
+            reconstruct_ht_magnitude(&mut scaled, 75, false, false, 292).unwrap();
+        for (index, expected) in [0, 0, 0, 0, 1_u64 << 34, 1_u64 << 45]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(magnitude.limb(index), Some(expected));
+        }
+        assert_eq!(magnitude.to_u64(), None);
+        assert_eq!(
+            (
+                negative,
+                exponent,
+                scaled.work_units,
+                scaled.physical_bits_read
+            ),
+            (true, 75, 75, 75)
+        );
+        assert_eq!(
+            (
+                scaled.next_byte,
+                scaled.value,
+                scaled.next_bit,
+                scaled.last_bit,
+                scaled.has_byte,
+                scaled.current_is_physical,
+                scaled.previous_was_ff
+            ),
+            (10, 0x7f, 7, 6, true, true, false)
+        );
+    }
+
+    #[test]
+    fn ht_numeric_first_reader_failures_keep_every_actual_cursor_and_counter() {
+        let limits = ResourceLimits::default();
+        let data = [0xff, 0x80];
+        let mut reader = HtForwardMagSgnReader::new(&data, &limits).unwrap();
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut reader, 9, false, false, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing
+            })
+        );
+        assert_eq!(
+            reader,
+            HtForwardMagSgnReader {
+                input: &data,
+                next_byte: 1,
+                value: 0xff,
+                next_bit: 8,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: true,
+                previous_was_ff: true,
+                physical_bits_read: 8,
+                fill_bits_read: 0,
+                work_units: 8,
+                maximum_work_units: 1_000_000_000,
+            }
+        );
+        let budget = limits.with_maximum_work_units(2).unwrap();
+        let data = [0x06];
+        let mut physical = HtForwardMagSgnReader::new(&data, &budget).unwrap();
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut physical, 3, false, false, 1),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 2,
+                actual: 3
+            })
+        );
+        assert_eq!(
+            physical,
+            HtForwardMagSgnReader {
+                input: &data,
+                next_byte: 1,
+                value: 6,
+                next_bit: 3,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: true,
+                previous_was_ff: false,
+                physical_bits_read: 3,
+                fill_bits_read: 0,
+                work_units: 3,
+                maximum_work_units: 2,
+            }
+        );
+        let mut fill = HtForwardMagSgnReader::new(&[], &budget).unwrap();
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut fill, 3, false, false, 1),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 2,
+                actual: 3
+            })
+        );
+        assert_eq!(
+            fill,
+            HtForwardMagSgnReader {
+                input: &[],
+                next_byte: 0,
+                value: 0xff,
+                next_bit: 3,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: false,
+                previous_was_ff: true,
+                physical_bits_read: 0,
+                fill_bits_read: 3,
+                work_units: 3,
+                maximum_work_units: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn ht_numeric_header_and_native_overflow_order_do_not_assume_a_valid_reader() {
+        let limits = ResourceLimits::default();
+        let mut reader = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        reader.fill_bits_read = u64::MAX;
+        reader.work_units = 7;
+        let before = reader;
+        for (completed, planes) in [(0, 1), (76, 1), (255, 1), (1, 0), (1, 293), (1, u16::MAX)] {
+            assert_eq!(
+                reconstruct_ht_magnitude(&mut reader, completed, false, false, planes),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock
+                })
+            );
+            assert_eq!(reader, before);
+        }
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut reader, 1, false, false, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(
+            reader,
+            HtForwardMagSgnReader {
+                input: &[],
+                next_byte: 0,
+                value: 0xff,
+                next_bit: 1,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: false,
+                previous_was_ff: true,
+                physical_bits_read: 0,
+                fill_bits_read: u64::MAX,
+                work_units: 7,
+                maximum_work_units: 1_000_000_000,
+            }
+        );
+        assert_eq!(
+            center_ht_numeric_magnitude(
+                Magnitude::from_limbs([u64::MAX; 6]),
+                false,
+                255,
+                0,
+                false,
+                1
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(
+            center_ht_numeric_magnitude(
+                Magnitude::single_bit(200).unwrap(),
+                true,
+                201,
+                0,
+                false,
+                292
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        let (value, negative, exponent) =
+            center_ht_numeric_magnitude(Magnitude::from_u64(1), true, 255, 0, true, 1).unwrap();
+        assert_eq!((value.to_u64(), negative, exponent), (Some(2), true, 1));
     }
 
     #[test]

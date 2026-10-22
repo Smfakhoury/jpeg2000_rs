@@ -394,6 +394,59 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_numeric_magnitude_and_every_reader_state(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part15-numeric-magnitude-reader-state"
+        ]
+        self.assertEqual(len(coverage["requirements"]), 1)
+        producer = {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"}
+        self.assertIn(producer, coverage["requirements"][0]["contract_refs"])
+        coverage["requirements"][0]["contract_refs"] = [producer]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        source = framework.ROOT / "src/tier1.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        end = re.search(r"\bfn\s+reconstruct_ht_magnitude\b", original).start()
+        start = original.rfind("#[cfg_attr", 0, end)
+        contract = original[start:end]
+        for before, after in (
+            ("ht_numeric_magnitude_outcome(result)", "ht_numeric_magnitude_outcome(unrelated)"),
+            ("ht_numeric_magnitude_outcome(result)", "unlisted_projection(result)"),
+            ("ht_numeric_magnitude_outcome(result)", "ht_block_segments_outcome(result)"),
+            ("ht_numeric_magnitude_outcome(result)", "result.is_ok()"),
+            ("ht_magsgn_view(final(reader))", "ht_magsgn_view(old(reader))"),
+            ("ht_magsgn_view(final(reader))", "ht_reverse_vlc_view(final(reader))"),
+            ("ht_magsgn_view(final(reader))", "ht_magsgn_view(final(unrelated))"),
+            ("ht_magsgn_view(old(reader))", "ht_magsgn_view(final(reader))"),
+            ("== crate::specs::ht_reconstruct_numeric_magnitude(", "== crate::specs::ht_numeric_center("),
+            ("== crate::specs::ht_reconstruct_numeric_magnitude(", "== crate::specs::unlisted_model("),
+        ):
+            self.assertIn(before, contract)
+            modified = original[:start] + contract.replace(before, after) + original[end:]
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+        for pattern, replacement in (
+            (r"\bcompleted_u\s*,\s*embedded_bit", "unrelated_u, embedded_bit"),
+            (r"\bembedded_bit\s*,\s*embedded_value", "embedded_value, embedded_bit"),
+            (r"\bdecoded_bitplanes\s*,?\s*\)", "unrelated_planes)"),
+        ):
+            modified_contract, changed = re.subn(pattern, replacement, contract, count=1)
+            self.assertEqual(changed, 1)
+            modified = original[:start] + modified_contract + original[end:]
+            with self.subTest(replacement=replacement), \
+                    mock.patch.object(Path, "read_text",
+                                      lambda path, *args, **kwargs:
+                                      modified if path == source else read_text(path, *args, **kwargs)), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_retains_every_complete_assembly_helper_model_link(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

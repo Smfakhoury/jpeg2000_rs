@@ -32,6 +32,25 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn ht_numeric_invalid_parameters_preserve_complete_reader(
+    reader: crate::specs::HtMagSgnState, completed_u: u8,
+    embedded_bit: bool, embedded_value: bool, decoded_bitplanes: u16,
+)
+    requires completed_u == 0 || completed_u > 75 || decoded_bitplanes == 0 || decoded_bitplanes > 292,
+    ensures crate::specs::ht_reconstruct_numeric_magnitude(reader, completed_u, embedded_bit, embedded_value, decoded_bitplanes)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), reader),
+{
+}
+
+pub proof fn ht_numeric_zero_payload_needs_no_reader_budget(reader: crate::specs::HtMagSgnState)
+    ensures crate::specs::ht_reconstruct_numeric_magnitude(reader, 1, true, false, 1)
+        == (Ok((1nat, false, 1u8)), reader),
+{
+    vstd::arithmetic::power2::lemma2_to64();
+    vstd::arithmetic::power2::lemma_pow2_strictly_increases(2, 384);
+    crate::proofs::production_impl::production_ht_numeric_payload_unfold(reader, 0, 0, 0, false, 0);
+}
+
 #[verifier::spinoff_prover]
 pub proof fn ht_metadata_invalid_header_precedes_stream_construction(
     cleanup: crate::specs::HtCleanupSegmentState, width: u16, height: u16, maximum_u: u8, maximum_work: u64,
