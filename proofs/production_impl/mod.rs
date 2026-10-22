@@ -32,6 +32,170 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_prepare_fold_empty(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64,
+)
+    ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+}
+
+pub proof fn production_prepare_fold_step(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64, count: nat,
+)
+    ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count + 1)
+        == match crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part1_direction_for_resolution(style.1, style.2, (count + 1) as u8) {
+                Err(error) => Err(error),
+                Ok(direction) => {
+                    let transformed = if matches!(direction, crate::codestream::DecompositionDirection::None) { Ok(previous) }
+                        else { crate::specs::part1_prepare_resolution(previous, bands, geometry, direction, reversible, maximum) };
+                    match transformed {
+                        Err(error) => Err(error),
+                        Ok(after) => if count + 1 >= 255 { Err(crate::specs::part1_block_placement_error(true)) } else { Ok(after) },
+                    }
+                },
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+}
+
+pub proof fn production_prepare_fold_error_guard(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64, count: nat, end: nat,
+)
+    requires count <= end,
+    ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count).is_err()
+        ==> crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, end)
+            == crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+    if count < end { production_prepare_fold_error_guard(initial, bands, geometry, style, reversible, maximum, count, (end - 1) as nat); }
+}
+
+pub proof fn production_prepare_init_empty(bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64)
+    ensures crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, 0) == Ok((Seq::empty(), 0)),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_init_prefix, 1);
+}
+
+pub proof fn production_prepare_init_step(bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64, count: nat)
+    requires count < usize::MAX,
+    ensures crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, count + 1)
+        == match crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let appended = crate::specs::part1_prepare_append_band(previous, bands, count as usize, fraction, maximum);
+                match appended.0 { Err(error) => Err(error), Ok(()) => Ok(appended.1) }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_init_prefix, 1);
+}
+
+pub proof fn production_prepare_init_error(bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, count) == Err(error),
+    ensures crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_init_prefix, 1);
+    if count < end { production_prepare_init_error(bands, fraction, maximum, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_prepare_row_empty(plane: crate::specs::Tier1RawPlane, y: u16, initial: Seq<crate::specs::Part1QuantizedCoefficient>)
+    ensures crate::specs::part1_prepare_coefficient_row(plane, y, initial, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_row, 1);
+}
+
+pub proof fn production_prepare_row_step(plane: crate::specs::Tier1RawPlane, y: u16, initial: Seq<crate::specs::Part1QuantizedCoefficient>, count: nat)
+    ensures crate::specs::part1_prepare_coefficient_row(plane, y, initial, count + 1)
+        == match crate::specs::part1_prepare_coefficient_row(plane, y, initial, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part1_prepare_signed_cell(plane, count as u16, y) {
+                Err(error) => Err(error), Ok(value) => Ok(previous.push(value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_row, 1);
+}
+
+pub proof fn production_prepare_row_error(plane: crate::specs::Tier1RawPlane, y: u16, initial: Seq<crate::specs::Part1QuantizedCoefficient>, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_prepare_coefficient_row(plane, y, initial, count) == Err(error),
+    ensures crate::specs::part1_prepare_coefficient_row(plane, y, initial, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_row, 1);
+    if count < end { production_prepare_row_error(plane, y, initial, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_prepare_rows_empty(plane: crate::specs::Tier1RawPlane)
+    ensures crate::specs::part1_prepare_coefficient_rows(plane, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_rows, 1);
+}
+
+pub proof fn production_prepare_rows_step(plane: crate::specs::Tier1RawPlane, count: nat)
+    ensures crate::specs::part1_prepare_coefficient_rows(plane, count + 1)
+        == match crate::specs::part1_prepare_coefficient_rows(plane, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part1_prepare_coefficient_row(plane, count as u16, previous, plane.width as nat),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_rows, 1);
+}
+
+pub proof fn production_prepare_rows_error(plane: crate::specs::Tier1RawPlane, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_prepare_coefficient_rows(plane, count) == Err(error),
+    ensures crate::specs::part1_prepare_coefficient_rows(plane, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_rows, 1);
+    if count < end { production_prepare_rows_error(plane, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_prepare_placements_empty(
+    initial: crate::specs::Part1PrepareWorking, plan: crate::specs::Part1PreparePlan,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, reversible: bool, maximum: u64,
+)
+    ensures crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_placements, 1);
+}
+
+pub proof fn production_prepare_placements_step(
+    initial: crate::specs::Part1PrepareWorking, plan: crate::specs::Part1PreparePlan,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, reversible: bool, maximum: u64, count: nat,
+)
+    ensures crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count + 1)
+        == match crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count).0 {
+            Err(_) => crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count),
+            Ok(()) => crate::specs::part1_prepare_placement(
+                crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count).1,
+                plan.subbands, precincts, plan.placements[count as int], reversible, maximum),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_placements, 1);
+}
+
+pub proof fn production_prepare_placements_error(
+    initial: crate::specs::Part1PrepareWorking, plan: crate::specs::Part1PreparePlan,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, reversible: bool, maximum: u64, count: nat, end: nat,
+)
+    requires count <= end, crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count).0.is_err(),
+    ensures crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, end)
+        == crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_placements, 1);
+    if count < end { production_prepare_placements_error(initial, plan, precincts, reversible, maximum, count, (end - 1) as nat); }
+}
+
 pub proof fn production_decoded_signed_empty(samples: Seq<i64>, fraction: u8, precision: u8)
     ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
 {
@@ -1919,6 +2083,79 @@ pub proof fn production_magnitude_add_limb(sum: u128)
     assert(sum == ((((sum as u64) as u128)
         + if sum > u64::MAX as u128 { 18446744073709551616u128 } else { 0u128 }) as u128)) by(bit_vector)
         requires sum <= 36893488147419103231;
+}
+
+pub proof fn production_magnitude_prefix_order(left: Seq<u64>, right: Seq<u64>, count: nat)
+    requires left.len() == 6, right.len() == 6, count <= 6,
+    ensures crate::specs::part1_magnitude_prefix_less(left, right, count)
+        == (crate::specs::part1_magnitude_prefix_value(left, count) < crate::specs::part1_magnitude_prefix_value(right, count)),
+    decreases count,
+{
+    if count > 0 {
+        let last = (count - 1) as nat;
+        production_magnitude_prefix_order(left, right, last);
+        production_magnitude_prefix_properties(left, last);
+        production_magnitude_prefix_properties(right, last);
+        vstd::arithmetic::power2::lemma_pow2_pos(64 * last);
+        let a = left[last as int] as nat;
+        let b = right[last as int] as nat;
+        let low_a = crate::specs::part1_magnitude_prefix_value(left, last);
+        let low_b = crate::specs::part1_magnitude_prefix_value(right, last);
+        let weight = vstd::arithmetic::power2::pow2(64 * last);
+        if a < b {
+            assert(crate::specs::part1_magnitude_prefix_less(left, right, count));
+            assert(low_a + a * weight < low_b + b * weight) by(nonlinear_arith)
+                requires low_a < weight, low_b < weight, weight > 0, a < b;
+        } else if b < a {
+            if crate::specs::part1_magnitude_prefix_less(left, right, count) {
+                let witness = choose |i: int| 0 <= i < count && left[i] < right[i]
+                    && forall |j: int| i < j < count ==> left[j] == right[j];
+                assert(witness < last);
+                assert(left[last as int] == right[last as int]);
+            }
+            assert(low_b + b * weight < low_a + a * weight) by(nonlinear_arith)
+                requires low_a < weight, low_b < weight, weight > 0, b < a;
+        } else {
+            if crate::specs::part1_magnitude_prefix_less(left, right, count) {
+                let witness = choose |i: int| 0 <= i < count && left[i] < right[i]
+                    && forall |j: int| i < j < count ==> left[j] == right[j];
+                assert(witness < last);
+                assert(crate::specs::part1_magnitude_prefix_less(left, right, last));
+            }
+            if crate::specs::part1_magnitude_prefix_less(left, right, last) {
+                let witness = choose |i: int| 0 <= i < last && left[i] < right[i]
+                    && forall |j: int| i < j < last ==> left[j] == right[j];
+                assert forall |j: int| witness < j < count implies left[j] == right[j] by {
+                    if j != last { assert(j < last); }
+                }
+                assert(crate::specs::part1_magnitude_prefix_less(left, right, count));
+            }
+        }
+    }
+}
+
+pub proof fn production_magnitude_sub_prefix_step(
+    left: Seq<u64>, right: Seq<u64>, output: Seq<u64>, index: nat, digit: u64, old_borrow: bool, next_borrow: bool,
+)
+    requires left.len() == 6, right.len() == 6, output.len() == 6, index < 6,
+        crate::specs::part1_magnitude_prefix_value(left, index) + (if old_borrow { vstd::arithmetic::power2::pow2(64 * index) } else { 0nat })
+            == crate::specs::part1_magnitude_prefix_value(right, index) + crate::specs::part1_magnitude_prefix_value(output, index),
+        left[index as int] as nat + (if next_borrow { 18446744073709551616nat } else { 0nat })
+            == right[index as int] as nat + (if old_borrow { 1nat } else { 0nat }) + digit as nat,
+    ensures crate::specs::part1_magnitude_prefix_value(left, index + 1) + (if next_borrow { vstd::arithmetic::power2::pow2(64 * (index + 1)) } else { 0nat })
+        == crate::specs::part1_magnitude_prefix_value(right, index + 1)
+            + crate::specs::part1_magnitude_prefix_value(output.update(index as int, digit), index + 1),
+{
+    vstd::arithmetic::power2::lemma_pow2_adds(64 * index, 64);
+    vstd::arithmetic::power2::lemma2_to64();
+    production_magnitude_prefix_update(output, index, digit);
+    production_magnitude_add_prefix_step(
+        crate::specs::part1_magnitude_prefix_value(right, index),
+        crate::specs::part1_magnitude_prefix_value(output, index),
+        crate::specs::part1_magnitude_prefix_value(left, index),
+        right[index as int], digit, left[index as int], old_borrow, next_borrow,
+        vstd::arithmetic::power2::pow2(64 * index), vstd::arithmetic::power2::pow2(64 * (index + 1)),
+    );
 }
 
 pub proof fn production_magnitude_prefix_agrees(left: Seq<u64>, right: Seq<u64>, count: nat)

@@ -5858,6 +5858,7 @@
       "id": "part1-complete-quantized-block-placement",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
         {"path": "src/decode.rs", "symbol": "write_quantized_block"},
         {"path": "src/decode.rs", "symbol": "write_quantized_row"},
         {"path": "src/decode.rs", "symbol": "write_quantized_pixel"}
@@ -5879,6 +5880,75 @@
         {"path": "src/decode.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
       ],
       "topic": "Actual row-major writes of supplied quantized block samples into working subband samples and visited masks, including all metadata, buffer mismatches, overlap and checked-coordinate errors with exact partial states; not the entire prepare/multilevel/tile-image assembly coordinator"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode.rs", "symbol": "initialize_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "append_prepare_subband"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_coefficients"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_cell"},
+        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode.rs", "symbol": "validate_prepare_coverage"},
+        {"path": "src/decode.rs", "symbol": "copy_prepare_plane"},
+        {"path": "src/decode.rs", "symbol": "finish_prepared_component"},
+        {"path": "src/decode.rs", "symbol": "PreparedTileComponent::as_tile_component"},
+        {"path": "src/decode.rs", "symbol": "checked_area_u32"}
+      ],
+      "id": "part1-complete-standard-plan-coordinator",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_progression_prepared_image"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "initialize_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "append_prepare_subband"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_coefficients"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_cell"},
+        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode.rs", "symbol": "validate_prepare_coverage"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"},
+        {"path": "src/decode.rs", "symbol": "copy_prepare_plane"},
+        {"path": "src/decode.rs", "symbol": "finish_prepared_component"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_init_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_row_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_rows_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_placements_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_fold_error_guard"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "standard_prepare_preserves_complete_plan_metadata"},
+        {"path": "src/transform.rs", "symbol": "quantized_coefficients_fields"},
+        {"path": "src/transform.rs", "symbol": "quantized_coefficients_push"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_standard_component"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_fraction"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_append_band"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_init_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_signed_cell"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_coefficient_row"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_coefficient_rows"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_collect_coefficients"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_place_plane"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_placement"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_placements"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_coverage"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_band"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_resolution"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_fold"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_reconstruct"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_copy_plane"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_finish"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepared_as_tile"},
+        {"path": "specs/mod.rs", "symbol": "part1_transform_area"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
+        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
+        {"path": "src/decode.rs", "symbol": "progression_plan_routes_all_subbands_and_prepares_image"}
+      ],
+      "topic": "Complete actual public prepare_tile_component Result over all native raw plans, precinct decoder/plane/coefficient fields, styles and caps for the None-kernel profile: initialization, raw six-limb signed/midpoint collection, quantization, placement/coverage/fraction checks, entire mixed-direction/multilevel 5/3 or Q16 9/7 fold, metadata and first errors. Missing Arbitrary kernel rejects exactly. Private Some-kernel/arbitrary, general MCT and whole decoder composition remain outside this result; no valid-header/normalized-coefficient/coverage/sufficient-budget/trace entry premise"
     },
     {
       "contract_refs": [
@@ -5982,6 +6052,8 @@
       ],
       "id": "part1-full-native-magnitude-values",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::apply_ht_refinement_decision"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_sub"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
         {"path": "src/tier1.rs", "symbol": "CoefficientState::set_magnitude"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::limb"},
@@ -5993,6 +6065,9 @@
         {"path": "src/magnitude.rs", "symbol": "magnitude_single_bit"}
       ],
       "proof_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_sub"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_prefix_order"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_sub_prefix_step"},
         {"path": "src/magnitude.rs", "symbol": "magnitude_limbs_shape"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "magnitude_limb_interface_covers_native_indices"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
@@ -6005,6 +6080,8 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_add_limb"}
       ],
       "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_subtraction"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_prefix_less"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_value"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_capacity"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_low_value"},
@@ -6016,6 +6093,7 @@
         {"path": "specs/mod.rs", "symbol": "magnitude_addition"}
       ],
       "test_refs": [
+        {"path": "src/magnitude.rs", "symbol": "full_native_subtraction_matches_independent_bit_borrow_and_exact_underflow"},
         {"path": "src/magnitude.rs", "symbol": "full_native_limb_getter_matches_independent_array_and_extreme_indices"},
         {"path": "src/magnitude.rs", "symbol": "full_native_bit_producers_preserve_all_limbs_and_exact_errors"},
         {"path": "src/magnitude.rs", "symbol": "full_u16_shifts_and_modulo_getters_match_independent_384_bit_reference"},

@@ -32,6 +32,20 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn standard_prepare_preserves_complete_plan_metadata(
+    plan: crate::specs::Part1PreparePlan, precincts: Seq<Seq<crate::specs::Tier1RawPlane>>,
+    style: crate::specs::Part1PrepareStyle, maximum: u64,
+)
+    ensures match crate::specs::part1_prepare_standard_component(plan, precincts, style, maximum) {
+        Err(_) => true,
+        Ok(prepared) => prepared.0 == plan.component && prepared.1 == plan.x && prepared.2 == plan.y
+            && prepared.3 == plan.width && prepared.4 == plan.height
+            && prepared.5 == if matches!(style.0, crate::codestream::WaveletTransform::Reversible5x3) { 0u8 } else { 16u8 },
+    },
+{
+    reveal(crate::specs::part1_prepare_standard_component);
+}
+
 pub proof fn decoded_signed_prefix_has_complete_length(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
     ensures match crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) {
         Ok(values) => values.len() == count, Err(_) => true,

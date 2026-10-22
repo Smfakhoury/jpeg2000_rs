@@ -156,6 +156,15 @@ getter call. A separate property in `proofs/spec_properties` checks that this
 closed-view interface is usable from another module. These are raw
 representation facts, not additional Tier-1 coefficient meaning.
 
+`Magnitude::checked_sub` has a complete no-requires full-native Result
+contract: exact 384-bit natural difference when ordered, exact arithmetic
+underflow otherwise, including equal operands returning zero and full raw
+representation/value/shape/capacity binding. The optimized executable
+subtraction is unchanged. Its comparison guard is linked to natural prefix
+order, and the existing carry-prefix algebra is reused for borrow propagation,
+including incoming borrow with an all-ones subtrahend word. Independent bit
+borrow tests compare complete results across sparse, boundary and dense pairs.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
@@ -248,9 +257,23 @@ indexed reference Result, count and complete slice contracts. Parallel
 packet-state/context shape and entropy meaning are not assumed.
 
 These are input-relative integer/fixed-point stage results, not compressed
-parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
-the whole coefficient-placement coordinator, actual multilevel/resolution
-scheduling, arbitrary kernels, general MCT paths and the composed
+parsing/Tier-1 meaning or measured irreversible conformance.
+
+The actual public `prepare_tile_component` now closes the complete standard
+None-kernel plan coordinator: raw decoder/plane and six-limb coefficient reads,
+signed midpoint handling, initialization and nine-byte cumulative charging,
+ROI/quantization, placement/coverage/fraction checks, the entire mixed-direction
+multilevel 5/3 or Q16 9/7 fold and every final PreparedTileComponent field/error.
+Its original private with-kernel body shares these real stages and exposes the
+explicit None-kernel guarantee; no proof-only executable coordinator is added.
+All public native malformed-input and resource cases remain modeled rejection,
+not header/normalization/coverage/budget/success/trace preconditions.
+The prepared-to-tile getter also has exact full-field/sample semantics.
+Independent full-plan and ordered-error tests use the previous widened
+reference algorithms and completed one-bit input blocks, not subject transforms.
+
+F6 remains open: Some-kernel/arbitrary profiles, general MCT paths and the actual
+whole-decoder composed
 coefficient-to-component-sample bridge are not
 established here. Whole tile-sample-to-image assembly does not close those gaps.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).

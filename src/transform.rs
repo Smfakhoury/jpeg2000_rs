@@ -82,8 +82,37 @@ verus! {
         }
     }
 
+    pub(crate) open spec fn quantized_coefficients_outcome(result: Result<Vec<SignedMagnitude>, DecodeError>)
+        -> Result<Seq<crate::specs::Part1QuantizedCoefficient>, DecodeError>
+    {
+        match result { Ok(values) => Ok(quantized_coefficients_view(values@)), Err(error) => Err(error) }
+    }
+
     pub open spec fn wavelet_band_view(band: WaveletBand<'_>) -> crate::specs::Part1WaveletBand {
         (band.width, band.height, band.samples@)
+    }
+
+    #[cfg(verus_keep_ghost)]
+    pub(crate) mod representation_proofs {
+        use vstd::prelude::*;
+        verus! {
+            pub(crate) proof fn quantized_coefficients_fields(values: Seq<super::SignedMagnitude>)
+                ensures super::quantized_coefficients_view(values).len() == values.len(),
+                    forall |i: int| 0 <= i < values.len() ==> super::quantized_coefficients_view(values)[i]
+                        == (crate::magnitude::magnitude_limbs(values[i].magnitude), values[i].negative),
+            {
+                reveal(super::quantized_coefficients_view);
+            }
+
+            pub(crate) proof fn quantized_coefficients_push(values: Seq<super::SignedMagnitude>, value: super::SignedMagnitude)
+                ensures super::quantized_coefficients_view(values.push(value))
+                    == super::quantized_coefficients_view(values).push((crate::magnitude::magnitude_limbs(value.magnitude), value.negative)),
+            {
+                reveal(super::quantized_coefficients_view);
+                assert(super::quantized_coefficients_view(values.push(value)) =~=
+                    super::quantized_coefficients_view(values).push((crate::magnitude::magnitude_limbs(value.magnitude), value.negative)));
+            }
+        }
     }
 
     pub open spec fn row_outcome(result: Result<&[i64], DecodeError>) -> Result<Seq<i64>, DecodeError> {
@@ -2054,10 +2083,10 @@ fn arithmetic_overflow() -> DecodeError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn reference_reconstruction(
+    pub(crate) fn reference_reconstruction(
         input: &[([u64; 6], bool)],
         step: QuantizationStep,
         range: u8,
@@ -2365,7 +2394,7 @@ mod tests {
         Ok(output)
     }
 
-    fn reference_horizontal(
+    pub(crate) fn reference_horizontal(
         low: WaveletBand<'_>,
         high: WaveletBand<'_>,
         width: u32,
@@ -2396,7 +2425,7 @@ mod tests {
         Ok((width, low.height, if irreversible { 16 } else { 0 }, output))
     }
 
-    fn reference_vertical(
+    pub(crate) fn reference_vertical(
         low: WaveletBand<'_>,
         high: WaveletBand<'_>,
         height: u32,
@@ -2432,7 +2461,7 @@ mod tests {
         Ok((low.width, height, if irreversible { 16 } else { 0 }, output))
     }
 
-    fn reference_level(
+    pub(crate) fn reference_level(
         level: WaveletLevel<'_>,
         irreversible: bool,
         maximum: u64,

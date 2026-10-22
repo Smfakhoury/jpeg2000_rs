@@ -16,6 +16,342 @@ pub type Part1DecodedImageModel = (u32, u32, u32, u32, Seq<Part1DecodedComponent
 pub type Part1DecodedImageState = (Result<(), crate::DecodeError>, Part1DecodedImageModel);
 pub type Part1WorkingSubbandModel = (u32, u32, u8, Seq<i64>, Seq<bool>);
 pub type Part1WorkingSubbandState = (Result<(), crate::DecodeError>, Part1WorkingSubbandModel);
+pub type Part1PrepareWorking = (Seq<Part1WorkingSubbandModel>, u64);
+pub type Part1PrepareWorkingState = (Result<(), crate::DecodeError>, Part1PrepareWorking);
+pub type Part1PrepareStyle = (crate::codestream::WaveletTransform, u8, Seq<crate::codestream::DecompositionDirection>);
+pub type Part1PrepareFold = (u32, u32, Seq<i64>, usize);
+pub open spec fn part1_prepared_as_tile(prepared: Part1AssemblyTile) -> Part1AssemblyTile { prepared }
+pub struct Part1PreparePlan {
+    pub component: u16,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub resolution: u8,
+    pub subbands: Seq<crate::decode::SubbandGeometry>,
+    pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,
+}
+
+pub open spec fn part1_prepare_fraction(reversible: bool) -> u8 {
+    if reversible { 0u8 } else { 16u8 }
+}
+
+pub open spec fn part1_prepare_append_band(
+    before: Part1PrepareWorking, bands: Seq<crate::decode::SubbandGeometry>, index: usize, fraction: u8, maximum: u64,
+) -> Part1PrepareWorkingState {
+    if index >= bands.len() { (Err(part1_block_placement_error(false)), before) } else {
+        let geometry = bands[index as int];
+        match part1_transform_area(geometry.width, geometry.height) {
+            Err(error) => (Err(error), before),
+            Ok(length) => {
+                let bytes = length as nat * 9;
+                if bytes > u64::MAX || before.1 as nat + bytes > u64::MAX { (Err(part1_block_placement_error(true)), before) }
+                else {
+                    let total = (before.1 as nat + bytes) as u64;
+                    if total > maximum {
+                        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::DecodedBytes, limit: maximum, actual: total }), (before.0, total))
+                    } else {
+                        (Ok(()), (before.0.push((geometry.width, geometry.height, fraction,
+                            Seq::new(length as nat, |i: int| 0i64), Seq::new(length as nat, |i: int| false))), total))
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_init_prefix(
+    bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64, count: nat,
+) -> Result<Part1PrepareWorking, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), 0)) } else {
+        match part1_prepare_init_prefix(bands, fraction, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => if count > bands.len() { Err(part1_block_placement_error(false)) } else {
+                let geometry = bands[count - 1];
+                match part1_transform_area(geometry.width, geometry.height) {
+                    Err(error) => Err(error),
+                    Ok(length) => {
+                        let bytes = length as nat * 9;
+                        if bytes > u64::MAX || previous.1 as nat + bytes > u64::MAX {
+                            Err(part1_block_placement_error(true))
+                        } else {
+                            let total = (previous.1 as nat + bytes) as u64;
+                            if total > maximum {
+                                Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::DecodedBytes, limit: maximum, actual: total })
+                            } else {
+                                Ok((previous.0.push((geometry.width, geometry.height, fraction,
+                                    Seq::new(length as nat, |i: int| 0i64), Seq::new(length as nat, |i: int| false))), total))
+                            }
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_prepare_signed_cell(plane: Tier1RawPlane, x: u16, y: u16)
+    -> Result<Part1QuantizedCoefficient, crate::DecodeError>
+{
+    match tier1_raw_plane_coefficient(plane, x, y) {
+        Err(error) => Err(error),
+        Ok(coefficient) => match tier1_raw_signed_coefficient(coefficient) {
+            Err(error) => Err(error), Ok(signed) => Ok((signed.0, signed.2)),
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_coefficient_row(
+    plane: Tier1RawPlane, y: u16, initial: Seq<Part1QuantizedCoefficient>, count: nat,
+) -> Result<Seq<Part1QuantizedCoefficient>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match part1_prepare_coefficient_row(plane, y, initial, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(values) => match part1_prepare_signed_cell(plane, (count - 1) as u16, y) {
+                Err(error) => Err(error), Ok(value) => Ok(values.push(value)),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_coefficient_rows(plane: Tier1RawPlane, count: nat)
+    -> Result<Seq<Part1QuantizedCoefficient>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match part1_prepare_coefficient_rows(plane, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(values) => part1_prepare_coefficient_row(plane, (count - 1) as u16, values, plane.width as nat),
+        }
+    }
+}
+
+pub open spec fn part1_prepare_collect_coefficients(plane: Tier1RawPlane)
+    -> Result<Seq<Part1QuantizedCoefficient>, crate::DecodeError>
+{
+    if plane.width as nat * plane.height as nat > usize::MAX { Err(part1_block_placement_error(true)) }
+    else { part1_prepare_coefficient_rows(plane, plane.height as nat) }
+}
+
+pub open spec fn part1_prepare_place_plane(
+    working: Part1PrepareWorking, geometry: crate::decode::SubbandGeometry,
+    placement: crate::decode::ProgressionCodeBlockPlacement, plane: Tier1RawPlane, reversible: bool, maximum: u64,
+) -> Part1PrepareWorkingState {
+    match part1_image_checked_u32(placement.x as int + plane.width as int) {
+        Err(error) => (Err(error), working),
+        Ok(x1) => if x1 > geometry.width { (Err(part1_block_placement_error(false)), working) } else {
+            match part1_image_checked_u32(placement.y as int + plane.height as int) {
+                Err(error) => (Err(error), working),
+                Ok(y1) => if y1 > geometry.height { (Err(part1_block_placement_error(false)), working) } else {
+                    match part1_prepare_collect_coefficients(plane) {
+                        Err(error) => (Err(error), working),
+                        Ok(coefficients) => match part1_inverse_quantization(
+                            coefficients, geometry.quantization_step.exponent, geometry.quantization_step.mantissa,
+                            geometry.dynamic_range, reversible, geometry.roi_shift, maximum,
+                        ) {
+                            Err(error) => (Err(error), working),
+                            Ok(quantized) => if quantized.2 != part1_prepare_fraction(reversible) {
+                                (Err(part1_block_placement_error(false)), working)
+                            } else if placement.subband_index >= working.0.len() {
+                                (Err(part1_block_placement_error(false)), working)
+                            } else {
+                                let written = part1_quantized_block_rows(
+                                    working.0[placement.subband_index as int], quantized.3, plane.width as u32,
+                                    placement.x, placement.y, plane.height as nat,
+                                );
+                                (written.0, (working.0.update(placement.subband_index as int, written.1), working.1))
+                            },
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_placement(
+    working: Part1PrepareWorking, bands: Seq<crate::decode::SubbandGeometry>,
+    precincts: Seq<Seq<Tier1RawPlane>>, placement: crate::decode::ProgressionCodeBlockPlacement,
+    reversible: bool, maximum: u64,
+) -> Part1PrepareWorkingState {
+    if placement.subband_index >= working.0.len() { (Ok(()), working) }
+    else if placement.subband_index >= bands.len() || placement.precinct_index >= precincts.len() {
+        (Err(part1_block_placement_error(false)), working)
+    } else if placement.decoder_index >= precincts[placement.precinct_index as int].len() {
+        (Err(part1_packet_header_error()), working)
+    } else {
+        part1_prepare_place_plane(working, bands[placement.subband_index as int], placement,
+            precincts[placement.precinct_index as int][placement.decoder_index as int], reversible, maximum)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_placements(
+    initial: Part1PrepareWorking, plan: Part1PreparePlan, precincts: Seq<Seq<Tier1RawPlane>>,
+    reversible: bool, maximum: u64, count: nat,
+) -> Part1PrepareWorkingState
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) } else {
+        let previous = part1_prepare_placements(initial, plan, precincts, reversible, maximum, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_prepare_placement(previous.1, plan.subbands, precincts, plan.placements[count - 1], reversible, maximum),
+        }
+    }
+}
+
+pub open spec fn part1_prepare_coverage(bands: Seq<Part1WorkingSubbandModel>) -> Result<(), crate::DecodeError> {
+    if forall |b: int, i: int| 0 <= b < bands.len() && 0 <= i < bands[b].4.len() ==> bands[b].4[i] {
+        Ok(())
+    } else { Err(part1_block_placement_error(false)) }
+}
+
+pub open spec fn part1_prepare_band(band: Part1WorkingSubbandModel) -> Part1WaveletBand {
+    (band.0, band.1, band.3)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_resolution(
+    before: Part1PrepareFold, bands: Seq<Part1WorkingSubbandModel>, geometry: Seq<crate::decode::SubbandGeometry>,
+    direction: crate::codestream::DecompositionDirection, reversible: bool, maximum: u64,
+) -> Result<Part1PrepareFold, crate::DecodeError> {
+    use crate::codestream::DecompositionDirection::*;
+    let first = before.3 as nat;
+    if first >= bands.len() { Err(part1_block_placement_error(false)) }
+    else if bands[first as int].2 != part1_prepare_fraction(reversible) || first >= geometry.len() {
+        Err(part1_block_placement_error(false))
+    } else {
+        let detail = bands[first as int];
+        let shape = geometry[first as int];
+        let low = (before.0, before.1, before.2);
+        let transformed = match direction {
+            None => Err(part1_block_placement_error(false)),
+            Horizontal | Vertical => if first + 1 > usize::MAX { Err(part1_block_placement_error(true)) } else {
+                if matches!(direction, Horizontal) {
+                    part1_inverse_horizontal(low, part1_prepare_band(detail), shape.resolution_width, shape.low_pass_first_x, !reversible, maximum)
+                } else {
+                    part1_inverse_vertical(low, part1_prepare_band(detail), shape.resolution_height, shape.low_pass_first_y, !reversible, maximum)
+                }
+            },
+            TwoDimensional => if first + 1 > usize::MAX { Err(part1_block_placement_error(true)) }
+                else if first + 1 >= bands.len() { Err(part1_block_placement_error(false)) }
+                else if first + 2 > usize::MAX { Err(part1_block_placement_error(true)) }
+                else if first + 2 >= bands.len() { Err(part1_block_placement_error(false)) }
+                else if bands[(first + 1) as int].2 != part1_prepare_fraction(reversible)
+                    || bands[(first + 2) as int].2 != part1_prepare_fraction(reversible) { Err(part1_block_placement_error(false)) }
+                else if first + 3 > usize::MAX { Err(part1_block_placement_error(true)) }
+                else {
+                    part1_inverse_level((low, part1_prepare_band(detail),
+                        part1_prepare_band(bands[(first + 1) as int]), part1_prepare_band(bands[(first + 2) as int]),
+                        shape.resolution_width, shape.resolution_height, shape.low_pass_first_x, shape.low_pass_first_y), !reversible, maximum)
+                },
+        };
+        match transformed {
+            Err(error) => Err(error),
+            Ok(plane) => if plane.2 != part1_prepare_fraction(reversible) { Err(part1_block_placement_error(false)) }
+                else { Ok((plane.0, plane.1, plane.3, (first + if matches!(direction, TwoDimensional) { 3nat } else { 1nat }) as usize)) },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_fold(
+    initial: Part1PrepareFold, bands: Seq<Part1WorkingSubbandModel>, geometry: Seq<crate::decode::SubbandGeometry>,
+    style: Part1PrepareStyle, reversible: bool, maximum: u64, count: nat,
+) -> Result<Part1PrepareFold, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_direction_for_resolution(style.1, style.2, count as u8) {
+                Err(error) => Err(error),
+                Ok(direction) => {
+                    let transformed = if matches!(direction, crate::codestream::DecompositionDirection::None) { Ok(previous) }
+                        else { part1_prepare_resolution(previous, bands, geometry, direction, reversible, maximum) };
+                    match transformed {
+                        Err(error) => Err(error),
+                        Ok(after) => if count >= 255 { Err(part1_block_placement_error(true)) } else { Ok(after) },
+                    }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_prepare_copy_plane(plane: Part1ReconstructedPlane, first_detail: usize) -> Result<Part1PrepareFold, crate::DecodeError> {
+    Ok((plane.0, plane.1, plane.3, first_detail))
+}
+
+pub open spec fn part1_prepare_reconstruct(
+    bands: Seq<Part1WorkingSubbandModel>, plan: Part1PreparePlan, style: Part1PrepareStyle, reversible: bool, maximum: u64,
+) -> Result<Part1PrepareFold, crate::DecodeError> {
+    if bands.len() == 0 { Err(part1_block_placement_error(false)) } else {
+        let ll = bands[0];
+        part1_prepare_fold((ll.0, ll.1, ll.3, 1usize), bands, plan.subbands, style, reversible, maximum, plan.resolution as nat)
+    }
+}
+
+pub open spec fn part1_prepare_finish(plan: Part1PreparePlan, fraction: u8, folded: Part1PrepareFold)
+    -> Result<Part1AssemblyTile, crate::DecodeError>
+{
+    if folded.0 != plan.width || folded.1 != plan.height { Err(part1_block_placement_error(false)) }
+    else {
+        match part1_transform_area(plan.width, plan.height) {
+            Err(error) => Err(error),
+            Ok(length) => if folded.2.len() != length { Err(part1_block_placement_error(false)) }
+                else { Ok((plan.component, plan.x, plan.y, plan.width, plan.height, fraction, folded.2)) },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_standard_component(
+    plan: Part1PreparePlan, precincts: Seq<Seq<Tier1RawPlane>>, style: Part1PrepareStyle, maximum: u64,
+) -> Result<Part1AssemblyTile, crate::DecodeError> {
+    if plan.subbands.len() == 0 { Err(part1_block_placement_error(false)) } else {
+        match style.0 {
+            crate::codestream::WaveletTransform::Arbitrary(_) => Err(part1_block_placement_error(false)),
+            _ => {
+                let reversible = matches!(style.0, crate::codestream::WaveletTransform::Reversible5x3);
+                match part1_subband_count_through_resolution(style.1, style.2, plan.resolution) {
+                    Err(error) => Err(error),
+                    Ok(selected) => if selected > plan.subbands.len() { Err(part1_block_placement_error(false)) } else {
+                        match part1_prepare_init_prefix(plan.subbands, part1_prepare_fraction(reversible), maximum, selected as nat) {
+                            Err(error) => Err(error),
+                            Ok(initial) => {
+                                let placed = part1_prepare_placements(initial, plan, precincts, reversible, maximum, plan.placements.len());
+                                match placed.0 {
+                                    Err(error) => Err(error),
+                                    Ok(()) => match part1_prepare_coverage(placed.1.0) {
+                                        Err(error) => Err(error),
+                                        Ok(()) => if placed.1.0.len() == 0 { Err(part1_block_placement_error(false)) } else {
+                                            let ll = placed.1.0[0];
+                                            match part1_prepare_fold((ll.0, ll.1, ll.3, 1usize), placed.1.0, plan.subbands,
+                                                style, reversible, maximum, plan.resolution as nat) {
+                                                Err(error) => Err(error),
+                                                Ok(folded) => part1_prepare_finish(plan, part1_prepare_fraction(reversible), folded),
+                                            }
+                                        },
+                                    },
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
 pub type Part1AssemblySize = (u32, u32, u32, u32, u16, Seq<crate::codestream::ComponentInfo>);
 pub type Part1AssemblyTile = (u16, u32, u32, u32, u32, u8, Seq<i64>);
 pub type Part1AssemblyPlane = (u32, u32, Option<u8>, Seq<i64>, Seq<bool>);
@@ -5828,6 +6164,15 @@ pub open spec fn part1_magnitude_u64(limbs: Seq<u64>) -> Option<u64> {
 pub open spec fn part1_magnitude_less(left: Seq<u64>, right: Seq<u64>) -> bool {
     exists |i: int| 0 <= i < left.len() && left[i] < right[i]
         && forall |j: int| i < j < left.len() ==> left[j] == right[j]
+}
+
+pub open spec fn part1_magnitude_prefix_less(left: Seq<u64>, right: Seq<u64>, count: nat) -> bool {
+    exists |i: int| 0 <= i < count && left[i] < right[i]
+        && forall |j: int| i < j < count ==> left[j] == right[j]
+}
+
+pub open spec fn part1_magnitude_subtraction(left: nat, right: nat) -> Result<nat, crate::DecodeError> {
+    if left < right { Err(part1_transform_error(true)) } else { Ok((left - right) as nat) }
 }
 
 pub open spec fn part1_magnitude_bit(bit: u16) -> Seq<u64> {
