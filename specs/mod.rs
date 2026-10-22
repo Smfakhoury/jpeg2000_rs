@@ -4692,6 +4692,132 @@ pub open spec fn ht_decode_staged_group(
     }
 }
 
+pub open spec fn ht_has_current_cleanup(state: Tier1DecoderState) -> bool { state.ht_current_set_has_cleanup }
+
+pub open spec fn ht_packet_segment_route(
+    state: Tier1DecoderState, body: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtPlaceholderRunResult {
+    let result = if state.next_pass % 3 == 0 {
+        if passes != 1 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+        else if body.len() == 0 { ht_skip_segment(state, 1, pass_limit) }
+        else { ht_decode_segments(state, body, 1, None, 0, pass_limit, byte_limit, work_limit) }
+    } else if state.ht_current_set_has_cleanup {
+        ht_decode_refinement_contribution(state, body, passes, byte_limit, work_limit)
+    } else if body.len() > 0 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else { ht_skip_segment(state, passes, pass_limit) };
+    (match result.0 { Err(error) => Err(error), Ok(_) => Ok(()) }, result.1)
+}
+
+pub type HtPacketSegmentResult = (Result<(), crate::DecodeError>, Tier1DecoderState, usize, u32);
+
+pub open spec fn ht_packet_segment_body(
+    state: Tier1DecoderState, segment: crate::packet::CodeBlockSegmentContribution, body: Seq<u8>,
+    offset: usize, decoded_passes: u32, pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtPacketSegmentResult {
+    let length = segment.data_length as nat;
+    let end = offset as nat + length;
+    if segment.passes == 0 || segment.passes > 2 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state, offset, decoded_passes)
+    } else if length > usize::MAX || end > usize::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state, offset, decoded_passes)
+    } else if offset > body.len() || end > body.len() {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state, offset, decoded_passes)
+    } else {
+        let result = ht_packet_segment_route(state, body.subrange(offset as int, end as int), segment.passes,
+            pass_limit, byte_limit, work_limit);
+        match result.0 {
+            Err(error) => (Err(error), result.1, offset, decoded_passes),
+            Ok(()) => if decoded_passes as nat + segment.passes as nat > u32::MAX {
+                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), result.1, offset, decoded_passes)
+            } else {
+                (Ok(()), result.1, end as usize, (decoded_passes + segment.passes) as u32)
+            },
+        }
+    }
+}
+
+pub type HtPacketBodyRunResult = (Result<(), crate::DecodeError>, Tier1DecoderState, crate::packet::HtBodyProgress);
+
+#[verifier::opaque]
+pub open spec fn ht_packet_body_run(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>, progress: crate::packet::HtBodyProgress,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtPacketBodyRunResult
+    decreases header.segment_count as nat - progress.segment_index as nat,
+{
+    if progress.segment_index >= header.segment_count { (Ok(()), state, progress) }
+    else {
+        match part1_code_block_segment(header, progress.segment_index) {
+            Err(error) => (Err(error), state, progress),
+            Ok(segment) => {
+                let step = ht_packet_segment_body(state, segment, body, progress.offset, progress.decoded_passes,
+                    pass_limit, byte_limit, work_limit);
+                let progress = crate::packet::HtBodyProgress {
+                    offset: step.2, decoded_passes: step.3, ..progress
+                };
+                match step.0 {
+                    Err(error) => (Err(error), step.1, progress),
+                    Ok(()) => if progress.segment_index == u8::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), step.1, progress)
+                    } else {
+                        ht_packet_body_run(step.1, header, body, crate::packet::HtBodyProgress {
+                            segment_index: (progress.segment_index + 1) as u8, ..progress
+                        }, pass_limit, byte_limit, work_limit)
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub type HtCodeBlockBodyResult = (Result<crate::packet::CodeBlockBodyDecode, crate::DecodeError>, Tier1DecoderState);
+
+pub open spec fn ht_packet_body_segments(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtCodeBlockBodyResult {
+    if header.segment_count == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let result = ht_packet_body_run(state, header, body, crate::packet::HtBodyProgress {
+            segment_index: 0, offset: 0, decoded_passes: 0,
+        }, pass_limit, byte_limit, work_limit);
+        match result.0 {
+            Err(error) => (Err(error), result.1),
+            Ok(()) => if result.2.offset != body.len() || result.2.decoded_passes != header.new_passes {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), result.1)
+            } else {
+                (Ok(crate::packet::CodeBlockBodyDecode { segments: header.segment_count,
+                    passes: result.2.decoded_passes, bytes: header.data_length }), result.1)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_packet_body_staged(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtCodeBlockBodyResult {
+    if header.data_length > usize::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else if body.len() != header.data_length
+        || (state.style.force_high_throughput && !header.high_throughput) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        let admitted = part1_legacy_zero_bitplanes(state, header.zero_bitplanes);
+        match admitted.0 { Err(error) => (Err(error), admitted.1), Ok(()) =>
+            ht_packet_body_segments(admitted.1, header, body, pass_limit, byte_limit, work_limit) }
+    }
+}
+
+pub open spec fn ht_packet_body(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtCodeBlockBodyResult {
+    let result = ht_packet_body_staged(state, header, body, pass_limit, byte_limit, work_limit);
+    match result.0 { Err(error) => (Err(error), state), Ok(_) => result }
+}
+
 pub type HtPlaneResult = (Result<(), crate::DecodeError>, HtPlaneState);
 
 pub open spec fn ht_plane_sample_store(

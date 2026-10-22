@@ -5838,6 +5838,9 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::ht_has_current_cleanup(tier1_decoder_state(self)),
+    ))]
     pub const fn ht_current_set_has_cleanup(&self) -> bool {
         self.ht_current_set_has_cleanup
     }
@@ -10547,6 +10550,113 @@ mod tests {
             (mixed.next_pass, mixed.plane.coefficients()[0].magnitude),
             (4, 3)
         );
+    }
+
+    #[test]
+    fn ht_packet_segment_routes_real_slices_and_keeps_progress_after_decoder_effects() {
+        let limits = ResourceLimits::default();
+        let mut decoder = cleanup_caller_decoder();
+        decoder.next_pass = 0;
+        decoder.ht_sets_seen = 0;
+        let mut expected = decoder.clone();
+        expected.plane = literal_cleanup_coefficient();
+        expected.ht_cleanup_plane = Some(literal_cleanup_coefficient());
+        expected.ht_refinement_data.clear();
+        expected.ht_refinement_passes = 0;
+        expected.ht_decoded_bitplanes = 1;
+        expected.ht_current_set_has_cleanup = true;
+        expected.ht_sets_seen = 1;
+        expected.next_pass = 1;
+        expected.decoded_segments += 1;
+        expected.decoded_bytes += 3;
+        let mut offset = 1;
+        let mut decoded_passes = 17;
+        crate::packet::ht_route_test_support::segment_body(
+            &mut decoder,
+            1,
+            3,
+            &[0xaa, 0, 0x63, 0, 0x90],
+            &mut offset,
+            &mut decoded_passes,
+            &limits,
+        )
+        .unwrap();
+        assert_eq!((offset, decoded_passes), (4, 18));
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+
+        let mut decoder = retained_refinement_decoder();
+        let mut expected = decoder.clone();
+        expected.ht_refinement_passes = 1;
+        expected.next_pass += 1;
+        expected.decoded_segments += 1;
+        let mut offset = 0;
+        let mut decoded_passes = u32::MAX;
+        assert_eq!(
+            crate::packet::ht_route_test_support::segment_body(
+                &mut decoder,
+                1,
+                0,
+                &[],
+                &mut offset,
+                &mut decoded_passes,
+                &limits,
+            ),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!((offset, decoded_passes), (0, u32::MAX));
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn ht_packet_segment_pass_length_range_and_route_errors_keep_exact_first_state() {
+        let limits = ResourceLimits::default();
+        for (passes, length, start, body, expected_error) in [
+            (0, 1, usize::MAX, &[][..], invalid_code_block()),
+            (1, 1, usize::MAX, &[][..], arithmetic_overflow()),
+            (1, 0, 1, &[][..], invalid_code_block()),
+            (2, 2, 0, &[1][..], invalid_code_block()),
+        ] {
+            let mut decoder = retained_refinement_decoder();
+            let before = format!("{decoder:?}");
+            let mut offset = start;
+            let mut decoded_passes = 11;
+            assert_eq!(
+                crate::packet::ht_route_test_support::segment_body(
+                    &mut decoder,
+                    passes,
+                    length,
+                    body,
+                    &mut offset,
+                    &mut decoded_passes,
+                    &limits,
+                ),
+                Err(expected_error)
+            );
+            assert_eq!((offset, decoded_passes), (start, 11));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        for (phase, has_cleanup, passes, body) in [(0, true, 2, &[][..]), (1, false, 1, &[1][..])] {
+            let mut decoder = retained_refinement_decoder();
+            decoder.next_pass = phase;
+            decoder.ht_current_set_has_cleanup = has_cleanup;
+            let before = format!("{decoder:?}");
+            let mut offset = 0;
+            let mut decoded_passes = 0;
+            assert_eq!(
+                crate::packet::ht_route_test_support::segment_body(
+                    &mut decoder,
+                    passes,
+                    body.len() as u32,
+                    body,
+                    &mut offset,
+                    &mut decoded_passes,
+                    &limits,
+                ),
+                Err(invalid_code_block())
+            );
+            assert_eq!((offset, decoded_passes), (0, 0));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
     }
 
     fn cleanup_caller_decoder() -> Tier1CodeBlockDecoder {
