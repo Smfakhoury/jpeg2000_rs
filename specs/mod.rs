@@ -2682,6 +2682,203 @@ pub open spec fn ht_cleanup_mel_event(state: HtCleanupReaderState)
     }
 }
 
+#[verifier::opaque]
+pub open spec fn ht_uvlc_prefix(state: HtCleanupReaderState)
+    -> (Result<(u8, u8, u8), crate::DecodeError>, HtCleanupReaderState)
+{
+    let first = ht_cleanup_reader_read_vlc(state);
+    match first.0 {
+        Err(error) => (Err(error), first.1),
+        Ok(true) => (Ok((1, 0, 1)), first.1),
+        Ok(false) => {
+            let second = ht_cleanup_reader_read_vlc(first.1);
+            match second.0 {
+                Err(error) => (Err(error), second.1),
+                Ok(true) => (Ok((2, 0, 2)), second.1),
+                Ok(false) => {
+                    let third = ht_cleanup_reader_read_vlc(second.1);
+                    match third.0 {
+                        Err(error) => (Err(error), third.1),
+                        Ok(true) => (Ok((3, 1, 3)), third.1),
+                        Ok(false) => (Ok((5, 5, 3)), third.1),
+                    }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_suffix_run(state: HtCleanupReaderState, remaining: nat, index: nat, value: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+    recommends index + remaining <= 255,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(value), state) } else {
+        let read = ht_cleanup_reader_read_vlc(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => if bit && index >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1)
+            } else {
+                ht_uvlc_suffix_run(read.1, (remaining - 1) as nat, index + 1,
+                    if bit { value | (1u8 << index as u8) } else { value })
+            },
+        }
+    }
+}
+
+pub open spec fn ht_uvlc_suffix(state: HtCleanupReaderState, length: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+{
+    ht_uvlc_suffix_run(state, length as nat, 0, 0)
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_prefix_value(state: HtCleanupReaderState)
+    -> (Result<(u8, u8), crate::DecodeError>, HtCleanupReaderState)
+{
+    let prefix = ht_uvlc_prefix(state);
+    match prefix.0 {
+        Err(error) => (Err(error), prefix.1),
+        Ok((base, length, prefix_length)) => {
+            let suffix = ht_uvlc_suffix(prefix.1, length);
+            match suffix.0 {
+                Err(error) => (Err(error), suffix.1),
+                Ok(value) => if base + value > u8::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), suffix.1)
+                } else { (Ok(((base + value) as u8, prefix_length)), suffix.1) },
+            }
+        },
+    }
+}
+
+pub type HtUvlcPairResult = (Result<[u8; 2], crate::DecodeError>, HtCleanupReaderState);
+
+pub open spec fn ht_uvlc_byte(base: u8, suffix: u8, bias: u8) -> Result<u8, crate::DecodeError> {
+    let value = base + suffix + bias;
+    if value > u8::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else { Ok(value as u8) }
+}
+
+pub open spec fn ht_uvlc_single(state: HtCleanupReaderState, first: bool) -> HtUvlcPairResult {
+    let prefix = ht_uvlc_prefix_value(state);
+    match prefix.0 {
+        Err(error) => (Err(error), prefix.1),
+        Ok((value, _)) => if value == u8::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), prefix.1)
+        } else {
+            (Ok(if first { [(value + 1) as u8, 1u8] } else { [1u8, (value + 1) as u8] }), prefix.1)
+        },
+    }
+}
+
+pub open spec fn ht_uvlc_pair_after_first(
+    state: HtCleanupReaderState, first: (u8, u8, u8), bias: u8,
+) -> HtUvlcPairResult {
+    let second = ht_uvlc_prefix(state);
+    match second.0 {
+        Err(error) => (Err(error), second.1),
+        Ok(second_prefix) => {
+            let first_suffix = ht_uvlc_suffix(second.1, first.1);
+            match first_suffix.0 {
+                Err(error) => (Err(error), first_suffix.1),
+                Ok(value) => {
+                    let first_value = first.0 + value + bias;
+                    if first_value > u8::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), first_suffix.1)
+                    } else {
+                        let second_suffix = ht_uvlc_suffix(first_suffix.1, second_prefix.1);
+                        match second_suffix.0 {
+                            Err(error) => (Err(error), second_suffix.1),
+                            Ok(value) => {
+                                let second_value = second_prefix.0 + value + bias;
+                                if second_value > u8::MAX {
+                                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), second_suffix.1)
+                                } else { (Ok([first_value as u8, second_value as u8]), second_suffix.1) }
+                            },
+                        }
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_uvlc_initial(state: HtCleanupReaderState, mode: u8) -> HtUvlcPairResult {
+    if mode == 0 { (Ok([1u8, 1u8]), state) }
+    else if mode == 1 || mode == 2 { ht_uvlc_single(state, mode == 1) }
+    else if mode == 3 || mode == 4 {
+        let prefix = ht_uvlc_prefix(state);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(first) => if mode == 4 || first.2 <= 2 {
+                ht_uvlc_pair_after_first(prefix.1, first, if mode == 4 { 3 } else { 1 })
+            } else {
+                let bit = ht_cleanup_reader_read_vlc(prefix.1);
+                match bit.0 {
+                    Err(error) => (Err(error), bit.1),
+                    Ok(bit_value) => {
+                        let suffix = ht_uvlc_suffix(bit.1, first.1);
+                        match suffix.0 {
+                            Err(error) => (Err(error), suffix.1),
+                            Ok(value) => if first.0 + value + 1 > u8::MAX {
+                                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), suffix.1)
+                            } else {
+                                (Ok([(first.0 + value + 1) as u8, if bit_value { 3u8 } else { 2u8 }]), suffix.1)
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    } else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+}
+
+pub open spec fn ht_uvlc_non_initial(state: HtCleanupReaderState, mode: u8) -> HtUvlcPairResult {
+    if mode == 0 { (Ok([1u8, 1u8]), state) }
+    else if mode == 1 || mode == 2 { ht_uvlc_single(state, mode == 1) }
+    else if mode == 3 {
+        let prefix = ht_uvlc_prefix(state);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(first) => ht_uvlc_pair_after_first(prefix.1, first, 1),
+        }
+    } else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+}
+
+pub open spec fn ht_cleanup_quad_word(state: HtCleanupReaderState, table: Seq<u16>, context: u8)
+    -> (Result<u16, crate::DecodeError>, HtCleanupReaderState)
+{
+    if context > 7 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let index = context as nat * 128 + (ht_cleanup_peek_vlc(state, 7) & 0x7fu16) as nat;
+        if index >= table.len() { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+        else {
+            let event = if context == 0 { ht_cleanup_mel_event(state) } else { (Ok(true), state) };
+            match event.0 {
+                Err(error) => (Err(error), event.1),
+                Ok(keep) => {
+                    let word = if keep { table[index as int] } else { 0u16 };
+                    let length = (word & 7u16) as u8;
+                    if !ht_vlc_word_valid(word as nat, length as nat) {
+                        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), event.1)
+                    } else {
+                        let advanced = ht_cleanup_advance_vlc(event.1, length as nat);
+                        match advanced.0 {
+                            Err(error) => (Err(error), advanced.1),
+                            Ok(()) => {
+                                let charged = ht_cleanup_reader_tick(advanced.1);
+                                (match charged.0 { Err(error) => Err(error), Ok(()) => Ok(word) }, charged.1)
+                            },
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
 pub struct Part1RawReaderState {
     pub input: Seq<u8>,
     pub next_index: usize,

@@ -32,6 +32,27 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_ht_uvlc_suffix_unfold(
+    state: crate::specs::HtCleanupReaderState, remaining: nat, index: nat, value: u8,
+)
+    requires index + remaining <= 255,
+    ensures crate::specs::ht_uvlc_suffix_run(state, remaining, index, value)
+        == if remaining == 0 { (Ok(value), state) } else {
+            let read = crate::specs::ht_cleanup_reader_read_vlc(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => if bit && index >= 8 {
+                    (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1)
+                } else {
+                    crate::specs::ht_uvlc_suffix_run(read.1, (remaining - 1) as nat, index + 1,
+                        if bit { value | (1u8 << index as u8) } else { value })
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_uvlc_suffix_run, 1);
+}
+
 pub proof fn production_ht_cleanup_peek_unfold(
     owner: crate::specs::HtCleanupReaderState, copy: crate::specs::HtReverseVlcState,
     remaining: nat, index: nat, value: u16,

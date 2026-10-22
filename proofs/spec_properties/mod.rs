@@ -32,6 +32,36 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn ht_uvlc_invalid_modes_leave_complete_state(state: crate::specs::HtCleanupReaderState, mode: u8)
+    requires mode >= 5,
+    ensures crate::specs::ht_uvlc_initial(state, mode)
+            == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        crate::specs::ht_uvlc_non_initial(state, mode)
+            == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+{
+}
+
+pub proof fn ht_uvlc_wide_set_bit_is_rejected_after_consumption(
+    state: crate::specs::HtCleanupReaderState, changed: crate::specs::HtCleanupReaderState,
+    remaining: nat, index: nat, value: u8,
+)
+    requires remaining > 0, index >= 8, index + remaining <= 255,
+        crate::specs::ht_cleanup_reader_read_vlc(state) == (Ok(true), changed),
+    ensures crate::specs::ht_uvlc_suffix_run(state, remaining, index, value)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), changed),
+{
+    crate::proofs::production_impl::production_ht_uvlc_suffix_unfold(state, remaining, index, value);
+}
+
+pub proof fn ht_quad_invalid_context_precedes_all_stream_work(
+    state: crate::specs::HtCleanupReaderState, table: Seq<u16>, context: u8,
+)
+    requires context > 7,
+    ensures crate::specs::ht_cleanup_quad_word(state, table, context)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+{
+}
+
 pub proof fn ht_cleanup_cached_zero_event_precedes_invalid_state_and_counter_overflow(
     state: crate::specs::HtCleanupReaderState,
 )

@@ -140,6 +140,7 @@ Read each contract according to its inputs and postcondition:
 | Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
 | HT directional reader/substream state | All five actual readers: exact constructors, bytes/bits/positions, MagSgn words and drain, zero/one fill, stuffing, exhaustion, full cursors/counters, shared cleanup byte claims and refinement physical-bit vectors/padding, exact inner/outer budget and overflow effects | Upstream partition/pass accounting, UVLC/quad interpretation, coefficient/block reconstruction, replacement/placeholders, mixed sequencing or complete F5H acceptance |
 | HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
+| HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -243,7 +244,33 @@ adapters) are proved and their recipes tested against real API tests, but have
 no internal decoder callers. They are not disguised as internal helper calls
 or indexed through a wrong same-named method. The exact-root verifier checks
 all these actual contracts independently of the non-exhaustive source index.
-The models and a green solver run are not human endorsement of T.814.
+The next complete interpretation stage connects the actual UVLC prefix,
+suffix, combined value and both U-mode decoders to the complete cleanup
+reader state. Every native mode/length is covered, not just successful
+prefixes: a true suffix bit above bit seven is rejected after consumption,
+whereas zero bits above the result width may continue. Read failures precede
+that width check. Initial mode three retains its special long-prefix route,
+and both modes retain their exact prefix/suffix read order and checked
+arithmetic failure points.
+
+The actual quad-word caller refines lookup into closed views of the unchanged
+production tables, then context-zero MEL suppression, codeword validation,
+advance and final tick. No table words/notices are copied or modified.
+Equivalent explicit boolean/checked-add conversions and one shared checked
+byte-conversion helper replace opaque standard-library callback composition;
+they do not introduce a second executable interpretation algorithm.
+U-pair results retain their native two-element arrays. Extensional content
+and exact array equality use the existing pinned `vstd::array` equality fact,
+not a new codec axiom or trusted escape. Prefix opacity only keeps caller
+composition modular; actual producer bodies explicitly unfold their models.
+
+The authorized nineteen directional registry recipes are complete. The six
+new interpretation state contracts use the same exact whole-state shape but
+await separately authorized function/model recipes; their actual models,
+callers, proofs, fixtures and already supported leaf contracts are indexed.
+Neither this source index nor successful local gates close full-block or
+mixed sequencing. The models and a green solver run are not human endorsement
+of T.814.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit

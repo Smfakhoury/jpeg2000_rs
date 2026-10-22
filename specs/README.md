@@ -32,6 +32,20 @@ is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
 
+The next frozen interpretation substage is the actual cleanup UVLC/quad-word
+caller: prefix, every native `u8` suffix length, combined prefix value,
+initial/non-initial U pairs for every `u8` mode, and quad-word lookup for every
+`u8` context. It composes the actual reader/event/advance/tick states on every
+return. Invalid modes/contexts reject without consuming; a set suffix bit
+above bit seven rejects **after** that bit is consumed, while zero bits above
+the result width may continue. Initial mode three preserves its special
+long-prefix route and read order; bias one/three and checked byte conversion
+retain their actual rejection points. Quad lookup uses closed views of the
+unchanged production tables, then context-zero MEL suppression, length
+validation, actual advance and final tick in that order. This stage does not
+assume valid codewords, available bits, adequate budget or valid counters.
+It is not a quad traversal or coefficient-reconstruction theorem.
+
 The next frozen substage is the complete actual MagSgn reader API: construction
 from 0..=65534 bytes; LSB-first words of 0..=39 bits and unchanged-state rejection
 of larger counts; physical and synthetic `0xff` bits with forward stuffing;
@@ -88,8 +102,9 @@ endorsement of T.814.
 The directional substage now includes all five actual readers, MagSgn words
 and finish, refinement physical-bit claims/padding, VLC peek/advance and MEL
 events. The cleanup pair's final shared-byte collision check is included.
-The remaining stages are upstream partitioning and pass sequencing, UVLC/
-quad interpretation, cleanup block reconstruction, significance/refinement
+The subsequent UVLC/quad-word interpretation stage above is also complete.
+The remaining stages are upstream partitioning and pass sequencing, quad
+traversal/metadata construction, cleanup block reconstruction, significance/refinement
 block transitions, replacement/placeholder sequencing and mixed HT/legacy
 routing. Completing directional stages does not close F5H or full-block
 acceptance. In particular, matching the byte-reader state machine does not

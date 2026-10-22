@@ -3889,6 +3889,52 @@
     },
     {
       "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_uvlc_byte"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_vlc_bit"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::advance_vlc"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::mel_event"}
+      ],
+      "id": "part15-uvlc-quad-word-state",
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_prefix"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_suffix"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::prefix_value"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_non_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_quad_word"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_segment_metadata"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_uvlc_suffix_unfold"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_uvlc_invalid_modes_leave_complete_state"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_uvlc_wide_set_bit_is_rejected_after_consumption"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_quad_invalid_context_precedes_all_stream_work"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_prefix"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_suffix_run"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_suffix"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_prefix_value"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_initial"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_non_initial"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_byte"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_quad_word"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_reader_read_vlc"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_advance_vlc"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_mel_event"},
+        {"path": "src/tier1.rs", "symbol": "ht_vlc_table_view"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_uvlc_prefixes_and_suffixes_use_exact_physical_bits"},
+        {"path": "src/tier1.rs", "symbol": "ht_uvlc_result_width_and_budget_rejections_keep_the_consumed_bit"},
+        {"path": "src/tier1.rs", "symbol": "ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results"},
+        {"path": "src/tier1.rs", "symbol": "ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked"},
+        {"path": "src/tier1.rs", "symbol": "ht_quad_word_context_suppression_and_charge_order_are_exact"}
+      ],
+      "topic": "Complete selected actual UVLC/quad-word interpretation result and entire final stream/event/claim/work state; actual table views and context-zero MEL/advance/tick ordering; six interpretation receiver recipes await separate authorization, no full metadata/coefficient block or mixed-sequencing claim"
+    },
+    {
+      "contract_refs": [
         {
           "path": "src/refinement.rs",
           "symbol": "ht_mel_exponent"
