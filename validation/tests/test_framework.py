@@ -394,6 +394,70 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_retains_every_complete_assembly_helper_model_link(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-registered-tile-image-assembly"
+        ]
+        self.assertEqual(len(coverage["requirements"]), 1)
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        for model in (
+            "part1_assembly_component_dimensions", "part1_assembly_component_crop",
+            "part1_assembly_tile_step", "part1_place_assembly_tile",
+            "part1_place_selected_tile", "part1_assembly_rectangle",
+            "part1_assembly_row_prefix", "part1_assembly_selected_header",
+        ):
+            altered = copy.deepcopy(coverage)
+            reference = {"path": "specs/mod.rs", "symbol": model}
+            self.assertIn(reference, altered["requirements"][0]["spec_refs"])
+            altered["requirements"][0]["spec_refs"].remove(reference)
+            with self.subTest(missing_model=model), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(altered)
+
+    def test_inventory_binds_complete_assembly_to_full_result_and_exact_model(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        source = framework.ROOT / "src/image.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        for function, model, wrong_model in (
+            ("assemble_image", "part1_assemble_image", "part1_assemble_selected_image"),
+            ("assemble_selected_image", "part1_assemble_selected_image", "part1_assemble_image"),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if item["id"] == "part1-complete-registered-tile-image-assembly"
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            self.assertIn({"path": "src/image.rs", "symbol": function}, coverage["requirements"][0]["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [{"path": "src/image.rs", "symbol": function}]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            end = re.search(rf"\bfn\s+{re.escape(function)}\b", original).start()
+            start = original.rfind("#[cfg_attr", 0, end)
+            contract = original[start:end]
+            for before, after in (
+                ("ensures decoded_image_outcome(result)", "ensures decoded_image_outcome(unrelated)"),
+                ("ensures decoded_image_outcome(result)", "ensures unlisted_projection(result)"),
+                ("ensures decoded_image_outcome(result)", "ensures sequence_outcome(result)"),
+                ("ensures decoded_image_outcome(result)", "ensures result.is_ok()"),
+                ("ensures decoded_image_outcome(result)", "ensures result.is_err()"),
+                (f"== crate::specs::{model}(", f"== crate::specs::{wrong_model}("),
+                (f"== crate::specs::{model}(", "== crate::specs::unlisted_model("),
+                (f"== crate::specs::{model}(", f"<= crate::specs::{model}("),
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[end:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(function=function, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_complete_ht_metadata_to_actual_inputs_limit_and_caller(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

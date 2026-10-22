@@ -179,14 +179,32 @@ and lengths, monotone visited flags and protected previsited values. Independent
 wide-index tests cover full grids, short buffers, overlaps, empty blocks and
 coordinate failures. Geometry/quantization checks stay before the same real
 call. This is the complete write stage, not a result theorem for its surrounding
-placement, multilevel or tile/image assembly coordinator.
+placement or multilevel coordinator.
+
+The actual `assemble_image` and active `assemble_selected_image` entry points
+now have complete, unconditional Result relations over supplied tiles. Every
+output sample, component-info field, dimension, origin and fraction value is
+modeled. Shared actual component/tile/rectangle/row/pixel stages preserve complete
+partial sample/mask states, with first-error absorption. Registered coordinates,
+physical component-info bounds, cumulative decoded-byte charging, fraction
+consistency, overlaps and missing coverage retain their native ordering.
+Selected assembly keeps its distinct intersection-only sample domain and
+selection coverage errors; off-region matching tiles still undergo fraction
+and extent checks. Budget checks remain before crop-offset arithmetic.
+Independent widened coordinate/image tests compare complete results and exact
+error boundaries, including raw fractions and non-normalized metadata.
+
+Raw component-info lookup and reconstruction direction/count selectors have
+full-native-domain Result contracts with no valid-header or array-size premise.
+The only deleted inactive implementation is the nested selected-assembly
+duplicate; active production callers use the shared verified stages.
 
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
 the whole coefficient-placement coordinator, actual multilevel/resolution
-scheduling, arbitrary
-kernels, multiple-component transforms, decoder typed conversion, component/
-tile assembly and composed component-sample relations are not established here.
+scheduling, arbitrary kernels, multiple-component transforms, decoder typed
+conversion and the composed coefficient-to-component-sample bridge are not
+established here. Whole tile-sample-to-image assembly does not close those gaps.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 
 ### General scope

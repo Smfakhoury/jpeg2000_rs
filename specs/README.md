@@ -81,9 +81,35 @@ length premise is imposed on this transition. The caller's earlier geometry,
 coefficient extraction, quantization and fraction checks remain in their
 original order; this theorem does not silently replace those checks.
 
+Both actual image assembly entry points now have unconditional complete Result
+relations: `assemble_image` and the active `assemble_selected_image`. They fold
+the supplied tile samples into every component and preserve all image and
+component metadata. Registered geometry uses the actual Q16 registration
+coordinates. Cumulative decoded-byte accounting, physical component-info bounds,
+raw fraction consistency, overlap, missing coverage and arithmetic errors retain
+their original order; neither valid headers nor sufficient budgets are premises.
+The real production code shares component, tile, rectangle, row and pixel stages,
+whose mutable views include every sample and visited flag on failure.
+
+Base and selected assembly intentionally have different domains. Base assembly
+rejects zero tile axes and requires the exact tile area. Selected assembly checks
+matching tiles' fractions and overflowing extents even off-region, but copies
+only their intersection: samples outside that intersection need not exist.
+Wrong-component tiles are ignored, and selected missing coverage has its distinct
+selection error. Budget checking remains before selected crop-offset arithmetic.
+Zero axes/counts and arbitrary fraction values retain their native behavior.
+Only the inactive nested selected-assembly duplicate was removed; the theorem
+links the actual active caller, not that dead copy.
+
+`ImageSize::component` and the three reconstruction direction/count selectors
+also expose complete Results over their full native `u16`/`u8` domains. Raw
+component counts and decomposition levels are not assumed to fit the physical
+64/32-entry arrays. These interfaces do not establish parser validity.
+
 F6 remains open: the entire coefficient-placement coordinator, actual multilevel
 and resolution-plan execution, multiple-component transforms, decoder typed
-conversion, component/tile assembly and their composition into component-sample
+conversion and composition from coefficients through reconstruction and assembly
+into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
 Part-2 kernels and unavailable-reference adjudication remain separate, as do
 parsing and entropy decoding.
@@ -122,6 +148,11 @@ parsing and entropy decoding.
    including samples and visited flags. They do not establish the entire
    `prepare_tile_component_with_kernel` result simply because its callees
    now have contracts.
+9. `part1_assembly_pixel`, the row/rectangle/tile/component prefixes and
+   `part1_assembly_append_plane` describe the shared real assembly stages,
+   including complete write masks and ordered byte accounting.
+   `part1_assemble_image` and `part1_assemble_selected_image` close the actual
+   full image entry points relative to supplied tiles, not supplied coefficients.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 

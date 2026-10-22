@@ -16,6 +16,13 @@ pub type Part1DecodedImageModel = (u32, u32, u32, u32, Seq<Part1DecodedComponent
 pub type Part1DecodedImageState = (Result<(), crate::DecodeError>, Part1DecodedImageModel);
 pub type Part1WorkingSubbandModel = (u32, u32, u8, Seq<i64>, Seq<bool>);
 pub type Part1WorkingSubbandState = (Result<(), crate::DecodeError>, Part1WorkingSubbandModel);
+pub type Part1AssemblySize = (u32, u32, u32, u32, u16, Seq<crate::codestream::ComponentInfo>);
+pub type Part1AssemblyTile = (u16, u32, u32, u32, u32, u8, Seq<i64>);
+pub type Part1AssemblyPlane = (u32, u32, Option<u8>, Seq<i64>, Seq<bool>);
+pub type Part1AssemblyPlaneState = (Result<(), crate::DecodeError>, Part1AssemblyPlane);
+pub type Part1AssemblyState = (Result<(), crate::DecodeError>, Part1DecodedImageModel, u64);
+pub type Part1AssemblyDimensions = (crate::codestream::ComponentInfo, u32, u32, u32, u32, u32, u32);
+pub type Part1AssemblySelection = Option<([u32; 4], u32)>;
 
 pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
 pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
@@ -5871,6 +5878,527 @@ pub open spec fn part1_image_error(arithmetic: bool) -> crate::DecodeError {
         offset: 0,
         kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
             else { crate::MalformedKind::InvalidImageGeometry },
+    }
+}
+
+pub open spec fn part1_image_size_component(
+    components: u16, information: Seq<crate::codestream::ComponentInfo>, index: u16,
+) -> Result<crate::codestream::ComponentInfo, crate::DecodeError> {
+    if index >= components || index >= information.len() {
+        Err(part1_image_error(false))
+    } else {
+        Ok(information[index as int])
+    }
+}
+
+pub open spec fn part1_image_checked_u32(value: int) -> Result<u32, crate::DecodeError> {
+    if value < 0 || value > u32::MAX { Err(part1_image_error(true)) } else { Ok(value as u32) }
+}
+
+pub open spec fn part1_image_ceil_div(value: u32, divisor: u32) -> Result<u32, crate::DecodeError> {
+    if divisor == 0 { Err(part1_image_error(false)) }
+    else { Ok(part1_ceil_div(value as nat, divisor as nat) as u32) }
+}
+
+pub open spec fn part1_assembly_registered_ceil(value: u32, divisor: u32, registration: u16)
+    -> Result<u32, crate::DecodeError>
+{
+    if divisor == 0 { Err(part1_image_error(false)) }
+    else { color_registered_coordinate(value, divisor, registration, true) }
+}
+
+pub open spec fn part1_accumulate_decoded_bytes(samples: nat, before: u64, maximum: u64)
+    -> (Result<(), crate::DecodeError>, u64)
+{
+    let bytes = samples * 8;
+    if bytes > u64::MAX || before as nat + bytes > u64::MAX {
+        (Err(part1_image_error(true)), before)
+    } else {
+        let next = (before as nat + bytes) as u64;
+        if next > maximum {
+            (Err(crate::DecodeError::LimitExceeded {
+                resource: crate::Resource::DecodedBytes, limit: maximum, actual: next,
+            }), next)
+        } else { (Ok(()), next) }
+    }
+}
+
+pub open spec fn part1_assembly_write_indices(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, destination: usize, source: usize,
+) -> Part1AssemblyPlaneState {
+    if destination >= plane.3.len() || destination >= plane.4.len()
+        || source >= tile.6.len() || plane.4[destination as int] {
+        (Err(part1_image_error(false)), plane)
+    } else {
+        (Ok(()), (plane.0, plane.1, plane.2,
+            plane.3.update(destination as int, tile.6[source as int]), plane.4.update(destination as int, true)))
+    }
+}
+
+pub open spec fn part1_assembly_pixel(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, x: u32, y: u32, crop: Option<(u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    let destination_x = match crop {
+        Some(origin) => part1_image_checked_u32((x as int) - origin.0),
+        None => part1_image_checked_u32((tile.1 as int) + x),
+    };
+    let destination_y = match crop {
+        Some(origin) => part1_image_checked_u32((y as int) - origin.1),
+        None => part1_image_checked_u32((tile.2 as int) + y),
+    };
+    match destination_x {
+        Err(error) => (Err(error), plane),
+        Ok(dx) => match destination_y {
+            Err(error) => (Err(error), plane),
+            Ok(dy) => match part1_transform_offset(dy, plane.0, dx) {
+                Err(error) => (Err(error), plane),
+                Ok(destination) => {
+                    let source_x = match crop {
+                        Some(_) => part1_image_checked_u32((x as int) - tile.1),
+                        None => Ok(x),
+                    };
+                    let source_y = match crop {
+                        Some(_) => part1_image_checked_u32((y as int) - tile.2),
+                        None => Ok(y),
+                    };
+                    match source_x {
+                        Err(error) => (Err(error), plane),
+                        Ok(sx) => match source_y {
+                            Err(error) => (Err(error), plane),
+                            Ok(sy) => match part1_transform_offset(sy, tile.3, sx) {
+                                Err(error) => (Err(error), plane),
+                                Ok(source) => part1_assembly_write_indices(plane, tile, destination, source),
+                            },
+                        },
+                    }
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_row_prefix(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, x_start: u32, y: u32,
+    crop: Option<(u32, u32)>, completed: nat,
+) -> Part1AssemblyPlaneState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), plane) } else {
+        let previous = part1_assembly_row_prefix(plane, tile, x_start, y, crop, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_pixel(previous.1, tile, (x_start as nat + completed - 1) as u32, y, crop),
+        }
+    }
+}
+
+pub open spec fn part1_assembly_rectangle_prefix(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, rectangle: (u32, u32, u32, u32),
+    crop: Option<(u32, u32)>, completed: nat,
+) -> Part1AssemblyPlaneState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), plane) } else {
+        let previous = part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_row_prefix(
+                previous.1, tile, rectangle.0, (rectangle.1 as nat + completed - 1) as u32, crop,
+                (rectangle.2 as nat - rectangle.0 as nat) as nat,
+            ),
+        }
+    }
+}
+
+pub open spec fn part1_assembly_rectangle(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, rectangle: (u32, u32, u32, u32),
+    crop: Option<(u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    if rectangle.0 >= rectangle.2 || rectangle.1 >= rectangle.3 {
+        (Ok(()), plane)
+    } else {
+        part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, (rectangle.3 - rectangle.1) as nat)
+    }
+}
+
+pub open spec fn part1_validate_assembly_tile(plane: Part1AssemblyPlane, tile: Part1AssemblyTile)
+    -> Result<(), crate::DecodeError>
+{
+    if tile.3 == 0 || tile.4 == 0 { Err(part1_image_error(false)) } else {
+        match part1_image_checked_u32((tile.1 as int) + tile.3) {
+            Err(error) => Err(error),
+            Ok(x1) => if x1 > plane.0 { Err(part1_image_error(false)) } else {
+                match part1_image_checked_u32((tile.2 as int) + tile.4) {
+                    Err(error) => Err(error),
+                    Ok(y1) => if y1 > plane.1 { Err(part1_image_error(false)) } else {
+                        match part1_transform_area(tile.3, tile.4) {
+                            Err(error) => Err(error),
+                            Ok(count) => if tile.6.len() != count { Err(part1_image_error(false)) } else { Ok(()) },
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_place_assembly_tile(plane: Part1AssemblyPlane, tile: Part1AssemblyTile)
+    -> Part1AssemblyPlaneState
+{
+    match part1_validate_assembly_tile(plane, tile) {
+        Err(error) => (Err(error), plane),
+        Ok(()) => part1_assembly_rectangle_prefix(plane, tile, (0, 0, tile.3, tile.4), None, tile.4 as nat),
+    }
+}
+
+pub open spec fn part1_place_selected_tile(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, crop: (u32, u32, u32, u32),
+) -> Part1AssemblyPlaneState {
+    let x0 = if tile.1 > crop.0 { tile.1 } else { crop.0 };
+    let y0 = if tile.2 > crop.1 { tile.2 } else { crop.1 };
+    match part1_image_checked_u32((tile.1 as int) + tile.3) {
+        Err(error) => (Err(error), plane),
+        Ok(tile_x1) => match part1_image_checked_u32((tile.2 as int) + tile.4) {
+            Err(error) => (Err(error), plane),
+            Ok(tile_y1) => {
+                let x1 = if tile_x1 < crop.2 { tile_x1 } else { crop.2 };
+                let y1 = if tile_y1 < crop.3 { tile_y1 } else { crop.3 };
+                if x0 < x1 && y0 < y1 {
+                    part1_assembly_rectangle_prefix(
+                        plane, tile, (x0, y0, x1, y1), Some((crop.0, crop.1)), (y1 - y0) as nat,
+                    )
+                } else { (Ok(()), plane) }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_assembly_tile_step(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, component: u16, crop: Option<(u32, u32, u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    if tile.0 != component {
+        (Ok(()), plane)
+    } else if plane.2.is_some() && plane.2 != Some(tile.5) {
+        (Err(part1_image_error(false)), plane)
+    } else {
+        let changed = (plane.0, plane.1, Some(tile.5), plane.3, plane.4);
+        match crop {
+            None => part1_place_assembly_tile(changed, tile),
+            Some(region) => part1_place_selected_tile(changed, tile, region),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_assembly_tiles_prefix(
+    plane: Part1AssemblyPlane, tiles: Seq<Part1AssemblyTile>, component: u16,
+    crop: Option<(u32, u32, u32, u32)>, completed: nat,
+) -> Part1AssemblyPlaneState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), plane) } else {
+        let previous = part1_assembly_tiles_prefix(plane, tiles, component, crop, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_tile_step(previous.1, tiles[completed - 1], component, crop),
+        }
+    }
+}
+
+pub open spec fn part1_assembly_coverage_error(selected: bool) -> crate::DecodeError {
+    if selected {
+        crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutsideSelectedTiles }
+    } else { part1_image_error(false) }
+}
+
+pub open spec fn part1_collect_assembly_tiles(
+    plane: Part1AssemblyPlane, tiles: Seq<Part1AssemblyTile>, component: u16,
+    crop: Option<(u32, u32, u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    let result = part1_assembly_tiles_prefix(plane, tiles, component, crop, tiles.len());
+    match result.0 {
+        Err(_) => result,
+        Ok(()) => if result.1.2.is_none() || !(forall |i: int| 0 <= i < result.1.4.len() ==> result.1.4[i]) {
+            (Err(part1_assembly_coverage_error(crop.is_some())), result.1)
+        } else { result },
+    }
+}
+
+pub open spec fn part1_assembly_base_dimensions(
+    size: Part1AssemblySize, info: crate::codestream::ComponentInfo, extent: (u32, u32),
+) -> Result<Part1AssemblyDimensions, crate::DecodeError> {
+    match part1_assembly_registered_ceil(extent.0, info.x_subsampling as u32, info.x_registration) {
+        Err(error) => Err(error),
+        Ok(x1) => match part1_assembly_registered_ceil(size.2, info.x_subsampling as u32, info.x_registration) {
+            Err(error) => Err(error),
+            Ok(x0) => match part1_image_checked_u32((x1 as int) - x0) {
+                Err(error) => Err(error),
+                Ok(width) => match part1_assembly_registered_ceil(extent.1, info.y_subsampling as u32, info.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(y1) => match part1_assembly_registered_ceil(size.3, info.y_subsampling as u32, info.y_registration) {
+                        Err(error) => Err(error),
+                        Ok(y0) => match part1_image_checked_u32((y1 as int) - y0) {
+                            Err(error) => Err(error),
+                            Ok(height) => Ok((info, width, height, info.x_subsampling as u32, info.y_subsampling as u32, x0, y0)),
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_selected_dimensions(
+    info: crate::codestream::ComponentInfo, region: [u32; 4], scale: u32,
+) -> Result<Part1AssemblyDimensions, crate::DecodeError> {
+    match part1_image_checked_u32((info.x_subsampling as int) * (scale as int)) {
+        Err(error) => Err(error),
+        Ok(x_step) => match part1_image_checked_u32((info.y_subsampling as int) * (scale as int)) {
+            Err(error) => Err(error),
+            Ok(y_step) => match part1_assembly_registered_ceil(region[0], x_step, info.x_registration) {
+                Err(error) => Err(error),
+                Ok(x0) => match part1_assembly_registered_ceil(region[1], y_step, info.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(y0) => match part1_assembly_registered_ceil(region[2], x_step, info.x_registration) {
+                        Err(error) => Err(error),
+                        Ok(x1) => match part1_image_checked_u32((x1 as int) - x0) {
+                            Err(error) => Err(error),
+                            Ok(width) => match part1_assembly_registered_ceil(region[3], y_step, info.y_registration) {
+                                Err(error) => Err(error),
+                                Ok(y1) => match part1_image_checked_u32((y1 as int) - y0) {
+                                    Err(error) => Err(error),
+                                    Ok(height) => if width == 0 || height == 0 {
+                                        Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::EmptyComponentIntersection })
+                                    } else { Ok((info, width, height, x_step, y_step, x0, y0)) },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_component_dimensions(
+    size: Part1AssemblySize, component: u16, extent: (u32, u32), selection: Part1AssemblySelection,
+) -> Result<Part1AssemblyDimensions, crate::DecodeError> {
+    match part1_image_size_component(size.4, size.5, component) {
+        Err(error) => Err(error),
+        Ok(info) => match selection {
+            None => part1_assembly_base_dimensions(size, info, extent),
+            Some((region, scale)) => part1_assembly_selected_dimensions(info, region, scale),
+        },
+    }
+}
+
+pub open spec fn part1_assembly_component_crop(
+    size: Part1AssemblySize, dimensions: Part1AssemblyDimensions, selected: bool,
+) -> Result<Option<(u32, u32, u32, u32)>, crate::DecodeError> {
+    if !selected { Ok(None) } else {
+        match part1_assembly_registered_ceil(size.2, dimensions.3, dimensions.0.x_registration) {
+            Err(error) => Err(error),
+            Ok(full_x0) => match part1_image_checked_u32((dimensions.5 as int) - full_x0) {
+                Err(error) => Err(error),
+                Ok(x0) => match part1_assembly_registered_ceil(size.3, dimensions.4, dimensions.0.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(full_y0) => match part1_image_checked_u32((dimensions.6 as int) - full_y0) {
+                        Err(error) => Err(error),
+                        Ok(y0) => match part1_image_checked_u32((x0 as int) + dimensions.1) {
+                            Err(error) => Err(error),
+                            Ok(x1) => match part1_image_checked_u32((y0 as int) + dimensions.2) {
+                                Err(error) => Err(error),
+                                Ok(y1) => Ok(Some((x0, y0, x1, y1))),
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_assembly_append_plane(
+    image: Part1DecodedImageModel, bytes: u64, size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>,
+    component: u16, extent: (u32, u32), selection: Part1AssemblySelection, maximum: u64,
+) -> Part1AssemblyState {
+    match part1_assembly_component_dimensions(size, component, extent, selection) {
+        Err(error) => (Err(error), image, bytes),
+        Ok(dimensions) => match part1_transform_area(dimensions.1, dimensions.2) {
+            Err(error) => (Err(error), image, bytes),
+            Ok(count) => {
+                let charged = part1_accumulate_decoded_bytes(count as nat, bytes, maximum);
+                match charged.0 {
+                    Err(error) => (Err(error), image, charged.1),
+                    Ok(()) => match part1_assembly_component_crop(size, dimensions, selection.is_some()) {
+                        Err(error) => (Err(error), image, charged.1),
+                        Ok(crop) => {
+                            let initial = (dimensions.1, dimensions.2, None,
+                                Seq::new(count as nat, |i: int| 0i64), Seq::new(count as nat, |i: int| false));
+                            let collected = part1_collect_assembly_tiles(initial, tiles, component, crop);
+                            match collected.0 {
+                                Err(error) => (Err(error), image, charged.1),
+                                Ok(()) => match collected.1.2 {
+                                    None => (Err(part1_image_error(false)), image, charged.1),
+                                    Some(fraction_bits) => (Ok(()),
+                                        (image.0, image.1, image.2, image.3, image.4.push((
+                                            dimensions.1, dimensions.2, dimensions.0, fraction_bits, collected.1.3,
+                                        ))), charged.1),
+                                },
+                            }
+                        },
+                    },
+                }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_assembly_components_prefix(
+    image: Part1DecodedImageModel, bytes: u64, size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>,
+    extent: (u32, u32), selection: Part1AssemblySelection, maximum: u64, completed: nat,
+) -> Part1AssemblyState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), image, bytes) } else {
+        let previous = part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_append_plane(previous.1, previous.2, size, tiles, (completed - 1) as u16, extent, selection, maximum),
+        }
+    }
+}
+
+pub open spec fn part1_assemble_image(size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>, maximum: u64)
+    -> Result<Part1DecodedImageModel, crate::DecodeError>
+{
+    match part1_image_checked_u32((size.2 as int) + size.0) {
+        Err(error) => Err(error),
+        Ok(x1) => match part1_image_checked_u32((size.3 as int) + size.1) {
+            Err(error) => Err(error),
+            Ok(y1) => {
+                let initial = (size.0, size.1, size.2, size.3, Seq::empty());
+                let result = part1_assembly_components_prefix(initial, 0, size, tiles, (x1, y1), None, maximum, size.4 as nat);
+                match result.0 { Err(error) => Err(error), Ok(()) => Ok(result.1) }
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_selected_header(region: [u32; 4], discard: u8)
+    -> Result<(u32, u32, u32, u32, u32), crate::DecodeError>
+{
+    if region[0] >= region[2] || region[1] >= region[3] || discard > 31 {
+        Err(part1_image_error(false))
+    } else {
+        let scale = 1u32 << discard;
+        match part1_image_ceil_div(region[0], scale) {
+            Err(error) => Err(error),
+            Ok(x0) => match part1_image_ceil_div(region[1], scale) {
+                Err(error) => Err(error),
+                Ok(y0) => match part1_image_ceil_div(region[2], scale) {
+                    Err(error) => Err(error),
+                    Ok(x1) => match part1_image_checked_u32((x1 as int) - x0) {
+                        Err(error) => Err(error),
+                        Ok(width) => match part1_image_ceil_div(region[3], scale) {
+                            Err(error) => Err(error),
+                            Ok(y1) => match part1_image_checked_u32((y1 as int) - y0) {
+                                Err(error) => Err(error),
+                                Ok(height) => if width == 0 || height == 0 { Err(part1_image_error(false)) }
+                                    else { Ok((scale, x0, y0, width, height)) },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_assemble_selected_image(
+    size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>, region: [u32; 4], discard: u8, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match part1_assembly_selected_header(region, discard) {
+        Err(error) => Err(error),
+        Ok(header) => {
+            let initial = (header.3, header.4, header.1, header.2, Seq::empty());
+            let result = part1_assembly_components_prefix(initial, 0, size, tiles, (0, 0), Some((region, header.0)), maximum, size.4 as nat);
+            match result.0 { Err(error) => Err(error), Ok(()) => Ok(result.1) }
+        },
+    }
+}
+
+pub open spec fn part1_selector_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidCodingStyle },
+    }
+}
+
+pub open spec fn part1_decomposition_direction(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, stage: u8,
+) -> Result<crate::codestream::DecompositionDirection, crate::DecodeError> {
+    if stage >= levels || stage >= directions.len() {
+        Err(part1_selector_error(false))
+    } else {
+        Ok(directions[stage as int])
+    }
+}
+
+pub open spec fn part1_direction_for_resolution(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, resolution: u8,
+) -> Result<crate::codestream::DecompositionDirection, crate::DecodeError> {
+    if resolution == 0 || resolution > levels {
+        Err(part1_selector_error(false))
+    } else {
+        part1_decomposition_direction(levels, directions, (levels - resolution) as u8)
+    }
+}
+
+pub open spec fn part1_direction_detail_count(direction: crate::codestream::DecompositionDirection) -> nat {
+    match direction {
+        crate::codestream::DecompositionDirection::None => 0,
+        crate::codestream::DecompositionDirection::Horizontal => 1,
+        crate::codestream::DecompositionDirection::Vertical => 1,
+        crate::codestream::DecompositionDirection::TwoDimensional => 3,
+    }
+}
+
+pub open spec fn part1_subband_count_prefix(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, completed: nat,
+) -> Result<usize, crate::DecodeError>
+    decreases completed,
+{
+    if completed == 0 {
+        Ok(1)
+    } else {
+        match part1_subband_count_prefix(levels, directions, (completed - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_direction_for_resolution(levels, directions, completed as u8) {
+                Err(error) => Err(error),
+                Ok(direction) => {
+                    let next = previous as nat + part1_direction_detail_count(direction);
+                    if next > usize::MAX || completed as u8 == u8::MAX {
+                        Err(part1_selector_error(true))
+                    } else {
+                        Ok(next as usize)
+                    }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_subband_count_through_resolution(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, resolution: u8,
+) -> Result<usize, crate::DecodeError> {
+    if resolution > levels {
+        Err(part1_selector_error(false))
+    } else {
+        part1_subband_count_prefix(levels, directions, resolution as nat)
     }
 }
 

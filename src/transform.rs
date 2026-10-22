@@ -2010,7 +2010,7 @@ fn transform_dimension(value: u32) -> Result<usize, DecodeError> {
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_transform_area(width, height),
 ))]
-fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
+pub(crate) fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
     transform_dimension(width)?
         .checked_mul(transform_dimension(height)?)
         .ok_or_else(arithmetic_overflow)

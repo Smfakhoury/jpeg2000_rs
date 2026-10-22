@@ -32,6 +32,138 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_assembly_row_error_persists(
+    plane: crate::specs::Part1AssemblyPlane, tile: crate::specs::Part1AssemblyTile,
+    x: u32, y: u32, crop: Option<(u32, u32)>, completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_row_prefix(plane, tile, x, y, crop, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_row_prefix(plane, tile, x, y, crop, total)
+        == crate::specs::part1_assembly_row_prefix(plane, tile, x, y, crop, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_assembly_row_error_persists(plane, tile, x, y, crop, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_rectangle_error_persists(
+    plane: crate::specs::Part1AssemblyPlane, tile: crate::specs::Part1AssemblyTile,
+    rectangle: (u32, u32, u32, u32), crop: Option<(u32, u32)>, completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, total)
+        == crate::specs::part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_assembly_rectangle_error_persists(plane, tile, rectangle, crop, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_tiles_error_persists(
+    plane: crate::specs::Part1AssemblyPlane, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    component: u16, crop: Option<(u32, u32, u32, u32)>, completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, total)
+        == crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, completed),
+    decreases total - completed,
+{
+    reveal_with_fuel(crate::specs::part1_assembly_tiles_prefix, 1);
+    if completed < total {
+        production_assembly_tiles_error_persists(plane, tiles, component, crop, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_components_error_persists(
+    image: crate::specs::Part1DecodedImageModel, bytes: u64,
+    size: crate::specs::Part1AssemblySize, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    extent: (u32, u32), selection: crate::specs::Part1AssemblySelection, maximum: u64,
+    completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, total)
+        == crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, completed),
+    decreases total - completed,
+{
+    reveal_with_fuel(crate::specs::part1_assembly_components_prefix, 1);
+    if completed < total {
+        production_assembly_components_error_persists(image, bytes, size, tiles, extent, selection, maximum, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_tiles_empty(
+    plane: crate::specs::Part1AssemblyPlane, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    component: u16, crop: Option<(u32, u32, u32, u32)>,
+)
+    ensures crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, 0) == (Ok(()), plane),
+{
+    reveal_with_fuel(crate::specs::part1_assembly_tiles_prefix, 1);
+}
+
+pub proof fn production_assembly_tiles_step(
+    plane: crate::specs::Part1AssemblyPlane, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    component: u16, crop: Option<(u32, u32, u32, u32)>, count: nat,
+)
+    ensures crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count + 1)
+        == match crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count).0 {
+            Err(_) => crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count),
+            Ok(()) => crate::specs::part1_assembly_tile_step(
+                crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count).1,
+                tiles[count as int], component, crop,
+            ),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_assembly_tiles_prefix, 1);
+}
+
+pub proof fn production_assembly_components_empty(
+    image: crate::specs::Part1DecodedImageModel, bytes: u64,
+    size: crate::specs::Part1AssemblySize, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    extent: (u32, u32), selection: crate::specs::Part1AssemblySelection, maximum: u64,
+)
+    ensures crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, 0)
+        == (Ok(()), image, bytes),
+{
+    reveal_with_fuel(crate::specs::part1_assembly_components_prefix, 1);
+}
+
+pub proof fn production_assembly_components_step(
+    image: crate::specs::Part1DecodedImageModel, bytes: u64,
+    size: crate::specs::Part1AssemblySize, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    extent: (u32, u32), selection: crate::specs::Part1AssemblySelection, maximum: u64, count: nat,
+)
+    ensures crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count + 1)
+        == match crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count).0 {
+            Err(_) => crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count),
+            Ok(()) => crate::specs::part1_assembly_append_plane(
+                crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count).1,
+                crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count).2,
+                size, tiles, count as u16, extent, selection, maximum,
+            ),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_assembly_components_prefix, 1);
+}
+
+pub proof fn production_subband_count_error_persists(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>,
+    completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires completed <= total,
+        crate::specs::part1_subband_count_prefix(levels, directions, completed) == Err(error),
+    ensures crate::specs::part1_subband_count_prefix(levels, directions, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_subband_count_error_persists(levels, directions, completed, (total - 1) as nat, error);
+    }
+}
+
 pub proof fn production_crop_columns_empty(samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>)
     ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, 0) == Ok(initial),
 {

@@ -339,8 +339,12 @@ def validate_normative_coverage(
                 ("src/color.rs", "crop"): "converted_image_result",
                 ("src/color.rs", "crop_plane"): "normalized_plane_result",
                 ("src/decode.rs", "convert_selected_color"): "crate::color::converted_image_result",
+                ("src/image.rs", "assemble_image"): "decoded_image_outcome",
+                ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
             }.get((reference["path"], short))
             expected_result_model = {
+                ("src/image.rs", "assemble_image"): "part1_assemble_image",
+                ("src/image.rs", "assemble_selected_image"): "part1_assemble_selected_image",
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
                 ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
                 ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
