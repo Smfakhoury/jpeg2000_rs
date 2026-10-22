@@ -17,6 +17,14 @@ behavior; out-of-range precision is not normalized. The actual loops refine
 the shared dot-prefix denotation, not a supplied row outcome. Full mutable
 collection/stage traversal and general MCT remain separate work.
 
+The deep native mutable-component view includes each actual reference,
+geometry/subsampling field, dereferenced precision and every sample, not opaque
+borrow identity. `part2_mct_find_component` denotes the real first matching
+component, using the pinned standard-library first-index semantics. The actual
+lookup proves complete duplicate/missing/error behavior over this full view;
+malformed geometry and precision are not silently admitted as validity facts
+for later collections.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

@@ -14,6 +14,21 @@ pub type Part2MctCollection = (
     Option<Part2MctArray>, Option<Part2MctArray>, Option<Part2MctWavelet>,
 );
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
+pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
+
+pub open spec fn part2_mct_component_tags(components: Seq<Part2MctComponent>) -> Seq<u16> {
+    Seq::new(components.len(), |index: int| components[index].0)
+}
+
+pub open spec fn part2_mct_find_component(components: Seq<Part2MctComponent>, reference: u16)
+    -> Result<usize, crate::DecodeError>
+{
+    match part2_mct_component_tags(components).index_of_first(reference) {
+        None => Err(part1_transform_error(false)),
+        Some(index) => if index < 0 || index > usize::MAX { Err(part1_transform_error(true)) }
+            else { Ok(index as usize) },
+    }
+}
 
 pub open spec fn part2_mct_dependency_initial(
     offsets: Option<Part2MctArray>, source: Seq<i64>, fractions: Option<Seq<u8>>, row: usize,

@@ -27,6 +27,18 @@ pub(crate) struct TransformComponentMut<'a> {
     pub samples: &'a mut [i64],
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) closed spec fn transform_component_mut_view(component: &TransformComponentMut) -> crate::specs::Part2MctComponent {
+        (component.component, (component.x, component.y, component.width, component.height,
+            component.x_subsampling, component.y_subsampling), *component.fraction_bits, component.samples@)
+    }
+
+    pub(crate) closed spec fn transform_components_view(components: &[TransformComponentMut]) -> Seq<crate::specs::Part2MctComponent> {
+        Seq::new(components@.len(), |index: int| transform_component_mut_view(&components@[index]))
+    }
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct TileComponent<'a> {
@@ -3328,6 +3340,9 @@ fn ceil_divide_by_two(value: i64) -> Result<i64, DecodeError> {
         .ok_or_else(arithmetic_overflow)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_find_component(transform_components_view(components), reference),
+))]
 fn find_transform_component(
     components: &[TransformComponentMut<'_>],
     reference: u16,
@@ -3337,6 +3352,7 @@ fn find_transform_component(
         verus_keep_ghost,
         verus_spec(
             invariant index <= components.len(),
+            forall |earlier: int| 0 <= earlier < index ==> transform_components_view(components)[earlier].0 != reference,
             decreases components.len() - index,
         )
     )]
@@ -3346,9 +3362,24 @@ fn find_transform_component(
             None => false,
         };
         if matches {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_mct_component_found(transform_components_view(components), reference, index);
+            }
             return Ok(index);
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert forall |earlier: int| 0 <= earlier < index + 1 implies
+                transform_components_view(components)[earlier].0 != reference by {
+                if earlier == index { assert(transform_components_view(components)[earlier].0 != reference); }
+            }
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_component_missing(transform_components_view(components), reference);
     }
     Err(invalid_transform())
 }
@@ -4384,6 +4415,48 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_component_lookup_keeps_first_duplicate_and_all_raw_mutable_values() {
+        let references = [0, u16::MAX, 17, 0];
+        let mut samples = [vec![], vec![i64::MIN], vec![i64::MAX, 0], vec![3, -9, 1]];
+        let mut fractions = [u8::MAX, 0, 32, 1];
+        let before_samples = samples.clone();
+        let before_fractions = fractions;
+        let components: Vec<_> = samples
+            .iter_mut()
+            .zip(fractions.iter_mut())
+            .zip(references)
+            .map(
+                |((samples, fraction_bits), component)| TransformComponentMut {
+                    component,
+                    x: u32::MAX,
+                    y: 0,
+                    width: 0,
+                    height: u32::MAX,
+                    x_subsampling: 0,
+                    y_subsampling: u8::MAX,
+                    fraction_bits,
+                    samples,
+                },
+            )
+            .collect();
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for reference in 0..=u16::MAX {
+            let expected = references
+                .iter()
+                .position(|value| *value == reference)
+                .ok_or(invalid);
+            assert_eq!(find_transform_component(&components, reference), expected);
+        }
+        assert_eq!(find_transform_component(&[], 0), Err(invalid));
+        drop(components);
+        assert_eq!(samples, before_samples);
+        assert_eq!(fractions, before_fractions);
+    }
 
     #[test]
     fn native_mct_dependency_rows_match_independent_floor_and_rational_references() {

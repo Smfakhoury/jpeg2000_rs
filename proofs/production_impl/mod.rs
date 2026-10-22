@@ -32,6 +32,36 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_mct_component_found(components: Seq<crate::specs::Part2MctComponent>, reference: u16, index: usize)
+    requires index < components.len(), components[index as int].0 == reference,
+        forall |earlier: int| 0 <= earlier < index ==> components[earlier].0 != reference,
+    ensures crate::specs::part2_mct_find_component(components, reference) == Ok(index),
+{
+    let tags = crate::specs::part2_mct_component_tags(components);
+    assert(tags[index as int] == reference);
+    assert(tags.contains(reference));
+    tags.index_of_first_ensures(reference);
+    match tags.index_of_first(reference) {
+        Some(first) => {
+            if first < index { assert(components[first].0 != reference); }
+            if index < first { assert(tags[index as int] != reference); }
+        },
+        None => {},
+    }
+}
+
+pub proof fn production_mct_component_missing(components: Seq<crate::specs::Part2MctComponent>, reference: u16)
+    requires forall |index: int| 0 <= index < components.len() ==> components[index].0 != reference,
+    ensures crate::specs::part2_mct_find_component(components, reference) == Err(crate::specs::part1_transform_error(false)),
+{
+    let tags = crate::specs::part2_mct_component_tags(components);
+    tags.index_of_first_ensures(reference);
+    match tags.index_of_first(reference) {
+        Some(index) => { assert(components[index].0 != reference); },
+        None => {},
+    }
+}
+
 pub proof fn production_mct_dot_empty(
     initial: i128, matrix: crate::specs::Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>, start: usize,
 )
