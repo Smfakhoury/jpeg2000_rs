@@ -78,9 +78,43 @@ partial, reordered and constant bindings. Existing sparse-magnitude arithmetic
 also explicitly instantiates its original final-limb premise to stabilize the
 joined proof; no theorem domain, native algorithm, trust or limit changed.
 
-Whole-header direct/palette component selection, CDEF record application,
-final typed-image admission, parser associations and selected-pixel composition
-remain separate F7 closure obligations.
+Whole-header selection and final admission have a separate complete relation
+below. Parser associations and selected-pixel composition remain separate F7
+closure obligations.
+
+## Complete native output-header and image admission
+
+The actual `decode::apply_jp2_output` now returns exactly
+`part2_apply_output_header` for every native typed image, supplied header and
+actual component/decoded-byte caps. Empty CMAP copies all components; otherwise
+the actual mapping vector selects sources in order. Direct mapping retains
+existing CDEF; palette mapping clears it before the actual ordered header CDEF
+records are appended. Duplicate records and unnormalized associations are
+retained. The first invalid source uses the image-index error, whereas a missing
+palette, invalid palette descriptor or out-of-range CDEF channel uses the
+container-mismatch error. Earlier mapping errors precede final image admission.
+
+The one executable `typed_image_from_components_with_origin` body is shared
+with the existing `TypedImage::from_components_with_origin` API. Its full result
+checks x/y origin addition, native u16 count conversion, component cap, then
+each actual component's area/cardinality and cumulative eight-byte sample
+charge, in production order. It preserves every sample, tag, metadata field
+and CDEF record. Precision, subsampling, sign/tag agreement, image/component
+dimension agreement and unused header image/color/count hints are not newly
+validated. The actual borrowed `TypedImage::component` has an exact result
+relation too. Explicit enum error construction and checked conversion matches
+retain the original native behavior while exposing complete error payloads.
+
+An independent whole-header oracle compares 15,624 supplied contexts, including
+malformed native shapes/tags/metadata, absent palettes, duplicate definitions,
+ignored header count hints, origin overflow and tight byte caps. Separate
+admission regressions cover 64/65 and 65,535/65,536 component thresholds and
+first-error priority. Three exact producer/model/input recipes reject partial
+results, wrong owners/caps/inputs and a wrong primary clause followed by a
+correct duplicate. Method resolution searches all formatted impl blocks of
+the exact owner and rejects ambiguity, foreign owners and nested functions.
+These are actual supplied-header results, not parsing/association, compressed
+decoding, target derivation or whole-F7 completion claims.
 
 ## Reproduce verification
 

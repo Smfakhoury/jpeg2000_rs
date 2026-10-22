@@ -2939,42 +2939,96 @@ fn decode_jpx_file_selected<'a>(
     Ok((image, associated_header))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_typed_image_outcome(result) == crate::specs::part2_apply_output_header(
+        crate::image::typed_image_value_view(decoded), jp2::output_header_view(header),
+        crate::limits::resource_component_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn apply_jp2_output(
     decoded: TypedImage,
     header: &jp2::Jp2Header,
     limits: &ResourceLimits,
 ) -> Result<TypedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input_components = crate::image::typed_components_output_view(crate::image::typed_image_components(&decoded));
+        let ghost raw_header = jp2::output_header_view(header);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(input_components =~= Seq::new(crate::image::typed_image_value_view(decoded).1.len(),
+            |i: int| (crate::image::typed_image_value_view(decoded).1[i], crate::image::typed_image_value_view(decoded).2[i])));
+    }
     let mut components = if header.component_mappings.is_empty() {
         let mut copied = Vec::with_capacity(decoded.components().len());
         let component_count = decoded.components().len();
         let mut component_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases component_count - component_index,)
+            verus_spec(
+                invariant component_index <= component_count,
+                component_count == input_components.len(),
+                raw_header == jp2::output_header_view(header),
+                raw_header.1.len() == 0,
+                input_components == crate::image::typed_components_output_view(crate::image::typed_image_components(&decoded)),
+                input_components == Seq::new(crate::image::typed_image_value_view(decoded).1.len(),
+                    |i: int| (crate::image::typed_image_value_view(decoded).1[i], crate::image::typed_image_value_view(decoded).2[i])),
+                crate::image::typed_components_output_view(copied@) == input_components.take(component_index as int),
+                decreases component_count - component_index,
+            )
         )]
         while component_index < component_count {
-            copied.push(copy_typed_component(
+            let component = copy_typed_component(
                 decoded
                     .components()
                     .get(component_index)
                     .ok_or_else(invalid_jp2_output)?,
-            )?);
+            )?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_typed_components_output_push(copied@, component);
+                assert(input_components.take(component_index as int + 1) =~= input_components.take(component_index as int).push(input_components[component_index as int]));
+            }
+            copied.push(component);
             component_index = component_index
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::image::typed_components_output_view(copied@) =~= input_components);
+        }
         copied
     } else {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_output_mapping_empty(input_components, raw_header);
+        }
         let mut mapped = Vec::with_capacity(header.component_mappings.len());
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(crate::image::typed_components_output_view(mapped@) =~= Seq::empty()); }
         let mut mapping_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant mapping_index <= header.component_mappings.len(),
+                raw_header == jp2::output_header_view(header),
+                raw_header.1.len() > 0,
+                input_components == crate::image::typed_components_output_view(crate::image::typed_image_components(&decoded)),
+                input_components == Seq::new(crate::image::typed_image_value_view(decoded).1.len(),
+                    |i: int| (crate::image::typed_image_value_view(decoded).1[i], crate::image::typed_image_value_view(decoded).2[i])),
+                crate::specs::part2_output_mapping_prefix(input_components, raw_header, mapping_index as nat)
+                    == Ok(crate::image::typed_components_output_view(mapped@)),
                 decreases header.component_mappings.len() - mapping_index,
             )
         )]
         while mapping_index < header.component_mappings.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_output_mapping_step(input_components, raw_header, mapping_index as nat);
+                crate::proofs::production_impl::production_output_mapping_error(input_components, raw_header, mapping_index as nat + 1, raw_header.1.len());
+            }
             let mapping = header
                 .component_mappings
                 .get(mapping_index)
@@ -2987,6 +3041,10 @@ fn apply_jp2_output(
                     map_palette_component(source, palette, column)?
                 }
             };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_typed_components_output_push(mapped@, component);
+            }
             mapped.push(component);
             mapping_index = mapping_index
                 .checked_add(1)
@@ -2995,15 +3053,37 @@ fn apply_jp2_output(
         mapped
     };
 
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost mapped_start = crate::image::typed_components_output_view(components@); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_output_definition_empty(mapped_start, raw_header.2);
+    }
     let mut definition_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant definition_index <= header.channel_definition_records.len(),
+            raw_header == jp2::output_header_view(header),
+            input_components == crate::image::typed_components_output_view(crate::image::typed_image_components(&decoded)),
+            input_components == Seq::new(crate::image::typed_image_value_view(decoded).1.len(),
+                |i: int| (crate::image::typed_image_value_view(decoded).1[i], crate::image::typed_image_value_view(decoded).2[i])),
+            (if raw_header.1.len() == 0 { Ok(input_components) }
+                else { crate::specs::part2_output_mapping_prefix(input_components, raw_header, raw_header.1.len()) })
+                == Ok(mapped_start),
+            crate::specs::part2_output_definition_prefix(mapped_start, raw_header.2, definition_index as nat)
+                == Ok(crate::image::typed_components_output_view(components@)),
             decreases header.channel_definition_records.len() - definition_index,
         )
     )]
     while definition_index < header.channel_definition_records.len() {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost previous_components = crate::image::typed_components_output_view(components@); }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_output_definition_step(mapped_start, raw_header.2, definition_index as nat);
+            crate::proofs::production_impl::production_output_definition_error(mapped_start, raw_header.2, definition_index as nat + 1, raw_header.2.len());
+        }
         let record = header
             .channel_definition_records
             .get(definition_index)
@@ -3012,11 +3092,21 @@ fn apply_jp2_output(
             .get_mut(usize::from(record.channel))
             .ok_or_else(invalid_jp2_output)?;
         component.add_channel_definition(record.definition);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let channel = record.channel as int;
+            let previous = previous_components[channel];
+            let current = crate::image::typed_component_output_view(&components@[channel]);
+            assert(current.0 == previous.0);
+            assert(current.1 =~= previous.1.push(crate::image::channel_definition_view(record.definition)));
+            assert(crate::image::typed_components_output_view(components@) =~= previous_components.update(
+                channel, (previous.0, previous.1.push(crate::image::channel_definition_view(record.definition)))));
+        }
         definition_index = definition_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
-    TypedImage::from_components_with_origin(
+    crate::image::typed_image_from_components_with_origin(
         decoded.width(),
         decoded.height(),
         decoded.x_origin(),
@@ -5935,6 +6025,296 @@ mod tests {
         jp2.extend(box32(*b"jp2h", &header));
         jp2.extend(box32(*b"jp2c", codestream));
         jp2
+    }
+
+    #[test]
+    fn whole_output_header_matches_independent_native_order_and_admission_oracle() {
+        use crate::codestream::ComponentInfo;
+        use crate::image::{ChannelAssociation, ChannelDefinition, ChannelType};
+
+        type OutputComponent = (
+            u32,
+            u32,
+            ComponentInfo,
+            TypedSamples,
+            Vec<ChannelDefinition>,
+        );
+        type OutputImage = ((u32, u32, u32, u32), Vec<OutputComponent>);
+
+        fn malformed(kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput { offset: 0, kind }
+        }
+
+        fn own_samples(samples: &TypedSamples) -> TypedSamples {
+            match samples {
+                TypedSamples::Signed(values) => TypedSamples::Signed(values.clone()),
+                TypedSamples::Unsigned(values) => TypedSamples::Unsigned(values.clone()),
+            }
+        }
+
+        fn observe(image: &TypedImage) -> OutputImage {
+            (
+                (
+                    image.width(),
+                    image.height(),
+                    image.x_origin(),
+                    image.y_origin(),
+                ),
+                image
+                    .components()
+                    .iter()
+                    .map(|component| {
+                        (
+                            component.width(),
+                            component.height(),
+                            component.info(),
+                            own_samples(component.samples()),
+                            component.channel_definitions().to_vec(),
+                        )
+                    })
+                    .collect(),
+            )
+        }
+
+        fn source(case: usize) -> TypedImage {
+            let mut components = Vec::new();
+            for index in 0..2 {
+                let info = ComponentInfo {
+                    precision: 0,
+                    signed: index != 0,
+                    x_subsampling: 0,
+                    y_subsampling: u8::MAX,
+                    x_registration: u16::MAX,
+                    y_registration: 17,
+                };
+                let samples = match (case, index) {
+                    (3 | 6, _) => TypedSamples::Signed(vec![]),
+                    (4, 0) => TypedSamples::Unsigned(vec![u64::MAX]),
+                    (5, 0) => TypedSamples::Signed(vec![-1]),
+                    (_, 0) => TypedSamples::Signed(vec![0, 1]),
+                    (_, _) => TypedSamples::Unsigned(vec![1, 0]),
+                };
+                let (width, height) = match case {
+                    2 if index == 0 => (3, 1),
+                    3 => (0, u32::MAX),
+                    4 | 5 if index == 0 => (1, 1),
+                    6 => (u32::MAX, u32::MAX),
+                    _ => (2, 1),
+                };
+                let mut component = TypedComponent::from_parts(width, height, info, samples);
+                component.add_channel_definition(ChannelDefinition::new(
+                    ChannelType::Unspecified,
+                    ChannelAssociation::Color(u16::MAX),
+                ));
+                components.push(component);
+            }
+            TypedImage::for_test(2, 1, if case == 1 { u32::MAX } else { 3 }, 5, components)
+        }
+
+        fn oracle(
+            image: &TypedImage,
+            mappings: &[jp2::ComponentMapping],
+            definitions: &[jp2::ChannelDefinitionRecord],
+            palette: bool,
+            maximum: u64,
+        ) -> Result<OutputImage, DecodeError> {
+            let (geometry, input) = observe(image);
+            let mut output = Vec::new();
+            if mappings.is_empty() {
+                output = input;
+            } else {
+                for mapping in mappings {
+                    let source = input
+                        .get(usize::from(mapping.component))
+                        .ok_or(malformed(MalformedKind::InvalidImageGeometry))?;
+                    let samples = match mapping.mapping_type {
+                        jp2::MappingType::Direct => own_samples(&source.3),
+                        jp2::MappingType::Palette { column } => {
+                            if !palette || column != 0 {
+                                return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+                            }
+                            let indices = match &source.3 {
+                                TypedSamples::Signed(values) => values
+                                    .iter()
+                                    .map(|value| i128::from(*value))
+                                    .collect::<Vec<_>>(),
+                                TypedSamples::Unsigned(values) => values
+                                    .iter()
+                                    .map(|value| i128::from(*value))
+                                    .collect::<Vec<_>>(),
+                            };
+                            let mut values = Vec::new();
+                            for index in indices {
+                                if !(0..2).contains(&index) {
+                                    return Err(malformed(
+                                        MalformedKind::ContainerCodestreamMismatch,
+                                    ));
+                                }
+                                values.push(if index == 0 { 7 } else { -3 });
+                            }
+                            TypedSamples::Signed(values)
+                        }
+                    };
+                    let (info, definitions) = match mapping.mapping_type {
+                        jp2::MappingType::Direct => (source.2, source.4.clone()),
+                        jp2::MappingType::Palette { .. } => (
+                            ComponentInfo {
+                                precision: 8,
+                                signed: true,
+                                ..source.2
+                            },
+                            vec![],
+                        ),
+                    };
+                    output.push((source.0, source.1, info, samples, definitions));
+                }
+            }
+            for record in definitions {
+                let component = output
+                    .get_mut(usize::from(record.channel))
+                    .ok_or(malformed(MalformedKind::ContainerCodestreamMismatch))?;
+                component.4.push(record.definition);
+            }
+            if u64::from(geometry.0) + u64::from(geometry.2) > u64::from(u32::MAX)
+                || u64::from(geometry.1) + u64::from(geometry.3) > u64::from(u32::MAX)
+            {
+                return Err(malformed(MalformedKind::ArithmeticOverflow));
+            }
+            if output.len() > usize::from(u16::MAX) {
+                return Err(malformed(MalformedKind::ArithmeticOverflow));
+            }
+            if output.len() > 64 {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Components,
+                    limit: 64,
+                    actual: output.len() as u64,
+                });
+            }
+            let mut bytes = 0_u128;
+            for component in &output {
+                let area = u128::from(component.0) * u128::from(component.1);
+                if area > usize::MAX as u128 {
+                    return Err(malformed(MalformedKind::ArithmeticOverflow));
+                }
+                let length = match &component.3 {
+                    TypedSamples::Signed(values) => values.len(),
+                    TypedSamples::Unsigned(values) => values.len(),
+                };
+                if area != length as u128 {
+                    return Err(malformed(MalformedKind::InvalidImageGeometry));
+                }
+                bytes += length as u128 * 8;
+                if bytes > u128::from(u64::MAX) {
+                    return Err(malformed(MalformedKind::ArithmeticOverflow));
+                }
+                if bytes > u128::from(maximum) {
+                    return Err(DecodeError::LimitExceeded {
+                        resource: Resource::DecodedBytes,
+                        limit: maximum,
+                        actual: bytes as u64,
+                    });
+                }
+            }
+            Ok((geometry, output))
+        }
+
+        let definition =
+            ChannelDefinition::new(ChannelType::Opacity, ChannelAssociation::WholeImage);
+        let record = |channel| jp2::ChannelDefinitionRecord {
+            channel,
+            definition,
+        };
+        let definitions = [
+            vec![],
+            vec![record(0)],
+            vec![record(0), record(0)],
+            vec![record(1), record(0)],
+            vec![record(2)],
+            vec![record(u16::MAX)],
+        ];
+        let choices = [
+            jp2::ComponentMapping {
+                component: 0,
+                mapping_type: jp2::MappingType::Direct,
+            },
+            jp2::ComponentMapping {
+                component: 1,
+                mapping_type: jp2::MappingType::Direct,
+            },
+            jp2::ComponentMapping {
+                component: 0,
+                mapping_type: jp2::MappingType::Palette { column: 0 },
+            },
+            jp2::ComponentMapping {
+                component: 0,
+                mapping_type: jp2::MappingType::Palette { column: 1 },
+            },
+            jp2::ComponentMapping {
+                component: u16::MAX,
+                mapping_type: jp2::MappingType::Palette { column: 0 },
+            },
+        ];
+        let mut mapping_cases = vec![vec![]];
+        for first in choices {
+            mapping_cases.push(vec![first]);
+            for second in choices {
+                mapping_cases.push(vec![first, second]);
+            }
+        }
+        let mut contexts = 0;
+        for mappings in mapping_cases {
+            for palette in [false, true] {
+                for records in &definitions {
+                    for case in 0..7 {
+                        for maximum in [1, 15, 16, 31, 32, 48] {
+                            let header = jp2::Jp2Header {
+                                image: jp2::ImageHeader {
+                                    width: u32::MAX,
+                                    height: 0,
+                                    components: 0,
+                                    bit_depth: jp2::ComponentBitDepth::Variable,
+                                    unknown_color_space: true,
+                                    intellectual_property: true,
+                                },
+                                color: jp2::ColorSpecification::enumerated(u32::MAX),
+                                nested_box_count: u32::MAX,
+                                palette_entries: u16::MAX,
+                                palette_columns: u8::MAX,
+                                component_mapping_entries: u16::MAX,
+                                channel_definitions: u16::MAX,
+                                palette: palette.then(|| {
+                                    jp2::Palette::for_test(
+                                        2,
+                                        vec![jp2::PaletteColumn {
+                                            precision: 8,
+                                            signed: true,
+                                        }],
+                                        vec![7, -3],
+                                    )
+                                }),
+                                component_mappings: mappings.clone(),
+                                channel_definition_records: records.clone(),
+                                capture_resolution: None,
+                                display_resolution: None,
+                            };
+                            let input = source(case);
+                            let expected = oracle(&input, &mappings, records, palette, maximum);
+                            let limits = ResourceLimits::default()
+                                .with_maximum_decoded_bytes(maximum)
+                                .unwrap();
+                            let actual = apply_jp2_output(input, &header, &limits)
+                                .map(|image| observe(&image));
+                            assert_eq!(
+                                actual, expected,
+                                "case={case} maximum={maximum} mappings={mappings:?} palette={palette} records={records:?}"
+                            );
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 15_624);
     }
 
     #[test]

@@ -281,6 +281,123 @@ pub proof fn production_atk_steps_error_guard(original: Seq<i64>, kernel: crate:
     if count < end { production_atk_steps_error_guard(original, kernel, low_first, count, (end - 1) as nat); }
 }
 
+pub proof fn production_typed_components_output_push(
+    components: Seq<crate::TypedComponent>, component: crate::TypedComponent,
+)
+    ensures crate::image::typed_components_output_view(components.push(component))
+        == crate::image::typed_components_output_view(components).push(crate::image::typed_component_value_view(component)),
+{
+    assert(crate::image::typed_components_output_view(components.push(component))
+        =~= crate::image::typed_components_output_view(components).push(crate::image::typed_component_value_view(component)));
+}
+
+pub proof fn production_output_mapping_empty(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, header: crate::specs::Part2OutputHeader,
+)
+    ensures crate::specs::part2_output_mapping_prefix(components, header, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part2_output_mapping_prefix, 1);
+}
+
+pub proof fn production_output_mapping_step(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, header: crate::specs::Part2OutputHeader, count: nat,
+)
+    ensures crate::specs::part2_output_mapping_prefix(components, header, count + 1)
+        == match crate::specs::part2_output_mapping_prefix(components, header, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_output_mapped_component(components, header.0, header.1[count as int]) {
+                Err(error) => Err(error), Ok(component) => Ok(previous.push(component)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_output_mapping_prefix, 1);
+}
+
+pub proof fn production_output_mapping_error(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, header: crate::specs::Part2OutputHeader, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_output_mapping_prefix(components, header, start).is_err()
+        ==> crate::specs::part2_output_mapping_prefix(components, header, end)
+            == crate::specs::part2_output_mapping_prefix(components, header, start),
+    decreases end - start,
+{
+    if end > start {
+        production_output_mapping_error(components, header, start, (end - 1) as nat);
+        production_output_mapping_step(components, header, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_output_definition_empty(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, definitions: Seq<(u16, crate::specs::ColorDefinition)>,
+)
+    ensures crate::specs::part2_output_definition_prefix(components, definitions, 0) == Ok(components),
+{
+    reveal_with_fuel(crate::specs::part2_output_definition_prefix, 1);
+}
+
+pub proof fn production_output_definition_step(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, definitions: Seq<(u16, crate::specs::ColorDefinition)>, count: nat,
+)
+    ensures crate::specs::part2_output_definition_prefix(components, definitions, count + 1)
+        == match crate::specs::part2_output_definition_prefix(components, definitions, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part2_output_apply_definition(previous, definitions[count as int]),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_output_definition_prefix, 1);
+}
+
+pub proof fn production_output_definition_error(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, definitions: Seq<(u16, crate::specs::ColorDefinition)>, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_output_definition_prefix(components, definitions, start).is_err()
+        ==> crate::specs::part2_output_definition_prefix(components, definitions, end)
+            == crate::specs::part2_output_definition_prefix(components, definitions, start),
+    decreases end - start,
+{
+    if end > start {
+        production_output_definition_error(components, definitions, start, (end - 1) as nat);
+        production_output_definition_step(components, definitions, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_typed_image_admission_empty(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, maximum: u64,
+)
+    ensures crate::specs::part2_typed_image_admission_prefix(components, maximum, 0) == Ok(0),
+{
+    reveal_with_fuel(crate::specs::part2_typed_image_admission_prefix, 1);
+}
+
+pub proof fn production_typed_image_admission_step(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, maximum: u64, count: nat,
+)
+    ensures crate::specs::part2_typed_image_admission_prefix(components, maximum, count + 1)
+        == match crate::specs::part2_typed_image_admission_prefix(components, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part2_typed_image_admit_component(components[count as int], previous, maximum),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_typed_image_admission_prefix, 1);
+}
+
+pub proof fn production_typed_image_admission_error(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, maximum: u64, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_typed_image_admission_prefix(components, maximum, start).is_err()
+        ==> crate::specs::part2_typed_image_admission_prefix(components, maximum, end)
+            == crate::specs::part2_typed_image_admission_prefix(components, maximum, start),
+    decreases end - start,
+{
+    if end > start {
+        production_typed_image_admission_error(components, maximum, start, (end - 1) as nat);
+        production_typed_image_admission_step(components, maximum, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_prepare_fold_empty(
     initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
     geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64,
