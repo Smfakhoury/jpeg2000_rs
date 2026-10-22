@@ -306,6 +306,54 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_crop_to_exact_full_result_models(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        source = framework.ROOT / "src/color.rs"
+        original = source.read_text()
+        read_text = Path.read_text
+        for symbol, projection in (
+            ("ConvertedImage::crop", "converted_image_result(result)"),
+            ("crop_plane", "normalized_plane_result(result)"),
+            ("crop_sample", "result"),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if item["id"] == "part1-complete-converted-selection-crop"
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            coverage["requirements"][0]["contract_refs"] = [{"path": "src/color.rs", "symbol": symbol}]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            short = symbol.rsplit("::", 1)[-1]
+            end = re.search(rf"\bfn\s+{re.escape(short)}\b", original).start()
+            start = original.rfind("#[cfg_attr", 0, end)
+            contract = original[start:end]
+            unbound = "unrelated" if projection == "result" else projection.replace("(result)", "(unrelated)")
+            for before, after in (
+                (f"ensures {projection}", f"ensures {unbound}"),
+                (f"ensures {projection}", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}", "ensures result.is_ok()"),
+                ("== crate::specs::", "<= crate::specs::"),
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[end:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+            wrong_model = "color_crop_plane" if short == "crop" else "color_crop_image"
+            modified_contract = re.sub(r"== crate::specs::\w+\(", f"== crate::specs::{wrong_model}(", contract, count=1)
+            self.assertNotEqual(modified_contract, contract)
+            modified = original[:start] + modified_contract + original[end:]
+            with mock.patch.object(Path, "read_text",
+                                   lambda path, *args, **kwargs:
+                                   modified if path == source else read_text(path, *args, **kwargs)), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_each_complete_color_converter_result_to_its_exact_model(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/color.rs"
