@@ -52,8 +52,37 @@ does not validate plane geometry. Checked rounding/level-shift overflow occurs
 before clipping. This API is exercised by concrete consumer tests; it is not
 the decoder's separate image/component conversion path.
 
-F6 remains open: coefficient placement into subband buffers, actual multilevel
-and resolution-plan execution, component transforms, decoder image/component
+The actual free reversible and fixed-Q16 irreversible component transforms
+have complete mutable `DecodedImage` state relations. Their shared production
+loop checks the existing first-three-component compatibility and sample
+lengths, then transforms samples in order. All `i64` triples are admitted;
+checked sum/product/bias/addition failures determine rejection. Every image
+and component metadata field, sample length and component beyond the first
+three is preserved, including on failure. The previously completed sample
+prefix remains committed when a later pixel fails. These functions do not
+add a plane-area consistency or precision/registration policy absent from
+their existing compatibility checks. A closed `View` covers all decoded
+fields; it does not reuse or alter F7's typed/CDEF structures.
+
+Raw kernel/step/coefficient views and exact getter contracts expose only the
+actual consumed representation fields, including all coefficient bytes and
+the recorded width. They impose no parser validation or normalization facts
+and do not by themselves prove an arbitrary-kernel algorithm.
+
+The real quantized-block write loop in
+`decode::prepare_tile_component_with_kernel` now calls one shared verified
+production block/row/pixel implementation. Its complete working-subband state
+model includes width, height, fraction bits, samples and the entire visited
+mask. Source/destination/mask length mismatches, previsited cells and checked
+coordinate/index errors retain all prior writes. Metadata and buffer lengths
+remain unchanged; marked cells never become unmarked and previsited sample
+values are protected. No rectangular-shape, prevalidated-buffer or sufficient
+length premise is imposed on this transition. The caller's earlier geometry,
+coefficient extraction, quantization and fraction checks remain in their
+original order; this theorem does not silently replace those checks.
+
+F6 remains open: the entire coefficient-placement coordinator, actual multilevel
+and resolution-plan execution, multiple-component transforms, decoder typed
 conversion, component/tile assembly and their composition into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
 Part-2 kernels and unavailable-reference adjudication remain separate, as do
@@ -83,8 +112,55 @@ parsing and entropy decoding.
    `part1_inverse_level` add actual geometry, budgets and plane metadata.
 6. `part1_round_fixed`, `part1_conversion_prefix` and `part1_convert_samples`
    describe the existing public final-sample conversion API.
+7. `part1_component_values`, `part1_component_pixel_state`,
+   `part1_component_transform_prefix` and `part1_apply_component_transform`
+   give the actual complete decoded-image component-transform relation.
+   `part1_component_transform_frame` states its complete metadata/extra-plane
+   preservation property, not a substitute for sample semantics.
+8. `part1_quantized_block_pixel`, `part1_quantized_block_row` and
+   `part1_quantized_block_rows` describe the actual coefficient write stage,
+   including samples and visited flags. They do not establish the entire
+   `prepare_tile_component_with_kernel` result simply because its callees
+   now have contracts.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
+
+### Full native magnitude interface
+
+`magnitude::magnitude_value` is a public **closed** natural-number view of all
+six little-endian `u64` limbs, defined by `part1_magnitude_value`; it is not a
+low-word surrogate. Capacity is `part1_magnitude_capacity() = 2^384`.
+The existing raw `magnitude_limbs` view and ROI contracts remain available.
+
+The original receiver operations have full native-domain contracts:
+
+- `checked_add`: exact natural sum below capacity; otherwise precisely
+  `MalformedInput { offset: 0, kind: ArithmeticOverflow }`.
+- `checked_shl`: exact multiplication by `2^shift` when representable, for
+  every `u16` shift. Zero succeeds even for shifts at least 384; nonzero
+  values reject there. No HT-only success premise is imposed.
+- `shift_right`: floor division by `2^shift`, including zero at shifts
+  at least 384, with the complete raw-buffer relation retained.
+- `low_u64`: full-value modulo `2^64`; `is_zero`: true iff the full value is
+  zero. The numeric/raw representation agreement and intrinsic capacity
+  bounds are exported by these contracts.
+
+Verified native producers are `magnitude_zero`, `magnitude_from_u64`,
+`magnitude_from_limbs` and `magnitude_single_bit`. The zero helper returns
+exactly the existing `Magnitude::ZERO`; the bit helper accepts the entire
+`u16` domain and returns the exact arithmetic error at bit indices at least
+384. Existing public associated factories retain their API and delegate to
+these same implementations. Verified internal callers should use the free
+factories because the pinned conditional-attribute frontend cannot infer
+associated static-function contexts; no trusted specification compensates
+for that limitation.
+
+Only the partial native left-shift buffer witness is in
+`proofs/internal_specs.rs`. Full value, shift and overflow denotations remain
+on this reading path; their word-composition, carry and natural arithmetic
+lemmas are proved in the production proof module. Native optimized limb
+algorithms remain in `src/magnitude.rs`. Independent bit-array tests cover
+every `u16` shift/bit index and complete 384-bit carry propagation.
 
 The executable cores `inverse_quantize_values` and `inverse_quantize_plane`
 take an explicit decoded-byte budget. The original `inverse_quantize` and

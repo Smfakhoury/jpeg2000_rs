@@ -7,6 +7,16 @@ pub use crate::proofs::internal_specs::{
 
 verus! {
 
+pub type Part2RawKernelCoefficient = (Seq<u8>, u8);
+pub type Part2RawKernelStep = (i8, u8, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelCoefficient>);
+pub type Part2RawKernel = (bool, u8, bool, bool, bool, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelStep>);
+
+pub type Part1DecodedComponentModel = (u32, u32, crate::codestream::ComponentInfo, u8, Seq<i64>);
+pub type Part1DecodedImageModel = (u32, u32, u32, u32, Seq<Part1DecodedComponentModel>);
+pub type Part1DecodedImageState = (Result<(), crate::DecodeError>, Part1DecodedImageModel);
+pub type Part1WorkingSubbandModel = (u32, u32, u8, Seq<i64>, Seq<bool>);
+pub type Part1WorkingSubbandState = (Result<(), crate::DecodeError>, Part1WorkingSubbandModel);
+
 pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
 pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
 pub const PART2_NORMALIZED_SAMPLE_HALF: u16 = PART2_NORMALIZED_SAMPLE_MAX / 2;
@@ -4629,6 +4639,67 @@ pub open spec fn part1_magnitude_zero(limbs: Seq<u64>) -> bool {
     forall |i: int| 0 <= i < limbs.len() ==> limbs[i] == 0
 }
 
+pub open spec fn part1_magnitude_prefix_value(limbs: Seq<u64>, count: nat) -> nat
+    decreases count,
+{
+    if count == 0 { 0 }
+    else {
+        part1_magnitude_prefix_value(limbs, (count - 1) as nat)
+            + (limbs[count - 1] as nat) * pow2((64 * (count - 1)) as nat)
+    }
+}
+
+pub open spec fn part1_magnitude_value(limbs: Seq<u64>) -> nat {
+    part1_magnitude_prefix_value(limbs, 6)
+}
+
+pub open spec fn part1_magnitude_capacity() -> nat {
+    pow2(384)
+}
+
+pub open spec fn part1_magnitude_low_value(limbs: Seq<u64>) -> nat {
+    part1_magnitude_value(limbs) % pow2(64)
+}
+
+pub open spec fn part1_magnitude_limb_or_zero(limbs: Seq<u64>, index: int) -> u64 {
+    if 0 <= index < 6 { limbs[index] } else { 0 }
+}
+
+pub open spec fn part1_magnitude_right_word(low: u64, high: u64, partial: u32) -> u64 {
+    if partial == 0 { low } else { (low >> partial) | (high << ((64 - partial) as u32)) }
+}
+
+pub open spec fn part1_magnitude_left_word(current: u64, previous: u64, partial: u32) -> u64 {
+    if partial == 0 { current } else { (current << partial) | (previous >> ((64 - partial) as u32)) }
+}
+
+pub open spec fn part1_magnitude_left_limb(limbs: Seq<u64>, shift: u16, index: int) -> u64 {
+    if shift >= 384 { 0 } else {
+        let source = index - shift / 64;
+        part1_magnitude_left_word(
+            part1_magnitude_limb_or_zero(limbs, source),
+            part1_magnitude_limb_or_zero(limbs, source - 1),
+            (shift % 64) as u32,
+        )
+    }
+}
+
+pub open spec fn part1_magnitude_left(limbs: Seq<u64>, shift: u16) -> Seq<u64> {
+    Seq::new(6, |i: int| part1_magnitude_left_limb(limbs, shift, i))
+}
+
+pub open spec fn part1_magnitude_left_fits(limbs: Seq<u64>, shift: u16) -> bool {
+    if shift >= 384 {
+        part1_magnitude_zero(limbs)
+    } else {
+        forall |i: int| 0 <= i < 6 ==>
+            if i + shift / 64 >= 6 { limbs[i] == 0 }
+            else if shift % 64 != 0 && i + shift / 64 == 5 {
+                limbs[i] >> ((64 - shift % 64) as u32) == 0
+            } else { true }
+    }
+}
+
 pub open spec fn part1_magnitude_u64(limbs: Seq<u64>) -> Option<u64> {
     if forall |i: int| 1 <= i < limbs.len() ==> limbs[i] == 0 {
         Some(limbs[0])
@@ -5409,6 +5480,272 @@ pub open spec fn part1_convert_samples(
             ),
         }
     }
+}
+
+pub open spec fn part1_image_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidImageGeometry },
+    }
+}
+
+pub open spec fn part1_decoded_component_sample(
+    image: Part1DecodedImageModel, component: usize, index: usize,
+) -> Result<i64, crate::DecodeError> {
+    if component >= image.4.len() {
+        Err(part1_image_error(false))
+    } else if index >= image.4[component as int].4.len() {
+        Err(part1_image_error(false))
+    } else {
+        Ok(image.4[component as int].4[index as int])
+    }
+}
+
+pub open spec fn part1_set_decoded_component_sample(
+    image: Part1DecodedImageModel, component: usize, index: usize, value: i64,
+) -> Part1DecodedImageState {
+    if component >= image.4.len() {
+        (Err(part1_image_error(false)), image)
+    } else {
+        let original = image.4[component as int];
+        if index >= original.4.len() {
+            (Err(part1_image_error(false)), image)
+        } else {
+            let changed = (original.0, original.1, original.2, original.3, original.4.update(index as int, value));
+            (Ok(()), (image.0, image.1, image.2, image.3, image.4.update(component as int, changed)))
+        }
+    }
+}
+
+pub open spec fn part1_component_transform_compatible(
+    first: Part1DecodedComponentModel, component: Part1DecodedComponentModel, fraction_bits: u8,
+) -> bool {
+    component.0 == first.0 && component.1 == first.1 && component.3 == fraction_bits
+        && component.2.x_subsampling == first.2.x_subsampling
+        && component.2.y_subsampling == first.2.y_subsampling
+}
+
+pub open spec fn part1_validate_transform_components(
+    image: Part1DecodedImageModel, fraction_bits: u8,
+) -> Result<(), crate::DecodeError> {
+    if image.4.len() >= 3 && forall |i: int| 0 <= i < 3 ==>
+        part1_component_transform_compatible(image.4[0], image.4[i], fraction_bits)
+    {
+        Ok(())
+    } else {
+        Err(part1_image_error(false))
+    }
+}
+
+pub open spec fn part1_reversible_component_values(y: i64, cb: i64, cr: i64)
+    -> Result<(i64, i64, i64), crate::DecodeError>
+{
+    match part1_checked_sample((cb as int) + (cr as int)) {
+        Err(error) => Err(error),
+        Ok(sum) => match part1_checked_sample((y as int) - ((sum >> 2) as int)) {
+            Err(error) => Err(error),
+            Ok(green) => match part1_checked_sample((green as int) + (cr as int)) {
+                Err(error) => Err(error),
+                Ok(red) => match part1_checked_sample((green as int) + (cb as int)) {
+                    Err(error) => Err(error),
+                    Ok(blue) => Ok((red, green, blue)),
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_irreversible_component_values(y: i64, cb: i64, cr: i64)
+    -> Result<(i64, i64, i64), crate::DecodeError>
+{
+    match part1_fixed_product(cr, 91881) {
+        Err(error) => Err(error),
+        Ok(red_delta) => match part1_checked_sample((y as int) + (red_delta as int)) {
+            Err(error) => Err(error),
+            Ok(red) => match part1_fixed_product(cb, 22553) {
+                Err(error) => Err(error),
+                Ok(green_cb) => match part1_checked_sample((y as int) - (green_cb as int)) {
+                    Err(error) => Err(error),
+                    Ok(green_first) => match part1_fixed_product(cr, 46797) {
+                        Err(error) => Err(error),
+                        Ok(green_cr) => match part1_checked_sample((green_first as int) - (green_cr as int)) {
+                            Err(error) => Err(error),
+                            Ok(green) => match part1_fixed_product(cb, 116130) {
+                                Err(error) => Err(error),
+                                Ok(blue_delta) => match part1_checked_sample((y as int) + (blue_delta as int)) {
+                                    Err(error) => Err(error),
+                                    Ok(blue) => Ok((red, green, blue)),
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_component_values(y: i64, cb: i64, cr: i64, irreversible: bool)
+    -> Result<(i64, i64, i64), crate::DecodeError>
+{
+    if irreversible { part1_irreversible_component_values(y, cb, cr) }
+    else { part1_reversible_component_values(y, cb, cr) }
+}
+
+pub open spec fn part1_component_pixel_state(
+    image: Part1DecodedImageModel, index: usize, irreversible: bool,
+) -> Part1DecodedImageState {
+    match part1_decoded_component_sample(image, 0, index) {
+        Err(error) => (Err(error), image),
+        Ok(y) => match part1_decoded_component_sample(image, 1, index) {
+            Err(error) => (Err(error), image),
+            Ok(cb) => match part1_decoded_component_sample(image, 2, index) {
+                Err(error) => (Err(error), image),
+                Ok(cr) => match part1_component_values(y, cb, cr, irreversible) {
+                    Err(error) => (Err(error), image),
+                    Ok((red, green, blue)) => {
+                        let red_state = part1_set_decoded_component_sample(image, 0, index, red);
+                        match red_state.0 {
+                            Err(_) => red_state,
+                            Ok(()) => {
+                                let green_state = part1_set_decoded_component_sample(red_state.1, 1, index, green);
+                                match green_state.0 {
+                                    Err(_) => green_state,
+                                    Ok(()) => part1_set_decoded_component_sample(green_state.1, 2, index, blue),
+                                }
+                            },
+                        }
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_component_transform_prefix(
+    image: Part1DecodedImageModel, irreversible: bool, count: nat,
+) -> Part1DecodedImageState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), image)
+    } else {
+        let previous = part1_component_transform_prefix(image, irreversible, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_component_pixel_state(previous.1, (count - 1) as usize, irreversible),
+        }
+    }
+}
+
+pub open spec fn part1_apply_component_transform(
+    image: Part1DecodedImageModel, irreversible: bool,
+) -> Part1DecodedImageState {
+    match part1_validate_transform_components(image, if irreversible { 16u8 } else { 0u8 }) {
+        Err(error) => (Err(error), image),
+        Ok(()) => if image.4.len() < 3
+            || image.4[1].4.len() != image.4[0].4.len()
+            || image.4[2].4.len() != image.4[0].4.len()
+        {
+            (Err(part1_image_error(false)), image)
+        } else {
+            part1_component_transform_prefix(image, irreversible, image.4[0].4.len())
+        },
+    }
+}
+
+pub open spec fn part1_component_transform_frame(
+    before: Part1DecodedImageModel, after: Part1DecodedImageModel,
+) -> bool {
+    before.0 == after.0 && before.1 == after.1 && before.2 == after.2 && before.3 == after.3
+        && before.4.len() == after.4.len()
+        && forall |i: int| 0 <= i < before.4.len() ==>
+            before.4[i].0 == after.4[i].0
+                && before.4[i].1 == after.4[i].1
+                && before.4[i].2 == after.4[i].2
+                && before.4[i].3 == after.4[i].3
+                && before.4[i].4.len() == after.4[i].4.len()
+                && (i >= 3 ==> before.4[i] == after.4[i])
+}
+
+pub open spec fn part1_block_placement_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidCodeBlock },
+    }
+}
+
+pub open spec fn part1_quantized_block_pixel(
+    band: Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, x: u32, y: u32,
+) -> Part1WorkingSubbandState {
+    let destination_x = (placement_x as int) + (x as int);
+    let destination_y = (placement_y as int) + (y as int);
+    if destination_x > u32::MAX || destination_y > u32::MAX {
+        (Err(part1_block_placement_error(true)), band)
+    } else {
+        match part1_transform_offset(destination_y as u32, band.0, destination_x as u32) {
+            Err(error) => (Err(error), band),
+            Ok(destination) => match part1_transform_offset(y, block_width, x) {
+                Err(error) => (Err(error), band),
+                Ok(input) => if destination >= band.3.len() || destination >= band.4.len()
+                    || input >= source.len() || band.4[destination as int]
+                {
+                    (Err(part1_block_placement_error(false)), band)
+                } else {
+                    (Ok(()), (band.0, band.1, band.2,
+                        band.3.update(destination as int, source[input as int]),
+                        band.4.update(destination as int, true)))
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_quantized_block_row(
+    band: Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, y: u32, count: nat,
+) -> Part1WorkingSubbandState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), band)
+    } else {
+        let previous = part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_quantized_block_pixel(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, y),
+        }
+    }
+}
+
+pub open spec fn part1_quantized_block_rows(
+    band: Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, count: nat,
+) -> Part1WorkingSubbandState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), band)
+    } else {
+        let previous = part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_quantized_block_row(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat),
+        }
+    }
+}
+
+pub open spec fn part1_working_subband_frame(
+    before: Part1WorkingSubbandModel, after: Part1WorkingSubbandModel,
+) -> bool {
+    before.0 == after.0 && before.1 == after.1 && before.2 == after.2
+        && before.3.len() == after.3.len() && before.4.len() == after.4.len()
+        && (forall |i: int| 0 <= i < before.4.len() && before.4[i] ==> after.4[i])
+        && (forall |i: int| 0 <= i < before.4.len() && i < before.3.len() && before.4[i] ==>
+            before.3[i] == after.3[i])
 }
 
 }

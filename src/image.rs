@@ -57,6 +57,29 @@ pub struct DecodedImage {
     components: Vec<DecodedComponent>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn decoded_component_view(value: DecodedComponent) -> crate::specs::Part1DecodedComponentModel {
+        (value.width, value.height, value.info, value.fraction_bits, value.samples@)
+    }
+
+    pub open spec fn decoded_components_view(values: Seq<DecodedComponent>) -> Seq<crate::specs::Part1DecodedComponentModel> {
+        Seq::new(values.len(), |i: int| decoded_component_view(values[i]))
+    }
+
+    pub closed spec fn decoded_image_view(value: DecodedImage) -> crate::specs::Part1DecodedImageModel {
+        (value.width, value.height, value.x_origin, value.y_origin, decoded_components_view(value.components@))
+    }
+
+    impl View for DecodedImage {
+        type V = crate::specs::Part1DecodedImageModel;
+
+        closed spec fn view(&self) -> Self::V {
+            decoded_image_view(*self)
+        }
+    }
+}
+
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub enum TypedSamples {
     Signed(Vec<i64>),
@@ -1684,8 +1707,30 @@ pub(crate) fn assemble_selected_image(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(image)@) == crate::specs::part1_apply_component_transform(old(image)@, false),
+))]
 pub fn apply_reversible_component_transform(image: &mut DecodedImage) -> Result<(), DecodeError> {
-    validate_transform_components(image, 0)?;
+    apply_component_transform(image, false)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(image)@) == crate::specs::part1_apply_component_transform(old(image)@, true),
+))]
+pub fn apply_irreversible_component_transform(image: &mut DecodedImage) -> Result<(), DecodeError> {
+    apply_component_transform(image, true)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(image)@) == crate::specs::part1_apply_component_transform(old(image)@, irreversible),
+))]
+fn apply_component_transform(
+    image: &mut DecodedImage,
+    irreversible: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = image@; }
+    validate_transform_components(image, if irreversible { FIXED_BITS } else { 0 })?;
     if image.components.len() < 3 {
         return Err(invalid_image());
     }
@@ -1698,13 +1743,75 @@ pub fn apply_reversible_component_transform(image: &mut DecodedImage) -> Result<
         verus_keep_ghost,
         verus_spec(
             invariant index <= length,
+            original == old(image)@,
+            crate::specs::part1_validate_transform_components(original, if irreversible { 16u8 } else { 0u8 }) == Ok(()),
+            original.4.len() >= 3,
+            original.4[1].4.len() == length,
+            original.4[2].4.len() == length,
+            length == original.4[0].4.len(),
+            crate::specs::part1_component_transform_prefix(original, irreversible, index as nat) == (Ok(()), image@),
             decreases length - index,
         )
     )]
     while index < length {
-        let y = component_sample(image, 0, index)?;
-        let cb = component_sample(image, 1, index)?;
-        let cr = component_sample(image, 2, index)?;
+        match apply_component_pixel(image, index, irreversible) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_component_transform_error_persists(
+                        original, irreversible, index as nat + 1, length as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(image)@) == crate::specs::part1_component_pixel_state(old(image)@, index, irreversible),
+))]
+fn apply_component_pixel(
+    image: &mut DecodedImage,
+    index: usize,
+    irreversible: bool,
+) -> Result<(), DecodeError> {
+    let y = component_sample(image, 0, index)?;
+    let cb = component_sample(image, 1, index)?;
+    let cr = component_sample(image, 2, index)?;
+    let (red, green, blue) = inverse_component_values(y, cb, cr, irreversible)?;
+    set_component_sample(image, 0, index, red)?;
+    set_component_sample(image, 1, index, green)?;
+    set_component_sample(image, 2, index, blue)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_component_values(y, cb, cr, irreversible),
+))]
+fn inverse_component_values(
+    y: i64,
+    cb: i64,
+    cr: i64,
+    irreversible: bool,
+) -> Result<(i64, i64, i64), DecodeError> {
+    if irreversible {
+        let red = y
+            .checked_add(fixed_mul(cr, 91_881)?)
+            .ok_or_else(arithmetic_overflow)?;
+        let green_first = y
+            .checked_sub(fixed_mul(cb, 22_553)?)
+            .ok_or_else(arithmetic_overflow)?;
+        let green = green_first
+            .checked_sub(fixed_mul(cr, 46_797)?)
+            .ok_or_else(arithmetic_overflow)?;
+        let blue = y
+            .checked_add(fixed_mul(cb, 116_130)?)
+            .ok_or_else(arithmetic_overflow)?;
+        Ok((red, green, blue))
+    } else {
         let chroma_sum = cb.checked_add(cr).ok_or_else(arithmetic_overflow)?;
         y.checked_sub(chroma_sum >> 2)
             .ok_or_else(arithmetic_overflow)?;
@@ -1713,51 +1820,8 @@ pub fn apply_reversible_component_transform(image: &mut DecodedImage) -> Result<
         green.checked_add(cb).ok_or_else(arithmetic_overflow)?;
         let red = crate::refinement::rct_red(green, cr);
         let blue = crate::refinement::rct_blue(green, cb);
-        set_component_sample(image, 0, index, red)?;
-        set_component_sample(image, 1, index, green)?;
-        set_component_sample(image, 2, index, blue)?;
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        Ok((red, green, blue))
     }
-    Ok(())
-}
-
-pub fn apply_irreversible_component_transform(image: &mut DecodedImage) -> Result<(), DecodeError> {
-    validate_transform_components(image, FIXED_BITS)?;
-    if image.components.len() < 3 {
-        return Err(invalid_image());
-    }
-    let length = image.components[0].samples.len();
-    if image.components[1].samples.len() != length || image.components[2].samples.len() != length {
-        return Err(invalid_image());
-    }
-    let mut index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= length,
-            decreases length - index,
-        )
-    )]
-    while index < length {
-        let y = component_sample(image, 0, index)?;
-        let cb = component_sample(image, 1, index)?;
-        let cr = component_sample(image, 2, index)?;
-        let red = y
-            .checked_add(fixed_mul(cr, 91_881)?)
-            .ok_or_else(arithmetic_overflow)?;
-        let green = y
-            .checked_sub(fixed_mul(cb, 22_553)?)
-            .and_then(|value| value.checked_sub(fixed_mul(cr, 46_797).ok()?))
-            .ok_or_else(arithmetic_overflow)?;
-        let blue = y
-            .checked_add(fixed_mul(cb, 116_130)?)
-            .ok_or_else(arithmetic_overflow)?;
-        set_component_sample(image, 0, index, red)?;
-        set_component_sample(image, 1, index, green)?;
-        set_component_sample(image, 2, index, blue)?;
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    Ok(())
 }
 
 pub fn apply_multiple_component_transform(
@@ -3273,6 +3337,9 @@ fn rounded_shift_i128(value: i128, bits: u8) -> Result<i128, DecodeError> {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_validate_transform_components(image@, fraction_bits),
+))]
 fn validate_transform_components(
     image: &DecodedImage,
     fraction_bits: u8,
@@ -3287,6 +3354,11 @@ fn validate_transform_components(
         verus_keep_ghost,
         verus_spec(
             invariant index <= 3,
+            image.components.len() >= 3,
+            decoded_component_view(*first) == image@.4[0],
+            forall |i: int| 0 <= i < index ==> crate::specs::part1_component_transform_compatible(
+                image@.4[0], image@.4[i], fraction_bits,
+            ),
             decreases 3 - index,
         )
     )]
@@ -3301,6 +3373,15 @@ fn validate_transform_components(
             || component.info.x_subsampling != first.info.x_subsampling
             || component.info.y_subsampling != first.info.y_subsampling
         {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(!crate::specs::part1_component_transform_compatible(
+                    image@.4[0], image@.4[index as int], fraction_bits,
+                ));
+                assert(exists |i: int| 0 <= i < 3 && !crate::specs::part1_component_transform_compatible(
+                    image@.4[0], image@.4[i], fraction_bits,
+                ));
+            }
             return Err(invalid_image());
         }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -3308,6 +3389,9 @@ fn validate_transform_components(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_decoded_component_sample(image@, component, index),
+))]
 fn component_sample(
     image: &DecodedImage,
     component: usize,
@@ -3318,6 +3402,11 @@ fn component_sample(
     Ok(*sample)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(image)@) == crate::specs::part1_set_decoded_component_sample(
+        old(image)@, component, index, value,
+    ),
+))]
 fn set_component_sample(
     image: &mut DecodedImage,
     component: usize,
@@ -3396,12 +3485,19 @@ fn place_tile(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_fixed_product(value, factor),
+))]
 fn fixed_mul(value: i64, factor: i64) -> Result<i64, DecodeError> {
-    Ok(value
-        .checked_mul(factor)
-        .and_then(|product| product.checked_add(1 << 15))
-        .ok_or_else(arithmetic_overflow)?
-        >> FIXED_BITS)
+    let bias = 1_i64 << 15;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((1i64 << 15) == 32768) by(bit_vector);
+        assert(FIXED_BITS == 16) by(compute);
+    }
+    let product = value.checked_mul(factor).ok_or_else(arithmetic_overflow)?;
+    let biased = product.checked_add(bias).ok_or_else(arithmetic_overflow)?;
+    Ok(biased >> FIXED_BITS)
 }
 
 fn round_fixed(value: i64, fraction_bits: u8) -> Result<i64, DecodeError> {
@@ -3485,16 +3581,28 @@ fn validate_bytes(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_error(false),
+))]
 fn invalid_image() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidImageGeometry)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidImageGeometry,
+    }
 }
 
 fn invalid_transform() -> DecodeError {
     DecodeError::malformed(0, MalformedKind::InvalidTransform)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_error(true),
+))]
 fn arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
 }
 
 #[cfg(test)]
@@ -3503,6 +3611,259 @@ mod tests {
     use crate::codestream::{
         MctArrayKind, MctCollection, MctNumericFormat, MctStage, MctWaveletType,
     };
+
+    fn copy_decoded(image: &DecodedImage) -> DecodedImage {
+        DecodedImage {
+            width: image.width,
+            height: image.height,
+            x_origin: image.x_origin,
+            y_origin: image.y_origin,
+            components: image
+                .components
+                .iter()
+                .map(|component| DecodedComponent {
+                    width: component.width,
+                    height: component.height,
+                    info: component.info,
+                    fraction_bits: component.fraction_bits,
+                    samples: component.samples.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    fn component_reference_values(
+        y: i64,
+        cb: i64,
+        cr: i64,
+        irreversible: bool,
+    ) -> Result<(i64, i64, i64), DecodeError> {
+        let checked = |value: i128| {
+            i64::try_from(value)
+                .map(i128::from)
+                .map_err(|_| arithmetic_overflow())
+        };
+        let fixed = |value: i64, factor: i128| {
+            let product = checked(i128::from(value) * factor)?;
+            Ok::<i128, DecodeError>(checked(product + 32768)?.div_euclid(65536))
+        };
+        let y = i128::from(y);
+        if irreversible {
+            let red = checked(y + fixed(cr, 91881)?)?;
+            let green_first = checked(y - fixed(cb, 22553)?)?;
+            let green = checked(green_first - fixed(cr, 46797)?)?;
+            let blue = checked(y + fixed(cb, 116130)?)?;
+            Ok((red as i64, green as i64, blue as i64))
+        } else {
+            let sum = checked(i128::from(cb) + i128::from(cr))?;
+            let green = checked(y - sum.div_euclid(4))?;
+            let red = checked(green + i128::from(cr))?;
+            let blue = checked(green + i128::from(cb))?;
+            Ok((red as i64, green as i64, blue as i64))
+        }
+    }
+
+    fn component_reference(
+        image: &mut DecodedImage,
+        irreversible: bool,
+    ) -> Result<(), DecodeError> {
+        if image.components.len() < 3 {
+            return Err(invalid_image());
+        }
+        let first = &image.components[0];
+        for component in &image.components[..3] {
+            if component.width != first.width
+                || component.height != first.height
+                || component.fraction_bits != if irreversible { 16 } else { 0 }
+                || component.info.x_subsampling != first.info.x_subsampling
+                || component.info.y_subsampling != first.info.y_subsampling
+            {
+                return Err(invalid_image());
+            }
+        }
+        let length = first.samples.len();
+        if image.components[1].samples.len() != length
+            || image.components[2].samples.len() != length
+        {
+            return Err(invalid_image());
+        }
+        for index in 0..length {
+            let (red, green, blue) = component_reference_values(
+                image.components[0].samples[index],
+                image.components[1].samples[index],
+                image.components[2].samples[index],
+                irreversible,
+            )?;
+            image.components[0].samples[index] = red;
+            image.components[1].samples[index] = green;
+            image.components[2].samples[index] = blue;
+        }
+        Ok(())
+    }
+
+    fn raw_component_image(samples: [Vec<i64>; 3], fraction_bits: u8) -> DecodedImage {
+        let mut components: Vec<_> = samples
+            .into_iter()
+            .enumerate()
+            .map(|(i, samples)| DecodedComponent {
+                width: 5,
+                height: 7,
+                info: ComponentInfo {
+                    precision: (8 + i) as u8,
+                    signed: i.is_multiple_of(2),
+                    x_subsampling: 1,
+                    y_subsampling: 1,
+                    x_registration: i as u16,
+                    y_registration: (i + 3) as u16,
+                },
+                fraction_bits,
+                samples,
+            })
+            .collect();
+        components.push(DecodedComponent {
+            width: 0,
+            height: 19,
+            info: ComponentInfo::default(),
+            fraction_bits: 255,
+            samples: vec![i64::MIN, i64::MAX, 7],
+        });
+        DecodedImage {
+            width: 31,
+            height: 19,
+            x_origin: 9,
+            y_origin: 7,
+            components,
+        }
+    }
+
+    #[test]
+    fn complete_component_images_match_independent_wide_reference() {
+        for irreversible in [false, true] {
+            for y in [-7, -3, -1, 0, 1, 3, 7] {
+                for cb in [-7, -3, -1, 0, 1, 3, 7] {
+                    for cr in [-7, -3, -1, 0, 1, 3, 7] {
+                        let mut actual = raw_component_image(
+                            [
+                                vec![y, y * 65536, -y * 32768],
+                                vec![cb, cb * 65536, -cb * 32768],
+                                vec![cr, cr * 65536, -cr * 32768],
+                            ],
+                            if irreversible { 16 } else { 0 },
+                        );
+                        let mut expected = copy_decoded(&actual);
+                        let expected_status = component_reference(&mut expected, irreversible);
+                        let status = if irreversible {
+                            apply_irreversible_component_transform(&mut actual)
+                        } else {
+                            apply_reversible_component_transform(&mut actual)
+                        };
+                        assert_eq!((status, actual), (expected_status, expected));
+                    }
+                }
+            }
+            for samples in [
+                [vec![], vec![], vec![]],
+                [vec![10, i64::MIN], vec![2, i64::MAX], vec![6, 0]],
+                [vec![10, i64::MAX], vec![2, -4], vec![6, 4]],
+                [vec![10, i64::MAX], vec![2, 4], vec![6, -4]],
+                [vec![10, 0], vec![2, i64::MAX], vec![6, i64::MIN]],
+                [vec![10, i64::MIN], vec![2, 0], vec![6, 0]],
+            ] {
+                let mut actual = raw_component_image(samples, if irreversible { 16 } else { 0 });
+                let mut expected = copy_decoded(&actual);
+                let expected_status = component_reference(&mut expected, irreversible);
+                let status = if irreversible {
+                    apply_irreversible_component_transform(&mut actual)
+                } else {
+                    apply_reversible_component_transform(&mut actual)
+                };
+                assert_eq!((status, actual), (expected_status, expected));
+            }
+        }
+    }
+
+    #[test]
+    fn complete_component_transform_validation_preserves_error_order_and_state() {
+        for irreversible in [false, true] {
+            for component_count in 0..3 {
+                let mut actual = raw_component_image(
+                    [vec![i64::MAX], vec![i64::MAX], vec![1]],
+                    if irreversible { 16 } else { 0 },
+                );
+                actual.components.truncate(component_count);
+                let expected = copy_decoded(&actual);
+                let status = if irreversible {
+                    apply_irreversible_component_transform(&mut actual)
+                } else {
+                    apply_reversible_component_transform(&mut actual)
+                };
+                assert_eq!((status, actual), (Err(invalid_image()), expected));
+            }
+            for variant in 0..6 {
+                let mut actual = raw_component_image(
+                    [vec![i64::MAX, 0], vec![i64::MAX, 0], vec![1, 0]],
+                    if irreversible { 16 } else { 0 },
+                );
+                match variant {
+                    0 => actual.components[1].width += 1,
+                    1 => actual.components[2].height += 1,
+                    2 => actual.components[0].fraction_bits ^= 1,
+                    3 => actual.components[1].info.x_subsampling = 0,
+                    4 => actual.components[2].info.y_subsampling = 0,
+                    _ => {
+                        actual.components[1].samples.pop();
+                    }
+                }
+                let expected = copy_decoded(&actual);
+                let status = if irreversible {
+                    apply_irreversible_component_transform(&mut actual)
+                } else {
+                    apply_reversible_component_transform(&mut actual)
+                };
+                assert_eq!((status, actual), (Err(invalid_image()), expected));
+            }
+        }
+    }
+
+    #[test]
+    fn complete_component_pixel_frames_and_rejections_match_independent_reference() {
+        for irreversible in [false, true] {
+            for samples in [
+                [vec![10], vec![2], vec![6]],
+                [vec![i64::MAX], vec![i64::MAX], vec![1]],
+                [vec![10], vec![2], vec![]],
+            ] {
+                for index in 0..=1 {
+                    let mut actual = raw_component_image(samples.clone(), 255);
+                    let mut expected = copy_decoded(&actual);
+                    let values = if expected.components[..3]
+                        .iter()
+                        .any(|component| index >= component.samples.len())
+                    {
+                        Err(invalid_image())
+                    } else {
+                        component_reference_values(
+                            expected.components[0].samples[index],
+                            expected.components[1].samples[index],
+                            expected.components[2].samples[index],
+                            irreversible,
+                        )
+                    };
+                    let expected_status = match values {
+                        Err(error) => Err(error),
+                        Ok((red, green, blue)) => {
+                            expected.components[0].samples[index] = red;
+                            expected.components[1].samples[index] = green;
+                            expected.components[2].samples[index] = blue;
+                            Ok(())
+                        }
+                    };
+                    let status = apply_component_pixel(&mut actual, index, irreversible);
+                    assert_eq!((status, actual), (expected_status, expected));
+                }
+            }
+        }
+    }
 
     fn image_size(components: &[ComponentInfo], width: u32, height: u32) -> ImageSize {
         let mut component_info = [ComponentInfo::default(); 64];

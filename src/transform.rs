@@ -1618,7 +1618,7 @@ fn collect_column(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_transform_offset(y, width, x),
 ))]
-fn transform_offset(y: u32, width: u32, x: u32) -> Result<usize, DecodeError> {
+pub(crate) fn transform_offset(y: u32, width: u32, x: u32) -> Result<usize, DecodeError> {
     let row = transform_dimension(y)?
         .checked_mul(transform_dimension(width)?)
         .ok_or_else(arithmetic_overflow)?;

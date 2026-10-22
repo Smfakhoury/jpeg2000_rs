@@ -811,6 +811,734 @@ pub proof fn production_ht_mel_prefix_step(state: crate::specs::HtMelState, coun
     reveal_with_fuel(crate::specs::ht_mel_prefix, 1);
 }
 
+pub proof fn production_magnitude_radix_powers()
+    ensures
+        vstd::arithmetic::power2::pow2(0) == 1,
+        vstd::arithmetic::power2::pow2(64) == 18446744073709551616,
+        vstd::arithmetic::power2::pow2(128) == 340282366920938463463374607431768211456,
+        vstd::arithmetic::power2::pow2(192) == 6277101735386680763835789423207666416102355444464034512896,
+        vstd::arithmetic::power2::pow2(256) == 115792089237316195423570985008687907853269984665640564039457584007913129639936,
+        vstd::arithmetic::power2::pow2(320) == 2135987035920910082395021706169552114602704522356652769947041607822219725780640550022962086936576,
+        vstd::arithmetic::power2::pow2(384) == 39402006196394479212279040100143613805079739270465446667948293404245721771497210611414266254884915640806627990306816,
+{
+    vstd::arithmetic::power2::lemma2_to64();
+    vstd::arithmetic::power2::lemma_pow2_adds(64, 64);
+    vstd::arithmetic::power2::lemma_pow2_adds(128, 64);
+    vstd::arithmetic::power2::lemma_pow2_adds(192, 64);
+    vstd::arithmetic::power2::lemma_pow2_adds(256, 64);
+    vstd::arithmetic::power2::lemma_pow2_adds(320, 64);
+}
+
+pub proof fn production_magnitude_prefix_properties(limbs: Seq<u64>, count: nat)
+    requires limbs.len() == 6, count <= 6,
+    ensures
+        crate::specs::part1_magnitude_prefix_value(limbs, count)
+            < vstd::arithmetic::power2::pow2(64 * count),
+        (crate::specs::part1_magnitude_prefix_value(limbs, count) == 0)
+            == (forall |i: int| 0 <= i < count ==> limbs[i] == 0),
+    decreases count,
+{
+    if count == 0 {
+        vstd::arithmetic::power2::lemma2_to64();
+    } else {
+        production_magnitude_prefix_properties(limbs, (count - 1) as nat);
+        vstd::arithmetic::power2::lemma_pow2_pos((64 * (count - 1)) as nat);
+        vstd::arithmetic::power2::lemma_pow2_adds((64 * (count - 1)) as nat, 64);
+        vstd::arithmetic::power2::lemma2_to64();
+        let previous = crate::specs::part1_magnitude_prefix_value(limbs, (count - 1) as nat);
+        let weight = vstd::arithmetic::power2::pow2((64 * (count - 1)) as nat);
+        let digit = limbs[count - 1] as nat;
+        assert(previous + digit * weight < weight * 18446744073709551616) by(nonlinear_arith)
+            requires previous < weight, weight > 0, digit <= 18446744073709551615;
+        assert((digit * weight == 0) == (digit == 0)) by(nonlinear_arith)
+            requires weight > 0;
+    }
+}
+
+pub proof fn production_magnitude_value_expansion(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(limbs)
+        == (limbs[0] as nat)
+            + (limbs[1] as nat) * 18446744073709551616
+            + (limbs[2] as nat) * 340282366920938463463374607431768211456
+            + (limbs[3] as nat) * 6277101735386680763835789423207666416102355444464034512896
+            + (limbs[4] as nat) * 115792089237316195423570985008687907853269984665640564039457584007913129639936
+            + (limbs[5] as nat) * 2135987035920910082395021706169552114602704522356652769947041607822219725780640550022962086936576,
+{
+    production_magnitude_radix_powers();
+    vstd::arithmetic::mul::lemma_mul_basics(limbs[0] as int);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 0) == 0);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 1) == limbs[0] as nat);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 2)
+        == (limbs[0] as nat) + (limbs[1] as nat) * 18446744073709551616);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 3)
+        == crate::specs::part1_magnitude_prefix_value(limbs, 2)
+            + (limbs[2] as nat) * 340282366920938463463374607431768211456);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 4)
+        == crate::specs::part1_magnitude_prefix_value(limbs, 2)
+            + (limbs[2] as nat) * 340282366920938463463374607431768211456
+            + (limbs[3] as nat) * 6277101735386680763835789423207666416102355444464034512896);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 5)
+        == crate::specs::part1_magnitude_prefix_value(limbs, 4)
+            + (limbs[4] as nat) * 115792089237316195423570985008687907853269984665640564039457584007913129639936);
+    assert(crate::specs::part1_magnitude_prefix_value(limbs, 6)
+        == crate::specs::part1_magnitude_prefix_value(limbs, 4)
+            + (limbs[4] as nat) * 115792089237316195423570985008687907853269984665640564039457584007913129639936
+            + (limbs[5] as nat) * 2135987035920910082395021706169552114602704522356652769947041607822219725780640550022962086936576);
+}
+
+pub proof fn production_magnitude_sparse_prefix(limbs: Seq<u64>, index: nat, digit: u64, count: nat)
+    requires
+        limbs.len() == 6, index < 6, count <= 6,
+        forall |i: int| 0 <= i < 6 ==> limbs[i] == if i == index { digit } else { 0 },
+    ensures crate::specs::part1_magnitude_prefix_value(limbs, count)
+        == if index < count { (digit as nat) * vstd::arithmetic::power2::pow2(64 * index) } else { 0 },
+    decreases count,
+{
+    if count > 0 {
+        production_magnitude_sparse_prefix(limbs, index, digit, (count - 1) as nat);
+    }
+}
+
+pub proof fn production_magnitude_right_bit_word(low: u64, high: u64)
+    ensures
+        low as nat == ((low >> 1) as nat) * 2 + ((low & 1) as nat),
+        (low & 1) < 2,
+        crate::specs::part1_magnitude_right_word(low, high, 1) as nat
+            == ((low >> 1) as nat) + ((high & 1) as nat) * 9223372036854775808,
+{
+    assert((low as u128) == ((((low >> 1) as u128) * 2 + ((low & 1) as u128)) as u128)) by(bit_vector);
+    assert((low & 1) < 2) by(bit_vector);
+    assert((((low >> 1) | (high << 63)) as u128)
+        == ((((low >> 1) as u128) + ((high & 1) as u128) * 9223372036854775808) as u128)) by(bit_vector);
+}
+
+pub proof fn production_magnitude_left_bit_word(current: u64, previous: u64)
+    ensures
+        (current >> 63) <= 1,
+        (crate::specs::part1_magnitude_left_word(current, previous, 1) as nat)
+            + ((current >> 63) as nat) * 18446744073709551616
+            == (current as nat) * 2 + ((previous >> 63) as nat),
+{
+    assert((current >> 63) <= 1) by(bit_vector);
+    assert((((((current << 1) | (previous >> 63)) as u128)
+        + ((current >> 63) as u128) * 18446744073709551616) as u128)
+        == (((current as u128) * 2 + ((previous >> 63) as u128)) as u128)) by(bit_vector);
+}
+
+pub proof fn production_magnitude_zero_words(partial: u32)
+    requires partial < 64,
+    ensures
+        crate::specs::part1_magnitude_right_word(0, 0, partial) == 0,
+        crate::specs::part1_magnitude_left_word(0, 0, partial) == 0,
+{
+    if partial > 0 {
+        assert((0u64 >> partial) | (0u64 << ((64 - partial) as u32)) == 0) by(bit_vector)
+            requires 0 < partial < 64;
+        assert((0u64 << partial) | (0u64 >> ((64 - partial) as u32)) == 0) by(bit_vector)
+            requires 0 < partial < 64;
+    }
+}
+
+pub proof fn production_magnitude_right_projection(limbs: Seq<u64>, shift: u16, index: int)
+    requires limbs.len() == 6, index >= 0,
+    ensures crate::specs::part1_magnitude_limb_or_zero(crate::specs::part1_magnitude_shift(limbs, shift), index)
+        == crate::specs::part1_magnitude_right_word(
+            crate::specs::part1_magnitude_limb_or_zero(limbs, index + shift / 64),
+            crate::specs::part1_magnitude_limb_or_zero(limbs, index + shift / 64 + 1),
+            (shift % 64) as u32,
+        ),
+{
+    let partial = (shift % 64) as u32;
+    production_magnitude_zero_words(partial);
+    if index < 6 && shift < 384 && index + shift / 64 < 6 {
+        let low = limbs[index + shift / 64];
+        if partial == 0 {
+            assert(low >> 0 == low) by(bit_vector);
+        } else {
+            assert((low >> partial) | (0u64 << ((64 - partial) as u32)) == low >> partial) by(bit_vector)
+                requires 0 < partial < 64;
+        }
+    }
+}
+
+pub proof fn production_magnitude_left_projection(limbs: Seq<u64>, shift: u16, index: int)
+    requires limbs.len() == 6, index < 6,
+    ensures crate::specs::part1_magnitude_limb_or_zero(crate::specs::part1_magnitude_left(limbs, shift), index)
+        == crate::specs::part1_magnitude_left_word(
+            crate::specs::part1_magnitude_limb_or_zero(limbs, index - shift / 64),
+            crate::specs::part1_magnitude_limb_or_zero(limbs, index - shift / 64 - 1),
+            (shift % 64) as u32,
+        ),
+{
+    production_magnitude_zero_words((shift % 64) as u32);
+}
+
+pub proof fn production_magnitude_right_word_step(a: u64, b: u64, c: u64, partial: u32)
+    requires 0 < partial < 64,
+    ensures crate::specs::part1_magnitude_right_word(
+        crate::specs::part1_magnitude_right_word(a, b, (partial - 1) as u32),
+        crate::specs::part1_magnitude_right_word(b, c, (partial - 1) as u32), 1,
+    ) == crate::specs::part1_magnitude_right_word(a, b, partial),
+{
+    if partial > 1 {
+        assert(((((a >> ((partial - 1) as u32)) | (b << ((65 - partial) as u32))) >> 1)
+            | (((b >> ((partial - 1) as u32)) | (c << ((65 - partial) as u32))) << 63))
+            == ((a >> partial) | (b << ((64 - partial) as u32)))) by(bit_vector)
+            requires 1 < partial < 64;
+    }
+}
+
+pub proof fn production_magnitude_left_word_step(a: u64, b: u64, c: u64, partial: u32)
+    requires 0 < partial < 64,
+    ensures crate::specs::part1_magnitude_left_word(
+        crate::specs::part1_magnitude_left_word(a, b, (partial - 1) as u32),
+        crate::specs::part1_magnitude_left_word(b, c, (partial - 1) as u32), 1,
+    ) == crate::specs::part1_magnitude_left_word(a, b, partial),
+{
+    if partial > 1 {
+        assert(((((a << ((partial - 1) as u32)) | (b >> ((65 - partial) as u32))) << 1)
+            | (((b << ((partial - 1) as u32)) | (c >> ((65 - partial) as u32))) >> 63))
+            == ((a << partial) | (b >> ((64 - partial) as u32)))) by(bit_vector)
+            requires 1 < partial < 64;
+    }
+}
+
+pub proof fn production_magnitude_word_crossing(a: u64, b: u64, c: u64)
+    ensures
+        crate::specs::part1_magnitude_right_word(
+            crate::specs::part1_magnitude_right_word(a, b, 63),
+            crate::specs::part1_magnitude_right_word(b, c, 63), 1,
+        ) == b,
+        crate::specs::part1_magnitude_left_word(
+            crate::specs::part1_magnitude_left_word(a, b, 63),
+            crate::specs::part1_magnitude_left_word(b, c, 63), 1,
+        ) == b,
+{
+    assert(((((a >> 63) | (b << 1)) >> 1) | (((b >> 63) | (c << 1)) << 63)) == b) by(bit_vector);
+    assert(((((a << 63) | (b >> 1)) << 1) | (((b << 63) | (c >> 1)) >> 63)) == b) by(bit_vector);
+}
+
+pub proof fn production_magnitude_right_composes_one(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6, 0 < shift < 384,
+    ensures crate::specs::part1_magnitude_shift(limbs, shift)
+        == crate::specs::part1_magnitude_shift(crate::specs::part1_magnitude_shift(limbs, (shift - 1) as u16), 1),
+{
+    let previous = crate::specs::part1_magnitude_shift(limbs, (shift - 1) as u16);
+    assert forall |i: int| 0 <= i < 6 implies
+        crate::specs::part1_magnitude_shift(limbs, shift)[i]
+            == crate::specs::part1_magnitude_shift(previous, 1)[i]
+    by {
+        production_magnitude_right_projection(limbs, shift, i);
+        production_magnitude_right_projection(previous, 1, i);
+        production_magnitude_right_projection(limbs, (shift - 1) as u16, i);
+        production_magnitude_right_projection(limbs, (shift - 1) as u16, i + 1);
+        let base = i + shift / 64;
+        if shift % 64 == 0 {
+            production_magnitude_word_crossing(
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base - 1),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base + 1),
+            );
+        } else {
+            production_magnitude_right_word_step(
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base + 1),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base + 2), (shift % 64) as u32,
+            );
+        }
+    }
+    assert(crate::specs::part1_magnitude_shift(limbs, shift)
+        =~= crate::specs::part1_magnitude_shift(previous, 1));
+}
+
+pub proof fn production_magnitude_left_composes_one(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6, 0 < shift < 384,
+    ensures crate::specs::part1_magnitude_left(limbs, shift)
+        == crate::specs::part1_magnitude_left(crate::specs::part1_magnitude_left(limbs, (shift - 1) as u16), 1),
+{
+    let previous = crate::specs::part1_magnitude_left(limbs, (shift - 1) as u16);
+    assert forall |i: int| 0 <= i < 6 implies
+        crate::specs::part1_magnitude_left(limbs, shift)[i]
+            == crate::specs::part1_magnitude_left(previous, 1)[i]
+    by {
+        production_magnitude_left_projection(limbs, shift, i);
+        production_magnitude_left_projection(previous, 1, i);
+        production_magnitude_left_projection(limbs, (shift - 1) as u16, i);
+        production_magnitude_left_projection(limbs, (shift - 1) as u16, i - 1);
+        let base = i - shift / 64;
+        if shift % 64 == 0 {
+            production_magnitude_word_crossing(
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base + 1),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base - 1),
+            );
+        } else {
+            production_magnitude_left_word_step(
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base - 1),
+                crate::specs::part1_magnitude_limb_or_zero(limbs, base - 2), (shift % 64) as u32,
+            );
+        }
+    }
+    assert(crate::specs::part1_magnitude_left(limbs, shift)
+        =~= crate::specs::part1_magnitude_left(previous, 1));
+}
+
+pub proof fn production_magnitude_right_bit_value(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(crate::specs::part1_magnitude_shift(limbs, 1))
+        == crate::specs::part1_magnitude_value(limbs) / 2,
+{
+    let shifted = crate::specs::part1_magnitude_shift(limbs, 1);
+    production_magnitude_value_expansion(limbs);
+    production_magnitude_value_expansion(shifted);
+    assert forall |i: int| 0 <= i < 6 implies
+        (shifted[i] as nat) == ((limbs[i] >> 1) as nat)
+            + ((crate::specs::part1_magnitude_limb_or_zero(limbs, i + 1) & 1) as nat) * 9223372036854775808
+        && (limbs[i] as nat) == ((limbs[i] >> 1) as nat) * 2 + ((limbs[i] & 1) as nat)
+    by {
+        production_magnitude_right_projection(limbs, 1, i);
+        production_magnitude_right_bit_word(limbs[i], crate::specs::part1_magnitude_limb_or_zero(limbs, i + 1));
+    }
+    production_magnitude_right_bit_word(limbs[0], 0);
+    assert(crate::specs::part1_magnitude_value(limbs)
+        == 2 * crate::specs::part1_magnitude_value(shifted) + ((limbs[0] & 1) as nat));
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse_div(
+        crate::specs::part1_magnitude_value(limbs) as int, 2,
+        crate::specs::part1_magnitude_value(shifted) as int, (limbs[0] & 1) as int,
+    );
+}
+
+pub proof fn production_magnitude_value_bound(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(limbs) < crate::specs::part1_magnitude_capacity(),
+{
+    production_magnitude_prefix_properties(limbs, 6);
+}
+
+pub proof fn production_magnitude_double_telescope(limbs: Seq<u64>, shifted: Seq<u64>, high: Seq<u64>)
+    requires
+        limbs.len() == 6, shifted.len() == 6, high.len() == 6,
+        forall |i: int| 0 <= i < 6 ==>
+            (shifted[i] as nat) + (high[i] as nat) * 18446744073709551616
+                == (limbs[i] as nat) * 2 + if i == 0 { 0nat } else { high[i - 1] as nat },
+    ensures
+        2 * crate::specs::part1_magnitude_value(limbs)
+            == (high[5] as nat) * crate::specs::part1_magnitude_capacity()
+                + crate::specs::part1_magnitude_value(shifted),
+{
+    production_magnitude_value_expansion(limbs);
+    production_magnitude_value_expansion(shifted);
+    production_magnitude_radix_powers();
+}
+
+pub proof fn production_magnitude_left_bit_equation(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures
+        2 * crate::specs::part1_magnitude_value(limbs)
+            == ((limbs[5] >> 63) as nat) * crate::specs::part1_magnitude_capacity()
+                + crate::specs::part1_magnitude_value(crate::specs::part1_magnitude_left(limbs, 1)),
+{
+    let shifted = crate::specs::part1_magnitude_left(limbs, 1);
+    let high = Seq::new(6, |i: int| limbs[i] >> 63);
+    assert forall |i: int| 0 <= i < 6 implies
+        (shifted[i] as nat) + (high[i] as nat) * 18446744073709551616
+            == (limbs[i] as nat) * 2 + if i == 0 { 0nat } else { high[i - 1] as nat }
+    by {
+        production_magnitude_left_projection(limbs, 1, i);
+        production_magnitude_left_bit_word(limbs[i], crate::specs::part1_magnitude_limb_or_zero(limbs, i - 1));
+        assert(0u64 >> 63 == 0) by(bit_vector);
+    }
+    production_magnitude_double_telescope(limbs, shifted, high);
+}
+
+pub proof fn production_magnitude_left_bit_value(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(crate::specs::part1_magnitude_left(limbs, 1))
+        == (crate::specs::part1_magnitude_value(limbs) * 2) % crate::specs::part1_magnitude_capacity(),
+{
+    let shifted = crate::specs::part1_magnitude_left(limbs, 1);
+    production_magnitude_left_bit_equation(limbs);
+    production_magnitude_value_bound(shifted);
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse_mod(
+        (crate::specs::part1_magnitude_value(limbs) * 2) as int,
+        crate::specs::part1_magnitude_capacity() as int, (limbs[5] >> 63) as int,
+        crate::specs::part1_magnitude_value(shifted) as int,
+    );
+}
+
+pub proof fn production_magnitude_zero_value(limbs: Seq<u64>)
+    requires limbs.len() == 6, crate::specs::part1_magnitude_zero(limbs),
+    ensures crate::specs::part1_magnitude_value(limbs) == 0,
+{
+    production_magnitude_prefix_properties(limbs, 6);
+}
+
+pub proof fn production_magnitude_right_shift_value(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(crate::specs::part1_magnitude_shift(limbs, shift))
+        == crate::specs::part1_magnitude_value(limbs) / vstd::arithmetic::power2::pow2(shift as nat),
+    decreases shift,
+{
+    let shifted = crate::specs::part1_magnitude_shift(limbs, shift);
+    if shift == 0 {
+        assert forall |i: int| 0 <= i < 6 implies shifted[i] == limbs[i] by {
+            production_magnitude_right_projection(limbs, shift, i);
+        }
+        assert(shifted =~= limbs);
+        vstd::arithmetic::power2::lemma2_to64();
+        vstd::arithmetic::div_mod::lemma_div_basics_2(crate::specs::part1_magnitude_value(limbs) as int);
+        assert(crate::specs::part1_magnitude_value(shifted)
+            == crate::specs::part1_magnitude_value(limbs) / vstd::arithmetic::power2::pow2(shift as nat));
+    } else if shift >= 384 {
+        assert(crate::specs::part1_magnitude_zero(shifted));
+        production_magnitude_zero_value(shifted);
+        production_magnitude_value_bound(limbs);
+        if shift > 384 {
+            vstd::arithmetic::power2::lemma_pow2_strictly_increases(384, shift as nat);
+        }
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse_div(
+            crate::specs::part1_magnitude_value(limbs) as int,
+            vstd::arithmetic::power2::pow2(shift as nat) as int, 0,
+            crate::specs::part1_magnitude_value(limbs) as int,
+        );
+        assert(crate::specs::part1_magnitude_value(shifted)
+            == crate::specs::part1_magnitude_value(limbs) / vstd::arithmetic::power2::pow2(shift as nat));
+    } else {
+        let previous = crate::specs::part1_magnitude_shift(limbs, (shift - 1) as u16);
+        production_magnitude_right_composes_one(limbs, shift);
+        production_magnitude_right_shift_value(limbs, (shift - 1) as u16);
+        production_magnitude_right_bit_value(previous);
+        vstd::arithmetic::power2::lemma2_to64();
+        vstd::arithmetic::power2::lemma_pow2_pos((shift - 1) as nat);
+        vstd::arithmetic::power2::lemma_pow2_adds((shift - 1) as nat, 1);
+        vstd::arithmetic::div_mod::lemma_div_denominator(
+            crate::specs::part1_magnitude_value(limbs) as int,
+            vstd::arithmetic::power2::pow2((shift - 1) as nat) as int, 2,
+        );
+        assert(crate::specs::part1_magnitude_value(shifted)
+            == crate::specs::part1_magnitude_value(limbs) / vstd::arithmetic::power2::pow2(shift as nat));
+    }
+}
+
+pub proof fn production_magnitude_left_shift_value(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(crate::specs::part1_magnitude_left(limbs, shift))
+        == (crate::specs::part1_magnitude_value(limbs) * vstd::arithmetic::power2::pow2(shift as nat))
+            % crate::specs::part1_magnitude_capacity(),
+    decreases shift,
+{
+    let shifted = crate::specs::part1_magnitude_left(limbs, shift);
+    let value = crate::specs::part1_magnitude_value(limbs);
+    let capacity = crate::specs::part1_magnitude_capacity();
+    vstd::arithmetic::power2::lemma_pow2_pos(384);
+    if shift == 0 {
+        assert forall |i: int| 0 <= i < 6 implies shifted[i] == limbs[i] by {
+            production_magnitude_left_projection(limbs, shift, i);
+        }
+        assert(shifted =~= limbs);
+        production_magnitude_value_bound(limbs);
+        vstd::arithmetic::power2::lemma2_to64();
+        vstd::arithmetic::mul::lemma_mul_basics(value as int);
+        vstd::arithmetic::div_mod::lemma_small_mod(value, capacity);
+    } else if shift >= 384 {
+        assert(crate::specs::part1_magnitude_zero(shifted));
+        production_magnitude_zero_value(shifted);
+        vstd::arithmetic::power2::lemma_pow2_adds(384, (shift - 384) as nat);
+        let power = vstd::arithmetic::power2::pow2(shift as nat);
+        let remainder_power = vstd::arithmetic::power2::pow2((shift - 384) as nat);
+        assert(value * power == (value * remainder_power) * capacity) by(nonlinear_arith)
+            requires power == capacity * remainder_power;
+        vstd::arithmetic::div_mod::lemma_mod_multiples_basic((value * remainder_power) as int, capacity as int);
+    } else {
+        let previous = crate::specs::part1_magnitude_left(limbs, (shift - 1) as u16);
+        production_magnitude_left_composes_one(limbs, shift);
+        production_magnitude_left_shift_value(limbs, (shift - 1) as u16);
+        production_magnitude_left_bit_value(previous);
+        vstd::arithmetic::power2::lemma2_to64();
+        vstd::arithmetic::power2::lemma_pow2_adds((shift - 1) as nat, 1);
+        let power = vstd::arithmetic::power2::pow2(shift as nat);
+        let previous_power = vstd::arithmetic::power2::pow2((shift - 1) as nat);
+        assert(value * power == (value * previous_power) * 2) by(nonlinear_arith)
+            requires power == previous_power * 2;
+        vstd::arithmetic::div_mod::lemma_mul_mod_noop_left((value * previous_power) as int, 2, capacity as int);
+    }
+}
+
+pub proof fn production_magnitude_word_zero_split(low: u64, high: u64, partial: u32)
+    requires 0 < partial < 64,
+    ensures
+        (crate::specs::part1_magnitude_right_word(low, high, partial) == 0)
+            == ((low >> partial) == 0 && (high << ((64 - partial) as u32)) == 0),
+        ((low >> partial) == 0 && (low << ((64 - partial) as u32)) == 0) == (low == 0),
+{
+    assert((((low >> partial) | (high << ((64 - partial) as u32))) == 0)
+        == ((low >> partial) == 0 && (high << ((64 - partial) as u32)) == 0)) by(bit_vector)
+        requires 0 < partial < 64;
+    assert(((low >> partial) == 0 && (low << ((64 - partial) as u32)) == 0) == (low == 0)) by(bit_vector)
+        requires 0 < partial < 64;
+}
+
+pub proof fn production_magnitude_left_fits_high_bits(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6, 0 < shift < 384,
+    ensures crate::specs::part1_magnitude_left_fits(limbs, shift)
+        == crate::specs::part1_magnitude_zero(crate::specs::part1_magnitude_shift(limbs, (384 - shift) as u16)),
+{
+    let cutoff = (384 - shift) as u16;
+    let high = crate::specs::part1_magnitude_shift(limbs, cutoff);
+    let whole = shift / 64;
+    let partial = (shift % 64) as u32;
+    let base = cutoff / 64;
+    let right = (cutoff % 64) as u32;
+    if crate::specs::part1_magnitude_zero(high) {
+        assert forall |i: int| 0 <= i < 6 implies
+            if i + whole >= 6 { limbs[i] == 0 }
+            else if partial != 0 && i + whole == 5 { limbs[i] >> ((64 - partial) as u32) == 0 }
+            else { true }
+        by {
+            if partial == 0 {
+                if i + whole >= 6 {
+                    production_magnitude_right_projection(limbs, cutoff, i - base);
+                    assert(high[i - base] == 0);
+                }
+            } else if i + whole >= 5 {
+                production_magnitude_right_projection(limbs, cutoff, i - base);
+                assert(high[i - base] == 0);
+                production_magnitude_word_zero_split(
+                    limbs[i], crate::specs::part1_magnitude_limb_or_zero(limbs, i + 1), right,
+                );
+                if i > base {
+                    production_magnitude_right_projection(limbs, cutoff, i - base - 1);
+                    assert(high[i - base - 1] == 0);
+                    production_magnitude_word_zero_split(limbs[i - 1], limbs[i], right);
+                    production_magnitude_word_zero_split(limbs[i], 0, right);
+                }
+            }
+        }
+    }
+    if crate::specs::part1_magnitude_left_fits(limbs, shift) {
+        assert forall |i: int| 0 <= i < 6 implies high[i] == 0 by {
+            production_magnitude_right_projection(limbs, cutoff, i);
+            let source = i + base;
+            let low = crate::specs::part1_magnitude_limb_or_zero(limbs, source);
+            let next = crate::specs::part1_magnitude_limb_or_zero(limbs, source + 1);
+            if source < 6 {
+                if partial == 0 || source > base {
+                    assert(limbs[source] == 0);
+                } else {
+                    assert(limbs[source] >> right == 0);
+                }
+            }
+            if source + 1 < 6 {
+                assert(limbs[source + 1] == 0);
+            }
+            production_magnitude_zero_words(right);
+            if right > 0 {
+                assert((low >> right) | (0u64 << ((64 - right) as u32)) == low >> right) by(bit_vector)
+                    requires 0 < right < 64;
+            }
+        }
+    }
+}
+
+pub proof fn production_magnitude_left_fits_value(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_left_fits(limbs, shift)
+        == (crate::specs::part1_magnitude_value(limbs) * vstd::arithmetic::power2::pow2(shift as nat)
+            < crate::specs::part1_magnitude_capacity()),
+{
+    let value = crate::specs::part1_magnitude_value(limbs);
+    let capacity = crate::specs::part1_magnitude_capacity();
+    let power = vstd::arithmetic::power2::pow2(shift as nat);
+    production_magnitude_prefix_properties(limbs, 6);
+    vstd::arithmetic::power2::lemma_pow2_pos(384);
+    if shift == 0 {
+        vstd::arithmetic::power2::lemma2_to64();
+        vstd::arithmetic::mul::lemma_mul_basics(value as int);
+    } else if shift >= 384 {
+        if shift > 384 {
+            vstd::arithmetic::power2::lemma_pow2_strictly_increases(384, shift as nat);
+        }
+        assert((value * power < capacity) == (value == 0)) by(nonlinear_arith)
+            requires 0 <= value, 0 < capacity <= power;
+    } else {
+        let cutoff = (384 - shift) as u16;
+        let threshold = vstd::arithmetic::power2::pow2(cutoff as nat);
+        let high = crate::specs::part1_magnitude_shift(limbs, cutoff);
+        production_magnitude_left_fits_high_bits(limbs, shift);
+        production_magnitude_right_shift_value(limbs, cutoff);
+        production_magnitude_prefix_properties(high, 6);
+        vstd::arithmetic::power2::lemma_pow2_pos(cutoff as nat);
+        vstd::arithmetic::power2::lemma_pow2_pos(shift as nat);
+        vstd::arithmetic::power2::lemma_pow2_adds(cutoff as nat, shift as nat);
+        vstd::arithmetic::div_mod::lemma_small_div_converse(value as int, threshold as int);
+        if value < threshold {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse_div(value as int, threshold as int, 0, value as int);
+        }
+        assert((value * power < capacity) == (value < threshold)) by(nonlinear_arith)
+            requires capacity == threshold * power, threshold > 0, power > 0;
+    }
+}
+
+pub proof fn production_magnitude_left_prefix_complete(limbs: Seq<u64>, shift: u16)
+    requires limbs.len() == 6, shift < 384,
+    ensures crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, 6)
+        == crate::specs::part1_magnitude_left(limbs, shift),
+{
+    assert forall |i: int| 0 <= i < 6 implies
+        crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, 6)[i]
+            == crate::specs::part1_magnitude_left(limbs, shift)[i]
+    by {
+        let partial = (shift % 64) as u32;
+        let source = i - shift / 64;
+        let low = crate::specs::part1_magnitude_limb_or_zero(limbs, source);
+        production_magnitude_zero_words(partial);
+        if partial == 0 {
+            assert(low << 0 == low) by(bit_vector);
+            assert(low | 0u64 == low) by(bit_vector);
+        } else {
+            assert(0u64 >> ((64 - partial) as u32) == 0) by(bit_vector)
+                requires 0 < partial < 64;
+            assert(0u64 << partial == 0) by(bit_vector)
+                requires partial < 64;
+            assert(0u64 | 0u64 == 0) by(bit_vector);
+        }
+    }
+    assert(crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, 6)
+        =~= crate::specs::part1_magnitude_left(limbs, shift));
+}
+
+pub proof fn production_magnitude_or_zero(word: u64)
+    ensures word | 0u64 == word, 0u64 | word == word,
+{
+    assert(word | 0u64 == word) by(bit_vector);
+    assert(0u64 | word == word) by(bit_vector);
+}
+
+pub proof fn production_magnitude_left_prefix_discard(limbs: Seq<u64>, shift: u16, count: nat)
+    requires limbs.len() == 6, shift < 384, count < 6, count + shift / 64 >= 6,
+    ensures crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count)
+        == crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count + 1),
+{
+    assert(crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count)
+        =~= crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count + 1));
+}
+
+pub proof fn production_magnitude_left_prefix_step(limbs: Seq<u64>, shift: u16, count: nat)
+    requires limbs.len() == 6, shift < 384, count < 6, count + shift / 64 < 6,
+    ensures {
+        let before = crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count);
+        let destination = count + shift / 64;
+        let partial = (shift % 64) as u32;
+        let first = before.update(destination as int, before[destination as int] | (limbs[count as int] << partial));
+        let after = if partial > 0 && destination + 1 < 6 {
+            first.update(destination as int + 1, first[destination as int + 1]
+                | (limbs[count as int] >> ((64 - partial) as u32)))
+        } else { first };
+        after == crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count + 1)
+    },
+{
+    let before = crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count);
+    let destination = count + shift / 64;
+    let partial = (shift % 64) as u32;
+    let low = limbs[count as int] << partial;
+    let first = before.update(destination as int, before[destination as int] | low);
+    let after = if partial > 0 && destination + 1 < 6 {
+        first.update(destination as int + 1, first[destination as int + 1]
+            | (limbs[count as int] >> ((64 - partial) as u32)))
+    } else { first };
+    production_magnitude_or_zero(0);
+    assert forall |i: int| 0 <= i < 6 implies
+        after[i] == crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count + 1)[i]
+    by {
+        if i == destination {
+            let high = if partial > 0 && count > 0 {
+                limbs[count as int - 1] >> ((64 - partial) as u32)
+            } else { 0u64 };
+            production_magnitude_or_zero(high);
+            assert(high | low == low | high) by(bit_vector);
+        } else if partial > 0 && i == destination + 1 {
+            let high = limbs[count as int] >> ((64 - partial) as u32);
+            production_magnitude_or_zero(high);
+        }
+    }
+    assert(after =~= crate::proofs::internal_specs::magnitude_left_prefix(limbs, shift, count + 1));
+}
+
+pub proof fn production_magnitude_add_limb(sum: u128)
+    requires sum <= 36893488147419103231,
+    ensures (sum as u64 as nat) + (if sum > u64::MAX as u128 { 18446744073709551616nat } else { 0nat }) == sum as nat,
+{
+    assert(sum == ((((sum as u64) as u128)
+        + if sum > u64::MAX as u128 { 18446744073709551616u128 } else { 0u128 }) as u128)) by(bit_vector)
+        requires sum <= 36893488147419103231;
+}
+
+pub proof fn production_magnitude_prefix_agrees(left: Seq<u64>, right: Seq<u64>, count: nat)
+    requires left.len() == 6, right.len() == 6, count <= 6,
+        forall |i: int| 0 <= i < count ==> left[i] == right[i],
+    ensures crate::specs::part1_magnitude_prefix_value(left, count)
+        == crate::specs::part1_magnitude_prefix_value(right, count),
+    decreases count,
+{
+    if count > 0 {
+        production_magnitude_prefix_agrees(left, right, (count - 1) as nat);
+    }
+}
+
+pub proof fn production_magnitude_prefix_update(limbs: Seq<u64>, index: nat, digit: u64)
+    requires limbs.len() == 6, index < 6,
+    ensures
+        crate::specs::part1_magnitude_prefix_value(limbs.update(index as int, digit), index)
+            == crate::specs::part1_magnitude_prefix_value(limbs, index),
+        crate::specs::part1_magnitude_prefix_value(limbs.update(index as int, digit), index + 1)
+            == crate::specs::part1_magnitude_prefix_value(limbs, index)
+                + (digit as nat) * vstd::arithmetic::power2::pow2(64 * index),
+{
+    production_magnitude_prefix_agrees(limbs, limbs.update(index as int, digit), index);
+}
+
+pub proof fn production_magnitude_add_prefix_step(
+    left: nat, right: nat, output: nat, a: u64, b: u64, digit: u64,
+    previous_carry: bool, next_carry: bool, weight: nat, next_weight: nat,
+)
+    requires
+        left + right == output + if previous_carry { weight } else { 0nat },
+        (digit as nat) + (if next_carry { 18446744073709551616nat } else { 0nat })
+            == (a as nat) + (b as nat) + if previous_carry { 1nat } else { 0nat },
+        next_weight == weight * 18446744073709551616,
+    ensures
+        left + (a as nat) * weight + right + (b as nat) * weight
+            == output + (digit as nat) * weight + if next_carry { next_weight } else { 0nat },
+{
+    let old = if previous_carry { 1nat } else { 0nat };
+    let new = if next_carry { 1nat } else { 0nat };
+    vstd::arithmetic::mul::lemma_mul_basics(weight as int);
+    vstd::arithmetic::mul::lemma_mul_basics(next_weight as int);
+    assert(left + (a as nat) * weight + right + (b as nat) * weight
+        == output + (digit as nat) * weight + new * next_weight) by(nonlinear_arith)
+        requires left + right == output + old * weight,
+            (digit as nat) + new * 18446744073709551616 == (a as nat) + (b as nat) + old,
+            next_weight == weight * 18446744073709551616;
+}
+
+pub proof fn production_magnitude_low_word(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures crate::specs::part1_magnitude_value(limbs) % 18446744073709551616 == limbs[0] as nat,
+{
+    production_magnitude_value_expansion(limbs);
+    let upper = (limbs[1] as nat)
+        + (limbs[2] as nat) * 18446744073709551616
+        + (limbs[3] as nat) * 340282366920938463463374607431768211456
+        + (limbs[4] as nat) * 6277101735386680763835789423207666416102355444464034512896
+        + (limbs[5] as nat) * 115792089237316195423570985008687907853269984665640564039457584007913129639936;
+    assert(crate::specs::part1_magnitude_value(limbs) == upper * 18446744073709551616 + (limbs[0] as nat));
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod_converse_mod(
+        crate::specs::part1_magnitude_value(limbs) as int, 18446744073709551616, upper as int, limbs[0] as int,
+    );
+}
+
 pub proof fn production_layer_scan_empty(channels: Seq<crate::specs::Part2LayerChannel>, color_count: nat)
     ensures crate::specs::part2_layer_channel_scan(channels, color_count, 0)
         == Ok((Seq::new(color_count, |i: int| None), Seq::empty())),
@@ -1665,6 +2393,56 @@ pub proof fn production_vertical_error_persists(
         production_vertical_error_persists(
             low, high, height, low_first, irreversible, length, completed, (total - 1) as nat, error,
         );
+    }
+}
+
+pub proof fn production_quantized_row_error_persists(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, y: u32, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, completed).0.is_err(),
+    ensures
+        crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, total)
+            == crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_quantized_row_error_persists(band, source, block_width, placement_x, placement_y, y, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_quantized_block_error_persists(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, completed).0.is_err(),
+    ensures
+        crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, total)
+            == crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_quantized_block_error_persists(band, source, block_width, placement_x, placement_y, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_component_transform_error_persists(
+    image: crate::specs::Part1DecodedImageModel, irreversible: bool, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_component_transform_prefix(image, irreversible, completed).0.is_err(),
+    ensures
+        crate::specs::part1_component_transform_prefix(image, irreversible, total)
+            == crate::specs::part1_component_transform_prefix(image, irreversible, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_component_transform_error_persists(image, irreversible, completed, (total - 1) as nat);
     }
 }
 

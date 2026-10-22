@@ -106,6 +106,24 @@ root and the relevant upstream regression suites.
 
 ## What the proofs establish
 
+### Full native magnitude arithmetic
+
+`magnitude_value` is the closed natural-value projection of all six
+little-endian limbs. Native `checked_add`, `checked_shl`, `shift_right`,
+`low_u64` and `is_zero` refine exact sum/capacity, multiplication/floor
+division by powers of two, modulo-low-word and full-value zero semantics.
+All `u16` shift values are covered, including large-shift zero success and
+nonzero overflow. No coefficient-normalization or HT-success premise is
+assumed. Public associated factories retain their API while verified free
+factories supply complete producer contracts, including exact invalid-bit
+errors and identity with `Magnitude::ZERO`.
+
+The existing limb implementations are related to natural arithmetic through
+proved one-bit word composition, full-value carry identities and capacity
+bounds, without raising verifier limits. This interface supports actual
+HT reconstruction but does not by itself prove HT byte meaning or F6's
+remaining assembly bridge.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
@@ -138,10 +156,36 @@ separate image/component conversion path. Independent tests compare complete
 outputs and error/mutation boundaries with bit-expanded ROI, rational Q16 and
 widened-integer sequence/plane/conversion references.
 
+The actual free `apply_reversible_component_transform` and
+`apply_irreversible_component_transform` APIs have complete mutable-image
+contracts, not just scalar arithmetic bounds. A closed `DecodedImage` view
+contains every image/component metadata field and all sample buffers. The
+shared real loop's ordered compatibility, length and arithmetic checks are
+modeled together with complete failure states; metadata, lengths and every
+extra component remain unchanged. Independent widened-integer tests compare
+entire images, including earlier committed pixels on a later error.
+No typed/CDEF structure or conversion is duplicated or modified.
+
+Raw closed arbitrary-kernel/step/coefficient views and exact receiver getter
+contracts make their consumed representation available without validation or
+coefficient-normalization assumptions. They are interfaces for further
+arbitrary-kernel work, not a whole-kernel theorem.
+
+The actual quantized-block placement loop in
+`decode::prepare_tile_component_with_kernel` is a shared, verified production
+block/row/pixel transition. Its complete working-subband view includes both
+samples and visited flags with exact first-failure buffers, unchanged metadata
+and lengths, monotone visited flags and protected previsited values. Independent
+wide-index tests cover full grids, short buffers, overlaps, empty blocks and
+coordinate failures. Geometry/quantization checks stay before the same real
+call. This is the complete write stage, not a result theorem for its surrounding
+placement, multilevel or tile/image assembly coordinator.
+
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
-coefficient placement, actual multilevel/resolution scheduling, arbitrary
-kernels, component transforms, decoder image/component conversion, component/
+the whole coefficient-placement coordinator, actual multilevel/resolution
+scheduling, arbitrary
+kernels, multiple-component transforms, decoder typed conversion, component/
 tile assembly and composed component-sample relations are not established here.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 
