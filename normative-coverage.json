@@ -75,6 +75,7 @@
         {"path": "src/tier1.rs", "symbol": "ht_sigprop_plane_outcome"},
         {"path": "src/tier1.rs", "symbol": "ht_refinement_magnitude_outcome"},
         {"path": "src/tier1.rs", "symbol": "ht_refinement_magnitude_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_boolean_vector_view"},
         {"path": "src/tier1.rs", "symbol": "neighbor_kind_tag"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_full_refinement_rejects_front_parameters_before_any_plane_or_stream"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_delayed_signs_preserve_discovery_and_pending_on_every_return"},

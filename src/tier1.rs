@@ -3752,6 +3752,8 @@ fn reconstruct_ht_cleanup_plane(
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    spec fn ht_boolean_vector_view(value: Vec<bool>) -> Seq<bool> { value@ }
+
     spec fn ht_refinement_magnitude_outcome(result: Result<Magnitude, DecodeError>) -> Result<(Seq<u64>, nat), DecodeError> {
         match result { Err(error) => Err(error), Ok(value) => Ok((
             crate::magnitude::magnitude_limbs(value), crate::magnitude::magnitude_value(value))) }
@@ -3786,7 +3788,8 @@ fn ht_refinement_delta(decoded_bitplanes: u16) -> Result<Magnitude, DecodeError>
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-    ensures result@ == crate::specs::ht_cleanup_significance(coefficient_raw_views(coefficients@)),
+    ensures ht_boolean_vector_view(result) == crate::specs::ht_cleanup_significance(coefficient_raw_views(coefficients@)),
+        result@ == crate::specs::ht_cleanup_significance(coefficient_raw_views(coefficients@)),
 ))]
 fn ht_collect_cleanup_significance(coefficients: &[CoefficientState]) -> Vec<bool> {
     let mut output = Vec::with_capacity(coefficients.len());
