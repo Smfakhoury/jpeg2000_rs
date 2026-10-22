@@ -11,6 +11,8 @@ mod packet_orchestration;
 pub use packet_orchestration::*;
 mod packet_progression;
 pub use packet_progression::*;
+mod packet_tile;
+pub use packet_tile::*;
 mod header;
 pub use header::*;
 mod tag_tree;
