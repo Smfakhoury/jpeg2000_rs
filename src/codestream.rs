@@ -73,6 +73,46 @@ pub struct ComponentInfo {
     pub y_registration: u16,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn image_size_component_infos(size: &ImageSize) -> Seq<ComponentInfo> {
+        size.component_info@
+    }
+
+    pub closed spec fn image_size_component_count(size: &ImageSize) -> u16 {
+        size.components
+    }
+
+    pub closed spec fn decomposition_selector_view(style: CodingStyle) -> (u8, Seq<DecompositionDirection>) {
+        (style.decomposition_levels, style.decomposition_directions@)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_size_component(size.components, size.component_info@, index),
+    image_size_component_count(size) == size.components,
+    image_size_component_infos(size) == size.component_info@,
+))]
+pub(crate) fn image_component_info(
+    size: &ImageSize,
+    index: u16,
+) -> Result<ComponentInfo, DecodeError> {
+    if index >= size.components {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        });
+    }
+    let index = usize::from(index);
+    if index >= size.component_info.len() {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        });
+    }
+    Ok(size.component_info[index])
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct TileBounds {
@@ -103,21 +143,13 @@ impl ImageSize {
             .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_image_size_component(
+            image_size_component_count(self), image_size_component_infos(self), index,
+        ),
+    ))]
     pub fn component(&self, index: u16) -> Result<ComponentInfo, DecodeError> {
-        if index >= self.components {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
-        }
-        let index = usize::from(index);
-        if index >= self.component_info.len() {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
-        }
-        Ok(self.component_info[index])
+        image_component_info(self, index)
     }
 
     pub fn tile_bounds(&self, tile_index: u16) -> Result<TileBounds, DecodeError> {
@@ -375,28 +407,47 @@ impl CodingStyle {
         count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_decomposition_direction(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1, stage_from_finest,
+        ),
+    ))]
     pub fn decomposition_direction(
         self,
         stage_from_finest: u8,
     ) -> Result<DecompositionDirection, DecodeError> {
         if stage_from_finest >= self.decomposition_levels {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
         match self
             .decomposition_directions
             .get(usize::from(stage_from_finest))
         {
             Some(direction) => Ok(*direction),
-            None => Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)),
+            None => Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            }),
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_direction_for_resolution(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1, resolution,
+        ),
+    ))]
     pub fn direction_for_resolution(
         self,
         resolution: u8,
     ) -> Result<DecompositionDirection, DecodeError> {
         if resolution == 0 || resolution > self.decomposition_levels {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
         let stage = self
             .decomposition_levels
@@ -452,9 +503,17 @@ impl CodingStyle {
         Ok((horizontal, vertical))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_subband_count_through_resolution(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1, resolution,
+        ),
+    ))]
     pub fn subband_count_through_resolution(self, resolution: u8) -> Result<usize, DecodeError> {
         if resolution > self.decomposition_levels {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
         let mut count = 1_usize;
         let mut current = 1_u8;
@@ -462,20 +521,65 @@ impl CodingStyle {
             verus_keep_ghost,
             verus_spec(
                 invariant current <= resolution + 1,
+                current >= 1,
+                resolution <= self.decomposition_levels,
+                crate::specs::part1_subband_count_prefix(
+                    decomposition_selector_view(self).0, decomposition_selector_view(self).1, (current - 1) as nat,
+                ) == Ok(count),
                 decreases resolution + 1 - current,
             )
         )]
         while current <= resolution {
-            count = count
-                .checked_add(match self.direction_for_resolution(current)? {
-                    DecompositionDirection::None => 0,
-                    DecompositionDirection::Horizontal | DecompositionDirection::Vertical => 1,
-                    DecompositionDirection::TwoDimensional => 3,
-                })
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            current = current
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            let direction = match self.direction_for_resolution(current) {
+                Ok(direction) => direction,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_subband_count_error_persists(
+                            decomposition_selector_view(self).0, decomposition_selector_view(self).1,
+                            current as nat, resolution as nat, error,
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            let added = match direction {
+                DecompositionDirection::None => 0,
+                DecompositionDirection::Horizontal | DecompositionDirection::Vertical => 1,
+                DecompositionDirection::TwoDimensional => 3,
+            };
+            count = match count.checked_add(added) {
+                Some(next) => next,
+                None => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_subband_count_error_persists(
+                            decomposition_selector_view(self).0, decomposition_selector_view(self).1,
+                            current as nat, resolution as nat, crate::specs::part1_selector_error(true),
+                        );
+                    }
+                    return Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::ArithmeticOverflow,
+                    });
+                }
+            };
+            current = match current.checked_add(1) {
+                Some(next) => next,
+                None => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_subband_count_error_persists(
+                            decomposition_selector_view(self).0, decomposition_selector_view(self).1,
+                            current as nat, resolution as nat, crate::specs::part1_selector_error(true),
+                        );
+                    }
+                    return Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::ArithmeticOverflow,
+                    });
+                }
+            };
         }
         Ok(count)
     }
@@ -8525,6 +8629,119 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_component_getter_covers_entire_u16_index_domain() {
+        let information = core::array::from_fn(|index| {
+            let index = u8::try_from(index).unwrap();
+            ComponentInfo {
+                precision: index % 39,
+                signed: index % 2 != 0,
+                x_subsampling: index,
+                y_subsampling: 255 - index,
+                x_registration: u16::from(index) * 997,
+                y_registration: u16::MAX - u16::from(index) * 997,
+            }
+        });
+        for components in [0, 1, 63, 64, 65, u16::MAX] {
+            let size = ImageSize {
+                width: 0,
+                height: u32::MAX,
+                x_origin: u32::MAX,
+                y_origin: 1,
+                components,
+                uniform_bit_depth: None,
+                uniform_signed: None,
+                tile_width: 0,
+                tile_height: 0,
+                tile_x_origin: 0,
+                tile_y_origin: 0,
+                tiles_across: 0,
+                tiles_down: 0,
+                component_info: information,
+            };
+            for index in 0..=u16::MAX {
+                let expected = if index < components && usize::from(index) < information.len() {
+                    Ok(information[usize::from(index)])
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidImageGeometry,
+                    })
+                };
+                assert_eq!(size.component(index), expected);
+                assert_eq!(image_component_info(&size, index), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn decomposition_selectors_cover_entire_u8_level_stage_resolution_domains() {
+        use DecompositionDirection::{Horizontal, None, TwoDimensional, Vertical};
+        for pattern in 0..4 {
+            let directions = core::array::from_fn(|index| {
+                [None, Horizontal, Vertical, TwoDimensional][(index + pattern) % 4]
+            });
+            for levels in 0..=u8::MAX {
+                let style = CodingStyle {
+                    progression_order: ProgressionOrder::Lrcp,
+                    layers: 0,
+                    multiple_component_transform: false,
+                    decomposition_levels: levels,
+                    decomposition_structure: Option::None,
+                    decomposition_directions: directions,
+                    code_block_width: 0,
+                    code_block_height: 0,
+                    code_block_style: 0,
+                    transform: WaveletTransform::Reversible5x3,
+                    precincts_defined: false,
+                    sop_markers: false,
+                    eph_markers: false,
+                    precinct_exponents: [(0, 0); 33],
+                };
+                let error = DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodingStyle,
+                };
+                for value in 0..=u8::MAX {
+                    assert_eq!(
+                        style.decomposition_direction(value),
+                        if value < levels && usize::from(value) < directions.len() {
+                            Ok(directions[usize::from(value)])
+                        } else {
+                            Err(error)
+                        }
+                    );
+                    let stage = i16::from(levels) - i16::from(value);
+                    assert_eq!(
+                        style.direction_for_resolution(value),
+                        if value != 0 && value <= levels && stage < 32 {
+                            Ok(directions[usize::try_from(stage).unwrap()])
+                        } else {
+                            Err(error)
+                        }
+                    );
+                    let expected = if value == 0 {
+                        Ok(1)
+                    } else if value > levels || levels > 32 {
+                        Err(error)
+                    } else {
+                        let increments: usize = directions
+                            [usize::from(levels - value)..usize::from(levels)]
+                            .iter()
+                            .map(|direction| match direction {
+                                None => 0,
+                                Horizontal | Vertical => 1,
+                                TwoDimensional => 3,
+                            })
+                            .sum();
+                        Ok(1 + increments)
+                    };
+                    assert_eq!(style.subband_count_through_resolution(value), expected);
+                }
+            }
+        }
+    }
 
     type MccCollectionFixture<'a> = (&'a [u8], &'a [u8], bool, u8, u8);
 

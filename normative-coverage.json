@@ -5496,6 +5496,92 @@
     },
     {
       "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "ImageSize::component"},
+        {"path": "src/codestream.rs", "symbol": "image_component_info"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::decomposition_direction"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count_through_resolution"}
+      ],
+      "id": "part1-complete-reconstruction-metadata-selectors",
+      "implementation_refs": [
+        {"path": "src/image.rs", "symbol": "assembly_component_dimensions"},
+        {"path": "src/codestream.rs", "symbol": "ImageSize::component"},
+        {"path": "src/codestream.rs", "symbol": "image_component_info"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::decomposition_direction"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count_through_resolution"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_subband_count_error_persists"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_image_size_component"},
+        {"path": "specs/mod.rs", "symbol": "part1_decomposition_direction"},
+        {"path": "specs/mod.rs", "symbol": "part1_direction_for_resolution"},
+        {"path": "specs/mod.rs", "symbol": "part1_subband_count_through_resolution"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "raw_component_getter_covers_entire_u16_index_domain"},
+        {"path": "src/codestream.rs", "symbol": "decomposition_selectors_cover_entire_u8_level_stage_resolution_domains"}
+      ],
+      "topic": "Actual raw component information and reconstruction direction/count selectors with full native u16/u8 input domains, physical array bounds, exact errors and first-error ordering; no valid-header or profile premise"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "assemble_image"},
+        {"path": "src/image.rs", "symbol": "assemble_selected_image"},
+        {"path": "src/image.rs", "symbol": "append_assembly_component"},
+        {"path": "src/image.rs", "symbol": "assembly_component_dimensions"},
+        {"path": "src/image.rs", "symbol": "assembly_component_crop"},
+        {"path": "src/image.rs", "symbol": "charge_assembly_bytes"},
+        {"path": "src/image.rs", "symbol": "collect_assembly_tiles"},
+        {"path": "src/image.rs", "symbol": "assembly_tile_step"},
+        {"path": "src/image.rs", "symbol": "place_tile"},
+        {"path": "src/image.rs", "symbol": "place_selected_tile"},
+        {"path": "src/image.rs", "symbol": "assembly_rectangle"},
+        {"path": "src/image.rs", "symbol": "assembly_row"},
+        {"path": "src/image.rs", "symbol": "assembly_pixel"},
+        {"path": "src/image.rs", "symbol": "assembly_selected_header"}
+      ],
+      "id": "part1-complete-registered-tile-image-assembly",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_prepared_image"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/image.rs", "symbol": "assemble_image"},
+        {"path": "src/image.rs", "symbol": "assemble_selected_image"},
+        {"path": "src/image.rs", "symbol": "append_assembly_component"},
+        {"path": "src/image.rs", "symbol": "collect_assembly_tiles"},
+        {"path": "src/image.rs", "symbol": "assembly_tile_step"},
+        {"path": "src/image.rs", "symbol": "place_tile"},
+        {"path": "src/image.rs", "symbol": "place_selected_tile"},
+        {"path": "src/image.rs", "symbol": "assembly_rectangle"},
+        {"path": "src/image.rs", "symbol": "assembly_row"},
+        {"path": "src/image.rs", "symbol": "assembly_pixel"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_assembly_components_error_persists"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_assembly_tiles_error_persists"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_assembly_rectangle_error_persists"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_assembly_row_error_persists"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_assemble_image"},
+        {"path": "specs/mod.rs", "symbol": "part1_assemble_selected_image"},
+        {"path": "specs/mod.rs", "symbol": "part1_assembly_append_plane"},
+        {"path": "specs/mod.rs", "symbol": "part1_collect_assembly_tiles"},
+        {"path": "specs/mod.rs", "symbol": "part1_assembly_pixel"},
+        {"path": "specs/mod.rs", "symbol": "part1_accumulate_decoded_bytes"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "complete_assembly_matches_independent_registered_coordinate_images"},
+        {"path": "src/image.rs", "symbol": "assembly_preserves_error_order_and_selected_only_sample_coverage"},
+        {"path": "src/image.rs", "symbol": "assembly_byte_charge_matches_wide_integer_complete_counter_state"}
+      ],
+      "topic": "Complete actual base and active selected registered tile-to-image assembly, every sample and metadata field, raw fractions, cumulative decoded-byte accounting, overlap/coverage and ordered typed errors; selected copying preserves its distinct intersection-only source-length semantics. Supplied tile samples, not the unproved whole coefficient/plan coordinator"
+    },
+    {
+      "contract_refs": [
         {"path": "src/magnitude.rs", "symbol": "Magnitude::is_zero"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::low_u64"}
       ],
