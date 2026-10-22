@@ -2476,6 +2476,14 @@
         {
           "path": "src/jpx.rs",
           "symbol": "timeline_instruction_limit"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "build_timeline"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_normalized_frame"
         }
       ],
       "id": "part2-normalized-layer-frame-stages",

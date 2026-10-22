@@ -277,6 +277,8 @@ def validate_normative_coverage(
                 ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
                 ("src/jpx.rs", "render_decoded_layers"): "crate::color::converted_image_result",
                 ("src/jpx.rs", "select_frame_instructions"): "frame_selection_result",
+                ("src/jpx.rs", "build_timeline"): "timeline_frames_result",
+                ("src/jpx.rs", "render_normalized_frame"): "crate::color::converted_image_result",
                 ("src/color.rs", "from_layer"): "converted_image_result",
                 ("src/color.rs", "from_composited"): "converted_image_result",
             }.get((reference["path"], short))

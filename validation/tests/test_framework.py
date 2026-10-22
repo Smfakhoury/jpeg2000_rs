@@ -221,6 +221,7 @@ class FrameworkTests(WorkingFiles):
         ]
         requirement = coverage["requirements"][0]
         requirement["implementation_refs"] = [
+            {"path": "src/jpx.rs", "symbol": "inspect_file"},
             {"path": "src/jpx.rs", "symbol": "render_inspected_frame"},
             {"path": "src/jpx.rs", "symbol": "render_normalized_frame"},
             {"path": "src/jpx.rs", "symbol": "render_decoded_layers"},
@@ -230,6 +231,8 @@ class FrameworkTests(WorkingFiles):
         for relative, symbol, projection in (
             ("src/jpx.rs", "render_decoded_layers", "crate::color::converted_image_result"),
             ("src/jpx.rs", "select_frame_instructions", "frame_selection_result"),
+            ("src/jpx.rs", "build_timeline", "timeline_frames_result"),
+            ("src/jpx.rs", "render_normalized_frame", "crate::color::converted_image_result"),
             ("src/color.rs", "from_layer", "converted_image_result"),
             ("src/color.rs", "from_composited", "converted_image_result"),
         ):
