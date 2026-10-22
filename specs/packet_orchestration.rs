@@ -96,6 +96,13 @@ pub struct Part1PrecinctPayloadParameters {
 pub type Part1PrecinctPayloadResult =
     (Result<(crate::packet::PacketBodyDecode, usize, usize), crate::DecodeError>, Part1PacketPrecinctState);
 
+pub struct Part1PrecinctPayloadReader {
+    pub reader: super::Part1PacketReaderState,
+    pub packet_data: Seq<u8>,
+    pub present: bool,
+    pub sop_bytes: usize,
+}
+
 pub open spec fn part1_precinct_payload_finish(
     state: Part1PacketPrecinctState, parameters: Part1PrecinctPayloadParameters,
     present: bool, contribution_count: u32, segments: u32, passes: u32,
@@ -151,6 +158,7 @@ pub open spec fn part1_precinct_payload_body(
     }
 }
 
+#[verifier::opaque]
 pub open spec fn part1_precinct_payload_after_headers(
     state: Part1PacketPrecinctState, parameters: Part1PrecinctPayloadParameters,
     data: Seq<u8>, packet_data: Seq<u8>, reader: super::Part1PacketReaderState,
@@ -158,6 +166,7 @@ pub open spec fn part1_precinct_payload_after_headers(
     present: bool, sop_bytes: usize,
     pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
 ) -> Part1PrecinctPayloadResult {
+    let reader = super::Part1PacketReaderState { bits_remaining: 0, ..reader };
     let header_bytes = reader.byte_index;
     if !parameters.packed && sop_bytes as nat + header_bytes as nat > usize::MAX {
         (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
@@ -190,17 +199,14 @@ pub open spec fn part1_precinct_payload_after_headers(
 #[verifier::opaque]
 pub open spec fn part1_precinct_payload_headers(
     state: Part1PacketPrecinctState, parameters: Part1PrecinctPayloadParameters,
-    data: Seq<u8>, packet_data: Seq<u8>, sop_bytes: usize, header_limit: u64,
+    data: Seq<u8>, prefix: Part1PrecinctPayloadReader,
     pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
 ) -> Part1PrecinctPayloadResult {
-    let first = super::part1_packet_reader_read(super::part1_packet_reader_prefix(packet_data, header_limit, work_limit));
-    match first.0 {
-        Err(error) => (Err(error), state),
-        Ok(present) => {
+    let present = prefix.present;
             let initial = Part1PrecinctHeaderState {
                 states: state.states, subbands: state.subbands,
                 contributions: Seq::new(state.states.len(), |i: int| None),
-                reader: first.1, subband_index: 0, local_index: 0, contribution_count: 0,
+                reader: prefix.reader, subband_index: 0, local_index: 0, contribution_count: 0,
             };
             let headers = if present && state.contexts.len() > 0 {
                 part1_precinct_headers(initial, state.contexts, state.contexts[0].layer, parameters.style)
@@ -208,20 +214,17 @@ pub open spec fn part1_precinct_payload_headers(
             let state = Part1PacketPrecinctState { states: headers.1.states, subbands: headers.1.subbands, ..state };
             match headers.0 {
                 Err(error) => (Err(error), state),
-                Ok(()) => part1_precinct_payload_after_headers(state, parameters, data, packet_data,
-                    super::Part1PacketReaderState { bits_remaining: 0, ..headers.1.reader },
-                    headers.1.contributions, headers.1.contribution_count, present, sop_bytes,
+                Ok(()) => part1_precinct_payload_after_headers(state, parameters, data, prefix.packet_data,
+                    headers.1.reader,
+                    headers.1.contributions, headers.1.contribution_count, present, prefix.sop_bytes,
                     pass_limit, byte_limit, input_limit, work_limit),
             }
-        },
-    }
 }
 
-pub open spec fn part1_precinct_payload(
-    state: Part1PacketPrecinctState, data: Seq<u8>, packed_headers: Seq<u8>,
-    parameters: Part1PrecinctPayloadParameters, header_limit: u64,
-    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
-) -> Part1PrecinctPayloadResult {
+pub open spec fn part1_precinct_payload_prefix(
+    data: Seq<u8>, packed_headers: Seq<u8>, parameters: Part1PrecinctPayloadParameters,
+    header_limit: u64, work_limit: u64,
+) -> Result<Part1PrecinctPayloadReader, crate::DecodeError> {
     let sop = if !parameters.sop { Ok(0usize) }
     else if data.len() < 4 {
         Err(super::part1_packet_reader_error(parameters.error_offset, crate::MalformedKind::Truncated))
@@ -233,21 +236,78 @@ pub open spec fn part1_precinct_payload(
         Err(ht_reader_error(crate::MalformedKind::InvalidPacketHeader))
     } else { Ok(6usize) };
     match sop {
-        Err(error) => (Err(error), state),
-        Ok(sop_bytes) => if parameters.packed {
+        Err(error) => Err(error),
+        Ok(sop_bytes) => {
+            let packet_data = if parameters.packed {
             if parameters.packed_offset > packed_headers.len() {
-                (Err(super::part1_packet_reader_error(parameters.packed_offset, crate::MalformedKind::Truncated)), state)
+                Err(super::part1_packet_reader_error(parameters.packed_offset, crate::MalformedKind::Truncated))
             } else {
-                part1_precinct_payload_headers(state, parameters, data,
-                    packed_headers.subrange(parameters.packed_offset as int, packed_headers.len() as int),
-                    sop_bytes, header_limit, pass_limit, byte_limit, input_limit, work_limit)
+                Ok(packed_headers.subrange(parameters.packed_offset as int, packed_headers.len() as int))
             }
         } else if sop_bytes > data.len() {
-            (Err(super::part1_packet_reader_error(parameters.error_offset, crate::MalformedKind::Truncated)), state)
+            Err(super::part1_packet_reader_error(parameters.error_offset, crate::MalformedKind::Truncated))
         } else {
-            part1_precinct_payload_headers(state, parameters, data, data.subrange(sop_bytes as int, data.len() as int),
-                sop_bytes, header_limit, pass_limit, byte_limit, input_limit, work_limit)
+            Ok(data.subrange(sop_bytes as int, data.len() as int))
+        };
+            match packet_data {
+                Err(error) => Err(error),
+                Ok(packet_data) => {
+                    let first = super::part1_packet_reader_read(super::part1_packet_reader_prefix(packet_data, header_limit, work_limit));
+                    match first.0 {
+                        Err(error) => Err(error),
+                        Ok(present) => Ok(Part1PrecinctPayloadReader { reader: first.1, packet_data, present, sop_bytes }),
+                    }
+                },
+            }
         },
+    }
+}
+
+pub open spec fn part1_precinct_payload(
+    state: Part1PacketPrecinctState, data: Seq<u8>, packed_headers: Seq<u8>,
+    parameters: Part1PrecinctPayloadParameters, header_limit: u64,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> Part1PrecinctPayloadResult {
+    match part1_precinct_payload_prefix(data, packed_headers, parameters, header_limit, work_limit) {
+        Err(error) => (Err(error), state),
+        Ok(prefix) => part1_precinct_payload_headers(state, parameters, data, prefix,
+            pass_limit, byte_limit, input_limit, work_limit),
+    }
+}
+
+pub open spec fn part1_precinct_packet(
+    state: Part1PacketPrecinctState, tile_part: &crate::codestream::TilePartPayload<'_>,
+    offset: usize, packed_headers: Seq<u8>, packed_offset: usize,
+    expected_packet_length: Option<u32>, expected_sop_sequence: u16, decode_tier1: bool,
+    code_block_limit: u64, header_limit: u64, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> Part1PrecinctPayloadResult {
+    if state.states.len() != state.contexts.len() || state.states.len() != state.decoders.len()
+        || (state.states.len() == 0) != (state.subbands.len() == 0) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidPacketHeader)), state)
+    } else if state.states.len() as u64 > code_block_limit {
+        (Err(super::part1_packet_reader_limit(crate::Resource::CodeBlocks,
+            code_block_limit, state.states.len() as u64)), state)
+    } else if state.states.len() as u64 > work_limit {
+        (Err(super::part1_packet_reader_limit(crate::Resource::WorkUnits,
+            work_limit, state.states.len() as u64)), state)
+    } else if offset > tile_part.data@.len() {
+        (Err(super::part1_packet_reader_error(offset, crate::MalformedKind::InvalidPacketLength)), state)
+    } else {
+        match crate::codestream::component_coding_style_result(&tile_part.component_coding_styles, state.component) {
+            Err(error) => (Err(error), state),
+            Ok(style) => match crate::codestream::coding_style_tier1_result(style) {
+                Err(error) => (Err(error), state),
+                Ok(tier1_style) => {
+                    let markers = crate::codestream::coding_style_packet_markers(&tile_part.coding_style);
+                    part1_precinct_payload(state, tile_part.data@.subrange(offset as int, tile_part.data@.len() as int),
+                        packed_headers, Part1PrecinctPayloadParameters {
+                            error_offset: offset, packed_offset, expected_packet_length, expected_sop_sequence,
+                            style: tier1_style, sop: markers.0, eph: markers.1,
+                            packed: crate::codestream::packed_packet_headers_present(&tile_part.packed_packet_headers), decode_tier1,
+                        }, header_limit, pass_limit, byte_limit, input_limit, work_limit)
+                },
+            },
+        }
     }
 }
 

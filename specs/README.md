@@ -7,13 +7,13 @@ HT/mixed rejection masks and all256 input bytes. Public static APIs and the
 actual codestream caller share one executable parser body. Closed owner
 observations expose actual SOP/EPH fields and packed-header source presence;
 presence is not inferred from byte length or fragment count. These facts feed
-the pending actual tile/precinct/progression composition, not a supplied style
+the actual tile/precinct composition and pending progression join, not a supplied style
 or header outcome.
 
 ## Frozen actual precinct/progression orchestration contract
 
-The next composition boundary is the actual `decode_precinct_packet` and its
-progression caller, not a supplied header/result bank. F5L owns the sole complete
+The composition boundary is the actual `decode_precinct_packet` and its
+remaining progression caller, not a supplied header/result bank. F5L owns the sole complete
 packet reader, raw tag-tree and header producer interfaces; this work consumes
 those actual contracts without editing their algorithms or duplicating views.
 F5H owns precinct/progression associations, native local progress and full
@@ -49,9 +49,9 @@ The progression profile must additionally preserve actual coordinate iteration,
 tile-part/packed-header/packet-length cursors, duplicate suppression, context
 layer writes, resolution selection, earlier packet effects and all late checked
 aggregate/consumption errors. Actual external owner interfaces are prerequisites,
-not assumed successful traces. Until these caller joins close, neither this
-frozen contract nor its intermediate stages claim complete precinct/progression
-or F5H completion.
+not assumed successful traces. The intermediate body and association stages
+alone do not close this boundary; the precinct join below now closes the
+single-packet caller, while progression and whole F5H remain open.
 
 The actual precinct header association stages now refine
 `part1_precinct_header_slot`, `part1_precinct_header_members` and
@@ -63,6 +63,35 @@ Readonly admission precedes the scoped mutable header borrow; complete vector
 length, untouched-element and selected-subband metadata frames are explicit.
 Native force-bit omission in style equality is part of the actual policy,
 not replaced by whole-struct equality.
+
+### Complete actual TilePartPayload precinct composition
+
+The original `decode_precinct_packet` now has an unconditional complete
+Result/full-precinct relation to `part1_precinct_packet`. Its semantic input is
+the actual `TilePartPayload`, not a bank of style, header or decoder outcomes.
+Actual owner contracts derive component-style count/physical-array errors,
+all byte-parser results, SOP/EPH fields and packed source presence. The real
+shape, code-block/work caps and data-offset checks retain their original order.
+
+Three actual production phases isolate marker/reader admission, native header
+association, and alignment/EPH/body/accounting. Their code is moved, never
+duplicated; descriptor allocation still occurs once, after the packet-present
+bit. Prefix relations include the complete returned reader and original
+borrowed byte slice. All helper contracts admit arbitrary raw metadata, state,
+descriptors and cap values without success or budget premises.
+
+The full join derives descriptors through the sole F5L header producer, then
+preflights every body range before actual mixed legacy/HT execution. Packed and
+inline paths preserve distinct physical cursors but common logical length;
+SOP/EPH overhead, skipped execution and all final conversions are included.
+Header/tree commits survive later EPH/preflight failures; decoder commits also
+survive a later packet-length mismatch. Independent literal MQ and HT streams,
+including nonzero HT coefficients, exercise these effects without using the
+model or subject decoder as an expected-output oracle.
+
+This closes this actual single-precinct packet boundary, not packet progression,
+tile-part reassembly, packet-length iteration, JPIP outer transactions, general
+codestream correctness or the F5H epic.
 
 ## Native packet reader and raw tag-tree ownership
 

@@ -443,10 +443,47 @@ slot), unused second-subband trees, late count overflow and missing descriptor
 storage after real reader/tree/packet-state effects. These cases are not
 excluded by normalized geometry, storage, header or budget premises.
 
-This closes header association and body-loop stages, not the complete
-`TilePartPayload` precinct/progression caller. Actual readonly coding-style,
-packed-header and progression metadata owner interfaces and the remaining
-marker/layout/aggregate composition are still required.
+Those stages alone close header association and body loops. The following join
+additionally closes the complete single-packet `TilePartPayload` precinct caller;
+progression and reassembly remain separate.
+
+### Complete actual single-precinct packet caller
+
+The original `decode_precinct_packet` unconditionally refines
+`part1_precinct_packet`, with its actual `TilePartPayload`, bytes, offsets,
+expected SOP sequence/packet length, execution selector and typed owner caps.
+The post relates the complete native Result and all precinct identity, contexts,
+packet states, raw subbands/trees and entire decoder states. There are no
+shape, valid-style/header, successful-decode, adequate-budget or trace premises.
+
+The real component-style lookup and Tier1 byte parser now supply their owner
+results directly. Exact owner SOP/EPH observations and packed source presence
+select the real path; neither a style result nor a header result is supplied.
+The `5972cc2` owner limit views are consumed through the actual getters and
+typed packet-reader factory, including original code-block/work cap priority.
+
+Marker/prefix admission, header association, and post-header execution are
+actual production phases, not executable proof copies. Their separation keeps
+the complete proofs within unchanged default limits. Explicit equivalent
+matches expose real first-error branches rather than relying on unspecified
+higher-order error closures. Prior failed monolithic proof attempts remain
+private evidence; no proof limit, arithmetic domain or primary pin is changed.
+
+Complete SOP sequence and packed-range ordering precede the actual prefix
+reader and packet-present bit. Actual descriptors are allocated and produced
+through F5L's sole reader/tree/header algorithms. Alignment and EPH precede
+whole-body preflight; actual mixed body execution then precedes final logical
+length and numeric conversion checks. Packed and inline physical offsets remain
+distinct. This precinct operation is deliberately not globally transactional:
+early header/tree effects and later decoder commits survive appropriate errors.
+
+Independent literal marker/MQ/HT fixtures cover packed/inline accounting, skipped
+execution, actual nonzero HT output, malformed/truncated markers, shape/cap/
+offset/component priority and late length mismatch after decoder effects.
+Proved properties preserve readonly identity/contexts, first-error priority,
+preflight-before-coefficients and every prior state effect at final accounting.
+This is not progression, tile-part/header reassembly, packet-length iteration,
+JPIP outer-transaction or whole-F5H completion.
 
 ## Reproduce verification
 
