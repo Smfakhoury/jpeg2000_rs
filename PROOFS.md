@@ -180,6 +180,7 @@ Read each contract according to its inputs and postcondition:
 | Complete supplied-layer frame composition | `render_normalized_frame` returns exactly `part2_render_normalized_frame`: actual selection, indexed normalized outcome lookup/consumption, first supplied-layer failure, then complete budgeted rendering and final image | Compressed decoding, earlier normalization/registration/opacity/chroma-key, or a parser-to-pixel theorem |
 | Normalized image construction | `from_layer`/`from_composited` return exactly `part2_image_from_planes`: checked dimensions/plane cardinalities, exact errors, 16-bit precision, ordered channel kinds, whole-image alpha association and all buffers | The origin or correctness of supplied normalized samples |
 | Complete converted-image layer construction | Exact typed result, dimensions, ordered color planes, optional sequentially combined alpha and representation flag for actual borrowed selection and owned copies | Earlier component/color conversion or association validation, registration/opacity/chroma-key, layer/frame ordering or a parser-to-pixel theorem |
+| Complete typed JP2 color conversion | Every typed result, image field and color/alpha sample equals the composed model of the actual typed components, definitions, reference grid, color method and actual byte/work caps; includes complete preflight and fail-fast raster/channel traversal | Earlier compressed decoding, palette/container interpretation, selected-image crop or JPX registration/opacity/chroma-key; ICC methods are explicitly rejected, not executed |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
@@ -222,6 +223,36 @@ returns the exact separately rounded, clamped RGB triple for every native
 `rounded_fixed` helper also retains both `i128` overflow boundaries. These
 pixel results do not close the earlier component/output-budget validation or
 the complete public color-converter channel/raster traversal.
+
+The separate public `convert_jp2_color` contract now composes these relations
+as `color_convert_jp2`. It has no valid-input, canonical-channel, restricted-
+chroma or sufficient-budget precondition. Zero image dimensions precede
+format selection; unsupported formats precede layout validation; layout
+precedes component metadata; component metadata precedes output-byte/work
+admission; and admission precedes every sample read. The complete sYCC raster,
+ordered grayscale/RGB channels and all alpha channels retain their exact first
+failure, including original association/premultiplication metadata. Output
+dimensions, color space, precision and every sample are connected to that one
+result model.
+
+Component validation covers precision/tags, subsampling, registered spans,
+dimensions and sample counts. Output admission retains native checked-count
+overflow and exact `DecodedBytes`/`WorkUnits` limit/actual fields, with bytes
+checked first. These are this stage's admission quantities, not a theorem
+about global cumulative work or peak live allocation. The normalization
+allocations retain ordinary Rust allocator behavior; allocation failure is
+not invented as a typed decoding result.
+
+The shared private channel/pixel helpers contain the original production
+operations and are called by the real converter, not an alternate decoder.
+The preflight invariant bundle is internal proof support under
+`proofs/internal_specs.rs`; essential format, validation, traversal and error
+semantics remain under `specs/`. Independent wide-integer tests compare 1,440
+complete supplied-input images and metadata plus 180 native-domain admission
+cases. Those direct typed-input tests are not new reference-qualified
+compressed profiles. Palette/channel-map interpretation, container selection/
+crop, earlier decoding and normative endorsement remain separate F7/F8/N1
+obligations.
 
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical

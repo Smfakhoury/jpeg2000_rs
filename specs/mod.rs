@@ -217,6 +217,335 @@ pub open spec fn color_image_difference(
     }
 }
 
+pub type ColorGeometry = (u32, u32, u32, u32);
+
+pub open spec fn color_registered_span(start: u32, end: u32, step: u8, registration: u16)
+    -> Result<u32, crate::DecodeError>
+{
+    match (
+        color_registered_coordinate(end, step as u32, registration, true),
+        color_registered_coordinate(start, step as u32, registration, true),
+    ) {
+        (Err(error), _) => Err(error),
+        (_, Err(error)) => Err(error),
+        (Ok(last), Ok(first)) => if last < first { Err(part2_composition_error(true)) }
+            else { Ok((last - first) as u32) },
+    }
+}
+
+pub open spec fn color_validate_component(component: Part1TypedComponentModel, geometry: ColorGeometry)
+    -> Result<(), crate::DecodeError>
+{
+    let info = component.info;
+    let signed = match component.samples {
+        Part1TypedSampleSequence::Signed(_) => true,
+        Part1TypedSampleSequence::Unsigned(_) => false,
+    };
+    if info.precision == 0 || info.precision > 38 || info.signed != signed
+        || info.x_subsampling == 0 || info.y_subsampling == 0 {
+        Err(part2_color_input_error())
+    } else if (geometry.2 as nat) + geometry.0 as nat > u32::MAX as nat
+        || (geometry.3 as nat) + geometry.1 as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match (
+            color_registered_span(geometry.2, (geometry.2 + geometry.0) as u32,
+                info.x_subsampling, info.x_registration),
+            color_registered_span(geometry.3, (geometry.3 + geometry.1) as u32,
+                info.y_subsampling, info.y_registration),
+        ) {
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
+            (Ok(width), Ok(height)) => {
+                if component.width != width || component.height != height {
+                    Err(part2_color_input_error())
+                } else {
+                    match part2_layer_area(width, height) {
+                        Err(error) => Err(error),
+                        Ok(area) => {
+                            let samples = match component.samples {
+                                Part1TypedSampleSequence::Signed(values) => values.len(),
+                                Part1TypedSampleSequence::Unsigned(values) => values.len(),
+                            };
+                            if samples != area { Err(part2_color_input_error()) } else { Ok(()) }
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_validate_component_index(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry, index: usize,
+) -> Result<(), crate::DecodeError> {
+    if index >= components.len() { Err(part2_color_input_error()) }
+    else { color_validate_component(components[index as int], geometry) }
+}
+
+#[verifier::opaque]
+pub open spec fn color_validate_indices_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry, indices: Seq<usize>, count: nat,
+) -> Result<(), crate::DecodeError>
+    recommends count <= indices.len(),
+    decreases count,
+{
+    if count == 0 { Ok(()) } else {
+        match color_validate_indices_prefix(components, geometry, indices, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => color_validate_component_index(components, geometry, indices[count - 1]),
+        }
+    }
+}
+
+pub open spec fn color_validate_components(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry, layout: ColorLayoutState,
+) -> Result<(), crate::DecodeError> {
+    match color_validate_indices_prefix(components, geometry, layout.0, layout.0.len()) {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let indices = Seq::new(layout.1.len(), |i: int| layout.1[i].0);
+            color_validate_indices_prefix(components, geometry, indices, indices.len())
+        },
+    }
+}
+
+pub open spec fn color_validate_output_size(
+    width: u32, height: u32, colors: usize, alphas: usize, byte_limit: u64, work_limit: u64,
+) -> Result<(), crate::DecodeError> {
+    if (colors as nat) + alphas as nat > usize::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match part2_layer_area(width, height) {
+            Err(error) => Err(error),
+            Ok(area) => {
+                let samples = (area as nat) * ((colors as nat) + alphas as nat);
+                let bytes = ((samples as u64) as nat) * 2;
+                if samples > usize::MAX as nat || bytes > u64::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else if bytes > byte_limit as nat {
+                    Err(crate::DecodeError::LimitExceeded {
+                        resource: crate::Resource::DecodedBytes, limit: byte_limit, actual: bytes as u64,
+                    })
+                } else if samples > u64::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else if samples > work_limit as nat {
+                    Err(crate::DecodeError::LimitExceeded {
+                        resource: crate::Resource::WorkUnits, limit: work_limit, actual: samples as u64,
+                    })
+                } else { Ok(()) }
+            },
+        }
+    }
+}
+
+pub type ColorChannelModel = (crate::color::ConvertedChannelType, Seq<u16>);
+pub type ColorSyccPlanes = (Seq<u16>, Seq<u16>, Seq<u16>);
+
+pub open spec fn color_convert_channel(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, color_count: usize, index: usize,
+) -> Result<ColorChannelModel, crate::DecodeError> {
+    if index >= colors.len() || colors[index as int] >= components.len() {
+        Err(part2_color_input_error())
+    } else {
+        match color_normalize_component(components[colors[index as int] as int],
+            geometry.0, geometry.1, geometry.2, geometry.3) {
+            Err(error) => Err(error),
+            Ok(samples) => match (color_count, index) {
+                (1, 0) => Ok((crate::color::ConvertedChannelType::Gray, samples)),
+                (3, 0) => Ok((crate::color::ConvertedChannelType::Red, samples)),
+                (3, 1) => Ok((crate::color::ConvertedChannelType::Green, samples)),
+                (3, 2) => Ok((crate::color::ConvertedChannelType::Blue, samples)),
+                _ => Err(part2_color_input_error()),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_convert_channels_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, color_count: usize, count: nat,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_convert_channels_prefix(components, geometry, colors, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(channels) => if count - 1 > usize::MAX {
+                Err(part2_composition_error(true))
+            } else {
+                match color_convert_channel(components, geometry, colors, color_count, (count - 1) as usize) {
+                    Err(error) => Err(error),
+                    Ok(channel) => Ok(channels.push(channel)),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_convert_alpha(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    alpha: (usize, bool, crate::image::ChannelAssociation),
+) -> Result<ColorChannelModel, crate::DecodeError> {
+    if alpha.0 >= components.len() { Err(part2_color_input_error()) } else {
+        match color_normalize_component(components[alpha.0 as int],
+            geometry.0, geometry.1, geometry.2, geometry.3) {
+            Err(error) => Err(error),
+            Ok(samples) => Ok((crate::color::ConvertedChannelType::Alpha {
+                premultiplied: alpha.1, association: alpha.2,
+            }, samples)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_append_alphas_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>,
+    initial: Seq<ColorChannelModel>, count: nat,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError>
+    recommends count <= alphas.len(),
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match color_append_alphas_prefix(components, geometry, alphas, initial, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(channels) => match color_convert_alpha(components, geometry, alphas[count - 1]) {
+                Err(error) => Err(error),
+                Ok(channel) => Ok(channels.push(channel)),
+            },
+        }
+    }
+}
+
+pub open spec fn color_sycc_pixel(
+    components: Seq<Part1TypedComponentModel>, x_origin: u32, y_origin: u32,
+    colors: Seq<usize>, pixel: usize, width: usize,
+) -> Result<(u16, u16, u16), crate::DecodeError> {
+    match color_pixel_coordinates(pixel, width) {
+        Err(error) => Err(error),
+        Ok((x, y)) => {
+            if colors.len() == 0 { Err(part2_color_input_error()) } else {
+                match color_image_normalized(components, x_origin, y_origin, colors[0], x, y) {
+                    Err(error) => Err(error),
+                    Ok(y_sample) => if colors.len() <= 1 { Err(part2_color_input_error()) } else {
+                        match color_image_difference(components, x_origin, y_origin, colors[1], x, y) {
+                            Err(error) => Err(error),
+                            Ok(cb) => if colors.len() <= 2 { Err(part2_color_input_error()) } else {
+                                match color_image_difference(components, x_origin, y_origin, colors[2], x, y) {
+                                    Err(error) => Err(error),
+                                    Ok(cr) => color_sycc_to_srgb(y_sample, cb, cr),
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_sycc_planes_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, width: usize, count: nat,
+) -> Result<ColorSyccPlanes, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), Seq::empty(), Seq::empty())) } else {
+        match color_sycc_planes_prefix(components, geometry, colors, width, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(planes) => if count - 1 > usize::MAX {
+                Err(part2_composition_error(true))
+            } else {
+                match color_sycc_pixel(components, geometry.2, geometry.3, colors, (count - 1) as usize, width) {
+                    Err(error) => Err(error),
+                    Ok((r, g, b)) => Ok((planes.0.push(r), planes.1.push(g), planes.2.push(b))),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_convert_colors(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, color_count: usize, sycc: bool,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError> {
+    if sycc {
+        if geometry.0 as nat > usize::MAX as nat { Err(part2_composition_error(true)) }
+        else if geometry.0 == 0 { Err(part2_color_input_error()) }
+        else {
+            match part2_layer_area(geometry.0, geometry.1) {
+                Err(error) => Err(error),
+                Ok(area) => match color_sycc_planes_prefix(components, geometry, colors, geometry.0 as usize, area as nat) {
+                    Err(error) => Err(error),
+                    Ok(planes) => Ok(seq![
+                        (crate::color::ConvertedChannelType::Red, planes.0),
+                        (crate::color::ConvertedChannelType::Green, planes.1),
+                        (crate::color::ConvertedChannelType::Blue, planes.2),
+                    ]),
+                },
+            }
+        }
+    } else { color_convert_channels_prefix(components, geometry, colors, color_count, color_count as nat) }
+}
+
+pub open spec fn color_output_format(method: crate::jp2::ColorMethod)
+    -> Result<(usize, crate::color::ConvertedColorSpace, bool), crate::DecodeError>
+{
+    match method {
+        crate::jp2::ColorMethod::Enumerated { color_space: crate::jp2::ENUMERATED_SRGB } =>
+            Ok((3, crate::color::ConvertedColorSpace::Srgb, false)),
+        crate::jp2::ColorMethod::Enumerated { color_space: crate::jp2::ENUMERATED_GRAYSCALE } =>
+            Ok((1, crate::color::ConvertedColorSpace::Grayscale, false)),
+        crate::jp2::ColorMethod::Enumerated { color_space: crate::jp2::ENUMERATED_SYCC } =>
+            Ok((3, crate::color::ConvertedColorSpace::Srgb, true)),
+        crate::jp2::ColorMethod::Enumerated { .. } => Err(crate::DecodeError::UnsupportedColorConversion {
+            reason: crate::UnsupportedColorConversion::EnumeratedColorSpace,
+        }),
+        _ => Err(crate::DecodeError::UnsupportedColorConversion {
+            reason: crate::UnsupportedColorConversion::IccProfile,
+        }),
+    }
+}
+
+pub open spec fn color_convert_jp2(
+    components: Seq<Part1TypedComponentModel>, definitions: Seq<Seq<ColorDefinition>>,
+    geometry: ColorGeometry, method: crate::jp2::ColorMethod, byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    if geometry.0 == 0 || geometry.1 == 0 { Err(part2_color_input_error()) }
+    else {
+        match color_output_format(method) {
+            Err(error) => Err(error),
+            Ok((color_count, space, sycc)) => match color_channel_layout(definitions, color_count) {
+                Err(error) => Err(error),
+                Ok(layout) => match color_validate_components(components, geometry, layout) {
+                    Err(error) => Err(error),
+                    Ok(()) => match color_validate_output_size(
+                        geometry.0, geometry.1, color_count, layout.1.len() as usize, byte_limit, work_limit,
+                    ) {
+                        Err(error) => Err(error),
+                        Ok(()) => match part2_layer_area(geometry.0, geometry.1) {
+                            Err(error) => Err(error),
+                            Ok(_) => match color_convert_colors(components, geometry, layout.0, color_count, sycc) {
+                                Err(error) => Err(error),
+                                Ok(channels) => match color_append_alphas_prefix(
+                                    components, geometry, layout.1, channels, layout.1.len(),
+                                ) {
+                                    Err(error) => Err(error),
+                                    Ok(output) => Ok((geometry.0, geometry.1, space, 16, output)),
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    }
+}
+
 #[verifier::opaque]
 pub open spec fn color_normalize_component_prefix(
     component: Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32, count: nat,

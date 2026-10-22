@@ -235,6 +235,24 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`color_convert_jp2` is the complete result denotation for the actual public
+typed-component converter. Read `color_output_format`, `color_channel_layout`,
+`color_validate_components`, `color_validate_output_size`, then
+`color_convert_colors` and `color_append_alphas_prefix` in that order. Named
+JP2 enumerations select grayscale, sRGB or sYCC; other enumerations and both
+ICC methods have explicit typed rejection. Component validation and budget
+admission happen before sample conversion. The three essential prefix models
+specify complete ordered channels, sYCC planes and appended alpha; each
+absorbs the first actual error. The output includes every image/channel field.
+The input is supplied typed components and color metadata, not an assumed
+compressed-decoder trace or a claim about how a container authored them.
+
+`color_conversion_ready` lives in
+[internal_specs.rs](../proofs/internal_specs.rs) because it only bundles
+already established immutable facts across the production loops. It is not
+an additional algorithmic assumption or normative rule. The byte cap view is
+the actual private `ResourceLimits` field, not a default or chosen proxy.
+
 `color_sycc_to_srgb` specifies the actual fixed-point pixel conversion over
 every native `u16` luminance and `i32` difference pair. Its coefficients are
 91881, 22554, 46802 and 116130 with denominator `COLOR_FIXED_SCALE = 2^16`.

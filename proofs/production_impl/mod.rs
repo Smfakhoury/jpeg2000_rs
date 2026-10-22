@@ -32,6 +32,175 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_color_channels_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, color_count: usize,
+)
+    ensures crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, 0)
+        == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::color_convert_channels_prefix, 1);
+}
+
+pub proof fn production_color_channels_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, color_count: usize, count: nat,
+)
+    ensures crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, count + 1)
+        == match crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, count) {
+            Err(error) => Err(error),
+            Ok(channels) => if count > usize::MAX { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    match crate::specs::color_convert_channel(components, geometry, colors, color_count, count as usize) {
+                        Err(error) => Err(error),
+                        Ok(channel) => Ok(channels.push(channel)),
+                    }
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_convert_channels_prefix, 1);
+}
+
+pub proof fn production_color_channels_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, color_count: usize, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, count) == Err(error),
+    ensures crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_channels_step(components, geometry, colors, color_count, count);
+        production_color_channels_error(components, geometry, colors, color_count, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_alphas_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>, initial: Seq<crate::specs::ColorChannelModel>,
+)
+    ensures crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::color_append_alphas_prefix, 1);
+}
+
+pub proof fn production_color_alphas_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>,
+    initial: Seq<crate::specs::ColorChannelModel>, count: nat,
+)
+    requires count < alphas.len(),
+    ensures crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, count + 1)
+        == match crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, count) {
+            Err(error) => Err(error),
+            Ok(channels) => match crate::specs::color_convert_alpha(components, geometry, alphas[count as int]) {
+                Err(error) => Err(error),
+                Ok(channel) => Ok(channels.push(channel)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::color_append_alphas_prefix, 1);
+}
+
+pub proof fn production_color_alphas_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>,
+    initial: Seq<crate::specs::ColorChannelModel>, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= alphas.len(),
+        crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, count) == Err(error),
+    ensures crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_alphas_step(components, geometry, alphas, initial, count);
+        production_color_alphas_error(components, geometry, alphas, initial, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_sycc_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, width: usize,
+)
+    ensures crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, 0)
+        == Ok((Seq::empty(), Seq::empty(), Seq::empty())),
+{
+    reveal_with_fuel(crate::specs::color_sycc_planes_prefix, 1);
+}
+
+pub proof fn production_color_sycc_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, width: usize, count: nat,
+)
+    ensures crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, count + 1)
+        == match crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, count) {
+            Err(error) => Err(error),
+            Ok(planes) => if count > usize::MAX { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    match crate::specs::color_sycc_pixel(components, geometry.2, geometry.3, colors, count as usize, width) {
+                        Err(error) => Err(error),
+                        Ok((r, g, b)) => Ok((planes.0.push(r), planes.1.push(g), planes.2.push(b))),
+                    }
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_sycc_planes_prefix, 1);
+}
+
+pub proof fn production_color_sycc_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, width: usize, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, count) == Err(error),
+    ensures crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_sycc_step(components, geometry, colors, width, count);
+        production_color_sycc_error(components, geometry, colors, width, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_validation_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    indices: Seq<usize>,
+)
+    ensures crate::specs::color_validate_indices_prefix(components, geometry, indices, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::color_validate_indices_prefix, 1);
+}
+
+pub proof fn production_color_validation_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    indices: Seq<usize>, count: nat,
+)
+    requires count < indices.len(),
+    ensures crate::specs::color_validate_indices_prefix(components, geometry, indices, count + 1)
+        == match crate::specs::color_validate_indices_prefix(components, geometry, indices, count) {
+            Err(error) => Err(error),
+            Ok(()) => crate::specs::color_validate_component_index(components, geometry, indices[count as int]),
+        },
+{
+    reveal_with_fuel(crate::specs::color_validate_indices_prefix, 1);
+}
+
+pub proof fn production_color_validation_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    indices: Seq<usize>, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= indices.len(),
+        crate::specs::color_validate_indices_prefix(components, geometry, indices, count) == Err(error),
+    ensures crate::specs::color_validate_indices_prefix(components, geometry, indices, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_validation_step(components, geometry, indices, count);
+        production_color_validation_error(components, geometry, indices, count + 1, end, error);
+    }
+}
+
 pub proof fn production_color_definition_presence_step(
     definitions: Seq<Seq<crate::specs::ColorDefinition>>, count: nat,
 )
