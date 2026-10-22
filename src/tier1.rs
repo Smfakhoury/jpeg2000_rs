@@ -179,11 +179,23 @@ impl<'a> RawBitReader<'a> {
     )]
     pub fn validate_predictable_termination(&self) -> Result<(), DecodeError> {
         if self.next_index == 0 {
-            return if self.input.len() == 1 && self.input[0] == 0x55 {
+            // A pass with no coded symbols need not emit a padding byte.
+            return if (self.input.is_empty() && self.work_units == 0)
+                || (self.input.len() == 1 && self.input[0] == 0x55)
+            {
                 Ok(())
             } else {
                 Err(raw_reader_error(0, MalformedKind::InvalidCodeBlock))
             };
+        }
+        if self.bits_remaining == 0
+            && self.current_byte == 0xff
+            && self.next_index < self.input.len()
+            && self.next_index + 1 == self.input.len()
+            && self.input[self.next_index] == 0x2a
+        {
+            // ERTERM appends seven padding bits after a complete final 0xff.
+            return Ok(());
         }
         if self.next_index != self.input.len() || self.bits_remaining > 8 {
             return Err(raw_reader_error(0, MalformedKind::InvalidCodeBlock));
@@ -2986,13 +2998,16 @@ impl Tier1CodeBlockDecoder {
         passes: u8,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
-        if input.is_empty() || passes == 0 {
+        if passes == 0 {
             return Err(invalid_code_block());
         }
         if matches!(self.style.block_coding, Tier1BlockCoding::HighThroughput)
             || (matches!(self.style.block_coding, Tier1BlockCoding::Mixed)
                 && self.ht_cleanup_plane.is_some())
         {
+            if input.is_empty() {
+                return Err(invalid_code_block());
+            }
             let grouping = HtPassGroup::from_packet_passes(passes)?;
             if grouping.refinement_passes != 0 {
                 return Err(invalid_code_block());
@@ -3026,7 +3041,8 @@ impl Tier1CodeBlockDecoder {
         pass_count: u32,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
-        if input.is_empty() || pass_count == 0 {
+        // Later terminated passes can carry no bytes; an initial empty block cannot.
+        if pass_count == 0 || (input.is_empty() && self.next_pass == 0) {
             return Err(invalid_code_block());
         }
         let next_pass = self
@@ -3053,6 +3069,12 @@ impl Tier1CodeBlockDecoder {
         }
         if next_pass > self.maximum_passes
             || self.style.segment_passes(self.next_pass, pass_count) != pass_count
+        {
+            return Err(invalid_code_block());
+        }
+        if input.is_empty()
+            && next_pass != self.maximum_passes
+            && !self.style.pass_plan(next_pass - 1).terminates_segment
         {
             return Err(invalid_code_block());
         }
@@ -4878,6 +4900,118 @@ mod tests {
         for _ in 0..24 {
             marker.read_bit().unwrap();
             assert_eq!(marker.validate_predictable_termination(), invalid);
+        }
+    }
+
+    #[test]
+    fn later_empty_terminated_mq_pass_preserves_real_pass_accounting() {
+        let style = Tier1CodingStyle::from_code_block_style(0x14).unwrap();
+        let limits = ResourceLimits::default();
+        let mut decoder =
+            Tier1CodeBlockDecoder::new(1, 1, 2, SubbandOrientation::Ll, style).unwrap();
+        decoder.next_pass = 1;
+        decoder.bitplane = 0;
+        let plane = decoder.plane.clone();
+        let result = decoder.decode_segment(&[], 1, &limits).unwrap();
+        assert_eq!(result.passes, 1);
+        assert_eq!(result.bytes, 0);
+        assert_eq!(result.statistics.coding_symbols, 0);
+        assert_eq!(result.statistics.coefficients_scanned, 1);
+        assert_eq!(decoder.next_pass, 2);
+        assert_eq!(decoder.decoded_segments, 1);
+        assert_eq!(decoder.decoded_bytes, 0);
+        assert_eq!(decoder.plane, plane);
+        assert!(decoder.mq_context_state.is_some());
+        assert!(
+            decoder
+                .bitplane_state
+                .as_ref()
+                .unwrap()
+                .significance_propagation_complete()
+        );
+    }
+
+    #[test]
+    fn empty_initial_and_unterminated_legacy_segments_remain_invalid() {
+        let limits = ResourceLimits::default();
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        });
+        for style in [
+            Tier1CodingStyle::default(),
+            Tier1CodingStyle::from_code_block_style(0x14).unwrap(),
+        ] {
+            let mut initial =
+                Tier1CodeBlockDecoder::new(1, 1, 2, SubbandOrientation::Ll, style).unwrap();
+            assert_eq!(initial.decode_segment(&[], 1, &limits), invalid);
+            assert_eq!(initial.next_pass, 0);
+            assert_eq!(initial.decoded_segments, 0);
+            assert_eq!(initial.decoded_bytes, 0);
+        }
+        let mut unfinished = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            2,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        unfinished.next_pass = 1;
+        unfinished.bitplane = 0;
+        assert_eq!(unfinished.decode_segment(&[], 1, &limits), invalid);
+        assert_eq!(unfinished.next_pass, 1);
+        assert_eq!(unfinished.decoded_segments, 0);
+        assert_eq!(unfinished.decoded_bytes, 0);
+    }
+
+    #[test]
+    fn empty_raw_predictable_termination_requires_no_consumed_symbols() {
+        let limits = ResourceLimits::default();
+        let mut reader = RawBitReader::new(&[], &limits).unwrap();
+        assert_eq!(reader.validate_predictable_termination(), Ok(()));
+        reader.read_bit().unwrap();
+        assert_eq!(
+            reader.validate_predictable_termination(),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            }),
+        );
+        assert_eq!(reader.bytes_consumed(), 0);
+        assert_eq!(reader.work_units, 1);
+    }
+
+    #[test]
+    fn raw_predictable_termination_checks_the_exact_stuffed_ff_tail() {
+        let limits = ResourceLimits::default();
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        });
+        for first in 0..=u8::MAX {
+            for tail in 0..=u8::MAX {
+                let input = [first, tail];
+                let mut reader = RawBitReader::new(&input, &limits).unwrap();
+                for _ in 0..8 {
+                    reader.read_bit().unwrap();
+                }
+                assert_eq!(
+                    reader.validate_predictable_termination(),
+                    if first == 0xff && tail == 0x2a {
+                        Ok(())
+                    } else {
+                        invalid
+                    },
+                );
+                assert_eq!(reader.bytes_consumed(), 1);
+                assert_eq!(reader.work_units, 8);
+            }
+        }
+        let mut partial = RawBitReader::new(&[0xff, 0x2a], &limits).unwrap();
+        for _ in 0..7 {
+            partial.read_bit().unwrap();
+            assert_eq!(partial.validate_predictable_termination(), invalid);
         }
     }
 
