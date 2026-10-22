@@ -1,5 +1,174 @@
 # Specification audit guide
 
+## F6 reconstruction profiles (bounded stage contracts)
+
+The first F6 stage starts with supplied signed 384-bit magnitudes (six
+little-endian `u64` limbs), not compressed bytes or Tier-1 meaning. It covers
+every ROI shift in `u8`, both quantization modes, the full coefficient sequence,
+and the returned one-row plane's samples, width, height and fraction bits.
+The integer-input adapter must reject `i64::MIN` before validating quantization
+parameters or the decoded-byte budget, as the production call order requires.
+The magnitude path validates parameters, then the eight-byte-per-sample budget,
+then samples in order, and finally the `u32` width. Restored magnitudes must fit
+`i64::MAX`, including for negative inputs; this is not a normalization premise.
+Irreversible results describe the implementation's integer Q16 arithmetic,
+including zero-sized steps after truncation, not real-valued 9/7 conformance.
+
+The second bounded profile is the entire `inverse_5_3` sequence: geometry
+validation and interleaving, symmetric boundary extension, both lifting
+passes, either low-pass parity, empty input, and the high-only singleton's
+arithmetic right shift. Every `i64` input is admitted to the relation; checked
+neighbor-sum, update-bias and sample arithmetic determine typed rejection,
+not an assumed coefficient bound. The shared lifting contract also describes
+the complete partially modified buffer on failure, retaining all untouched
+positions. The entire `inverse_9_7` sequence is also contracted: interleaving,
+the two parity scaling passes and all four ordered lifting passes, including
+their actual Q16 constants, checked intermediates and unchanged singletons.
+Scaling and the four-stage coordinator retain complete failure buffers.
+This is an integer implementation model, not real-valued 9/7 conformance.
+
+The horizontal, vertical and single-level two-dimensional 5/3 and Q16 9/7
+entry points have complete plane Result contracts. Their production row and
+column coordinators are shared with the actual level implementation; there
+is no second executable transform. No successful-result, coefficient-bound or
+budget premise is imposed on these public contracts. Internal conditional
+contracts select the standard-kernel profile (`kernel == None`); arbitrary
+kernel meaning is not inferred from those conditions.
+
+The existing geometry/error distinctions are intentional. Standalone
+horizontal/vertical stages check dimensions and the output budget before
+accessing band samples, and ignore unaccessed trailing samples. Horizontal
+zero-width planes and vertical zero-height planes retain their existing
+behavior. A full level instead rejects either zero output axis and validates
+all four exact band sizes before its output budget. Zero-sized intermediate
+low/high bands remain valid where the selected parity requires them.
+Column storage models preserve every earlier write on a later failure.
+
+The existing public `convert_samples` API also has complete ordered rounding,
+level-shift, clipping and typed-error semantics. Its actual precision domain
+is 1..38 with 0..62 fraction bits; rejected parameters are not preconditions.
+It uses sample length, not plane dimensions, for its budget and deliberately
+does not validate plane geometry. Checked rounding/level-shift overflow occurs
+before clipping. This API is exercised by concrete consumer tests; it is not
+the decoder's separate image/component conversion path.
+
+The actual free reversible and fixed-Q16 irreversible component transforms
+have complete mutable `DecodedImage` state relations. Their shared production
+loop checks the existing first-three-component compatibility and sample
+lengths, then transforms samples in order. All `i64` triples are admitted;
+checked sum/product/bias/addition failures determine rejection. Every image
+and component metadata field, sample length and component beyond the first
+three is preserved, including on failure. The previously completed sample
+prefix remains committed when a later pixel fails. These functions do not
+add a plane-area consistency or precision/registration policy absent from
+their existing compatibility checks. A closed `View` covers all decoded
+fields; it does not reuse or alter F7's typed/CDEF structures.
+
+Raw kernel/step/coefficient views and exact getter contracts expose only the
+actual consumed representation fields, including all coefficient bytes and
+the recorded width. They impose no parser validation or normalization facts
+and do not by themselves prove an arbitrary-kernel algorithm.
+
+The real quantized-block write loop in
+`decode::prepare_tile_component_with_kernel` now calls one shared verified
+production block/row/pixel implementation. Its complete working-subband state
+model includes width, height, fraction bits, samples and the entire visited
+mask. Source/destination/mask length mismatches, previsited cells and checked
+coordinate/index errors retain all prior writes. Metadata and buffer lengths
+remain unchanged; marked cells never become unmarked and previsited sample
+values are protected. No rectangular-shape, prevalidated-buffer or sufficient
+length premise is imposed on this transition. The caller's earlier geometry,
+coefficient extraction, quantization and fraction checks remain in their
+original order; this theorem does not silently replace those checks.
+
+F6 remains open: the entire coefficient-placement coordinator, actual multilevel
+and resolution-plan execution, multiple-component transforms, decoder typed
+conversion, component/tile assembly and their composition into component-sample
+relations still require their own complete actual-stage theorems. Arbitrary
+Part-2 kernels and unavailable-reference adjudication remain separate, as do
+parsing and entropy decoding.
+
+### Reconstruction reading path
+
+1. `part1_magnitude_*` defines six little-endian limbs, lexicographic magnitude
+   comparison and cross-limb logical shifting. These are finite bit-vector
+   denotations on all 384 bits, not an assumption that coefficients already fit
+   a machine sample.
+2. `part1_roi_coefficient`, `part1_quantization_step` and
+   `part1_dequantized_sample` specify restoration before narrowing, Q16 step
+   truncation, centered scaling and checked signed output.
+3. `part1_quantized_prefix` fixes sample order and first-error absorption.
+   `part1_inverse_quantization` adds parameter validation, budget checks and
+   complete plane metadata. `part1_inverse_integer_quantization` adds the
+   integer adapter's earlier `i64::MIN` rejection.
+4. `part1_interleaved`, `part1_lifting_sample`, `part1_lifting_prefix` and
+   `part1_inverse_five_three` specify full sequences and mutable lifting states.
+   `part1_scaling_prefix`, `part1_nine_seven_lifting_prefix` and
+   `part1_inverse_nine_seven` add the complete fixed-point sequence.
+5. `part1_band_row`, `part1_column_prefix`, `part1_store_column_prefix`,
+   `part1_horizontal_prefix` and `part1_vertical_prefix` fix extraction,
+   concatenation, row-major storage, first-error order and complete buffers.
+   `part1_inverse_horizontal`, `part1_inverse_vertical` and
+   `part1_inverse_level` add actual geometry, budgets and plane metadata.
+6. `part1_round_fixed`, `part1_conversion_prefix` and `part1_convert_samples`
+   describe the existing public final-sample conversion API.
+7. `part1_component_values`, `part1_component_pixel_state`,
+   `part1_component_transform_prefix` and `part1_apply_component_transform`
+   give the actual complete decoded-image component-transform relation.
+   `part1_component_transform_frame` states its complete metadata/extra-plane
+   preservation property, not a substitute for sample semantics.
+8. `part1_quantized_block_pixel`, `part1_quantized_block_row` and
+   `part1_quantized_block_rows` describe the actual coefficient write stage,
+   including samples and visited flags. They do not establish the entire
+   `prepare_tile_component_with_kernel` result simply because its callees
+   now have contracts.
+
+All prefixes here are algorithm denotations, not invariant-only witnesses.
+
+### Full native magnitude interface
+
+`magnitude::magnitude_value` is a public **closed** natural-number view of all
+six little-endian `u64` limbs, defined by `part1_magnitude_value`; it is not a
+low-word surrogate. Capacity is `part1_magnitude_capacity() = 2^384`.
+The existing raw `magnitude_limbs` view and ROI contracts remain available.
+
+The original receiver operations have full native-domain contracts:
+
+- `checked_add`: exact natural sum below capacity; otherwise precisely
+  `MalformedInput { offset: 0, kind: ArithmeticOverflow }`.
+- `checked_shl`: exact multiplication by `2^shift` when representable, for
+  every `u16` shift. Zero succeeds even for shifts at least 384; nonzero
+  values reject there. No HT-only success premise is imposed.
+- `shift_right`: floor division by `2^shift`, including zero at shifts
+  at least 384, with the complete raw-buffer relation retained.
+- `low_u64`: full-value modulo `2^64`; `is_zero`: true iff the full value is
+  zero. The numeric/raw representation agreement and intrinsic capacity
+  bounds are exported by these contracts.
+
+Verified native producers are `magnitude_zero`, `magnitude_from_u64`,
+`magnitude_from_limbs` and `magnitude_single_bit`. The zero helper returns
+exactly the existing `Magnitude::ZERO`; the bit helper accepts the entire
+`u16` domain and returns the exact arithmetic error at bit indices at least
+384. Existing public associated factories retain their API and delegate to
+these same implementations. Verified internal callers should use the free
+factories because the pinned conditional-attribute frontend cannot infer
+associated static-function contexts; no trusted specification compensates
+for that limitation.
+
+Only the partial native left-shift buffer witness is in
+`proofs/internal_specs.rs`. Full value, shift and overflow denotations remain
+on this reading path; their word-composition, carry and natural arithmetic
+lemmas are proved in the production proof module. Native optimized limb
+algorithms remain in `src/magnitude.rs`. Independent bit-array tests cover
+every `u16` shift/bit index and complete 384-bit carry propagation.
+
+The executable cores `inverse_quantize_values` and `inverse_quantize_plane`
+take an explicit decoded-byte budget. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` entry points additionally have complete Result
+contracts using `resource_decoded_bytes_limit`: the actual getter is proved
+equal to that closed private-field projection. No width, pixel or work-unit
+policy is silently added to this stage.
+
 This directory contains the semantic models used by production contracts.
 It is an audit entry point, not a claim that every selected standard clause
 has been reconciled or proved.

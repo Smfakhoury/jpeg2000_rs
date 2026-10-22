@@ -1149,4 +1149,420 @@ pub proof fn ht_refinement_continuation_is_additive(existing: nat, additional: n
 {
 }
 
+pub proof fn quantized_prefix_has_exact_length(
+    coefficients: Seq<crate::specs::Part1QuantizedCoefficient>, shift: u8,
+    step: i64, reversible: bool, count: nat,
+)
+    requires count <= coefficients.len(),
+    ensures match crate::specs::part1_quantized_prefix(coefficients, shift, step, reversible, count) {
+        Ok(samples) => samples.len() == count,
+        Err(_) => true,
+    },
+    decreases count,
+{
+    if count > 0 {
+        quantized_prefix_has_exact_length(coefficients, shift, step, reversible, (count - 1) as nat);
+    }
+}
+
+pub proof fn inverse_quantization_has_complete_plane_metadata(
+    coefficients: Seq<crate::specs::Part1QuantizedCoefficient>, exponent: u8, mantissa: u16,
+    range: u8, reversible: bool, shift: u8, maximum: u64,
+)
+    ensures match crate::specs::part1_inverse_quantization(
+        coefficients, exponent, mantissa, range, reversible, shift, maximum,
+    ) {
+        Ok(plane) => plane.0 == coefficients.len() && plane.1 == 1
+            && plane.2 == (if reversible { 0u8 } else { 16u8 })
+            && plane.3.len() == coefficients.len(),
+        Err(_) => true,
+    },
+{
+    let step_result = if reversible { Ok(1i64) }
+        else { crate::specs::part1_quantization_step(exponent, mantissa, range) };
+    if let Ok(step) = step_result {
+        quantized_prefix_has_exact_length(coefficients, shift, step, reversible, coefficients.len());
+    }
+}
+
+pub proof fn lifting_prefix_preserves_length_and_opposite_parity(
+    samples: Seq<i64>, target_even: bool, kind: u8, factor: i64, count: nat,
+)
+    requires count <= samples.len(),
+    ensures
+        crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, count).1.len() == samples.len(),
+        forall |i: int| 0 <= i < samples.len() && (i >= count || (i % 2 == 0) != target_even) ==>
+            crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, count).1[i] == samples[i],
+    decreases count,
+{
+    if count > 0 {
+        lifting_prefix_preserves_length_and_opposite_parity(samples, target_even, kind, factor, (count - 1) as nat);
+    }
+}
+
+pub proof fn inverse_five_three_preserves_complete_sequence_length(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+)
+    ensures match crate::specs::part1_inverse_five_three(low, high, low_first) {
+        Ok(samples) => samples.len() == low.len() + high.len(),
+        Err(_) => true,
+    },
+{
+    if let Ok(samples) = crate::specs::part1_interleaved(low, high, low_first) {
+        lifting_prefix_preserves_length_and_opposite_parity(samples, low_first, 0, 0, samples.len());
+        let updated = crate::specs::part1_lifting_prefix(samples, low_first, 0, 0, samples.len());
+        lifting_prefix_preserves_length_and_opposite_parity(updated.1, !low_first, 1, 0, updated.1.len());
+    }
+}
+
+pub proof fn scaling_prefix_preserves_complete_length(
+    samples: Seq<i64>, target_even: bool, factor: i64, count: nat,
+)
+    requires count <= samples.len(),
+    ensures crate::specs::part1_scaling_prefix(samples, target_even, factor, count).1.len() == samples.len(),
+    decreases count,
+{
+    if count > 0 {
+        scaling_prefix_preserves_complete_length(samples, target_even, factor, (count - 1) as nat);
+    }
+}
+
+pub proof fn nine_seven_lifting_preserves_complete_length(samples: Seq<i64>, low_first: bool, count: nat)
+    ensures crate::specs::part1_nine_seven_lifting_prefix(samples, low_first, count).1.len() == samples.len(),
+    decreases count,
+{
+    if count > 0 {
+        nine_seven_lifting_preserves_complete_length(samples, low_first, (count - 1) as nat);
+        let previous = crate::specs::part1_nine_seven_lifting_prefix(samples, low_first, (count - 1) as nat);
+        lifting_prefix_preserves_length_and_opposite_parity(
+            previous.1, if count % 2 == 1 { low_first } else { !low_first },
+            2, crate::specs::part1_nine_seven_lift((count - 1) as u8), previous.1.len(),
+        );
+    }
+}
+
+pub proof fn inverse_nine_seven_preserves_complete_sequence_length(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+)
+    ensures match crate::specs::part1_inverse_nine_seven(low, high, low_first) {
+        Ok(samples) => samples.len() == low.len() + high.len(),
+        Err(_) => true,
+    },
+{
+    if let Ok(samples) = crate::specs::part1_interleaved(low, high, low_first) {
+        scaling_prefix_preserves_complete_length(samples, low_first, crate::specs::part1_nine_seven_scale(true), samples.len());
+        let low_scaled = crate::specs::part1_scaling_prefix(samples, low_first, crate::specs::part1_nine_seven_scale(true), samples.len());
+        scaling_prefix_preserves_complete_length(low_scaled.1, !low_first, crate::specs::part1_nine_seven_scale(false), low_scaled.1.len());
+        let high_scaled = crate::specs::part1_scaling_prefix(low_scaled.1, !low_first, crate::specs::part1_nine_seven_scale(false), low_scaled.1.len());
+        nine_seven_lifting_preserves_complete_length(high_scaled.1, low_first, 4);
+    }
+}
+
+pub proof fn inverse_sequence_preserves_complete_length(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool, irreversible: bool,
+)
+    ensures match crate::specs::part1_inverse_sequence(low, high, low_first, irreversible) {
+        Ok(samples) => samples.len() == low.len() + high.len(),
+        Err(_) => true,
+    },
+{
+    if irreversible {
+        inverse_nine_seven_preserves_complete_sequence_length(low, high, low_first);
+    } else {
+        inverse_five_three_preserves_complete_sequence_length(low, high, low_first);
+    }
+}
+
+pub proof fn horizontal_row_has_complete_length(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    y: u32, low_first: bool, irreversible: bool,
+)
+    ensures match crate::specs::part1_horizontal_row(low, high, y, low_first, irreversible) {
+        Ok(samples) => samples.len() == (low.0 as nat) + (high.0 as nat),
+        Err(_) => true,
+    },
+{
+    if let Ok(low_row) = crate::specs::part1_band_row(low, y) {
+        assert(low_row.len() == low.0);
+        if let Ok(high_row) = crate::specs::part1_band_row(high, y) {
+            assert(high_row.len() == high.0);
+            inverse_sequence_preserves_complete_length(low_row, high_row, low_first, irreversible);
+        }
+    }
+}
+
+pub proof fn horizontal_prefix_has_complete_length(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    low_first: bool, irreversible: bool, count: nat,
+)
+    requires count <= low.1,
+    ensures match crate::specs::part1_horizontal_prefix(low, high, low_first, irreversible, count) {
+        Ok(samples) => samples.len() == count * ((low.0 as nat) + (high.0 as nat)),
+        Err(_) => true,
+    },
+    decreases count,
+{
+    if count > 0 {
+        horizontal_prefix_has_complete_length(low, high, low_first, irreversible, (count - 1) as nat);
+        let y = (count - 1) as u32;
+        horizontal_row_has_complete_length(low, high, y, low_first, irreversible);
+        assert(((count - 1) as nat) * ((low.0 as nat) + (high.0 as nat))
+            + ((low.0 as nat) + (high.0 as nat)) == count * ((low.0 as nat) + (high.0 as nat))) by(nonlinear_arith)
+            requires count > 0;
+        if let Ok(previous) = crate::specs::part1_horizontal_prefix(low, high, low_first, irreversible, (count - 1) as nat) {
+            if let Ok(row) = crate::specs::part1_horizontal_row(low, high, y, low_first, irreversible) {
+                assert((previous + row).len() == previous.len() + row.len());
+                assert((previous + row).len() == count * ((low.0 as nat) + (high.0 as nat)));
+                assert(crate::specs::part1_horizontal_prefix(low, high, low_first, irreversible, count) == Ok(previous + row));
+            }
+        }
+    }
+}
+
+pub proof fn store_column_prefix_preserves_complete_length(
+    output: Seq<i64>, width: u32, x: u32, column: Seq<i64>, count: nat,
+)
+    ensures crate::specs::part1_store_column_prefix(output, width, x, column, count).1.len() == output.len(),
+    decreases count,
+{
+    if count > 0 {
+        store_column_prefix_preserves_complete_length(output, width, x, column, (count - 1) as nat);
+    }
+}
+
+pub proof fn vertical_prefix_preserves_complete_length(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    height: u32, low_first: bool, irreversible: bool, length: usize, count: nat,
+)
+    ensures match crate::specs::part1_vertical_prefix(low, high, height, low_first, irreversible, length, count) {
+        Ok(samples) => samples.len() == length,
+        Err(_) => true,
+    },
+    decreases count,
+{
+    if count > 0 {
+        vertical_prefix_preserves_complete_length(low, high, height, low_first, irreversible, length, (count - 1) as nat);
+        if let Ok(previous) = crate::specs::part1_vertical_prefix(low, high, height, low_first, irreversible, length, (count - 1) as nat) {
+            if let Ok(column) = crate::specs::part1_vertical_column(low, high, (count - 1) as u32, low_first, irreversible) {
+                store_column_prefix_preserves_complete_length(previous, low.0, (count - 1) as u32, column, height as nat);
+            }
+        }
+    }
+}
+
+pub proof fn standard_horizontal_plane_has_complete_shape(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    width: u32, low_first: bool, irreversible: bool, maximum: u64,
+)
+    ensures match crate::specs::part1_inverse_horizontal(low, high, width, low_first, irreversible, maximum) {
+        Ok(plane) => plane.3.len() == (plane.0 as nat) * (plane.1 as nat),
+        Err(_) => true,
+    },
+{
+    horizontal_prefix_has_complete_length(low, high, low_first, irreversible, low.1 as nat);
+    assert((low.1 as nat) * (width as nat) == (width as nat) * (low.1 as nat)) by(nonlinear_arith);
+}
+
+pub proof fn standard_vertical_plane_has_complete_shape(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    height: u32, low_first: bool, irreversible: bool, maximum: u64,
+)
+    ensures match crate::specs::part1_inverse_vertical(low, high, height, low_first, irreversible, maximum) {
+        Ok(plane) => plane.3.len() == (plane.0 as nat) * (plane.1 as nat),
+        Err(_) => true,
+    },
+{
+    if let Ok(length) = crate::specs::part1_transform_area(low.0, height) {
+        vertical_prefix_preserves_complete_length(low, high, height, low_first, irreversible, length, low.0 as nat);
+    }
+}
+
+pub proof fn standard_level_plane_has_complete_shape(
+    level: crate::specs::Part1WaveletLevel, irreversible: bool, maximum: u64,
+)
+    ensures match crate::specs::part1_inverse_level(level, irreversible, maximum) {
+        Ok(plane) => plane.3.len() == (plane.0 as nat) * (plane.1 as nat),
+        Err(_) => true,
+    },
+{
+    if let Ok(length) = crate::specs::part1_transform_area(level.4, level.5) {
+        if let Ok(low_rows) = crate::specs::part1_horizontal_prefix(level.0, level.1, level.6, irreversible, level.0.1 as nat) {
+            if let Ok(high_rows) = crate::specs::part1_horizontal_prefix(level.2, level.3, level.6, irreversible, level.2.1 as nat) {
+                vertical_prefix_preserves_complete_length(
+                    (level.4, level.0.1, low_rows), (level.4, level.2.1, high_rows),
+                    level.5, level.7, irreversible, length, level.4 as nat,
+                );
+            }
+        }
+    }
+}
+
+pub proof fn conversion_prefix_has_complete_length(
+    samples: Seq<i64>, fraction_bits: u8, shift: i64, minimum: i64, maximum: i64, count: nat,
+)
+    requires count <= samples.len(),
+    ensures match crate::specs::part1_conversion_prefix(samples, fraction_bits, shift, minimum, maximum, count) {
+        Ok(converted) => converted.len() == count,
+        Err(_) => true,
+    },
+    decreases count,
+{
+    if count > 0 {
+        conversion_prefix_has_complete_length(samples, fraction_bits, shift, minimum, maximum, (count - 1) as nat);
+    }
+}
+
+pub proof fn converted_samples_preserve_complete_length(
+    plane: crate::specs::Part1ReconstructedPlane, precision: u8, signed: bool, maximum_bytes: u64,
+)
+    ensures match crate::specs::part1_convert_samples(plane, precision, signed, maximum_bytes) {
+        Ok(samples) => samples.len() == plane.3.len(),
+        Err(_) => true,
+    },
+{
+    conversion_prefix_has_complete_length(
+        plane.3, plane.2, crate::specs::part1_level_shift(precision, signed),
+        crate::specs::part1_output_minimum(precision, signed), crate::specs::part1_output_maximum(precision, signed), plane.3.len(),
+    );
+}
+
+pub proof fn decoded_sample_store_preserves_component_frame(
+    image: crate::specs::Part1DecodedImageModel, component: usize, index: usize, value: i64,
+)
+    requires component < 3,
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_set_decoded_component_sample(image, component, index, value).1,
+    ),
+{
+}
+
+pub proof fn component_transform_frame_is_transitive(
+    before: crate::specs::Part1DecodedImageModel,
+    middle: crate::specs::Part1DecodedImageModel,
+    after: crate::specs::Part1DecodedImageModel,
+)
+    requires
+        crate::specs::part1_component_transform_frame(before, middle),
+        crate::specs::part1_component_transform_frame(middle, after),
+    ensures crate::specs::part1_component_transform_frame(before, after),
+{
+}
+
+pub proof fn component_pixel_preserves_complete_metadata_and_extra_planes(
+    image: crate::specs::Part1DecodedImageModel, index: usize, irreversible: bool,
+)
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_component_pixel_state(image, index, irreversible).1,
+    ),
+{
+    if let Ok(y) = crate::specs::part1_decoded_component_sample(image, 0, index) {
+        if let Ok(cb) = crate::specs::part1_decoded_component_sample(image, 1, index) {
+            if let Ok(cr) = crate::specs::part1_decoded_component_sample(image, 2, index) {
+                if let Ok((red, green, blue)) = crate::specs::part1_component_values(y, cb, cr, irreversible) {
+                    decoded_sample_store_preserves_component_frame(image, 0, index, red);
+                    let red_state = crate::specs::part1_set_decoded_component_sample(image, 0, index, red);
+                    decoded_sample_store_preserves_component_frame(red_state.1, 1, index, green);
+                    let green_state = crate::specs::part1_set_decoded_component_sample(red_state.1, 1, index, green);
+                    component_transform_frame_is_transitive(image, red_state.1, green_state.1);
+                    decoded_sample_store_preserves_component_frame(green_state.1, 2, index, blue);
+                    let blue_state = crate::specs::part1_set_decoded_component_sample(green_state.1, 2, index, blue);
+                    component_transform_frame_is_transitive(image, green_state.1, blue_state.1);
+                }
+            }
+        }
+    }
+}
+
+pub proof fn component_prefix_preserves_complete_metadata_and_extra_planes(
+    image: crate::specs::Part1DecodedImageModel, irreversible: bool, count: nat,
+)
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_component_transform_prefix(image, irreversible, count).1,
+    ),
+    decreases count,
+{
+    if count > 0 {
+        component_prefix_preserves_complete_metadata_and_extra_planes(image, irreversible, (count - 1) as nat);
+        let previous = crate::specs::part1_component_transform_prefix(image, irreversible, (count - 1) as nat);
+        component_pixel_preserves_complete_metadata_and_extra_planes(previous.1, (count - 1) as usize, irreversible);
+        component_transform_frame_is_transitive(
+            image, previous.1, crate::specs::part1_component_pixel_state(previous.1, (count - 1) as usize, irreversible).1,
+        );
+    }
+}
+
+pub proof fn component_transforms_preserve_complete_metadata_and_extra_planes(
+    image: crate::specs::Part1DecodedImageModel, irreversible: bool,
+)
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_apply_component_transform(image, irreversible).1,
+    ),
+{
+    if image.4.len() >= 3 {
+        component_prefix_preserves_complete_metadata_and_extra_planes(image, irreversible, image.4[0].4.len());
+    }
+}
+
+pub proof fn quantized_pixel_preserves_metadata_and_previsited_samples(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, x: u32, y: u32,
+)
+    ensures crate::specs::part1_working_subband_frame(
+        band, crate::specs::part1_quantized_block_pixel(band, source, block_width, placement_x, placement_y, x, y).1,
+    ),
+{
+}
+
+pub proof fn working_subband_frame_is_transitive(
+    before: crate::specs::Part1WorkingSubbandModel,
+    middle: crate::specs::Part1WorkingSubbandModel,
+    after: crate::specs::Part1WorkingSubbandModel,
+)
+    requires
+        crate::specs::part1_working_subband_frame(before, middle),
+        crate::specs::part1_working_subband_frame(middle, after),
+    ensures crate::specs::part1_working_subband_frame(before, after),
+{
+}
+
+pub proof fn quantized_row_preserves_metadata_and_previsited_samples(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, y: u32, count: nat,
+)
+    ensures crate::specs::part1_working_subband_frame(
+        band, crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, count).1,
+    ),
+    decreases count,
+{
+    if count > 0 {
+        quantized_row_preserves_metadata_and_previsited_samples(band, source, block_width, placement_x, placement_y, y, (count - 1) as nat);
+        let previous = crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, (count - 1) as nat);
+        quantized_pixel_preserves_metadata_and_previsited_samples(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, y);
+        working_subband_frame_is_transitive(
+            band, previous.1,
+            crate::specs::part1_quantized_block_pixel(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, y).1,
+        );
+    }
+}
+
+pub proof fn quantized_block_preserves_metadata_and_previsited_samples(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, count: nat,
+)
+    ensures crate::specs::part1_working_subband_frame(
+        band, crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, count).1,
+    ),
+    decreases count,
+{
+    if count > 0 {
+        quantized_block_preserves_metadata_and_previsited_samples(band, source, block_width, placement_x, placement_y, (count - 1) as nat);
+        let previous = crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, (count - 1) as nat);
+        quantized_row_preserves_metadata_and_previsited_samples(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat);
+        working_subband_frame_is_transitive(
+            band, previous.1,
+            crate::specs::part1_quantized_block_row(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat).1,
+        );
+    }
+}
+
 }
