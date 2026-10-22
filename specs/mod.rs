@@ -15,6 +15,85 @@ pub type Part2MctCollection = (
 );
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 
+pub open spec fn part2_mct_dependency_initial(
+    offsets: Option<Part2MctArray>, source: Seq<i64>, fractions: Option<Seq<u8>>, row: usize,
+) -> Result<i128, crate::DecodeError> {
+    if row >= source.len() { Err(part1_transform_error(false)) }
+    else {
+        match fractions {
+            None => match part2_mct_offset(offsets, row) {
+                Err(error) => Err(error),
+                Ok(offset) => match part1_checked_sample(source[row as int] as int + offset as int) {
+                    Err(error) => Err(error), Ok(base) => Ok(base as i128),
+                },
+            },
+            Some(bits) => if row >= bits.len() { Err(part1_transform_error(false)) } else {
+                match part2_mct_rescale(source[row as int] as i128, bits[row as int], 32) {
+                    Err(error) => Err(error),
+                    Ok(base) => match part2_mct_offset_scaled(offsets, row) {
+                        Err(error) => Err(error), Ok(offset) => part2_atk_checked_i128(base as int + offset as int),
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_dependency_row(
+    matrix: Option<Part2MctArray>, offsets: Option<Part2MctArray>, source: Seq<i64>,
+    fractions: Option<Seq<u8>>, output: Seq<i64>, row: usize,
+) -> Result<i64, crate::DecodeError> {
+    match part2_mct_dependency_initial(offsets, source, fractions, row) {
+        Err(error) => Err(error),
+        Ok(base) => match matrix {
+            None => part1_checked_sample(base as int),
+            Some(matrix) => match fractions {
+                None => {
+                    if row == 0 { part1_checked_sample(base as int) }
+                    else if row as nat + 1 > usize::MAX || row as nat * (row as nat + 1) > usize::MAX {
+                        Err(part1_transform_error(true))
+                    } else {
+                        let start = (row as nat * (row as nat + 1) / 2 - 1) as usize;
+                        if start as nat + row as nat > usize::MAX { Err(part1_transform_error(true)) }
+                        else if start as nat + row as nat >= matrix.4.len() { Err(part1_transform_error(false)) }
+                        else {
+                            let scale = matrix.4[start as int + row as int];
+                            if scale <= 0 { Err(part1_transform_error(false)) }
+                            else {
+                                match part2_mct_dot_prefix((scale / 2) as i128, matrix, output, None, start, row as nat) {
+                                    Err(error) => Err(error),
+                                    Ok(prediction) => {
+                                        let quotient = vstd::arithmetic::div_mod::rust_div(prediction as int, scale as int);
+                                        let predicted = if vstd::arithmetic::div_mod::rust_rem(prediction as int, scale as int) < 0 {
+                                            part2_atk_checked_i128(quotient - 1)
+                                        } else { Ok(quotient as i128) };
+                                        match predicted {
+                                            Err(error) => Err(error),
+                                            Ok(predicted) => match part2_atk_checked_i128(base as int + predicted as int) {
+                                                Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                Some(_) => {
+                    let previous = if row == 0 { 0nat } else { (row - 1) as nat };
+                    if row as nat * previous > usize::MAX { Err(part1_transform_error(true)) }
+                    else {
+                        match part2_mct_dot_prefix(base, matrix, output, Some(Seq::new(output.len(), |index: int| 32u8)),
+                            (row as nat * previous / 2) as usize, row as nat) {
+                            Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                        }
+                    }
+                },
+            },
+        },
+    }
+}
+
 pub open spec fn part2_mct_row_initial(
     matrix: Part2MctArray, offsets: Option<Part2MctArray>, width: nat,
     fractions: Option<Seq<u8>>, row: usize,

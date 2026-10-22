@@ -8,6 +8,15 @@ matrix-shape or success premises. These are semantic inputs for the pending
 actual collection/dependency/wavelet composition, not proof that those
 algorithms or general MCT are already complete.
 
+`part2_mct_dependency_row` now describes the complete actual reversible and
+irreversible dependency row, including source/offset admission before matrix
+lookup, the different triangular layouts, real prior-output prefix, positive
+reversible scale and signed floor correction, and checked Q32 rescaling.
+None, row-zero and unvisited malformed coefficients retain their native bypass
+behavior; out-of-range precision is not normalized. The actual loops refine
+the shared dot-prefix denotation, not a supplied row outcome. Full mutable
+collection/stage traversal and general MCT remain separate work.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

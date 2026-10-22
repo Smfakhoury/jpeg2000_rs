@@ -2759,6 +2759,12 @@ fn apply_mct_dependency(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_dependency_row(
+        crate::codestream::mct_collection_view(collection).4, crate::codestream::mct_collection_view(collection).5,
+        source@, None, output@, row,
+    ),
+))]
 fn reversible_dependency_row(
     collection: &MctCollection,
     source: &[i64],
@@ -2774,11 +2780,16 @@ fn reversible_dependency_row(
     if row == 0 {
         return Ok(base);
     }
-    let row_start = row
-        .checked_mul(row.checked_add(1).ok_or_else(arithmetic_overflow)?)
-        .and_then(|value| value.checked_div(2))
-        .and_then(|value| value.checked_sub(1))
-        .ok_or_else(arithmetic_overflow)?;
+    let next_row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    let triangle = row.checked_mul(next_row).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(triangle >= 2) by (nonlinear_arith)
+            requires row > 0, next_row as int == row as int + 1,
+                triangle as int == row as int * next_row as int;
+    }
+    let half = triangle.checked_div(2).ok_or_else(arithmetic_overflow)?;
+    let row_start = half.checked_sub(1).ok_or_else(arithmetic_overflow)?;
     let scale = *coefficients
         .values()
         .get(row_start.checked_add(row).ok_or_else(arithmetic_overflow)?)
@@ -2787,15 +2798,38 @@ fn reversible_dependency_row(
         return Err(invalid_transform());
     }
     let mut prediction = i128::from(scale / 2);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = prediction; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= row,
+            row > 0,
+            crate::specs::part2_mct_dependency_initial(crate::codestream::mct_collection_view(collection).5, source@, None, row) == Ok(base as i128),
+            crate::codestream::mct_collection_view(collection).4 == Some(crate::codestream::mct_array_view(coefficients)),
+            row as nat + 1 <= usize::MAX,
+            row as nat * (row as nat + 1) <= usize::MAX,
+            row_start as nat == row as nat * (row as nat + 1) / 2 - 1,
+            (row_start as nat + row as nat) < crate::codestream::mct_array_view(coefficients).4.len(),
+            row_start as nat + row as nat <= usize::MAX,
+            crate::codestream::mct_array_view(coefficients).4[row_start as int + row as int] == scale,
+            scale > 0,
+            initial == (scale / 2) as i128,
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start, column as nat) == Ok(prediction),
             decreases row - column,
         )
     )]
     while column < row {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start, column as nat + 1, row as nat);
+        }
         let coefficient = *coefficients
             .values()
             .get(
@@ -2821,14 +2855,22 @@ fn reversible_dependency_row(
     } else {
         quotient
     };
-    i64::try_from(
+    match i64::try_from(
         i128::from(base)
             .checked_add(predicted)
             .ok_or_else(arithmetic_overflow)?,
-    )
-    .map_err(|_| arithmetic_overflow())
+    ) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_dependency_row(
+        crate::codestream::mct_collection_view(collection).4, crate::codestream::mct_collection_view(collection).5,
+        source@, Some(source_fraction_bits@), output@, row,
+    ),
+))]
 fn irreversible_dependency_row(
     collection: &MctCollection,
     source: &[i64],
@@ -2836,6 +2878,8 @@ fn irreversible_dependency_row(
     output: &[i64],
     row: usize,
 ) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
     let mut sum = rescale_i128(
         i128::from(*source.get(row).ok_or_else(invalid_transform)?),
         *source_fraction_bits
@@ -2846,21 +2890,41 @@ fn irreversible_dependency_row(
     .checked_add(offset_value_scaled(collection.offsets(), row)?)
     .ok_or_else(arithmetic_overflow)?;
     let Some(coefficients) = collection.matrix() else {
-        return i64::try_from(sum).map_err(|_| arithmetic_overflow());
+        return match i64::try_from(sum) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(arithmetic_overflow()),
+        };
     };
-    let row_start = row
-        .checked_mul(row.saturating_sub(1))
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
+    let previous = row.saturating_sub(1);
+    let triangle = row.checked_mul(previous).ok_or_else(arithmetic_overflow)?;
+    let row_start = triangle.checked_div(2).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = sum; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= row,
+            MCT_FIXED_BITS == 32,
+            crate::specs::part2_mct_dependency_initial(crate::codestream::mct_collection_view(collection).5, source@, Some(source_fraction_bits@), row) == Ok(initial),
+            crate::codestream::mct_collection_view(collection).4 == Some(crate::codestream::mct_array_view(coefficients)),
+            previous as nat == if row == 0 { 0nat } else { (row - 1) as nat },
+            row as nat * previous as nat <= usize::MAX,
+            row_start as nat == row as nat * previous as nat / 2,
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start, column as nat) == Ok(sum),
             decreases row - column,
         )
     )]
     while column < row {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start, column as nat + 1, row as nat);
+        }
         let coefficient = *coefficients
             .values()
             .get(
@@ -2886,7 +2950,10 @@ fn irreversible_dependency_row(
             .ok_or_else(arithmetic_overflow)?;
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    i64::try_from(sum).map_err(|_| arithmetic_overflow())
+    match i64::try_from(sum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 fn apply_mct_wavelet(
@@ -4317,6 +4384,208 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_dependency_rows_match_independent_floor_and_rational_references() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let array = |fraction, values| {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float64,
+                fraction,
+                values,
+            )
+        };
+        let source = [10, -20, 30, -40];
+        let offsets = [1, -2, 3, -4];
+        for declared_reversible in [false, true] {
+            for fraction in [0, 32, u8::MAX] {
+                for coefficient in -2..=2 {
+                    for scale in [1, 2, 3, 7] {
+                        let mut matrix = vec![coefficient; 9];
+                        for index in [1, 4, 8] {
+                            matrix[index] = scale;
+                        }
+                        let collection = MctCollection::from_dependency(
+                            declared_reversible,
+                            vec![u16::MAX, 0, 0],
+                            Some(array(fraction, matrix)),
+                            Some(array(0, offsets.to_vec())),
+                        );
+                        for value in -5..=5 {
+                            let output = [value, -value - 1, 2 * value];
+                            for row in 0..4 {
+                                let prediction = if row == 0 {
+                                    0
+                                } else {
+                                    let dot: i128 = output
+                                        .iter()
+                                        .take(row)
+                                        .map(|sample| i128::from(coefficient) * i128::from(*sample))
+                                        .sum();
+                                    (i128::from(scale / 2) + dot).div_euclid(i128::from(scale))
+                                };
+                                let expected =
+                                    i128::from(source[row]) + i128::from(offsets[row]) + prediction;
+                                assert_eq!(
+                                    reversible_dependency_row(&collection, &source, &output, row),
+                                    Ok(i64::try_from(expected).unwrap())
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let nearest = |value: i128, bits: u8| {
+            if bits == 0 {
+                value
+            } else {
+                let divisor = 1_i128 << bits;
+                let magnitude = (value.abs() + divisor / 2) / divisor;
+                if value < 0 { -magnitude } else { magnitude }
+            }
+        };
+        let output = [-7, 11, -13];
+        for declared_reversible in [false, true] {
+            for coefficient in -3..=3 {
+                for coefficient_bits in [0, 1, 4] {
+                    for offset_bits in [0, 1, 4] {
+                        for source_bits in [0, 1, 4, 32] {
+                            let collection = MctCollection::from_dependency(
+                                declared_reversible,
+                                vec![],
+                                Some(array(coefficient_bits, vec![coefficient; 6])),
+                                Some(array(offset_bits, offsets.to_vec())),
+                            );
+                            for row in 0..4 {
+                                let initial = i128::from(source[row])
+                                    * (1_i128 << (32 - source_bits))
+                                    + i128::from(offsets[row]) * (1_i128 << (32 - offset_bits));
+                                let expected = initial
+                                    + output
+                                        .iter()
+                                        .take(row)
+                                        .map(|sample| {
+                                            nearest(
+                                                i128::from(coefficient) * i128::from(*sample),
+                                                coefficient_bits,
+                                            )
+                                        })
+                                        .sum::<i128>();
+                                assert_eq!(
+                                    irreversible_dependency_row(
+                                        &collection,
+                                        &source,
+                                        &[source_bits; 4],
+                                        &output,
+                                        row
+                                    ),
+                                    Ok(i64::try_from(expected).unwrap())
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_dependency_rows_preserve_lazy_raw_precision_and_first_error_frontiers() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let array = |fraction, values| {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float32,
+                fraction,
+                values,
+            )
+        };
+        let collection =
+            |matrix, offsets| MctCollection::from_dependency(false, vec![], matrix, offsets);
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for precision in 0..=u8::MAX {
+            let empty = collection(Some(array(precision, vec![])), None);
+            assert_eq!(reversible_dependency_row(&empty, &[7], &[], 0), Ok(7));
+            assert_eq!(
+                irreversible_dependency_row(&empty, &[7], &[32], &[], 0),
+                Ok(7)
+            );
+            let reversible = collection(Some(array(precision, vec![0, 1])), None);
+            assert_eq!(
+                reversible_dependency_row(&reversible, &[0, 0], &[0], 1),
+                Ok(0)
+            );
+            let irreversible = collection(Some(array(precision, vec![0])), None);
+            assert_eq!(
+                irreversible_dependency_row(&irreversible, &[0, 0], &[0, 0], &[0], 1),
+                if precision <= 126 {
+                    Ok(0)
+                } else {
+                    Err(overflow)
+                }
+            );
+            let no_matrix = collection(None, None);
+            assert_eq!(
+                irreversible_dependency_row(&no_matrix, &[0], &[precision], &[], 0),
+                if precision <= 158 {
+                    Ok(0)
+                } else {
+                    Err(overflow)
+                }
+            );
+            let offsets = collection(None, Some(array(precision, vec![0])));
+            assert_eq!(
+                irreversible_dependency_row(&offsets, &[0], &[32], &[], 0),
+                if precision <= 32 { Ok(0) } else { Err(invalid) }
+            );
+            assert_eq!(
+                reversible_dependency_row(&offsets, &[0], &[], 0),
+                if precision == 0 { Ok(0) } else { Err(invalid) }
+            );
+        }
+        let malformed = collection(Some(array(u8::MAX, vec![])), Some(array(u8::MAX, vec![])));
+        assert_eq!(
+            reversible_dependency_row(&malformed, &[], &[], usize::MAX),
+            Err(invalid)
+        );
+        assert_eq!(
+            irreversible_dependency_row(&malformed, &[0], &[159], &[], 0),
+            Err(overflow)
+        );
+        let missing = collection(None, None);
+        assert_eq!(
+            irreversible_dependency_row(&missing, &[0], &[], &[], 0),
+            Err(invalid)
+        );
+        let late = collection(Some(array(0, vec![0, 1, i64::MIN, i64::MIN, 1])), None);
+        assert_eq!(
+            reversible_dependency_row(&late, &[0, 0, 0], &[i64::MIN; 2], 2),
+            Err(overflow)
+        );
+        let base = collection(Some(array(0, vec![])), Some(array(0, vec![1])));
+        assert_eq!(
+            reversible_dependency_row(&base, &[i64::MAX], &[], 0),
+            Err(overflow)
+        );
+        let floor = collection(Some(array(0, vec![-1, 2])), None);
+        assert_eq!(reversible_dependency_row(&floor, &[0, 0], &[4], 1), Ok(-2));
+        let nearest = collection(Some(array(1, vec![-1])), None);
+        assert_eq!(
+            irreversible_dependency_row(&nearest, &[0, 0], &[32, 32], &[1], 1),
+            Ok(-1)
+        );
+    }
 
     #[test]
     fn native_mct_matrix_rows_preserve_numeric_values_raw_precision_domains_and_error_order() {

@@ -116,6 +116,25 @@ the exact owner and rejects ambiguity, foreign owners and nested functions.
 These are actual supplied-header results, not parsing/association, compressed
 decoding, target derivation or whole-F7 completion claims.
 
+## Actual native MCT dependency rows
+
+Both actual dependency row producers have complete unconditional native
+value/error contracts over full collection matrix/offset values, source
+samples, source precisions, prior output and row. The real reversible row
+preserves positive-scale admission and negative-remainder floor correction;
+the irreversible row preserves nearest-magnitude Q32 rescaling and actual
+precision overflow. Their different checked triangular indexes and lazy
+None/row-zero branches are not normalized into a common valid-matrix premise.
+Existing checked arithmetic and first-error order remain unchanged.
+
+Both loops use the already shared complete dot-prefix/error-absorption proofs.
+The positive reversible triangle bound follows from actual row-zero rejection,
+not a public precondition. Native tests compare independent Euclidean-floor
+and rational Q32 references, all256 precision tags, ignored raw metadata,
+malformed arrays and exact source/offset/late-sum error frontiers. This is a
+bounded row milestone; actual mutable collection/dependency/wavelet/stage and
+whole reconstruction composition remain open.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
