@@ -2176,42 +2176,93 @@ pub struct PackedPacketHeaders<'a> {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn packed_packet_headers_view(headers: &PackedPacketHeaders) -> crate::specs::Part1PackedHeaders {
+        crate::specs::Part1PackedHeaders {
+            source: match headers.source {
+                PackedPacketHeaderSource::None => crate::specs::Part1PackedHeaderSource::None,
+                PackedPacketHeaderSource::MarkerSegments { header, marker, logical_start } =>
+                    crate::specs::Part1PackedHeaderSource::MarkerSegments { header: header@, marker, logical_start },
+            },
+            length: headers.length, fragments: headers.fragments,
+        }
+    }
+
+    pub open spec fn packed_header_reassembly_outcome(result: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match result { Ok(bytes) => Ok(bytes@), Err(error) => Err(error) }
+    }
+
     pub closed spec fn packed_packet_headers_present(headers: &PackedPacketHeaders) -> bool {
         !matches!(headers.source, PackedPacketHeaderSource::None)
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == (DecodeError::MalformedInput { offset, kind }),
+))]
+fn packet_input_error(offset: u64, kind: MalformedKind) -> DecodeError {
+    DecodeError::MalformedInput { offset, kind }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_packet_input_limit(resource, limit, actual),
+))]
+fn packet_input_limit(resource: Resource, limit: u64, actual: u64) -> DecodeError {
+    DecodeError::LimitExceeded {
+        resource,
+        limit,
+        actual,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packed_packet_headers_view(&result) == (crate::specs::Part1PackedHeaders {
+        source: crate::specs::Part1PackedHeaderSource::None, length: 0, fragments: 0 }),
+))]
+pub(crate) const fn packed_packet_headers_none<'a>() -> PackedPacketHeaders<'a> {
+    PackedPacketHeaders {
+        source: PackedPacketHeaderSource::None,
+        length: 0,
+        fragments: 0,
+    }
+}
+
 impl PackedPacketHeaders<'_> {
     pub const fn none() -> Self {
-        Self {
-            source: PackedPacketHeaderSource::None,
-            length: 0,
-            fragments: 0,
-        }
+        packed_packet_headers_none()
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures result == packed_packet_headers_present(self),
+            result == !matches!(packed_packet_headers_view(self).source, crate::specs::Part1PackedHeaderSource::None),
     ))]
     pub const fn is_present(&self) -> bool {
         !matches!(self.source, PackedPacketHeaderSource::None)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packed_packet_headers_view(self).length,))]
     pub const fn len(&self) -> usize {
         self.length
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (packed_packet_headers_view(self).length == 0),))]
     pub const fn is_empty(&self) -> bool {
         self.length == 0
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packed_packet_headers_view(self).fragments,))]
     pub const fn fragment_count(&self) -> u16 {
         self.fragments
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packed_header_reassembly_outcome(result) == crate::specs::part1_packed_header_reassembly(
+            packed_packet_headers_view(self), crate::limits::resource_packet_header_byte_limit(limits)),
+    ))]
     pub(crate) fn reassemble(&self, limits: &ResourceLimits) -> Result<Vec<u8>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packed_header_reassembly); }
         if self.length as u64 > limits.maximum_packet_header_bytes() {
-            return Err(DecodeError::limit(
+            return Err(packet_input_limit(
                 Resource::PacketHeaderBytes,
                 limits.maximum_packet_header_bytes(),
                 self.length as u64,
@@ -2225,85 +2276,141 @@ impl PackedPacketHeaders<'_> {
         else {
             return Ok(Vec::new());
         };
-        let logical_end = logical_start
-            .checked_add(self.length)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        let logical_end = match logical_start.checked_add(self.length) {
+            Some(end) => end,
+            None => return Err(packet_input_error(0, MalformedKind::ArithmeticOverflow)),
+        };
         let mut output = Vec::with_capacity(self.length);
         let mut position = 0_usize;
         let mut logical_position = 0_usize;
         let mut remaining_segments = header.len();
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases remaining_segments,)
+            verus_spec(
+                invariant position <= header.len(), logical_position <= position,
+                    remaining_segments <= header.len(),
+                    logical_end as int == logical_start as int + self.length as int,
+                    output@.len() == (if logical_position <= logical_start { 0int }
+                        else if logical_position < logical_end { logical_position as int - logical_start as int }
+                        else { self.length as int }),
+                    crate::specs::part1_packed_header_reassembly(packed_packet_headers_view(self), crate::limits::resource_packet_header_byte_limit(limits))
+                        == crate::specs::part1_packed_header_scan(header@, marker, logical_start, logical_end, self.length,
+                            crate::specs::Part1PackedHeaderScan { position, logical_position, remaining_segments, output: output@ }),
+                decreases remaining_segments,
+            )
         )]
         while position < header.len() {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = crate::specs::Part1PackedHeaderScan {
+            position, logical_position, remaining_segments, output: output@ }; }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_packed_header_scan); }
             if remaining_segments == 0 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidMarkerLength,
                 ));
             }
             remaining_segments -= 1;
             if header.len().saturating_sub(position) < 4 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidPackedPacketHeader,
                 ));
             }
-            let current_marker = read_u16([header[position], header[position + 1]]);
-            let segment_length =
-                usize::from(read_u16([header[position + 2], header[position + 3]]));
+            let current_marker =
+                crate::refinement::marker_value(header[position], header[position + 1]);
+            let segment_length = usize::from(crate::refinement::marker_value(
+                header[position + 2],
+                header[position + 3],
+            ));
             if segment_length < 2 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidMarkerLength,
                 ));
             }
-            let end = position
-                .checked_add(2)
-                .and_then(|value| value.checked_add(segment_length))
-                .ok_or_else(|| {
-                    DecodeError::malformed(position as u64, MalformedKind::ArithmeticOverflow)
-                })?;
+            let after_marker = match position.checked_add(2) {
+                Some(value) => value,
+                None => {
+                    return Err(packet_input_error(
+                        position as u64,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
+            let end = match after_marker.checked_add(segment_length) {
+                Some(end) => end,
+                None => {
+                    return Err(packet_input_error(
+                        position as u64,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
             if end > header.len() {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidMarkerLength,
                 ));
             }
             if current_marker == marker {
-                let payload_start = position.checked_add(5).ok_or_else(|| {
-                    DecodeError::malformed(position as u64, MalformedKind::ArithmeticOverflow)
-                })?;
+                let payload_start = match position.checked_add(5) {
+                    Some(start) => start,
+                    None => {
+                        return Err(packet_input_error(
+                            position as u64,
+                            MalformedKind::ArithmeticOverflow,
+                        ));
+                    }
+                };
                 if payload_start > end {
-                    return Err(DecodeError::malformed(
+                    return Err(packet_input_error(
                         position as u64,
                         MalformedKind::InvalidMarkerLength,
                     ));
                 }
                 let fragment = &header[payload_start..end];
-                let fragment_end =
-                    logical_position
-                        .checked_add(fragment.len())
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
-                                position as u64,
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
+                let fragment_end = match logical_position.checked_add(fragment.len()) {
+                    Some(end) => end,
+                    None => {
+                        return Err(packet_input_error(
+                            position as u64,
+                            MalformedKind::ArithmeticOverflow,
+                        ));
+                    }
+                };
                 let copy_start = logical_start.max(logical_position);
                 let copy_end = logical_end.min(fragment_end);
                 if copy_start < copy_end {
                     let local_start = copy_start - logical_position;
                     let local_end = copy_end - logical_position;
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(fragment@.subrange(local_start as int, local_end as int)
+                            =~= header@.subrange(payload_start as int + local_start as int, payload_start as int + local_end as int));
+                    }
                     output.extend_from_slice(&fragment[local_start..local_end]);
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(output@ =~= before.output + header@.subrange(
+                            payload_start as int + local_start as int, payload_start as int + local_end as int));
+                    }
                 }
                 logical_position = fragment_end;
             }
             position = end;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::specs::part1_packed_header_scan(header@, marker, logical_start, logical_end, self.length, before)
+                    == crate::specs::part1_packed_header_scan(header@, marker, logical_start, logical_end, self.length,
+                        crate::specs::Part1PackedHeaderScan { position, logical_position, remaining_segments, output: output@ }));
+            }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packed_header_scan); }
         if output.len() != self.length {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 logical_position as u64,
                 MalformedKind::InvalidPackedPacketHeader,
             ));
@@ -2320,27 +2427,66 @@ pub struct PacketLengths<'a> {
     encoded_bytes: u64,
 }
 
-impl PacketLengths<'_> {
-    pub const fn none() -> Self {
-        Self {
-            source: PacketLengthSource::None,
-            packet_count: 0,
-            encoded_bytes: 0,
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn packet_length_source_view(source: PacketLengthSource<'_>) -> crate::specs::Part1PacketLengthSource {
+        match source {
+            PacketLengthSource::None => crate::specs::Part1PacketLengthSource::None,
+            PacketLengthSource::Plm(bytes) => crate::specs::Part1PacketLengthSource::Plm(bytes@),
+            PacketLengthSource::Plt(header) => crate::specs::Part1PacketLengthSource::Plt(header@),
         }
     }
 
+    pub closed spec fn packet_lengths_view(lengths: &PacketLengths) -> crate::specs::Part1PacketLengths {
+        crate::specs::Part1PacketLengths {
+            source: packet_length_source_view(lengths.source), packet_count: lengths.packet_count, encoded_bytes: lengths.encoded_bytes,
+        }
+    }
+
+    pub closed spec fn packet_length_iter_view(iter: &PacketLengthIter) -> crate::specs::Part1PacketLengthIter {
+        crate::specs::Part1PacketLengthIter {
+            source: packet_length_source_view(iter.source), position: iter.position, segment_end: iter.segment_end,
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_lengths_view(&result) == (crate::specs::Part1PacketLengths {
+        source: crate::specs::Part1PacketLengthSource::None, packet_count: 0, encoded_bytes: 0 }),
+))]
+pub(crate) const fn packet_lengths_none<'a>() -> PacketLengths<'a> {
+    PacketLengths {
+        source: PacketLengthSource::None,
+        packet_count: 0,
+        encoded_bytes: 0,
+    }
+}
+
+impl PacketLengths<'_> {
+    pub const fn none() -> Self {
+        packet_lengths_none()
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == !matches!(packet_lengths_view(self).source, crate::specs::Part1PacketLengthSource::None),
+    ))]
     pub const fn is_present(&self) -> bool {
         !matches!(self.source, PacketLengthSource::None)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_lengths_view(self).packet_count,))]
     pub const fn packet_count(&self) -> u64 {
         self.packet_count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_lengths_view(self).encoded_bytes,))]
     pub const fn encoded_bytes(&self) -> u64 {
         self.encoded_bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packet_length_iter_view(&result) == crate::specs::part1_packet_lengths_iter(packet_lengths_view(self)),
+    ))]
     pub(crate) const fn iter(&self) -> PacketLengthIter<'_> {
         PacketLengthIter {
             source: self.source,
@@ -2357,7 +2503,16 @@ pub(crate) struct PacketLengthIter<'a> {
 }
 
 impl PacketLengthIter<'_> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, packet_length_iter_view(final(self))) == crate::specs::part1_packet_length_next(packet_length_iter_view(old(self))),
+            match result { Ok(Some(value)) => value > 0, _ => true },
+            match result { Ok(Some(_)) => packet_length_iter_view(final(self)).position > packet_length_iter_view(old(self)).position, _ => true },
+    ))]
     pub(crate) fn next_length(&mut self) -> Result<Option<u32>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = packet_length_iter_view(self); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packet_length_next); }
         match self.source {
             PacketLengthSource::None => Ok(None),
             PacketLengthSource::Plm(bytes) => {
@@ -2372,9 +2527,19 @@ impl PacketLengthIter<'_> {
             {
                 #[cfg_attr(
                     verus_keep_ghost,
-                    verus_spec(decreases header.len() as int - self.position as int,)
+                    verus_spec(
+                        invariant initial == packet_length_iter_view(old(self)),
+                            packet_length_iter_view(self).source == initial.source,
+                            initial.source == crate::specs::Part1PacketLengthSource::Plt(header@),
+                            initial.position <= self.position,
+                            crate::specs::part1_packet_length_next(initial)
+                                == crate::specs::part1_packet_length_plt(packet_length_iter_view(self)),
+                        decreases header.len() as int - self.position as int,
+                    )
                 )]
                 loop {
+                    #[cfg(verus_keep_ghost)]
+                    proof! { reveal(crate::specs::part1_packet_length_plt); }
                     let previous_position = self.position;
                     if self.position < self.segment_end {
                         let (length, next) =
@@ -2386,52 +2551,71 @@ impl PacketLengthIter<'_> {
                         return Ok(None);
                     }
                     if header.len().saturating_sub(self.position) < 4 {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             self.position as u64,
                             MalformedKind::InvalidPacketLength,
                         ));
                     }
-                    let marker = read_u16([header[self.position], header[self.position + 1]]);
-                    let marker_length = usize::from(read_u16([
+                    let marker = crate::refinement::marker_value(
+                        header[self.position],
+                        header[self.position + 1],
+                    );
+                    let marker_length = usize::from(crate::refinement::marker_value(
                         header[self.position + 2],
                         header[self.position + 3],
-                    ]));
+                    ));
                     if marker_length < 2 {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             self.position as u64,
                             MalformedKind::InvalidMarkerLength,
                         ));
                     }
-                    let end = self
-                        .position
-                        .checked_add(2)
-                        .and_then(|value| value.checked_add(marker_length))
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
+                    let after_marker = match self.position.checked_add(2) {
+                        Some(value) => value,
+                        None => {
+                            return Err(packet_input_error(
                                 self.position as u64,
                                 MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
+                            ));
+                        }
+                    };
+                    let end = match after_marker.checked_add(marker_length) {
+                        Some(end) => end,
+                        None => {
+                            return Err(packet_input_error(
+                                self.position as u64,
+                                MalformedKind::ArithmeticOverflow,
+                            ));
+                        }
+                    };
                     if end > header.len() {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             self.position as u64,
                             MalformedKind::InvalidMarkerLength,
                         ));
                     }
                     self.position = end;
                     if marker == PLT {
-                        let data_start = self
-                            .position
-                            .checked_sub(marker_length)
-                            .and_then(|value| value.checked_add(3))
-                            .ok_or_else(|| {
-                                DecodeError::malformed(
+                        let before_index = match self.position.checked_sub(marker_length) {
+                            Some(value) => value,
+                            None => {
+                                return Err(packet_input_error(
                                     self.position as u64,
                                     MalformedKind::ArithmeticOverflow,
-                                )
-                            })?;
+                                ));
+                            }
+                        };
+                        let data_start = match before_index.checked_add(3) {
+                            Some(start) => start,
+                            None => {
+                                return Err(packet_input_error(
+                                    self.position as u64,
+                                    MalformedKind::ArithmeticOverflow,
+                                ));
+                            }
+                        };
                         if data_start > end {
-                            return Err(DecodeError::malformed(
+                            return Err(packet_input_error(
                                 self.position as u64,
                                 MalformedKind::InvalidMarkerLength,
                             ));
@@ -2440,7 +2624,7 @@ impl PacketLengthIter<'_> {
                         self.segment_end = end;
                     }
                     if self.position <= previous_position || self.position > header.len() {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             previous_position as u64,
                             MalformedKind::InvalidPacketLength,
                         ));
@@ -8597,13 +8781,19 @@ fn signed_u32(value: u32) -> i64 {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_packet_length_decode(encoded@, start, end),
+        match result { Ok((value, next)) => value > 0 && start < next && next <= end, Err(_) => true },
+))]
 fn decode_packet_length(
     encoded: &[u8],
     start: usize,
     end: usize,
 ) -> Result<(u32, usize), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_packet_length_decode); }
     if start >= end || end > encoded.len() {
-        return Err(DecodeError::malformed(
+        return Err(packet_input_error(
             start as u64,
             MalformedKind::InvalidPacketLength,
         ));
@@ -8614,39 +8804,67 @@ fn decode_packet_length(
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant position <= end,
+            invariant start <= position, position <= end, end <= encoded.len(),
+                crate::specs::part1_packet_length_decode(encoded@, start, end)
+                    == crate::specs::part1_packet_length_groups(encoded@, start, end, position, value, groups),
             decreases end - position,
         )
     )]
     loop {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packet_length_groups); }
         if position >= end || position >= encoded.len() {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 start as u64,
                 MalformedKind::InvalidPacketLength,
             ));
         }
         let byte = encoded[position];
-        groups = groups.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(start as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        groups = match groups.checked_add(1) {
+            Some(count) => count,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
         if groups > 5 || (groups == 5 && value > 0x01ff_ffff) {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 start as u64,
                 MalformedKind::InvalidPacketLength,
             ));
         }
-        value = value
-            .checked_mul(128)
-            .and_then(|prefix| prefix.checked_add(u32::from(byte & 0x7f)))
-            .ok_or_else(|| {
-                DecodeError::malformed(start as u64, MalformedKind::InvalidPacketLength)
-            })?;
-        position = position.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(start as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        let prefix = match value.checked_mul(128) {
+            Some(prefix) => prefix,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::InvalidPacketLength,
+                ));
+            }
+        };
+        value = match prefix.checked_add(u32::from(byte & 0x7f)) {
+            Some(word) => word,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::InvalidPacketLength,
+                ));
+            }
+        };
+        position = match position.checked_add(1) {
+            Some(next) => next,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
         if byte & 0x80 == 0 {
             if value == 0 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     start as u64,
                     MalformedKind::InvalidPacketLength,
                 ));
@@ -8695,6 +8913,367 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn input_error_literal(offset: usize, kind: MalformedKind) -> DecodeError {
+        DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        }
+    }
+
+    fn packet_length_wide_window(
+        encoded: &[u8],
+        start: usize,
+        end: usize,
+    ) -> Result<(u32, usize), DecodeError> {
+        let invalid = input_error_literal(start, MalformedKind::InvalidPacketLength);
+        if start >= end || end > encoded.len() {
+            return Err(invalid);
+        }
+        let window = &encoded[start..end];
+        let Some(last) = window.iter().position(|byte| byte & 0x80 == 0) else {
+            return Err(invalid);
+        };
+        if last >= 5 {
+            return Err(invalid);
+        }
+        let wide: u128 = window[..=last]
+            .iter()
+            .enumerate()
+            .map(|(index, byte)| u128::from(byte & 0x7f) << (7 * (last - index)))
+            .sum();
+        if wide == 0 || wide > u128::from(u32::MAX) {
+            Err(invalid)
+        } else {
+            Ok((wide as u32, start + last + 1))
+        }
+    }
+
+    #[test]
+    fn packet_lengths_exhaustive_two_byte_windows_and_every_raw_iterator_field() {
+        for word in 0_u16..=u16::MAX {
+            let bytes = word.to_be_bytes();
+            for position in [0, 1, 2, 3, usize::MAX] {
+                for segment_end in [0, 1, 2, 3, usize::MAX] {
+                    assert_eq!(
+                        decode_packet_length(&bytes, position, segment_end),
+                        packet_length_wide_window(&bytes, position, segment_end)
+                    );
+                    for source in [
+                        PacketLengthSource::None,
+                        PacketLengthSource::Plm(&bytes),
+                        PacketLengthSource::Plt(&bytes),
+                    ] {
+                        let lengths = PacketLengths {
+                            source,
+                            packet_count: u64::MAX,
+                            encoded_bytes: u64::MAX,
+                        };
+                        assert_eq!(lengths.is_present(), source != PacketLengthSource::None);
+                        assert_eq!(lengths.packet_count(), u64::MAX);
+                        assert_eq!(lengths.encoded_bytes(), u64::MAX);
+                        let fresh = lengths.iter();
+                        assert_eq!(
+                            (fresh.source, fresh.position, fresh.segment_end),
+                            (source, 0, 0)
+                        );
+                        let mut actual = PacketLengthIter {
+                            source,
+                            position,
+                            segment_end,
+                        };
+                        let expected = match source {
+                            PacketLengthSource::None => Ok(None),
+                            PacketLengthSource::Plm(_) if position == bytes.len() => Ok(None),
+                            PacketLengthSource::Plm(_) => {
+                                packet_length_wide_window(&bytes, position, bytes.len()).map(Some)
+                            }
+                            PacketLengthSource::Plt(_) if position < segment_end => {
+                                packet_length_wide_window(&bytes, position, segment_end).map(Some)
+                            }
+                            PacketLengthSource::Plt(_) if position == bytes.len() => Ok(None),
+                            PacketLengthSource::Plt(_) => Err(input_error_literal(
+                                position,
+                                MalformedKind::InvalidPacketLength,
+                            )),
+                        };
+                        let (expected_result, expected_position) = match expected {
+                            Ok(Some((value, next))) => (Ok(Some(value)), next),
+                            Ok(None) => (Ok(None), position),
+                            Err(error) => (Err(error), position),
+                        };
+                        assert_eq!(actual.next_length(), expected_result);
+                        assert_eq!(
+                            (actual.source, actual.position, actual.segment_end),
+                            (source, expected_position, segment_end)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn packet_length_full_width_noncanonical_and_unterminated_groups_match_wide_words() {
+        let inputs: &[&[u8]] = &[
+            &[],
+            &[0],
+            &[0x80],
+            &[0x81, 0],
+            &[0x80, 0x80, 0x80, 0x80, 1],
+            &[0x8f, 0xff, 0xff, 0xff, 0x7f],
+            &[0x90, 0x80, 0x80, 0x80, 0],
+            &[0xff, 0xff, 0xff, 0xff, 0xff],
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 1],
+        ];
+        for encoded in inputs {
+            for start in (0..=encoded.len() + 1).chain([usize::MAX]) {
+                for end in (0..=encoded.len() + 1).chain([usize::MAX]) {
+                    assert_eq!(
+                        decode_packet_length(encoded, start, end),
+                        packet_length_wide_window(encoded, start, end)
+                    );
+                }
+            }
+        }
+        assert_eq!(decode_packet_length(inputs[5], 0, 5), Ok((u32::MAX, 5)));
+        assert_eq!(decode_packet_length(inputs[4], 0, 5), Ok((1, 5)));
+    }
+
+    #[test]
+    fn plt_real_marker_traversal_keeps_late_cursor_commits_and_repeated_error_states() {
+        type Fixture<'a> = (&'a [u8], Result<Option<u32>, DecodeError>, usize, usize);
+        let fixtures: &[Fixture<'_>] = &[
+            (&[], Ok(None), 0, 0),
+            (&[0xff, 0x55, 0, 2], Ok(None), 4, 0),
+            (
+                &[0xff, 0x58, 0, 2],
+                Err(input_error_literal(4, MalformedKind::InvalidMarkerLength)),
+                4,
+                0,
+            ),
+            (&[0xff, 0x58, 0, 3, 9], Ok(None), 5, 5),
+            (
+                &[0xff, 0x58, 0, 4, 9, 0],
+                Err(input_error_literal(5, MalformedKind::InvalidPacketLength)),
+                5,
+                6,
+            ),
+            (
+                &[0xff, 0x55, 0, 2, 0xff, 0x58, 0, 2],
+                Err(input_error_literal(8, MalformedKind::InvalidMarkerLength)),
+                8,
+                0,
+            ),
+            (
+                &[0xff, 0x58, 0, 7],
+                Err(input_error_literal(0, MalformedKind::InvalidMarkerLength)),
+                0,
+                0,
+            ),
+        ];
+        for (header, expected, position, end) in fixtures {
+            let source = PacketLengthSource::Plt(header);
+            let mut actual = PacketLengthIter {
+                source,
+                position: 0,
+                segment_end: 0,
+            };
+            assert_eq!(actual.next_length(), *expected);
+            assert_eq!(
+                (actual.source, actual.position, actual.segment_end),
+                (source, *position, *end)
+            );
+        }
+        let header = [
+            0xff, 0x58, 0, 5, 0, 0x81, 0, 0xff, 0x55, 0, 2, 0xff, 0x58, 0, 4, 0, 5,
+        ];
+        let mut actual = PacketLengthIter {
+            source: PacketLengthSource::Plt(&header),
+            position: 0,
+            segment_end: 0,
+        };
+        for (result, position, end) in [
+            (Ok(Some(128)), 7, 7),
+            (Ok(Some(5)), 17, 17),
+            (Ok(None), 17, 17),
+        ] {
+            assert_eq!(actual.next_length(), result);
+            assert_eq!((actual.position, actual.segment_end), (position, end));
+        }
+        let header = [0xff, 0x58, 0, 4, 0, 0];
+        let mut actual = PacketLengthIter {
+            source: PacketLengthSource::Plt(&header),
+            position: 0,
+            segment_end: 0,
+        };
+        for _ in 0..2 {
+            assert_eq!(
+                actual.next_length(),
+                Err(input_error_literal(5, MalformedKind::InvalidPacketLength))
+            );
+            assert_eq!((actual.position, actual.segment_end), (5, 6));
+        }
+    }
+
+    #[test]
+    fn packed_reassembly_literal_fragments_ranges_and_late_errors_have_exact_bytes() {
+        type Fixture<'a> = (&'a [u8], &'a [u8], Option<(usize, MalformedKind)>);
+        let fixtures: &[Fixture<'_>] = &[
+            (&[], &[], None),
+            (
+                &[0xff],
+                &[],
+                Some((0, MalformedKind::InvalidPackedPacketHeader)),
+            ),
+            (
+                &[0xff, 0x60, 0, 1],
+                &[],
+                Some((0, MalformedKind::InvalidMarkerLength)),
+            ),
+            (
+                &[0xff, 0x60, 0, 2],
+                &[],
+                Some((0, MalformedKind::InvalidMarkerLength)),
+            ),
+            (&[0xff, 0x60, 0, 3, 0], &[], None),
+            (
+                &[
+                    0xff, 0x60, 0, 5, 0, 10, 11, 0xff, 0x55, 0, 2, 0xff, 0x60, 0, 4, 9, 12,
+                ],
+                &[10, 11, 12],
+                None,
+            ),
+            (
+                &[0xff, 0x60, 0, 4, 0, 10, 0xff],
+                &[10],
+                Some((6, MalformedKind::InvalidPackedPacketHeader)),
+            ),
+            (
+                &[0xff, 0x60, 0, 4, 0],
+                &[],
+                Some((0, MalformedKind::InvalidMarkerLength)),
+            ),
+        ];
+        for (header, flat, parse_error) in fixtures {
+            for logical_start in [0, 1, 2, 3, 4, usize::MAX] {
+                for length in 0..=5 {
+                    for fragments in [0, 1, u16::MAX] {
+                        for cap in [
+                            1,
+                            2,
+                            5,
+                            ResourceLimits::default().maximum_packet_header_bytes(),
+                        ] {
+                            let limits = ResourceLimits::default()
+                                .with_maximum_packet_header_bytes(cap)
+                                .unwrap();
+                            let packed = PackedPacketHeaders {
+                                source: PackedPacketHeaderSource::MarkerSegments {
+                                    header,
+                                    marker: 0xff60,
+                                    logical_start,
+                                },
+                                length,
+                                fragments,
+                            };
+                            let expected = if length as u64 > cap {
+                                Err(DecodeError::LimitExceeded {
+                                    resource: Resource::PacketHeaderBytes,
+                                    limit: cap,
+                                    actual: length as u64,
+                                })
+                            } else if logical_start.checked_add(length).is_none() {
+                                Err(input_error_literal(0, MalformedKind::ArithmeticOverflow))
+                            } else if let Some((offset, kind)) = parse_error {
+                                Err(input_error_literal(*offset, *kind))
+                            } else if length == 0 {
+                                Ok(Vec::new())
+                            } else if let Some(bytes) =
+                                flat.get(logical_start..logical_start + length)
+                            {
+                                Ok(bytes.to_vec())
+                            } else {
+                                Err(input_error_literal(
+                                    flat.len(),
+                                    MalformedKind::InvalidPackedPacketHeader,
+                                ))
+                            };
+                            assert!(packed.is_present());
+                            assert_eq!(
+                                (packed.len(), packed.is_empty(), packed.fragment_count()),
+                                (length, length == 0, fragments)
+                            );
+                            assert_eq!(packed.reassemble(&limits), expected);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn packed_raw_source_marker_and_absent_metadata_do_not_invent_shape_invariants() {
+        let header = [0xff, 0x60, 0, 2];
+        let limits = ResourceLimits::default();
+        for marker in 0..=u16::MAX {
+            let packed = PackedPacketHeaders {
+                source: PackedPacketHeaderSource::MarkerSegments {
+                    header: &header,
+                    marker,
+                    logical_start: usize::MAX,
+                },
+                length: 0,
+                fragments: u16::MAX,
+            };
+            let expected = if marker == 0xff60 {
+                Err(input_error_literal(0, MalformedKind::InvalidMarkerLength))
+            } else {
+                Ok(Vec::new())
+            };
+            assert_eq!(packed.reassemble(&limits), expected);
+        }
+        for cap in [1, ResourceLimits::default().maximum_packet_header_bytes()] {
+            let limits = limits.with_maximum_packet_header_bytes(cap).unwrap();
+            for length in [0, 1, usize::MAX] {
+                let packed = PackedPacketHeaders {
+                    source: PackedPacketHeaderSource::None,
+                    length,
+                    fragments: u16::MAX,
+                };
+                assert!(!packed.is_present());
+                assert_eq!(
+                    (packed.len(), packed.is_empty(), packed.fragment_count()),
+                    (length, length == 0, u16::MAX)
+                );
+                let expected = if length as u64 > cap {
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::PacketHeaderBytes,
+                        limit: cap,
+                        actual: length as u64,
+                    })
+                } else {
+                    Ok(Vec::new())
+                };
+                assert_eq!(packed.reassemble(&limits), expected);
+            }
+        }
+        let packed = PackedPacketHeaders {
+            source: PackedPacketHeaderSource::MarkerSegments {
+                header: &[],
+                marker: 0,
+                logical_start: usize::MAX,
+            },
+            length: 1,
+            fragments: 0,
+        };
+        assert_eq!(
+            packed.reassemble(&limits),
+            Err(input_error_literal(0, MalformedKind::ArithmeticOverflow))
+        );
+        assert_eq!(packed_packet_headers_none(), PackedPacketHeaders::none());
+        assert_eq!(packet_lengths_none(), PacketLengths::none());
+    }
 
     #[test]
     fn raw_progression_owner_records_preserve_inverted_windows_duplicates_and_boundaries() {

@@ -124,6 +124,30 @@ This closes this actual single-precinct packet boundary, not packet progression,
 tile-part reassembly, packet-length iteration, JPIP outer transactions, general
 codestream correctness or the F5H epic.
 
+## Raw packed-header and packet-length inputs
+
+[packet_input.rs](packet_input.rs) is the denotation for the actual packed
+reassembly and packet-length input producers. `Part1PackedHeaders` includes the
+entire source (None or raw marker storage, marker word and logical start), length
+and fragments. `Part1PacketLengths` includes the entire None/PLM/PLT source and
+both metadata counters; `Part1PacketLengthIter` includes that source and both raw
+cursor/end values. No topology, valid marker, canonical integer, normalized
+metadata, successful outcome or sufficient-budget hypothesis is required.
+
+The source owner supplies closed `packed_packet_headers_view`,
+`packet_lengths_view` and `packet_length_iter_view`; only the Result<Vec<u8>>
+projection `packed_header_reassembly_outcome` is open. Reassembly consumes the
+existing typed header-byte cap. Its private whole-scan record includes every
+output byte, both positions and the actual remaining-segment counter. All scan
+and byte-group recursion decreases come from the native traversal/guards.
+
+The actual native `next_length` model retains early PLT cursor commits on late
+errors, preserves arbitrary cursors for None, and never substitutes the stored
+packet count for the actual encoded source. The metadata getters do not assert
+that those independent fields agree. Existing associated `none` APIs delegate
+the actual free constructors `packed_packet_headers_none` and
+`packet_lengths_none`, avoiding an invented static-method proof binding.
+
 ## Native packet reader and raw tag-tree ownership
 
 The actual typed factories `packet_reader_new`, `packet_reader_prefix` and
