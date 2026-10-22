@@ -32,6 +32,18 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn color_precision_binary_bounds(precision: u8)
+    requires 1 <= precision <= 38,
+    ensures
+        2 <= (1u64 << precision) <= 274877906944,
+        1 <= (1i64 << ((precision - 1) as u8)) <= 137438953472,
+{
+    assert(2 <= (1u64 << precision) <= 274877906944)
+        by(bit_vector) requires 1 <= precision && precision <= 38;
+    assert(1 <= (1i64 << ((precision - 1) as u8)) <= 137438953472)
+        by(bit_vector) requires 1 <= precision && precision <= 38;
+}
+
 pub proof fn normalized_composition_domain_matches_binary_width()
     ensures
         crate::specs::PART2_NORMALIZED_SAMPLE_MAX as nat + 1

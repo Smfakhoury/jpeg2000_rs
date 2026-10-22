@@ -262,6 +262,109 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_complete_normalized_plane_bound_result(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-normalized-component-plane"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures normalized_plane_result(result)", "ensures normalized_plane_result(unrelated)"),
+            ("ensures normalized_plane_result(result)", "ensures unlisted_projection(result)"),
+            ("ensures normalized_plane_result(result)", "ensures converted_image_result(result)"),
+            ("ensures normalized_plane_result(result)", "ensures result.is_ok()"),
+            ("== crate::specs::color_normalize_component(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/color.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
+    def test_inventory_requires_complete_channel_layout_bound_result(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-complete-component-channel-layout"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures channel_layout_result(result)", "ensures channel_layout_result(unrelated)"),
+            ("ensures channel_layout_result(result)", "ensures unlisted_projection(result)"),
+            ("ensures channel_layout_result(result)", "ensures normalized_plane_result(result)"),
+            ("ensures channel_layout_result(result)", "ensures result.is_ok()"),
+            ("== crate::specs::color_channel_layout(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/color.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
+    def test_inventory_binds_each_complete_color_converter_result_to_its_exact_model(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        source = framework.ROOT / "src/color.rs"
+        original = source.read_text()
+        read_text = Path.read_text
+        for function, projection in (
+            ("convert_jp2_color", "converted_image_result(result)"),
+            ("convert_color_channel", "converted_channel_result(result)"),
+            ("convert_alpha_channel", "converted_channel_result(result)"),
+            ("convert_sycc_pixel", "result"),
+            ("validate_components", "result"),
+            ("validate_component_index", "result"),
+            ("validate_component", "result"),
+            ("validate_output_size", "result"),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if item["id"] == "part1-complete-typed-color-conversion"
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            coverage["requirements"][0]["contract_refs"] = [
+                {"path": "src/color.rs", "symbol": function}
+            ]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            end = re.search(rf"\bfn\s+{re.escape(function)}\b", original).start()
+            start = original.rfind("#[cfg_attr", 0, end)
+            contract = original[start:end]
+            wrong_model = "color_convert_channel" if function == "convert_jp2_color" else "color_convert_jp2"
+            unbound = "unrelated" if projection == "result" else projection.replace("(result)", "(unrelated)")
+            for before, after in (
+                (f"ensures {projection}", f"ensures {unbound}"),
+                (f"ensures {projection}", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}", "ensures normalized_plane_result(result)"),
+                (f"ensures {projection}", "ensures result.is_ok()"),
+                ("== crate::specs::", "<= crate::specs::"),
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[end:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(function=function, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+            modified_contract = re.sub(
+                r"== crate::specs::\w+\(", f"== crate::specs::{wrong_model}(", contract, count=1,
+            )
+            self.assertNotEqual(modified_contract, contract)
+            modified = original[:start] + modified_contract + original[end:]
+            with self.subTest(function=function, wrong_listed_model=wrong_model), \
+                    mock.patch.object(Path, "read_text",
+                                      lambda path, *args, **kwargs:
+                                      modified if path == source else read_text(path, *args, **kwargs)), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_checks_complete_reconstruction_and_sequence_projections(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         names = {"inverse_quantize_values", "inverse_quantize_plane", "inverse_5_3", "interleave"}
@@ -350,6 +453,34 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_bound_result_and_complete_mutable_reader_view(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-raw-bitstream-state"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures raw_reader_outcome(result)", "ensures raw_reader_outcome(unrelated)"),
+            ("ensures raw_reader_outcome(result)", "ensures unlisted_projection(result)"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (true, raw_bit_reader_view(final(self)))"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (result, raw_bit_reader_view(old(self)))"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (result, raw_bit_reader_view(final(self)).bits_remaining)"),
+            ("ensures (result, raw_bit_reader_view(final(self)))",
+             "ensures (result, unlisted_projection(final(self)))"),
+            ("== crate::specs::part1_raw_reader_read(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/tier1.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [
@@ -380,34 +511,6 @@ class FrameworkTests(WorkingFiles):
             def altered(path, *args, **kwargs):
                 text = read_text(path, *args, **kwargs)
                 return text.replace(before, after) if path == framework.ROOT / "src/refinement.rs" else text
-            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
-                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
-                framework.validate_normative_coverage(coverage)
-
-    def test_inventory_requires_bound_result_and_complete_mutable_reader_view(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
-        coverage["requirements"] = [
-            item for item in coverage["requirements"]
-            if item["id"] == "part1-raw-bitstream-state"
-        ]
-        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
-        read_text = Path.read_text
-        for before, after in (
-            ("ensures raw_reader_outcome(result)", "ensures raw_reader_outcome(unrelated)"),
-            ("ensures raw_reader_outcome(result)", "ensures unlisted_projection(result)"),
-            ("ensures (result, raw_bit_reader_view(final(self)))",
-             "ensures (true, raw_bit_reader_view(final(self)))"),
-            ("ensures (result, raw_bit_reader_view(final(self)))",
-             "ensures (result, raw_bit_reader_view(old(self)))"),
-            ("ensures (result, raw_bit_reader_view(final(self)))",
-             "ensures (result, raw_bit_reader_view(final(self)).bits_remaining)"),
-            ("ensures (result, raw_bit_reader_view(final(self)))",
-             "ensures (result, unlisted_projection(final(self)))"),
-            ("== crate::specs::part1_raw_reader_read(", "== crate::specs::unlisted_model("),
-        ):
-            def altered(path, *args, **kwargs):
-                text = read_text(path, *args, **kwargs)
-                return text.replace(before, after) if path == framework.ROOT / "src/tier1.rs" else text
             with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)

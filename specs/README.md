@@ -230,6 +230,56 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`color_convert_jp2` is the complete result denotation for the actual public
+typed-component converter. Read `color_output_format`, `color_channel_layout`,
+`color_validate_components`, `color_validate_output_size`, then
+`color_convert_colors` and `color_append_alphas_prefix` in that order. Named
+JP2 enumerations select grayscale, sRGB or sYCC; other enumerations and both
+ICC methods have explicit typed rejection. Component validation and budget
+admission happen before sample conversion. The three essential prefix models
+specify complete ordered channels, sYCC planes and appended alpha; each
+absorbs the first actual error. The output includes every image/channel field.
+The input is supplied typed components and color metadata, not an assumed
+compressed-decoder trace or a claim about how a container authored them.
+
+`color_conversion_ready` lives in
+[internal_specs.rs](../proofs/internal_specs.rs) because it only bundles
+already established immutable facts across the production loops. It is not
+an additional algorithmic assumption or normative rule. The byte cap view is
+the actual private `ResourceLimits` field, not a default or chosen proxy.
+
+`color_sycc_to_srgb` specifies the actual fixed-point pixel conversion over
+every native `u16` luminance and `i32` difference pair. Its coefficients are
+91881, 22554, 46802 and 116130 with denominator `COLOR_FIXED_SCALE = 2^16`.
+Each delta is rounded separately, with exact half ties away from zero,
+before the three output sums are clamped to `[0, 65535]`. The pure
+`color_fixed_round` uses unbounded integers; `color_rounded_fixed` separately
+retains the checked pre-division overflow boundary for arbitrary `i128`.
+`color_image_difference` separately connects real component lookup and nominal
+sampling to centered chroma scaling by `65535/(2^p-1)`, with the same signed
+nearest/tie policy. Neither pixel theorem proves component/output-budget
+validation or the entire color-conversion loop.
+
+`color_channel_layout` describes actual typed-image/CDEF routing before sample
+conversion. Its default path is used only when every component has no
+definitions. The explicit ordered fold retains alpha kind/association,
+permits a repeated identical component/color assignment, ignores unspecified
+channels, and rejects conflicting components or invalid associations at their
+first occurrence. Required-color completeness is checked last. The native
+`usize::MAX` unset marker is explicit; it is not a valid assigned index from a
+representable component sequence.
+
+`color_normalize_component` is a full fail-fast plane denotation over supplied
+typed integer components and target reference grids. `color_component_index`
+uses fixed-point registration in units of 1/65536, registered ceil origins,
+registered floor sampling and explicit edge clamping. Sample precision
+selects nominal maximum `2^p-1`; signed samples are checked and translated
+from `[-2^(p-1), 2^(p-1)-1]` before exact nearest/upward-tie 16-bit scaling.
+The word-width facts are checked by `color_precision_binary_bounds`, not
+implicitly assumed. All geometry/range/tag/missing-sample errors remain
+part of the model. The prefix definition describes the first actual sampling
+failure; it is not a sufficient-budget or valid-input-only theorem.
+
 `part1_raw_reader_initial`, `part1_raw_reader_load`, `part1_raw_reader_read`
 and `part1_raw_reader_termination` describe the complete selected raw-bypass
 reader state and typed outcomes. Byte/bit order, stuffing, synthetic marker
