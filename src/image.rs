@@ -105,6 +105,62 @@ pub struct TypedImage {
     components: Vec<TypedComponent>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn typed_image_geometry(image: &TypedImage) -> (u32, u32, u32, u32) {
+        (image.width, image.height, image.x_origin, image.y_origin)
+    }
+
+    pub closed spec fn typed_image_components(image: &TypedImage) -> Seq<TypedComponent> {
+        image.components@
+    }
+
+    pub open spec fn typed_image_component_views(image: &TypedImage)
+        -> Seq<crate::specs::Part1TypedComponentModel>
+    {
+        let components = typed_image_components(image);
+        Seq::new(components.len(), |i: int| typed_component_view(&components[i]))
+    }
+
+    pub closed spec fn typed_component_definitions(component: &TypedComponent) -> Seq<ChannelDefinition> {
+        component.channel_definitions@
+    }
+
+    pub closed spec fn channel_definition_view(definition: ChannelDefinition) -> (ChannelType, ChannelAssociation) {
+        (definition.channel_type, definition.association)
+    }
+
+    pub open spec fn channel_definition_views(definitions: Seq<ChannelDefinition>)
+        -> Seq<(ChannelType, ChannelAssociation)>
+    {
+        Seq::new(definitions.len(), |i: int| channel_definition_view(definitions[i]))
+    }
+
+    pub open spec fn typed_image_definition_views(image: &TypedImage)
+        -> Seq<Seq<(ChannelType, ChannelAssociation)>>
+    {
+        let components = typed_image_components(image);
+        Seq::new(components.len(), |i: int|
+            channel_definition_views(typed_component_definitions(&components[i])))
+    }
+
+    pub open spec fn typed_samples_view(samples: &TypedSamples) -> crate::specs::Part1TypedSampleSequence {
+        match samples {
+            TypedSamples::Signed(values) => crate::specs::Part1TypedSampleSequence::Signed(values@),
+            TypedSamples::Unsigned(values) => crate::specs::Part1TypedSampleSequence::Unsigned(values@),
+        }
+    }
+
+    pub closed spec fn typed_component_view(component: &TypedComponent) -> crate::specs::Part1TypedComponentModel {
+        crate::specs::Part1TypedComponentModel {
+            width: component.width,
+            height: component.height,
+            info: component.info,
+            samples: typed_samples_view(&component.samples),
+        }
+    }
+}
+
 pub(crate) struct NonlinearRegion<'a> {
     pub component: u16,
     pub x0: u32,
@@ -956,22 +1012,42 @@ impl TypedImage {
         })
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).0,)
+    )]
     pub const fn width(&self) -> u32 {
         self.width
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).1,)
+    )]
     pub const fn height(&self) -> u32 {
         self.height
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).2,)
+    )]
     pub const fn x_origin(&self) -> u32 {
         self.x_origin
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).3,)
+    )]
     pub const fn y_origin(&self) -> u32 {
         self.y_origin
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(components => ensures components@ == typed_image_components(self),)
+    )]
     pub fn components(&self) -> &[TypedComponent] {
         &self.components
     }
@@ -1007,22 +1083,42 @@ impl TypedComponent {
         self.channel_definitions.clear();
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_component_view(self).width,)
+    )]
     pub const fn width(&self) -> u32 {
         self.width
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_component_view(self).height,)
+    )]
     pub const fn height(&self) -> u32 {
         self.height
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_component_view(self).info,)
+    )]
     pub const fn info(&self) -> ComponentInfo {
         self.info
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures typed_samples_view(value) == typed_component_view(self).samples,)
+    )]
     pub const fn samples(&self) -> &TypedSamples {
         &self.samples
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(definitions => ensures definitions@ == typed_component_definitions(self),)
+    )]
     pub fn channel_definitions(&self) -> &[ChannelDefinition] {
         &self.channel_definitions
     }
@@ -1036,10 +1132,18 @@ impl ChannelDefinition {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(kind => ensures kind == channel_definition_view(self).0,)
+    )]
     pub const fn channel_type(self) -> ChannelType {
         self.channel_type
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(association => ensures association == channel_definition_view(self).1,)
+    )]
     pub const fn association(self) -> ChannelAssociation {
         self.association
     }

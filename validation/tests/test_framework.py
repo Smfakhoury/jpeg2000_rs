@@ -213,6 +213,187 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_checks_each_complete_frame_stage_result_projection(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-normalized-layer-frame-stages"
+        ]
+        requirement = coverage["requirements"][0]
+        requirement["implementation_refs"] = [
+            {"path": "src/jpx.rs", "symbol": "inspect_file"},
+            {"path": "src/jpx.rs", "symbol": "render_inspected_frame"},
+            {"path": "src/jpx.rs", "symbol": "render_normalized_frame"},
+            {"path": "src/jpx.rs", "symbol": "render_decoded_layers"},
+            {"path": "src/color.rs", "symbol": "from_composited"},
+        ]
+        read_text = Path.read_text
+        for relative, symbol, projection in (
+            ("src/jpx.rs", "render_decoded_layers", "crate::color::converted_image_result"),
+            ("src/jpx.rs", "select_frame_instructions", "frame_selection_result"),
+            ("src/jpx.rs", "build_timeline", "timeline_frames_result"),
+            ("src/jpx.rs", "render_normalized_frame", "crate::color::converted_image_result"),
+            ("src/color.rs", "from_layer", "converted_image_result"),
+            ("src/color.rs", "from_composited", "converted_image_result"),
+        ):
+            requirement["contract_refs"] = [{"path": relative, "symbol": symbol}]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            text = read_text(framework.ROOT / relative)
+            signature = re.search(rf"\bfn\s+{re.escape(symbol)}\b", text).start()
+            start = text.rfind("#[cfg_attr", 0, signature)
+            contract = text[start:signature]
+            for before, after in (
+                (f"ensures {projection}(result)", f"ensures {projection}(unrelated)"),
+                (f"ensures {projection}(result)", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}(result)", "ensures owned_layer_outcome(result)"),
+                ("== crate::specs::", "<= crate::specs::"),
+            ):
+                self.assertIn(before, contract)
+                replacement = contract.replace(before, after)
+
+                def altered(path, *args, **kwargs):
+                    original = read_text(path, *args, **kwargs)
+                    if path == framework.ROOT / relative:
+                        return original[:start] + replacement + original[signature:]
+                    return original
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
+    def test_inventory_checks_complete_reconstruction_and_sequence_projections(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        names = {"inverse_quantize_values", "inverse_quantize_plane", "inverse_5_3", "interleave"}
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if any(ref["path"] == "src/transform.rs"
+                   and ref["symbol"].rsplit("::", 1)[-1] in names
+                   for ref in item["contract_refs"])
+        ]
+        self.assertTrue(coverage["requirements"])
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        mutations = []
+        for projection in ("reconstruction_outcome", "sequence_outcome"):
+            mutations.extend((
+                (f"ensures {projection}(result)", f"ensures {projection}(unrelated)"),
+                (f"ensures {projection}(result)", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}(result)", "ensures owned_layer_outcome(result)"),
+            ))
+        for model in ("part1_inverse_integer_quantization", "part1_inverse_quantization",
+                      "part1_inverse_five_three", "part1_interleaved"):
+            mutations.append((f"== crate::specs::{model}(", "== crate::specs::unlisted_model("))
+        original = read_text(framework.ROOT / "src/transform.rs")
+        for before, after in mutations:
+            self.assertIn(before, original)
+
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/transform.rs" else text
+
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
+    def test_inventory_checks_standard_profile_bound_return_projections(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        source = framework.ROOT / "src/transform.rs"
+        original = source.read_text()
+        read_text = Path.read_text
+        for function, projection, model in (
+            ("inverse_9_7", "sequence_outcome", "part1_inverse_nine_seven"),
+            ("inverse_horizontal_5_3", "reconstruction_outcome", "part1_inverse_horizontal"),
+            ("inverse_horizontal_9_7", "reconstruction_outcome", "part1_inverse_horizontal"),
+            ("inverse_vertical_5_3", "reconstruction_outcome", "part1_inverse_vertical"),
+            ("inverse_vertical_9_7", "reconstruction_outcome", "part1_inverse_vertical"),
+            ("inverse_level_5_3", "reconstruction_outcome", "part1_inverse_level"),
+            ("inverse_level_9_7", "reconstruction_outcome", "part1_inverse_level"),
+            ("convert_samples", "sequence_outcome", "part1_convert_samples"),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if any(ref == {"path": "src/transform.rs", "symbol": function}
+                       for ref in item["contract_refs"])
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            coverage["requirements"][0]["contract_refs"] = [
+                {"path": "src/transform.rs", "symbol": function}
+            ]
+            with self.subTest(function=function, outcome="complete"):
+                self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            end = original.index(f"pub fn {function}(")
+            start = original.rfind("#[cfg_attr", 0, end)
+            self.assertGreaterEqual(start, 0)
+            contract = original[start:end]
+            wrong_projection = (
+                "sequence_outcome" if projection == "reconstruction_outcome"
+                else "reconstruction_outcome"
+            )
+            for before, after in (
+                (f"ensures {projection}(result)", f"ensures {projection}(unrelated)"),
+                (f"ensures {projection}(result)", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}(result)", f"ensures {wrong_projection}(result)"),
+                ("verus_spec(result =>", "verus_spec(unrelated =>"),
+                (f"ensures {projection}(result)", "ensures result.is_ok()"),
+                (f"== crate::specs::{model}(", "== crate::specs::unlisted_model("),
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[end:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(function=function, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
+    def test_inventory_requires_complete_normalized_plane_bound_result(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-normalized-component-plane"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures normalized_plane_result(result)", "ensures normalized_plane_result(unrelated)"),
+            ("ensures normalized_plane_result(result)", "ensures unlisted_projection(result)"),
+            ("ensures normalized_plane_result(result)", "ensures converted_image_result(result)"),
+            ("ensures normalized_plane_result(result)", "ensures result.is_ok()"),
+            ("== crate::specs::color_normalize_component(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/color.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
+    def test_inventory_requires_complete_channel_layout_bound_result(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-complete-component-channel-layout"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures channel_layout_result(result)", "ensures channel_layout_result(unrelated)"),
+            ("ensures channel_layout_result(result)", "ensures unlisted_projection(result)"),
+            ("ensures channel_layout_result(result)", "ensures normalized_plane_result(result)"),
+            ("ensures channel_layout_result(result)", "ensures result.is_ok()"),
+            ("== crate::specs::color_channel_layout(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/color.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

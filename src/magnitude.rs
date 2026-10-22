@@ -12,15 +12,48 @@ pub struct Magnitude {
     limbs: [u64; MAGNITUDE_LIMBS],
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn magnitude_limbs(value: Magnitude) -> Seq<u64> {
+        value.limbs@
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures magnitude_limbs(result) == Seq::new(6, |i: int| if i == 0 { value } else { 0 }),
+))]
+pub(crate) const fn magnitude_from_u64(value: u64) -> Magnitude {
+    let mut limbs = [0, 0, 0, 0, 0, 0];
+    limbs[0] = value;
+    Magnitude { limbs }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires bit < 384,
+    ensures match result {
+        Ok(value) => magnitude_limbs(value) == crate::specs::part1_magnitude_bit(bit),
+        Err(_) => false,
+    },
+))]
+pub(crate) fn magnitude_single_bit(bit: u16) -> Result<Magnitude, DecodeError> {
+    let mut limbs = [0_u64, 0, 0, 0, 0, 0];
+    let limb = usize::from(bit / 64);
+    let offset = u32::from(bit % 64);
+    limbs[limb] = 1_u64 << offset;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(limbs@ =~= crate::specs::part1_magnitude_bit(bit));
+    }
+    Ok(Magnitude { limbs })
+}
+
 impl Magnitude {
     pub const ZERO: Self = Self {
         limbs: [0, 0, 0, 0, 0, 0],
     };
 
     pub const fn from_u64(value: u64) -> Self {
-        let mut limbs = [0, 0, 0, 0, 0, 0];
-        limbs[0] = value;
-        Self { limbs }
+        magnitude_from_u64(value)
     }
 
     pub const fn from_limbs(limbs: [u64; MAGNITUDE_LIMBS]) -> Self {
@@ -28,22 +61,24 @@ impl Magnitude {
     }
 
     pub fn single_bit(bit: u16) -> Result<Self, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(MAGNITUDE_BITS == 384) by(compute); }
         if bit >= MAGNITUDE_BITS {
             return Err(arithmetic_overflow());
         }
-        let mut limbs = [0_u64, 0, 0, 0, 0, 0];
-        let limb = usize::from(bit / 64);
-        let offset = u32::from(bit % 64);
-        limbs[limb] = 1_u64 << offset;
-        Ok(Self { limbs })
+        magnitude_single_bit(bit)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_magnitude_zero(magnitude_limbs(self)),
+    ))]
     pub const fn is_zero(self) -> bool {
         let mut index = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= MAGNITUDE_LIMBS,
+                forall |i: int| 0 <= i < index ==> self.limbs[i] == 0,
                 decreases MAGNITUDE_LIMBS - index,
             )
         )]
@@ -186,11 +221,26 @@ impl Magnitude {
         Ok(Self { limbs })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures magnitude_limbs(result) == crate::specs::part1_magnitude_shift(magnitude_limbs(self), shift),
+    ))]
     pub fn shift_right(self, shift: u16) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(MAGNITUDE_BITS == 384) by(compute); }
         if shift >= MAGNITUDE_BITS {
-            return Self::ZERO;
+            return magnitude_from_u64(0);
         }
         if shift == 0 {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert forall |i: int| 0 <= i < 6 implies
+                    crate::specs::part1_magnitude_shift_limb(self.limbs@, shift, i) == self.limbs[i]
+                by {
+                    let value = self.limbs[i];
+                    assert(value >> 0 == value) by(bit_vector);
+                }
+                assert(self.limbs@ =~= crate::specs::part1_magnitude_shift(self.limbs@, shift));
+            }
             return self;
         }
         let whole = (shift / 64) as usize;
@@ -206,32 +256,50 @@ impl Magnitude {
                 invariant destination <= MAGNITUDE_LIMBS,
                 whole < MAGNITUDE_LIMBS,
                 partial < 64,
+                whole == shift / 64,
+                partial == shift % 64,
+                shift < 384,
+                forall |i: int| 0 <= i < destination ==>
+                    limbs[i] == crate::specs::part1_magnitude_shift_limb(self.limbs@, shift, i),
+                forall |i: int| destination <= i < 6 ==> limbs[i] == 0,
                 decreases MAGNITUDE_LIMBS - destination,
             )
         )]
         while destination < MAGNITUDE_LIMBS {
-            let source = match destination.checked_add(whole) {
-                Some(value) => value,
-                None => break,
-            };
+            let source = destination + whole;
             if source >= MAGNITUDE_LIMBS {
-                break;
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert forall |i: int| destination <= i < 6 implies
+                        crate::specs::part1_magnitude_shift_limb(self.limbs@, shift, i) == 0 by {}
+                    assert(limbs@ =~= crate::specs::part1_magnitude_shift(self.limbs@, shift));
+                }
+                return Self { limbs };
             }
-            limbs[destination] |= self.limbs[source] >> partial;
+            limbs[destination] = self.limbs[source] >> partial;
             if partial != 0 {
-                let next = match source.checked_add(1) {
-                    Some(value) => value,
-                    None => break,
-                };
+                let next = source + 1;
                 if next < MAGNITUDE_LIMBS {
                     limbs[destination] |= self.limbs[next] << (64 - partial);
                 }
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(limbs[destination as int]
+                    == crate::specs::part1_magnitude_shift_limb(self.limbs@, shift, destination as int));
+            }
             destination += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(limbs@ =~= crate::specs::part1_magnitude_shift(self.limbs@, shift));
         }
         Self { limbs }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_magnitude_u64(magnitude_limbs(self)),
+    ))]
     pub const fn to_u64(self) -> Option<u64> {
         let mut index = 1;
         #[cfg_attr(
@@ -239,6 +307,7 @@ impl Magnitude {
             verus_spec(
                 invariant 1 <= index,
                 index <= MAGNITUDE_LIMBS,
+                forall |i: int| 1 <= i < index ==> self.limbs[i] == 0,
                 decreases MAGNITUDE_LIMBS - index,
             )
         )]
@@ -251,12 +320,16 @@ impl Magnitude {
         Some(self.limbs[0])
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_magnitude_less(magnitude_limbs(self), magnitude_limbs(other)),
+    ))]
     pub const fn less_than(self, other: Self) -> bool {
         let mut index = MAGNITUDE_LIMBS;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= MAGNITUDE_LIMBS,
+                forall |i: int| index <= i < 6 ==> self.limbs[i] == other.limbs[i],
                 decreases index,
             )
         )]
@@ -266,6 +339,16 @@ impl Magnitude {
                 return true;
             }
             if self.limbs[index] > other.limbs[index] {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert forall |i: int| 0 <= i < 6 && self.limbs[i] < other.limbs[i]
+                        implies !(forall |j: int| i < j < 6 ==> self.limbs[j] == other.limbs[j])
+                    by {
+                        if i < index {
+                            assert(self.limbs[index as int] != other.limbs[index as int]);
+                        }
+                    }
+                }
                 return false;
             }
         }

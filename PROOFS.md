@@ -106,6 +106,47 @@ root and the relevant upstream regression suites.
 
 ## What the proofs establish
 
+### Bounded supplied-coefficient reconstruction
+
+`transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
+are the real production cores shared by the public integer and internal
+signed-magnitude adapters. Their complete-result contracts relate every sample
+and all `ReconstructedPlane` metadata to
+`part1_inverse_integer_quantization` / `part1_inverse_quantization`, including
+parameter, explicit decoded-byte-budget, ROI, arithmetic and final width
+rejections in execution order. The domain includes all six-limb coefficients,
+signs and `u8` ROI shifts; out-of-range restored magnitudes are rejected rather
+than assumed absent. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` adapters also have complete Result contracts
+using the closed `ResourceLimits` byte-field projection and its verified getter.
+
+`transform::inverse_5_3` and `transform::inverse_9_7` have whole-sequence
+contracts covering both parities, empty/singleton handling, mirrored boundaries,
+all scaling/lifting passes and checked errors. The horizontal, vertical and
+single-level 2D public entry points for both standard kernels additionally
+specify every plane sample, all metadata and the actual configured byte limit.
+The real level implementation reuses the proved production row/column
+coordinators. `inverse_lift`, scaling, the four-stage 9/7 coordinator and column
+storage specify complete mutable states on first failure, with untouched
+positions retained. Supporting model properties establish complete sequence
+lengths and plane sample-count/metadata consistency.
+
+The existing public `convert_samples` API has full Result semantics for its
+actual 1..38 precision policy, rounding, level shifting, clipping and checked
+failures. Its concrete consumer is an independent API test, not the decoder's
+separate image/component conversion path. Independent tests compare complete
+outputs and error/mutation boundaries with bit-expanded ROI, rational Q16 and
+widened-integer sequence/plane/conversion references.
+
+These are input-relative integer/fixed-point stage results, not compressed
+parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
+coefficient placement, actual multilevel/resolution scheduling, arbitrary
+kernels, component transforms, decoder image/component conversion, component/
+tile assembly and composed component-sample relations are not established here.
+See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
+
+### General scope
+
 Verification checks the properties expressed by contracts and loop invariants,
 including bounds, arithmetic checks, termination, and selected functional
 relations to specification helpers. The technical inventory
@@ -133,6 +174,11 @@ Read each contract according to its inputs and postcondition:
 | Successful placed-layer composition | On success, the complete final planar canvas state and exact work count equal a raster-prefix fold of normalized pixel transitions at the selected clipped, floor-scaled crop addresses | Complete error-state semantics, sufficient-budget success, earlier channel normalization, layer/frame ordering or a parser-to-pixel theorem |
 | All-return placed-layer prefix safety | On every return, all buffers equal a valid raster prefix, and work accounts for that prefix or all but its final stored pixel; inactive geometry leaves the complete initial state unchanged | Which prefix must fail, exact error classification, sufficient-budget success, normalization or layer/frame ordering |
 | Deterministic budgeted placed-layer execution | On every return, the exact typed `Result`, complete final buffers and work counter equal a raster fold that stops at the first checked-address, invalid-pixel, work-overflow or actual work-limit failure | Earlier channel normalization, layer/frame ordering, parser-to-pixel correctness or official conformance |
+| Supplied normalized layer sequence | `render_decoded_layers` returns exactly `part2_render_layers`: global output-space choice, transparent canvas initialization, ordered cumulative byte checks, carried placed-layer buffers/work, first failure and complete final image metadata/samples | Which compressed layers/instructions are supplied, normalization/registration/opacity/chroma-key correctness, or complete frame/timeline orchestration |
+| Supplied frame-table selection | `select_frame_instructions` returns exactly `part2_select_frame`: finite/indefinite modulo selection, exact selection errors, ordered persistent predecessors/current frame, and all instruction fields | Building the frame table, interpreting reuse, or a composed selected-frame-to-image theorem |
+| Complete timeline construction | `build_timeline` returns exactly `part2_build_timeline`: repeated instruction sets, new/reused layer references, exhaustion, grouping/persistence, all frame/instruction metadata, checked timing and exact frame/work/arithmetic/conflict errors | Parsing life/tick fields or deriving the supplied composition metadata from compressed/container bytes |
+| Complete supplied-layer frame composition | `render_normalized_frame` returns exactly `part2_render_normalized_frame`: actual selection, indexed normalized outcome lookup/consumption, first supplied-layer failure, then complete budgeted rendering and final image | Compressed decoding, earlier normalization/registration/opacity/chroma-key, or a parser-to-pixel theorem |
+| Normalized image construction | `from_layer`/`from_composited` return exactly `part2_image_from_planes`: checked dimensions/plane cardinalities, exact errors, 16-bit precision, ordered channel kinds, whole-image alpha association and all buffers | The origin or correctness of supplied normalized samples |
 | Complete converted-image layer construction | Exact typed result, dimensions, ordered color planes, optional sequentially combined alpha and representation flag for actual borrowed selection and owned copies | Earlier component/color conversion or association validation, registration/opacity/chroma-key, layer/frame ordering or a parser-to-pixel theorem |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
@@ -144,6 +190,39 @@ Read each contract according to its inputs and postcondition:
 | Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
+
+`normalize_component` has an unconditional complete result relation for
+supplied typed integer components, target dimensions and reference-grid
+origins. It covers every output sample, either signed/unsigned representation,
+declared precision 1..38, fixed-point registration, subsampling, edge clamping
+and the exact first typed error. Invalid precision, sampling, dimensions,
+signedness tags, missing/out-of-range samples and checked coordinate/index
+overflow are modeled rather than assumed away. Empty target height returns an
+empty plane without sampling; zero target width is rejected first, preserving
+the actual stage's behavior. This does not prove the earlier palette/channel/
+container interpretation, full color-layout/sYCC/alpha pipeline or parser-to-
+pixel relation. Public budget checking remains an earlier separate stage.
+
+`channel_layout` now has a complete typed-result relation over the actual
+ordered component/CDEF metadata. With no definitions it requires one component
+per color and returns identity routing. Explicit definitions preserve ordered
+alpha associations and flags, ignore unspecified channels, allow repeated
+identical color assignments within one component, reject cross-component
+conflicts, and check missing required colors only after the entire definition
+scan. Invalid alpha-association errors therefore keep their actual precedence
+over a later missing-color error. These contracts do not independently prove
+that a container parser authored the normative definitions or close the
+subsequent whole color/alpha conversion.
+
+`normalized_at` and `normalized_difference_at` are connected to the actual
+typed-image component sequence and origins, including component lookup and
+all nominal sampling errors. Chroma differences subtract `2^(p-1)` and scale
+by `65535/(2^p-1)`, rounding signed half ties away from zero. `sycc_to_srgb`
+returns the exact separately rounded, clamped RGB triple for every native
+`u16`/`i32` input, without a restricted-chroma precondition. The checked
+`rounded_fixed` helper also retains both `i128` overflow boundaries. These
+pixel results do not close the earlier component/output-budget validation or
+the complete public color-converter channel/raster traversal.
 
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
@@ -162,6 +241,78 @@ layout. There is still one production implementation and no public API change.
 The existing placed-layer theorem uses a fresh solver context
 (`spinoff_prover`) to avoid accumulated solver-state sensitivity as the model
 grows; its obligations and resource limit are not relaxed.
+
+### F3 input-relative orchestration boundaries
+
+The actual layer renderer now carries a deterministic sequence denotation
+across every placement; no validity, budget sufficiency or trace assumption
+is required. The render invariant includes every mutable buffer and both
+counters; the byte-charge and placed-layer contracts cover **all** returns.
+Byte charging precedes placement validation;
+placed-layer stores/charges retain their existing error ordering. The final
+image constructor is proved rather than treated as an unmodeled adapter.
+The constructors are free functions for the same pinned attribute limitation
+as the F1 owned-layer constructor; their bodies remain production code.
+
+The internal renderer receives the byte cap explicitly. Each production
+caller supplies `options.limits().maximum_decoded_bytes()`; the work cap is
+still related directly to `ResourceLimits` by `resource_work_limit`.
+This avoids adding an unproved/private-field limit accessor assumption or
+changing the shared limits module. The theorem is relative to the supplied
+byte cap and the actual work-limit view, not a proof of all caller code.
+
+`build_timeline` now has an unconditional all-return contract, not merely
+an instruction-step lemma. Its model starts from the actual empty state,
+folds complete instruction sets and their repetitions, stops on layer
+exhaustion, and absorbs the first error. The state includes the full pending
+reuse schedule, next new-layer index, instruction position, frame table and
+time. All instruction fields and frame indices/start/duration/persistence
+are projected. The whole function proves its helpers' structural invariants
+from initialization; that invariant-only predicate lives in
+`proofs/internal_specs.rs`, not in the normative definitions. Helpers'
+partially updated private state on error is not exposed by the result-only
+timeline theorem. No successful frame state is abstracted away.
+
+`render_normalized_frame` is the complete composition boundary. Its supplied
+input is an **indexed outcome bank**, not an assumed execution trace: each
+entry contains a layer reference and an optional normalized layer `Result`.
+For each selected instruction, the actual collector consumes the first
+remaining matching entry; arbitrary bank order, duplicate references,
+unrelated entries, empty slots, errors and missing references are all modeled
+without preconditions. Duplicate references consume successive outcomes
+rather than silently caching one decoded layer. This is necessary to preserve
+the existing per-placement decoder-call behavior. Missing references return
+`InvalidBoxContents`; supplied failures retain their exact error variants.
+All selected outcomes are gathered before rendering, so a later supplied
+failure precedes an earlier layer's pixel/resource failure, as in production.
+The actual complete selection and layer-render contracts establish the final
+image, rather than assuming their outputs as trace inputs.
+
+`render_inspected_frame` still decodes selected references in the previous
+order, stopping at the first decoder error. It supplies those outcomes to
+the proved normalized stage, which independently performs frame/reference
+selection and propagates that first selected error before rendering. The
+wrapper does not cache, skip or add compressed decoder calls. The extra
+instruction selection is deterministic and has the same existing selection
+errors; compressed decoding itself has no newly asserted denotation.
+
+Independent tests compare 11,520 bounded timeline programs with a separate
+flattened/BTreeMap scheduling and grouping model, including exact typed
+errors. Frame tests cover every four-frame persistence mask, finite/indefinite
+looping, extreme requests, indexed bank permutations and repeated references
+with distinct normalized outcomes. Full multiframe images are compared with
+wide-rational arithmetic, including metadata, alpha representation, complete
+buffers, repeated-call determinism and loop reset. Dedicated cases establish
+selection-before-supply and gather-before-render failure precedence.
+
+These complete actual functions cover F3 relative to supplied composition
+metadata and normalized layer results. They do **not** establish compressed
+decoding, container-to-metadata interpretation, normalization, registration,
+opacity or chroma-key semantics, nor standards-edition conformance. Owner
+integration/review and package acceptance remain separate from these local
+theorems. All complete output projections have exact inventory-scanner
+mappings and linked `contract_refs`, including `build_timeline` and
+`render_normalized_frame`.
 
 The raw-bypass reader has unconditional exact typed result/state relations
 for byte loading and bit reads, plus exact termination classification.

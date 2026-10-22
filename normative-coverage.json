@@ -5,6 +5,110 @@
   "requirements": [
     {
       "contract_refs": [
+        {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
+        {"path": "src/color.rs", "symbol": "rounded_fixed"},
+        {"path": "src/color.rs", "symbol": "clamp_u16"},
+        {"path": "src/color.rs", "symbol": "normalized_at"},
+        {"path": "src/color.rs", "symbol": "normalized_difference_at"}
+      ],
+      "id": "part1-complete-fixed-point-sycc-pixel",
+      "implementation_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "sycc_to_srgb"}
+      ],
+      "proof_refs": [
+        {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
+        {"path": "src/color.rs", "symbol": "rounded_fixed"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_sycc_to_srgb"},
+        {"path": "specs/mod.rs", "symbol": "color_rounded_fixed"},
+        {"path": "specs/mod.rs", "symbol": "color_clamp_u16"},
+        {"path": "specs/mod.rs", "symbol": "color_fixed_round"},
+        {"path": "specs/mod.rs", "symbol": "color_image_normalized"},
+        {"path": "specs/mod.rs", "symbol": "color_image_difference"},
+        {"path": "specs/mod.rs", "symbol": "color_normalize_difference"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "fixed_rounding_matches_unsigned_magnitude_reference_at_native_boundaries"},
+        {"path": "src/color.rs", "symbol": "sycc_conversion_matches_independent_wide_integer_reference"},
+        {"path": "src/color.rs", "symbol": "chroma_normalization_matches_wide_signed_ratio_for_every_supported_precision"},
+        {"path": "src/color.rs", "symbol": "chroma_sampling_preserves_typed_input_and_coordinate_error_order"}
+      ],
+      "topic": "Complete actual sampled luminance/chroma and fixed-point sYCC pixel conversion, signed half-away-from-zero rounding and clamp over full native input domains"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/color.rs", "symbol": "channel_layout"},
+        {"path": "src/color.rs", "symbol": "validate_alpha_association"}
+      ],
+      "id": "part2-complete-component-channel-layout",
+      "implementation_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "channel_layout"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "typed_image_definition_views"},
+        {"path": "src/image.rs", "symbol": "channel_definition_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_definition_presence_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_definitions_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_definitions_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_layout_error"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_channel_layout"},
+        {"path": "specs/mod.rs", "symbol": "color_alpha_association"},
+        {"path": "specs/mod.rs", "symbol": "color_layout_definition_step"},
+        {"path": "specs/mod.rs", "symbol": "color_layout_components_prefix"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "complete_channel_layout_matches_independent_flat_map_metadata_model"},
+        {"path": "src/color.rs", "symbol": "channel_layout_duplicates_and_first_metadata_error_preserve_order"}
+      ],
+      "topic": "Complete CDEF component/color/alpha routing and exact ordered metadata rejection relative to actual typed image definitions"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/color.rs", "symbol": "normalize_component"},
+        {"path": "src/color.rs", "symbol": "normalized_component_at"},
+        {"path": "src/color.rs", "symbol": "nominal_component_at"},
+        {"path": "src/color.rs", "symbol": "normalize_unsigned"},
+        {"path": "src/color.rs", "symbol": "registered_ceil_div"},
+        {"path": "src/color.rs", "symbol": "registered_floor_div"},
+        {"path": "src/color.rs", "symbol": "pixel_coordinates"}
+      ],
+      "id": "part1-complete-normalized-component-plane",
+      "implementation_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "normalize_component"},
+        {"path": "src/color.rs", "symbol": "normalized_component_at"},
+        {"path": "src/color.rs", "symbol": "nominal_component_at"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "typed_component_view"},
+        {"path": "src/image.rs", "symbol": "typed_samples_view"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "color_precision_binary_bounds"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_plane_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_plane_error"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_normalize_component"},
+        {"path": "specs/mod.rs", "symbol": "color_component_normalized"},
+        {"path": "specs/mod.rs", "symbol": "color_component_nominal"},
+        {"path": "specs/mod.rs", "symbol": "color_component_index"},
+        {"path": "specs/mod.rs", "symbol": "color_normalize_unsigned"},
+        {"path": "specs/mod.rs", "symbol": "color_registered_coordinate"},
+        {"path": "specs/mod.rs", "symbol": "color_pixel_coordinates"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "complete_normalized_component_planes_match_wide_registered_reference"},
+        {"path": "src/color.rs", "symbol": "registered_coordinates_match_wide_full_domain_boundaries"},
+        {"path": "src/color.rs", "symbol": "normalized_component_rejects_every_invalid_stage_input_in_order"}
+      ],
+      "topic": "Complete input-relative signed/unsigned integer component sampling and normalized output planes, registration, range and typed first-error behavior"
+    },
+    {
+      "contract_refs": [
         {
           "path": "src/refinement.rs",
           "symbol": "ceil_div_u32"
@@ -2214,6 +2318,10 @@
         },
         {
           "path": "src/jpx.rs",
+          "symbol": "charge_layer_bytes"
+        },
+        {
+          "path": "src/jpx.rs",
           "symbol": "composite_placed_layer"
         },
         {
@@ -2552,6 +2660,320 @@
         }
       ],
       "topic": "Composition instruction timing, repetitions, loops, source-over alpha, clipping, scaled sampling, row-major addressing, and frame rendering"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "charge_layer_bytes"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_decoded_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "select_frame_instructions"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_layer"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_composited"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_instruction_limit"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "build_timeline"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_normalized_frame"
+        }
+      ],
+      "id": "part2-normalized-layer-frame-stages",
+      "implementation_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "inspect_file"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_normalized_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "collect_supplied_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "take_supplied_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "build_timeline"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "apply_timeline_instruction"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "append_timeline_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_decoded_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_inspected_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "select_frame_instructions"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_layer"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_composited"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_error"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_sequence_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_sequence_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_instruction_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_instruction_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_instruction_halt"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_repetition_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_repetition_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_repetition_halt"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_set_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_set_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_set_halt"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_supply_search_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_gather_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_gather_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_gather_error"
+        },
+        {
+          "path": "proofs/internal_specs.rs",
+          "symbol": "part2_timeline_state_valid"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_image_from_planes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_space"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_layer_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_charge_layer_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_initial"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_frame_index"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_frame_instruction_sequence"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_select_frame"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_limit"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_work_error"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_assign"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_frame"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_instructions"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_repetitions"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_sets"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_build_timeline"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_supply_search"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_take_supplied_layer"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_gather_layer_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_gather_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_collect_supplied_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_normalized_frame"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/color.rs",
+          "symbol": "normalized_plane_constructor_preserves_all_metadata_and_rejects_each_shape_fault"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_matches_independent_rational_stack"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_preserves_resource_and_first_error_precedence"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_selects_space_globally_and_preserves_empty_canvas_metadata"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_frame_selection_matches_ordered_sequence_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_multiframe_reuse_persistence_and_reset_match_rational_images"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_matches_independent_flat_schedule_and_grouping_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_checked_errors_precede_later_reuse_and_layer_exhaustion"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composed_normalized_frames_match_independent_indexed_supply_and_rational_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composed_normalized_frames_preserve_selection_supply_and_render_error_precedence"
+        }
+      ],
+      "topic": "Input-relative whole timeline construction and complete indexed normalized layer-result selection, persistence and frame rendering; compressed decoding and normalization are outside this boundary"
     },
     {
       "contract_refs": [
@@ -4356,6 +4778,492 @@
         }
       ],
       "topic": "SINGLEHT/MULTIHT enforcement, empty replacement sets, and continued refinement pass accumulation"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_values"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_plane"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "undo_maxshift_magnitude"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantize_magnitude_sample"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_quantization_size"
+        }
+      ],
+      "id": "part1-complete-supplied-coefficient-quantization",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "prepare_tile_component_with_kernel"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_values"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_plane"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantize_magnitude_sample"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_quantization_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_quantization_has_complete_plane_metadata"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_integer_quantization"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_quantization"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_roi_coefficient"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_quantized_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_quantization_budget"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_quantization_planes_match_independent_bit_and_rational_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
+        }
+      ],
+      "topic": "Complete supplied-coefficient ROI and reversible/Q16 inverse quantization planes, including actual configured budgets and typed first failures; the public integer API's concrete consumer is its independent adapter test, while decode directly uses the wide adapter; not entropy-decoder meaning or irreversible conformance"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "interleave"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lifting_value"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "fixed_mul"
+        }
+      ],
+      "id": "part1-complete-five-three-sequence",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_row_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_column_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lifting_value"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_lifting_sample_frame"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_lifting_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_five_three_preserves_complete_sequence_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_five_three"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_interleaved"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_lifting_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_lifting_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_fixed_product"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "full_five_three_sequences_and_rejections_match_wide_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_lifting_buffers_preserve_first_error_state_and_opposite_parity"
+        }
+      ],
+      "topic": "Complete input-relative inverse 5/3 sequences, geometry, parity, singleton and checked-error semantics, plus shared lifting-buffer first-failure states; plane and 9/7 profiles have separate requirements below"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "scale_parity"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_nine_seven_lifts"
+        }
+      ],
+      "id": "part1-complete-nine-seven-sequence",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_row_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_column_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_9_7"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_scaling_error_persists"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_nine_seven_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_nine_seven_preserves_complete_sequence_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_nine_seven"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_scaling_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_nine_seven_lifting_prefix"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_nine_seven_sequences_match_independent_wide_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_scaling_lifting_and_column_store_states_match_independent_arithmetic"
+        }
+      ],
+      "topic": "Whole input-relative fixed-point 9/7 sequences with both scaling passes, four lifting passes, geometry, singletons, typed errors and complete partial buffers; not real-valued irreversible conformance"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_vertical_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_vertical_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_level"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_band"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "checked_area"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "store_column"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "store_column_sample"
+        }
+      ],
+      "id": "part1-complete-standard-wavelet-planes",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "prepare_tile_component_with_kernel"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_vertical"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_level"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_columns"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "store_column"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_horizontal_error_persists"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_vertical_error_persists"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_store_column_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "standard_horizontal_plane_has_complete_shape"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "standard_vertical_plane_has_complete_shape"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "standard_level_plane_has_complete_shape"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_horizontal"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_vertical"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_level"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_validate_level"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_validate_band"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_transform_area"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_store_column_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_store_column_sample"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_standard_planes_match_independent_reference_for_all_small_geometries"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_plane_rejections_preserve_late_band_checks_and_resource_order"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_scaling_lifting_and_column_store_states_match_independent_arithmetic"
+        }
+      ],
+      "topic": "Complete actual standard-kernel horizontal, vertical and single-level 2D plane composition, metadata, configured budgets and ordered typed failures; not multilevel scheduling, arbitrary kernels or component/tile assembly"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_samples"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_sample"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "round_fixed"
+        }
+      ],
+      "id": "part1-complete-public-sample-conversion",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_sample_conversion_matches_wide_reference_and_error_boundaries"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_samples"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_sample"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_conversion_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "converted_samples_preserve_complete_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_convert_samples"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_convert_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_round_fixed"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_sample_conversion_matches_wide_reference_and_error_boundaries"
+        }
+      ],
+      "topic": "Existing public conversion API's complete ordered rounding, level shifting, clipping, byte-budget and checked-error semantics, with an independent concrete API consumer; not the decoder's separate image/component conversion path"
     }
   ]
 }

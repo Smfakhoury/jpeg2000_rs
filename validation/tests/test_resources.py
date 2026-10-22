@@ -1,4 +1,5 @@
 import copy
+import json
 import math
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ class ResourceTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.work = Path(self.directory.name)
         self.metrics = self.work / "time.txt"
-        self.metrics.write_text("4\n")
+        self.metrics.write_text("4\t0.01\t0.02\n")
         self.output = b"IMAGE\n2 1 1\n2\t1\t8\t0\tunsigned\t0,255\n"
         self.expected = framework.parse_subject_output(self.output, b"", 0)
 
@@ -41,6 +42,9 @@ class ResourceTests(unittest.TestCase):
                                            None, None, False, 10.0)
         self.assertEqual(measured["output_sha256"], framework.normalized_hash(self.expected))
         self.assertEqual(measured["peak_rss_bytes"], 4096)
+        self.assertEqual(measured["user_cpu_ms"], 10.0)
+        self.assertEqual(measured["system_cpu_ms"], 20.0)
+        self.assertEqual(measured["total_cpu_ms"], 30.0)
         for code, output, limited in (
             (0, self.output.replace(b"0,255", b"0,254"), False),
             (2, b"ERR\tLimitExceeded\tPixels\n", False),
@@ -54,11 +58,210 @@ class ResourceTests(unittest.TestCase):
                     benchmarks._measure(["subject"], "time", self.metrics, self.expected,
                                         None if code == 0 else "LimitExceeded",
                                         None if code == 0 else "Pixels", False, 10.0)
-        process = subprocess.CompletedProcess([], 1, b"ERR\tLimitExceeded\tPixels\n", b"")
+        process = subprocess.CompletedProcess(
+            [], 1, b"ERR\tLimitExceeded\tresource limit exceeded for Pixels: limit 100, actual 101\n", b"")
         with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
             measured = benchmarks._measure(["subject"], "time", self.metrics, None,
                                            "LimitExceeded", "Pixels", False, 10.0)
         self.assertIsNone(measured["output_sha256"])
+        self.assertEqual(measured["limit_claim"], {"resource": "Pixels", "limit": 100, "actual": 101})
+
+    def test_cpu_metrics_are_required_finite_nonnegative_and_not_work_units(self):
+        for text in ("", "4\n", "4\t0.01\n", "4\tNaN\t0\n", "4\t0\tinf\n", "4\t-1\t0\n"):
+            self.metrics.write_text(text)
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                benchmarks._process_metrics(self.metrics)
+
+    def test_accounting_matrix_matches_its_premeasurement_guide_and_hash(self):
+        declaration = benchmarks._accounting_declaration()
+        text = (framework.VALIDATION / "VALIDATION.md").read_text()
+        frozen = text.split("#### R1 bounded accounting-frontier stage", 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
+        self.assertEqual(declaration, json.loads(frozen))
+        self.assertEqual(framework.sha256_bytes(framework.canonical_bytes(declaration)),
+                         benchmarks.ACCOUNTING_MATRIX_SHA256)
+        self.assertEqual(len({path["family"] for path in declaration["paths"]}), 4)
+        self.assertEqual(len(benchmarks._expected_accounting_ids()), 20)
+        self.assertEqual(declaration["ceilings"], {"DecodedBytes": 1048576, "WorkUnits": 100000})
+
+    def test_selected_search_rejections_do_not_invent_frame_prefixes(self):
+        rejection = b"ERR\tLimitExceeded\tresource limit exceeded for DecodedBytes: limit 0, actual 8\n"
+        for code, output in ((0, b"FRAME\t0\t0\n" + self.output), (1, rejection)):
+            process = subprocess.CompletedProcess([], code, output, b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+                measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                               "LimitExceeded", "DecodedBytes", True, 10.0,
+                                               allow_success=True, configured_value=0)
+            self.assertEqual(measured["returncode"], code)
+            if code:
+                self.assertEqual(measured["limit_claim"], {"resource": "DecodedBytes", "limit": 0, "actual": 8})
+
+    def test_selected_color_oracle_preserves_rgb_without_inventing_opacity(self):
+        path = next(path for path in benchmarks.ACCOUNTING_PATHS if path["id"] == "selected-color")
+        plane = {"width": 32, "height": 32, "precision": 16, "signed": False,
+                 "sample_kind": "unsigned", "samples": list(range(1024))}
+        expected = {"accepted": True, "image": {"width": 32, "height": 32,
+                                               "components": [copy.deepcopy(plane) for _ in range(3)]}}
+        encoded = self.work / "rgb.j2k"
+        encoded.write_bytes(b"independently-qualified-payload")
+        with mock.patch.object(benchmarks, "_production_fixture", return_value=(encoded, expected, {"payload_sha256": "0" * 64})):
+            _, actual, _ = benchmarks._accounting_fixture(path, self.work, {}, 10.0)
+        self.assertEqual(actual, framework.crop_image(expected, (0, 0, 32, 32), (0, 0, 16, 16)))
+        self.assertEqual(len(actual["image"]["components"]), 3)
+        self.assertEqual(path["output_components"], 3)
+
+    def test_progressive_protocol_requires_exact_reference_image_and_completion(self):
+        waiting = b"UPDATE\tWaitingForData\t0\t0\t0\t1\n"
+        output = waiting * 5 + b"UPDATE\tComplete\t0\t1\t1\t0\n" + self.output + b"UPDATE\tComplete\t1\t1\t0\t0\n"
+        image, updates = benchmarks._parse_progressive_output(output, self.expected, True, 7)
+        self.assertEqual(image, self.output)
+        self.assertEqual(len(updates), 7)
+        self.assertEqual(sum(update["image_present"] for update in updates), 1)
+        rejection = b"ERR\tLimitExceeded\tresource limit exceeded for WorkUnits: limit 0, actual 1\n"
+        process = subprocess.CompletedProcess([], 1, waiting + rejection, b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                           "LimitExceeded", "WorkUnits", False, 10.0, configured_value=0,
+                                           progressive_updates_expected=7)
+        self.assertEqual(measured["observed_error"]["reason"], "WorkUnits")
+        self.assertEqual(measured["limit_claim"], {"resource": "WorkUnits", "limit": 0, "actual": 1})
+        self.assertEqual(len(measured["progressive_updates"]), 1)
+        self.assertEqual(measured["protocol_sha256"], framework.sha256_bytes(waiting + rejection))
+        for invalid in (output.replace(b"0,255", b"0,254"), output + waiting, output[:-1].rsplit(b"\n", 1)[0],
+                        output.replace(b"Complete\t0\t1\t1", b"Complete\t1\t1\t1"),
+                        waiting + rejection + waiting):
+            with self.subTest(output=invalid[:60]), self.assertRaises(ValueError):
+                benchmarks._parse_progressive_output(invalid, self.expected, True, 7)
+
+    def test_default_pixel_rejection_retains_observed_claim_without_a_configured_limit(self):
+        diagnostic = "ERR\tLimitExceeded\tresource limit exceeded for Pixels: limit 100000000, actual 4294836225"
+        process = subprocess.CompletedProcess([], 1, (diagnostic + "\n").encode(), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, None,
+                                           "LimitExceeded", "Pixels", False, 10.0)
+        self.assertEqual(measured["limit_claim"], {"resource": "Pixels", "limit": 100000000, "actual": 4294836225})
+        self.assertEqual(measured["observed_error"],
+                         {"category": "LimitExceeded", "reason": "Pixels", "diagnostic": diagnostic})
+        changed = diagnostic.replace("4294836225", "4294836224")
+        process = subprocess.CompletedProcess([], 1, (changed + "\n").encode(), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, None,
+                                           "LimitExceeded", "Pixels", False, 10.0)
+        self.assertEqual(measured["limit_claim"]["actual"], 4294836224)
+        self.assertEqual(measured["observed_error"]["diagnostic"], changed)
+
+    def test_malformed_rejection_retains_actual_kind_and_rejects_substring_matches(self):
+        diagnostic = "ERR\tMalformedInput\tmalformed input at byte 6: Truncated"
+        process = subprocess.CompletedProcess([], 1, (diagnostic + "\n").encode(), b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, None,
+                                           "MalformedInput", "Truncated", False, 10.0)
+        self.assertEqual(measured["observed_error"],
+                         {"category": "MalformedInput", "reason": "Truncated", "diagnostic": diagnostic})
+        self.assertNotIn("limit_claim", measured)
+        for invalid in (diagnostic.replace("Truncated", "NotTruncated"),
+                        diagnostic.replace("MalformedInput", "LimitExceeded"),
+                        diagnostic + "\nERR\tMalformedInput\tmalformed input at byte 0: Truncated"):
+            process = subprocess.CompletedProcess([], 1, (invalid + "\n").encode(), b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+                with self.subTest(diagnostic=invalid), self.assertRaises(ValueError):
+                    benchmarks._measure(["subject"], "time", self.metrics, None,
+                                        "MalformedInput", "Truncated", False, 10.0)
+
+    def test_process_caps_are_unchanged_and_invalid_measurements_cannot_pass(self):
+        thresholds = {"maximum_ms": 5000.0, "maximum_peak_rss_bytes": 512 << 20}
+        benchmarks._check_thresholds({"elapsed_ms": 5000.0, "peak_rss_bytes": 512 << 20}, thresholds)
+        for elapsed, rss in ((5000.001, 512 << 20), (5000.0, (512 << 20) + 1),
+                             (math.nan, 4096), (math.inf, 4096), (-1, 4096), (1, 0), (1, 1.5)):
+            with self.subTest(elapsed=elapsed, rss=rss), self.assertRaises(ValueError):
+                benchmarks._check_thresholds({"elapsed_ms": elapsed, "peak_rss_bytes": rss}, thresholds)
+        if framework.resource is not None:
+            with mock.patch.object(framework.resource, "setrlimit") as limit:
+                benchmarks._limit_process()
+            self.assertEqual(limit.call_args_list, [
+                mock.call(framework.resource.RLIMIT_AS, (1 << 30, 1 << 30)),
+                mock.call(framework.resource.RLIMIT_FSIZE, (32 << 20, 32 << 20)),
+            ])
+        else:
+            with self.assertRaises(RuntimeError):
+                benchmarks._limit_process()
+
+    def test_jpip_requires_exact_reconstructed_bytes_as_well_as_exact_samples(self):
+        digest = framework.sha256_bytes(b"payload")
+        for prefix, valid in ((b"BYTES\t" + b"payload".hex().encode(), True),
+                              (b"BYTES\t00", False), (b"META\tpayload", False),
+                              (b"BYTES\tnot-hex", False)):
+            process = subprocess.CompletedProcess([], 0, prefix + b"\n" + self.output, b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+                if valid:
+                    measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                                   None, None, False, 10.0, reconstructed_sha256=digest)
+                    self.assertEqual(measured["reconstructed_sha256"], digest)
+                else:
+                    with self.subTest(prefix=prefix), self.assertRaises(ValueError):
+                        benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                            None, None, False, 10.0, reconstructed_sha256=digest)
+
+    def test_predeclared_matrix_is_finite_and_keeps_all_baseline_cases(self):
+        declaration = benchmarks._declaration()
+        self.assertEqual(declaration["baseline_cases"], 22)
+        self.assertEqual(len(declaration["workloads"]), 10)
+        self.assertEqual(sum(len(case["modes"]) for case in declaration["workloads"]), 16)
+        self.assertEqual(len(declaration["rejections"]), 7)
+        self.assertEqual(len(benchmarks._expected_case_ids()), 45)
+        self.assertLessEqual(max(case["width"] for case in declaration["workloads"]), 1536)
+        fixtures = benchmarks._rejection_inputs()
+        self.assertEqual(set(fixtures), set(benchmarks.R1_REJECTIONS))
+        self.assertLess(max(len(data) for data, _, _ in fixtures.values()), 8192)
+        for resource, limit, actual in benchmarks.R1_REJECTIONS.values():
+            self.assertGreater(actual, limit, resource)
+
+    def test_references_are_bounded_and_disagreements_never_qualify(self):
+        process = subprocess.CompletedProcess([], 0, b"", b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)) as run:
+            benchmarks._run_reference(["reference"], 10.0)
+        self.assertEqual(run.call_args.args[2], 16 << 20)
+        self.assertIs(run.call_args.args[3], benchmarks._limit_process)
+        payload = self.work / "fixture"
+        payload.write_bytes(b"qualified")
+        qualification = benchmarks._qualify(self.expected, self.expected, payload, [payload], [payload])
+        self.assertEqual(qualification["original_output_sha256"], qualification["reference_output_sha256"])
+        altered = copy.deepcopy(self.expected)
+        altered["image"]["components"][0]["samples"][0] = 1
+        with self.assertRaisesRegex(ValueError, "original/reference"):
+            benchmarks._qualify(self.expected, altered, payload, [payload], [payload])
+        for code, limited in ((1, False), (0, True)):
+            process = subprocess.CompletedProcess([], code, b"", b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, limited)):
+                with self.subTest(code=code, limited=limited), self.assertRaises(ValueError):
+                    benchmarks._run_reference(["reference"], 10.0)
+
+    def test_production_headers_must_match_the_declared_workload_before_qualification(self):
+        spec = ("header-check", 32, 1, 8, 32, 1, False)
+        siz = struct.pack(">HIIIIIIIIH", 0, 32, 32, 0, 0, 32, 32, 0, 0, 1) + bytes((7, 1, 1))
+        base = bytearray(b"\xff\x4f" + framework.segment(0xff51, siz) + framework.raw_codestream()[45:])
+        cod = base.index(b"\xff\x52") + 4
+        base[cod + 5] = 2
+        tools = {"encoder": {"path": "encoder"}, "decoder": {"path": "decoder"}}
+
+        def checked(command, timeout):
+            output = Path(command[command.index("-o") + 1])
+            if command[0] == "encoder":
+                output.write_bytes(data)
+            else:
+                shutil.copyfile(self.work / "header-check.pgm", output)
+
+        data = bytes(base)
+        with mock.patch.object(benchmarks, "_run_reference", side_effect=checked):
+            _, _, qualification = benchmarks._production_fixture(spec, self.work, tools, 10.0)
+        self.assertEqual(qualification["original_output_sha256"], qualification["reference_output_sha256"])
+        for position, value in ((42, 15), (cod + 5, 1), (cod + 9, 0), (cod + 3, 2), (27, 16)):
+            mutated = bytearray(base)
+            mutated[position] = value
+            data = bytes(mutated)
+            with mock.patch.object(benchmarks, "_run_reference", side_effect=checked) as reference:
+                with self.subTest(position=position), self.assertRaises(ValueError):
+                    benchmarks._production_fixture(spec, self.work, tools, 10.0)
+                self.assertEqual(reference.call_count, 1)
 
     def test_missing_tools_are_blocked_not_successful_or_built(self):
         with mock.patch.object(shutil, "which", return_value=None), \
@@ -199,42 +402,143 @@ class ResourceTests(unittest.TestCase):
         with mock.patch.object(shutil, "which", return_value=None), \
                 mock.patch.dict(benchmarks.os.environ, {"OPENJPH_ENCODER": "", "OPENJPH_DECODER": ""}):
             report = benchmarks.run_resources(output_dir=self.work)
-        report.update(status="passed", blockers=[], native_total_ms=74.0)
+        report.update(status="passed", blockers=[], native_total_ms=151.0)
         tool = {"path": sys.executable, "sha256": framework.sha256_file(Path(sys.executable))}
         report["tools"] = {name: tool for name in ("encoder", "decoder", "time", "subject", "ht_encoder", "ht_decoder")}
         run = {"elapsed_ms": 1.0, "peak_rss_bytes": 4096, "returncode": 0,
+               "user_cpu_ms": 0.0, "system_cpu_ms": 0.0, "total_cpu_ms": 0.0,
                "output_sha256": framework.normalized_hash(self.expected)}
         record = {
             "id": "case", "input_bytes": 1, "input_sha256": "0" * 64,
+            "accounting_path": None, "command": [sys.executable, "decode", "raw", "fixture"],
+            "output_protocol": "image", "progressive_updates_expected": None,
             "expected_category": None, "expected_reason": None,
             "expected_output_sha256": run["output_sha256"],
+            "qualifications": [{
+                "original_output_sha256": run["output_sha256"], "reference_output_sha256": run["output_sha256"],
+                "payload_sha256": "0" * 64,
+                "source_files": [{"name": "source", "sha256": "0" * 64}],
+                "reference_files": [{"name": "reference", "sha256": "0" * 64}],
+            }],
+            "expected_reconstructed_sha256": None, "expected_limit_claim": None,
+            "limit_mode": "production-default", "mode": "full",
             "typed_sample_bytes": 16, "output_width": 2, "output_height": 1, "output_components": 1,
-            "thresholds": {"maximum_ms": 5000.0, "maximum_peak_rss_bytes": 1 << 20},
+            "thresholds": {"maximum_ms": 5000.0, "maximum_peak_rss_bytes": 512 << 20},
             "runs": [copy.deepcopy(run) for _ in range(3)], "status": "passed",
             "error": None, "artifacts": [], "median_ms": 1.0, "peak_rss_bytes": 4096,
             "configured_limit": None, "search_ceiling": None, "search_runs": [],
         }
-        report["records"] = [dict(copy.deepcopy(record), id=f"case-{index}") for index in range(22)]
+        frontier_ids = ["gray24-small-decoded-bytes-at", "rgb16-layered-decoded-bytes-at",
+                        "gray24-small-work-units-at", "rgb16-layered-work-units-at"]
+        below_ids = [name.removesuffix("-at") + "-below" for name in frontier_ids]
+        ids = frontier_ids + below_ids
+        ids += sorted(benchmarks._expected_case_ids() - set(ids))
+        report["records"] = [dict(copy.deepcopy(record), id=name) for name in ids]
+
+        def observed(resource, limit, actual):
+            return {"category": "LimitExceeded", "reason": resource,
+                    "diagnostic": f"ERR\tLimitExceeded\tresource limit exceeded for {resource}: limit {limit}, actual {actual}"}
+
         for index in range(4):
             current = report["records"][index]
             resource = "DecodedBytes" if index < 2 else "WorkUnits"
             current["configured_limit"] = {"resource": resource, "value": 9}
+            current["limit_mode"] = "single-tightened-defaults"
             current["search_ceiling"] = 64
             rejected = {"elapsed_ms": 1.0, "peak_rss_bytes": 4096, "returncode": 1,
+                        "user_cpu_ms": 0.0, "system_cpu_ms": 0.0, "total_cpu_ms": 0.0,
                         "output_sha256": None, "limit_value": 0,
+                        "observed_error": observed(resource, 0, 9),
                         "limit_claim": {"resource": resource, "limit": 0, "actual": 9}}
-            current["search_runs"] = [rejected, {"limit_value": 64, **run}]
+            current["search_runs"] = [rejected, {"limit_value": 64, **run},
+                                      {**rejected, "limit_value": 8,
+                                       "observed_error": observed(resource, 8, 9),
+                                       "limit_claim": {"resource": resource, "limit": 8, "actual": 9}},
+                                      {"limit_value": 9, **run}]
             below = report["records"][index + 4]
             below.update(configured_limit={"resource": resource, "value": 8},
                          expected_category="LimitExceeded", expected_reason=resource,
                          expected_output_sha256=None, typed_sample_bytes=0,
-                         output_width=0, output_height=0, output_components=0)
+                         output_width=0, output_height=0, output_components=0,
+                         mode="rejection", qualifications=[],
+                         limit_mode="single-tightened-defaults",
+                         thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
             below["runs"] = [{**run, "returncode": 1, "output_sha256": None,
+                              "observed_error": observed(resource, 8, 9),
                               "limit_claim": {"resource": resource, "limit": 8, "actual": 9}}
                              for _ in range(3)]
+        pixel = next(record for record in report["records"] if record["id"] == "declared-pixel-limit")
+        pixel.update(expected_category="LimitExceeded", expected_reason="Pixels",
+                     expected_limit_claim=dict(benchmarks.BASELINE_PIXEL_CLAIM), expected_output_sha256=None,
+                     mode="rejection", qualifications=[], typed_sample_bytes=0, output_width=0,
+                     output_height=0, output_components=0,
+                     thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
+        pixel["runs"] = [{**run, "returncode": 1, "output_sha256": None,
+                          "observed_error": observed("Pixels", 100000000, 4294836225),
+                          "limit_claim": {"resource": "Pixels", "limit": 100000000, "actual": 4294836225}}
+                         for _ in range(3)]
+        truncated = next(record for record in report["records"] if record["id"] == "truncated-main-header")
+        truncated.update(expected_category="MalformedInput", expected_reason="Truncated", expected_output_sha256=None,
+                         mode="rejection", qualifications=[], typed_sample_bytes=0, output_width=0,
+                         output_height=0, output_components=0,
+                         thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
+        truncated["runs"] = [{**run, "returncode": 1, "output_sha256": None, "observed_error": {
+            "category": "MalformedInput", "reason": "Truncated",
+            "diagnostic": "ERR\tMalformedInput\tmalformed input at byte 6: Truncated"}} for _ in range(3)]
+        for path in benchmarks.ACCOUNTING_PATHS:
+            for resource, ceiling in benchmarks.ACCOUNTING_CEILINGS.items():
+                selector = "decoded-bytes" if resource == "DecodedBytes" else "work-units"
+                at = copy.deepcopy(record)
+                at.update(id=f"account-{path['id']}-{selector}-at", accounting_path=path["id"],
+                          output_protocol=path["output_protocol"], configured_limit={"resource": resource, "value": 9},
+                          limit_mode="single-tightened-defaults", search_ceiling=ceiling,
+                          output_width=16, output_height=16, output_components=path["output_components"],
+                          typed_sample_bytes=16 * 16 * path["output_components"] * 8)
+                at["command"] = [sys.executable, path["operation"] + "-limited", path["format"], "fixture"]
+                if path["operation"].startswith("select"):
+                    at["command"] += ["0", "0", "all"]
+                    at["mode"] = "selection"
+                    at["thresholds"] = {"maximum_ms": 2500.0, "maximum_peak_rss_bytes": 256 << 20}
+                at["command"] += [selector, "9"]
+                rejected = {**run, "returncode": 1, "output_sha256": None,
+                            "limit_claim": {"resource": resource, "limit": 0, "actual": 9},
+                            "observed_error": observed(resource, 0, 9), "limit_value": 0}
+                at["search_runs"] = [rejected, {"limit_value": ceiling, **run},
+                                     {**rejected, "limit_value": 8, "observed_error": observed(resource, 8, 9),
+                                      "limit_claim": {"resource": resource, "limit": 8, "actual": 9}},
+                                     {"limit_value": 9, **run}]
+                below = copy.deepcopy(at)
+                below.update(id=at["id"].removesuffix("-at") + "-below", expected_category="LimitExceeded",
+                             expected_reason=resource, configured_limit={"resource": resource, "value": 8},
+                             mode="rejection", search_ceiling=None, search_runs=[],
+                             thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
+                below["command"][-1] = "8"
+                below["runs"] = [{key: value for key, value in copy.deepcopy(at["search_runs"][2]).items()
+                                  if key != "limit_value"} for _ in range(3)]
+                if path["id"] == "jpip-reconstruct":
+                    at["expected_reconstructed_sha256"] = below["expected_reconstructed_sha256"] = "0" * 64
+                    for measured in [*at["runs"], *at["search_runs"]]:
+                        if measured["returncode"] == 0:
+                            measured["reconstructed_sha256"] = "0" * 64
+                if path["id"] == "jpip-progressive":
+                    at["progressive_updates_expected"] = below["progressive_updates_expected"] = 7
+                    updates = [{"status": "WaitingForData", "previous_layers": 0, "available_layers": 0,
+                                "image_present": False, "missing_ranges": 1, "output_sha256": None}
+                               for _ in range(5)]
+                    updates += [{"status": "Complete", "previous_layers": 0, "available_layers": 1,
+                                 "image_present": True, "missing_ranges": 0, "output_sha256": run["output_sha256"]},
+                                {"status": "Complete", "previous_layers": 1, "available_layers": 1,
+                                 "image_present": False, "missing_ranges": 0, "output_sha256": None}]
+                    for measured in [*at["runs"], *at["search_runs"], *below["runs"]]:
+                        measured["protocol_sha256"] = "0" * 64
+                        measured["progressive_updates"] = copy.deepcopy(updates) if measured["returncode"] == 0 else []
+                report["accounting_records"].extend([at, below])
+        report["native_total_ms"] = 251.0
         schema = framework.VALIDATION / "resource-result.schema.json"
         framework.validate_schema(schema, report)
-        for mutation in ("rss", "count", "hash", "exit", "claim", "search", "probe-count", "probe-claim"):
+        benchmarks._validate_evidence(report)
+        for mutation in ("rss", "count", "hash", "exit", "claim", "search", "probe-count", "probe-claim",
+                         "cpu", "caps", "qualification", "matrix"):
             invalid = copy.deepcopy(report)
             current = invalid["records"][0]
             if mutation == "rss":
@@ -251,7 +555,108 @@ class ResourceTests(unittest.TestCase):
                 current["search_runs"].clear()
             elif mutation == "probe-count":
                 current["search_runs"] = [current["search_runs"][0]] * 33
-            else:
+            elif mutation == "probe-claim":
                 del current["search_runs"][0]["limit_claim"]
+            elif mutation == "cpu":
+                del current["runs"][0]["user_cpu_ms"]
+            elif mutation == "caps":
+                invalid["maximum_native_total_ms"] = 31000.0
+            elif mutation == "qualification":
+                current["qualifications"] = []
+            else:
+                invalid["declaration"]["workloads"].pop()
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 framework.validate_schema(schema, invalid)
+        for mutation in ("duplicate", "omission", "matrix", "prequalification", "cpu-sum", "aggregate",
+                         "output", "adjacent", "limit-mode", "reconstruction", "default-claim"):
+            invalid = copy.deepcopy(report)
+            current = invalid["records"][0]
+            if mutation == "duplicate":
+                invalid["records"][1]["id"] = current["id"]
+            elif mutation == "omission":
+                invalid["records"].pop()
+            elif mutation == "matrix":
+                invalid["declaration"]["workloads"][0]["width"] = 1535
+            elif mutation == "prequalification":
+                current["qualifications"][0]["reference_output_sha256"] = "f" * 64
+            elif mutation == "cpu-sum":
+                current["runs"][0]["user_cpu_ms"] = 1.0
+            elif mutation == "aggregate":
+                invalid["native_total_ms"] += 1
+            elif mutation == "output":
+                current["runs"][0]["output_sha256"] = "f" * 64
+            elif mutation == "adjacent":
+                current["search_runs"] = current["search_runs"][:2]
+            elif mutation == "limit-mode":
+                current["limit_mode"] = "production-default"
+            elif mutation == "reconstruction":
+                current["expected_reconstructed_sha256"] = "f" * 64
+            else:
+                invalid["records"][4]["expected_limit_claim"] = {"resource": "WorkUnits", "limit": 8, "actual": 10}
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                benchmarks._validate_evidence(invalid)
+        for mutation in ("missing-observation", "missing-limit-claim", "category", "reason", "claim-resource",
+                         "claim-limit", "claim-actual", "diagnostic", "pixel-expectation", "malformed-kind",
+                         "consistent-wrong-pixel-claim", "changed-pixel-declaration"):
+            invalid = copy.deepcopy(report)
+            current = next(record for record in invalid["records"] if record["id"] == "declared-pixel-limit")
+            measured = current["runs"][0]
+            if mutation == "missing-observation":
+                del measured["observed_error"]
+            elif mutation == "missing-limit-claim":
+                del measured["limit_claim"]
+            elif mutation == "category":
+                measured["observed_error"]["category"] = "MalformedInput"
+            elif mutation == "reason":
+                measured["observed_error"]["reason"] = "Width"
+            elif mutation.startswith("claim-"):
+                field = mutation.removeprefix("claim-")
+                measured["limit_claim"][field] = "Width" if field == "resource" else 1
+            elif mutation == "diagnostic":
+                measured["observed_error"]["diagnostic"] = measured["observed_error"]["diagnostic"].replace("Pixels", "Width")
+            elif mutation == "pixel-expectation":
+                current["expected_limit_claim"] = None
+            elif mutation in ("consistent-wrong-pixel-claim", "changed-pixel-declaration"):
+                measured["limit_claim"]["actual"] -= 1
+                measured["observed_error"]["diagnostic"] = measured["observed_error"]["diagnostic"].replace(
+                    "4294836225", "4294836224")
+                if mutation == "changed-pixel-declaration":
+                    current["expected_limit_claim"]["actual"] -= 1
+            else:
+                current = next(record for record in invalid["records"] if record["id"] == "truncated-main-header")
+                current["runs"][0]["observed_error"]["reason"] = "NotTruncated"
+            with self.subTest(typed_mutation=mutation), self.assertRaises(ValueError):
+                benchmarks._validate_evidence(invalid)
+            with self.subTest(schema_typed_mutation=mutation), self.assertRaises(ValueError):
+                framework.validate_schema(schema, invalid)
+        for mutation in ("omitted", "duplicate", "path", "command", "matrix", "hash", "aggregate",
+                         "progressive-missing", "progressive-hash", "progressive-order", "prefix-error-cap"):
+            invalid = copy.deepcopy(report)
+            current = invalid["accounting_records"][0]
+            if mutation == "omitted":
+                invalid["accounting_records"].pop()
+            elif mutation == "duplicate":
+                invalid["accounting_records"][1]["id"] = current["id"]
+            elif mutation == "path":
+                current["accounting_path"] = "selected-color"
+            elif mutation == "command":
+                current["command"][1] = "decode-limited"
+            elif mutation == "matrix":
+                invalid["accounting_declaration"]["paths"][0]["size"] = 16
+            elif mutation == "hash":
+                invalid["accounting_declaration_sha256"] = "0" * 64
+            elif mutation == "aggregate":
+                invalid["native_total_ms"] = 151.0
+            elif mutation == "prefix-error-cap":
+                current["search_runs"][0]["elapsed_ms"] = 1001.0
+            else:
+                current = next(record for record in invalid["accounting_records"]
+                               if record["accounting_path"] == "jpip-progressive" and record["search_ceiling"] is not None)
+                if mutation == "progressive-missing":
+                    del current["runs"][0]["progressive_updates"]
+                elif mutation == "progressive-hash":
+                    current["runs"][0]["progressive_updates"][5]["output_sha256"] = "f" * 64
+                else:
+                    current["runs"][0]["progressive_updates"][5]["previous_layers"] = 1
+            with self.subTest(accounting_mutation=mutation), self.assertRaises(ValueError):
+                benchmarks._validate_evidence(invalid)

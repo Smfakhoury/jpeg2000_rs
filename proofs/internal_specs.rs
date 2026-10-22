@@ -4,6 +4,12 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn part2_timeline_state_valid(
+    state: crate::specs::Part2TimelineState, layers: usize, maximum_frames: u32, limit: usize,
+) -> bool {
+    state.2 <= layers && state.3 as nat <= state.1.len() <= limit as nat && state.0.len() <= maximum_frames as nat
+}
+
 pub open spec fn part2_layer_alpha_product_prefix(
     first: Seq<u16>, second: Seq<u16>, count: nat,
 ) -> Seq<u16> {

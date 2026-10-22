@@ -64,6 +64,28 @@ verus! {
     {
         Seq::new(channels.len(), |i: int| converted_channel_view(&channels[i]))
     }
+
+    pub open spec fn converted_image_result(result: Result<ConvertedImage, DecodeError>)
+        -> crate::specs::Part2ConvertedImageResult
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(image) => {
+                let view = converted_image_view(&image);
+                Ok((view.0, view.1, view.2, view.3, converted_channel_views(view.4)))
+            },
+        }
+    }
+
+    #[verifier::inline]
+    pub(crate) open spec fn normalized_plane_result(result: Result<Vec<u16>, DecodeError>)
+        -> Result<Seq<u16>, DecodeError>
+    {
+        match result {
+            Ok(samples) => Ok(samples@),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 impl ConvertedChannel {
@@ -163,87 +185,175 @@ impl ConvertedImage {
                 .collect(),
         }
     }
+}
 
-    pub(crate) fn from_composited(
-        width: u32,
-        height: u32,
-        color_space: ConvertedColorSpace,
-        color_samples: Vec<Vec<u16>>,
-        alpha_samples: Vec<u16>,
-    ) -> Result<Self, DecodeError> {
-        Self::from_layer(
-            width,
-            height,
-            color_space,
-            color_samples,
-            alpha_samples,
-            false,
+#[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures converted_image_result(result) == crate::specs::part2_image_from_planes(
+                width, height, color_space, crate::specs::part2_composition_planes(color_samples@), alpha_samples@, false,
+            ),
         )
-    }
+    )]
+pub(crate) fn from_composited(
+    width: u32,
+    height: u32,
+    color_space: ConvertedColorSpace,
+    color_samples: Vec<Vec<u16>>,
+    alpha_samples: Vec<u16>,
+) -> Result<ConvertedImage, DecodeError> {
+    from_layer(
+        width,
+        height,
+        color_space,
+        color_samples,
+        alpha_samples,
+        false,
+    )
+}
 
-    pub(crate) fn from_layer(
-        width: u32,
-        height: u32,
-        color_space: ConvertedColorSpace,
-        color_samples: Vec<Vec<u16>>,
-        alpha_samples: Vec<u16>,
-        premultiplied: bool,
-    ) -> Result<Self, DecodeError> {
-        let expected_colors = match color_space {
-            ConvertedColorSpace::Srgb => 3_usize,
-            ConvertedColorSpace::Grayscale => 1_usize,
-        };
-        let expected_samples = checked_area(width, height)?;
-        if color_samples.len() != expected_colors || alpha_samples.len() != expected_samples {
-            return Err(invalid_color_input());
-        }
-        let mut channels = Vec::with_capacity(
-            expected_colors
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?,
-        );
-        let mut index = 0_usize;
-        #[cfg_attr(
+#[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures converted_image_result(result) == crate::specs::part2_image_from_planes(
+                width, height, color_space, crate::specs::part2_composition_planes(color_samples@), alpha_samples@, premultiplied,
+            ),
+        )
+    )]
+pub(crate) fn from_layer(
+    width: u32,
+    height: u32,
+    color_space: ConvertedColorSpace,
+    color_samples: Vec<Vec<u16>>,
+    alpha_samples: Vec<u16>,
+    premultiplied: bool,
+) -> Result<ConvertedImage, DecodeError> {
+    let expected_colors = match color_space {
+        ConvertedColorSpace::Srgb => 3_usize,
+        ConvertedColorSpace::Grayscale => 1_usize,
+    };
+    let expected_samples = checked_area(width, height)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = crate::specs::part2_composition_planes(color_samples@);
+        let ghost input_alpha = alpha_samples@;
+    }
+    if color_samples.len() != expected_colors || alpha_samples.len() != expected_samples {
+        return Err(invalid_color_input());
+    }
+    let mut channels = Vec::with_capacity(
+        expected_colors
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?,
+    );
+    let mut index = 0_usize;
+    #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= color_samples.len(),
+                    color_samples.len() == expected_colors,
+                    expected_colors as nat == crate::specs::part2_layer_color_count(color_space),
+                    crate::specs::part2_layer_area(width, height) == Ok(expected_samples),
+                    alpha_samples.len() == expected_samples,
+                    channels.len() == index,
+                    input == crate::specs::part2_composition_planes(color_samples@),
+                    input_alpha == alpha_samples@,
+                    forall|i: int| 0 <= i < index ==> #[trigger] input[i].len() == expected_samples,
+                    converted_channel_views(channels@) == Seq::new(index as nat, |i: int|
+                        (crate::specs::part2_output_channel(color_space, i), input[i])),
                 decreases color_samples.len() - index,
             )
         )]
-        while index < color_samples.len() {
-            let samples = color_samples.get(index).ok_or_else(invalid_color_input)?;
-            if samples.len() != expected_samples {
-                return Err(invalid_color_input());
-            }
-            let channel_type = match (color_space, index) {
-                (ConvertedColorSpace::Grayscale, 0) => ConvertedChannelType::Gray,
-                (ConvertedColorSpace::Srgb, 0) => ConvertedChannelType::Red,
-                (ConvertedColorSpace::Srgb, 1) => ConvertedChannelType::Green,
-                (ConvertedColorSpace::Srgb, 2) => ConvertedChannelType::Blue,
-                _ => return Err(invalid_color_input()),
-            };
-            channels.push(ConvertedChannel {
-                channel_type,
-                samples: samples.clone(),
-            });
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    while index < color_samples.len() {
+        let samples = color_samples.get(index).ok_or_else(invalid_color_input)?;
+        if samples.len() != expected_samples {
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(input[index as int].len() != expected_samples); }
+            return Err(invalid_color_input());
+        }
+        let channel_type = match (color_space, index) {
+            (ConvertedColorSpace::Grayscale, 0) => ConvertedChannelType::Gray,
+            (ConvertedColorSpace::Srgb, 0) => ConvertedChannelType::Red,
+            (ConvertedColorSpace::Srgb, 1) => ConvertedChannelType::Green,
+            (ConvertedColorSpace::Srgb, 2) => ConvertedChannelType::Blue,
+            _ => return Err(invalid_color_input()),
+        };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost previous = channels@; }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(channel_type == crate::specs::part2_output_channel(color_space, index as int));
+            assert(samples@ == input[index as int]);
         }
         channels.push(ConvertedChannel {
-            channel_type: ConvertedChannelType::Alpha {
-                premultiplied,
-                association: ChannelAssociation::WholeImage,
-            },
-            samples: alpha_samples,
+            channel_type,
+            samples: copy_channel_samples(samples),
         });
-        Ok(Self {
-            width,
-            height,
-            color_space,
-            precision: 16,
-            channels,
-        })
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert forall|i: int| 0 <= i < channels.len() implies
+                #[trigger] converted_channel_view(&channels@[i])
+                    == (crate::specs::part2_output_channel(color_space, i), input[i]) by {
+                if i < index {
+                    assert(channels@[i] == previous[i]);
+                    assert(converted_channel_views(previous)[i]
+                        == (crate::specs::part2_output_channel(color_space, i), input[i]));
+                } else {
+                    assert(converted_channel_view(&channels@[i]).0 == channel_type);
+                    assert(converted_channel_view(&channels@[i]).1 == input[i]);
+                }
+            }
+            assert(converted_channel_views(channels@) =~= Seq::new((index + 1) as nat, |i: int|
+                (crate::specs::part2_output_channel(color_space, i), input[i])));
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost previous = channels@; }
+    channels.push(ConvertedChannel {
+        channel_type: ConvertedChannelType::Alpha {
+            premultiplied,
+            association: ChannelAssociation::WholeImage,
+        },
+        samples: alpha_samples,
+    });
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall|i: int| 0 <= i < previous.len() implies
+            #[trigger] converted_channel_view(&channels@[i]) == converted_channel_view(&previous[i]) by {}
+        assert(converted_channel_views(channels@) =~=
+            Seq::new(color_samples.len() as nat, |i: int|
+                (crate::specs::part2_output_channel(color_space, i), input[i]))
+            .push((ConvertedChannelType::Alpha { premultiplied, association: ChannelAssociation::WholeImage }, input_alpha)));
+    }
+    Ok(ConvertedImage {
+        width,
+        height,
+        color_space,
+        precision: 16,
+        channels,
+    })
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(output => ensures output@ == input@,))]
+fn copy_channel_samples(input: &[u16]) -> Vec<u16> {
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0_usize;
+    #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant index <= input.len(), output@ == input@.take(index as int),
+                decreases input.len() - index,
+            )
+        )]
+    while index < input.len() {
+        output.push(input[index]);
+        index += 1;
+    }
+    output
+}
+
+impl ConvertedImage {
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(width => ensures width == converted_image_view(self).0,)
@@ -294,6 +404,17 @@ impl ConvertedImage {
 struct ChannelLayout {
     colors: Vec<usize>,
     alphas: Vec<(usize, bool, ChannelAssociation)>,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn channel_layout_result(result: Result<ChannelLayout, DecodeError>) -> crate::specs::ColorLayoutResult {
+        match result {
+            Ok(layout) => Ok((layout.colors@, layout.alphas@)),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 pub fn convert_jp2_color(
@@ -469,7 +590,17 @@ pub fn convert_jp2_color(
     })
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures channel_layout_result(result) == crate::specs::color_channel_layout(
+            crate::image::typed_image_definition_views(image), color_count,
+        ),
+    )
+)]
 fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayout, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input_definitions = crate::image::typed_image_definition_views(image); }
     let mut has_definitions = false;
     let component_count = image.components().len();
     let mut component_index = 0_usize;
@@ -477,6 +608,10 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= component_count,
+                input_definitions == crate::image::typed_image_definition_views(image),
+                component_count == input_definitions.len(),
+                has_definitions == (exists|i: int| #![trigger input_definitions[i]]
+                    0 <= i < component_index && input_definitions[i].len() > 0),
             decreases component_count - component_index,
         )
     )]
@@ -485,7 +620,15 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             .components()
             .get(component_index)
             .ok_or_else(invalid_color_input)?;
-        if !component.channel_definitions().is_empty() {
+        let definitions = component.channel_definitions();
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(input_definitions[component_index as int].len() == definitions.len());
+            crate::proofs::production_impl::production_color_definition_presence_step(
+                input_definitions, component_index as nat,
+            );
+        }
+        if !definitions.is_empty() {
             has_definitions = true;
         }
         component_index = component_index
@@ -502,6 +645,11 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             verus_keep_ghost,
             verus_spec(
                 invariant component_index <= color_count,
+                    input_definitions == crate::image::typed_image_definition_views(image),
+                    input_definitions.len() == color_count,
+                    !(exists|i: int| #![trigger input_definitions[i]]
+                        0 <= i < input_definitions.len() && input_definitions[i].len() > 0),
+                    colors@ == Seq::new(component_index as nat, |i: int| i as usize),
                 decreases color_count - component_index,
             )
         )]
@@ -520,28 +668,69 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
     let mut colors = vec![usize::MAX; color_count];
     let mut alphas = Vec::new();
     component_index = 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_color_layout_empty(input_definitions, color_count);
+        assert(colors@ =~= Seq::new(color_count as nat, |i: int| usize::MAX));
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= component_count,
+                input_definitions == crate::image::typed_image_definition_views(image),
+                component_count == input_definitions.len(),
+                colors.len() == color_count,
+                exists|i: int| #![trigger input_definitions[i]]
+                    0 <= i < input_definitions.len() && input_definitions[i].len() > 0,
+                crate::specs::color_layout_components_prefix(input_definitions, color_count, component_index as nat)
+                    == Ok((colors@, alphas@)),
             decreases component_count - component_index,
         )
     )]
     while component_index < component_count {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = (colors@, alphas@); }
         let component = image
             .components()
             .get(component_index)
             .ok_or_else(invalid_color_input)?;
         let definitions = component.channel_definitions();
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost current_definitions = crate::image::channel_definition_views(definitions@); }
         let mut definition_index = 0_usize;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_color_layout_step(input_definitions, color_count, component_index as nat);
+            crate::proofs::production_impl::production_color_definitions_empty(initial, current_definitions, component_index, color_count);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant definition_index <= definitions.len(),
+                    input_definitions == crate::image::typed_image_definition_views(image),
+                    component_index < component_count && component_count == input_definitions.len(),
+                    current_definitions == crate::image::channel_definition_views(definitions@),
+                    current_definitions == input_definitions[component_index as int],
+                    colors.len() == color_count,
+                    exists|i: int| #![trigger input_definitions[i]]
+                        0 <= i < input_definitions.len() && input_definitions[i].len() > 0,
+                    crate::specs::color_layout_components_prefix(input_definitions, color_count, component_index as nat) == Ok(initial),
+                    crate::specs::color_layout_components_prefix(input_definitions, color_count, component_index as nat + 1)
+                        == crate::specs::color_layout_definitions_prefix(
+                            initial, current_definitions, component_index, color_count, current_definitions.len(),
+                        ),
+                    crate::specs::color_layout_definitions_prefix(initial, current_definitions,
+                        component_index, color_count, definition_index as nat) == Ok((colors@, alphas@)),
                 decreases definitions.len() - definition_index,
             )
         )]
         while definition_index < definitions.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_color_definitions_step(
+                    initial, current_definitions, component_index, color_count, definition_index as nat,
+                );
+            }
             let definition = *definitions
                 .get(definition_index)
                 .ok_or_else(invalid_color_input)?;
@@ -550,22 +739,69 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
                     let association = match definition.association() {
                         ChannelAssociation::Color(value) => value,
                         _ => {
+                            #[cfg(verus_keep_ghost)]
+                            proof! {
+                                crate::proofs::production_impl::production_color_definitions_error(
+                                    initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                    current_definitions.len(), crate::specs::color_layout_error(),
+                                );
+                                crate::proofs::production_impl::production_color_layout_error(
+                                    input_definitions, color_count, component_index as nat + 1,
+                                    input_definitions.len(), crate::specs::color_layout_error(),
+                                );
+                            }
                             return Err(invalid_channel_layout());
                         }
                     };
                     if association == 0 || usize::from(association) > color_count {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            crate::proofs::production_impl::production_color_definitions_error(
+                                initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                current_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                            crate::proofs::production_impl::production_color_layout_error(
+                                input_definitions, color_count, component_index as nat + 1,
+                                input_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                        }
                         return Err(invalid_channel_layout());
                     }
-                    let slot = colors
-                        .get_mut(usize::from(association - 1))
-                        .ok_or_else(invalid_color_input)?;
-                    if *slot != usize::MAX && *slot != component_index {
+                    let slot_index = usize::from(association - 1);
+                    if colors[slot_index] != usize::MAX && colors[slot_index] != component_index {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            crate::proofs::production_impl::production_color_definitions_error(
+                                initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                current_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                            crate::proofs::production_impl::production_color_layout_error(
+                                input_definitions, color_count, component_index as nat + 1,
+                                input_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                        }
                         return Err(invalid_channel_layout());
                     }
-                    *slot = component_index;
+                    *colors.get_mut(slot_index).ok_or_else(invalid_color_input)? = component_index;
                 }
                 ChannelType::Opacity | ChannelType::PremultipliedOpacity => {
-                    validate_alpha_association(definition.association(), color_count)?;
+                    match validate_alpha_association(definition.association(), color_count) {
+                        Ok(()) => {}
+                        Err(error) => {
+                            #[cfg(verus_keep_ghost)]
+                            proof! {
+                                crate::proofs::production_impl::production_color_definitions_error(
+                                    initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                    current_definitions.len(), error,
+                                );
+                                crate::proofs::production_impl::production_color_layout_error(
+                                    input_definitions, color_count, component_index as nat + 1,
+                                    input_definitions.len(), error,
+                                );
+                            }
+                            return Err(error);
+                        }
+                    }
                     alphas.push((
                         component_index,
                         matches!(definition.channel_type(), ChannelType::PremultipliedOpacity),
@@ -576,6 +812,11 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
                     // Unspecified channels are intentionally not part of colour conversion.
                 }
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::specs::color_layout_definitions_prefix(initial, current_definitions,
+                    component_index, color_count, definition_index as nat + 1) == Ok((colors@, alphas@)));
+            }
             definition_index = definition_index
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
@@ -584,11 +825,19 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost complete = (colors@, alphas@); }
     component_index = 0;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= colors.len(),
+                input_definitions == crate::image::typed_image_definition_views(image),
+                complete == (colors@, alphas@),
+                exists|i: int| #![trigger input_definitions[i]]
+                    0 <= i < input_definitions.len() && input_definitions[i].len() > 0,
+                crate::specs::color_layout_components_prefix(input_definitions, color_count, input_definitions.len()) == Ok(complete),
+                forall|i: int| #![trigger complete.0[i]] 0 <= i < component_index ==> complete.0[i] != usize::MAX,
             decreases colors.len() - component_index,
         )
     )]
@@ -598,6 +847,12 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             .ok_or_else(invalid_color_input)?
             == usize::MAX
         {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(complete.0[component_index as int] == usize::MAX);
+                assert(exists|i: int| #![trigger complete.0[i]]
+                    0 <= i < complete.0.len() && complete.0[i] == usize::MAX);
+            }
             return Err(invalid_channel_layout());
         }
         component_index = component_index
@@ -607,16 +862,20 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
     Ok(ChannelLayout { colors, alphas })
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_alpha_association(association, color_count),)
+)]
 fn validate_alpha_association(
     association: ChannelAssociation,
     color_count: usize,
 ) -> Result<(), DecodeError> {
     match association {
         ChannelAssociation::Color(value) if value == 0 || usize::from(value) > color_count => {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidAlphaAssociation,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidAlphaAssociation,
+            });
         }
         _ => {}
     }
@@ -752,6 +1011,14 @@ fn validate_output_size(
     Ok(())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures normalized_plane_result(result) == crate::specs::color_normalize_component(
+            crate::image::typed_component_view(component), width, height, x_origin, y_origin,
+        ),
+    )
+)]
 pub(crate) fn normalize_component(
     component: &TypedComponent,
     width: u32,
@@ -767,34 +1034,96 @@ pub(crate) fn normalize_component(
         return Err(invalid_color_input());
     }
     let count = checked_area(width, height)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = crate::image::typed_component_view(component);
+    }
     let mut output = Vec::with_capacity(count);
     let mut pixel = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_color_plane_empty(input, width, x_origin, y_origin);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant pixel <= count,
+                input == crate::image::typed_component_view(component),
+                width > 0,
+                width as nat <= usize::MAX as nat,
+                row_width as nat == width as nat,
+                crate::specs::part2_layer_area(width, height) == Ok(count),
+                crate::specs::color_normalize_component_prefix(input, width, x_origin, y_origin, pixel as nat)
+                    == Ok(output@),
             decreases count - pixel,
         )
     )]
     while pixel < count {
-        let (x, y) = pixel_coordinates(pixel, row_width)?;
-        output.push(normalized_component_at(
-            component, x_origin, y_origin, x, y,
-        )?);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_color_plane_step(
+                input, width, x_origin, y_origin, pixel as nat,
+            );
+        }
+        let (x, y) = match pixel_coordinates(pixel, row_width) {
+            Ok(coordinates) => coordinates,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_color_plane_error(
+                        input, width, x_origin, y_origin, pixel as nat + 1, count as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        let value = match normalized_component_at(component, x_origin, y_origin, x, y) {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_color_plane_error(
+                        input, width, x_origin, y_origin, pixel as nat + 1, count as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        output.push(value);
         pixel = pixel.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(output)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_pixel_coordinates(pixel, width),)
+)]
 fn pixel_coordinates(pixel: usize, width: usize) -> Result<(u32, u32), DecodeError> {
     if width == 0 {
         return Err(invalid_color_input());
     }
-    let x = u32::try_from(pixel % width).map_err(|_| arithmetic_overflow())?;
-    let y = u32::try_from(pixel / width).map_err(|_| arithmetic_overflow())?;
+    let x = match u32::try_from(pixel % width) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let y = match u32::try_from(pixel / width) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
     Ok((x, y))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_image_normalized(
+            crate::image::typed_image_component_views(image),
+            crate::image::typed_image_geometry(image).2,
+            crate::image::typed_image_geometry(image).3, component_index, x, y,
+        ),
+    )
+)]
 fn normalized_at(
     image: &TypedImage,
     component_index: usize,
@@ -808,6 +1137,16 @@ fn normalized_at(
     normalized_component_at(component, image.x_origin(), image.y_origin(), x, y)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_image_difference(
+            crate::image::typed_image_component_views(image),
+            crate::image::typed_image_geometry(image).2,
+            crate::image::typed_image_geometry(image).3, component_index, x, y,
+        ),
+    )
+)]
 fn normalized_difference_at(
     image: &TypedImage,
     component_index: usize,
@@ -821,6 +1160,10 @@ fn normalized_difference_at(
     let info = component.info();
     if info.precision == 0 || info.precision > 38 {
         return Err(invalid_color_input());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::color_precision_binary_bounds(info.precision);
     }
     let value = nominal_component_at(component, image.x_origin(), image.y_origin(), x, y)?;
     let maximum = (1_u64 << info.precision)
@@ -842,9 +1185,20 @@ fn normalized_difference_at(
     } else {
         (scaled + i128::from(maximum / 2)) / i128::from(maximum)
     };
-    i32::try_from(rounded).map_err(|_| arithmetic_overflow())
+    match i32::try_from(rounded) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_component_normalized(
+            crate::image::typed_component_view(component), image_x_origin, image_y_origin, x, y,
+        ),
+    )
+)]
 fn normalized_component_at(
     component: &TypedComponent,
     image_x_origin: u32,
@@ -857,6 +1211,14 @@ fn normalized_component_at(
     normalize_unsigned(value, info.precision)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_component_nominal(
+            crate::image::typed_component_view(component), image_x_origin, image_y_origin, x, y,
+        ),
+    )
+)]
 fn nominal_component_at(
     component: &TypedComponent,
     image_x_origin: u32,
@@ -871,6 +1233,10 @@ fn nominal_component_at(
         || info.y_subsampling == 0
     {
         return Err(invalid_color_input());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::color_precision_binary_bounds(info.precision);
     }
     if component.width() == 0 || component.height() == 0 {
         return Err(invalid_color_input());
@@ -911,9 +1277,11 @@ fn nominal_component_at(
     let sample_y = absolute_sample_y
         .checked_sub(component_y0)
         .ok_or_else(arithmetic_overflow)?;
-    let index = (sample_y as usize)
+    let row = (sample_y as usize)
         .checked_mul(component.width() as usize)
-        .and_then(|row| row.checked_add(sample_x as usize))
+        .ok_or_else(arithmetic_overflow)?;
+    let index = row
+        .checked_add(sample_x as usize)
         .ok_or_else(arithmetic_overflow)?;
     match component.samples() {
         TypedSamples::Unsigned(samples) if !info.signed => {
@@ -948,9 +1316,17 @@ fn nominal_component_at(
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_normalize_unsigned(value, precision),)
+)]
 fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
     if precision == 0 || precision > 38 {
         return Err(invalid_color_input());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::color_precision_binary_bounds(precision);
     }
     let maximum = (1_u64 << precision)
         .checked_sub(1)
@@ -961,13 +1337,28 @@ fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
     if value > maximum {
         return Err(invalid_color_input());
     }
-    let numerator = value
+    let scaled = value
         .checked_mul(OUTPUT_MAXIMUM)
-        .and_then(|scaled| scaled.checked_add(maximum / 2))
         .ok_or_else(arithmetic_overflow)?;
-    u16::try_from(numerator / maximum).map_err(|_| arithmetic_overflow())
+    let numerator = scaled
+        .checked_add(maximum / 2)
+        .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(scaled as nat <= 65535 * (maximum as nat));
+        crate::proofs::spec_properties::source_over_rounding_preserves_sample_bound(scaled, maximum);
+        assert(numerator / maximum <= 65535);
+    }
+    match u16::try_from(numerator / maximum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_sycc_to_srgb(y, cb, cr),)
+)]
 fn sycc_to_srgb(y: u16, cb: i32, cr: i32) -> Result<(u16, u16, u16), DecodeError> {
     let y = i128::from(y);
     let cb = i128::from(cb);
@@ -995,12 +1386,18 @@ fn sycc_to_srgb(y: u16, cb: i32, cr: i32) -> Result<(u16, u16, u16), DecodeError
     let red = y.checked_add(red_delta).ok_or_else(arithmetic_overflow)?;
     let green = y
         .checked_sub(green_blue_delta)
-        .and_then(|value| value.checked_sub(green_red_delta))
+        .ok_or_else(arithmetic_overflow)?;
+    let green = green
+        .checked_sub(green_red_delta)
         .ok_or_else(arithmetic_overflow)?;
     let blue = y.checked_add(blue_delta).ok_or_else(arithmetic_overflow)?;
     Ok((clamp_u16(red), clamp_u16(green), clamp_u16(blue)))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_rounded_fixed(value),)
+)]
 fn rounded_fixed(value: i128) -> Result<i128, DecodeError> {
     if value < 0 {
         Ok(value
@@ -1015,6 +1412,10 @@ fn rounded_fixed(value: i128) -> Result<i128, DecodeError> {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_clamp_u16(value as int),)
+)]
 fn clamp_u16(value: i128) -> u16 {
     if value <= 0 {
         0
@@ -1025,6 +1426,12 @@ fn clamp_u16(value: i128) -> u16 {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_registered_coordinate(value, divisor, registration, true),
+    )
+)]
 fn registered_ceil_div(value: u32, divisor: u32, registration: u16) -> Result<u32, DecodeError> {
     if divisor == 0 {
         return Err(invalid_color_input());
@@ -1042,13 +1449,19 @@ fn registered_ceil_div(value: u32, divisor: u32, registration: u16) -> Result<u3
     let denominator = u64::from(divisor)
         .checked_mul(scale)
         .ok_or_else(arithmetic_overflow)?;
-    let quotient = adjusted / denominator;
-    let rounded = quotient
-        .checked_add(u64::from(!adjusted.is_multiple_of(denominator)))
-        .ok_or_else(arithmetic_overflow)?;
-    u32::try_from(rounded).map_err(|_| arithmetic_overflow())
+    let rounded = crate::refinement::registered_extent(adjusted, denominator);
+    match u32::try_from(rounded) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_registered_coordinate(value, divisor, registration, false),
+    )
+)]
 fn registered_floor_div(value: u32, divisor: u32, registration: u16) -> Result<u32, DecodeError> {
     if divisor == 0 {
         return Err(invalid_color_input());
@@ -1066,30 +1479,57 @@ fn registered_floor_div(value: u32, divisor: u32, registration: u16) -> Result<u
     let denominator = u64::from(divisor)
         .checked_mul(scale)
         .ok_or_else(arithmetic_overflow)?;
-    u32::try_from(adjusted / denominator).map_err(|_| arithmetic_overflow())
+    match u32::try_from(adjusted / denominator) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(area => ensures area == crate::specs::part2_layer_area(width, height),)
+)]
 fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part2_layer_area);
+        assert((width as int) * (height as int) <= 18446744065119617025) by(nonlinear_arith);
+    }
     let area = u64::from(width)
         .checked_mul(u64::from(height))
         .ok_or_else(arithmetic_overflow)?;
-    usize::try_from(area).map_err(|_| arithmetic_overflow())
+    match usize::try_from(area) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 const fn unsupported(reason: UnsupportedColorConversion) -> DecodeError {
     DecodeError::UnsupportedColorConversion { reason }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::color_layout_error(),))]
 const fn invalid_channel_layout() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidChannelLayout)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidChannelLayout,
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::part2_color_input_error(),))]
 fn invalid_color_input() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ContainerCodestreamMismatch)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ContainerCodestreamMismatch,
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::part2_composition_error(true),))]
 fn arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
 }
 
 #[cfg(test)]
@@ -1099,6 +1539,642 @@ mod tests {
         codestream::ComponentInfo,
         image::{ChannelDefinition, ChannelType, TypedComponent, TypedImage, TypedSamples},
     };
+
+    fn sampled_plane_wide_reference(
+        nominal: &[u64],
+        component_size: (u32, u32),
+        info: ComponentInfo,
+        output_size: (u32, u32),
+        origin: (u32, u32),
+    ) -> Result<Vec<u16>, DecodeError> {
+        if output_size.0 == 0 {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ContainerCodestreamMismatch,
+            });
+        }
+        let coordinate = |value: u32, sampling: u8, registration: u16, ceil: bool| {
+            let numerator = (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
+            let denominator = u128::from(sampling) * 65_536;
+            if ceil {
+                numerator.div_ceil(denominator)
+            } else {
+                numerator / denominator
+            }
+        };
+        let x0 = coordinate(origin.0, info.x_subsampling, info.x_registration, true);
+        let y0 = coordinate(origin.1, info.y_subsampling, info.y_registration, true);
+        let maximum = (1_u128 << info.precision) - 1;
+        let mut result = Vec::new();
+        for y in 0..output_size.1 {
+            for x in 0..output_size.0 {
+                let sx = coordinate(origin.0 + x, info.x_subsampling, info.x_registration, false)
+                    .clamp(x0, x0 + u128::from(component_size.0) - 1);
+                let sy = coordinate(origin.1 + y, info.y_subsampling, info.y_registration, false)
+                    .clamp(y0, y0 + u128::from(component_size.1) - 1);
+                let index =
+                    usize::try_from((sy - y0) * u128::from(component_size.0) + sx - x0).unwrap();
+                let value = u128::from(nominal[index]);
+                result.push(u16::try_from((value * 65_535 + maximum / 2) / maximum).unwrap());
+            }
+        }
+        Ok(result)
+    }
+
+    #[test]
+    fn complete_normalized_component_planes_match_wide_registered_reference() {
+        let mut cases = 0;
+        for precision in [1, 2, 7, 8, 12, 16, 24, 31, 38] {
+            let maximum = (1_u64 << precision) - 1;
+            for signed in [false, true] {
+                for sampling in [(1, 1), (2, 1), (1, 2), (2, 3)] {
+                    for origin in [(0, 0), (1, 3), (3, 5), (7, 2)] {
+                        for registration in
+                            [(0, 0), (1, 65_535), (32_768, 12_345), (65_535, 32_768)]
+                        {
+                            for size in [(1_u32, 1_u32), (3, 2)] {
+                                let nominal = (0..size.0 * size.1)
+                                    .map(|i| match i {
+                                        0 => 0,
+                                        1 => maximum,
+                                        2 => maximum / 2,
+                                        _ => (u64::from(i) * 17 + 1) % (maximum + 1),
+                                    })
+                                    .collect::<Vec<_>>();
+                                let info = ComponentInfo {
+                                    precision,
+                                    signed,
+                                    x_subsampling: sampling.0,
+                                    y_subsampling: sampling.1,
+                                    x_registration: registration.0,
+                                    y_registration: registration.1,
+                                };
+                                let samples = if signed {
+                                    let level = 1_i64 << (precision - 1);
+                                    TypedSamples::Signed(
+                                        nominal
+                                            .iter()
+                                            .map(|&value| i64::try_from(value).unwrap() - level)
+                                            .collect(),
+                                    )
+                                } else {
+                                    TypedSamples::Unsigned(nominal.clone())
+                                };
+                                let input =
+                                    TypedComponent::from_parts(size.0, size.1, info, samples);
+                                for output in [(1, 1), (5, 4), (0, 3), (4, 0)] {
+                                    let expected = sampled_plane_wide_reference(
+                                        &nominal, size, info, output, origin,
+                                    );
+                                    assert_eq!(
+                                        normalize_component(
+                                            &input, output.0, output.1, origin.0, origin.1
+                                        ),
+                                        expected,
+                                        "precision={precision} signed={signed} sampling={sampling:?} origin={origin:?} registration={registration:?} size={size:?} output={output:?}",
+                                    );
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 9_216);
+    }
+
+    #[test]
+    fn registered_coordinates_match_wide_full_domain_boundaries() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        };
+        for value in [0, 1, 2, u32::MAX / 2, u32::MAX] {
+            for divisor in [0, 1, 2, 255, 65_536, u32::MAX] {
+                for registration in [0, 1, 32_768, u16::MAX] {
+                    let reference = |ceil: bool| {
+                        if divisor == 0 {
+                            return Err(invalid);
+                        }
+                        let numerator =
+                            (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
+                        let denominator = u128::from(divisor) * 65_536;
+                        let quotient = if ceil {
+                            numerator.div_ceil(denominator)
+                        } else {
+                            numerator / denominator
+                        };
+                        Ok(u32::try_from(quotient).unwrap())
+                    };
+                    assert_eq!(
+                        registered_ceil_div(value, divisor, registration),
+                        reference(true)
+                    );
+                    assert_eq!(
+                        registered_floor_div(value, divisor, registration),
+                        reference(false)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn normalized_component_rejects_every_invalid_stage_input_in_order() {
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        });
+        let arithmetic = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        });
+        let info = ComponentInfo {
+            precision: 8,
+            signed: false,
+            x_subsampling: 1,
+            y_subsampling: 1,
+            x_registration: 0,
+            y_registration: 0,
+        };
+        for bad_info in [
+            ComponentInfo {
+                precision: 0,
+                ..info
+            },
+            ComponentInfo {
+                precision: 39,
+                ..info
+            },
+            ComponentInfo {
+                precision: u8::MAX,
+                ..info
+            },
+            ComponentInfo {
+                x_subsampling: 0,
+                ..info
+            },
+            ComponentInfo {
+                y_subsampling: 0,
+                ..info
+            },
+        ] {
+            let input = TypedComponent::from_parts(1, 1, bad_info, TypedSamples::Unsigned(vec![0]));
+            assert_eq!(
+                normalize_component(&input, 1, 1, u32::MAX, u32::MAX),
+                invalid
+            );
+        }
+        for size in [(0, 1), (1, 0)] {
+            let input =
+                TypedComponent::from_parts(size.0, size.1, info, TypedSamples::Unsigned(vec![]));
+            assert_eq!(normalize_component(&input, 1, 1, 0, 0), invalid);
+        }
+        let wrong_tag = TypedComponent::from_parts(1, 1, info, TypedSamples::Signed(vec![0]));
+        assert_eq!(normalize_component(&wrong_tag, 1, 1, 0, 0), invalid);
+        let wrong_signed = TypedComponent::from_parts(
+            1,
+            1,
+            ComponentInfo {
+                signed: true,
+                ..info
+            },
+            TypedSamples::Unsigned(vec![0]),
+        );
+        assert_eq!(normalize_component(&wrong_signed, 1, 1, 0, 0), invalid);
+        for samples in [
+            TypedSamples::Unsigned(vec![256]),
+            TypedSamples::Unsigned(vec![]),
+        ] {
+            let input = TypedComponent::from_parts(1, 1, info, samples);
+            assert_eq!(normalize_component(&input, 1, 1, 0, 0), invalid);
+        }
+        for value in [-129, 128] {
+            let input = TypedComponent::from_parts(
+                1,
+                1,
+                ComponentInfo {
+                    signed: true,
+                    ..info
+                },
+                TypedSamples::Signed(vec![value]),
+            );
+            assert_eq!(normalize_component(&input, 1, 1, 0, 0), invalid);
+        }
+        let short = TypedComponent::from_parts(3, 2, info, TypedSamples::Unsigned(vec![0; 5]));
+        assert_eq!(normalize_component(&short, 3, 2, 0, 0), invalid);
+        let extra = TypedComponent::from_parts(3, 2, info, TypedSamples::Unsigned(vec![0; 7]));
+        assert_eq!(normalize_component(&extra, 3, 2, 0, 0), Ok(vec![0; 6]));
+        let outside = TypedComponent::from_parts(1, 1, info, TypedSamples::Unsigned(vec![0]));
+        assert_eq!(normalize_component(&outside, 1, 1, u32::MAX, 0), arithmetic);
+        let late_origin_overflow = TypedComponent::from_parts(
+            1,
+            1,
+            ComponentInfo {
+                x_subsampling: 255,
+                ..info
+            },
+            TypedSamples::Unsigned(vec![0]),
+        );
+        assert_eq!(
+            normalize_component(&late_origin_overflow, 2, 1, u32::MAX, 0),
+            arithmetic
+        );
+        let empty = TypedComponent::from_parts(
+            0,
+            0,
+            ComponentInfo {
+                precision: 0,
+                x_subsampling: 0,
+                ..info
+            },
+            TypedSamples::Unsigned(vec![]),
+        );
+        assert_eq!(normalize_component(&empty, 0, 0, 0, 0), invalid);
+        assert_eq!(
+            normalize_component(&empty, 1, 0, u32::MAX, u32::MAX),
+            Ok(vec![])
+        );
+    }
+
+    type LayoutMapResult =
+        Result<(Vec<usize>, Vec<(usize, bool, ChannelAssociation)>), DecodeError>;
+
+    fn layout_map_reference(
+        definitions: &[Vec<(ChannelType, ChannelAssociation)>],
+        count: usize,
+    ) -> LayoutMapResult {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidChannelLayout,
+        };
+        if definitions.iter().all(Vec::is_empty) {
+            return if definitions.len() == count {
+                Ok(((0..count).collect(), vec![]))
+            } else {
+                Err(invalid)
+            };
+        }
+        let mut colors = std::collections::BTreeMap::new();
+        let mut alphas = Vec::new();
+        let flattened = definitions
+            .iter()
+            .enumerate()
+            .flat_map(|(index, entries)| entries.iter().map(move |&entry| (index, entry)))
+            .collect::<Vec<_>>();
+        for (component, (kind, association)) in flattened {
+            match kind {
+                ChannelType::Color => {
+                    let ChannelAssociation::Color(color) = association else {
+                        return Err(invalid);
+                    };
+                    if color == 0 || usize::from(color) > count {
+                        return Err(invalid);
+                    }
+                    if let Some(previous) = colors.insert(color, component)
+                        && previous != component
+                    {
+                        return Err(invalid);
+                    }
+                }
+                ChannelType::Opacity | ChannelType::PremultipliedOpacity => {
+                    if matches!(association, ChannelAssociation::Color(color)
+                        if color == 0 || usize::from(color) > count)
+                    {
+                        return Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::InvalidAlphaAssociation,
+                        });
+                    }
+                    alphas.push((
+                        component,
+                        kind == ChannelType::PremultipliedOpacity,
+                        association,
+                    ));
+                }
+                ChannelType::Unspecified => {}
+            }
+        }
+        let mut ordered = Vec::new();
+        for color in 1..=count {
+            let index = colors.get(&u16::try_from(color).unwrap()).ok_or(invalid)?;
+            ordered.push(*index);
+        }
+        Ok((ordered, alphas))
+    }
+
+    fn layout_test_image(definitions: &[Vec<(ChannelType, ChannelAssociation)>]) -> TypedImage {
+        let components = definitions
+            .iter()
+            .enumerate()
+            .map(|(index, entries)| {
+                let mut input = TypedComponent::from_parts(
+                    1,
+                    1,
+                    ComponentInfo {
+                        precision: 8,
+                        signed: false,
+                        x_subsampling: 1,
+                        y_subsampling: 1,
+                        x_registration: 0,
+                        y_registration: 0,
+                    },
+                    TypedSamples::Unsigned(vec![u64::try_from(index).unwrap()]),
+                );
+                for &(kind, association) in entries {
+                    input.add_channel_definition(ChannelDefinition::new(kind, association));
+                }
+                input
+            })
+            .collect();
+        TypedImage::from_components(1, 1, components, &ResourceLimits::default()).unwrap()
+    }
+
+    #[test]
+    fn complete_channel_layout_matches_independent_flat_map_metadata_model() {
+        let options = [
+            None,
+            Some((ChannelType::Color, ChannelAssociation::Color(0))),
+            Some((ChannelType::Color, ChannelAssociation::Color(1))),
+            Some((ChannelType::Color, ChannelAssociation::Color(2))),
+            Some((ChannelType::Color, ChannelAssociation::Color(3))),
+            Some((ChannelType::Color, ChannelAssociation::Color(4))),
+            Some((ChannelType::Color, ChannelAssociation::WholeImage)),
+            Some((ChannelType::Color, ChannelAssociation::Unassociated)),
+            Some((ChannelType::Opacity, ChannelAssociation::WholeImage)),
+            Some((ChannelType::Opacity, ChannelAssociation::Color(0))),
+            Some((ChannelType::Opacity, ChannelAssociation::Color(1))),
+            Some((ChannelType::Opacity, ChannelAssociation::Color(4))),
+            Some((
+                ChannelType::PremultipliedOpacity,
+                ChannelAssociation::WholeImage,
+            )),
+            Some((
+                ChannelType::PremultipliedOpacity,
+                ChannelAssociation::Color(2),
+            )),
+            Some((ChannelType::Unspecified, ChannelAssociation::Color(0))),
+        ];
+        let mut cases = 0;
+        for components in 1..=3_u32 {
+            for mut word in 0..options.len().pow(components) {
+                let mut definitions = Vec::new();
+                for _ in 0..components {
+                    definitions.push(
+                        options[word % options.len()]
+                            .into_iter()
+                            .collect::<Vec<_>>(),
+                    );
+                    word /= options.len();
+                }
+                let image = layout_test_image(&definitions);
+                for count in 0..=3 {
+                    let actual =
+                        channel_layout(&image, count).map(|layout| (layout.colors, layout.alphas));
+                    assert_eq!(actual, layout_map_reference(&definitions, count));
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 14_460);
+    }
+
+    #[test]
+    fn channel_layout_duplicates_and_first_metadata_error_preserve_order() {
+        use ChannelAssociation::{Color, Unassociated, WholeImage};
+        use ChannelType::{Color as ColorKind, Opacity, PremultipliedOpacity, Unspecified};
+        let cases = [
+            vec![
+                vec![(ColorKind, Color(1)), (ColorKind, Color(1))],
+                vec![(Opacity, WholeImage)],
+            ],
+            vec![
+                vec![(ColorKind, Color(1)), (ColorKind, Color(2))],
+                vec![(ColorKind, Color(3))],
+            ],
+            vec![
+                vec![(ColorKind, Color(1))],
+                vec![(Opacity, Color(0))],
+                vec![(ColorKind, Color(1))],
+            ],
+            vec![
+                vec![(ColorKind, Color(1))],
+                vec![(ColorKind, Color(1))],
+                vec![(Opacity, Color(0))],
+            ],
+            vec![
+                vec![(Unspecified, Unassociated)],
+                vec![(Opacity, WholeImage)],
+            ],
+            vec![vec![
+                (ColorKind, Color(1)),
+                (PremultipliedOpacity, Color(1)),
+                (PremultipliedOpacity, Color(1)),
+            ]],
+        ];
+        for definitions in cases {
+            let image = layout_test_image(&definitions);
+            for count in 0..=3 {
+                assert_eq!(
+                    channel_layout(&image, count).map(|layout| (layout.colors, layout.alphas)),
+                    layout_map_reference(&definitions, count),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_rounding_matches_unsigned_magnitude_reference_at_native_boundaries() {
+        let values = [
+            i128::MIN,
+            i128::MIN + 32_767,
+            i128::MIN + 32_768,
+            i128::MIN + 32_769,
+            -98_305,
+            -98_304,
+            -98_303,
+            -65_536,
+            -32_769,
+            -32_768,
+            -32_767,
+            -1,
+            0,
+            1,
+            32_767,
+            32_768,
+            32_769,
+            65_536,
+            98_303,
+            98_304,
+            98_305,
+            i128::MAX - 32_769,
+            i128::MAX - 32_768,
+            i128::MAX - 32_767,
+            i128::MAX,
+        ];
+        for value in values {
+            let magnitude = value.unsigned_abs() + 32_768;
+            let bound = if value < 0 {
+                1_u128 << 127
+            } else {
+                i128::MAX as u128
+            };
+            let expected = if magnitude > bound {
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })
+            } else {
+                let rounded = i128::try_from(magnitude / 65_536).unwrap();
+                Ok(if value < 0 { -rounded } else { rounded })
+            };
+            assert_eq!(rounded_fixed(value), expected, "{value}");
+        }
+        assert_eq!(rounded_fixed(-32_768), Ok(-1));
+        assert_eq!(rounded_fixed(32_768), Ok(1));
+    }
+
+    #[test]
+    fn chroma_normalization_matches_wide_signed_ratio_for_every_supported_precision() {
+        let mut cases = 0;
+        for precision in 1..=38 {
+            let midpoint = 1_u64 << (precision - 1);
+            let maximum = 2 * midpoint - 1;
+            for signed in [false, true] {
+                for value in [0, midpoint - 1, midpoint, maximum] {
+                    let input = if signed {
+                        signed_component(
+                            &[i64::try_from(value).unwrap() - i64::try_from(midpoint).unwrap()],
+                            precision,
+                            (1, 1),
+                            None,
+                        )
+                    } else {
+                        component(&[value], precision, false, (1, 1), None)
+                    };
+                    let image = image(1, vec![input]);
+                    let difference = i128::from(value) - i128::from(midpoint);
+                    let magnitude = (difference.unsigned_abs() * 65_535 + u128::from(maximum / 2))
+                        / u128::from(maximum);
+                    let expected =
+                        i32::try_from(magnitude).unwrap() * if difference < 0 { -1 } else { 1 };
+                    assert_eq!(normalized_difference_at(&image, 0, 0, 0), Ok(expected));
+                    let normalized = (u128::from(value) * 65_535 + u128::from(maximum / 2))
+                        / u128::from(maximum);
+                    assert_eq!(
+                        normalized_at(&image, 0, 0, 0),
+                        Ok(u16::try_from(normalized).unwrap()),
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 304);
+    }
+
+    #[test]
+    fn chroma_sampling_preserves_typed_input_and_coordinate_error_order() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        };
+        for precision in [0, 39, 255] {
+            let input = image(1, vec![component(&[0], precision, false, (0, 0), None)]);
+            assert_eq!(
+                normalized_difference_at(&input, 0, u32::MAX, u32::MAX),
+                Err(invalid)
+            );
+        }
+        for input in [
+            component(&[256], 8, false, (1, 1), None),
+            TypedComponent::from_parts(
+                1,
+                1,
+                ComponentInfo {
+                    precision: 8,
+                    signed: true,
+                    x_subsampling: 1,
+                    y_subsampling: 1,
+                    x_registration: 0,
+                    y_registration: 0,
+                },
+                TypedSamples::Unsigned(vec![0]),
+            ),
+            signed_component(&[-129], 8, (1, 1), None),
+            signed_component(&[128], 8, (1, 1), None),
+        ] {
+            assert_eq!(
+                normalized_difference_at(&image(1, vec![input]), 0, 0, 0),
+                Err(invalid)
+            );
+        }
+        let input = TypedImage::from_components_with_origin(
+            1,
+            1,
+            u32::MAX - 1,
+            0,
+            vec![component(&[0], 8, false, (1, 1), None)],
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(normalized_difference_at(&input, 1, 2, 0), Err(invalid));
+        assert_eq!(
+            normalized_difference_at(&input, 0, 2, 0),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            }),
+        );
+    }
+
+    #[test]
+    fn sycc_conversion_matches_independent_wide_integer_reference() {
+        fn round(value: i64) -> i64 {
+            let magnitude = (value.unsigned_abs() + 32_768) / 65_536;
+            i64::try_from(magnitude).unwrap() * value.signum()
+        }
+        fn sample(value: i64) -> u16 {
+            u16::try_from(value.clamp(0, 65_535)).unwrap()
+        }
+        let differences = [
+            i32::MIN,
+            i32::MIN + 1,
+            -65_536,
+            -65_535,
+            -32_768,
+            -1,
+            0,
+            1,
+            32_767,
+            32_768,
+            65_534,
+            65_535,
+            65_536,
+            i32::MAX - 1,
+            i32::MAX,
+        ];
+        let mut cases = 0;
+        for y in [0, 1, 32_767, 32_768, 65_534, 65_535_u16] {
+            for cb in differences {
+                for cr in differences {
+                    let cb = i64::from(cb);
+                    let cr = i64::from(cr);
+                    let expected = (
+                        sample(i64::from(y) + round(91_881 * cr)),
+                        sample(i64::from(y) - round(22_554 * cb) - round(46_802 * cr)),
+                        sample(i64::from(y) + round(116_130 * cb)),
+                    );
+                    assert_eq!(
+                        sycc_to_srgb(y, i32::try_from(cb).unwrap(), i32::try_from(cr).unwrap()),
+                        Ok(expected),
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 1_350);
+    }
 
     fn component(
         samples: &[u64],
@@ -1251,9 +2327,112 @@ mod tests {
     }
 
     #[test]
+    fn normalized_plane_constructor_preserves_all_metadata_and_rejects_each_shape_fault() {
+        for space in [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb] {
+            let kinds: &[ConvertedChannelType] = match space {
+                ConvertedColorSpace::Grayscale => &[ConvertedChannelType::Gray],
+                ConvertedColorSpace::Srgb => &[
+                    ConvertedChannelType::Red,
+                    ConvertedChannelType::Green,
+                    ConvertedChannelType::Blue,
+                ],
+            };
+            for premultiplied in [false, true] {
+                for (width, height) in [(0, 2), (2, 0), (2, 1)] {
+                    let pixels = width as usize * height as usize;
+                    let colors: Vec<Vec<u16>> = (0..kinds.len())
+                        .map(|channel| {
+                            (0..pixels)
+                                .map(|pixel| (100 * channel + pixel) as u16)
+                                .collect()
+                        })
+                        .collect();
+                    let alpha: Vec<u16> = (0..pixels).map(|pixel| 32_768 + pixel as u16).collect();
+                    let image = from_layer(
+                        width,
+                        height,
+                        space,
+                        colors.clone(),
+                        alpha.clone(),
+                        premultiplied,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        (
+                            image.width(),
+                            image.height(),
+                            image.color_space(),
+                            image.precision()
+                        ),
+                        (width, height, space, 16)
+                    );
+                    assert_eq!(image.channels().len(), kinds.len() + 1);
+                    for (index, kind) in kinds.iter().enumerate() {
+                        assert_eq!(image.channel(index as u16).unwrap().channel_type(), *kind);
+                        assert_eq!(
+                            image.channel(index as u16).unwrap().samples(),
+                            colors[index]
+                        );
+                    }
+                    assert_eq!(
+                        image.channel(kinds.len() as u16).unwrap().channel_type(),
+                        ConvertedChannelType::Alpha {
+                            premultiplied,
+                            association: ChannelAssociation::WholeImage,
+                        }
+                    );
+                    assert_eq!(image.channel(kinds.len() as u16).unwrap().samples(), alpha);
+                    let mut wrong_colors = colors.clone();
+                    wrong_colors.push(vec![0; pixels]);
+                    assert_eq!(
+                        from_layer(
+                            width,
+                            height,
+                            space,
+                            wrong_colors,
+                            alpha.clone(),
+                            premultiplied
+                        )
+                        .err(),
+                        Some(invalid_color_input())
+                    );
+                    assert_eq!(
+                        from_layer(
+                            width,
+                            height,
+                            space,
+                            colors.clone(),
+                            vec![0; pixels + 1],
+                            premultiplied
+                        )
+                        .err(),
+                        Some(invalid_color_input())
+                    );
+                    for index in 0..kinds.len() {
+                        let mut wrong_colors = colors.clone();
+                        wrong_colors[index].push(0);
+                        assert_eq!(
+                            from_layer(
+                                width,
+                                height,
+                                space,
+                                wrong_colors,
+                                alpha.clone(),
+                                premultiplied
+                            )
+                            .err(),
+                            Some(invalid_color_input())
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn converted_crop_preserves_color_and_alpha_metadata_and_checks_bounds() {
         let make_image = || {
-            ConvertedImage::from_composited(
+            from_composited(
                 3,
                 2,
                 ConvertedColorSpace::Srgb,
