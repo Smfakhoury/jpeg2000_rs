@@ -533,8 +533,21 @@ Actual prior-window membership, one candidate step and window advancement are
 production phases, not proof-only decoder copies or supplied coordinate traces.
 Native fixtures cover physical lookup boundaries, skipped candidates, saturated
 counts, duplicate-window work charging/suppression and exact late-error frames.
-Full grid construction and outer tile-part/progression composition remain open
-at this intermediate stage; no full F5H or codestream claim follows.
+
+The actual component/selected grid factories now additionally refine
+`part1_packet_grid_new`, observing all nine returned fields and every error.
+Their sole executable body derives the maximum resolution, complete raw
+count/offset summary and selected count through real production phases, then
+performs the actual typed cap/product checks in order. Native offsets, full
+stored packet totals and candidate work are not replaced by selected totals.
+Public static wrappers preserve their API and share this verified free
+implementation; internal proof callers use the actual free API rather than an
+unsupported static-`Self` specification binding. Parent's actual typed limit
+getters provide the caps. No successful factory outcome or normalized input
+shape is supplied.
+
+Outer tile-part/progression composition remains open at this intermediate
+stage; no full F5H or codestream claim follows.
 
 ## Reproduce verification
 

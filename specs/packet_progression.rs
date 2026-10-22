@@ -32,6 +32,164 @@ pub struct Part1ProgressionPacketIterator {
     pub emitted: u64,
 }
 
+pub struct Part1GridCountState {
+    pub index: usize,
+    pub component: usize,
+    pub resolution: usize,
+    pub total: u64,
+    pub maximum: u32,
+    pub offsets: Seq<usize>,
+}
+
+#[verifier::opaque]
+pub open spec fn part1_grid_count_summary_run(
+    counts: Seq<u32>, component_resolutions: Seq<u8>, resolutions: u8, state: Part1GridCountState,
+) -> Result<Part1GridCountState,crate::DecodeError>
+    decreases counts.len() - state.index as nat,
+{
+    if state.total as nat > usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else {
+        let state = Part1GridCountState { offsets:state.offsets.push(state.total as usize), ..state };
+        if state.index >= counts.len() { Ok(state) }
+        else if state.component >= component_resolutions.len()
+            || (state.resolution >= component_resolutions[state.component as int] && counts[state.index as int] != 0) {
+            Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))
+        } else if state.total as nat + counts[state.index as int] as nat > u64::MAX {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else {
+            let state = Part1GridCountState {
+                total:(state.total+counts[state.index as int]) as u64,
+                maximum:if counts[state.index as int]>state.maximum { counts[state.index as int] } else { state.maximum },
+                ..state
+            };
+            if state.index == usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+            else {
+                let state = Part1GridCountState { index:(state.index+1) as usize, ..state };
+                if state.resolution == usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+                else {
+                    let state = Part1GridCountState { resolution:(state.resolution+1) as usize, ..state };
+                    if state.resolution == resolutions {
+                        if state.component == usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+                        else { part1_grid_count_summary_run(counts,component_resolutions,resolutions,Part1GridCountState {
+                            resolution:0,component:(state.component+1) as usize,..state
+                        }) }
+                    } else { part1_grid_count_summary_run(counts,component_resolutions,resolutions,state) }
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn part1_grid_count_summary(
+    counts: Seq<u32>, component_resolutions: Seq<u8>, resolutions: u8, expected: usize,
+) -> Result<Part1GridCountState,crate::DecodeError> {
+    if expected == usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else { part1_grid_count_summary_run(counts,component_resolutions,resolutions,Part1GridCountState {
+        index:0,component:0,resolution:0,total:0,maximum:0,offsets:Seq::empty(),
+    }) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_grid_selected_row(
+    counts:Seq<u32>, resolutions:u8, component:usize, resolution:u8, end:u8, total:u64,
+) -> Result<u64,crate::DecodeError>
+    decreases if resolution>=end {0nat} else {(end-resolution) as nat},
+{
+    if resolution>=end {Ok(total)}
+    else if component as nat * resolutions as nat + resolution as nat > usize::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let index=component as int * resolutions as int + resolution as int;
+        if index>=counts.len() {Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))}
+        else if total as nat + counts[index] as nat > u64::MAX || resolution==u8::MAX {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else {part1_grid_selected_row(counts,resolutions,component,(resolution+1) as u8,end,(total+counts[index]) as u64)}
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_grid_selected_components(
+    selected:Seq<u8>, component_resolutions:Seq<u8>, counts:Seq<u32>, resolutions:u8, component:usize,total:u64,
+) -> Result<u64,crate::DecodeError>
+    decreases selected.len()-component as nat,
+{
+    if component>=selected.len() {Ok(total)}
+    else if component>=component_resolutions.len() || selected[component as int]==0
+        || selected[component as int]>component_resolutions[component as int] {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))
+    } else {
+        match part1_grid_selected_row(counts,resolutions,component,0,selected[component as int],total) {
+            Err(error)=>Err(error),
+            Ok(total)=>if component==usize::MAX {Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))}
+                else {part1_grid_selected_components(selected,component_resolutions,counts,resolutions,(component+1) as usize,total)},
+        }
+    }
+}
+
+pub open spec fn part1_grid_selected_precincts(
+    selected:Option<Seq<u8>>,component_resolutions:Seq<u8>,counts:Seq<u32>,resolutions:u8,components:u16,total:u64,
+) -> Result<u64,crate::DecodeError> {
+    match selected {
+        None=>Ok(total),
+        Some(selected)=>if selected.len()!=components as nat {Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))}
+            else {part1_grid_selected_components(selected,component_resolutions,counts,resolutions,0,0)},
+    }
+}
+
+pub open spec fn part1_packet_grid_new(
+    layers:u16,components:u16,component_resolutions:Seq<u8>,counts:Seq<u32>,selected:Option<Seq<u8>>,
+    limits:&crate::ResourceLimits,
+) -> Result<Part1PacketGrid,crate::DecodeError> {
+    match part1_grid_resolution_summary(component_resolutions,0,0,false) {
+        Err(error)=>Err(error),
+        Ok((resolutions,zero))=>{
+            if layers==0 || components==0 || resolutions==0 || component_resolutions.len()!=components as nat || zero {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))
+            } else if layers>crate::limits::resource_layer_limit(limits) {
+                Err(super::part1_packet_reader_limit(crate::Resource::Layers,crate::limits::resource_layer_limit(limits) as u64,layers as u64))
+            } else if components>crate::limits::resource_component_limit(limits) {
+                Err(super::part1_packet_reader_limit(crate::Resource::Components,crate::limits::resource_component_limit(limits) as u64,components as u64))
+            } else if resolutions>crate::limits::resource_resolution_limit(limits) {
+                Err(super::part1_packet_reader_limit(crate::Resource::Resolutions,crate::limits::resource_resolution_limit(limits) as u64,resolutions as u64))
+            } else if components as nat * resolutions as nat > usize::MAX {
+                Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+            } else if counts.len()!=components as nat * resolutions as nat {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))
+            } else {
+                match part1_grid_count_summary(counts,component_resolutions,resolutions,(components as nat*resolutions as nat) as usize) {
+                    Err(error)=>Err(error),
+                    Ok(summary)=>match part1_grid_selected_precincts(selected,component_resolutions,counts,resolutions,components,summary.total) {
+                        Err(error)=>Err(error),
+                        Ok(selected_total)=>{
+                            if selected_total>crate::limits::resource_precinct_limit(limits) {
+                                Err(super::part1_packet_reader_limit(crate::Resource::Precincts,crate::limits::resource_precinct_limit(limits),selected_total))
+                            } else if summary.total as nat * layers as nat>u64::MAX
+                                || selected_total as nat * layers as nat>u64::MAX {
+                                Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+                            } else if selected_total as nat * layers as nat>crate::limits::resource_packet_limit(limits) {
+                                Err(super::part1_packet_reader_limit(crate::Resource::Packets,crate::limits::resource_packet_limit(limits),(selected_total*layers) as u64))
+                            } else {
+                                let first=layers as nat*components as nat;
+                                let second=first*resolutions as nat;
+                                let candidates=second*summary.maximum as nat;
+                                if first>u64::MAX || second>u64::MAX || candidates>u64::MAX {
+                                    Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+                                } else if candidates>crate::limits::resource_work_limit(limits) {
+                                    Err(super::part1_packet_reader_limit(crate::Resource::WorkUnits,crate::limits::resource_work_limit(limits),candidates as u64))
+                                } else {Ok(Part1PacketGrid {
+                                    layers,components,resolutions,component_resolutions,precinct_counts:counts,
+                                    precinct_offsets:summary.offsets,maximum_precincts_per_resolution:summary.maximum,
+                                    packet_count:(summary.total*layers) as u64,candidate_count:candidates as u64,
+                                })}
+                            }
+                        },
+                    },
+                }
+            }
+        },
+    }
+}
+
 #[verifier::opaque]
 pub open spec fn part1_progression_admission(
     grid: Part1PacketGrid, records: Seq<crate::codestream::ProgressionChange>,

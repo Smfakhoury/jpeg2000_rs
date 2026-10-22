@@ -334,6 +334,9 @@ verus! {
             candidate_count:grid.candidate_count, packet_count:grid.packet_count,
         }
     }
+    pub open spec fn packet_grid_outcome(value:Result<PacketGrid,DecodeError>) -> Result<crate::specs::Part1PacketGrid,DecodeError> {
+        match value {Ok(grid)=>Ok(packet_grid_view(&grid)),Err(error)=>Err(error)}
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -372,6 +375,210 @@ fn packet_grid_resolution_summary(values: &[u8]) -> Result<(u8, bool), DecodeErr
     Ok((maximum, zero))
 }
 
+struct PacketGridCountState {
+    index: usize,
+    component: usize,
+    resolution: usize,
+    total: u64,
+    maximum: u32,
+    offsets: Vec<usize>,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn packet_grid_count_view(value: &PacketGridCountState) -> crate::specs::Part1GridCountState {
+        crate::specs::Part1GridCountState {
+            index:value.index,component:value.component,resolution:value.resolution,total:value.total,
+            maximum:value.maximum,offsets:value.offsets@,
+        }
+    }
+    pub open spec fn packet_grid_count_outcome(value:Result<PacketGridCountState,DecodeError>)
+        -> Result<crate::specs::Part1GridCountState,DecodeError> {
+        match value { Ok(state) => Ok(packet_grid_count_view(&state)),Err(error)=>Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_grid_count_outcome(result) == crate::specs::part1_grid_count_summary(
+        counts@,component_resolutions@,resolutions,expected),
+))]
+fn packet_grid_count_summary(
+    counts: &[u32],
+    component_resolutions: &[u8],
+    resolutions: u8,
+    expected: usize,
+) -> Result<PacketGridCountState, DecodeError> {
+    let capacity = match expected.checked_add(1) {
+        Some(capacity) => capacity,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    let mut state = PacketGridCountState {
+        index: 0,
+        component: 0,
+        resolution: 0,
+        total: 0,
+        maximum: 0,
+        offsets: Vec::with_capacity(capacity),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_grid_count_summary_run); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant state.index <= counts@.len(),
+            crate::specs::part1_grid_count_summary(counts@,component_resolutions@,resolutions,expected)
+            == crate::specs::part1_grid_count_summary_run(counts@,component_resolutions@,resolutions,packet_grid_count_view(&state)),
+        decreases counts@.len()-state.index,
+    ))]
+    while state.index < counts.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_grid_count_summary_run); }
+        let offset = match usize::try_from(state.total) {
+            Ok(offset) => offset,
+            Err(_) => return Err(packet_arithmetic_overflow()),
+        };
+        state.offsets.push(offset);
+        let precincts = counts[state.index];
+        let available = match component_resolutions.get(state.component) {
+            Some(count) => usize::from(*count),
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle)),
+        };
+        if state.resolution >= available && precincts != 0 {
+            return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
+        }
+        state.total = match state.total.checked_add(u64::from(precincts)) {
+            Some(total) => total,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        if precincts > state.maximum {
+            state.maximum = precincts;
+        }
+        state.index = match state.index.checked_add(1) {
+            Some(index) => index,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        state.resolution = match state.resolution.checked_add(1) {
+            Some(resolution) => resolution,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        if state.resolution == usize::from(resolutions) {
+            state.resolution = 0;
+            state.component = match state.component.checked_add(1) {
+                Some(component) => component,
+                None => return Err(packet_arithmetic_overflow()),
+            };
+        }
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_grid_count_summary_run); }
+    let offset = match usize::try_from(state.total) {
+        Ok(offset) => offset,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    state.offsets.push(offset);
+    Ok(state)
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn packet_selection_view(value:Option<&[u8]>) -> Option<Seq<u8>> {
+        match value {Some(counts)=>Some(counts@),None=>None}
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_grid_selected_precincts(
+        packet_selection_view(selection),component_resolutions@,counts@,resolutions,components,initial_total),
+))]
+fn packet_grid_selected_precincts(
+    selection: Option<&[u8]>,
+    component_resolutions: &[u8],
+    counts: &[u32],
+    resolutions: u8,
+    components: u16,
+    initial_total: u64,
+) -> Result<u64, DecodeError> {
+    let Some(selected) = selection else {
+        return Ok(initial_total);
+    };
+    if selected.len() != usize::from(components) {
+        return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
+    }
+    let mut total = 0_u64;
+    let mut component = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_grid_selected_components);}
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant component<=selected@.len(),
+            packet_selection_view(selection)==Some(selected@),
+            selected@.len()==components as nat,
+            crate::specs::part1_grid_selected_precincts(packet_selection_view(selection),component_resolutions@,counts@,resolutions,components,initial_total)
+                ==crate::specs::part1_grid_selected_components(selected@,component_resolutions@,counts@,resolutions,component,total),
+        decreases selected@.len()-component,
+    ))]
+    while component < selected.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_grid_selected_components);}
+        let count = match selected.get(component) {
+            Some(count) => *count,
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle)),
+        };
+        let available = match component_resolutions.get(component) {
+            Some(count) => *count,
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle)),
+        };
+        if count == 0 || count > available {
+            return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
+        }
+        let mut resolution = 0_u8;
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_grid_selected_row);}
+        #[cfg_attr(verus_keep_ghost,verus_spec(
+            invariant resolution<=count,
+                packet_selection_view(selection)==Some(selected@),
+                selected@.len()==components as nat,
+                crate::specs::part1_grid_selected_precincts(packet_selection_view(selection),component_resolutions@,counts@,resolutions,components,initial_total)
+                    ==match crate::specs::part1_grid_selected_row(counts@,resolutions,component,resolution,count,total) {
+                        Err(error)=>Err(error),
+                        Ok(total)=>crate::specs::part1_grid_selected_components(
+                            selected@,component_resolutions@,counts@,resolutions,(component+1) as usize,total),
+                    },
+            decreases count-resolution,
+        ))]
+        while resolution < count {
+            #[cfg(verus_keep_ghost)]
+            proof! {reveal(crate::specs::part1_grid_selected_row);}
+            let product = match component.checked_mul(usize::from(resolutions)) {
+                Some(product) => product,
+                None => return Err(packet_arithmetic_overflow()),
+            };
+            let index = match product.checked_add(usize::from(resolution)) {
+                Some(index) => index,
+                None => return Err(packet_arithmetic_overflow()),
+            };
+            let amount = match counts.get(index) {
+                Some(amount) => u64::from(*amount),
+                None => return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle)),
+            };
+            total = match total.checked_add(amount) {
+                Some(total) => total,
+                None => return Err(packet_arithmetic_overflow()),
+            };
+            resolution = match resolution.checked_add(1) {
+                Some(value) => value,
+                None => return Err(packet_arithmetic_overflow()),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_grid_selected_row);}
+        component = match component.checked_add(1) {
+            Some(value) => value,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_grid_selected_components);}
+    Ok(total)
+}
+
 impl PacketGrid {
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures result == crate::specs::part1_packet_grid_total_precincts(packet_grid_view(self)),
@@ -406,12 +613,11 @@ impl PacketGrid {
         precinct_counts: Vec<u32>,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        Self::new_with_selected_resolutions(
+        packet_grid_new_with_component_resolutions(
             layers,
             components,
             component_resolutions,
             precinct_counts,
-            None,
             limits,
         )
     }
@@ -424,199 +630,162 @@ impl PacketGrid {
         selected_resolution_counts: Option<&[u8]>,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        let (resolutions, has_zero_resolution) =
-            packet_grid_resolution_summary(&component_resolutions)?;
-        if layers == 0 || components == 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-        }
-        if resolutions == 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-        }
-        if component_resolutions.len() != usize::from(components) || has_zero_resolution {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-        }
-        if layers > limits.maximum_layers() {
-            return Err(DecodeError::limit(
-                Resource::Layers,
-                u64::from(limits.maximum_layers()),
-                u64::from(layers),
-            ));
-        }
-        if components > limits.maximum_components() {
-            return Err(DecodeError::limit(
-                Resource::Components,
-                u64::from(limits.maximum_components()),
-                u64::from(components),
-            ));
-        }
-        if resolutions > limits.maximum_resolutions_per_component() {
-            return Err(DecodeError::limit(
-                Resource::Resolutions,
-                u64::from(limits.maximum_resolutions_per_component()),
-                u64::from(resolutions),
-            ));
-        }
-        let expected_counts = usize::from(components)
-            .checked_mul(usize::from(resolutions))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if precinct_counts.len() != expected_counts {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-        }
-
-        let mut total_precincts = 0_u64;
-        let mut maximum_precincts_per_resolution = 0_u32;
-        let mut precinct_offsets = Vec::with_capacity(
-            expected_counts
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-        );
-        let mut index = 0_usize;
-        let mut count_component = 0_usize;
-        let mut count_resolution = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= precinct_counts.len(),
-                decreases precinct_counts.len() - index,
-            )
-        )]
-        while index < precinct_counts.len() {
-            precinct_offsets.push(
-                usize::try_from(total_precincts)
-                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-            );
-            let precincts = precinct_counts[index];
-            let valid_resolution =
-                count_resolution
-                    < usize::from(*component_resolutions.get(count_component).ok_or_else(
-                        || DecodeError::malformed(0, MalformedKind::InvalidCodingStyle),
-                    )?);
-            if !valid_resolution && precincts != 0 {
-                return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-            }
-            total_precincts = total_precincts
-                .checked_add(u64::from(precincts))
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            if precincts > maximum_precincts_per_resolution {
-                maximum_precincts_per_resolution = precincts;
-            }
-            index = index
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            count_resolution = count_resolution
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            if count_resolution == usize::from(resolutions) {
-                count_resolution = 0;
-                count_component = count_component
-                    .checked_add(1)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            }
-        }
-        precinct_offsets.push(
-            usize::try_from(total_precincts)
-                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-        );
-        let mut selected_precincts = total_precincts;
-        if let Some(selected_counts) = selected_resolution_counts {
-            if selected_counts.len() != usize::from(components) {
-                return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-            }
-            selected_precincts = 0;
-            let mut selected_component = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant selected_component <= selected_counts.len(),
-                    decreases selected_counts.len() - selected_component,
-                )
-            )]
-            while selected_component < selected_counts.len() {
-                let selected_count = *selected_counts
-                    .get(selected_component)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidCodingStyle))?;
-                let available = *component_resolutions
-                    .get(selected_component)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidCodingStyle))?;
-                if selected_count == 0 || selected_count > available {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-                }
-                let mut selected_resolution = 0_u8;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant selected_resolution <= selected_count,
-                        decreases selected_count - selected_resolution,
-                    )
-                )]
-                while selected_resolution < selected_count {
-                    let flat = selected_component
-                        .checked_mul(usize::from(resolutions))
-                        .and_then(|value| value.checked_add(usize::from(selected_resolution)))
-                        .ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                        })?;
-                    selected_precincts = selected_precincts
-                        .checked_add(u64::from(*precinct_counts.get(flat).ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                        })?))
-                        .ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                        })?;
-                    selected_resolution = selected_resolution.checked_add(1).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                }
-                selected_component = selected_component
-                    .checked_add(1)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            }
-        }
-        if selected_precincts > limits.maximum_precincts() {
-            return Err(DecodeError::limit(
-                Resource::Precincts,
-                limits.maximum_precincts(),
-                selected_precincts,
-            ));
-        }
-        let packet_count = total_precincts
-            .checked_mul(u64::from(layers))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        let selected_packet_count = selected_precincts
-            .checked_mul(u64::from(layers))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if selected_packet_count > limits.maximum_packets() {
-            return Err(DecodeError::limit(
-                Resource::Packets,
-                limits.maximum_packets(),
-                selected_packet_count,
-            ));
-        }
-        let candidate_count = u64::from(layers)
-            .checked_mul(u64::from(components))
-            .and_then(|value| value.checked_mul(u64::from(resolutions)))
-            .and_then(|value| value.checked_mul(u64::from(maximum_precincts_per_resolution)))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if candidate_count > limits.maximum_work_units() {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                limits.maximum_work_units(),
-                candidate_count,
-            ));
-        }
-        Ok(Self {
+        packet_grid_new_with_selected_resolutions(
             layers,
             components,
-            resolutions,
             component_resolutions,
-            maximum_precincts_per_resolution,
             precinct_counts,
-            precinct_offsets,
-            candidate_count,
-            packet_count,
-        })
+            selected_resolution_counts,
+            limits,
+        )
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures packet_grid_outcome(result)==crate::specs::part1_packet_grid_new(
+        layers,components,component_resolutions@,precinct_counts@,None,limits),
+))]
+pub(crate) fn packet_grid_new_with_component_resolutions(
+    layers: u16,
+    components: u16,
+    component_resolutions: Vec<u8>,
+    precinct_counts: Vec<u32>,
+    limits: &ResourceLimits,
+) -> Result<PacketGrid, DecodeError> {
+    packet_grid_new_with_selected_resolutions(
+        layers,
+        components,
+        component_resolutions,
+        precinct_counts,
+        None,
+        limits,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures packet_grid_outcome(result)==crate::specs::part1_packet_grid_new(
+        layers,components,component_resolutions@,precinct_counts@,packet_selection_view(selected_resolution_counts),limits),
+))]
+pub(crate) fn packet_grid_new_with_selected_resolutions(
+    layers: u16,
+    components: u16,
+    component_resolutions: Vec<u8>,
+    precinct_counts: Vec<u32>,
+    selected_resolution_counts: Option<&[u8]>,
+    limits: &ResourceLimits,
+) -> Result<PacketGrid, DecodeError> {
+    let (resolutions, has_zero_resolution) =
+        packet_grid_resolution_summary(&component_resolutions)?;
+    if layers == 0 || components == 0 {
+        return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
+    }
+    if resolutions == 0 {
+        return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
+    }
+    if component_resolutions.len() != usize::from(components) || has_zero_resolution {
+        return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
+    }
+    if layers > limits.maximum_layers() {
+        return Err(packet_reader_limit(
+            Resource::Layers,
+            u64::from(limits.maximum_layers()),
+            u64::from(layers),
+        ));
+    }
+    if components > limits.maximum_components() {
+        return Err(packet_reader_limit(
+            Resource::Components,
+            u64::from(limits.maximum_components()),
+            u64::from(components),
+        ));
+    }
+    if resolutions > limits.maximum_resolutions_per_component() {
+        return Err(packet_reader_limit(
+            Resource::Resolutions,
+            u64::from(limits.maximum_resolutions_per_component()),
+            u64::from(resolutions),
+        ));
+    }
+    let expected_counts = match usize::from(components).checked_mul(usize::from(resolutions)) {
+        Some(count) => count,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    if precinct_counts.len() != expected_counts {
+        return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle));
     }
 
+    let summary = packet_grid_count_summary(
+        &precinct_counts,
+        &component_resolutions,
+        resolutions,
+        expected_counts,
+    )?;
+    let total_precincts = summary.total;
+    let maximum_precincts_per_resolution = summary.maximum;
+    let precinct_offsets = summary.offsets;
+    let selected_precincts = packet_grid_selected_precincts(
+        selected_resolution_counts,
+        &component_resolutions,
+        &precinct_counts,
+        resolutions,
+        components,
+        total_precincts,
+    )?;
+    if selected_precincts > limits.maximum_precincts() {
+        return Err(packet_reader_limit(
+            Resource::Precincts,
+            limits.maximum_precincts(),
+            selected_precincts,
+        ));
+    }
+    let packet_count = match total_precincts.checked_mul(u64::from(layers)) {
+        Some(count) => count,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    let selected_packet_count = match selected_precincts.checked_mul(u64::from(layers)) {
+        Some(count) => count,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    if selected_packet_count > limits.maximum_packets() {
+        return Err(packet_reader_limit(
+            Resource::Packets,
+            limits.maximum_packets(),
+            selected_packet_count,
+        ));
+    }
+    let first = match u64::from(layers).checked_mul(u64::from(components)) {
+        Some(count) => count,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    let second = match first.checked_mul(u64::from(resolutions)) {
+        Some(count) => count,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    let candidate_count = match second.checked_mul(u64::from(maximum_precincts_per_resolution)) {
+        Some(count) => count,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    if candidate_count > limits.maximum_work_units() {
+        return Err(packet_reader_limit(
+            Resource::WorkUnits,
+            limits.maximum_work_units(),
+            candidate_count,
+        ));
+    }
+    Ok(PacketGrid {
+        layers,
+        components,
+        resolutions,
+        component_resolutions,
+        maximum_precincts_per_resolution,
+        precinct_counts,
+        precinct_offsets,
+        candidate_count,
+        packet_count,
+    })
+}
+
+impl PacketGrid {
     #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_grid_view(self).packet_count,))]
     pub const fn packet_count(&self) -> u64 {
         self.packet_count
@@ -6531,6 +6700,82 @@ mod tests {
             Err(packet_arithmetic_overflow())
         );
         assert_eq!(grid.selected_packet_count(&[1]), Ok(0));
+    }
+
+    #[test]
+    fn actual_grid_factory_keeps_full_offsets_and_candidate_work_under_selected_caps() {
+        let limits = ResourceLimits::default()
+            .with_maximum_packets(10)
+            .unwrap()
+            .with_maximum_work_units(32)
+            .unwrap();
+        let grid = packet_grid_new_with_selected_resolutions(
+            2,
+            2,
+            vec![1, 2],
+            vec![2, 0, 3, 4],
+            Some(&[1, 1]),
+            &limits,
+        )
+        .unwrap();
+        assert_eq!((grid.layers, grid.components, grid.resolutions), (2, 2, 2));
+        assert_eq!(grid.component_resolutions, vec![1, 2]);
+        assert_eq!(grid.precinct_counts, vec![2, 0, 3, 4]);
+        assert_eq!(grid.precinct_offsets, vec![0, 2, 2, 5, 9]);
+        assert_eq!(
+            (
+                grid.maximum_precincts_per_resolution,
+                grid.candidate_count,
+                grid.packet_count
+            ),
+            (4, 32, 18)
+        );
+        assert_eq!(grid.selected_packet_count(&[1, 1]), Ok(10));
+        let work_limited = limits.with_maximum_work_units(31).unwrap();
+        assert!(matches!(
+            packet_grid_new_with_selected_resolutions(
+                2,
+                2,
+                vec![1, 2],
+                vec![2, 0, 3, 4],
+                Some(&[1, 1]),
+                &work_limited,
+            ),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 31,
+                actual: 32
+            })
+        ));
+        assert!(matches!(
+            packet_grid_new_with_selected_resolutions(
+                2,
+                2,
+                vec![1, 2],
+                vec![2, 1, 3, 4],
+                Some(&[1, 1]),
+                &work_limited,
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle
+            })
+        ));
+        assert!(matches!(
+            packet_grid_new_with_selected_resolutions(
+                2,
+                2,
+                vec![1, 2],
+                vec![2, 0, 3, 4],
+                None,
+                &limits,
+            ),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::Packets,
+                limit: 10,
+                actual: 18
+            })
+        ));
     }
 
     #[test]
