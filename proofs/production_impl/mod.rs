@@ -32,6 +32,105 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_color_definition_presence_step(
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, count: nat,
+)
+    requires count < definitions.len(),
+    ensures
+        (exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0)
+        == ((exists|i: int| #![trigger definitions[i]] 0 <= i < count && definitions[i].len() > 0)
+            || definitions[count as int].len() > 0),
+{
+    if exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0 {
+        let witness = choose|i: int| 0 <= i < count + 1 && definitions[i].len() > 0;
+        if witness < count {
+            assert(exists|i: int| #![trigger definitions[i]] 0 <= i < count && definitions[i].len() > 0);
+        } else {
+            assert(witness == count);
+        }
+    }
+    if exists|i: int| #![trigger definitions[i]] 0 <= i < count && definitions[i].len() > 0 {
+        let witness = choose|i: int| 0 <= i < count && definitions[i].len() > 0;
+        assert(exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0);
+    } else if definitions[count as int].len() > 0 {
+        assert(exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0);
+    }
+}
+
+pub proof fn production_color_definitions_empty(
+    initial: crate::specs::ColorLayoutState, definitions: Seq<crate::specs::ColorDefinition>,
+    component: usize, color_count: usize,
+)
+    ensures crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, 0) == Ok(initial),
+{
+    reveal(crate::specs::color_layout_definitions_prefix);
+}
+
+pub proof fn production_color_definitions_step(
+    initial: crate::specs::ColorLayoutState, definitions: Seq<crate::specs::ColorDefinition>,
+    component: usize, color_count: usize, count: nat,
+)
+    requires count < definitions.len(),
+    ensures crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, count + 1)
+        == match crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, count) {
+            Err(error) => Err(error),
+            Ok(state) => crate::specs::color_layout_definition_step(state, definitions[count as int], component, color_count),
+        },
+{
+    reveal_with_fuel(crate::specs::color_layout_definitions_prefix, 1);
+}
+
+pub proof fn production_color_definitions_error(
+    initial: crate::specs::ColorLayoutState, definitions: Seq<crate::specs::ColorDefinition>,
+    component: usize, color_count: usize, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= definitions.len(),
+        crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, count) == Err(error),
+    ensures crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_color_definitions_error(initial, definitions, component, color_count, count, (end - 1) as nat, error);
+        production_color_definitions_step(initial, definitions, component, color_count, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_color_layout_empty(definitions: Seq<Seq<crate::specs::ColorDefinition>>, color_count: usize)
+    ensures crate::specs::color_layout_components_prefix(definitions, color_count, 0)
+        == Ok((Seq::new(color_count as nat, |i: int| usize::MAX), Seq::empty())),
+{
+    reveal(crate::specs::color_layout_components_prefix);
+}
+
+pub proof fn production_color_layout_step(
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, color_count: usize, count: nat,
+)
+    requires count < definitions.len(),
+    ensures crate::specs::color_layout_components_prefix(definitions, color_count, count + 1)
+        == match crate::specs::color_layout_components_prefix(definitions, color_count, count) {
+            Err(error) => Err(error),
+            Ok(state) => crate::specs::color_layout_definitions_prefix(state, definitions[count as int],
+                count as usize, color_count, definitions[count as int].len()),
+        },
+{
+    reveal_with_fuel(crate::specs::color_layout_components_prefix, 1);
+}
+
+pub proof fn production_color_layout_error(
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, color_count: usize,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= definitions.len(),
+        crate::specs::color_layout_components_prefix(definitions, color_count, count) == Err(error),
+    ensures crate::specs::color_layout_components_prefix(definitions, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_color_layout_error(definitions, color_count, count, (end - 1) as nat, error);
+        production_color_layout_step(definitions, color_count, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_color_plane_empty(
     component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32,
 )

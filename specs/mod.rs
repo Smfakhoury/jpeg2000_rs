@@ -187,6 +187,102 @@ pub open spec fn color_pixel_coordinates(pixel: usize, width: usize)
     } else { Ok(((pixel % width) as u32, (pixel / width) as u32)) }
 }
 
+pub type ColorDefinition = (crate::image::ChannelType, crate::image::ChannelAssociation);
+pub type ColorLayoutState = (Seq<usize>, Seq<(usize, bool, crate::image::ChannelAssociation)>);
+pub type ColorLayoutResult = Result<ColorLayoutState, crate::DecodeError>;
+
+pub open spec fn color_layout_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidChannelLayout }
+}
+
+pub open spec fn color_alpha_association(association: crate::image::ChannelAssociation, count: usize)
+    -> Result<(), crate::DecodeError>
+{
+    match association {
+        crate::image::ChannelAssociation::Color(value) if value == 0 || value as nat > count as nat =>
+            Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidAlphaAssociation }),
+        _ => Ok(()),
+    }
+}
+
+pub open spec fn color_layout_definition_step(
+    state: ColorLayoutState, definition: ColorDefinition, component: usize, color_count: usize,
+) -> ColorLayoutResult {
+    match definition.0 {
+        crate::image::ChannelType::Color => match definition.1 {
+            crate::image::ChannelAssociation::Color(value) => {
+                if value == 0 || value as nat > color_count as nat { Err(color_layout_error()) }
+                else {
+                    let slot = (value - 1) as int;
+                    if slot >= state.0.len() { Err(part2_color_input_error()) }
+                    else if state.0[slot] != usize::MAX && state.0[slot] != component {
+                        Err(color_layout_error())
+                    } else {
+                        Ok((state.0.update(slot, component), state.1))
+                    }
+                }
+            },
+            _ => Err(color_layout_error()),
+        },
+        crate::image::ChannelType::Opacity | crate::image::ChannelType::PremultipliedOpacity =>
+            match color_alpha_association(definition.1, color_count) {
+                Err(error) => Err(error),
+                Ok(()) => Ok((state.0, state.1.push((component,
+                    matches!(definition.0, crate::image::ChannelType::PremultipliedOpacity), definition.1)))),
+            },
+        crate::image::ChannelType::Unspecified => Ok(state),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_layout_definitions_prefix(
+    initial: ColorLayoutState, definitions: Seq<ColorDefinition>,
+    component: usize, color_count: usize, count: nat,
+) -> ColorLayoutResult
+    recommends count <= definitions.len(),
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match color_layout_definitions_prefix(initial, definitions, component, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(state) => color_layout_definition_step(state, definitions[(count - 1) as int], component, color_count),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_layout_components_prefix(
+    definitions: Seq<Seq<ColorDefinition>>, color_count: usize, count: nat,
+) -> ColorLayoutResult
+    recommends count <= definitions.len(),
+    decreases count,
+{
+    if count == 0 { Ok((Seq::new(color_count as nat, |i: int| usize::MAX), Seq::empty())) }
+    else {
+        match color_layout_components_prefix(definitions, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(state) => color_layout_definitions_prefix(state, definitions[(count - 1) as int],
+                (count - 1) as usize, color_count, definitions[(count - 1) as int].len()),
+        }
+    }
+}
+
+pub open spec fn color_channel_layout(definitions: Seq<Seq<ColorDefinition>>, color_count: usize)
+    -> ColorLayoutResult
+{
+    if !(exists|i: int| #![trigger definitions[i]] 0 <= i < definitions.len() && definitions[i].len() > 0) {
+        if definitions.len() != color_count as nat { Err(color_layout_error()) }
+        else { Ok((Seq::new(color_count as nat, |i: int| i as usize), Seq::empty())) }
+    } else {
+        match color_layout_components_prefix(definitions, color_count, definitions.len()) {
+            Err(error) => Err(error),
+            Ok(state) => if exists|i: int| #![trigger state.0[i]] 0 <= i < state.0.len() && state.0[i] == usize::MAX {
+                Err(color_layout_error())
+            } else { Ok(state) },
+        }
+    }
+}
+
 pub open spec fn region_fits(parent_length: nat, offset: nat, length: nat) -> bool {
     offset <= parent_length && length <= parent_length - offset
 }

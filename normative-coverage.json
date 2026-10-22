@@ -5,6 +5,36 @@
   "requirements": [
     {
       "contract_refs": [
+        {"path": "src/color.rs", "symbol": "channel_layout"},
+        {"path": "src/color.rs", "symbol": "validate_alpha_association"}
+      ],
+      "id": "part2-complete-component-channel-layout",
+      "implementation_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "channel_layout"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "typed_image_definition_views"},
+        {"path": "src/image.rs", "symbol": "channel_definition_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_definition_presence_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_definitions_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_definitions_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_layout_error"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_channel_layout"},
+        {"path": "specs/mod.rs", "symbol": "color_alpha_association"},
+        {"path": "specs/mod.rs", "symbol": "color_layout_definition_step"},
+        {"path": "specs/mod.rs", "symbol": "color_layout_components_prefix"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "complete_channel_layout_matches_independent_flat_map_metadata_model"},
+        {"path": "src/color.rs", "symbol": "channel_layout_duplicates_and_first_metadata_error_preserve_order"}
+      ],
+      "topic": "Complete CDEF component/color/alpha routing and exact ordered metadata rejection relative to actual typed image definitions"
+    },
+    {
+      "contract_refs": [
         {"path": "src/color.rs", "symbol": "normalize_component"},
         {"path": "src/color.rs", "symbol": "normalized_component_at"},
         {"path": "src/color.rs", "symbol": "nominal_component_at"},

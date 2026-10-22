@@ -154,6 +154,17 @@ the actual stage's behavior. This does not prove the earlier palette/channel/
 container interpretation, full color-layout/sYCC/alpha pipeline or parser-to-
 pixel relation. Public budget checking remains an earlier separate stage.
 
+`channel_layout` now has a complete typed-result relation over the actual
+ordered component/CDEF metadata. With no definitions it requires one component
+per color and returns identity routing. Explicit definitions preserve ordered
+alpha associations and flags, ignore unspecified channels, allow repeated
+identical color assignments within one component, reject cross-component
+conflicts, and check missing required colors only after the entire definition
+scan. Invalid alpha-association errors therefore keep their actual precedence
+over a later missing-color error. These contracts do not independently prove
+that a container parser authored the normative definitions or close the
+subsequent whole color/alpha conversion.
+
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
 channel order or valid plane lengths. Their result projections include every

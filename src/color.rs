@@ -406,6 +406,17 @@ struct ChannelLayout {
     alphas: Vec<(usize, bool, ChannelAssociation)>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn channel_layout_result(result: Result<ChannelLayout, DecodeError>) -> crate::specs::ColorLayoutResult {
+        match result {
+            Ok(layout) => Ok((layout.colors@, layout.alphas@)),
+            Err(error) => Err(error),
+        }
+    }
+}
+
 pub fn convert_jp2_color(
     image: &TypedImage,
     color: &ColorSpecification,
@@ -579,7 +590,17 @@ pub fn convert_jp2_color(
     })
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures channel_layout_result(result) == crate::specs::color_channel_layout(
+            crate::image::typed_image_definition_views(image), color_count,
+        ),
+    )
+)]
 fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayout, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input_definitions = crate::image::typed_image_definition_views(image); }
     let mut has_definitions = false;
     let component_count = image.components().len();
     let mut component_index = 0_usize;
@@ -587,6 +608,10 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= component_count,
+                input_definitions == crate::image::typed_image_definition_views(image),
+                component_count == input_definitions.len(),
+                has_definitions == (exists|i: int| #![trigger input_definitions[i]]
+                    0 <= i < component_index && input_definitions[i].len() > 0),
             decreases component_count - component_index,
         )
     )]
@@ -595,7 +620,15 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             .components()
             .get(component_index)
             .ok_or_else(invalid_color_input)?;
-        if !component.channel_definitions().is_empty() {
+        let definitions = component.channel_definitions();
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(input_definitions[component_index as int].len() == definitions.len());
+            crate::proofs::production_impl::production_color_definition_presence_step(
+                input_definitions, component_index as nat,
+            );
+        }
+        if !definitions.is_empty() {
             has_definitions = true;
         }
         component_index = component_index
@@ -612,6 +645,11 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             verus_keep_ghost,
             verus_spec(
                 invariant component_index <= color_count,
+                    input_definitions == crate::image::typed_image_definition_views(image),
+                    input_definitions.len() == color_count,
+                    !(exists|i: int| #![trigger input_definitions[i]]
+                        0 <= i < input_definitions.len() && input_definitions[i].len() > 0),
+                    colors@ == Seq::new(component_index as nat, |i: int| i as usize),
                 decreases color_count - component_index,
             )
         )]
@@ -630,28 +668,69 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
     let mut colors = vec![usize::MAX; color_count];
     let mut alphas = Vec::new();
     component_index = 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_color_layout_empty(input_definitions, color_count);
+        assert(colors@ =~= Seq::new(color_count as nat, |i: int| usize::MAX));
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= component_count,
+                input_definitions == crate::image::typed_image_definition_views(image),
+                component_count == input_definitions.len(),
+                colors.len() == color_count,
+                exists|i: int| #![trigger input_definitions[i]]
+                    0 <= i < input_definitions.len() && input_definitions[i].len() > 0,
+                crate::specs::color_layout_components_prefix(input_definitions, color_count, component_index as nat)
+                    == Ok((colors@, alphas@)),
             decreases component_count - component_index,
         )
     )]
     while component_index < component_count {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = (colors@, alphas@); }
         let component = image
             .components()
             .get(component_index)
             .ok_or_else(invalid_color_input)?;
         let definitions = component.channel_definitions();
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost current_definitions = crate::image::channel_definition_views(definitions@); }
         let mut definition_index = 0_usize;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_color_layout_step(input_definitions, color_count, component_index as nat);
+            crate::proofs::production_impl::production_color_definitions_empty(initial, current_definitions, component_index, color_count);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant definition_index <= definitions.len(),
+                    input_definitions == crate::image::typed_image_definition_views(image),
+                    component_index < component_count && component_count == input_definitions.len(),
+                    current_definitions == crate::image::channel_definition_views(definitions@),
+                    current_definitions == input_definitions[component_index as int],
+                    colors.len() == color_count,
+                    exists|i: int| #![trigger input_definitions[i]]
+                        0 <= i < input_definitions.len() && input_definitions[i].len() > 0,
+                    crate::specs::color_layout_components_prefix(input_definitions, color_count, component_index as nat) == Ok(initial),
+                    crate::specs::color_layout_components_prefix(input_definitions, color_count, component_index as nat + 1)
+                        == crate::specs::color_layout_definitions_prefix(
+                            initial, current_definitions, component_index, color_count, current_definitions.len(),
+                        ),
+                    crate::specs::color_layout_definitions_prefix(initial, current_definitions,
+                        component_index, color_count, definition_index as nat) == Ok((colors@, alphas@)),
                 decreases definitions.len() - definition_index,
             )
         )]
         while definition_index < definitions.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_color_definitions_step(
+                    initial, current_definitions, component_index, color_count, definition_index as nat,
+                );
+            }
             let definition = *definitions
                 .get(definition_index)
                 .ok_or_else(invalid_color_input)?;
@@ -660,22 +739,69 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
                     let association = match definition.association() {
                         ChannelAssociation::Color(value) => value,
                         _ => {
+                            #[cfg(verus_keep_ghost)]
+                            proof! {
+                                crate::proofs::production_impl::production_color_definitions_error(
+                                    initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                    current_definitions.len(), crate::specs::color_layout_error(),
+                                );
+                                crate::proofs::production_impl::production_color_layout_error(
+                                    input_definitions, color_count, component_index as nat + 1,
+                                    input_definitions.len(), crate::specs::color_layout_error(),
+                                );
+                            }
                             return Err(invalid_channel_layout());
                         }
                     };
                     if association == 0 || usize::from(association) > color_count {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            crate::proofs::production_impl::production_color_definitions_error(
+                                initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                current_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                            crate::proofs::production_impl::production_color_layout_error(
+                                input_definitions, color_count, component_index as nat + 1,
+                                input_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                        }
                         return Err(invalid_channel_layout());
                     }
-                    let slot = colors
-                        .get_mut(usize::from(association - 1))
-                        .ok_or_else(invalid_color_input)?;
-                    if *slot != usize::MAX && *slot != component_index {
+                    let slot_index = usize::from(association - 1);
+                    if colors[slot_index] != usize::MAX && colors[slot_index] != component_index {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            crate::proofs::production_impl::production_color_definitions_error(
+                                initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                current_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                            crate::proofs::production_impl::production_color_layout_error(
+                                input_definitions, color_count, component_index as nat + 1,
+                                input_definitions.len(), crate::specs::color_layout_error(),
+                            );
+                        }
                         return Err(invalid_channel_layout());
                     }
-                    *slot = component_index;
+                    *colors.get_mut(slot_index).ok_or_else(invalid_color_input)? = component_index;
                 }
                 ChannelType::Opacity | ChannelType::PremultipliedOpacity => {
-                    validate_alpha_association(definition.association(), color_count)?;
+                    match validate_alpha_association(definition.association(), color_count) {
+                        Ok(()) => {}
+                        Err(error) => {
+                            #[cfg(verus_keep_ghost)]
+                            proof! {
+                                crate::proofs::production_impl::production_color_definitions_error(
+                                    initial, current_definitions, component_index, color_count, definition_index as nat + 1,
+                                    current_definitions.len(), error,
+                                );
+                                crate::proofs::production_impl::production_color_layout_error(
+                                    input_definitions, color_count, component_index as nat + 1,
+                                    input_definitions.len(), error,
+                                );
+                            }
+                            return Err(error);
+                        }
+                    }
                     alphas.push((
                         component_index,
                         matches!(definition.channel_type(), ChannelType::PremultipliedOpacity),
@@ -686,6 +812,11 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
                     // Unspecified channels are intentionally not part of colour conversion.
                 }
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::specs::color_layout_definitions_prefix(initial, current_definitions,
+                    component_index, color_count, definition_index as nat + 1) == Ok((colors@, alphas@)));
+            }
             definition_index = definition_index
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
@@ -694,11 +825,19 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost complete = (colors@, alphas@); }
     component_index = 0;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= colors.len(),
+                input_definitions == crate::image::typed_image_definition_views(image),
+                complete == (colors@, alphas@),
+                exists|i: int| #![trigger input_definitions[i]]
+                    0 <= i < input_definitions.len() && input_definitions[i].len() > 0,
+                crate::specs::color_layout_components_prefix(input_definitions, color_count, input_definitions.len()) == Ok(complete),
+                forall|i: int| #![trigger complete.0[i]] 0 <= i < component_index ==> complete.0[i] != usize::MAX,
             decreases colors.len() - component_index,
         )
     )]
@@ -708,6 +847,12 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
             .ok_or_else(invalid_color_input)?
             == usize::MAX
         {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(complete.0[component_index as int] == usize::MAX);
+                assert(exists|i: int| #![trigger complete.0[i]]
+                    0 <= i < complete.0.len() && complete.0[i] == usize::MAX);
+            }
             return Err(invalid_channel_layout());
         }
         component_index = component_index
@@ -717,16 +862,20 @@ fn channel_layout(image: &TypedImage, color_count: usize) -> Result<ChannelLayou
     Ok(ChannelLayout { colors, alphas })
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_alpha_association(association, color_count),)
+)]
 fn validate_alpha_association(
     association: ChannelAssociation,
     color_count: usize,
 ) -> Result<(), DecodeError> {
     match association {
         ChannelAssociation::Color(value) if value == 0 || usize::from(value) > color_count => {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidAlphaAssociation,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidAlphaAssociation,
+            });
         }
         _ => {}
     }
@@ -1318,8 +1467,12 @@ const fn unsupported(reason: UnsupportedColorConversion) -> DecodeError {
     DecodeError::UnsupportedColorConversion { reason }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::color_layout_error(),))]
 const fn invalid_channel_layout() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidChannelLayout)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidChannelLayout,
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::part2_color_input_error(),))]
@@ -1602,6 +1755,192 @@ mod tests {
             normalize_component(&empty, 1, 0, u32::MAX, u32::MAX),
             Ok(vec![])
         );
+    }
+
+    type LayoutMapResult =
+        Result<(Vec<usize>, Vec<(usize, bool, ChannelAssociation)>), DecodeError>;
+
+    fn layout_map_reference(
+        definitions: &[Vec<(ChannelType, ChannelAssociation)>],
+        count: usize,
+    ) -> LayoutMapResult {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidChannelLayout,
+        };
+        if definitions.iter().all(Vec::is_empty) {
+            return if definitions.len() == count {
+                Ok(((0..count).collect(), vec![]))
+            } else {
+                Err(invalid)
+            };
+        }
+        let mut colors = std::collections::BTreeMap::new();
+        let mut alphas = Vec::new();
+        let flattened = definitions
+            .iter()
+            .enumerate()
+            .flat_map(|(index, entries)| entries.iter().map(move |&entry| (index, entry)))
+            .collect::<Vec<_>>();
+        for (component, (kind, association)) in flattened {
+            match kind {
+                ChannelType::Color => {
+                    let ChannelAssociation::Color(color) = association else {
+                        return Err(invalid);
+                    };
+                    if color == 0 || usize::from(color) > count {
+                        return Err(invalid);
+                    }
+                    if let Some(previous) = colors.insert(color, component)
+                        && previous != component
+                    {
+                        return Err(invalid);
+                    }
+                }
+                ChannelType::Opacity | ChannelType::PremultipliedOpacity => {
+                    if matches!(association, ChannelAssociation::Color(color)
+                        if color == 0 || usize::from(color) > count)
+                    {
+                        return Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::InvalidAlphaAssociation,
+                        });
+                    }
+                    alphas.push((
+                        component,
+                        kind == ChannelType::PremultipliedOpacity,
+                        association,
+                    ));
+                }
+                ChannelType::Unspecified => {}
+            }
+        }
+        let mut ordered = Vec::new();
+        for color in 1..=count {
+            let index = colors.get(&u16::try_from(color).unwrap()).ok_or(invalid)?;
+            ordered.push(*index);
+        }
+        Ok((ordered, alphas))
+    }
+
+    fn layout_test_image(definitions: &[Vec<(ChannelType, ChannelAssociation)>]) -> TypedImage {
+        let components = definitions
+            .iter()
+            .enumerate()
+            .map(|(index, entries)| {
+                let mut input = TypedComponent::from_parts(
+                    1,
+                    1,
+                    ComponentInfo {
+                        precision: 8,
+                        signed: false,
+                        x_subsampling: 1,
+                        y_subsampling: 1,
+                        x_registration: 0,
+                        y_registration: 0,
+                    },
+                    TypedSamples::Unsigned(vec![u64::try_from(index).unwrap()]),
+                );
+                for &(kind, association) in entries {
+                    input.add_channel_definition(ChannelDefinition::new(kind, association));
+                }
+                input
+            })
+            .collect();
+        TypedImage::from_components(1, 1, components, &ResourceLimits::default()).unwrap()
+    }
+
+    #[test]
+    fn complete_channel_layout_matches_independent_flat_map_metadata_model() {
+        let options = [
+            None,
+            Some((ChannelType::Color, ChannelAssociation::Color(0))),
+            Some((ChannelType::Color, ChannelAssociation::Color(1))),
+            Some((ChannelType::Color, ChannelAssociation::Color(2))),
+            Some((ChannelType::Color, ChannelAssociation::Color(3))),
+            Some((ChannelType::Color, ChannelAssociation::Color(4))),
+            Some((ChannelType::Color, ChannelAssociation::WholeImage)),
+            Some((ChannelType::Color, ChannelAssociation::Unassociated)),
+            Some((ChannelType::Opacity, ChannelAssociation::WholeImage)),
+            Some((ChannelType::Opacity, ChannelAssociation::Color(0))),
+            Some((ChannelType::Opacity, ChannelAssociation::Color(1))),
+            Some((ChannelType::Opacity, ChannelAssociation::Color(4))),
+            Some((
+                ChannelType::PremultipliedOpacity,
+                ChannelAssociation::WholeImage,
+            )),
+            Some((
+                ChannelType::PremultipliedOpacity,
+                ChannelAssociation::Color(2),
+            )),
+            Some((ChannelType::Unspecified, ChannelAssociation::Color(0))),
+        ];
+        let mut cases = 0;
+        for components in 1..=3_u32 {
+            for mut word in 0..options.len().pow(components) {
+                let mut definitions = Vec::new();
+                for _ in 0..components {
+                    definitions.push(
+                        options[word % options.len()]
+                            .into_iter()
+                            .collect::<Vec<_>>(),
+                    );
+                    word /= options.len();
+                }
+                let image = layout_test_image(&definitions);
+                for count in 0..=3 {
+                    let actual =
+                        channel_layout(&image, count).map(|layout| (layout.colors, layout.alphas));
+                    assert_eq!(actual, layout_map_reference(&definitions, count));
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 14_460);
+    }
+
+    #[test]
+    fn channel_layout_duplicates_and_first_metadata_error_preserve_order() {
+        use ChannelAssociation::{Color, Unassociated, WholeImage};
+        use ChannelType::{Color as ColorKind, Opacity, PremultipliedOpacity, Unspecified};
+        let cases = [
+            vec![
+                vec![(ColorKind, Color(1)), (ColorKind, Color(1))],
+                vec![(Opacity, WholeImage)],
+            ],
+            vec![
+                vec![(ColorKind, Color(1)), (ColorKind, Color(2))],
+                vec![(ColorKind, Color(3))],
+            ],
+            vec![
+                vec![(ColorKind, Color(1))],
+                vec![(Opacity, Color(0))],
+                vec![(ColorKind, Color(1))],
+            ],
+            vec![
+                vec![(ColorKind, Color(1))],
+                vec![(ColorKind, Color(1))],
+                vec![(Opacity, Color(0))],
+            ],
+            vec![
+                vec![(Unspecified, Unassociated)],
+                vec![(Opacity, WholeImage)],
+            ],
+            vec![vec![
+                (ColorKind, Color(1)),
+                (PremultipliedOpacity, Color(1)),
+                (PremultipliedOpacity, Color(1)),
+            ]],
+        ];
+        for definitions in cases {
+            let image = layout_test_image(&definitions);
+            for count in 0..=3 {
+                assert_eq!(
+                    channel_layout(&image, count).map(|layout| (layout.colors, layout.alphas)),
+                    layout_map_reference(&definitions, count),
+                );
+            }
+        }
     }
 
     fn component(

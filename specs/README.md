@@ -61,6 +61,15 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`color_channel_layout` describes actual typed-image/CDEF routing before sample
+conversion. Its default path is used only when every component has no
+definitions. The explicit ordered fold retains alpha kind/association,
+permits a repeated identical component/color assignment, ignores unspecified
+channels, and rejects conflicting components or invalid associations at their
+first occurrence. Required-color completeness is checked last. The native
+`usize::MAX` unset marker is explicit; it is not a valid assigned index from a
+representable component sequence.
+
 `color_normalize_component` is a full fail-fast plane denotation over supplied
 typed integer components and target reference grids. `color_component_index`
 uses fixed-point registration in units of 1/65536, registered ceil origins,

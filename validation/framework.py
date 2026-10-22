@@ -282,6 +282,7 @@ def validate_normative_coverage(
                 ("src/color.rs", "from_layer"): "converted_image_result",
                 ("src/color.rs", "from_composited"): "converted_image_result",
                 ("src/color.rs", "normalize_component"): "normalized_plane_result",
+                ("src/color.rs", "channel_layout"): "channel_layout_result",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,

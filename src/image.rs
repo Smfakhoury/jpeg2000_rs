@@ -107,6 +107,32 @@ pub struct TypedImage {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn typed_image_components(image: &TypedImage) -> Seq<TypedComponent> {
+        image.components@
+    }
+
+    pub closed spec fn typed_component_definitions(component: &TypedComponent) -> Seq<ChannelDefinition> {
+        component.channel_definitions@
+    }
+
+    pub closed spec fn channel_definition_view(definition: ChannelDefinition) -> (ChannelType, ChannelAssociation) {
+        (definition.channel_type, definition.association)
+    }
+
+    pub open spec fn channel_definition_views(definitions: Seq<ChannelDefinition>)
+        -> Seq<(ChannelType, ChannelAssociation)>
+    {
+        Seq::new(definitions.len(), |i: int| channel_definition_view(definitions[i]))
+    }
+
+    pub open spec fn typed_image_definition_views(image: &TypedImage)
+        -> Seq<Seq<(ChannelType, ChannelAssociation)>>
+    {
+        let components = typed_image_components(image);
+        Seq::new(components.len(), |i: int|
+            channel_definition_views(typed_component_definitions(&components[i])))
+    }
+
     pub open spec fn typed_samples_view(samples: &TypedSamples) -> crate::specs::Part1TypedSampleSequence {
         match samples {
             TypedSamples::Signed(values) => crate::specs::Part1TypedSampleSequence::Signed(values@),
@@ -991,6 +1017,10 @@ impl TypedImage {
         self.y_origin
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(components => ensures components@ == typed_image_components(self),)
+    )]
     pub fn components(&self) -> &[TypedComponent] {
         &self.components
     }
@@ -1058,6 +1088,10 @@ impl TypedComponent {
         &self.samples
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(definitions => ensures definitions@ == typed_component_definitions(self),)
+    )]
     pub fn channel_definitions(&self) -> &[ChannelDefinition] {
         &self.channel_definitions
     }
@@ -1071,10 +1105,18 @@ impl ChannelDefinition {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(kind => ensures kind == channel_definition_view(self).0,)
+    )]
     pub const fn channel_type(self) -> ChannelType {
         self.channel_type
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(association => ensures association == channel_definition_view(self).1,)
+    )]
     pub const fn association(self) -> ChannelAssociation {
         self.association
     }
