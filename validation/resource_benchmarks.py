@@ -47,12 +47,38 @@ R1_REJECTIONS = {
     "declared-jpx-codestreams": ("Codestreams", 64, 65),
     "declared-jpip-offset": ("InputBytes", 2_147_483_648, 2_147_483_649),
 }
+ACCOUNTING_PATHS = (
+    dict(id="selected-raw", family="selected", operation="select", format="raw", size=32,
+         components=1, precision=8, tile_size=16, decomposition_levels=2, output_protocol="selected-image", output_components=1),
+    dict(id="selected-color", family="selected-color", operation="select-color", format="jp2", size=32,
+         components=3, precision=16, tile_size=16, decomposition_levels=2, output_protocol="image", output_components=3),
+    dict(id="jpx-compose", family="composition", operation="render", format="jpx", size=16,
+         components=3, precision=16, tile_size=16, decomposition_levels=2, output_protocol="image",
+         composited_layers=2, output_components=4),
+    dict(id="jpip-reconstruct", family="jpip", operation="reconstruct", format="jpip", size=16,
+         components=3, precision=16, tile_size=16, decomposition_levels=2, output_protocol="reconstructed-image", output_components=3),
+    dict(id="jpip-progressive", family="jpip", operation="progressive", format="auto", size=16,
+         components=1, precision=8, tile_size=16, decomposition_levels=0, output_protocol="progressive",
+         expected_updates=7, output_components=1),
+)
+ACCOUNTING_CEILINGS = {"DecodedBytes": 1 << 20, "WorkUnits": 100_000}
+ACCOUNTING_MATRIX_SHA256 = "cc25a51fec71019cd8cfe8a2418b441d0d27214c2a46328ed89b16e3fc79d1f4"
+REJECTION_THRESHOLDS = {"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20}
 R1_GAPS = [
     "Finite Linux representatives, not a universal production-default resource bound or R1 closure.",
-    "Accounted bytes/work are observed only by four baseline decode-limited frontiers; "
-    "the harness does not expose counters for selection, composition or JPIP reconstruction.",
+    "Observed admission frontiers cover only the declared small paths, not global cumulative "
+    "work across reset scopes, allocation totals, arbitrary selections, HT accounting or broader progressive profiles.",
     "Default-maximum allocation, sustained stress, other platforms and exhaustive profile combinations remain unmeasured.",
 ]
+
+
+def _accounting_declaration() -> dict[str, Any]:
+    declaration = {"id": "r1-effective-frontiers-v2", "baseline_cases": 45,
+                   "paths": copy.deepcopy(list(ACCOUNTING_PATHS)), "ceilings": dict(ACCOUNTING_CEILINGS),
+                   "maximum_search_probes": MAXIMUM_SEARCH_PROBES}
+    if framework.sha256_bytes(framework.canonical_bytes(declaration)) != ACCOUNTING_MATRIX_SHA256:
+        raise ValueError("accounting matrix differs from its frozen premeasurement declaration")
+    return declaration
 
 
 def _declaration() -> dict[str, Any]:
@@ -138,11 +164,55 @@ def _parse_typed_error(output: bytes) -> tuple[dict[str, str], dict[str, Any] | 
     raise ValueError("resource observation omitted an exact supported typed error diagnostic")
 
 
+def _parse_progressive_output(output: bytes, expected: dict[str, Any], successful: bool,
+                              expected_updates: int) -> tuple[bytes, list[dict[str, Any]]]:
+    lines, updates, position, previous = output.splitlines(), [], 0, 0
+    image_output = None
+    while position < len(lines):
+        line = lines[position]
+        if line.startswith(b"ERR\t"):
+            if successful or position != len(lines) - 1:
+                raise ValueError("progressive resource output contains an unexpected diagnostic")
+            return line + b"\n", updates
+        fields = line.split(b"\t")
+        if len(fields) != 6 or fields[0] != b"UPDATE":
+            raise ValueError("progressive resource output omitted a typed update")
+        status = fields[1].decode("ascii")
+        old, available, present, missing = (int(value) for value in fields[2:])
+        if (old != previous or available not in (0, 1) or available < old or missing < 0
+                or present not in (0, 1) or bool(present) != (available > old)
+                or status != ("Complete" if available == 1 else "WaitingForData")
+                or (available == 1 and missing != 0) or len(updates) >= expected_updates):
+            raise ValueError("progressive resource update violates the declared single-layer protocol")
+        position += 1
+        output_hash = None
+        if present:
+            if position + 2 > len(lines) or lines[position] != b"IMAGE":
+                raise ValueError("progressive image update omitted its image")
+            header = [int(value) for value in lines[position + 1].split()]
+            if len(header) != 3 or not 1 <= header[2] <= 64 or position + 2 + header[2] > len(lines):
+                raise ValueError("progressive image update has invalid component framing")
+            image_output = b"\n".join(lines[position:position + 2 + header[2]]) + b"\n"
+            image = framework.parse_subject_output(image_output, b"", 0)
+            if numerical.image_error_metrics(expected, image)["maximum_error"] != 0:
+                raise ValueError("progressive resource image differs from its independent expectation")
+            output_hash = framework.normalized_hash(image)
+            position += 2 + header[2]
+        updates.append({"status": status, "previous_layers": old, "available_layers": available,
+                        "image_present": bool(present), "missing_ranges": missing,
+                        "output_sha256": output_hash})
+        previous = available
+    if not successful or image_output is None or previous != 1 or len(updates) != expected_updates:
+        raise ValueError("progressive resource observation omitted completion or its final typed error")
+    return image_output, updates
+
+
 def _measure(command: list[str], time_tool: str, metrics_file: Path,
              expected: dict[str, Any] | None, category: str | None, reason: str | None,
              selected: bool, timeout: float, *, allow_success: bool = False,
              configured_value: int | None = None,
-             reconstructed_sha256: str | None = None) -> dict[str, Any]:
+             reconstructed_sha256: str | None = None,
+             progressive_updates_expected: int | None = None) -> dict[str, Any]:
     if (category is None or allow_success) and expected is None:
         raise ValueError("successful resource observations require an independent expected image")
     process, elapsed, limited = framework._run_process_bounded(
@@ -152,6 +222,12 @@ def _measure(command: list[str], time_tool: str, metrics_file: Path,
     if limited:
         raise ValueError("resource observation exceeded the bounded output capture")
     output = process.stdout
+    updates = None
+    if progressive_updates_expected is not None:
+        if expected is None:
+            raise ValueError("progressive prefixes require an independent expected image, including rejections")
+        output, updates = _parse_progressive_output(output, expected, process.returncode == 0,
+                                                     progressive_updates_expected)
     reconstructed = None
     if reconstructed_sha256 is not None and process.returncode == 0:
         prefix, separator, output = output.partition(b"\n")
@@ -160,7 +236,7 @@ def _measure(command: list[str], time_tool: str, metrics_file: Path,
         reconstructed = framework.sha256_bytes(bytes.fromhex(prefix[6:].decode("ascii")))
         if reconstructed != reconstructed_sha256:
             raise ValueError("JPIP resource observation changed reconstructed codestream bytes")
-    if selected:
+    if selected and process.returncode == 0:
         frame, separator, output = output.partition(b"\n")
         if not separator or frame.split(b"\t") != [b"FRAME", b"0", b"0"]:
             raise ValueError("selected resource observation has an unexpected origin")
@@ -189,6 +265,9 @@ def _measure(command: list[str], time_tool: str, metrics_file: Path,
         result["limit_claim"] = claim
     if observed_error is not None:
         result["observed_error"] = observed_error
+    if updates is not None:
+        result["progressive_updates"] = updates
+        result["protocol_sha256"] = framework.sha256_bytes(process.stdout)
     return result
 
 
@@ -204,7 +283,10 @@ def _check_thresholds(measured: dict[str, Any], thresholds: dict[str, Any]) -> N
 
 def _find_limit_boundary(command: list[str], resource: str, upper: int, expected: dict[str, Any],
                          time_tool: str, metrics_file: Path, timeout: float,
-                         thresholds: dict[str, Any], observations: list[dict[str, Any]]) -> int:
+                         thresholds: dict[str, Any], observations: list[dict[str, Any]], *,
+                         selected: bool = False, reconstructed_sha256: str | None = None,
+                         progressive_updates_expected: int | None = None,
+                         rejection_thresholds: dict[str, Any] | None = None) -> int:
     if type(upper) is not int or upper <= 0:
         raise ValueError("resource search requires a positive finite integer ceiling")
 
@@ -213,11 +295,14 @@ def _find_limit_boundary(command: list[str], resource: str, upper: int, expected
             raise ValueError("resource search exceeded its finite probe budget")
         measured = _measure(
             [*command, str(value)], time_tool, metrics_file, expected,
-            "LimitExceeded", resource, False, timeout,
-            allow_success=True, configured_value=value,
+            "LimitExceeded", resource, selected, timeout,
+            allow_success=True, configured_value=value, reconstructed_sha256=reconstructed_sha256,
+            progressive_updates_expected=progressive_updates_expected,
         )
         observations.append({"limit_value": value, **measured})
         _check_thresholds(measured, thresholds)
+        if measured["returncode"] == 1 and rejection_thresholds is not None:
+            _check_thresholds(measured, rejection_thresholds)
         return measured["returncode"] == 0
 
     if probe(0):
@@ -369,6 +454,96 @@ def _jpip(data: bytes) -> bytes:
     raise ValueError("resource JPIP has no SOD")
 
 
+def _single_packet_response(data: bytes) -> bytes:
+    position, tile, lengths, pending = 2, None, [], 0
+    while position + 4 <= len(data):
+        marker, length = struct.unpack_from(">HH", data, position)
+        if marker == 0xff93:
+            if (tile is None or not data.endswith(b"\xff\xd9")
+                    or tile + int.from_bytes(data[tile + 6:tile + 10], "big") != len(data) - 2
+                    or lengths != [len(data) - position - 4] or pending):
+                raise ValueError("progressive accounting fixture requires one bounded tile-part and one PLT packet")
+            return b"".join(_jpip_message(kind, 0, body, True) for kind, body in (
+                (6, data[:tile]), (2, data[tile:position + 2]), (0, data[position + 2:-2])))
+        if length < 2 or position + 2 + length > len(data):
+            raise ValueError("progressive accounting fixture has a truncated marker")
+        if marker == 0xff90:
+            if tile is not None:
+                raise ValueError("progressive accounting fixture has multiple tile-parts")
+            tile = position
+        elif marker == 0xff58:
+            if data[position + 4] != 0 or lengths:
+                raise ValueError("progressive accounting fixture requires a single PLT segment")
+            for value in data[position + 5:position + 2 + length]:
+                pending = pending * 128 + (value & 127)
+                if not value & 128:
+                    lengths.append(pending)
+                    pending = 0
+        position += 2 + length
+    raise ValueError("progressive accounting fixture omitted SOD")
+
+
+def _opaque_rgba(expected: dict[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(expected)
+    image = result["image"]
+    if len(image["components"]) != 3 or any(c["precision"] != 16 for c in image["components"]):
+        raise ValueError("accounting color oracle requires independently qualified RGB16")
+    alpha = copy.deepcopy(image["components"][0])
+    alpha["samples"] = [65535] * (alpha["width"] * alpha["height"])
+    image["components"].append(alpha)
+    return result
+
+
+def _accounting_fixture(path: dict[str, Any], work: Path, tools: dict[str, Any],
+                        timeout: float) -> tuple[Path, dict[str, Any], list[dict[str, Any]]]:
+    label, size = "account-" + path["id"], path["size"]
+    if path["id"] == "jpip-progressive":
+        case = numerical.NumericalCase(label, width=size, height=size, decomposition_levels=0)
+        source, encoded, reference = (work / f"{label}.{suffix}" for suffix in ("pgm", "j2k", "reference.pgm"))
+        source.write_bytes(numerical.source_image(case))
+        _run_reference([tools["encoder"]["path"], "-i", str(source), "-o", str(encoded),
+                        "-n", "1", "-t", f"{size},{size}", "-PLT"], timeout)
+        data = encoded.read_bytes()
+        numerical.validate_required_headers(case, data)
+        headers = dict(numerical._main_header_segments(data))
+        siz, coding = headers[0xff51], headers[0xff52]
+        if (struct.unpack_from(">IIII", siz, 2) != (size, size, 0, 0)
+                or struct.unpack_from(">IIII", siz, 18) != (size, size, 0, 0)
+                or siz[34:] != b"\0\1\x07\1\1" or coding[2:4] != b"\0\1" or coding[9] != 1):
+            raise ValueError("progressive accounting fixture omitted its declared grayscale geometry/lossless coding")
+        response = _single_packet_response(data)
+        _run_reference([tools["decoder"]["path"], "-i", str(encoded), "-o", str(reference)], timeout)
+        expected = framework.parse_pnm(reference)
+        qualification = _qualify(framework.parse_pnm(source), expected, encoded, [source], [reference])
+        container = work / f"{label}.jpip"
+        container.write_bytes(response)
+        return container, expected, [qualification]
+    spec = (label, size, path["components"], path["precision"], path["tile_size"], 1, False)
+    encoded, expected, qualification = _production_fixture(spec, work, tools, timeout)
+    qualifications = [qualification]
+    if path["id"] == "selected-raw":
+        expected = framework.crop_image(expected, (0, 0, size, size), (0, 0, 16, 16))
+    elif path["id"] == "selected-color":
+        container = work / f"{label}.jp2"
+        container.write_bytes(framework.jp2_file(encoded.read_bytes(), width=size, height=size,
+                                               components=3, precision=16))
+        encoded = container
+        expected = framework.crop_image(expected, (0, 0, size, size), (0, 0, 16, 16))
+    elif path["id"] == "jpx-compose":
+        foreground, expected, second = _production_fixture(spec, work, tools, timeout, invert=True)
+        qualifications.append(second)
+        container = work / f"{label}.jpx"
+        container.write_bytes(_jpx([encoded.read_bytes(), foreground.read_bytes()], size))
+        encoded, expected = container, _opaque_rgba(expected)
+    elif path["id"] == "jpip-reconstruct":
+        container = work / f"{label}.jpip"
+        container.write_bytes(_jpip(encoded.read_bytes()))
+        encoded = container
+    else:
+        raise ValueError("undeclared accounting fixture")
+    return encoded, expected, qualifications
+
+
 def _rejection_inputs() -> dict[str, tuple[bytes, str, str]]:
     def raw(width=1, height=1, components=1, tile=1):
         siz = struct.pack(">HIIIIIIIIH", 0, width, height, 0, 0, tile, tile, 0, 0, components)
@@ -399,6 +574,11 @@ def _expected_case_ids() -> set[str]:
     return ids | set(R1_REJECTIONS)
 
 
+def _expected_accounting_ids() -> set[str]:
+    return {f"account-{path['id']}-{selector}-{side}" for path in ACCOUNTING_PATHS
+            for selector in ("decoded-bytes", "work-units") for side in ("at", "below")}
+
+
 def _validate_evidence(result: dict[str, Any]) -> None:
     if result["declaration"] != _declaration():
         raise ValueError("resource evidence changed the predeclared workload matrix")
@@ -408,7 +588,44 @@ def _validate_evidence(result: dict[str, Any]) -> None:
         raise ValueError("resource evidence has duplicate case IDs")
     if result["status"] == "passed" and set(ids) != _expected_case_ids():
         raise ValueError("resource evidence omitted a predeclared case")
+    if (result["accounting_declaration"] != _accounting_declaration()
+            or result["accounting_declaration_sha256"] != ACCOUNTING_MATRIX_SHA256):
+        raise ValueError("resource evidence changed the frozen accounting matrix")
+    accounting_ids = [record["id"] for record in result["accounting_records"]]
+    if len(set(accounting_ids)) != len(accounting_ids) or set(ids) & set(accounting_ids):
+        raise ValueError("resource evidence has duplicate accounting IDs")
+    if result["status"] == "passed" and set(accounting_ids) != _expected_accounting_ids():
+        raise ValueError("resource evidence omitted a declared accounting frontier")
+    records = [*records, *result["accounting_records"]]
     for record in records:
+        accounting_path = record["accounting_path"]
+        if accounting_path is not None:
+            path = next((path for path in ACCOUNTING_PATHS if path["id"] == accounting_path), None)
+            if path is None or record["output_protocol"] != path["output_protocol"]:
+                raise ValueError("resource evidence mislabels its actual accounting path/protocol")
+            command, configured = record["command"], record["configured_limit"]
+            if not isinstance(configured, dict) or configured.get("resource") not in ACCOUNTING_CEILINGS:
+                raise ValueError("resource evidence omitted its declared accounting resource")
+            extent = path["tile_size"] if path["operation"].startswith("select") else path["size"]
+            if (record["output_width"] != extent or record["output_height"] != extent
+                    or record["output_components"] != path["output_components"]
+                    or record["typed_sample_bytes"] != extent * extent * path["output_components"] * 8
+                    or record["progressive_updates_expected"] != path.get("expected_updates")
+                    or (record["search_ceiling"] is not None
+                        and record["search_ceiling"] != ACCOUNTING_CEILINGS[configured["resource"]])):
+                raise ValueError("resource evidence changed declared output cardinality or accounting ceiling")
+            selector = {"DecodedBytes": "decoded-bytes", "WorkUnits": "work-units"}[configured["resource"]]
+            side = "at" if record["search_ceiling"] is not None else "below"
+            if (record["id"] != f"account-{accounting_path}-{selector}-{side}"
+                    or record["expected_category"] != (None if side == "at" else "LimitExceeded")
+                    or (side == "below" and record["expected_reason"] != configured["resource"])
+                    or not 0 <= configured["value"] <= ACCOUNTING_CEILINGS[configured["resource"]]):
+                raise ValueError("resource evidence changed accounting path/resource/frontier identity")
+            if record["status"] == "passed" and (command[:3] != [result["tools"]["subject"]["path"], path["operation"] + "-limited", path["format"]]
+                    or command[-2:] != [selector, str(configured["value"])]
+                    or len(command) != (9 if path["operation"].startswith("select") else 6)
+                    or (path["operation"].startswith("select") and command[4:7] != ["0", "0", "all"])):
+                raise ValueError("resource evidence command differs from its declared limited API path")
         if record["id"] == "declared-pixel-limit":
             if (record["expected_limit_claim"] != BASELINE_PIXEL_CLAIM
                     or record["configured_limit"] is not None
@@ -421,6 +638,29 @@ def _validate_evidence(result: dict[str, Any]) -> None:
             if qualification["original_output_sha256"] != qualification["reference_output_sha256"]:
                 raise ValueError("resource evidence contains an unqualified original/reference disagreement")
         for measured in [*record["runs"], *record["search_runs"]]:
+            if record["output_protocol"] == "progressive":
+                updates = measured.get("progressive_updates")
+                if not isinstance(updates, list) or "protocol_sha256" not in measured:
+                    raise ValueError("resource evidence omitted observed progressive updates")
+                previous, images = 0, 0
+                for update in updates:
+                    available = update["available_layers"]
+                    if (update["previous_layers"] != previous or available not in (0, 1)
+                            or available < previous or update["image_present"] != (available > previous)
+                            or update["status"] != ("Complete" if available == 1 else "WaitingForData")
+                            or update["missing_ranges"] < 0 or (available == 1 and update["missing_ranges"] != 0)):
+                        raise ValueError("resource evidence changed its progressive update sequence")
+                    if update["image_present"]:
+                        images += 1
+                        if update["output_sha256"] != record["expected_output_sha256"]:
+                            raise ValueError("resource evidence progressive image differs from its independent expectation")
+                    elif update["output_sha256"] is not None:
+                        raise ValueError("resource evidence invented an unchanged progressive image")
+                    previous = available
+                if len(updates) > 7 or (measured["returncode"] == 0 and (len(updates) != 7 or images != 1 or previous != 1)):
+                    raise ValueError("resource evidence omitted declared progressive completion")
+            elif "progressive_updates" in measured or "protocol_sha256" in measured:
+                raise ValueError("resource evidence attached progression to another protocol")
             if not math.isclose(measured["total_cpu_ms"],
                                 measured["user_cpu_ms"] + measured["system_cpu_ms"]):
                 raise ValueError("resource evidence CPU sum differs")
@@ -451,6 +691,8 @@ def _validate_evidence(result: dict[str, Any]) -> None:
                     raise ValueError("resource evidence observed claim differs from its actual configured limit")
             if record["status"] == "passed":
                 _check_thresholds(measured, record["thresholds"])
+                if accounting_path is not None and measured["returncode"] == 1:
+                    _check_thresholds(measured, REJECTION_THRESHOLDS)
         if record["status"] == "passed" and record["search_ceiling"] is not None:
             value = record["configured_limit"]["value"]
             outcomes = {(run["limit_value"], run["returncode"]) for run in record["search_runs"]}
@@ -479,11 +721,13 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
     destination = framework.report_path(output_dir, "resource-results.json")
     result: dict[str, Any] = {
         "$schema": framework.report_schema(output_dir, "resource-result.schema.json"),
-        "schema_version": 4, "scope": "Finite Linux production-default engineering CPU/wall/RSS representatives and configured-limit boundaries, not universal resource guarantees or R1 closure.",
+        "schema_version": 5, "scope": "Finite Linux production-default engineering CPU/wall/RSS representatives and effective path admission frontiers, not global cumulative counters, universal resource guarantees or R1 closure.",
         "provenance": framework.source_binding(), "status": "passed", "blockers": [], "errors": [],
         "tools": {}, "address_space_limit_bytes": ADDRESS_SPACE_BYTES,
         "file_size_limit_bytes": FILE_BYTES, "output_limit_bytes": OUTPUT_BYTES,
         "declaration": _declaration(), "remaining_r1_gaps": list(R1_GAPS),
+        "accounting_declaration": _accounting_declaration(),
+        "accounting_declaration_sha256": ACCOUNTING_MATRIX_SHA256, "accounting_records": [],
         "qualification_failures": [],
         "repetitions": REPETITIONS, "records": [], "native_total_ms": 0.0,
         "native_user_cpu_ms": 0.0, "native_system_cpu_ms": 0.0, "native_total_cpu_ms": 0.0,
@@ -519,11 +763,16 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
 
             def run_case(name, command, input_path, expected, *, category=None, reason=None, selected=False,
                          configured_limit=None, search=False, qualifications=(), reconstructed_sha256=None,
-                         expected_limit_claim=None):
+                         expected_limit_claim=None, accounting_path=None, output_protocol=None,
+                         progressive_updates_expected=None):
                 if category is None and not qualifications:
                     raise ValueError("positive resource case requires original/reference qualification")
                 record = {
                     "id": name, "input_bytes": input_path.stat().st_size,
+                    "accounting_path": accounting_path, "command": list(command),
+                    "output_protocol": output_protocol or ("selected-image" if selected else
+                                                           "reconstructed-image" if reconstructed_sha256 else "image"),
+                    "progressive_updates_expected": progressive_updates_expected,
                     "input_sha256": framework.sha256_file(input_path),
                     "expected_category": category, "expected_reason": reason,
                     "expected_output_sha256": framework.normalized_hash(expected) if expected is not None else None,
@@ -550,15 +799,21 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
                             command, configured_limit["resource"], configured_limit["value"],
                             expected, tools["time"]["path"], work / f"{name}-search.time",
                             timeout_seconds, record["thresholds"], record["search_runs"],
+                            selected=record["output_protocol"] == "selected-image",
+                            reconstructed_sha256=reconstructed_sha256,
+                            progressive_updates_expected=progressive_updates_expected,
+                            rejection_thresholds=REJECTION_THRESHOLDS if accounting_path is not None else None,
                         )
                     value = record["configured_limit"]["value"] if configured_limit is not None else None
                     measured_command = [*command, str(value)] if configured_limit is not None else command
+                    record["command"] = list(measured_command)
                     for repeat in range(REPETITIONS):
                         measured = _measure(measured_command, tools["time"]["path"], work / f"{name}-{repeat}.time",
-                                            expected, category, reason, selected, timeout_seconds,
+                                            expected, category, reason, record["output_protocol"] == "selected-image", timeout_seconds,
                                             configured_value=(expected_limit_claim["limit"]
                                                               if expected_limit_claim is not None else value),
-                                            reconstructed_sha256=reconstructed_sha256)
+                                            reconstructed_sha256=reconstructed_sha256,
+                                            progressive_updates_expected=progressive_updates_expected)
                         record["runs"].append(measured)
                         if expected_limit_claim is not None and measured.get("limit_claim") != expected_limit_claim:
                             raise ValueError("default declaration rejection did not report its exact declared limit/actual")
@@ -577,7 +832,7 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
                     failure.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(input_path, failure)
                     record["artifacts"].append(failure.relative_to(destination.parent).as_posix())
-                result["records"].append(record)
+                result["accounting_records" if accounting_path is not None else "records"].append(record)
                 return record
 
             def check_selection_ratio(records, label, encoded):
@@ -752,17 +1007,56 @@ def run_resources(executable: Path | None = None, output_dir: Path | None = None
             truncated.write_bytes(framework.raw_codestream()[:12])
             run_case("truncated-main-header", [str(executable), "decode", "raw", str(truncated)],
                      truncated, None, category="MalformedInput", reason="Truncated")
-        result["native_total_ms"] = sum(run["elapsed_ms"] for record in result["records"]
+            for path in ACCOUNTING_PATHS:
+                try:
+                    input_path, expected, qualifications = _accounting_fixture(path, work, tools, timeout_seconds)
+                    extent = path["tile_size"] if path["operation"].startswith("select") else path["size"]
+                    if (expected["image"]["width"] != extent or expected["image"]["height"] != extent
+                            or len(expected["image"]["components"]) != path["output_components"]):
+                        raise ValueError("independent accounting expectation disagrees with the frozen output cardinality")
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    failure = destination.parent / "resource-failures" / f"account-{path['id']}-qualification"
+                    failure.mkdir(parents=True, exist_ok=True)
+                    artifacts = []
+                    for file in sorted(work.glob(f"account-{path['id']}*")):
+                        if file.is_file():
+                            shutil.copyfile(file, failure / file.name)
+                            artifacts.append((failure / file.name).relative_to(destination.parent).as_posix())
+                    result["qualification_failures"].append(
+                        {"id": f"account-{path['id']}", "error": str(error), "artifacts": artifacts})
+                    continue
+                selection = ["0", "0", "all"] if path["operation"].startswith("select") else []
+                reconstructed = qualifications[0]["payload_sha256"] if path["id"] == "jpip-reconstruct" else None
+                for resource, ceiling in ACCOUNTING_CEILINGS.items():
+                    selector = "decoded-bytes" if resource == "DecodedBytes" else "work-units"
+                    command = [str(executable), path["operation"] + "-limited", path["format"],
+                               str(input_path), *selection, selector]
+                    options = dict(selected=bool(selection), qualifications=qualifications,
+                                   reconstructed_sha256=reconstructed, accounting_path=path["id"],
+                                   output_protocol=path["output_protocol"],
+                                   progressive_updates_expected=path.get("expected_updates"))
+                    at = run_case(f"account-{path['id']}-{selector}-at", command, input_path, expected,
+                                  configured_limit={"resource": resource, "value": ceiling}, search=True, **options)
+                    if at["status"] == "passed":
+                        run_case(f"account-{path['id']}-{selector}-below", command, input_path, expected,
+                                 category="LimitExceeded", reason=resource,
+                                 configured_limit={"resource": resource, "value": at["configured_limit"]["value"] - 1},
+                                 **options)
+        all_records = [*result["records"], *result["accounting_records"]]
+        result["native_total_ms"] = sum(run["elapsed_ms"] for record in all_records
                                       for run in [*record["runs"], *record["search_runs"]])
         for report_key, run_key in (("native_user_cpu_ms", "user_cpu_ms"),
                                     ("native_system_cpu_ms", "system_cpu_ms"),
                                     ("native_total_cpu_ms", "total_cpu_ms")):
-            result[report_key] = sum(run[run_key] for record in result["records"]
+            result[report_key] = sum(run[run_key] for record in all_records
                                      for run in [*record["runs"], *record["search_runs"]])
-        result["errors"] = [f"{record['id']}: {record['error']}" for record in result["records"]
+        result["errors"] = [f"{record['id']}: {record['error']}" for record in all_records
                             if record["status"] != "passed"]
         result["errors"] += [f"{failure['id']}: unqualified reference: {failure['error']}"
                              for failure in result["qualification_failures"]]
+        missing = _expected_accounting_ids() - {record["id"] for record in result["accounting_records"]}
+        if missing:
+            result["errors"].append(f"accounting stage incomplete: missing {sorted(missing)}")
         if result["native_total_ms"] > result["maximum_native_total_ms"]:
             result["errors"].append("aggregate measured native wall time exceeds the declared engineering threshold")
         if result["errors"]:

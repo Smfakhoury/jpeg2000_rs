@@ -1,4 +1,5 @@
 import copy
+import json
 import math
 import shutil
 import subprocess
@@ -70,6 +71,66 @@ class ResourceTests(unittest.TestCase):
             self.metrics.write_text(text)
             with self.subTest(text=text), self.assertRaises(ValueError):
                 benchmarks._process_metrics(self.metrics)
+
+    def test_accounting_matrix_matches_its_premeasurement_guide_and_hash(self):
+        declaration = benchmarks._accounting_declaration()
+        text = (framework.VALIDATION / "VALIDATION.md").read_text()
+        frozen = text.split("#### R1 bounded accounting-frontier stage", 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
+        self.assertEqual(declaration, json.loads(frozen))
+        self.assertEqual(framework.sha256_bytes(framework.canonical_bytes(declaration)),
+                         benchmarks.ACCOUNTING_MATRIX_SHA256)
+        self.assertEqual(len({path["family"] for path in declaration["paths"]}), 4)
+        self.assertEqual(len(benchmarks._expected_accounting_ids()), 20)
+        self.assertEqual(declaration["ceilings"], {"DecodedBytes": 1048576, "WorkUnits": 100000})
+
+    def test_selected_search_rejections_do_not_invent_frame_prefixes(self):
+        rejection = b"ERR\tLimitExceeded\tresource limit exceeded for DecodedBytes: limit 0, actual 8\n"
+        for code, output in ((0, b"FRAME\t0\t0\n" + self.output), (1, rejection)):
+            process = subprocess.CompletedProcess([], code, output, b"")
+            with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+                measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                               "LimitExceeded", "DecodedBytes", True, 10.0,
+                                               allow_success=True, configured_value=0)
+            self.assertEqual(measured["returncode"], code)
+            if code:
+                self.assertEqual(measured["limit_claim"], {"resource": "DecodedBytes", "limit": 0, "actual": 8})
+
+    def test_selected_color_oracle_preserves_rgb_without_inventing_opacity(self):
+        path = next(path for path in benchmarks.ACCOUNTING_PATHS if path["id"] == "selected-color")
+        plane = {"width": 32, "height": 32, "precision": 16, "signed": False,
+                 "sample_kind": "unsigned", "samples": list(range(1024))}
+        expected = {"accepted": True, "image": {"width": 32, "height": 32,
+                                               "components": [copy.deepcopy(plane) for _ in range(3)]}}
+        encoded = self.work / "rgb.j2k"
+        encoded.write_bytes(b"independently-qualified-payload")
+        with mock.patch.object(benchmarks, "_production_fixture", return_value=(encoded, expected, {"payload_sha256": "0" * 64})):
+            _, actual, _ = benchmarks._accounting_fixture(path, self.work, {}, 10.0)
+        self.assertEqual(actual, framework.crop_image(expected, (0, 0, 32, 32), (0, 0, 16, 16)))
+        self.assertEqual(len(actual["image"]["components"]), 3)
+        self.assertEqual(path["output_components"], 3)
+
+    def test_progressive_protocol_requires_exact_reference_image_and_completion(self):
+        waiting = b"UPDATE\tWaitingForData\t0\t0\t0\t1\n"
+        output = waiting * 5 + b"UPDATE\tComplete\t0\t1\t1\t0\n" + self.output + b"UPDATE\tComplete\t1\t1\t0\t0\n"
+        image, updates = benchmarks._parse_progressive_output(output, self.expected, True, 7)
+        self.assertEqual(image, self.output)
+        self.assertEqual(len(updates), 7)
+        self.assertEqual(sum(update["image_present"] for update in updates), 1)
+        rejection = b"ERR\tLimitExceeded\tresource limit exceeded for WorkUnits: limit 0, actual 1\n"
+        process = subprocess.CompletedProcess([], 1, waiting + rejection, b"")
+        with mock.patch.object(framework, "_run_process_bounded", return_value=(process, 1.0, False)):
+            measured = benchmarks._measure(["subject"], "time", self.metrics, self.expected,
+                                           "LimitExceeded", "WorkUnits", False, 10.0, configured_value=0,
+                                           progressive_updates_expected=7)
+        self.assertEqual(measured["observed_error"]["reason"], "WorkUnits")
+        self.assertEqual(measured["limit_claim"], {"resource": "WorkUnits", "limit": 0, "actual": 1})
+        self.assertEqual(len(measured["progressive_updates"]), 1)
+        self.assertEqual(measured["protocol_sha256"], framework.sha256_bytes(waiting + rejection))
+        for invalid in (output.replace(b"0,255", b"0,254"), output + waiting, output[:-1].rsplit(b"\n", 1)[0],
+                        output.replace(b"Complete\t0\t1\t1", b"Complete\t1\t1\t1"),
+                        waiting + rejection + waiting):
+            with self.subTest(output=invalid[:60]), self.assertRaises(ValueError):
+                benchmarks._parse_progressive_output(invalid, self.expected, True, 7)
 
     def test_default_pixel_rejection_retains_observed_claim_without_a_configured_limit(self):
         diagnostic = "ERR\tLimitExceeded\tresource limit exceeded for Pixels: limit 100000000, actual 4294836225"
@@ -349,6 +410,8 @@ class ResourceTests(unittest.TestCase):
                "output_sha256": framework.normalized_hash(self.expected)}
         record = {
             "id": "case", "input_bytes": 1, "input_sha256": "0" * 64,
+            "accounting_path": None, "command": [sys.executable, "decode", "raw", "fixture"],
+            "output_protocol": "image", "progressive_updates_expected": None,
             "expected_category": None, "expected_reason": None,
             "expected_output_sha256": run["output_sha256"],
             "qualifications": [{
@@ -422,6 +485,55 @@ class ResourceTests(unittest.TestCase):
         truncated["runs"] = [{**run, "returncode": 1, "output_sha256": None, "observed_error": {
             "category": "MalformedInput", "reason": "Truncated",
             "diagnostic": "ERR\tMalformedInput\tmalformed input at byte 6: Truncated"}} for _ in range(3)]
+        for path in benchmarks.ACCOUNTING_PATHS:
+            for resource, ceiling in benchmarks.ACCOUNTING_CEILINGS.items():
+                selector = "decoded-bytes" if resource == "DecodedBytes" else "work-units"
+                at = copy.deepcopy(record)
+                at.update(id=f"account-{path['id']}-{selector}-at", accounting_path=path["id"],
+                          output_protocol=path["output_protocol"], configured_limit={"resource": resource, "value": 9},
+                          limit_mode="single-tightened-defaults", search_ceiling=ceiling,
+                          output_width=16, output_height=16, output_components=path["output_components"],
+                          typed_sample_bytes=16 * 16 * path["output_components"] * 8)
+                at["command"] = [sys.executable, path["operation"] + "-limited", path["format"], "fixture"]
+                if path["operation"].startswith("select"):
+                    at["command"] += ["0", "0", "all"]
+                    at["mode"] = "selection"
+                    at["thresholds"] = {"maximum_ms": 2500.0, "maximum_peak_rss_bytes": 256 << 20}
+                at["command"] += [selector, "9"]
+                rejected = {**run, "returncode": 1, "output_sha256": None,
+                            "limit_claim": {"resource": resource, "limit": 0, "actual": 9},
+                            "observed_error": observed(resource, 0, 9), "limit_value": 0}
+                at["search_runs"] = [rejected, {"limit_value": ceiling, **run},
+                                     {**rejected, "limit_value": 8, "observed_error": observed(resource, 8, 9),
+                                      "limit_claim": {"resource": resource, "limit": 8, "actual": 9}},
+                                     {"limit_value": 9, **run}]
+                below = copy.deepcopy(at)
+                below.update(id=at["id"].removesuffix("-at") + "-below", expected_category="LimitExceeded",
+                             expected_reason=resource, configured_limit={"resource": resource, "value": 8},
+                             mode="rejection", search_ceiling=None, search_runs=[],
+                             thresholds={"maximum_ms": 1000.0, "maximum_peak_rss_bytes": 128 << 20})
+                below["command"][-1] = "8"
+                below["runs"] = [{key: value for key, value in copy.deepcopy(at["search_runs"][2]).items()
+                                  if key != "limit_value"} for _ in range(3)]
+                if path["id"] == "jpip-reconstruct":
+                    at["expected_reconstructed_sha256"] = below["expected_reconstructed_sha256"] = "0" * 64
+                    for measured in [*at["runs"], *at["search_runs"]]:
+                        if measured["returncode"] == 0:
+                            measured["reconstructed_sha256"] = "0" * 64
+                if path["id"] == "jpip-progressive":
+                    at["progressive_updates_expected"] = below["progressive_updates_expected"] = 7
+                    updates = [{"status": "WaitingForData", "previous_layers": 0, "available_layers": 0,
+                                "image_present": False, "missing_ranges": 1, "output_sha256": None}
+                               for _ in range(5)]
+                    updates += [{"status": "Complete", "previous_layers": 0, "available_layers": 1,
+                                 "image_present": True, "missing_ranges": 0, "output_sha256": run["output_sha256"]},
+                                {"status": "Complete", "previous_layers": 1, "available_layers": 1,
+                                 "image_present": False, "missing_ranges": 0, "output_sha256": None}]
+                    for measured in [*at["runs"], *at["search_runs"], *below["runs"]]:
+                        measured["protocol_sha256"] = "0" * 64
+                        measured["progressive_updates"] = copy.deepcopy(updates) if measured["returncode"] == 0 else []
+                report["accounting_records"].extend([at, below])
+        report["native_total_ms"] = 251.0
         schema = framework.VALIDATION / "resource-result.schema.json"
         framework.validate_schema(schema, report)
         benchmarks._validate_evidence(report)
@@ -517,3 +629,34 @@ class ResourceTests(unittest.TestCase):
                 benchmarks._validate_evidence(invalid)
             with self.subTest(schema_typed_mutation=mutation), self.assertRaises(ValueError):
                 framework.validate_schema(schema, invalid)
+        for mutation in ("omitted", "duplicate", "path", "command", "matrix", "hash", "aggregate",
+                         "progressive-missing", "progressive-hash", "progressive-order", "prefix-error-cap"):
+            invalid = copy.deepcopy(report)
+            current = invalid["accounting_records"][0]
+            if mutation == "omitted":
+                invalid["accounting_records"].pop()
+            elif mutation == "duplicate":
+                invalid["accounting_records"][1]["id"] = current["id"]
+            elif mutation == "path":
+                current["accounting_path"] = "selected-color"
+            elif mutation == "command":
+                current["command"][1] = "decode-limited"
+            elif mutation == "matrix":
+                invalid["accounting_declaration"]["paths"][0]["size"] = 16
+            elif mutation == "hash":
+                invalid["accounting_declaration_sha256"] = "0" * 64
+            elif mutation == "aggregate":
+                invalid["native_total_ms"] = 151.0
+            elif mutation == "prefix-error-cap":
+                current["search_runs"][0]["elapsed_ms"] = 1001.0
+            else:
+                current = next(record for record in invalid["accounting_records"]
+                               if record["accounting_path"] == "jpip-progressive" and record["search_ceiling"] is not None)
+                if mutation == "progressive-missing":
+                    del current["runs"][0]["progressive_updates"]
+                elif mutation == "progressive-hash":
+                    current["runs"][0]["progressive_updates"][5]["output_sha256"] = "f" * 64
+                else:
+                    current["runs"][0]["progressive_updates"][5]["previous_layers"] = 1
+            with self.subTest(accounting_mutation=mutation), self.assertRaises(ValueError):
+                benchmarks._validate_evidence(invalid)
