@@ -1,0 +1,268 @@
+use vstd::prelude::*;
+
+verus! {
+
+pub enum Part1PackedHeaderSource {
+    None,
+    MarkerSegments { header: Seq<u8>, marker: u16, logical_start: usize },
+}
+
+pub struct Part1PackedHeaders {
+    pub source: Part1PackedHeaderSource,
+    pub length: usize,
+    pub fragments: u16,
+}
+
+pub enum Part1PacketLengthSource {
+    None,
+    Plm(Seq<u8>),
+    Plt(Seq<u8>),
+}
+
+pub struct Part1PacketLengths {
+    pub source: Part1PacketLengthSource,
+    pub packet_count: u64,
+    pub encoded_bytes: u64,
+}
+
+pub struct Part1PacketLengthIter {
+    pub source: Part1PacketLengthSource,
+    pub position: usize,
+    pub segment_end: usize,
+}
+
+pub open spec fn part1_packet_input_error(offset: usize, kind: crate::MalformedKind) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: offset as u64, kind }
+}
+
+pub open spec fn part1_packet_input_limit(resource: crate::Resource, limit: u64, actual: u64) -> crate::DecodeError {
+    crate::DecodeError::LimitExceeded { resource, limit, actual }
+}
+
+pub open spec fn part1_packet_input_word(input: Seq<u8>, position: usize) -> u16
+    recommends position as nat + 1 < input.len(),
+{
+    super::part1_marker_value(input[position as int], input[position as int + 1])
+}
+
+pub struct Part1PackedHeaderScan {
+    pub position: usize,
+    pub logical_position: usize,
+    pub remaining_segments: usize,
+    pub output: Seq<u8>,
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packed_header_scan(
+    header: Seq<u8>, marker: u16, logical_start: usize, logical_end: usize,
+    length: usize, s: Part1PackedHeaderScan,
+) -> Result<Seq<u8>, crate::DecodeError>
+    decreases s.remaining_segments,
+{
+    if s.position >= header.len() {
+        if s.output.len() != length {
+            Err(part1_packet_input_error(s.logical_position, crate::MalformedKind::InvalidPackedPacketHeader))
+        } else { Ok(s.output) }
+    } else if s.remaining_segments == 0 {
+        Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidMarkerLength))
+    } else if header.len() - s.position < 4 {
+        Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidPackedPacketHeader))
+    } else {
+        let segment_length = part1_packet_input_word(header, (s.position + 2) as usize) as usize;
+        if segment_length < 2 {
+            Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidMarkerLength))
+        } else if s.position as nat + 2 > usize::MAX || s.position as nat + 2 + segment_length as nat > usize::MAX {
+            Err(part1_packet_input_error(s.position, crate::MalformedKind::ArithmeticOverflow))
+        } else {
+            let end = (s.position + 2 + segment_length) as usize;
+            if end > header.len() {
+                Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidMarkerLength))
+            } else if part1_packet_input_word(header, s.position) != marker {
+                part1_packed_header_scan(header, marker, logical_start, logical_end, length,
+                    Part1PackedHeaderScan { position: end, remaining_segments: (s.remaining_segments - 1) as usize, ..s })
+            } else if s.position as nat + 5 > usize::MAX {
+                Err(part1_packet_input_error(s.position, crate::MalformedKind::ArithmeticOverflow))
+            } else {
+                let payload = (s.position + 5) as usize;
+                if payload > end {
+                    Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidMarkerLength))
+                } else if s.logical_position as nat + (end - payload) as nat > usize::MAX {
+                    Err(part1_packet_input_error(s.position, crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    let fragment_end = (s.logical_position + end - payload) as usize;
+                    let first = if logical_start > s.logical_position { logical_start } else { s.logical_position };
+                    let last = if logical_end < fragment_end { logical_end } else { fragment_end };
+                    let output = if first < last {
+                        s.output + header.subrange((payload + first - s.logical_position) as int, (payload + last - s.logical_position) as int)
+                    } else { s.output };
+                    part1_packed_header_scan(header, marker, logical_start, logical_end, length,
+                        Part1PackedHeaderScan { position: end, logical_position: fragment_end,
+                            remaining_segments: (s.remaining_segments - 1) as usize, output })
+                }
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packed_header_reassembly(s: Part1PackedHeaders, maximum: u64) -> Result<Seq<u8>, crate::DecodeError> {
+    if s.length as u64 > maximum {
+        Err(part1_packet_input_limit(crate::Resource::PacketHeaderBytes, maximum, s.length as u64))
+    } else {
+        match s.source {
+            Part1PackedHeaderSource::None => Ok(Seq::empty()),
+            Part1PackedHeaderSource::MarkerSegments { header, marker, logical_start } => {
+                if logical_start as nat + s.length as nat > usize::MAX {
+                    Err(part1_packet_input_error(0, crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    part1_packed_header_scan(header, marker, logical_start, (logical_start + s.length) as usize, s.length,
+                        Part1PackedHeaderScan { position: 0, logical_position: 0, remaining_segments: header.len() as usize, output: Seq::empty() })
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packet_length_groups(
+    encoded: Seq<u8>, start: usize, end: usize, position: usize, value: u32, groups: u8,
+) -> Result<(u32, usize), crate::DecodeError>
+    decreases if position < end { end - position } else { 0 },
+{
+    if position >= end || position >= encoded.len() {
+        Err(part1_packet_input_error(start, crate::MalformedKind::InvalidPacketLength))
+    } else if groups == u8::MAX {
+        Err(part1_packet_input_error(start, crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let groups = (groups + 1) as u8;
+        let byte = encoded[position as int];
+        if groups > 5 || (groups == 5 && value > 0x01ff_ffff) {
+            Err(part1_packet_input_error(start, crate::MalformedKind::InvalidPacketLength))
+        } else if value as nat * 128 + (byte & 0x7f) as nat > u32::MAX {
+            Err(part1_packet_input_error(start, crate::MalformedKind::InvalidPacketLength))
+        } else if position == usize::MAX {
+            Err(part1_packet_input_error(start, crate::MalformedKind::ArithmeticOverflow))
+        } else {
+            let next = (position + 1) as usize;
+            let word = (value as nat * 128 + (byte & 0x7f) as nat) as u32;
+            if byte & 0x80 == 0 {
+                if word == 0 { Err(part1_packet_input_error(start, crate::MalformedKind::InvalidPacketLength)) }
+                else { Ok((word, next)) }
+            } else { part1_packet_length_groups(encoded, start, end, next, word, groups) }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packet_length_decode(encoded: Seq<u8>, start: usize, end: usize) -> Result<(u32, usize), crate::DecodeError> {
+    if start >= end || end > encoded.len() {
+        Err(part1_packet_input_error(start, crate::MalformedKind::InvalidPacketLength))
+    } else { part1_packet_length_groups(encoded, start, end, start, 0, 0) }
+}
+
+pub open spec fn part1_packet_lengths_iter(s: Part1PacketLengths) -> Part1PacketLengthIter {
+    Part1PacketLengthIter { source: s.source, position: 0, segment_end: 0 }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packet_length_plt(s: Part1PacketLengthIter) -> (Result<Option<u32>, crate::DecodeError>, Part1PacketLengthIter)
+    decreases match s.source { Part1PacketLengthSource::Plt(header) => if s.position < header.len() { header.len() - s.position } else { 0 }, _ => 0 },
+{
+    match s.source {
+        Part1PacketLengthSource::Plt(header) => {
+            if s.position < s.segment_end {
+                match part1_packet_length_decode(header, s.position, s.segment_end) {
+                    Err(error) => (Err(error), s),
+                    Ok((value, next)) => (Ok(Some(value)), Part1PacketLengthIter { position: next, ..s }),
+                }
+            } else if s.position == header.len() { (Ok(None), s) }
+            else if s.position > header.len() || header.len() - s.position < 4 {
+                (Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidPacketLength)), s)
+            } else {
+                let marker_length = part1_packet_input_word(header, (s.position + 2) as usize) as usize;
+                if marker_length < 2 {
+                    (Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidMarkerLength)), s)
+                } else if s.position as nat + 2 > usize::MAX || s.position as nat + 2 + marker_length as nat > usize::MAX {
+                    (Err(part1_packet_input_error(s.position, crate::MalformedKind::ArithmeticOverflow)), s)
+                } else {
+                    let end = (s.position + 2 + marker_length) as usize;
+                    if end > header.len() {
+                        (Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidMarkerLength)), s)
+                    } else {
+                        let marker = part1_packet_input_word(header, s.position);
+                        let next = Part1PacketLengthIter { position: end, ..s };
+                        if marker == 0xff58 {
+                            if end < marker_length || (end - marker_length) as nat + 3 > usize::MAX {
+                                (Err(part1_packet_input_error(end, crate::MalformedKind::ArithmeticOverflow)), next)
+                            } else {
+                                let data = (end - marker_length + 3) as usize;
+                                if data > end {
+                                    (Err(part1_packet_input_error(end, crate::MalformedKind::InvalidMarkerLength)), next)
+                                } else {
+                                    let next = Part1PacketLengthIter { position: data, segment_end: end, ..s };
+                                    if data <= s.position || data > header.len() {
+                                        (Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidPacketLength)), next)
+                                    } else { part1_packet_length_plt(next) }
+                                }
+                            }
+                        } else if end <= s.position || end > header.len() {
+                            (Err(part1_packet_input_error(s.position, crate::MalformedKind::InvalidPacketLength)), next)
+                        } else { part1_packet_length_plt(next) }
+                    }
+                }
+            }
+        },
+        _ => (Ok(None), s),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packet_length_next(s: Part1PacketLengthIter) -> (Result<Option<u32>, crate::DecodeError>, Part1PacketLengthIter) {
+    match s.source {
+        Part1PacketLengthSource::None => (Ok(None), s),
+        Part1PacketLengthSource::Plm(bytes) => {
+            if s.position == bytes.len() { (Ok(None), s) }
+            else {
+                match part1_packet_length_decode(bytes, s.position, bytes.len() as usize) {
+                    Err(error) => (Err(error), s),
+                    Ok((value, next)) => (Ok(Some(value)), Part1PacketLengthIter { position: next, ..s }),
+                }
+            }
+        },
+        Part1PacketLengthSource::Plt(_) => part1_packet_length_plt(s),
+    }
+}
+
+pub proof fn part1_packed_absent_cap_precedes_source(s: Part1PackedHeaders, maximum: u64)
+    ensures matches!(s.source, Part1PackedHeaderSource::None) ==>
+        part1_packed_header_reassembly(s, maximum) == (
+            if s.length as u64 > maximum {
+                Err(part1_packet_input_limit(crate::Resource::PacketHeaderBytes, maximum, s.length as u64))
+            } else { Ok(Seq::empty()) }),
+{
+    reveal(part1_packed_header_reassembly);
+}
+
+pub proof fn part1_packet_length_absent_keeps_arbitrary_cursors(s: Part1PacketLengthIter)
+    ensures matches!(s.source, Part1PacketLengthSource::None) ==>
+        part1_packet_length_next(s) == (Ok(None), s),
+{
+    reveal(part1_packet_length_next);
+}
+
+pub proof fn part1_packet_length_short_plt_commits_before_payload_error()
+    ensures part1_packet_length_next(Part1PacketLengthIter {
+            source: Part1PacketLengthSource::Plt(seq![0xffu8, 0x58u8, 0u8, 2u8]), position: 0, segment_end: 0 })
+        == (Err(part1_packet_input_error(4, crate::MalformedKind::InvalidMarkerLength)),
+            Part1PacketLengthIter {
+                source: Part1PacketLengthSource::Plt(seq![0xffu8, 0x58u8, 0u8, 2u8]), position: 4, segment_end: 0 }),
+{
+    reveal(part1_packet_length_next);
+    reveal(part1_packet_length_plt);
+    reveal(part1_packet_input_word);
+    reveal(super::part1_marker_value);
+    assert(super::part1_marker_value(0xffu8, 0x58u8) == 0xff58u16) by(bit_vector);
+    assert(super::part1_marker_value(0u8, 2u8) == 2u16) by(bit_vector);
+}
+
+}

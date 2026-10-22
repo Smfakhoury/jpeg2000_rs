@@ -25,6 +25,33 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native packed-header and packet-length input producers
+
+The actual `PackedPacketHeaders::reassemble` refines
+`part1_packed_header_reassembly` over its complete raw source, stored length and
+fragment count. The model preserves cap-before-None admission, all marker and
+slice checks, the exact selected bytes, late malformed markers even after the
+requested bytes were copied, and final output-length errors. Fragment count is
+metadata, not an assumed physical-segment count.
+
+The actual `PacketLengths` getters and iterator constructor retain the full raw
+None/PLM/PLT source and both stored counters. `PacketLengthIter::next_length`
+refines `part1_packet_length_next` on every raw cursor/end pair. Its PLT scan
+commits the segment end before validating the payload start, and a later decode
+failure retains earlier marker/cursor commits. The actual base-128
+`decode_packet_length` has a complete Result contract, including zero,
+noncanonical leading groups, truncation, five-group overflow and invalid windows.
+Successful native iterator results additionally prove a positive value and a
+strictly advanced cursor.
+
+These are real production operations, not supplied byte vectors, length lists or
+traces. The loops, allocation points, arithmetic order and typed caps remain
+unchanged; explicit checked-result matches expose the existing first errors.
+Marker words reuse the same production `refinement::marker_value` primitive.
+Independent exhaustive two-byte/window/raw-iterator fixtures, closed wide-word
+oracles and literal segmented inputs check whole results and partial-state order.
+This does not complete the consuming progression/reassembly orchestration.
+
 ## Complete native palette lookup boundary
 
 The actual `jp2::Palette::value` returns exactly `part2_palette_value` on its
