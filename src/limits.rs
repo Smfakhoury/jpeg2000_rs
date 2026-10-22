@@ -38,6 +38,10 @@ verus! {
         limits.maximum_work_units
     }
 
+    pub closed spec fn resource_code_block_byte_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_code_block_bytes
+    }
+
     pub closed spec fn resource_decoded_bytes_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_decoded_bytes
     }
@@ -131,6 +135,10 @@ impl ResourceLimits {
         self.maximum_code_block_passes
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == resource_code_block_byte_limit(self),)
+    )]
     pub const fn maximum_code_block_bytes(&self) -> u64 {
         self.maximum_code_block_bytes
     }

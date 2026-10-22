@@ -269,23 +269,31 @@ pub struct HtPassGroup {
 
 impl HtPassGroup {
     pub fn from_packet_passes(passes: u8) -> Result<Self, DecodeError> {
-        if passes == 0 || passes > 164 {
-            return Err(invalid_code_block());
-        }
-        let placeholder_passes = crate::refinement::ht_placeholder_passes(passes);
-        let skipped_bitplanes = placeholder_passes / 3;
-        let substantive_passes = crate::refinement::ht_substantive_passes(passes);
-        Ok(Self {
-            cleanup_passes: placeholder_passes
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?,
-            refinement_passes: substantive_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?,
-            placeholder_passes,
-            skipped_bitplanes,
-        })
+        ht_pass_group_from_packet(passes)
     }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_packet_pass_group(passes),)
+)]
+fn ht_pass_group_from_packet(passes: u8) -> Result<HtPassGroup, DecodeError> {
+    if passes == 0 || passes > 164 {
+        return Err(invalid_code_block());
+    }
+    let placeholder_passes = crate::refinement::ht_placeholder_passes(passes);
+    let skipped_bitplanes = placeholder_passes / 3;
+    let substantive_passes = crate::refinement::ht_substantive_passes(passes);
+    Ok(HtPassGroup {
+        cleanup_passes: placeholder_passes
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?,
+        refinement_passes: substantive_passes
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?,
+        placeholder_passes,
+        skipped_bitplanes,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -304,14 +312,17 @@ pub struct HtSubstreamView<'a> {
 }
 
 impl<'a> HtSubstreamView<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == ht_substream_view(self).bytes,))]
     pub fn bytes(&self) -> &'a [u8] {
         self.bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_substream_view(self).offset,))]
     pub const fn offset(&self) -> u32 {
         self.offset
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_direction_forward(result) == ht_substream_view(self).forward,))]
     pub const fn direction(&self) -> HtStreamDirection {
         self.direction
     }
@@ -329,26 +340,32 @@ pub struct HtCleanupSegment<'a> {
 }
 
 impl<'a> HtCleanupSegment<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == ht_cleanup_segment_view(self).encoded,))]
     pub fn encoded(&self) -> &'a [u8] {
         self.encoded
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_cleanup_segment_view(self).scup,))]
     pub const fn scup(&self) -> u16 {
         self.scup
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).mag_sgn,))]
     pub const fn mag_sgn(&self) -> HtSubstreamView<'a> {
         self.mag_sgn
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).mel_vlc,))]
     pub const fn mel_vlc(&self) -> HtSubstreamView<'a> {
         self.mel_vlc
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).mel,))]
     pub const fn mel(&self) -> HtSubstreamView<'a> {
         self.mel
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).vlc,))]
     pub const fn vlc(&self) -> HtSubstreamView<'a> {
         self.vlc
     }
@@ -1532,14 +1549,17 @@ impl<'a> HtRefinementReaders<'a> {
 }
 
 impl<'a> HtRefinementSegment<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == ht_refinement_segment_view(self).encoded,))]
     pub fn encoded(&self) -> &'a [u8] {
         self.encoded
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_refinement_segment_view(self).significance_propagation,))]
     pub const fn significance_propagation(&self) -> HtSubstreamView<'a> {
         self.significance_propagation
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_refinement_segment_view(self).magnitude_refinement,))]
     pub const fn magnitude_refinement(&self) -> HtSubstreamView<'a> {
         self.magnitude_refinement
     }
@@ -1553,15 +1573,66 @@ pub struct HtBlockSegments<'a> {
     bytes: u32,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_substream_view(stream: &HtSubstreamView<'_>) -> crate::specs::HtSubstreamState {
+        crate::specs::HtSubstreamState {
+            bytes: stream.bytes@, offset: stream.offset, forward: ht_direction_forward(stream.direction),
+        }
+    }
+
+    pub closed spec fn ht_cleanup_segment_view(segment: &HtCleanupSegment<'_>) -> crate::specs::HtCleanupSegmentState {
+        crate::specs::HtCleanupSegmentState {
+            encoded: segment.encoded@, scup: segment.scup,
+            mag_sgn: ht_substream_view(&segment.mag_sgn), mel_vlc: ht_substream_view(&segment.mel_vlc),
+            mel: ht_substream_view(&segment.mel), vlc: ht_substream_view(&segment.vlc),
+        }
+    }
+
+    pub closed spec fn ht_refinement_segment_view(segment: &HtRefinementSegment<'_>) -> crate::specs::HtRefinementSegmentState {
+        crate::specs::HtRefinementSegmentState {
+            encoded: segment.encoded@,
+            significance_propagation: ht_substream_view(&segment.significance_propagation),
+            magnitude_refinement: ht_substream_view(&segment.magnitude_refinement),
+        }
+    }
+
+    pub closed spec fn ht_refinement_option_view(segment: Option<HtRefinementSegment<'_>>)
+        -> Option<crate::specs::HtRefinementSegmentState>
+    {
+        match segment { None => None, Some(segment) => Some(ht_refinement_segment_view(&segment)) }
+    }
+
+    pub closed spec fn ht_block_segments_view(segments: &HtBlockSegments<'_>) -> crate::specs::HtBlockSegmentsState {
+        crate::specs::HtBlockSegmentsState {
+            cleanup: ht_cleanup_segment_view(&segments.cleanup),
+            refinement: ht_refinement_option_view(segments.refinement), bytes: segments.bytes,
+        }
+    }
+
+    pub closed spec fn ht_optional_bytes_view(bytes: Option<&[u8]>) -> Option<Seq<u8>> {
+        match bytes { None => None, Some(bytes) => Some(bytes@) }
+    }
+
+    pub closed spec fn ht_block_segments_outcome(result: Result<HtBlockSegments<'_>, DecodeError>)
+        -> Result<crate::specs::HtBlockSegmentsState, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(segments) => Ok(ht_block_segments_view(&segments)) }
+    }
+}
+
 impl<'a> HtBlockSegments<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_cleanup_segment_view(&result) == ht_block_segments_view(self).cleanup,))]
     pub const fn cleanup(&self) -> HtCleanupSegment<'a> {
         self.cleanup
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_refinement_option_view(result) == ht_block_segments_view(self).refinement,))]
     pub const fn refinement(&self) -> Option<HtRefinementSegment<'a>> {
         self.refinement
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_block_segments_view(self).bytes,))]
     pub const fn bytes(&self) -> u32 {
         self.bytes
     }
@@ -1709,6 +1780,14 @@ pub const fn pass_kind(pass_index: u32) -> Tier1PassKind {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_block_segments_outcome(result) == crate::specs::ht_parse_block_segments(
+            cleanup@, ht_optional_bytes_view(refinement), crate::limits::resource_code_block_byte_limit(limits),
+        ),
+    )
+)]
 pub fn parse_ht_block_segments<'a>(
     cleanup: &'a [u8],
     refinement: Option<&'a [u8]>,
@@ -1729,11 +1808,11 @@ pub fn parse_ht_block_segments<'a>(
         .checked_add(refinement_bytes)
         .ok_or_else(arithmetic_overflow)?;
     if total_bytes > limits.maximum_code_block_bytes() {
-        return Err(DecodeError::limit(
-            Resource::CodeBlockBytes,
-            limits.maximum_code_block_bytes(),
-            total_bytes,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::CodeBlockBytes,
+            limit: limits.maximum_code_block_bytes(),
+            actual: total_bytes,
+        });
     }
 
     let penultimate = *cleanup
@@ -5932,6 +6011,210 @@ mod tests {
         );
         assert_eq!(metadata.mel_bits, 1);
         assert_eq!(metadata.vlc_bits, 4);
+    }
+
+    #[test]
+    fn ht_complete_partition_preserves_every_stream_and_optional_empty() {
+        let limits = ResourceLimits::default();
+        let cleanup = [0xaa, 0xbb, 0x23, 0];
+        let refinement = [0x5a, 0];
+        let segments = parse_ht_block_segments(&cleanup, Some(&refinement), &limits).unwrap();
+        assert_eq!(segments.bytes(), 6);
+        let segment = segments.cleanup();
+        assert_eq!(segment.encoded(), &[0xaa, 0xbb, 0x23, 0]);
+        assert_eq!(segment.scup(), 3);
+        for (view, bytes, offset, direction) in [
+            (
+                segment.mag_sgn(),
+                &[0xaa][..],
+                0,
+                HtStreamDirection::Forward,
+            ),
+            (
+                segment.mel_vlc(),
+                &[0xbb, 0x23, 0][..],
+                1,
+                HtStreamDirection::Forward,
+            ),
+            (
+                segment.mel(),
+                &[0xbb, 0x23][..],
+                1,
+                HtStreamDirection::Forward,
+            ),
+            (
+                segment.vlc(),
+                &[0xbb, 0x23, 0][..],
+                1,
+                HtStreamDirection::Reverse,
+            ),
+        ] {
+            assert_eq!(
+                (view.bytes(), view.offset(), view.direction()),
+                (bytes, offset, direction)
+            );
+        }
+        let refinement = segments.refinement().unwrap();
+        assert_eq!(refinement.encoded(), &[0x5a, 0]);
+        assert_eq!(
+            (
+                refinement.significance_propagation().bytes(),
+                refinement.significance_propagation().offset(),
+                refinement.significance_propagation().direction()
+            ),
+            (&[0x5a, 0][..], 4, HtStreamDirection::Forward)
+        );
+        assert_eq!(
+            (
+                refinement.magnitude_refinement().bytes(),
+                refinement.magnitude_refinement().offset(),
+                refinement.magnitude_refinement().direction()
+            ),
+            (&[0x5a, 0][..], 4, HtStreamDirection::Reverse)
+        );
+        let absent = parse_ht_block_segments(&cleanup, None, &limits).unwrap();
+        let empty = parse_ht_block_segments(&cleanup, Some(&[]), &limits).unwrap();
+        assert_eq!((absent.bytes(), empty.bytes()), (4, 4));
+        assert!(absent.refinement().is_none());
+        let empty = empty.refinement().unwrap();
+        assert!(empty.encoded().is_empty());
+        assert_eq!(
+            (
+                empty.significance_propagation().bytes(),
+                empty.significance_propagation().offset(),
+                empty.significance_propagation().direction()
+            ),
+            (&[][..], 4, HtStreamDirection::Forward)
+        );
+        assert_eq!(
+            (
+                empty.magnitude_refinement().bytes(),
+                empty.magnitude_refinement().offset(),
+                empty.magnitude_refinement().direction()
+            ),
+            (&[][..], 4, HtStreamDirection::Reverse)
+        );
+    }
+
+    #[test]
+    fn ht_partition_checks_actual_budget_before_scup_and_sizes_before_budget() {
+        let limits = ResourceLimits::default()
+            .with_maximum_code_block_bytes(1)
+            .unwrap();
+        assert_eq!(
+            parse_ht_block_segments(&[0, 0], None, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[0], None, &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            })
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[2, 0], Some(&[0; 2047]), &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+        let exact = ResourceLimits::default()
+            .with_maximum_code_block_bytes(2)
+            .unwrap();
+        assert!(parse_ht_block_segments(&[2, 0], Some(&[]), &exact).is_ok());
+        assert_eq!(
+            parse_ht_block_segments(&[0, 0], None, &exact),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+    }
+
+    #[test]
+    fn ht_partition_native_capacity_and_scup_boundaries_are_exact() {
+        let limits = ResourceLimits::default();
+        let mut cleanup = vec![0; 65534];
+        cleanup[65532] = 2;
+        let refinement = [0; 2046];
+        let segments = parse_ht_block_segments(&cleanup, Some(&refinement), &limits).unwrap();
+        assert_eq!(
+            (
+                segments.bytes(),
+                segments.cleanup().scup(),
+                segments.cleanup().mag_sgn().bytes().len(),
+                segments.cleanup().vlc().offset()
+            ),
+            (67580, 2, 65532, 65532)
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[0; 65535], None, &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[3, 0], None, &limits),
+            Err(invalid_code_block())
+        );
+        let mut maximum_scup = vec![0; 4079];
+        maximum_scup[4077] = 0x0f;
+        maximum_scup[4078] = 0xfe;
+        let segment = parse_ht_block_segments(&maximum_scup, None, &limits)
+            .unwrap()
+            .cleanup();
+        assert_eq!(
+            (
+                segment.scup(),
+                segment.mag_sgn().bytes().len(),
+                segment.mel().bytes().len(),
+                segment.vlc().bytes().len()
+            ),
+            (4079, 0, 4078, 4079)
+        );
+        let mut excessive_scup = vec![0; 4080];
+        excessive_scup[4079] = 0xff;
+        assert_eq!(
+            parse_ht_block_segments(&excessive_scup, None, &limits),
+            Err(invalid_code_block())
+        );
+    }
+
+    #[test]
+    fn ht_packet_pass_group_has_literal_complete_fields_and_native_rejections() {
+        for (passes, cleanup, refinement, placeholders, skipped) in [
+            (1, 1, 0, 0, 0),
+            (2, 1, 1, 0, 0),
+            (3, 1, 2, 0, 0),
+            (4, 4, 0, 3, 1),
+            (5, 4, 1, 3, 1),
+            (6, 4, 2, 3, 1),
+            (162, 160, 2, 159, 53),
+            (163, 163, 0, 162, 54),
+            (164, 163, 1, 162, 54),
+        ] {
+            assert_eq!(
+                HtPassGroup::from_packet_passes(passes),
+                Ok(HtPassGroup {
+                    cleanup_passes: cleanup,
+                    refinement_passes: refinement,
+                    placeholder_passes: placeholders,
+                    skipped_bitplanes: skipped,
+                })
+            );
+        }
+        for passes in [0, 165, 255] {
+            assert_eq!(
+                HtPassGroup::from_packet_passes(passes),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock,
+                })
+            );
+        }
     }
 
     #[test]

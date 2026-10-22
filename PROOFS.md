@@ -188,6 +188,7 @@ Read each contract according to its inputs and postcondition:
 | HT directional reader/substream state | All five actual readers: exact constructors, bytes/bits/positions, MagSgn words and drain, zero/one fill, stuffing, exhaustion, full cursors/counters, shared cleanup byte claims and refinement physical-bit vectors/padding, exact inner/outer budget and overflow effects | Upstream partition/pass accounting, UVLC/quad interpretation, coefficient/block reconstruction, replacement/placeholders, mixed sequencing or complete F5H acceptance |
 | HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
 | HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
+| Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -446,13 +447,39 @@ and exact array equality use the existing pinned `vstd::array` equality fact,
 not a new codec axiom or trusted escape. Prefix opacity only keeps caller
 composition modular; actual producer bodies explicitly unfold their models.
 
-The authorized nineteen directional registry recipes are complete. The six
-new interpretation state contracts use the same exact whole-state shape but
-await separately authorized function/model recipes; their actual models,
-callers, proofs, fixtures and already supported leaf contracts are indexed.
+The authorized nineteen directional and six interpretation registry recipes
+are complete. The six interpretation contracts use the same exact whole-state
+shape, preserving actual extra arguments and native tuple/array/word results;
+their models, true production callers, proofs and fixtures are indexed.
 Neither this source index nor successful local gates close full-block or
 mixed sequencing. The models and a green solver run are not human endorsement
 of T.814.
+
+`HtPassGroup::from_packet_passes` now shares one verified free implementation
+that returns the complete actual four-field group, retaining the static
+public wrapper and all original native bounds/error behavior. This is an
+input-relative grouping theorem, not placeholder/replacement execution.
+
+The complete actual public segment parser now refines `ht_parse_block_segments`
+through a public closed outcome projection of every result field. The sole
+authorized foreign edit supplies the owner-local `resource_code_block_byte_limit`
+view and exact getter postcondition. The parser model therefore uses the actual
+selected `ResourceLimits` value, not a chosen or existential budget. Size
+rejection precedes the exact CodeBlockBytes failure, which precedes Scup
+interpretation and partitioning. All encoded/substream bytes, offsets,
+directions, Scup and total bytes are included, retaining the observable
+distinction between absent and present empty refinement. No public-parser
+wrapper or successful-input assumption is introduced. Its complete outcome
+shape is proved by the root. The non-exhaustive source index binds this
+function to its exact outcome/model recipe and actual caller; negative tests
+reject unbound, partial, swapped or unknown outcomes/models without any
+matcher widening.
+
+Existing public F6 limb, constructor, zero-test and right-shift contracts are
+available in this combined branch and are reused as needed. Full magnitude
+reconstruction still requires exact checked-add, checked-left-shift and
+low-limb contracts from that owner; their current executable methods do not
+have those functional postconditions. No magnitude source is modified.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit

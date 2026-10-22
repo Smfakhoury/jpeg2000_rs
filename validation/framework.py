@@ -331,11 +331,13 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "ht_forward_refinement_from_input"): "ht_forward_refinement_outcome",
                 ("src/tier1.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
                 ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
+                ("src/tier1.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
                 ("src/color.rs", "convert_jp2_color"): "converted_image_result",
                 ("src/color.rs", "convert_color_channel"): "converted_channel_result",
                 ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
             }.get((reference["path"], short))
-            expected_color_model = {
+            expected_result_model = {
+                ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
                 ("src/color.rs", "convert_jp2_color"): "color_convert_jp2",
                 ("src/color.rs", "convert_color_channel"): "color_convert_channel",
                 ("src/color.rs", "convert_alpha_channel"): "color_convert_alpha",
@@ -379,6 +381,12 @@ def validate_normative_coverage(
                 "HtRefinementReaders::read_reverse": ("ht_refinement_readers_view", "ht_refinement_read_reverse"),
                 "HtCleanupReaders::advance_vlc": ("ht_cleanup_readers_view", "ht_cleanup_advance_vlc"),
                 "HtCleanupReaders::mel_event": ("ht_cleanup_readers_view", "ht_cleanup_mel_event"),
+                "HtCleanupReaders::read_prefix": ("ht_cleanup_readers_view", "ht_uvlc_prefix"),
+                "HtCleanupReaders::read_suffix": ("ht_cleanup_readers_view", "ht_uvlc_suffix"),
+                "HtCleanupReaders::prefix_value": ("ht_cleanup_readers_view", "ht_uvlc_prefix_value"),
+                "HtCleanupReaders::decode_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_initial"),
+                "HtCleanupReaders::decode_non_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_non_initial"),
+                "HtCleanupReaders::decode_quad_word": ("ht_cleanup_readers_view", "ht_cleanup_quad_word"),
             }
             reader_contract = reader_contracts.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
             if reader_contract:
@@ -437,8 +445,8 @@ def validate_normative_coverage(
                     )
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
-                    or (expected_color_model is not None
-                        and (named_result is None or named_result["model"] != expected_color_model))
+                    or (expected_result_model is not None
+                        and (named_result is None or named_result["model"] != expected_result_model))
                     or not ("ensures returns" in contract
                             or (named_result is not None and named_result["model"] in spec_symbols))):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")

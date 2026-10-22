@@ -3962,6 +3962,10 @@
     {
       "contract_refs": [
         {
+          "path": "src/tier1.rs",
+          "symbol": "ht_pass_group_from_packet"
+        },
+        {
           "path": "src/refinement.rs",
           "symbol": "ht_placeholder_passes"
         },
@@ -3981,6 +3985,10 @@
           "symbol": "HtPassGroup::from_packet_passes"
         },
         {
+          "path": "src/tier1.rs",
+          "symbol": "ht_pass_group_from_packet"
+        },
+        {
           "path": "src/packet.rs",
           "symbol": "decode_code_block_contribution"
         }
@@ -3988,10 +3996,18 @@
       "proof_refs": [
         {
           "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_packet_group_rejects_the_complete_invalid_native_domain"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
           "symbol": "ht_group_partition_is_exact"
         }
       ],
       "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_packet_pass_group"
+        },
         {
           "path": "specs/mod.rs",
           "symbol": "ht_placeholder_passes"
@@ -4006,6 +4022,10 @@
         }
       ],
       "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_packet_pass_group_has_literal_complete_fields_and_native_rejections"
+        },
         {
           "path": "src/tier1.rs",
           "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
@@ -4054,6 +4074,10 @@
     {
       "contract_refs": [
         {
+          "path": "src/tier1.rs",
+          "symbol": "parse_ht_block_segments"
+        },
+        {
           "path": "src/refinement.rs",
           "symbol": "ht_scup"
         },
@@ -4066,16 +4090,40 @@
       "implementation_refs": [
         {
           "path": "src/tier1.rs",
+          "symbol": "decode_ht_cleanup_metadata"
+        },
+        {
+          "path": "src/tier1.rs",
           "symbol": "parse_ht_block_segments"
         }
       ],
       "proof_refs": [
         {
           "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_partition_budget_failure_precedes_any_scup_validation"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_successful_partition_preserves_optional_refinement_presence"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
           "symbol": "ht_scup_partitions_cleanup"
         }
       ],
       "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_parse_block_segments"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_block_segments_outcome"
+        },
+        {
+          "path": "src/limits.rs",
+          "symbol": "resource_code_block_byte_limit"
+        },
         {
           "path": "specs/mod.rs",
           "symbol": "ht_scup"
@@ -4088,6 +4136,18 @@
       "test_refs": [
         {
           "path": "src/tier1.rs",
+          "symbol": "ht_complete_partition_preserves_every_stream_and_optional_empty"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_partition_checks_actual_budget_before_scup_and_sizes_before_budget"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_partition_native_capacity_and_scup_boundaries_are_exact"
+        },
+        {
+          "path": "src/tier1.rs",
           "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
         },
         {
@@ -4095,7 +4155,7 @@
           "symbol": "rejects_invalid_ht_cleanup_termination_and_limits"
         }
       ],
-      "topic": "Scup termination decode with a MagSgn prefix and bounded shared MEL/VLC suffix"
+      "topic": "Complete actual parser result: every encoded/substream byte sequence, offset, direction, Scup and byte count; actual object byte-limit rejection before Scup and preserved None versus Some(empty); exact public outcome/model recipe and actual caller indexed"
     },
     {
       "contract_refs": [
@@ -4368,6 +4428,12 @@
     {
       "contract_refs": [
         {"path": "src/tier1.rs", "symbol": "ht_uvlc_byte"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_prefix"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_suffix"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::prefix_value"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_non_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_quad_word"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_vlc_bit"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::advance_vlc"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::mel_event"}
@@ -4409,7 +4475,7 @@
         {"path": "src/tier1.rs", "symbol": "ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked"},
         {"path": "src/tier1.rs", "symbol": "ht_quad_word_context_suppression_and_charge_order_are_exact"}
       ],
-      "topic": "Complete selected actual UVLC/quad-word interpretation result and entire final stream/event/claim/work state; actual table views and context-zero MEL/advance/tick ordering; six interpretation receiver recipes await separate authorization, no full metadata/coefficient block or mixed-sequencing claim"
+      "topic": "Complete selected actual UVLC/quad-word interpretation result and entire final stream/event/claim/work state; six exact receiver contracts with actual table views and context-zero MEL/advance/tick ordering indexed through real production callers; no full metadata/coefficient block or mixed-sequencing claim"
     },
     {
       "contract_refs": [

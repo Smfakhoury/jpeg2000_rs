@@ -2886,6 +2886,90 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub struct HtSubstreamState {
+    pub bytes: Seq<u8>,
+    pub offset: u32,
+    pub forward: bool,
+}
+
+pub struct HtCleanupSegmentState {
+    pub encoded: Seq<u8>,
+    pub scup: u16,
+    pub mag_sgn: HtSubstreamState,
+    pub mel_vlc: HtSubstreamState,
+    pub mel: HtSubstreamState,
+    pub vlc: HtSubstreamState,
+}
+
+pub struct HtRefinementSegmentState {
+    pub encoded: Seq<u8>,
+    pub significance_propagation: HtSubstreamState,
+    pub magnitude_refinement: HtSubstreamState,
+}
+
+pub struct HtBlockSegmentsState {
+    pub cleanup: HtCleanupSegmentState,
+    pub refinement: Option<HtRefinementSegmentState>,
+    pub bytes: u32,
+}
+
+pub open spec fn ht_parse_block_segments(
+    cleanup: Seq<u8>, refinement: Option<Seq<u8>>, maximum_bytes: u64,
+) -> Result<HtBlockSegmentsState, crate::DecodeError> {
+    let refinement_length = match refinement { None => 0nat, Some(bytes) => bytes.len() };
+    if cleanup.len() < 2 || cleanup.len() > 65534 || refinement_length > 2046 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let total = cleanup.len() + refinement_length;
+        if total > maximum_bytes {
+            Err(crate::DecodeError::LimitExceeded {
+                resource: crate::Resource::CodeBlockBytes, limit: maximum_bytes, actual: total as u64,
+            })
+        } else {
+            let scup = ht_scup(cleanup[(cleanup.len() - 2) as int], cleanup[(cleanup.len() - 1) as int]);
+            if scup < 2 || scup > 4079 || scup > cleanup.len() {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+            } else {
+                let start = (cleanup.len() - scup) as int;
+                let offset = start as u32;
+                let suffix = cleanup.subrange(start, cleanup.len() as int);
+                Ok(HtBlockSegmentsState {
+                    cleanup: HtCleanupSegmentState {
+                        encoded: cleanup, scup: scup as u16,
+                        mag_sgn: HtSubstreamState { bytes: cleanup.subrange(0, start), offset: 0, forward: true },
+                        mel_vlc: HtSubstreamState { bytes: suffix, offset, forward: true },
+                        mel: HtSubstreamState { bytes: cleanup.subrange(start, (cleanup.len() - 1) as int), offset, forward: true },
+                        vlc: HtSubstreamState { bytes: suffix, offset, forward: false },
+                    },
+                    refinement: match refinement {
+                        None => None,
+                        Some(bytes) => Some(HtRefinementSegmentState {
+                            encoded: bytes,
+                            significance_propagation: HtSubstreamState { bytes, offset: cleanup.len() as u32, forward: true },
+                            magnitude_refinement: HtSubstreamState { bytes, offset: cleanup.len() as u32, forward: false },
+                        }),
+                    },
+                    bytes: total as u32,
+                })
+            }
+        }
+    }
+}
+
+pub open spec fn ht_packet_pass_group(passes: u8) -> Result<crate::tier1::HtPassGroup, crate::DecodeError> {
+    if passes == 0 || passes > 164 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let placeholders = ht_placeholder_passes(passes as nat);
+        Ok(crate::tier1::HtPassGroup {
+            cleanup_passes: (placeholders + 1) as u8,
+            refinement_passes: (ht_substantive_passes(passes as nat) - 1) as u8,
+            placeholder_passes: placeholders as u8,
+            skipped_bitplanes: (placeholders / 3) as u8,
+        })
+    }
+}
+
 pub struct HtMagSgnState {
     pub input: Seq<u8>,
     pub next_byte: usize,

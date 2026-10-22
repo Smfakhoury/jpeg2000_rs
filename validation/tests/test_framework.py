@@ -394,6 +394,42 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_ht_parser_to_its_exact_outcome_and_model(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part15-cleanup-partition"
+        ]
+        self.assertEqual(len(coverage["requirements"]), 1)
+        coverage["requirements"][0]["contract_refs"] = [
+            {"path": "src/tier1.rs", "symbol": "parse_ht_block_segments"}
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        source = framework.ROOT / "src/tier1.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        end = re.search(r"\bfn\s+parse_ht_block_segments\b", original).start()
+        start = original.rfind("#[cfg_attr", 0, end)
+        contract = original[start:end]
+        for before, after in (
+            ("ensures ht_block_segments_outcome(result)", "ensures ht_block_segments_outcome(unrelated)"),
+            ("ensures ht_block_segments_outcome(result)", "ensures unlisted_projection(result)"),
+            ("ensures ht_block_segments_outcome(result)", "ensures raw_reader_outcome(result)"),
+            ("ensures ht_block_segments_outcome(result)", "ensures result.is_ok()"),
+            ("== crate::specs::ht_parse_block_segments(", "== crate::specs::unlisted_model("),
+            ("== crate::specs::ht_parse_block_segments(", "== crate::specs::ht_scup("),
+            ("== crate::specs::ht_parse_block_segments(", "<= crate::specs::ht_parse_block_segments("),
+        ):
+            self.assertIn(before, contract)
+            modified = original[:start] + contract.replace(before, after) + original[end:]
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_each_complete_color_converter_result_to_its_exact_model(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/color.rs"
@@ -545,6 +581,7 @@ impl HtReverseVlcReader {
             item for item in original["requirements"]
             if item["id"] in (
                 "part15-cleanup-reader-single-bit-state", "part15-directional-word-event-state",
+                "part15-uvlc-quad-word-state",
             )
         ]
         self.assertEqual(framework.validate_normative_coverage(original)["status"], "passed")
@@ -581,13 +618,19 @@ impl HtReverseVlcReader {
             ("HtRefinementReaders::read_reverse", "ht_refinement_readers_view", "ht_refinement_read_reverse", True),
             ("HtCleanupReaders::advance_vlc", "ht_cleanup_readers_view", "ht_cleanup_advance_vlc", True),
             ("HtCleanupReaders::mel_event", "ht_cleanup_readers_view", "ht_cleanup_mel_event", True),
+            ("HtCleanupReaders::read_prefix", "ht_cleanup_readers_view", "ht_uvlc_prefix", True),
+            ("HtCleanupReaders::read_suffix", "ht_cleanup_readers_view", "ht_uvlc_suffix", True),
+            ("HtCleanupReaders::prefix_value", "ht_cleanup_readers_view", "ht_uvlc_prefix_value", True),
+            ("HtCleanupReaders::decode_initial_u", "ht_cleanup_readers_view", "ht_uvlc_initial", True),
+            ("HtCleanupReaders::decode_non_initial_u", "ht_cleanup_readers_view", "ht_uvlc_non_initial", True),
+            ("HtCleanupReaders::decode_quad_word", "ht_cleanup_readers_view", "ht_cleanup_quad_word", True),
         ]
         for symbol, projection, model, stateful in entries:
             coverage = copy.deepcopy(original)
             coverage["requirements"] = [
                 item for item in coverage["requirements"]
                 if any(ref["symbol"] == model for ref in item["spec_refs"])
-            ]
+            ][:1]
             coverage["requirements"][0]["contract_refs"] = [{"path": "src/tier1.rs", "symbol": symbol}]
             if symbol in (
                 "HtForwardRefinementReader::read_bit", "HtReverseRefinementReader::read_bit",

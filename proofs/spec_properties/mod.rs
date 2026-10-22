@@ -32,6 +32,35 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn ht_partition_budget_failure_precedes_any_scup_validation(
+    cleanup: Seq<u8>, refinement: Option<Seq<u8>>, maximum: u64,
+)
+    requires 2 <= cleanup.len() <= 65534,
+        (match refinement { None => 0nat, Some(bytes) => bytes.len() }) <= 2046,
+        cleanup.len() + (match refinement { None => 0nat, Some(bytes) => bytes.len() }) > maximum,
+    ensures crate::specs::ht_parse_block_segments(cleanup, refinement, maximum)
+        == Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::CodeBlockBytes, limit: maximum,
+            actual: (cleanup.len() + (match refinement { None => 0nat, Some(bytes) => bytes.len() })) as u64,
+        }),
+{
+}
+
+pub proof fn ht_successful_partition_preserves_optional_refinement_presence(
+    cleanup: Seq<u8>, refinement: Option<Seq<u8>>, maximum: u64, result: crate::specs::HtBlockSegmentsState,
+)
+    requires crate::specs::ht_parse_block_segments(cleanup, refinement, maximum) == Ok(result),
+    ensures result.refinement.is_some() == refinement.is_some(),
+{
+}
+
+pub proof fn ht_packet_group_rejects_the_complete_invalid_native_domain(passes: u8)
+    requires passes == 0 || passes > 164,
+    ensures crate::specs::ht_packet_pass_group(passes)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
 pub proof fn color_precision_binary_bounds(precision: u8)
     requires 1 <= precision <= 38,
     ensures
