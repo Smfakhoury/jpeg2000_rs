@@ -370,8 +370,8 @@ None-kernel plan coordinator: raw decoder/plane and six-limb coefficient reads,
 signed midpoint handling, initialization and nine-byte cumulative charging,
 ROI/quantization, placement/coverage/fraction checks, the entire mixed-direction
 multilevel 5/3 or Q16 9/7 fold and every final PreparedTileComponent field/error.
-Its original private with-kernel body shares these real stages and exposes the
-explicit None-kernel guarantee; no proof-only executable coordinator is added.
+Its original private with-kernel body shares these real stages; the complete
+native None/Some extension below preserves the original None result.
 All public native malformed-input and resource cases remain modeled rejection,
 not header/normalization/coverage/budget/success/trace preconditions.
 The prepared-to-tile getter also has exact full-field/sample semantics.
@@ -382,11 +382,52 @@ Seven exact inventory recipes bind those complete returned objects to their
 actual plans, precincts, styles, planes, coordinates, fractions, selected counts,
 detail indices and decoded-byte cap. Negative tests reject incorrect listed
 models, unrelated or partial results, constant/reordered native inputs and
-success-only substitutions. The private with-kernel implementation remains a
-context link, not an unconditional Some-kernel contract: a regression explicitly
-rejects that promotion. No generic expression or implication matcher was added.
+success-only substitutions. The standard entry does not claim the generalized
+private producer under a standard-only model. No generic expression or
+implication matcher was added.
 
-F6 remains open: Some-kernel/arbitrary profiles, general MCT paths and the actual
+### Complete native arbitrary kernels and None/Some preparation
+
+The actual `inverse_arbitrary`, horizontal/vertical/2D arbitrary entry points
+and their shared production stages now have complete unconditional native
+Result relations. The raw kernel/step/coefficient views bind actual flags,
+full bytes and vectors. Interleave errors and singleton truncating half precede
+scaling; missing/zero scaling and every integer/binary32/binary64/binary128
+coefficient conversion, reverse-step order, parity, sample extension, source
+sum, checked wide arithmetic and exact final/partial buffers are included.
+No valid descriptor, normalized shape/precision, successful lifting operation
+or execution trace is a premise.
+
+The Q32 model distinguishes native truncating division, ties-even binary
+coefficient conversion, the existing excessive-right-shift zero cutoff, and
+the signed lifting bias before arithmetic shifting. Explicit checked-result
+matches, proved shift bounds and a faithful explicit zero/one rounding
+increment expose the existing semantics without adding trust or proof limits.
+The nonresizing lifting bodies use mutable slices and retain one executable
+body, actual update order and late-error partial writes.
+
+The actual `prepare_tile_component_with_kernel` now unconditionally equals
+`part2_prepare_component`; the former standard models are exact None wrappers
+of the same shared semantics. Every native style/kernel combination is
+admitted: style selects quantization reversibility, a supplied kernel selects
+the actual inverse operation, and the existing fraction mismatch rejects only
+after that operation. Zero-resolution paths do not invent kernel validation.
+The multilevel fold and every final field/error remain complete, including
+the distinct nine-byte working sample/visited charge.
+
+Native regressions cover all 256 kinds, four physical-width hints and all
+flag/parity/reversibility combinations in 32,768 contexts, independent
+integer-rational Q32 rounding and binary-layout edges, exact exponent-127
+rejection, reverse-step parity, ignored/unvisited defects, late partial writes
+and real None/Some preparation/fraction/budget error order. Twenty-one finite
+exact producer/model/result/input recipes bind every newly claimed scalar,
+sequence, plane, partial buffer and preparation stage. Negative tests reject
+wrong native views/flags/counts/caps, partial or success-only results and a
+wrong primary clause followed by a correct duplicate. Whole-production
+verification and targeted inventory tests pass; complete frozen numerical,
+resource and hosted qualification remain separate acceptance gates.
+
+F6 remains open: general MCT paths and the actual
 whole-decoder composed
 coefficient-to-component-sample bridge are not
 established here. Whole tile-sample-to-image assembly does not close those gaps.

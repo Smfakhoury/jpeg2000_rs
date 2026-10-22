@@ -548,6 +548,105 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_all_native_arbitrary_kernel_and_preparation_results(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(item for item in original_coverage["requirements"]
+                     if item["id"] == "part2-complete-native-arbitrary-kernel-preparation")
+        read_text = Path.read_text
+        cases = (
+            ("src/transform.rs", "inverse_arbitrary", "sequence_outcome", "part2_inverse_arbitrary",
+             (("low@, high@", "high@, low@"), ("low_pass_first,", "false,"), ("raw_kernel_view(*kernel)", "raw_kernel_view(*unrelated)"))),
+            ("src/transform.rs", "inverse_horizontal_arbitrary", "reconstruction_outcome", "part2_atk_inverse_horizontal",
+             (("wavelet_band_view(low)", "wavelet_band_view(high)"), ("output_width,", "0,"), ("!crate::codestream::raw_kernel_view(*kernel).0", "false"), ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"))),
+            ("src/transform.rs", "inverse_vertical_arbitrary", "reconstruction_outcome", "part2_atk_inverse_vertical",
+             (("wavelet_band_view(high)", "wavelet_band_view(low)"), ("output_height,", "0,"), ("!crate::codestream::raw_kernel_view(*kernel).0", "false"), ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"))),
+            ("src/transform.rs", "inverse_level_arbitrary", "reconstruction_outcome", "part2_atk_inverse_level",
+             (("wavelet_level_view(level)", "wavelet_level_view(unrelated)"), ("raw_kernel_view(*kernel)", "raw_kernel_view(*unrelated)"), ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"))),
+            ("src/transform.rs", "apply_arbitrary_steps", None, "part2_atk_steps",
+             (("old(output)@", "unrelated@"), ("raw_kernel_view(*kernel).6.len()", "0"), ("low_pass_first,", "false,"))),
+            ("src/transform.rs", "apply_arbitrary_step", None, "part2_atk_step",
+             (("old(output)@", "unrelated@"), ("raw_kernel_step_view(*step)", "raw_kernel_step_view(*unrelated)"), ("low_pass_first, update_odd", "update_odd, low_pass_first"))),
+            ("src/transform.rs", "arbitrary_reversible_target", None, "part2_atk_reversible_target",
+             (("output@, target", "output@, 0"), ("raw_kernel_step_view(*step)", "raw_kernel_step_view(*unrelated)"), ("raw_kernel_view(*kernel)", "raw_kernel_view(*unrelated)"))),
+            ("src/transform.rs", "arbitrary_irreversible_target", None, "part2_atk_irreversible_target",
+             (("output@, target", "output@, 0"), ("raw_kernel_step_view(*step)", "raw_kernel_step_view(*unrelated)"), ("raw_kernel_view(*kernel)", "raw_kernel_view(*unrelated)"))),
+            ("src/transform.rs", "lifting_source_sum", None, "part2_atk_source_sum",
+             (("samples@", "unrelated@"), ("target, coefficient, offset", "coefficient, target, offset"), ("whole_sample_filter, whole_sample_extension", "whole_sample_extension, whole_sample_filter"))),
+            ("src/transform.rs", "extended_sample", None, "part2_atk_extended",
+             (("samples@", "unrelated@"), ("original_index,", "0,"), ("whole_sample_extension)", "false)"))),
+            ("src/transform.rs", "coefficient_integer", None, "part2_atk_integer",
+             (("raw_kernel_coefficient_view(coefficient)", "raw_kernel_coefficient_view(unrelated)"), ("coefficient_type)", "0)"))),
+            ("src/transform.rs", "coefficient_fixed", None, "part2_atk_fixed_coefficient",
+             (("raw_kernel_coefficient_view(coefficient)", "raw_kernel_coefficient_view(unrelated)"), ("coefficient_type)", "0)"))),
+            ("src/transform.rs", "bytes_to_u128", None, "part2_atk_bytes_prefix",
+             (("bytes@, 16", "bytes@, 0"), ("bytes@", "unrelated@"))),
+            ("src/transform.rs", "binary_to_fixed", None, "part2_atk_binary_format",
+             (("bits, total_bits", "0, total_bits"), ("exponent_bits, fraction_bits", "fraction_bits, exponent_bits"), ("fraction_bits, bias", "fraction_bits, 0"))),
+            ("src/transform.rs", "fixed_from_binary_q32", None, "part2_atk_binary_q32",
+             (("negative,", "false,"), ("significand,", "0,"), ("binary_exponent)", "0)"))),
+            ("src/transform.rs", "fixed_mul_q32", None, "part2_atk_fixed_mul",
+             (("value, factor", "factor, value"), ("value, factor", "value, 0"))),
+            ("src/transform.rs", "fixed_div_q32", None, "part2_atk_fixed_div",
+             (("value, divisor", "divisor, value"), ("value, divisor", "value, 0"))),
+            ("src/transform.rs", "round_shift_i128", None, "part2_atk_round_shift",
+             (("value, shift", "value, 0"), ("value, shift", "0, shift"))),
+            ("src/decode.rs", "prepare_tile_component_with_kernel", "prepared_component_outcome", "part2_prepare_component",
+             (("prepare_plan_view(plan)", "prepare_plan_view(unrelated)"), ("prepare_precincts_view(precincts@)", "prepare_precincts_view(unrelated@)"), ("arbitrary_kernel_option(kernel)", "arbitrary_kernel_option(None)"), ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"))),
+            ("src/decode.rs", "reconstruct_prepare_working", "prepare_fold_outcome", "part2_prepare_reconstruct",
+             (("working_bands_view(working@)", "working_bands_view(unrelated@)"), ("arbitrary_kernel_option(kernel)", "arbitrary_kernel_option(None)"), ("reversible,", "true,"))),
+            ("src/decode.rs", "reconstruct_prepare_resolution", "prepare_fold_outcome", "part2_prepare_resolution",
+             (("before@", "unrelated@"), ("plan.subbands@", "unrelated@"), ("direction, reversible", "direction, true"), ("arbitrary_kernel_option(kernel)", "arbitrary_kernel_option(None)"))),
+        )
+        self.assertEqual(len(cases), 21)
+        for relative, symbol, projection, model, arguments in cases:
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            reference = {"path": relative, "symbol": symbol}
+            self.assertIn(reference, entry["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / relative
+            original = source.read_text()
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            mutable = symbol in ("apply_arbitrary_steps", "apply_arbitrary_step")
+            expression = "(result, final(output)@)" if mutable else f"{projection}(result)" if projection else "result"
+            mutations = [
+                (f"ensures {expression}", "ensures result.is_ok()"),
+                (f"ensures {expression}", f"ensures result.is_ok() ==> {expression}"),
+                (f"ensures {expression}", "ensures unrelated"),
+                (f"crate::specs::{model}(", "crate::specs::part2_atk_fixed_mul(" if model != "part2_atk_fixed_mul" else "crate::specs::part2_atk_fixed_div("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ]
+            if projection:
+                mutations.extend(((expression, f"{projection}(unrelated)"), (expression, "unlisted_projection(result)")))
+            if mutable:
+                mutations.extend((("final(output)@", "old(output)@"), ("final(output)@", "final(unrelated)@")))
+            for before, after in mutations:
+                self.assertIn(before, contract)
+                changed = contract.replace(before, after, 1)
+                variants = [changed]
+                if (before, after) in arguments:
+                    closing = re.search(r"\)\s*,?\s*\)\s*\]", changed)
+                    original_closing = re.search(r"\)\s*,?\s*\)\s*\]", contract)
+                    assert closing is not None and original_closing is not None
+                    variants.append(changed[:closing.start()] + "\n"
+                        + contract[contract.index("ensures") + len("ensures"):original_closing.start()]
+                        + changed[closing.start():])
+                for variant in variants:
+                    modified = original[:start] + variant + original[signature:]
+
+                    def altered(path, *args, **kwargs):
+                        return modified if path == source else read_text(path, *args, **kwargs)
+
+                    with self.subTest(symbol=symbol, after=after, duplicate=variant != changed), \
+                            mock.patch.object(Path, "read_text", altered), \
+                            self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                        framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_actual_selection_association_and_output_native_inputs(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         entry = next(item for item in original_coverage["requirements"]
