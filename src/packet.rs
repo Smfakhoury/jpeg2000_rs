@@ -4216,6 +4216,26 @@ pub fn decode_multi_code_block_packet(
     })
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn single_packet_state_view(
+        state:&CodeBlockPacketState,inclusion:&TagTree,zero:&TagTree,decoder:&Tier1CodeBlockDecoder,
+    )->crate::specs::Part1SinglePacketState {
+        crate::specs::Part1SinglePacketState {
+            state:code_block_packet_state_view(state),inclusion:tag_tree_view(inclusion),zero:tag_tree_view(zero),
+            decoder:crate::tier1::tier1_decoder_state(decoder),
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,single_packet_state_view(final(state),final(inclusion_tree),final(zero_bitplane_tree),final(decoder)))
+        ==crate::specs::part1_single_code_block_packet(
+            single_packet_state_view(old(state),old(inclusion_tree),old(zero_bitplane_tree),old(decoder)),
+            payload@,context,crate::limits::resource_packet_header_byte_limit(limits),
+            crate::limits::resource_code_block_pass_limit(limits),crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits),crate::limits::resource_work_limit(limits)),
+))]
 pub fn decode_single_code_block_packet(
     payload: &[u8],
     state: &mut CodeBlockPacketState,
@@ -4225,35 +4245,38 @@ pub fn decode_single_code_block_packet(
     decoder: &mut Tier1CodeBlockDecoder,
     limits: &ResourceLimits,
 ) -> Result<Option<CodeBlockBodyDecode>, DecodeError> {
-    let mut reader = PacketBitReader::new(payload, limits)?;
+    let mut reader = packet_reader_new(payload, limits)?;
     if !reader.read_bit()? {
         reader.align_to_byte();
         if reader.bytes_consumed() != payload.len() {
-            return Err(DecodeError::malformed(
-                reader.bytes_consumed() as u64,
+            return Err(packet_reader_error(
+                reader.bytes_consumed(),
                 MalformedKind::TrailingData,
             ));
         }
         return Ok(None);
     }
-    let contribution = decode_code_block_contribution(
+    let contribution = match decode_code_block_contribution(
         state,
         inclusion_tree,
         zero_bitplane_tree,
         context,
         &mut reader,
-    )?
-    .ok_or_else(|| {
-        DecodeError::malformed(
-            reader.bytes_consumed() as u64,
-            MalformedKind::InvalidPacketHeader,
-        )
-    })?;
+    )? {
+        Some(contribution) => contribution,
+        None => {
+            return Err(packet_reader_error(
+                reader.bytes_consumed(),
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+    };
     reader.align_to_byte();
     let body_offset = reader.bytes_consumed();
-    let body = payload
-        .get(body_offset..)
-        .ok_or_else(|| DecodeError::malformed(body_offset as u64, MalformedKind::Truncated))?;
+    let body = match payload.get(body_offset..) {
+        Some(body) => body,
+        None => return Err(packet_reader_error(body_offset, MalformedKind::Truncated)),
+    };
     Ok(Some(decode_code_block_contribution_body(
         decoder,
         &contribution,

@@ -1,5 +1,32 @@
 # Specification audit guide
 
+## Frozen remaining public packet/JPIP boundary profile
+
+This branch starts at unchanged `b5b0685`. The remaining native entry bodies are
+`decode_single_code_block_packet`, `decode_multi_code_block_packet`,
+`decode_jpip_precinct_packet_inner` and its actual
+`decode_jpip_precinct_packet` transaction. These complete the original F5L/F5H
+packet boundaries above the already-proved sole reader/tree/header, mixed body
+and progression producers, not an image/parser theorem or normative endorsement.
+
+Single-block admission uses the validated whole-payload reader (not prefix
+admission), exact absent-packet trailing-data rejection, real header/tree state
+and actual transactional mixed body decoding. It does not roll back prior
+header/tree commits on a later body error. Multi-block admission retains raw
+shared trees, physical arrays, all contexts, native marker differences, whole
+body preflight and every earlier block's effects; its local arithmetic/header
+errors use the caller offset, unlike the precinct helpers' zero-offset policy.
+SOP presence there does not validate its sequence number.
+
+JPIP writes all actual context layers and constructs its real inline packet
+input. Its outer transaction clones/restores only states, contexts and subbands;
+complete decoder preservation must follow from the real skipped-body path,
+not a supplied clone/decoder result or an assumed rollback. All raw metadata,
+malformed vectors/trees/retained decoder states, flags, caps and first-error
+effects are admitted without normalization, success, budget or trace premises.
+Faithful native subband cloning must preserve every scalar and both complete
+raw tag trees. Unobserved readonly template metadata is not decoder output.
+
 ## Frozen remaining actual progression profile
 
 The next actual producers are `PacketGrid` construction/indexing,

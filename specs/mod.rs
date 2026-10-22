@@ -13,6 +13,8 @@ mod packet_progression;
 pub use packet_progression::*;
 mod packet_tile;
 pub use packet_tile::*;
+mod packet_boundaries;
+pub use packet_boundaries::*;
 mod header;
 pub use header::*;
 mod tag_tree;
