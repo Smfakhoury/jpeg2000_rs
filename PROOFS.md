@@ -307,6 +307,17 @@ Read each contract according to its inputs and postcondition:
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
+The cleanup-caller inventory binds only three unconditional native stage
+contracts: complete preparation, complete decoder store state and complete
+plane duplication. Their exact result/model, old/final decoder view, actual
+planes, counters and work-cap arguments are checked through the existing
+conservative mechanisms. Negative tests reject unrelated, partial, reordered
+or constant bindings. The actual cleanup-only caller remains a scoped
+`proof_ref`: a regression explicitly rejects promoting its conditional
+absent-refinement theorem into an unconditional `contract_ref`. No generic
+implication matcher was introduced. The code-block pass-limit owner projection
+only specifies the existing getter; its runtime body and policy are unchanged.
+
 `normalize_component` has an unconditional complete result relation for
 supplied typed integer components, target dimensions and reference-grid
 origins. It covers every output sample, either signed/unsigned representation,

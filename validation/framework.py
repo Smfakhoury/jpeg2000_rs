@@ -334,6 +334,8 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
                 ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_metadata_outcome",
                 ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_plane_outcome",
+                ("src/tier1.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare_outcome",
+                ("src/tier1.rs", "duplicate"): "code_block_plane_outcome",
                 ("src/tier1.rs", "code_block_plane_from_dimensions"): "code_block_plane_outcome",
                 ("src/tier1.rs", "coefficient_from_magnitude"): "coefficient_raw_outcome",
                 ("src/tier1.rs", "coefficient"): "coefficient_raw_outcome",
@@ -364,6 +366,9 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
                 ("src/tier1.rs", "reconstruct_ht_magnitude"): "ht_reconstruct_numeric_magnitude",
                 ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_cleanup_plane",
+                ("src/tier1.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare",
+                ("src/tier1.rs", "store_ht_coefficient_symbols"): "ht_store_coefficient_symbols",
+                ("src/tier1.rs", "duplicate"): "tier1_duplicate_plane",
                 ("src/tier1.rs", "code_block_plane_from_dimensions"): "tier1_empty_plane",
                 ("src/tier1.rs", "coefficient_from_magnitude"): "tier1_coefficient_new_outcome",
                 ("src/tier1.rs", "complete_ht_kappa"): "ht_complete_kappa",
@@ -401,6 +406,9 @@ def validate_normative_coverage(
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
             reader_contracts = {
+                "Tier1CodeBlockDecoder::store_ht_coefficient_symbols": (
+                    "tier1_decoder_state", "ht_store_coefficient_symbols",
+                ),
                 "HtCleanupPlaneReconstruction::sample": ("ht_plane_view", "ht_plane_sample"),
                 "HtCleanupPlaneReconstruction::quad": ("ht_plane_view", "ht_plane_quad"),
                 "HtCleanupPlaneReconstruction::finish": ("ht_plane_view", "ht_plane_finish"),
@@ -520,6 +528,33 @@ def validate_normative_coverage(
                     contract,
                 ) is not None
             )
+            cleanup_contract_arguments = {
+                "prepare_ht_cleanup_symbols": (
+                    "ht_cleanup_prepare",
+                    r"code_block_plane_view\s*\(\s*plane\s*\)\s*,\s*"
+                    r"ht_cleanup_segment_view\s*\(\s*&\s*cleanup\s*\)\s*,\s*"
+                    r"maximum_passes\s*,\s*maximum_u\s*,\s*skipped_bitplanes\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::store_ht_coefficient_symbols": (
+                    "ht_store_coefficient_symbols",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
+                    r"code_block_plane_view\s*\(\s*&\s*output\s*\)\s*,\s*"
+                    r"code_block_plane_view\s*\(\s*&\s*cleanup_plane\s*\)\s*,\s*"
+                    r"statistics\s*,\s*decoded_bitplanes\s*,\s*pass_count\s*,\s*bytes\s*,\s*has_refinement",
+                ),
+                "CodeBlockPlane::duplicate": (
+                    "tier1_duplicate_plane", r"code_block_plane_view\s*\(\s*self\s*\)",
+                ),
+            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            cleanup_arguments_bound = (
+                cleanup_contract_arguments is None
+                or re.search(
+                    r"crate::specs::" + re.escape(cleanup_contract_arguments[0])
+                    + r"\s*\(\s*" + cleanup_contract_arguments[1] + r"\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -538,6 +573,7 @@ def validate_normative_coverage(
                     or (mutating and (state_result is None or not complete_state))
                     or not metadata_arguments_bound
                     or not palette_arguments_bound
+                    or not cleanup_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))
