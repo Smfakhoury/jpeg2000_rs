@@ -1,6 +1,29 @@
 # Specification audit guide
 
-### Actual raw palette lookup
+## Frozen F5H cleanup symbol-caller composition
+
+The next bounded caller profile is the **cleanup-only** branch of the actual
+`Tier1CodeBlockDecoder::decode_ht_coefficient_symbols`: the supplied parsed
+segment has `refinement == None`. This is an explicit format-profile selection,
+not a valid-stream, normalized-coefficient, successful-decode or budget premise.
+The real metadata producer's result feeds the real numerical reconstruction;
+metadata is not a theorem input. Metadata decoding precedes pass-to-bitplane
+conversion and subtraction. Reconstruction and the complete cleanup-plane
+duplicate precede clearing retained refinement bytes/passes. Plane/stencil/
+reader rejection therefore leaves the entire decoder unchanged. The final
+assignments precede checked set/pass/segment/byte accounting, so a later overflow
+can expose earlier committed fields. Every decoder field, including untouched
+legacy/MQ/bitplane state, must be framed.
+
+The shared cleanup preparation and final state-store stages are unconditional
+over their native inputs. The original caller's theorem is conditional only on
+the selected absent-refinement profile; a supplied refinement segment is
+explicitly outside this stage, not represented by an assumed refinement trace.
+The public byte-input dispatch/pass-limit preflight, actual refinement plane
+passes, and placeholder/replacement/mixed sequencing remain separate closure
+obligations. No additional foreign source edits are authorized here.
+
+## Actual raw palette lookup
 
 `part2_palette_value` uses the stored entry count, actual physical column
 descriptor sequence and actual physical signed-value sequence. It first checks

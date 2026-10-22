@@ -3798,6 +3798,63 @@ fn copy_ht_refinement_bytes(input: &[u8]) -> Result<Vec<u8>, DecodeError> {
     Ok(output)
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    spec fn ht_cleanup_prepare_outcome(result: Result<(CodeBlockPlane, CodeBlockPlane, Tier1PassStatistics, u16), DecodeError>)
+        -> Result<(crate::specs::Tier1RawPlane, crate::specs::Tier1RawPlane, Tier1PassStatistics, u16), DecodeError> {
+        match result {
+            Err(error) => Err(error),
+            Ok((plane, cleanup, statistics, bitplanes)) =>
+                Ok((code_block_plane_view(&plane), code_block_plane_view(&cleanup), statistics, bitplanes)),
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_cleanup_prepare_outcome(result) == crate::specs::ht_cleanup_prepare(
+        code_block_plane_view(plane), ht_cleanup_segment_view(&cleanup), maximum_passes,
+        maximum_u, skipped_bitplanes, crate::limits::resource_work_limit(limits)),
+))]
+fn prepare_ht_cleanup_symbols(
+    plane: &CodeBlockPlane,
+    cleanup: HtCleanupSegment<'_>,
+    maximum_passes: u32,
+    maximum_u: u8,
+    skipped_bitplanes: u16,
+    limits: &ResourceLimits,
+) -> Result<(CodeBlockPlane, CodeBlockPlane, Tier1PassStatistics, u16), DecodeError> {
+    let metadata = decode_ht_cleanup_segment_metadata(
+        cleanup,
+        plane.width(),
+        plane.height(),
+        maximum_u,
+        limits,
+    )?;
+    let rounded_passes = maximum_passes
+        .checked_add(2)
+        .ok_or_else(arithmetic_overflow)?;
+    let significant = rounded_passes
+        .checked_div(3)
+        .ok_or_else(arithmetic_overflow)?;
+    if significant > u32::from(u16::MAX) {
+        return Err(arithmetic_overflow());
+    }
+    let significant_bitplanes = significant as u16;
+    let decoded_bitplanes = significant_bitplanes
+        .checked_sub(skipped_bitplanes)
+        .ok_or_else(arithmetic_overflow)?;
+    let (output, statistics) = reconstruct_ht_cleanup_plane(
+        plane,
+        cleanup,
+        &metadata,
+        maximum_u,
+        decoded_bitplanes,
+        limits,
+    )?;
+    let duplicate = output.duplicate()?;
+    Ok((output, duplicate, statistics, decoded_bitplanes))
+}
+
 fn decode_ht_refinement_plane(
     cleanup_plane: &CodeBlockPlane,
     segment: HtRefinementSegment<'_>,
@@ -4353,6 +4410,36 @@ pub struct Tier1CodeBlockDecoder {
     ht_magnitude_bound: u8,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn tier1_decoder_state(decoder: &Tier1CodeBlockDecoder) -> crate::specs::Tier1DecoderState {
+        crate::specs::Tier1DecoderState {
+            plane: code_block_plane_view(&decoder.plane), orientation: decoder.orientation,
+            style: decoder.style, maximum_passes: decoder.maximum_passes, next_pass: decoder.next_pass,
+            bitplane: decoder.bitplane, zero_bitplanes: decoder.zero_bitplanes,
+            bitplane_state: decoder.bitplane_state, mq_context_state: decoder.mq_context_state,
+            reset_contexts_before_mq: decoder.reset_contexts_before_mq,
+            decoded_segments: decoder.decoded_segments, decoded_bytes: decoder.decoded_bytes,
+            legacy_segment: match decoder.legacy_segment {
+                None => None,
+                Some(legacy) => Some(crate::specs::Tier1LegacyFrame {
+                    plane: code_block_plane_view(&legacy.plane), next_pass: legacy.next_pass, bitplane: legacy.bitplane,
+                    bitplane_state: legacy.bitplane_state, mq_context_state: legacy.mq_context_state,
+                    reset_contexts_before_mq: legacy.reset_contexts_before_mq,
+                    decoded_segments: legacy.decoded_segments, decoded_bytes: legacy.decoded_bytes,
+                    input: legacy.input@, passes: legacy.passes,
+                }),
+            },
+            legacy_decode_work: decoder.legacy_decode_work,
+            ht_cleanup_plane: match decoder.ht_cleanup_plane { None => None, Some(plane) => Some(code_block_plane_view(&plane)) },
+            ht_refinement_data: decoder.ht_refinement_data@, ht_refinement_passes: decoder.ht_refinement_passes,
+            ht_decoded_bitplanes: decoder.ht_decoded_bitplanes,
+            ht_current_set_has_cleanup: decoder.ht_current_set_has_cleanup, ht_sets_seen: decoder.ht_sets_seen,
+            allow_multiple_ht_sets: decoder.allow_multiple_ht_sets, ht_magnitude_bound: decoder.ht_magnitude_bound,
+        }
+    }
+}
+
 impl Tier1PassStatistics {
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 0, count),
@@ -4895,6 +4982,12 @@ impl Tier1CodeBlockDecoder {
         )
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures ht_block_segments_view(&segments).refinement.is_none() ==>
+            (result, tier1_decoder_state(final(self))) == crate::specs::ht_cleanup_symbols_only(
+                tier1_decoder_state(old(self)), ht_block_segments_view(&segments),
+                pass_count, maximum_u, skipped_bitplanes, crate::limits::resource_work_limit(limits)),
+    ))]
     fn decode_ht_coefficient_symbols(
         &mut self,
         segments: HtBlockSegments<'_>,
@@ -4903,31 +4996,14 @@ impl Tier1CodeBlockDecoder {
         skipped_bitplanes: u16,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
-        let metadata = decode_ht_cleanup_segment_metadata(
-            segments.cleanup(),
-            self.plane.width(),
-            self.plane.height(),
-            maximum_u,
-            limits,
-        )?;
-        let significant_bitplanes = self
-            .maximum_passes
-            .checked_add(2)
-            .and_then(|passes| passes.checked_div(3))
-            .and_then(|value| u16::try_from(value).ok())
-            .ok_or_else(arithmetic_overflow)?;
-        let decoded_bitplanes = significant_bitplanes
-            .checked_sub(skipped_bitplanes)
-            .ok_or_else(arithmetic_overflow)?;
-        let (plane, statistics) = reconstruct_ht_cleanup_plane(
+        let (plane, cleanup_plane, statistics, decoded_bitplanes) = prepare_ht_cleanup_symbols(
             &self.plane,
             segments.cleanup(),
-            &metadata,
+            self.maximum_passes,
             maximum_u,
-            decoded_bitplanes,
+            skipped_bitplanes,
             limits,
         )?;
-        let cleanup_plane = plane.duplicate()?;
         let mut output = plane;
         let mut statistics = statistics;
         self.ht_refinement_data.clear();
@@ -4948,6 +5024,36 @@ impl Tier1CodeBlockDecoder {
             self.ht_refinement_data = copy_ht_refinement_bytes(refinement.encoded())?;
             self.ht_refinement_passes = refinement_passes;
         }
+        self.store_ht_coefficient_symbols(
+            output,
+            cleanup_plane,
+            statistics,
+            decoded_bitplanes,
+            pass_count,
+            segments.bytes(),
+            segments.refinement().is_some(),
+        )
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "This shared production commit stage preserves the actual ordered fields and accounting inputs."
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_store_coefficient_symbols(
+            tier1_decoder_state(old(self)), code_block_plane_view(&output), code_block_plane_view(&cleanup_plane),
+            statistics, decoded_bitplanes, pass_count, bytes, has_refinement),
+    ))]
+    fn store_ht_coefficient_symbols(
+        &mut self,
+        output: CodeBlockPlane,
+        cleanup_plane: CodeBlockPlane,
+        statistics: Tier1PassStatistics,
+        decoded_bitplanes: u16,
+        pass_count: u32,
+        bytes: u32,
+        has_refinement: bool,
+    ) -> Result<Tier1SegmentDecode, DecodeError> {
         self.plane = output;
         self.ht_cleanup_plane = Some(cleanup_plane);
         self.ht_current_set_has_cleanup = true;
@@ -4962,19 +5068,15 @@ impl Tier1CodeBlockDecoder {
             .ok_or_else(arithmetic_overflow)?;
         self.decoded_segments = self
             .decoded_segments
-            .checked_add(if segments.refinement().is_some() {
-                2
-            } else {
-                1
-            })
+            .checked_add(if has_refinement { 2 } else { 1 })
             .ok_or_else(arithmetic_overflow)?;
         self.decoded_bytes = self
             .decoded_bytes
-            .checked_add(u64::from(segments.bytes()))
+            .checked_add(u64::from(bytes))
             .ok_or_else(arithmetic_overflow)?;
         Ok(Tier1SegmentDecode {
             passes: pass_count,
-            bytes: segments.bytes(),
+            bytes,
             statistics,
         })
     }
@@ -5984,8 +6086,11 @@ impl CodeBlockPlane {
         code_block_plane_from_dimensions(width, height)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures code_block_plane_outcome(result) == crate::specs::tier1_duplicate_plane(code_block_plane_view(self)),
+    ))]
     fn duplicate(&self) -> Result<Self, DecodeError> {
-        let mut output = Self::new(self.width, self.height)?;
+        let mut output = code_block_plane_from_dimensions(self.width, self.height)?;
         if output.coefficients.len() != self.coefficients.len() {
             return Err(invalid_code_block());
         }
@@ -5994,6 +6099,10 @@ impl CodeBlockPlane {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.coefficients.len(),
+                    output.width == self.width, output.height == self.height,
+                    output.coefficients.len() == self.coefficients.len(),
+                    forall |i: int| 0 <= i < index ==> coefficient_raw_view(output.coefficients@[i])
+                        == coefficient_raw_view(self.coefficients@[i]),
                 decreases self.coefficients.len() - index,
             )
         )]
@@ -6007,6 +6116,8 @@ impl CodeBlockPlane {
                 .ok_or_else(invalid_code_block)?;
             index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(code_block_plane_view(&output).coefficients =~= code_block_plane_view(self).coefficients); }
         Ok(output)
     }
 
@@ -7095,6 +7206,211 @@ mod tests {
                 kind: MalformedKind::ArithmeticOverflow,
             })
         );
+    }
+
+    fn cleanup_caller_decoder() -> Tier1CodeBlockDecoder {
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        let mut decoder =
+            Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Hh, style).unwrap();
+        decoder.plane.coefficients[0] = CoefficientState {
+            magnitude: 17,
+            magnitude_high: [3, 5, 7, 11, 13],
+            legacy_bitplane: Some(u16::MAX),
+            significant: false,
+            negative: true,
+            refined: true,
+        };
+        decoder.next_pass = 4;
+        decoder.decoded_segments = 7;
+        decoder.decoded_bytes = 11;
+        decoder.ht_sets_seen = 9;
+        decoder.ht_refinement_data = vec![77, 88];
+        decoder.ht_refinement_passes = 2;
+        decoder.ht_decoded_bitplanes = 19;
+        decoder.ht_cleanup_plane = Some(decoder.plane.clone());
+        decoder.legacy_decode_work = 123;
+        decoder.legacy_segment = Some(LegacySegmentState {
+            plane: decoder.plane.clone(),
+            next_pass: 11,
+            bitplane: 17,
+            bitplane_state: None,
+            mq_context_state: None,
+            reset_contexts_before_mq: true,
+            decoded_segments: 13,
+            decoded_bytes: 19,
+            input: vec![0xde, 0xad],
+            passes: 23,
+        });
+        decoder
+    }
+
+    fn literal_cleanup_coefficient() -> CodeBlockPlane {
+        CodeBlockPlane {
+            width: 1,
+            height: 1,
+            coefficients: vec![CoefficientState {
+                magnitude: 1,
+                magnitude_high: [0; 5],
+                legacy_bitplane: None,
+                significant: true,
+                negative: true,
+                refined: false,
+            }],
+        }
+    }
+
+    #[test]
+    fn ht_cleanup_caller_composes_real_metadata_numeric_duplicate_and_complete_decoder_state() {
+        let limits = ResourceLimits::default();
+        let segments = parse_ht_block_segments(&[0, 0x63, 0], None, &limits).unwrap();
+        let mut decoder = cleanup_caller_decoder();
+        let mut expected = decoder.clone();
+        expected.plane = literal_cleanup_coefficient();
+        expected.ht_cleanup_plane = Some(literal_cleanup_coefficient());
+        expected.ht_refinement_data.clear();
+        expected.ht_refinement_passes = 0;
+        expected.ht_decoded_bitplanes = 1;
+        expected.ht_current_set_has_cleanup = true;
+        expected.ht_sets_seen = 10;
+        expected.next_pass = 5;
+        expected.decoded_segments = 8;
+        expected.decoded_bytes = 14;
+        let result = decoder
+            .decode_ht_coefficient_symbols(segments, 1, 1, 0, &limits)
+            .unwrap();
+        assert_eq!(
+            result,
+            Tier1SegmentDecode {
+                passes: 1,
+                bytes: 3,
+                statistics: Tier1PassStatistics {
+                    coefficients_scanned: 1,
+                    coding_symbols: 1,
+                    newly_significant: 1,
+                    refined_coefficients: 0,
+                    run_mode_columns: 0,
+                }
+            }
+        );
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn ht_cleanup_caller_preserves_metadata_before_native_pass_error_order_and_full_failure_frame()
+    {
+        let limits = ResourceLimits::default();
+        let bad_metadata = parse_ht_block_segments(&[2, 0], None, &limits).unwrap();
+        let valid = parse_ht_block_segments(&[0, 0x63, 0], None, &limits).unwrap();
+        let mut decoder = cleanup_caller_decoder();
+        decoder.maximum_passes = u32::MAX;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_ht_coefficient_symbols(bad_metadata, 1, 1, 0, &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        for (maximum_passes, skipped) in [(u32::MAX, 0), (196606, 0), (1, 2)] {
+            let mut decoder = cleanup_caller_decoder();
+            decoder.maximum_passes = maximum_passes;
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_ht_coefficient_symbols(valid, 1, 1, skipped, &limits),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        let mut decoder = cleanup_caller_decoder();
+        decoder.maximum_passes = 0;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_ht_coefficient_symbols(valid, 1, 1, 0, &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_cleanup_caller_metadata_work_failure_retains_every_decoder_field() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(23)
+            .unwrap();
+        let segments = parse_ht_block_segments(&[0xff, 3, 0], None, &limits).unwrap();
+        let mut decoder = cleanup_caller_decoder();
+        decoder.plane = CodeBlockPlane::new(5, 5).unwrap();
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_ht_coefficient_symbols(segments, 1, 1, 0, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 23,
+                actual: 24,
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_cleanup_caller_accounting_failures_preserve_ordered_commits_not_rollback() {
+        let limits = ResourceLimits::default();
+        let segments = parse_ht_block_segments(&[0, 0x63, 0], None, &limits).unwrap();
+        for failure in 0..4 {
+            let mut decoder = cleanup_caller_decoder();
+            match failure {
+                0 => decoder.ht_sets_seen = u16::MAX,
+                1 => decoder.next_pass = u32::MAX,
+                2 => decoder.decoded_segments = u32::MAX,
+                _ => decoder.decoded_bytes = u64::MAX,
+            }
+            let mut expected = decoder.clone();
+            expected.plane = literal_cleanup_coefficient();
+            expected.ht_cleanup_plane = Some(literal_cleanup_coefficient());
+            expected.ht_refinement_data.clear();
+            expected.ht_refinement_passes = 0;
+            expected.ht_decoded_bitplanes = 1;
+            expected.ht_current_set_has_cleanup = true;
+            if failure > 0 {
+                expected.ht_sets_seen += 1;
+            }
+            if failure > 1 {
+                expected.next_pass += 1;
+            }
+            if failure > 2 {
+                expected.decoded_segments += 1;
+            }
+            assert_eq!(
+                decoder.decode_ht_coefficient_symbols(segments, 1, 1, 0, &limits),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+    }
+
+    #[test]
+    fn ht_cleanup_duplicate_preserves_full_raw_coefficients_and_rejects_bad_shapes() {
+        let decoder = cleanup_caller_decoder();
+        let duplicate = decoder.plane.duplicate().unwrap();
+        assert_eq!(duplicate, decoder.plane);
+        for plane in [
+            CodeBlockPlane {
+                width: 0,
+                height: 1,
+                coefficients: vec![CoefficientState::default()],
+            },
+            CodeBlockPlane {
+                width: 2,
+                height: 2,
+                coefficients: vec![CoefficientState::default()],
+            },
+            CodeBlockPlane {
+                width: 1,
+                height: 1,
+                coefficients: vec![CoefficientState::default(); 2],
+            },
+        ] {
+            let before = plane.clone();
+            assert_eq!(plane.duplicate(), Err(invalid_code_block()));
+            assert_eq!(plane, before);
+        }
     }
 
     fn plane_quad(x: u16, y: u16, significance: u8, u_base: u8) -> HtQuadMetadata {

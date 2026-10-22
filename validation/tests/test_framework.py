@@ -477,6 +477,80 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_cleanup_caller_stages_without_implication_fallback(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        selected_entry = next(
+            item for item in original_coverage["requirements"]
+            if item["id"] == "part15-cleanup-only-actual-symbol-caller"
+        )
+        conditional_caller = {
+            "path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols",
+        }
+        self.assertNotIn(conditional_caller, selected_entry["contract_refs"])
+        self.assertIn(conditional_caller, selected_entry["proof_refs"])
+        conditional_coverage = copy.deepcopy(original_coverage)
+        conditional_coverage["requirements"] = [copy.deepcopy(selected_entry)]
+        conditional_coverage["requirements"][0]["contract_refs"] = [conditional_caller]
+        with self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+            framework.validate_normative_coverage(conditional_coverage)
+        source = framework.ROOT / "src/tier1.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        for symbol, model, mutations in (
+            ("prepare_ht_cleanup_symbols", "ht_cleanup_prepare", (
+                ("ht_cleanup_prepare_outcome(result)", "ht_cleanup_prepare_outcome(unrelated)"),
+                ("ht_cleanup_prepare_outcome(result)", "code_block_plane_outcome(result)"),
+                ("ht_cleanup_prepare_outcome(result)", "result.is_ok()"),
+                ("code_block_plane_view(plane)", "code_block_plane_view(unrelated)"),
+                ("resource_work_limit(limits)", "resource_work_limit(unrelated)"),
+                ("skipped_bitplanes", "0"),
+            )),
+            ("Tier1CodeBlockDecoder::store_ht_coefficient_symbols", "ht_store_coefficient_symbols", (
+                ("(result,", "(unrelated,"),
+                ("(result,", "(result.is_ok(),"),
+                ("tier1_decoder_state(final(self))", "tier1_decoder_state(old(self))"),
+                ("tier1_decoder_state(old(self))", "tier1_decoder_state(final(self))"),
+                ("code_block_plane_view(&output)", "code_block_plane_view(&cleanup_plane)"),
+                ("has_refinement", "false"),
+                ("decoded_bitplanes", "0"),
+            )),
+            ("CodeBlockPlane::duplicate", "tier1_duplicate_plane", (
+                ("code_block_plane_outcome(result)", "code_block_plane_outcome(unrelated)"),
+                ("code_block_plane_outcome(result)", "ht_cleanup_prepare_outcome(result)"),
+                ("code_block_plane_outcome(result)", "result.is_ok()"),
+                ("code_block_plane_view(self)", "code_block_plane_view(unrelated)"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if item["id"] == "part15-cleanup-only-actual-symbol-caller"
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            reference = {"path": "src/tier1.rs", "symbol": symbol}
+            self.assertIn(reference, coverage["requirements"][0]["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            wrong_model = "ht_cleanup_prepare" if model != "ht_cleanup_prepare" else "tier1_duplicate_plane"
+            for before, after in (
+                *mutations,
+                (f"crate::specs::{model}(", f"crate::specs::{wrong_model}("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
     def test_inventory_binds_complete_palette_lookup_to_actual_result_and_inputs(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [
