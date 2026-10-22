@@ -430,6 +430,39 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_connected_selected_color_to_actual_result_and_exact_model(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-connected-typed-color-selection"
+        ]
+        self.assertEqual(len(coverage["requirements"]), 1)
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        source = framework.ROOT / "src/decode.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        end = re.search(r"\bfn\s+convert_selected_color\b", original).start()
+        start = original.rfind("#[cfg_attr", 0, end)
+        contract = original[start:end]
+        for before, after in (
+            ("ensures crate::color::converted_image_result(result)", "ensures crate::color::converted_image_result(unrelated)"),
+            ("ensures crate::color::converted_image_result(result)", "ensures unlisted_projection(result)"),
+            ("ensures crate::color::converted_image_result(result)", "ensures result.is_ok()"),
+            ("== crate::specs::color_convert_selected(", "== crate::specs::unlisted_model("),
+            ("== crate::specs::color_convert_selected(", "== crate::specs::color_crop_image("),
+            ("== crate::specs::color_convert_selected(", "== crate::specs::color_convert_jp2("),
+            ("== crate::specs::color_convert_selected(", "<= crate::specs::color_convert_selected("),
+        ):
+            self.assertIn(before, contract)
+            modified = original[:start] + contract.replace(before, after) + original[end:]
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_complete_crop_to_exact_full_result_models(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/color.rs"

@@ -319,6 +319,16 @@ contexts, alongside explicit native-boundary and identity-bypass cases.
 This proves cropping supplied converted pixels, not how the decoder chose
 the requested region or produced those pixels.
 
+The actual `convert_selected_color` caller now refines
+`color_convert_selected` from supplied typed components, color method, target
+rectangle and actual limits. It composes the real converter and crop
+contracts instead of assuming an unconnected converted image. Format,
+metadata, budget and sample errors precede target-coordinate subtraction;
+invalid target subtraction retains the existing `InvalidCodeBlock` error,
+while valid differences pass to the full crop semantics. Earlier compressed
+decoding, palette/channel-map application and selection-target derivation are
+not established by this typed-input composition theorem.
+
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
 channel order or valid plane lengths. Their result projections include every
