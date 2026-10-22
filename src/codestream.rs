@@ -1228,6 +1228,14 @@ verus! {
 }
 
 impl KernelCoefficient {
+    #[cfg(test)]
+    pub(crate) fn for_test(bits: u128, width: u8) -> Self {
+        Self {
+            bytes: bits.to_be_bytes(),
+            width,
+        }
+    }
+
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures result@ == raw_kernel_coefficient_view(*self).0,
     ))]
@@ -1253,6 +1261,21 @@ pub struct KernelLiftingStep {
 }
 
 impl KernelLiftingStep {
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        offset: i8,
+        exponent: u8,
+        residue: Option<KernelCoefficient>,
+        coefficients: Vec<KernelCoefficient>,
+    ) -> Self {
+        Self {
+            offset,
+            exponent,
+            residue,
+            coefficients,
+        }
+    }
+
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures result == raw_kernel_step_view(*self).0,
     ))]
@@ -1283,6 +1306,29 @@ impl KernelLiftingStep {
 }
 
 impl ArbitraryKernel {
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        reversible: bool,
+        coefficient_type: u8,
+        whole_sample_filter: bool,
+        initial_odd: bool,
+        whole_sample_extension: bool,
+        scaling: Option<KernelCoefficient>,
+        steps: Vec<KernelLiftingStep>,
+    ) -> Self {
+        Self {
+            index: u8::MAX,
+            reversible,
+            descriptor: u16::MAX,
+            coefficient_type,
+            whole_sample_filter,
+            initial_odd,
+            whole_sample_extension,
+            scaling,
+            steps,
+        }
+    }
+
     pub const fn index(&self) -> u8 {
         self.index
     }
