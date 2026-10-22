@@ -22,7 +22,7 @@ has been reconciled or proved.
 | T.800 (2024-07), core coding/JP2 | `part1_*`, marker/packet, geometry, MQ and transform models | Check encoded field widths, sample precision, signedness, coordinate grids and arithmetic domains against the selected reference. |
 | T.801 (2023-08), extensions/JPX | `part2_*`, ADS/ATK/NLT/CBD and composition models | Some syntax interpretation used acquired T.801 (2021). The selected 2023 reconciliation still requires authorized text; no missing clause numbers are invented here. |
 | Selected normalized composition profile | `part2_layer_input`, `part2_owned_layer_input`, `part2_source_over_pixel`, `part2_composition_geometry`, `part2_composition_layer_transition` | Normalization to 16 bits, channel/alpha construction, floor-scaled sampling, checked addresses, typed errors and work limits are explicit selected implementation policies, not blanket claims about all JPEG 2000 profiles. |
-| Supplied normalized layers and frame tables | `part2_render_layers`, `part2_image_from_planes`, `part2_select_frame` | Complete layer rendering and frame-instruction selection are separate input-relative stages. Timeline construction, compressed decoding and the bridge from selected instructions to decoded placements are not proved by these models. |
+| Supplied composition metadata and normalized layer results | `part2_build_timeline`, `part2_select_frame`, `part2_render_normalized_frame`, `part2_render_layers`, `part2_image_from_planes` | Whole timeline construction and complete indexed-layer-result-to-frame rendering are input-relative theorems. Compressed decoding and container interpretation/normalization are not proved by these models. |
 | T.808 (2026-06), JPIP | `part9_*` and databin/range models | The cited catalog record is not an acquired normative text or a completed edition audit. |
 | T.814 (2019-06), HTJ2K | `part15_*`, `valid_ht_*` and HT cleanup/refinement models | Separate coding semantics from implementation capacity bounds and generated-image qualification. |
 
@@ -97,16 +97,36 @@ starts afresh, and looping does not retain the preceding loop's canvas.
 Instruction-level persistence and `next_reuse` are preserved as input metadata;
 their interpretation by `build_timeline` is not established by selection.
 
-These are two complete stages of F3, **not full F3 closure**. Remaining work is
-the production timeline builder (set/repetition expansion, layer exhaustion,
-reuse assignments/conflicts, grouping/timing and frame/work errors) and the
-input-relative connection from selected layer references through supplied
-normalized layer results to the final render. Parsing, compressed-data
-correctness, normalization, registration, opacity and chroma-key policies
-remain separate packages. Independent tests exercise multilayer rational
-rounding, all four-frame persistence masks, finite/indefinite selection,
-timeline reuse fixtures and complete multiframe image buffers; those tests
-do not turn the unproved timeline builder into a theorem.
+`part2_build_timeline` starts with empty frames/assignments/time and processes
+each instruction set `repeat + 1` times. Its deterministic transition assigns
+the next new layer unless an earlier instruction reserved this position for
+reuse. It models exhaustion, zero-life grouping, persistence overwrite,
+start/duration accumulation, future reuse extension/conflicts, instruction
+and frame budgets and exact checked-error precedence. Nested sequence folds
+define expansion order and absorb exhaustion/errors; their inputs are the
+composition metadata, not a supplied successful trace.
+
+`part2_render_normalized_frame` composes actual selection, indexed layer-result
+resolution and the complete renderer. A supplied outcome bank contains layer
+references paired with optional normalized results. Lookup consumes the
+first remaining matching result, allowing arbitrary ordering, repeated keys,
+unrelated/error entries and empty slots. There is no canonical-bank or
+trace-validity precondition. Missing referenced results reject with
+`InvalidBoxContents`. Repeated references consume successive supplied
+outcomes, preserving per-placement semantics without a cache assumption.
+All selected normalized results are gathered before any placement runs;
+therefore their first failure precedes any pixel/work/byte failure in earlier
+successful supplied layers. The complete final image model is then the
+ordered supplied-layer renderer above.
+
+These are whole actual-function contracts, not only helper properties.
+Independent tests exercise multilayer/multiframe rational buffers, all
+four-frame persistence masks, finite/indefinite selection, reference-bank
+permutations, distinct repeated outcomes, full timeline expansion/reuse/
+timing and typed failures. Parsing, compressed-data correctness,
+normalization, registration, opacity and chroma-key policies remain separate
+packages. Integration and owner acceptance are not implied by local proof
+success.
 
 The actual raster and first-failure definitions remain here. In particular,
 `part2_composition_budgeted_prefix` determines execution order and error/state

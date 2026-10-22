@@ -422,29 +422,122 @@ fn registered_extent(
         .map_err(|_| arithmetic_overflow())
 }
 
+struct TimelineState {
+    frames: Vec<JpxFrameInfo>,
+    assignments: Vec<Option<usize>>,
+    next_layer: usize,
+    instruction_index: usize,
+    milliseconds: u64,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn timeline_instruction_view(instruction: CompositionInstruction) -> crate::specs::Part2TimelineInstruction {
+        ((0, instruction.target_x, instruction.target_y, instruction.target_width, instruction.target_height,
+            instruction.source_x, instruction.source_y, instruction.source_width, instruction.source_height,
+            instruction.persistent, instruction.next_reuse), instruction.life)
+    }
+
+    #[verifier::inline]
+    spec fn timeline_instruction_views(instructions: Seq<CompositionInstruction>) -> Seq<crate::specs::Part2TimelineInstruction> {
+        Seq::new(instructions.len(), |i: int| timeline_instruction_view(instructions[i]))
+    }
+
+    #[verifier::inline]
+    spec fn timeline_set_views(composition: &jp2::Composition) -> Seq<crate::specs::Part2TimelineSet> {
+        Seq::new(composition.instruction_sets.len() as nat, |i: int|
+            (composition.instruction_sets@[i].repeat, timeline_instruction_views(composition.instruction_sets@[i].instructions@)))
+    }
+
+    #[verifier::inline]
+    spec fn timeline_state_view(state: &TimelineState) -> crate::specs::Part2TimelineState {
+        (frame_views(state.frames@), state.assignments@, state.next_layer, state.instruction_index, state.milliseconds)
+    }
+
+    #[verifier::inline]
+    spec fn timeline_step_result(result: Result<bool, DecodeError>, state: &TimelineState) -> crate::specs::Part2TimelineExecution {
+        match result { Err(error) => Err(error), Ok(active) => Ok((active, timeline_state_view(state))) }
+    }
+
+    #[verifier::inline]
+    spec fn timeline_frames_result(result: Result<Vec<JpxFrameInfo>, DecodeError>) -> Result<Seq<crate::specs::Part2Frame>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(frames) => Ok(frame_views(frames@)) }
+    }
+
+    #[verifier::inline]
+    spec fn timeline_frame_result(result: Result<(), DecodeError>, frames: Seq<JpxFrameInfo>, time: u64)
+        -> Result<(Seq<crate::specs::Part2Frame>, u64), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(()) => Ok((frame_views(frames), time)) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_timeline_limit(layer_count, maximum_frames),
+    )
+)]
+fn timeline_instruction_limit(
+    layer_count: usize,
+    maximum_frames: u32,
+) -> Result<usize, DecodeError> {
+    let frames = usize::try_from(maximum_frames).map_err(|_| arithmetic_overflow())?;
+    let layers = if layer_count == 0 { 1 } else { layer_count };
+    #[cfg(verus_keep_ghost)]
+    proof! { vstd::arithmetic::mul::lemma_mul_is_commutative(frames as int, layers as int); }
+    match frames.checked_mul(layers) {
+        Some(limit) => Ok(limit),
+        None => Err(arithmetic_overflow()),
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures timeline_frames_result(result) == crate::specs::part2_build_timeline(
+            timeline_set_views(composition), layer_count, maximum_frames),
+    )
+)]
 fn build_timeline(
     composition: &jp2::Composition,
     layer_count: usize,
     maximum_frames: u32,
 ) -> Result<Vec<JpxFrameInfo>, DecodeError> {
-    let mut frames: Vec<JpxFrameInfo> = Vec::new();
-    let mut layer_assignments: Vec<Option<usize>> = Vec::new();
-    let mut next_layer = 0_usize;
-    let mut instruction_index = 0_usize;
-    let maximum_instructions = usize::try_from(maximum_frames)
-        .ok()
-        .and_then(|frames| frames.checked_mul(layer_count.max(1)))
-        .ok_or_else(arithmetic_overflow)?;
+    let maximum_instructions = timeline_instruction_limit(layer_count, maximum_frames)?;
+    let mut state = TimelineState {
+        frames: Vec::new(),
+        assignments: Vec::new(),
+        next_layer: 0,
+        instruction_index: 0,
+        milliseconds: 0,
+    };
     let mut set_index = 0_usize;
-    let mut timeline_milliseconds = 0_u64;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = timeline_set_views(composition);
+        let ghost initial = Ok::<(bool, crate::specs::Part2TimelineState), DecodeError>((true, timeline_state_view(&state)));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(frame_views(state.frames@) =~= Seq::<crate::specs::Part2Frame>::empty());
+        crate::proofs::production_impl::production_timeline_set_base(input, initial, layer_count, maximum_frames, maximum_instructions);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant_except_break set_index <= composition.instruction_sets.len(),
+            invariant set_index <= composition.instruction_sets.len(),
+                input == timeline_set_views(composition),
+                initial == Ok((true, (Seq::empty(), Seq::empty(), 0, 0, 0))),
+                crate::specs::part2_timeline_limit(layer_count, maximum_frames) == Ok(maximum_instructions),
+                crate::proofs::internal_specs::part2_timeline_state_valid(timeline_state_view(&state), layer_count, maximum_frames, maximum_instructions),
+                crate::specs::part2_timeline_sets(input, initial, set_index as nat, layer_count, maximum_frames, maximum_instructions)
+                    == Ok((true, timeline_state_view(&state))),
             decreases composition.instruction_sets.len() - set_index,
         )
     )]
-    'sets: while set_index < composition.instruction_sets.len() {
+    while set_index < composition.instruction_sets.len() {
         let set = composition
             .instruction_sets
             .get(set_index)
@@ -453,133 +546,340 @@ fn build_timeline(
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         let mut repetition = 0_u32;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost set_initial = Ok::<(bool, crate::specs::Part2TimelineState), DecodeError>((true, timeline_state_view(&state)));
+            let ghost program = timeline_instruction_views(set.instructions@);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_timeline_repetition_base(program, set_initial, layer_count, maximum_frames, maximum_instructions);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant repetition <= repetitions,
+                    input == timeline_set_views(composition), set_index < input.len(),
+                    initial == Ok((true, (Seq::empty(), Seq::empty(), 0, 0, 0))),
+                    set == composition.instruction_sets@[set_index as int],
+                    program == input[set_index as int].1,
+                    repetitions as nat == input[set_index as int].0 as nat + 1,
+                    crate::specs::part2_timeline_limit(layer_count, maximum_frames) == Ok(maximum_instructions),
+                    crate::proofs::internal_specs::part2_timeline_state_valid(timeline_state_view(&state), layer_count, maximum_frames, maximum_instructions),
+                    set_initial == crate::specs::part2_timeline_sets(input, initial, set_index as nat, layer_count, maximum_frames, maximum_instructions),
+                    crate::specs::part2_timeline_repetitions(program, set_initial, repetition as nat, layer_count, maximum_frames, maximum_instructions)
+                        == Ok((true, timeline_state_view(&state))),
                 decreases repetitions - repetition,
             )
         )]
         while repetition < repetitions {
             let mut local_index = 0_usize;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! {
+                let ghost repeat_initial = Ok::<(bool, crate::specs::Part2TimelineState), DecodeError>((true, timeline_state_view(&state)));
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_timeline_instruction_base(program, repeat_initial, layer_count, maximum_frames, maximum_instructions);
+            }
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant local_index <= set.instructions.len(),
+                        input == timeline_set_views(composition), set_index < input.len(),
+                        initial == Ok((true, (Seq::empty(), Seq::empty(), 0, 0, 0))),
+                        set == composition.instruction_sets@[set_index as int],
+                        program == input[set_index as int].1, program == timeline_instruction_views(set.instructions@),
+                        repetitions as nat == input[set_index as int].0 as nat + 1,
+                        repetition < repetitions,
+                        crate::specs::part2_timeline_limit(layer_count, maximum_frames) == Ok(maximum_instructions),
+                        crate::proofs::internal_specs::part2_timeline_state_valid(timeline_state_view(&state), layer_count, maximum_frames, maximum_instructions),
+                        set_initial == crate::specs::part2_timeline_sets(input, initial, set_index as nat, layer_count, maximum_frames, maximum_instructions),
+                        repeat_initial == crate::specs::part2_timeline_repetitions(program, set_initial, repetition as nat, layer_count, maximum_frames, maximum_instructions),
+                        crate::specs::part2_timeline_instructions(program, repeat_initial, local_index as nat, layer_count, maximum_frames, maximum_instructions)
+                            == Ok((true, timeline_state_view(&state))),
                     decreases set.instructions.len() - local_index,
                 )
             )]
             while local_index < set.instructions.len() {
-                if instruction_index >= maximum_instructions {
-                    return Err(DecodeError::limit(
-                        Resource::WorkUnits,
-                        maximum_instructions as u64,
-                        (instruction_index as u64)
-                            .checked_add(1)
-                            .ok_or_else(arithmetic_overflow)?,
-                    ));
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_timeline_instruction_step(program, repeat_initial, local_index as nat, layer_count, maximum_frames, maximum_instructions);
                 }
-                if instruction_index >= layer_assignments.len() {
-                    layer_assignments.push(None);
+                let outcome = apply_timeline_instruction(
+                    &mut state,
+                    set.instructions[local_index],
+                    layer_count,
+                    maximum_frames,
+                    maximum_instructions,
+                );
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(crate::specs::part2_timeline_instructions(program, repeat_initial, local_index as nat + 1, layer_count, maximum_frames, maximum_instructions)
+                        == timeline_step_result(outcome, &state));
+                    if crate::specs::part2_timeline_finished(timeline_step_result(outcome, &state)) {
+                        crate::proofs::production_impl::production_timeline_instruction_halt(program, repeat_initial, local_index as nat + 1, program.len(), layer_count, maximum_frames, maximum_instructions);
+                        crate::proofs::production_impl::production_timeline_repetition_step(program, set_initial, repetition as nat, layer_count, maximum_frames, maximum_instructions);
+                        crate::proofs::production_impl::production_timeline_repetition_halt(program, set_initial, repetition as nat + 1, repetitions as nat, layer_count, maximum_frames, maximum_instructions);
+                        crate::proofs::production_impl::production_timeline_set_step(input, initial, set_index as nat, layer_count, maximum_frames, maximum_instructions);
+                        crate::proofs::production_impl::production_timeline_set_halt(input, initial, set_index as nat + 1, input.len(), layer_count, maximum_frames, maximum_instructions);
+                    }
                 }
-                let assigned = match layer_assignments.get(instruction_index) {
-                    Some(value) => *value,
-                    None => None,
-                };
-                let layer_index = match assigned {
-                    Some(index) => index,
-                    None => {
-                        if next_layer >= layer_count {
-                            break 'sets;
-                        }
-                        let assigned = next_layer;
-                        next_layer = next_layer.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                        assigned
-                    }
-                };
-                let instruction = *set
-                    .instructions
-                    .get(local_index)
-                    .ok_or_else(arithmetic_overflow)?;
-                let needs_frame = match frames.last() {
-                    Some(frame) => frame.duration_milliseconds != 0,
-                    None => true,
-                };
-                if needs_frame {
-                    if frames.len() as u64 >= u64::from(maximum_frames) {
-                        return Err(DecodeError::limit(
-                            Resource::Frames,
-                            u64::from(maximum_frames),
-                            (frames.len() as u64)
-                                .checked_add(1)
-                                .ok_or_else(arithmetic_overflow)?,
-                        ));
-                    }
-                    frames.push(JpxFrameInfo {
-                        index: frames.len(),
-                        start_milliseconds: timeline_milliseconds,
-                        duration_milliseconds: 0,
-                        persistent: true,
-                        instructions: Vec::new(),
-                    });
+                let active = outcome?;
+                if !active {
+                    return Ok(state.frames);
                 }
-                let frame = frames.last_mut().ok_or_else(arithmetic_overflow)?;
-                frame.duration_milliseconds = instruction.life;
-                frame.persistent = instruction.persistent;
-                frame
-                    .instructions
-                    .push(instruction_info(layer_index, instruction));
-                if instruction.life != 0 {
-                    timeline_milliseconds = timeline_milliseconds
-                        .checked_add(u64::from(instruction.life))
-                        .ok_or_else(arithmetic_overflow)?;
-                }
-                if instruction.next_reuse != 0 {
-                    let reuse = usize::try_from(instruction.next_reuse)
-                        .map_err(|_| arithmetic_overflow())?;
-                    let target = instruction_index
-                        .checked_add(reuse)
-                        .ok_or_else(arithmetic_overflow)?;
-                    if target >= maximum_instructions {
-                        return Err(DecodeError::limit(
-                            Resource::WorkUnits,
-                            maximum_instructions as u64,
-                            (target as u64)
-                                .checked_add(1)
-                                .ok_or_else(arithmetic_overflow)?,
-                        ));
-                    }
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(decreases target + 1 - layer_assignments.len(),)
-                    )]
-                    while layer_assignments.len() <= target {
-                        layer_assignments.push(None);
-                    }
-                    let slot = layer_assignments
-                        .get_mut(target)
-                        .ok_or_else(arithmetic_overflow)?;
-                    let conflicting = match slot {
-                        Some(assigned) => *assigned != layer_index,
-                        None => false,
-                    };
-                    if conflicting {
-                        return Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents));
-                    }
-                    *slot = Some(layer_index);
-                }
-                instruction_index = instruction_index
-                    .checked_add(1)
-                    .ok_or_else(arithmetic_overflow)?;
                 local_index = local_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_timeline_repetition_step(program, set_initial, repetition as nat, layer_count, maximum_frames, maximum_instructions);
             }
             repetition = repetition.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_timeline_set_step(input, initial, set_index as nat, layer_count, maximum_frames, maximum_instructions);
+        }
         set_index = set_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    Ok(frames)
+    Ok(state.frames)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires crate::proofs::internal_specs::part2_timeline_state_valid(timeline_state_view(old(state)), layer_count, maximum_frames, maximum_instructions),
+        ensures timeline_step_result(result, final(state)) == crate::specs::part2_timeline_step(
+            timeline_state_view(old(state)), timeline_instruction_view(instruction), layer_count, maximum_frames, maximum_instructions),
+            result.is_ok() ==> crate::proofs::internal_specs::part2_timeline_state_valid(timeline_state_view(final(state)), layer_count, maximum_frames, maximum_instructions),
+    )
+)]
+fn apply_timeline_instruction(
+    state: &mut TimelineState,
+    instruction: CompositionInstruction,
+    layer_count: usize,
+    maximum_frames: u32,
+    maximum_instructions: usize,
+) -> Result<bool, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = timeline_state_view(state); }
+    if state.instruction_index >= maximum_instructions {
+        let actual = (state.instruction_index as u64)
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: maximum_instructions as u64,
+            actual,
+        });
+    }
+    if state.instruction_index >= state.assignments.len() {
+        state.assignments.push(None);
+    }
+    let assigned = match state.assignments.get(state.instruction_index) {
+        Some(value) => *value,
+        None => None,
+    };
+    let layer_index = match assigned {
+        Some(index) => index,
+        None => {
+            if state.next_layer >= layer_count {
+                return Ok(false);
+            }
+            let layer = state.next_layer;
+            state.next_layer = state
+                .next_layer
+                .checked_add(1)
+                .ok_or_else(arithmetic_overflow)?;
+            layer
+        }
+    };
+    append_timeline_frame(
+        &mut state.frames,
+        &mut state.milliseconds,
+        instruction_info(layer_index, instruction),
+        instruction.life,
+        maximum_frames,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost assignments = state.assignments@; }
+    if instruction.next_reuse != 0 {
+        let reuse = usize::try_from(instruction.next_reuse).map_err(|_| arithmetic_overflow())?;
+        let target = state
+            .instruction_index
+            .checked_add(reuse)
+            .ok_or_else(arithmetic_overflow)?;
+        if target >= maximum_instructions {
+            let actual = (target as u64)
+                .checked_add(1)
+                .ok_or_else(arithmetic_overflow)?;
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: maximum_instructions as u64,
+                actual,
+            });
+        }
+        let mut assignment_count = state.assignments.len();
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant target < maximum_instructions,
+                    assignment_count == state.assignments.len(),
+                    state.instruction_index == before.3, state.next_layer <= layer_count,
+                    before.3 < maximum_instructions,
+                    assignments == if before.3 as nat >= before.1.len() { before.1.push(None) } else { before.1 },
+                    (before.3 as nat) < assignments.len(),
+                    assigned == assignments[before.3 as int],
+                    assigned.is_some() ==> layer_index == assigned.unwrap() && state.next_layer == before.2,
+                    assigned.is_none() ==> layer_index == before.2 && (state.next_layer as nat) == before.2 as nat + 1 && before.2 < layer_count,
+                    crate::specs::part2_timeline_frame(before.0, before.4,
+                        crate::specs::part2_timeline_assign(layer_index, timeline_instruction_view(instruction)), instruction.life, maximum_frames)
+                        == Ok((frame_views(state.frames@), state.milliseconds)),
+                    state.frames.len() <= maximum_frames,
+                    assignments.len() <= state.assignments.len() <= maximum_instructions,
+                    state.assignments.len() <= if assignments.len() > target as nat { assignments.len() } else { target as nat + 1 },
+                    state.assignments@ == assignments + Seq::new((state.assignments.len() - assignments.len()) as nat, |i: int| None),
+                decreases target + 1 - assignment_count,
+            )
+        )]
+        while assignment_count <= target {
+            state.assignments.push(None);
+            assignment_count += 1;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(state.assignments@ =~= assignments + Seq::new((state.assignments.len() - assignments.len()) as nat, |i: int| None));
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+                if (target as nat) < assignments.len() {
+                    assert(state.assignments.len() == assignments.len());
+                    assert(Seq::<Option<usize>>::new(0, |i: int| None) =~= Seq::empty());
+                    assert(assignments + Seq::<Option<usize>>::empty() =~= assignments);
+                } else {
+                    assert(assignment_count > target);
+                    assert(state.assignments.len() <= target as nat + 1);
+                    assert(state.assignments.len() == target as nat + 1);
+                }
+                assert(state.assignments@ =~= if (target as nat) < assignments.len() { assignments } else {
+                    assignments + Seq::new((target as nat + 1 - assignments.len()) as nat, |i: int| None)
+                });
+        }
+        let slot = state
+            .assignments
+            .get_mut(target)
+            .ok_or_else(arithmetic_overflow)?;
+        let conflicting = match slot {
+            Some(assigned) => *assigned != layer_index,
+            None => false,
+        };
+        if conflicting {
+            return Err(invalid_layer());
+        }
+        *slot = Some(layer_index);
+    }
+    state.instruction_index = state
+        .instruction_index
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        let goal = crate::specs::part2_timeline_step(before, timeline_instruction_view(instruction), layer_count, maximum_frames, maximum_instructions);
+        assert(goal.is_ok());
+        assert(goal.ok().unwrap().1.0 == frame_views(state.frames@));
+        assert(goal.ok().unwrap().1.1 == state.assignments@);
+        assert(goal.ok().unwrap().1.2 == state.next_layer);
+        assert(goal.ok().unwrap().1.3 == state.instruction_index);
+        assert(goal.ok().unwrap().1.4 == state.milliseconds);
+    }
+    Ok(true)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires old(frames).len() <= maximum_frames,
+        ensures timeline_frame_result(result, final(frames)@, *final(time))
+            == crate::specs::part2_timeline_frame(frame_views(old(frames)@), *old(time), instruction_view(instruction), life, maximum_frames),
+            result.is_ok() ==> final(frames).len() <= maximum_frames,
+    )
+)]
+fn append_timeline_frame(
+    frames: &mut Vec<JpxFrameInfo>,
+    time: &mut u64,
+    instruction: JpxInstructionInfo,
+    life: u32,
+    maximum_frames: u32,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = frame_views(frames@);
+        let ghost old_time = *time;
+    }
+    let fresh = match frames.last() {
+        Some(frame) => frame.duration_milliseconds != 0,
+        None => true,
+    };
+    if fresh {
+        if frames.len() as u64 >= u64::from(maximum_frames) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Frames,
+                limit: u64::from(maximum_frames),
+                actual: frames.len() as u64 + 1,
+            });
+        }
+        let next = JpxFrameInfo {
+            index: frames.len(),
+            start_milliseconds: *time,
+            duration_milliseconds: 0,
+            persistent: true,
+            instructions: Vec::new(),
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            frame_views_push(frames@, next);
+            assert(instruction_views(next.instructions@) =~= Seq::<crate::specs::Part2Instruction>::empty());
+        }
+        frames.push(next);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(frame_views(frames@) =~= before.push((before.len() as usize, old_time, 0, true, Seq::empty())));
+        }
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost prior = frame_views(frames@); }
+    let frame = frames.last_mut().ok_or_else(arithmetic_overflow)?;
+    frame.duration_milliseconds = life;
+    frame.persistent = instruction.persistent;
+    #[cfg(verus_keep_ghost)]
+    proof! { instruction_views_push(frame.instructions@, instruction); }
+    frame.instructions.push(instruction);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(frame_views(frames@) =~= prior.update(prior.len() as int - 1,
+            (prior.last().0, prior.last().1, life, instruction.persistent, prior.last().4.push(instruction_view(instruction)))));
+    }
+    if life != 0 {
+        *time = time
+            .checked_add(u64::from(life))
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        if fresh {
+            assert(frame_views(frames@) =~= before.push((before.len() as usize, old_time, life, instruction.persistent, seq![instruction_view(instruction)])));
+        }
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures instruction_view(result) == crate::specs::part2_timeline_assign(layer_index, timeline_instruction_view(instruction)),
+    )
+)]
 fn instruction_info(layer_index: usize, instruction: CompositionInstruction) -> JpxInstructionInfo {
     JpxInstructionInfo {
         layer_index,
@@ -691,7 +991,7 @@ fn render_inspected_frame(
         composition.loop_count(),
         requested_frame,
     )?;
-    let mut placements = Vec::new();
+    let mut supplied = Vec::new();
     let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
@@ -702,16 +1002,21 @@ fn render_inspected_frame(
     )]
     while index < instructions.len() {
         let instruction = instructions[index];
-        placements.push((
-            decode_effective_layer(file, instruction.layer_index(), options)?,
-            instruction,
-        ));
+        let outcome = decode_effective_layer(file, instruction.layer_index(), options);
+        let failed = outcome.is_err();
+        supplied.push((instruction.layer_index, Some(outcome)));
+        if failed {
+            break;
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    render_decoded_layers(
+    render_normalized_frame(
         composition.width(),
         composition.height(),
-        &placements,
+        composition.frames(),
+        composition.loop_count(),
+        requested_frame,
+        supplied,
         options.limits().maximum_decoded_bytes(),
         options.limits(),
     )
@@ -741,6 +1046,14 @@ verus! {
     spec fn frame_views(frames: Seq<JpxFrameInfo>) -> Seq<crate::specs::Part2Frame> {
         Seq::new(frames.len(), |i: int| (frames[i].index, frames[i].start_milliseconds,
             frames[i].duration_milliseconds, frames[i].persistent, instruction_views(frames[i].instructions@)))
+    }
+
+    proof fn frame_views_push(frames: Seq<JpxFrameInfo>, frame: JpxFrameInfo)
+        ensures frame_views(frames.push(frame)) == frame_views(frames).push(
+            (frame.index, frame.start_milliseconds, frame.duration_milliseconds, frame.persistent, instruction_views(frame.instructions@))),
+    {
+        assert(frame_views(frames.push(frame)) =~= frame_views(frames).push(
+            (frame.index, frame.start_milliseconds, frame.duration_milliseconds, frame.persistent, instruction_views(frame.instructions@))));
     }
 
     #[verifier::inline]
@@ -909,6 +1222,8 @@ struct OwnedLayer {
     alpha: Option<(Vec<u16>, bool)>,
 }
 
+type SuppliedLayer = (usize, Option<Result<OwnedLayer, DecodeError>>);
+
 #[cfg(verus_keep_ghost)]
 verus! {
     #[verifier::inline]
@@ -960,6 +1275,20 @@ verus! {
         }
     }
 
+    #[verifier::inline]
+    spec fn supplied_views(supplied: Seq<SuppliedLayer>) -> Seq<crate::specs::Part2SuppliedLayer> {
+        Seq::new(supplied.len(), |i: int| (supplied[i].0, match supplied[i].1 {
+            None => None, Some(outcome) => Some(owned_layer_outcome(outcome)),
+        }))
+    }
+
+    #[verifier::inline]
+    spec fn collected_layers_result(result: Result<Vec<(OwnedLayer, JpxInstructionInfo)>, DecodeError>)
+        -> Result<Seq<crate::specs::Part2Placement>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(placements) => Ok(placement_views(placements@)) }
+    }
+
         #[verifier::inline]
         spec fn placement_view(placement: &(OwnedLayer, JpxInstructionInfo)) -> crate::specs::Part2Placement {
             let layer = &placement.0;
@@ -975,6 +1304,141 @@ verus! {
         spec fn placement_views(placements: Seq<(OwnedLayer, JpxInstructionInfo)>) -> Seq<crate::specs::Part2Placement> {
             Seq::new(placements.len(), |i: int| placement_view(&placements[i]))
     }
+
+    proof fn placement_views_push(placements: Seq<(OwnedLayer, JpxInstructionInfo)>, placement: (OwnedLayer, JpxInstructionInfo))
+        ensures placement_views(placements.push(placement)) == placement_views(placements).push(placement_view(&placement)),
+    {
+        assert(placement_views(placements.push(placement)) =~= placement_views(placements).push(placement_view(&placement)));
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (owned_layer_outcome(result), supplied_views(final(supplied)@))
+            == crate::specs::part2_take_supplied_layer(supplied_views(old(supplied)@), reference),
+    )
+)]
+fn take_supplied_layer(
+    supplied: &mut [SuppliedLayer],
+    reference: usize,
+) -> Result<OwnedLayer, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = supplied_views(supplied@); }
+    let mut index = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant index <= supplied.len(), supplied_views(supplied@) == input,
+                input == supplied_views(old(supplied)@),
+                crate::specs::part2_supply_search(input, reference, 0) == crate::specs::part2_supply_search(input, reference, index as nat),
+            decreases supplied.len() - index,
+        )
+    )]
+    while index < supplied.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_supply_search_step(input, reference, index as nat); }
+        if supplied[index].0 == reference && supplied[index].1.is_some() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::specs::part2_supply_search(input, reference, 0) == Some(index as nat));
+            }
+            let outcome = supplied[index].1.take().ok_or_else(invalid_layer)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(supplied_views(supplied@) =~= input.update(index as int, (reference, None)));
+                assert(owned_layer_outcome(outcome) == input[index as int].1.unwrap());
+                assert((owned_layer_outcome(outcome), supplied_views(supplied@))
+                    == crate::specs::part2_take_supplied_layer(input, reference));
+            }
+            let layer = outcome?;
+            return Ok(layer);
+        }
+        index += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_supply_search_step(input, reference, index as nat); }
+    Err(invalid_layer())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures collected_layers_result(result) == crate::specs::part2_collect_supplied_layers(
+            instruction_views(instructions@), supplied_views(supplied@)),
+    )
+)]
+fn collect_supplied_layers(
+    instructions: &[JpxInstructionInfo],
+    supplied: Vec<SuppliedLayer>,
+) -> Result<Vec<(OwnedLayer, JpxInstructionInfo)>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = instruction_views(instructions@);
+        let ghost bank = supplied_views(supplied@);
+    }
+    let mut available = supplied;
+    let mut placements = Vec::new();
+    let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_gather_base(input, bank);
+        assert(placement_views(placements@) =~= Seq::<crate::specs::Part2Placement>::empty());
+    }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant index <= instructions.len(), input == instruction_views(instructions@),
+                bank == supplied_views(supplied@),
+                crate::specs::part2_gather_layers(input, bank, index as nat)
+                    == (Ok(()), placement_views(placements@), supplied_views(available@)),
+            decreases instructions.len() - index,
+        )
+    )]
+    while index < instructions.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_gather_step(input, bank, index as nat); }
+        let instruction = instructions[index];
+        let outcome = take_supplied_layer(&mut available, instruction.layer_index);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if outcome.is_err() {
+                assert(crate::specs::part2_gather_layers(input, bank, index as nat + 1).0 == Err(outcome.err().unwrap()));
+                crate::proofs::production_impl::production_gather_error(input, bank, index as nat + 1);
+            }
+        }
+        let layer = outcome?;
+        let placement = (layer, instruction);
+        #[cfg(verus_keep_ghost)]
+        proof! { placement_views_push(placements@, placement); }
+        placements.push(placement);
+        index += 1;
+    }
+    Ok(placements)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::converted_image_result(result) == crate::specs::part2_render_normalized_frame(
+            width, height, frame_views(frames@), loop_count, requested_frame, supplied_views(supplied@),
+            maximum_decoded_bytes, crate::limits::resource_work_limit(limits)),
+    )
+)]
+fn render_normalized_frame(
+    width: u32,
+    height: u32,
+    frames: &[JpxFrameInfo],
+    loop_count: u8,
+    requested_frame: usize,
+    supplied: Vec<SuppliedLayer>,
+    maximum_decoded_bytes: u64,
+    limits: &ResourceLimits,
+) -> Result<ConvertedImage, DecodeError> {
+    let instructions = select_frame_instructions(frames, loop_count, requested_frame)?;
+    let placements = collect_supplied_layers(&instructions, supplied)?;
+    render_decoded_layers(width, height, &placements, maximum_decoded_bytes, limits)
 }
 
 #[cfg_attr(
@@ -4883,6 +5347,259 @@ mod tests {
     }
 
     #[test]
+    fn timeline_matches_independent_flat_schedule_and_grouping_model() {
+        fn reference(
+            composition: &Composition,
+            layers: usize,
+            maximum_frames: u32,
+        ) -> Result<Vec<JpxFrameInfo>, DecodeError> {
+            let limit = (maximum_frames as usize).checked_mul(layers.max(1)).ok_or(
+                DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                },
+            )?;
+            let program: Vec<_> = composition
+                .instruction_sets
+                .iter()
+                .flat_map(|set| {
+                    (0..=set.repeat).flat_map(move |_| set.instructions.iter().copied())
+                })
+                .collect();
+            let mut scheduled = std::collections::BTreeMap::new();
+            let mut unused = 0..layers;
+            let mut frames: Vec<JpxFrameInfo> = Vec::new();
+            let mut time = 0;
+            for (index, instruction) in program.into_iter().enumerate() {
+                if index >= limit {
+                    return Err(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: limit as u64,
+                        actual: index as u64 + 1,
+                    });
+                }
+                let layer = match scheduled.get(&index).copied().or_else(|| unused.next()) {
+                    Some(layer) => layer,
+                    None => break,
+                };
+                let open = frames
+                    .last()
+                    .is_some_and(|frame| frame.duration_milliseconds == 0);
+                if !open {
+                    if frames.len() == maximum_frames as usize {
+                        return Err(DecodeError::LimitExceeded {
+                            resource: Resource::Frames,
+                            limit: maximum_frames as u64,
+                            actual: frames.len() as u64 + 1,
+                        });
+                    }
+                    frames.push(JpxFrameInfo {
+                        index: frames.len(),
+                        start_milliseconds: time,
+                        duration_milliseconds: 0,
+                        persistent: true,
+                        instructions: Vec::new(),
+                    });
+                }
+                let frame = frames.last_mut().unwrap();
+                frame.instructions.push(JpxInstructionInfo {
+                    layer_index: layer,
+                    target_x: instruction.target_x,
+                    target_y: instruction.target_y,
+                    target_width: instruction.target_width,
+                    target_height: instruction.target_height,
+                    source_x: instruction.source_x,
+                    source_y: instruction.source_y,
+                    source_width: instruction.source_width,
+                    source_height: instruction.source_height,
+                    persistent: instruction.persistent,
+                    next_reuse: instruction.next_reuse,
+                });
+                frame.duration_milliseconds = instruction.life;
+                frame.persistent = instruction.persistent;
+                time += u64::from(instruction.life);
+                if instruction.next_reuse != 0 {
+                    let target = index + instruction.next_reuse as usize;
+                    if target >= limit {
+                        return Err(DecodeError::LimitExceeded {
+                            resource: Resource::WorkUnits,
+                            limit: limit as u64,
+                            actual: target as u64 + 1,
+                        });
+                    }
+                    if scheduled.get(&target).is_some_and(|&prior| prior != layer) {
+                        return Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::InvalidBoxContents,
+                        });
+                    }
+                    scheduled.insert(target, layer);
+                }
+            }
+            Ok(frames)
+        }
+        let make = |life, persistent, next_reuse, offset| CompositionInstruction {
+            target_x: offset,
+            target_y: offset + 1,
+            target_width: offset + 2,
+            target_height: offset + 3,
+            source_x: offset + 4,
+            source_y: offset + 5,
+            source_width: offset + 6,
+            source_height: offset + 7,
+            life,
+            persistent,
+            next_reuse,
+        };
+        for layers in 0..4 {
+            for maximum_frames in 0..5 {
+                for repeat in 0..3 {
+                    for first_life in [0, 1, u32::MAX] {
+                        for second_life in [0, 7] {
+                            for first_reuse in 0..4 {
+                                for second_reuse in 0..4 {
+                                    for persistent in [false, true] {
+                                        let composition = Composition {
+                                            width: 1,
+                                            height: 1,
+                                            loop_count: 2,
+                                            has_unknown_boxes: true,
+                                            instruction_sets: vec![
+                                                CompositionInstructionSet {
+                                                    flags: 7,
+                                                    repeat,
+                                                    tick: 11,
+                                                    instructions: vec![
+                                                        make(
+                                                            first_life,
+                                                            persistent,
+                                                            first_reuse,
+                                                            10,
+                                                        ),
+                                                        make(
+                                                            second_life,
+                                                            !persistent,
+                                                            second_reuse,
+                                                            20,
+                                                        ),
+                                                    ],
+                                                },
+                                                CompositionInstructionSet {
+                                                    flags: 0,
+                                                    repeat: 1,
+                                                    tick: 99,
+                                                    instructions: vec![],
+                                                },
+                                                CompositionInstructionSet {
+                                                    flags: 7,
+                                                    repeat: 0,
+                                                    tick: 1,
+                                                    instructions: vec![make(9, false, 0, 30)],
+                                                },
+                                            ],
+                                        };
+                                        assert_eq!(
+                                            build_timeline(&composition, layers, maximum_frames),
+                                            reference(&composition, layers, maximum_frames),
+                                            "layers={layers}, frames={maximum_frames}, repeat={repeat}, life={first_life}/{second_life}, reuse={first_reuse}/{second_reuse}, persistent={persistent}"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let empty = Composition {
+            width: 0,
+            height: 0,
+            loop_count: 0,
+            instruction_sets: vec![],
+            has_unknown_boxes: false,
+        };
+        assert_eq!(build_timeline(&empty, 1, 0).unwrap(), []);
+        assert_eq!(
+            build_timeline(&empty, usize::MAX, 2).err(),
+            Some(arithmetic_overflow())
+        );
+    }
+
+    #[test]
+    fn timeline_checked_errors_precede_later_reuse_and_layer_exhaustion() {
+        let make = |life, next_reuse| CompositionInstruction {
+            target_x: 0,
+            target_y: 0,
+            target_width: 1,
+            target_height: 1,
+            source_x: 0,
+            source_y: 0,
+            source_width: 0,
+            source_height: 0,
+            life,
+            persistent: false,
+            next_reuse,
+        };
+        let composition = |instructions| Composition {
+            width: 1,
+            height: 1,
+            loop_count: 1,
+            instruction_sets: vec![CompositionInstructionSet {
+                flags: 7,
+                repeat: 0,
+                tick: 1,
+                instructions,
+            }],
+            has_unknown_boxes: false,
+        };
+        assert_eq!(
+            build_timeline(&composition(vec![make(0, 0)]), 0, 0).err(),
+            Some(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 1
+            })
+        );
+        assert_eq!(
+            build_timeline(&composition(vec![make(0, 0)]), 0, 1).unwrap(),
+            []
+        );
+        assert_eq!(
+            build_timeline(&composition(vec![make(1, 0), make(1, u32::MAX)]), 2, 1).err(),
+            Some(DecodeError::LimitExceeded {
+                resource: Resource::Frames,
+                limit: 1,
+                actual: 2
+            })
+        );
+        assert_eq!(
+            build_timeline(&composition(vec![make(1, 2), make(1, 1)]), 2, 3).err(),
+            Some(invalid_layer())
+        );
+        let mut frames = Vec::new();
+        let mut time = u64::MAX;
+        assert_eq!(
+            append_timeline_frame(&mut frames, &mut time, test_unit_instruction(0, 1), 1, 1).err(),
+            Some(arithmetic_overflow())
+        );
+        let mut state = TimelineState {
+            frames: Vec::new(),
+            assignments: Vec::new(),
+            next_layer: 0,
+            instruction_index: 0,
+            milliseconds: 0,
+        };
+        assert_eq!(
+            apply_timeline_instruction(&mut state, make(1, 0), 0, 0, 0).err(),
+            Some(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 1
+            })
+        );
+    }
+
+    #[test]
     fn timeline_expands_repetition_reuse_and_timing_deterministically() {
         let instruction = CompositionInstruction {
             target_x: 2,
@@ -4919,6 +5636,347 @@ mod tests {
         assert_eq!(frames[0].instructions()[0].next_reuse(), 1);
         assert_eq!(frames[1].instructions()[0].layer_index(), 0);
         assert_eq!(frames[1].instructions()[0].target_x(), 2);
+    }
+
+    #[test]
+    fn composed_normalized_frames_match_independent_indexed_supply_and_rational_model() {
+        let limits = ResourceLimits::default();
+        for mask in 0_u8..16 {
+            let composition = Composition {
+                width: 2,
+                height: 1,
+                loop_count: 0,
+                has_unknown_boxes: false,
+                instruction_sets: vec![CompositionInstructionSet {
+                    flags: 7,
+                    repeat: 0,
+                    tick: 1,
+                    instructions: (0..4)
+                        .map(|index| CompositionInstruction {
+                            target_x: index % 2,
+                            target_y: 0,
+                            target_width: 1,
+                            target_height: 1,
+                            source_x: 0,
+                            source_y: 0,
+                            source_width: 0,
+                            source_height: 0,
+                            life: index + 1,
+                            persistent: mask & (1 << index) != 0,
+                            next_reuse: if index == 0 {
+                                2
+                            } else if index == 2 {
+                                1
+                            } else {
+                                0
+                            },
+                        })
+                        .collect(),
+                }],
+            };
+            let frames = build_timeline(&composition, 2, 4).unwrap();
+            for request in [0, 1, 2, 3, 4, 7, 2, 6, 0] {
+                for rgb_first in [false, true] {
+                    let make_gray = |sample, alpha, premultiplied| {
+                        (
+                            0,
+                            Some(Ok(OwnedLayer {
+                                width: 1,
+                                height: 1,
+                                color_space: ConvertedColorSpace::Grayscale,
+                                colors: vec![vec![sample]],
+                                alpha: Some((vec![alpha], premultiplied)),
+                            })),
+                        )
+                    };
+                    let rgb = (
+                        1,
+                        Some(Ok(OwnedLayer {
+                            width: 1,
+                            height: 1,
+                            color_space: ConvertedColorSpace::Srgb,
+                            colors: vec![vec![60_000], vec![3], vec![32_768]],
+                            alpha: None,
+                        })),
+                    );
+                    let mut bank = vec![
+                        make_gray(12_345, 32_768, false),
+                        (
+                            usize::MAX,
+                            Some(Err(DecodeError::FrameIndexOutOfRange {
+                                index: 99,
+                                frames: 1,
+                            })),
+                        ),
+                        (0, None),
+                        make_gray(8_000, 16_384, true),
+                        make_gray(60_000, u16::MAX, false),
+                    ];
+                    bank.insert(if rgb_first { 0 } else { 3 }, rgb);
+                    let image = render_normalized_frame(
+                        2,
+                        1,
+                        &frames,
+                        0,
+                        request,
+                        bank,
+                        limits.maximum_decoded_bytes(),
+                        &limits,
+                    )
+                    .unwrap();
+                    let current = request % 4;
+                    let chosen: Vec<usize> = (0..=current)
+                        .filter(|&index| index == current || mask & (1 << index) != 0)
+                        .collect();
+                    let rgb = chosen.contains(&1);
+                    let channels = if rgb { 3 } else { 1 };
+                    let mut colors = vec![vec![0_u16; 2]; channels];
+                    let mut alpha = vec![0_u16; 2];
+                    let mut gray_occurrence = 0;
+                    let maximum = u128::from(u16::MAX);
+                    let nearest = |n: u128, d: u128| -> u16 {
+                        if d == 0 {
+                            0
+                        } else {
+                            (n / d + u128::from(n % d * 2 >= d)) as u16
+                        }
+                    };
+                    for index in chosen {
+                        let pixel = index % 2;
+                        let (samples, a, premultiplied) = if index == 1 {
+                            ([60_000_u128, 3, 32_768], maximum, false)
+                        } else {
+                            let (sample, a, flag) = [
+                                (12_345, 32_768, false),
+                                (8_000, 16_384, true),
+                                (60_000, 65_535, false),
+                            ][gray_occurrence];
+                            gray_occurrence += 1;
+                            ([sample; 3], a, flag)
+                        };
+                        let d = u128::from(alpha[pixel]);
+                        let denominator = a * maximum + d * (maximum - a);
+                        for channel in 0..channels {
+                            let source = if premultiplied {
+                                samples[channel] * maximum * maximum
+                            } else {
+                                samples[channel] * a * maximum
+                            };
+                            colors[channel][pixel] = nearest(
+                                source + u128::from(colors[channel][pixel]) * d * (maximum - a),
+                                denominator,
+                            );
+                        }
+                        alpha[pixel] = nearest(denominator, maximum);
+                    }
+                    assert_eq!(
+                        (
+                            image.width(),
+                            image.height(),
+                            image.precision(),
+                            image.channels().len()
+                        ),
+                        (2, 1, 16, channels + 1)
+                    );
+                    assert_eq!(
+                        image.color_space(),
+                        if rgb {
+                            ConvertedColorSpace::Srgb
+                        } else {
+                            ConvertedColorSpace::Grayscale
+                        }
+                    );
+                    for (channel, samples) in colors.iter().enumerate() {
+                        assert_eq!(image.channel(channel as u16).unwrap().samples(), samples);
+                        assert_eq!(
+                            image.channel(channel as u16).unwrap().channel_type(),
+                            if rgb {
+                                [
+                                    ConvertedChannelType::Red,
+                                    ConvertedChannelType::Green,
+                                    ConvertedChannelType::Blue,
+                                ][channel]
+                            } else {
+                                ConvertedChannelType::Gray
+                            }
+                        );
+                    }
+                    assert_eq!(image.channel(channels as u16).unwrap().samples(), alpha);
+                    assert_eq!(
+                        image.channel(channels as u16).unwrap().channel_type(),
+                        ConvertedChannelType::Alpha {
+                            premultiplied: false,
+                            association: ChannelAssociation::WholeImage,
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn composed_normalized_frames_preserve_selection_supply_and_render_error_precedence() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap();
+        let frame = |index, reference, persistent| JpxFrameInfo {
+            index,
+            start_milliseconds: index as u64,
+            duration_milliseconds: 1,
+            persistent,
+            instructions: vec![test_unit_instruction(reference, 1)],
+        };
+        let frames = [frame(0, 7, true), frame(1, 9, false)];
+        let first_error = DecodeError::FrameIndexOutOfRange {
+            index: 123,
+            frames: 2,
+        };
+        let second_error = DecodeError::LayerIndexOutOfRange {
+            index: 456,
+            layers: 3,
+        };
+        let invalid = || {
+            (
+                7,
+                Some(Ok(OwnedLayer {
+                    width: 1,
+                    height: 1,
+                    color_space: ConvertedColorSpace::Grayscale,
+                    colors: vec![vec![]],
+                    alpha: None,
+                })),
+            )
+        };
+        for reversed in [false, true] {
+            let mut bank = vec![(9, Some(Err(second_error))), (7, Some(Err(first_error)))];
+            if reversed {
+                bank.reverse();
+            }
+            assert_eq!(
+                render_normalized_frame(1, 1, &frames, 1, 1, bank, 0, &limits).err(),
+                Some(first_error)
+            );
+        }
+        assert_eq!(
+            render_normalized_frame(
+                1,
+                1,
+                &frames,
+                1,
+                1,
+                vec![(9, Some(Err(second_error))), invalid()],
+                0,
+                &limits
+            )
+            .err(),
+            Some(second_error)
+        );
+        assert_eq!(
+            render_normalized_frame(1, 1, &frames, 1, 1, vec![invalid()], 0, &limits).err(),
+            Some(invalid_layer())
+        );
+        assert_eq!(
+            render_normalized_frame(
+                1,
+                1,
+                &frames,
+                1,
+                2,
+                vec![(7, Some(Err(first_error)))],
+                0,
+                &limits
+            )
+            .err(),
+            Some(DecodeError::FrameIndexOutOfRange {
+                index: 2,
+                frames: 2
+            })
+        );
+        assert_eq!(
+            render_normalized_frame(
+                1,
+                1,
+                &[],
+                0,
+                0,
+                vec![(7, Some(Err(first_error)))],
+                0,
+                &limits
+            )
+            .err(),
+            Some(DecodeError::FrameIndexOutOfRange {
+                index: 0,
+                frames: 0
+            })
+        );
+        let repeated = [JpxFrameInfo {
+            index: 0,
+            start_milliseconds: 0,
+            duration_milliseconds: 1,
+            persistent: false,
+            instructions: vec![test_unit_instruction(7, 1), test_unit_instruction(7, 1)],
+        }];
+        assert_eq!(
+            render_normalized_frame(
+                1,
+                1,
+                &repeated,
+                0,
+                0,
+                vec![
+                    (7, None),
+                    invalid(),
+                    (7, Some(Err(second_error))),
+                    (7, Some(Err(first_error)))
+                ],
+                0,
+                &limits
+            )
+            .err(),
+            Some(second_error)
+        );
+        let valid = || {
+            (
+                7,
+                Some(Ok(OwnedLayer {
+                    width: 1,
+                    height: 1,
+                    color_space: ConvertedColorSpace::Grayscale,
+                    colors: vec![vec![7]],
+                    alpha: None,
+                })),
+            )
+        };
+        assert_eq!(
+            render_normalized_frame(1, 1, &frames[..1], 0, 0, vec![valid()], 7, &limits).err(),
+            Some(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 7,
+                actual: 8
+            })
+        );
+        assert_eq!(
+            render_normalized_frame(1, 1, &frames[..1], 0, 0, vec![valid()], 8, &limits).err(),
+            Some(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 3
+            })
+        );
+        assert_eq!(
+            render_normalized_frame(
+                1,
+                1,
+                &frames[..1],
+                0,
+                0,
+                vec![invalid()],
+                8,
+                &ResourceLimits::default()
+            )
+            .err(),
+            Some(invalid_layer())
+        );
     }
 
     #[test]

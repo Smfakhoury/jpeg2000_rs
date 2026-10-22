@@ -222,6 +222,7 @@ class FrameworkTests(WorkingFiles):
         requirement = coverage["requirements"][0]
         requirement["implementation_refs"] = [
             {"path": "src/jpx.rs", "symbol": "render_inspected_frame"},
+            {"path": "src/jpx.rs", "symbol": "render_normalized_frame"},
             {"path": "src/jpx.rs", "symbol": "render_decoded_layers"},
             {"path": "src/color.rs", "symbol": "from_composited"},
         ]
