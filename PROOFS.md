@@ -73,6 +73,9 @@ For a fresh local report, clean only this crate's verification artifacts with
 `cargo clean -p jpeg2000_rs --target-dir target/verus`, then repeat the report
 command. CI uses a fresh checkout. Reports are generated evidence, not
 committed snapshots; an empty/cached output cannot become a new proof report.
+If Cargo refuses to clean because the target lacks a valid `CACHEDIR.TAG`,
+respect that safety check. Use a new dedicated `--target-dir` for fresh
+verification instead of deleting the unrecognized directory.
 
 The checker rejects missing/zero/dependency-only/wrong-crate/ambiguous/partial
 results, any termination opt-out, and forbidden trusted codec escapes.
