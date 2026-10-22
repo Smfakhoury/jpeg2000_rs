@@ -305,6 +305,10 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "ht_mel_from_input"): "ht_mel_outcome",
                 ("src/tier1.rs", "ht_reverse_vlc_from_input"): "ht_reverse_vlc_outcome",
                 ("src/tier1.rs", "ht_cleanup_readers_from_inputs"): "ht_cleanup_readers_outcome",
+                ("src/tier1.rs", "ht_magsgn_from_input"): "ht_magsgn_outcome",
+                ("src/tier1.rs", "ht_forward_refinement_from_input"): "ht_forward_refinement_outcome",
+                ("src/tier1.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
+                ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
@@ -325,6 +329,21 @@ def validate_normative_coverage(
                 "HtCleanupReaders::tick": ("ht_cleanup_readers_view", "ht_cleanup_reader_tick"),
                 "HtCleanupReaders::read_mel_bit": ("ht_cleanup_readers_view", "ht_cleanup_reader_read_mel"),
                 "HtCleanupReaders::read_vlc_bit": ("ht_cleanup_readers_view", "ht_cleanup_reader_read_vlc"),
+                "HtForwardMagSgnReader::load_byte": ("ht_magsgn_view", "ht_magsgn_load"),
+                "HtForwardMagSgnReader::read_bit": ("ht_magsgn_view", "ht_magsgn_read"),
+                "HtForwardMagSgnReader::read_bits": ("ht_magsgn_view", "ht_magsgn_read_bits"),
+                "HtForwardMagSgnReader::finish": ("ht_magsgn_view", "ht_magsgn_finish"),
+                "HtForwardRefinementReader::load_byte": ("ht_forward_refinement_view", "ht_forward_refinement_load"),
+                "HtForwardRefinementReader::read_positioned_bit": ("ht_forward_refinement_view", "ht_forward_refinement_positioned"),
+                "HtForwardRefinementReader::read_bit": ("ht_forward_refinement_view", "ht_forward_refinement_read"),
+                "HtReverseRefinementReader::load_previous_byte": ("ht_reverse_refinement_view", "ht_reverse_refinement_load"),
+                "HtReverseRefinementReader::read_positioned_bit": ("ht_reverse_refinement_view", "ht_reverse_refinement_positioned"),
+                "HtReverseRefinementReader::read_bit": ("ht_reverse_refinement_view", "ht_reverse_refinement_read"),
+                "HtRefinementReaders::claim": ("ht_refinement_readers_view", "ht_refinement_claim"),
+                "HtRefinementReaders::read_forward": ("ht_refinement_readers_view", "ht_refinement_read_forward"),
+                "HtRefinementReaders::read_reverse": ("ht_refinement_readers_view", "ht_refinement_read_reverse"),
+                "HtCleanupReaders::advance_vlc": ("ht_cleanup_readers_view", "ht_cleanup_advance_vlc"),
+                "HtCleanupReaders::mel_event": ("ht_cleanup_readers_view", "ht_cleanup_mel_event"),
             }
             reader_contract = reader_contracts.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
             if reader_contract:
@@ -350,6 +369,10 @@ def validate_normative_coverage(
                 "ht_mel_from_input": "ht_mel_initial",
                 "ht_reverse_vlc_from_input": "ht_reverse_vlc_initial",
                 "ht_cleanup_readers_from_inputs": "ht_cleanup_readers_initial",
+                "ht_magsgn_from_input": "ht_magsgn_initial",
+                "ht_forward_refinement_from_input": "ht_forward_refinement_initial",
+                "ht_reverse_refinement_from_input": "ht_reverse_refinement_initial",
+                "ht_refinement_readers_from_inputs": "ht_refinement_readers_initial",
             }.get(short) if reference["path"] == "src/tier1.rs" else None
             if expected_constructor and (named_result is None or named_result["model"] != expected_constructor):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong constructor model")

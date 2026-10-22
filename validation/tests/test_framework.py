@@ -303,7 +303,9 @@ impl HtReverseVlcReader {
         original = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         original["requirements"] = [
             item for item in original["requirements"]
-            if item["id"] == "part15-cleanup-reader-single-bit-state"
+            if item["id"] in (
+                "part15-cleanup-reader-single-bit-state", "part15-directional-word-event-state",
+            )
         ]
         self.assertEqual(framework.validate_normative_coverage(original)["status"], "passed")
         source_path = framework.ROOT / "src/tier1.rs"
@@ -320,10 +322,47 @@ impl HtReverseVlcReader {
             ("HtCleanupReaders::tick", "ht_cleanup_readers_view", "ht_cleanup_reader_tick", True),
             ("HtCleanupReaders::read_mel_bit", "ht_cleanup_readers_view", "ht_cleanup_reader_read_mel", True),
             ("HtCleanupReaders::read_vlc_bit", "ht_cleanup_readers_view", "ht_cleanup_reader_read_vlc", True),
+            ("ht_magsgn_from_input", "ht_magsgn_outcome", "ht_magsgn_initial", False),
+            ("ht_forward_refinement_from_input", "ht_forward_refinement_outcome", "ht_forward_refinement_initial", False),
+            ("ht_reverse_refinement_from_input", "ht_reverse_refinement_outcome", "ht_reverse_refinement_initial", False),
+            ("ht_refinement_readers_from_inputs", "ht_refinement_readers_outcome", "ht_refinement_readers_initial", False),
+            ("HtForwardMagSgnReader::load_byte", "ht_magsgn_view", "ht_magsgn_load", True),
+            ("HtForwardMagSgnReader::read_bit", "ht_magsgn_view", "ht_magsgn_read", True),
+            ("HtForwardMagSgnReader::read_bits", "ht_magsgn_view", "ht_magsgn_read_bits", True),
+            ("HtForwardMagSgnReader::finish", "ht_magsgn_view", "ht_magsgn_finish", True),
+            ("HtForwardRefinementReader::load_byte", "ht_forward_refinement_view", "ht_forward_refinement_load", True),
+            ("HtForwardRefinementReader::read_positioned_bit", "ht_forward_refinement_view", "ht_forward_refinement_positioned", True),
+            ("HtForwardRefinementReader::read_bit", "ht_forward_refinement_view", "ht_forward_refinement_read", True),
+            ("HtReverseRefinementReader::load_previous_byte", "ht_reverse_refinement_view", "ht_reverse_refinement_load", True),
+            ("HtReverseRefinementReader::read_positioned_bit", "ht_reverse_refinement_view", "ht_reverse_refinement_positioned", True),
+            ("HtReverseRefinementReader::read_bit", "ht_reverse_refinement_view", "ht_reverse_refinement_read", True),
+            ("HtRefinementReaders::claim", "ht_refinement_readers_view", "ht_refinement_claim", True),
+            ("HtRefinementReaders::read_forward", "ht_refinement_readers_view", "ht_refinement_read_forward", True),
+            ("HtRefinementReaders::read_reverse", "ht_refinement_readers_view", "ht_refinement_read_reverse", True),
+            ("HtCleanupReaders::advance_vlc", "ht_cleanup_readers_view", "ht_cleanup_advance_vlc", True),
+            ("HtCleanupReaders::mel_event", "ht_cleanup_readers_view", "ht_cleanup_mel_event", True),
         ]
         for symbol, projection, model, stateful in entries:
             coverage = copy.deepcopy(original)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if any(ref["symbol"] == model for ref in item["spec_refs"])
+            ]
             coverage["requirements"][0]["contract_refs"] = [{"path": "src/tier1.rs", "symbol": symbol}]
+            if symbol in (
+                "HtForwardRefinementReader::read_bit", "HtReverseRefinementReader::read_bit",
+                "HtForwardMagSgnReader::read_bits",
+            ):
+                # These public adapters have real API tests, not internal decoder callers.
+                coverage["requirements"][0]["implementation_refs"] = [{
+                    "path": "src/tier1.rs",
+                    "symbol": (
+                        "ht_magsgn_words_have_exact_fill_and_physical_state"
+                        if symbol == "HtForwardMagSgnReader::read_bits"
+                        else "ht_refinement_counter_and_sum_overflow_preserve_ordered_cursor_updates"
+                    ),
+                }]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
             header = framework._coverage_function_header(source, symbol)
             self.assertIsNotNone(header)
             signature = source.find("fn", header.start(), header.end())
@@ -334,7 +373,10 @@ impl HtReverseVlcReader {
                 r"final\(\s*self\s*\)" if stateful else re.escape(binder)
             ) + r"\s*\)"
             wrong_view = "ht_reverse_vlc_view" if projection == "ht_mel_view" else "ht_mel_view"
-            wrong_model = "ht_mel_initial" if model != "ht_mel_initial" else "ht_reverse_vlc_initial"
+            wrong_model = next(
+                ref["symbol"] for ref in coverage["requirements"][0]["spec_refs"]
+                if ref["symbol"] != model
+            )
             replacements = [
                 re.sub(r"\bverus_spec\(\s*\w+\s*=>", "verus_spec(unrelated =>", contract, count=1),
                 re.sub(call, "unlisted_projection(" + ("final(self)" if stateful else binder) + ")", contract, count=1),

@@ -3788,6 +3788,22 @@
     {
       "contract_refs": [
         {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::has_pending_physical_bits"},
+        {"path": "src/tier1.rs", "symbol": "ht_magsgn_from_input"},
+        {"path": "src/tier1.rs", "symbol": "ht_forward_refinement_from_input"},
+        {"path": "src/tier1.rs", "symbol": "ht_reverse_refinement_from_input"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_readers_from_inputs"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::load_byte"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::read_bit"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::finish"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::load_byte"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::read_positioned_bit"},
+        {"path": "src/tier1.rs", "symbol": "HtReverseRefinementReader::load_previous_byte"},
+        {"path": "src/tier1.rs", "symbol": "HtReverseRefinementReader::read_positioned_bit"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::claim"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::read_forward"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::read_reverse"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::advance_vlc"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::mel_event"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::peek_vlc"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::finish"},
         {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::finish"}
@@ -3795,6 +3811,14 @@
       "id": "part15-directional-word-event-state",
       "implementation_refs": [
         {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::new"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::new"},
+        {"path": "src/tier1.rs", "symbol": "HtReverseRefinementReader::new"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::new"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_readers_from_inputs"},
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::read_bit"},
+        {"path": "src/tier1.rs", "symbol": "HtReverseRefinementReader::read_bit"},
         {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::read_bits"},
         {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::finish"},
         {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::read_positioned_bit"},
@@ -3861,7 +3885,7 @@
         {"path": "src/tier1.rs", "symbol": "ht_cleanup_mel_events_have_exact_run_suffix_and_cache_transitions"},
         {"path": "src/tier1.rs", "symbol": "ht_cleanup_mel_event_overflow_and_partial_suffix_failure_keep_actual_state"}
       ],
-      "topic": "Complete selected actual directional/MagSgn word/refinement claim-padding/VLC word/MEL event state models and checked production refinements; immutable pending/peek/finish contracts indexed here, additional constructor/mutating views await exact scanner mappings; no full-block or mixed-sequencing claim"
+      "topic": "Complete selected actual directional/MagSgn word/refinement claim-padding/VLC word/MEL event state models and checked production refinements, with actual constructor/mutating production callers indexed; standalone public MagSgn read_bits and refinement read_bit adapters are proved but have no internal production caller; no full-block or mixed-sequencing claim"
     },
     {
       "contract_refs": [

@@ -233,12 +233,16 @@ These are complete **selected directional/multi-bit/event substages**, not
 full-block or F5H completion. Upstream segment partition/accounting, UVLC/
 quad interpretation, cleanup/significance/refinement block denotations,
 placeholder/replacement sequencing and mixed routing remain required.
-The inventory indexes the already supported immutable peek/pending/finish
-contracts and references all new models/proofs/tests. Additional exact
-constructor and mutating-view mappings are requested from the inventory's
-owner before indexing those contracts; no generic-expression fallback or
-relaxed mutation test is used. The exact-root verifier checks the actual
-new state contracts independently of that non-exhaustive source index.
+The inventory uses nineteen additional exact constructor/mutating-view
+recipes, with fail-closed tests for each return binding, complete view,
+old/final snapshot and function/model pairing. Scope lookup, mutable-parameter
+completeness and expression matching are unchanged. Sixteen contracts have
+actual internal production callers and are indexed. Three standalone public
+APIs (`HtForwardMagSgnReader::read_bits` and both public refinement `read_bit`
+adapters) are proved and their recipes tested against real API tests, but have
+no internal decoder callers. They are not disguised as internal helper calls
+or indexed through a wrong same-named method. The exact-root verifier checks
+all these actual contracts independently of the non-exhaustive source index.
 The models and a green solver run are not human endorsement of T.814.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
