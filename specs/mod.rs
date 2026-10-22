@@ -11,6 +11,38 @@ pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
 pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
 pub const PART2_NORMALIZED_SAMPLE_HALF: u16 = PART2_NORMALIZED_SAMPLE_MAX / 2;
 
+pub const COLOR_FIXED_SCALE: u32 = 65_536;
+pub const COLOR_FIXED_HALF: u32 = COLOR_FIXED_SCALE / 2;
+
+pub open spec fn color_fixed_round(value: int) -> int {
+    if value < 0 { -((-value + COLOR_FIXED_HALF) / (COLOR_FIXED_SCALE as int)) }
+    else { (value + COLOR_FIXED_HALF) / (COLOR_FIXED_SCALE as int) }
+}
+
+pub open spec fn color_rounded_fixed(value: i128) -> Result<i128, crate::DecodeError> {
+    if (value as int) < (i128::MIN as int) + COLOR_FIXED_HALF
+        || (value as int) > (i128::MAX as int) - COLOR_FIXED_HALF {
+        Err(part2_composition_error(true))
+    } else { Ok(color_fixed_round(value as int) as i128) }
+}
+
+pub open spec fn color_clamp_u16(value: int) -> u16 {
+    if value <= 0 { 0 } else if value >= PART2_NORMALIZED_SAMPLE_MAX as int {
+        PART2_NORMALIZED_SAMPLE_MAX
+    } else { value as u16 }
+}
+
+pub open spec fn color_sycc_to_srgb(y: u16, cb: i32, cr: i32)
+    -> Result<(u16, u16, u16), crate::DecodeError>
+{
+    Ok((
+        color_clamp_u16((y as int) + color_fixed_round(91881 * (cr as int))),
+        color_clamp_u16((y as int) - color_fixed_round(22554 * (cb as int))
+            - color_fixed_round(46802 * (cr as int))),
+        color_clamp_u16((y as int) + color_fixed_round(116130 * (cb as int))),
+    ))
+}
+
 pub enum Part1TypedSampleSequence {
     Signed(Seq<i64>),
     Unsigned(Seq<u64>),
@@ -135,6 +167,53 @@ pub open spec fn color_component_normalized(
     match color_component_nominal(component, x_origin, y_origin, x, y) {
         Err(error) => Err(error),
         Ok(value) => color_normalize_unsigned(value, component.info.precision),
+    }
+}
+
+pub open spec fn color_normalize_difference(value: u64, precision: u8)
+    -> Result<i32, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 {
+        Err(part2_color_input_error())
+    } else {
+        let maximum = ((1u64 << precision) - 1) as nat;
+        if value as nat > maximum { Err(part2_color_input_error()) }
+        else {
+            let midpoint = 1u64 << ((precision - 1) as u8);
+            let scaled = ((value as int) - midpoint as int) * (PART2_NORMALIZED_SAMPLE_MAX as int);
+            let rounded = if scaled < 0 {
+                -((-scaled + maximum / 2) / (maximum as int))
+            } else { (scaled + maximum / 2) / (maximum as int) };
+            if rounded < i32::MIN || rounded > i32::MAX {
+                Err(part2_composition_error(true))
+            } else { Ok(rounded as i32) }
+        }
+    }
+}
+
+pub open spec fn color_image_normalized(
+    components: Seq<Part1TypedComponentModel>, x_origin: u32, y_origin: u32,
+    component_index: usize, x: u32, y: u32,
+) -> Result<u16, crate::DecodeError> {
+    if component_index >= components.len() { Err(part2_color_input_error()) }
+    else { color_component_normalized(components[component_index as int], x_origin, y_origin, x, y) }
+}
+
+pub open spec fn color_image_difference(
+    components: Seq<Part1TypedComponentModel>, x_origin: u32, y_origin: u32,
+    component_index: usize, x: u32, y: u32,
+) -> Result<i32, crate::DecodeError> {
+    if component_index >= components.len() { Err(part2_color_input_error()) }
+    else {
+        let component = components[component_index as int];
+        if component.info.precision == 0 || component.info.precision > 38 {
+            Err(part2_color_input_error())
+        } else {
+            match color_component_nominal(component, x_origin, y_origin, x, y) {
+                Err(error) => Err(error),
+                Ok(value) => color_normalize_difference(value, component.info.precision),
+            }
+        }
     }
 }
 

@@ -61,6 +61,18 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`color_sycc_to_srgb` specifies the actual fixed-point pixel conversion over
+every native `u16` luminance and `i32` difference pair. Its coefficients are
+91881, 22554, 46802 and 116130 with denominator `COLOR_FIXED_SCALE = 2^16`.
+Each delta is rounded separately, with exact half ties away from zero,
+before the three output sums are clamped to `[0, 65535]`. The pure
+`color_fixed_round` uses unbounded integers; `color_rounded_fixed` separately
+retains the checked pre-division overflow boundary for arbitrary `i128`.
+`color_image_difference` separately connects real component lookup and nominal
+sampling to centered chroma scaling by `65535/(2^p-1)`, with the same signed
+nearest/tie policy. Neither pixel theorem proves component/output-budget
+validation or the entire color-conversion loop.
+
 `color_channel_layout` describes actual typed-image/CDEF routing before sample
 conversion. Its default path is used only when every component has no
 definitions. The explicit ordered fold retains alpha kind/association,

@@ -1114,6 +1114,16 @@ fn pixel_coordinates(pixel: usize, width: usize) -> Result<(u32, u32), DecodeErr
     Ok((x, y))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_image_normalized(
+            crate::image::typed_image_component_views(image),
+            crate::image::typed_image_geometry(image).2,
+            crate::image::typed_image_geometry(image).3, component_index, x, y,
+        ),
+    )
+)]
 fn normalized_at(
     image: &TypedImage,
     component_index: usize,
@@ -1127,6 +1137,16 @@ fn normalized_at(
     normalized_component_at(component, image.x_origin(), image.y_origin(), x, y)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_image_difference(
+            crate::image::typed_image_component_views(image),
+            crate::image::typed_image_geometry(image).2,
+            crate::image::typed_image_geometry(image).3, component_index, x, y,
+        ),
+    )
+)]
 fn normalized_difference_at(
     image: &TypedImage,
     component_index: usize,
@@ -1140,6 +1160,10 @@ fn normalized_difference_at(
     let info = component.info();
     if info.precision == 0 || info.precision > 38 {
         return Err(invalid_color_input());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::color_precision_binary_bounds(info.precision);
     }
     let value = nominal_component_at(component, image.x_origin(), image.y_origin(), x, y)?;
     let maximum = (1_u64 << info.precision)
@@ -1161,7 +1185,10 @@ fn normalized_difference_at(
     } else {
         (scaled + i128::from(maximum / 2)) / i128::from(maximum)
     };
-    i32::try_from(rounded).map_err(|_| arithmetic_overflow())
+    match i32::try_from(rounded) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 #[cfg_attr(
@@ -1328,6 +1355,10 @@ fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_sycc_to_srgb(y, cb, cr),)
+)]
 fn sycc_to_srgb(y: u16, cb: i32, cr: i32) -> Result<(u16, u16, u16), DecodeError> {
     let y = i128::from(y);
     let cb = i128::from(cb);
@@ -1355,12 +1386,18 @@ fn sycc_to_srgb(y: u16, cb: i32, cr: i32) -> Result<(u16, u16, u16), DecodeError
     let red = y.checked_add(red_delta).ok_or_else(arithmetic_overflow)?;
     let green = y
         .checked_sub(green_blue_delta)
-        .and_then(|value| value.checked_sub(green_red_delta))
+        .ok_or_else(arithmetic_overflow)?;
+    let green = green
+        .checked_sub(green_red_delta)
         .ok_or_else(arithmetic_overflow)?;
     let blue = y.checked_add(blue_delta).ok_or_else(arithmetic_overflow)?;
     Ok((clamp_u16(red), clamp_u16(green), clamp_u16(blue)))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_rounded_fixed(value),)
+)]
 fn rounded_fixed(value: i128) -> Result<i128, DecodeError> {
     if value < 0 {
         Ok(value
@@ -1375,6 +1412,10 @@ fn rounded_fixed(value: i128) -> Result<i128, DecodeError> {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_clamp_u16(value as int),)
+)]
 fn clamp_u16(value: i128) -> u16 {
     if value <= 0 {
         0
@@ -1941,6 +1982,198 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn fixed_rounding_matches_unsigned_magnitude_reference_at_native_boundaries() {
+        let values = [
+            i128::MIN,
+            i128::MIN + 32_767,
+            i128::MIN + 32_768,
+            i128::MIN + 32_769,
+            -98_305,
+            -98_304,
+            -98_303,
+            -65_536,
+            -32_769,
+            -32_768,
+            -32_767,
+            -1,
+            0,
+            1,
+            32_767,
+            32_768,
+            32_769,
+            65_536,
+            98_303,
+            98_304,
+            98_305,
+            i128::MAX - 32_769,
+            i128::MAX - 32_768,
+            i128::MAX - 32_767,
+            i128::MAX,
+        ];
+        for value in values {
+            let magnitude = value.unsigned_abs() + 32_768;
+            let bound = if value < 0 {
+                1_u128 << 127
+            } else {
+                i128::MAX as u128
+            };
+            let expected = if magnitude > bound {
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })
+            } else {
+                let rounded = i128::try_from(magnitude / 65_536).unwrap();
+                Ok(if value < 0 { -rounded } else { rounded })
+            };
+            assert_eq!(rounded_fixed(value), expected, "{value}");
+        }
+        assert_eq!(rounded_fixed(-32_768), Ok(-1));
+        assert_eq!(rounded_fixed(32_768), Ok(1));
+    }
+
+    #[test]
+    fn chroma_normalization_matches_wide_signed_ratio_for_every_supported_precision() {
+        let mut cases = 0;
+        for precision in 1..=38 {
+            let midpoint = 1_u64 << (precision - 1);
+            let maximum = 2 * midpoint - 1;
+            for signed in [false, true] {
+                for value in [0, midpoint - 1, midpoint, maximum] {
+                    let input = if signed {
+                        signed_component(
+                            &[i64::try_from(value).unwrap() - i64::try_from(midpoint).unwrap()],
+                            precision,
+                            (1, 1),
+                            None,
+                        )
+                    } else {
+                        component(&[value], precision, false, (1, 1), None)
+                    };
+                    let image = image(1, vec![input]);
+                    let difference = i128::from(value) - i128::from(midpoint);
+                    let magnitude = (difference.unsigned_abs() * 65_535 + u128::from(maximum / 2))
+                        / u128::from(maximum);
+                    let expected =
+                        i32::try_from(magnitude).unwrap() * if difference < 0 { -1 } else { 1 };
+                    assert_eq!(normalized_difference_at(&image, 0, 0, 0), Ok(expected));
+                    let normalized = (u128::from(value) * 65_535 + u128::from(maximum / 2))
+                        / u128::from(maximum);
+                    assert_eq!(
+                        normalized_at(&image, 0, 0, 0),
+                        Ok(u16::try_from(normalized).unwrap()),
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 304);
+    }
+
+    #[test]
+    fn chroma_sampling_preserves_typed_input_and_coordinate_error_order() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        };
+        for precision in [0, 39, 255] {
+            let input = image(1, vec![component(&[0], precision, false, (0, 0), None)]);
+            assert_eq!(
+                normalized_difference_at(&input, 0, u32::MAX, u32::MAX),
+                Err(invalid)
+            );
+        }
+        for input in [
+            component(&[256], 8, false, (1, 1), None),
+            TypedComponent::from_parts(
+                1,
+                1,
+                ComponentInfo {
+                    precision: 8,
+                    signed: true,
+                    x_subsampling: 1,
+                    y_subsampling: 1,
+                    x_registration: 0,
+                    y_registration: 0,
+                },
+                TypedSamples::Unsigned(vec![0]),
+            ),
+            signed_component(&[-129], 8, (1, 1), None),
+            signed_component(&[128], 8, (1, 1), None),
+        ] {
+            assert_eq!(
+                normalized_difference_at(&image(1, vec![input]), 0, 0, 0),
+                Err(invalid)
+            );
+        }
+        let input = TypedImage::from_components_with_origin(
+            1,
+            1,
+            u32::MAX - 1,
+            0,
+            vec![component(&[0], 8, false, (1, 1), None)],
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(normalized_difference_at(&input, 1, 2, 0), Err(invalid));
+        assert_eq!(
+            normalized_difference_at(&input, 0, 2, 0),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            }),
+        );
+    }
+
+    #[test]
+    fn sycc_conversion_matches_independent_wide_integer_reference() {
+        fn round(value: i64) -> i64 {
+            let magnitude = (value.unsigned_abs() + 32_768) / 65_536;
+            i64::try_from(magnitude).unwrap() * value.signum()
+        }
+        fn sample(value: i64) -> u16 {
+            u16::try_from(value.clamp(0, 65_535)).unwrap()
+        }
+        let differences = [
+            i32::MIN,
+            i32::MIN + 1,
+            -65_536,
+            -65_535,
+            -32_768,
+            -1,
+            0,
+            1,
+            32_767,
+            32_768,
+            65_534,
+            65_535,
+            65_536,
+            i32::MAX - 1,
+            i32::MAX,
+        ];
+        let mut cases = 0;
+        for y in [0, 1, 32_767, 32_768, 65_534, 65_535_u16] {
+            for cb in differences {
+                for cr in differences {
+                    let cb = i64::from(cb);
+                    let cr = i64::from(cr);
+                    let expected = (
+                        sample(i64::from(y) + round(91_881 * cr)),
+                        sample(i64::from(y) - round(22_554 * cb) - round(46_802 * cr)),
+                        sample(i64::from(y) + round(116_130 * cb)),
+                    );
+                    assert_eq!(
+                        sycc_to_srgb(y, i32::try_from(cb).unwrap(), i32::try_from(cr).unwrap()),
+                        Ok(expected),
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 1_350);
     }
 
     fn component(

@@ -107,8 +107,19 @@ pub struct TypedImage {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn typed_image_geometry(image: &TypedImage) -> (u32, u32, u32, u32) {
+        (image.width, image.height, image.x_origin, image.y_origin)
+    }
+
     pub closed spec fn typed_image_components(image: &TypedImage) -> Seq<TypedComponent> {
         image.components@
+    }
+
+    pub open spec fn typed_image_component_views(image: &TypedImage)
+        -> Seq<crate::specs::Part1TypedComponentModel>
+    {
+        let components = typed_image_components(image);
+        Seq::new(components.len(), |i: int| typed_component_view(&components[i]))
     }
 
     pub closed spec fn typed_component_definitions(component: &TypedComponent) -> Seq<ChannelDefinition> {
@@ -1001,18 +1012,34 @@ impl TypedImage {
         })
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).0,)
+    )]
     pub const fn width(&self) -> u32 {
         self.width
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).1,)
+    )]
     pub const fn height(&self) -> u32 {
         self.height
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).2,)
+    )]
     pub const fn x_origin(&self) -> u32 {
         self.x_origin
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_image_geometry(self).3,)
+    )]
     pub const fn y_origin(&self) -> u32 {
         self.y_origin
     }

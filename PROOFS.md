@@ -165,6 +165,16 @@ over a later missing-color error. These contracts do not independently prove
 that a container parser authored the normative definitions or close the
 subsequent whole color/alpha conversion.
 
+`normalized_at` and `normalized_difference_at` are connected to the actual
+typed-image component sequence and origins, including component lookup and
+all nominal sampling errors. Chroma differences subtract `2^(p-1)` and scale
+by `65535/(2^p-1)`, rounding signed half ties away from zero. `sycc_to_srgb`
+returns the exact separately rounded, clamped RGB triple for every native
+`u16`/`i32` input, without a restricted-chroma precondition. The checked
+`rounded_fixed` helper also retains both `i128` overflow boundaries. These
+pixel results do not close the earlier component/output-budget validation or
+the complete public color-converter channel/raster traversal.
+
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
 channel order or valid plane lengths. Their result projections include every

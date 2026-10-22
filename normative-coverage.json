@@ -5,6 +5,40 @@
   "requirements": [
     {
       "contract_refs": [
+        {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
+        {"path": "src/color.rs", "symbol": "rounded_fixed"},
+        {"path": "src/color.rs", "symbol": "clamp_u16"},
+        {"path": "src/color.rs", "symbol": "normalized_at"},
+        {"path": "src/color.rs", "symbol": "normalized_difference_at"}
+      ],
+      "id": "part1-complete-fixed-point-sycc-pixel",
+      "implementation_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "sycc_to_srgb"}
+      ],
+      "proof_refs": [
+        {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
+        {"path": "src/color.rs", "symbol": "rounded_fixed"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_sycc_to_srgb"},
+        {"path": "specs/mod.rs", "symbol": "color_rounded_fixed"},
+        {"path": "specs/mod.rs", "symbol": "color_clamp_u16"},
+        {"path": "specs/mod.rs", "symbol": "color_fixed_round"},
+        {"path": "specs/mod.rs", "symbol": "color_image_normalized"},
+        {"path": "specs/mod.rs", "symbol": "color_image_difference"},
+        {"path": "specs/mod.rs", "symbol": "color_normalize_difference"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "fixed_rounding_matches_unsigned_magnitude_reference_at_native_boundaries"},
+        {"path": "src/color.rs", "symbol": "sycc_conversion_matches_independent_wide_integer_reference"},
+        {"path": "src/color.rs", "symbol": "chroma_normalization_matches_wide_signed_ratio_for_every_supported_precision"},
+        {"path": "src/color.rs", "symbol": "chroma_sampling_preserves_typed_input_and_coordinate_error_order"}
+      ],
+      "topic": "Complete actual sampled luminance/chroma and fixed-point sYCC pixel conversion, signed half-away-from-zero rounding and clamp over full native input domains"
+    },
+    {
+      "contract_refs": [
         {"path": "src/color.rs", "symbol": "channel_layout"},
         {"path": "src/color.rs", "symbol": "validate_alpha_association"}
       ],
