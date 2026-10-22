@@ -4,6 +4,129 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part15-complete-actual-refinement-plane",
+      "topic": "Complete actual one/two-pass refinement with six-word magnitudes/raw flags, reverse magnitude before forward discovery, real stripe/patch/neighbor/causal order, delayed signs, full physical claim/stuffing state, exact first errors and final padding; not continuation/replay or mixed F5H closure",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "decode_ht_refinement_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_column"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_stripe"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_pass"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_column"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_patch"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::sign_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::signs"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_stripe"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_pass"},
+        {"path": "src/tier1.rs", "symbol": "ht_significance_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_delta"},
+        {"path": "src/tier1.rs", "symbol": "ht_collect_cleanup_significance"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::apply_ht_refinement_decision"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::neighbor_summary_with_causality"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::accumulate_neighbor"},
+        {"path": "src/tier1.rs", "symbol": "ht_neighbor_summary_zero"},
+        {"path": "src/tier1.rs", "symbol": "significant_neighbor_count"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::refined"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_refinement_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_column"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_stripe"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_pass"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_column"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_patch"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::sign_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::signs"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_stripe"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_pass"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::neighbor_summary_with_causality"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_refinement_plane"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_rows"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_columns"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_stripes"},
+        {"path": "specs/mod.rs", "symbol": "ht_discover_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_discovery_rows"},
+        {"path": "specs/mod.rs", "symbol": "ht_discovery_columns"},
+        {"path": "specs/mod.rs", "symbol": "ht_patch_sign_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_pending_signs"},
+        {"path": "specs/mod.rs", "symbol": "ht_sigprop_patches"},
+        {"path": "specs/mod.rs", "symbol": "ht_sigprop_stripes"},
+        {"path": "specs/mod.rs", "symbol": "ht_significance_magnitude"},
+        {"path": "specs/mod.rs", "symbol": "ht_refinement_delta"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_significance"},
+        {"path": "specs/mod.rs", "symbol": "ht_apply_refinement"},
+        {"path": "specs/mod.rs", "symbol": "ht_neighbors"},
+        {"path": "specs/mod.rs", "symbol": "ht_accumulate_neighbor"},
+        {"path": "specs/mod.rs", "symbol": "ht_neighbor_zero"},
+        {"path": "specs/mod.rs", "symbol": "ht_significant_neighbor_count"},
+        {"path": "specs/mod.rs", "symbol": "tier1_statistics_increment"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_core_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_sigprop_patch_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_sigprop_plane_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_sigprop_plane_outcome"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_magnitude_outcome"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_magnitude_view"},
+        {"path": "src/tier1.rs", "symbol": "neighbor_kind_tag"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_full_refinement_rejects_front_parameters_before_any_plane_or_stream"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_delayed_signs_preserve_discovery_and_pending_on_every_return"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_neighbor_balance_overflow_keeps_the_prior_count_increment"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_both_passes_preserve_raw_flags_and_all_six_words"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_uses_wide_native_borrow_addition_and_no_midpoint_normalization"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_delays_patch_signs_and_keeps_discovery_distinct"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_vertical_causality_changes_only_actual_neighbor_admission"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_first_errors_keep_real_reader_claim_and_counter_order"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_native_rejections_overflow_underflow_and_zero_are_exact"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_neighbor_overflows_and_malformed_shapes_have_ordered_effects"}
+      ]
+    },
+    {
+      "id": "part15-complete-substantive-segment-byte-entry",
+      "topic": "Actual complete cleanup-plus-optional-refinement byte entry with real style/pass/set/byte/work admission, parser/metadata/numeric/refinement composition and full decoder failure state; None differs from Some(empty); continuation/placeholder/replacement/mixed dispatch remain open",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "ht_significant_bitplanes"},
+        {"path": "src/tier1.rs", "symbol": "Tier1BlockCoding::uses_high_throughput"},
+        {"path": "src/tier1.rs", "symbol": "copy_ht_refinement_bytes"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::merge"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_decode_segments"},
+        {"path": "specs/mod.rs", "symbol": "ht_coefficient_symbols"},
+        {"path": "specs/mod.rs", "symbol": "ht_significant_bitplanes"},
+        {"path": "specs/mod.rs", "symbol": "ht_block_coding_enabled"},
+        {"path": "specs/mod.rs", "symbol": "ht_copy_refinement_bytes"},
+        {"path": "specs/mod.rs", "symbol": "tier1_statistics_merge"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "ht_byte_vector_outcome"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_complete_symbol_model_preserves_the_frozen_cleanup_only_profile"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_full_symbol_caller_distinguishes_none_empty_refinement_and_pre_refinement_plane"},
+        {"path": "src/tier1.rs", "symbol": "ht_public_segment_entry_binds_actual_pass_byte_work_admission_and_error_order"},
+        {"path": "src/tier1.rs", "symbol": "ht_public_segment_entry_keeps_none_and_some_empty_distinct_without_assumed_context"}
+      ]
+    },
+    {
       "id": "part15-cleanup-only-actual-symbol-caller",
       "topic": "Explicit absent-refinement actual symbol-caller composition from supplied parsed segments through real metadata/numeric/duplicate producers and complete decoder state, including ordered partial accounting errors; public byte preflight and refinement/mixed sequences remain open",
       "contract_refs": [
@@ -4684,7 +4807,9 @@
         {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::new"},
         {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::new"},
         {"path": "src/tier1.rs", "symbol": "HtReverseRefinementReader::new"},
-        {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::new"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::sign_sample"},
         {"path": "src/tier1.rs", "symbol": "ht_refinement_readers_from_inputs"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},

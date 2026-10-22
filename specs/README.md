@@ -1,5 +1,44 @@
 # Specification audit guide
 
+## Frozen full F5H refinement-plane profile
+
+The continuing stage is the entire actual `decode_ht_refinement_plane`, for
+both one and two refinement passes and every native pass/bitplane/cap input.
+Initial rejection and complete duplication precede reader construction and the
+cleanup-significance snapshot. Two passes execute reverse magnitude refinement
+first, then forward significance propagation. All six raw words and flags,
+both physical readers, complete claimed/stuffed vectors, every statistic and
+the separate evolving discovery plane/pending sign coordinates are observed.
+
+Significance discovery follows actual four-row stripes and four-column patches,
+including vertical-causal neighbor suppression. Discovery writes precede delayed
+per-patch sign reads and output stores; discovery signs are not silently replaced
+with output signs. Final claim/padding/stuffing/collision/work rejection follows
+all stores. Each first-error partial state and transactional boundary must match
+the real producer. No valid-plane, normalized-coefficient, valid-stream,
+successful-decode or adequate-budget premise is introduced. Private geometry
+bounds must follow from the real duplicate checks. An additive-only, one-pass or
+reader-only result is not completion of this full S+R profile.
+
+The completed caller boundary includes both the unconditional inner symbol
+caller and actual `decode_high_throughput_segments` byte entry. All native style,
+pass counts, retained state and three real owner caps are admitted. Public pass
+and significant-bitplane preflight occurs before the real byte parser; byte and
+work admission then precede the inner caller. Inside that caller, actual metadata
+still precedes pass conversion. Neither order is transplanted onto the other.
+`None` and `Some(empty)` retain different pass/segment/refinement-state effects.
+Inner failures can clear retained refinement data before rejecting a refinement
+segment, while later accounting overflows retain prior committed fields.
+
+The private reader constructor wrapper was removed after the production entry
+began calling its existing shared verified free implementation directly; its one
+test uses the same implementation. No public API or second executable decoder
+was introduced. Pending sign vectors are still allocated once per actual patch
+and dropped at the original patch-iteration boundary. Magnitude operations use
+the real owner contracts, including complete native subtraction and zero.
+Continuation/empty replay, placeholder skipping, replacement orchestration and
+mixed HT/legacy routing remain outside this completed entry profile.
+
 ## Frozen F5H cleanup symbol-caller composition
 
 The next bounded caller profile is the **cleanup-only** branch of the actual
