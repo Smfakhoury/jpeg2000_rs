@@ -32,6 +32,75 @@ use crate::specs::{
 
 verus! {
 
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_every_failure_preserves_complete_original_decoder(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_success_reports_original_packet_pass_count(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true, Ok(result) => result.passes == passes as u32,
+    },
+{
+}
+
+pub proof fn ht_group_route_uses_retained_option_not_current_cleanup_flag(state: crate::specs::Tier1DecoderState)
+    requires matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::Mixed),
+        state.ht_cleanup_plane.is_some(),
+    ensures crate::specs::ht_group_route(state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_continuation_first_accounting_overflow_preserves_already_prepared_state(
+    state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+)
+    requires state.next_pass as nat + passes as nat > u32::MAX,
+    ensures crate::specs::ht_finish_refinement_contribution(state, passes, bytes, next_bytes, statistics, replayed)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_continuation_segment_overflow_keeps_pass_but_not_byte_update(
+    state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+)
+    requires state.next_pass as nat + passes as nat <= u32::MAX, state.decoded_segments == u32::MAX,
+    ensures crate::specs::ht_finish_refinement_contribution(state, passes, bytes, next_bytes, statistics, replayed)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { next_pass: (state.next_pass + passes) as u32, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_placeholder_preserves_output_and_retained_cleanup_on_every_return(
+    state: crate::specs::Tier1DecoderState, passes: u8, maximum_passes: u32,
+)
+    ensures crate::specs::ht_skip_segment(state, passes, maximum_passes).1.plane == state.plane,
+        crate::specs::ht_skip_segment(state, passes, maximum_passes).1.ht_cleanup_plane == state.ht_cleanup_plane,
+        crate::specs::ht_skip_segment(state, passes, maximum_passes).1.decoded_bytes == state.decoded_bytes,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_refinement_reset_frames_all_unrelated_decoder_fields(state: crate::specs::Tier1DecoderState)
+    ensures crate::specs::ht_clear_refinement_state(state) == (crate::specs::Tier1DecoderState {
+        ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state
+    }),
+{
+}
+
 pub proof fn standard_prepare_preserves_complete_plan_metadata(
     plan: crate::specs::Part1PreparePlan, precincts: Seq<Seq<crate::specs::Tier1RawPlane>>,
     style: crate::specs::Part1PrepareStyle, maximum: u64,

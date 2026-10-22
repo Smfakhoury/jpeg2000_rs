@@ -29,9 +29,13 @@ pub mod representation_proofs {
 
     verus! {
         pub proof fn magnitude_limbs_shape(value: super::Magnitude)
-            ensures super::magnitude_limbs(value).len() == 6,
+            ensures
+                super::magnitude_limbs(value).len() == 6,
+                super::magnitude_value(value)
+                    == crate::specs::part1_magnitude_value(super::magnitude_limbs(value)),
         {
             reveal(super::magnitude_limbs);
+            reveal(super::magnitude_value);
         }
     }
 }

@@ -4,6 +4,75 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part15-actual-selected-staged-ht-packet-group",
+      "topic": "Actual selected HT decode_segment branch with faithful whole raw clone, complete placeholder-group loop, substantive decode, rollback/commit and native state/errors; legacy else/full mixed/packet composition remain open",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::run_ht_placeholder_groups"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_staged_group"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_staged_group"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_placeholder_group_run"},
+        {"path": "specs/mod.rs", "symbol": "ht_decode_staged_group"},
+        {"path": "specs/mod.rs", "symbol": "ht_group_route"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::clone"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_staged_group_every_failure_preserves_complete_original_decoder"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_staged_group_success_reports_original_packet_pass_count"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_group_route_uses_retained_option_not_current_cleanup_flag"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_whole_decoder_clone_preserves_all_raw_malformed_fields_and_independent_storage"},
+        {"path": "src/tier1.rs", "symbol": "ht_staged_group_complete_native_pass_domain_uses_real_grouping_and_rollback"},
+        {"path": "src/tier1.rs", "symbol": "ht_staged_group_every_late_failure_keeps_original_state_not_staged_partial_writes"},
+        {"path": "src/tier1.rs", "symbol": "ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures"},
+        {"path": "src/tier1.rs", "symbol": "ht_actual_groups_continue_and_replace_using_real_retained_state"}
+      ]
+    },
+    {
+      "id": "part15-complete-retained-refinement-and-placeholder-steps",
+      "topic": "Complete actual retained-byte continuation/replay and placeholder/replacement step over native unnormalized decoder states, real admission and exact empty/nonempty transactional/late partial effects; staged group cloning and mixed dispatch remain open",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_refinement"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::skip_high_throughput_segment"}
+      ],
+      "implementation_refs": [
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body_staged"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::run_ht_placeholder_groups"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_decode_refinement_contribution"},
+        {"path": "specs/mod.rs", "symbol": "ht_finish_refinement_contribution"},
+        {"path": "specs/mod.rs", "symbol": "ht_skip_segment"},
+        {"path": "specs/mod.rs", "symbol": "ht_clear_refinement_state"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::clear_ht_refinement_state"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_continuation_first_accounting_overflow_preserves_already_prepared_state"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_continuation_segment_overflow_keeps_pass_but_not_byte_update"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_placeholder_preserves_output_and_retained_cleanup_on_every_return"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_refinement_reset_frames_all_unrelated_decoder_fields"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_continuation_replays_real_concatenation_from_cleanup_not_current_output"},
+        {"path": "src/tier1.rs", "symbol": "ht_continuation_empty_concatenation_preserves_output_and_skips_replay_only"},
+        {"path": "src/tier1.rs", "symbol": "ht_continuation_rejects_before_commit_but_keeps_exact_late_accounting_writes"},
+        {"path": "src/tier1.rs", "symbol": "ht_continuation_native_pass_domain_and_retained_size_boundaries_are_exact"},
+        {"path": "src/tier1.rs", "symbol": "ht_placeholder_all_native_passes_and_phases_preserve_actual_admission"},
+        {"path": "src/tier1.rs", "symbol": "ht_placeholder_replacement_and_late_errors_retain_cleanup_option_and_prior_writes"},
+        {"path": "src/tier1.rs", "symbol": "ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures"},
+        {"path": "src/tier1.rs", "symbol": "ht_actual_groups_continue_and_replace_using_real_retained_state"}
+      ]
+    },
+    {
       "id": "part15-complete-actual-refinement-plane",
       "topic": "Complete actual one/two-pass refinement with six-word magnitudes/raw flags, reverse magnitude before forward discovery, real stripe/patch/neighbor/causal order, delayed signs, full physical claim/stuffing state, exact first errors and final padding; not continuation/replay or mixed F5H closure",
       "contract_refs": [
@@ -103,6 +172,7 @@
         {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::merge"}
       ],
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_staged_group"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},

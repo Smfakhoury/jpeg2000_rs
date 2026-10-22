@@ -116,6 +116,64 @@ the exact owner and rejects ambiguity, foreign owners and nested functions.
 These are actual supplied-header results, not parsing/association, compressed
 decoding, target derivation or whole-F7 completion claims.
 
+## Complete actual MQ and legacy three-pass producers
+
+The actual MQ decoder now refines [a complete state model](specs/mq.rs):
+input bytes, physical position, interval/code/count registers, all nineteen
+probability contexts and MPS bits, work counter/cap and marker-padding counter.
+The independent forty-seven-state probability sequence is joined to the real
+table. Decode includes both conditional exchanges, real context transitions,
+byte stuffing, bounded renormalization and the real first error. Input admission,
+context save/restore/reset, byte consumption and predictable-termination checks
+have their complete relations too. No initialized-register, valid-context,
+valid-stream or sufficient-budget premise restricts the decoder methods.
+
+The actual legacy significance-propagation, magnitude-refinement and cleanup
+passes refine [whole pass/state models](specs/legacy.rs), including both MQ and
+bypass readers where the production entry permits them. All four subband
+orientations, causal-context choices, cleanup run interruption, delayed symbol
+statistics, segmentation symbols, six coefficient words, sign/refinement/
+legacy-bitplane flags and both complete bitplane-state vectors are represented.
+Public with-style entries observe the style fields actually used by each pass;
+they do not silently validate other fields. All errors retain actual reader,
+coefficient and visit-flag mutations. Completing a pass is not transactional.
+
+The stripe/column/row traversal and cleanup run-mode skipping remain intact.
+Their existing coefficient operations have one production implementation;
+private cell/column/row stages expose its state transitions. A private static
+reader adapter delegates directly to the actual MQ or raw reader. Its ghost
+view has concrete implementations for both readers, not a supplied symbol
+trace. Existing static constructor APIs delegate to verified free constructors,
+following the pinned frontend's established static-impl limitation.
+
+Independent tests exhaust all two-byte MQ initializations, native context-state
+bytes and both MPS values; assert complete register/context/error effects;
+exercise all 65,536 native legacy sign bitplanes; and check actual three-pass
+composition and every raw cleanup/run/segmentation-symbol budget prefix.
+Native reference-decoder qualification remains a separate gate.
+
+This completes the entropy and three-pass producer boundary, **not F5L**.
+Segment/pass scheduling and admission, retained contribution replay, packet
+association, whole-decoder staging/cloning and packet-to-coefficient composition
+remain explicit obligations. A pass theorem must not be reported as a complete
+legacy code-block or codestream theorem.
+
+### Faithful raw legacy clone prerequisite
+
+`CodeBlockPlane`, `Tier1BitplaneState` and retained `LegacySegmentState` now use
+explicit faithful `Clone` implementations with unconditional complete raw-view
+postconditions. Their field order and each original `Vec::clone` allocation
+remain unchanged. These are data copies, not validated-plane duplication:
+zero/extreme geometry, mismatched vectors, non-normalized words and arbitrary
+flags/tags are preserved exactly. Independent mutation tests cover 1,600 raw
+source families with both absent and present retained bitplane state.
+
+Both whole-decoder and retained-legacy ghost frames use the same logical
+eight-field bitplane projection and full nineteen-context snapshot projection.
+They no longer treat non-Copy cloned vectors as opaque native identity.
+This supplies actual data-copy facts to later staging proofs; it does not itself
+establish the shared whole-decoder clone, contribution replay or dispatcher.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
@@ -404,6 +462,9 @@ Read each contract according to its inputs and postcondition:
 | Earlier cleanup-only symbol stage, now subsumed | Actual metadata output feeds numerical reconstruction and complete duplication; decoder state and ordered accounting facts remain reusable native stages | This earlier stage alone did not establish supplied refinement or byte-input preflight; the complete entries below now do. Continuation/replay, placeholders/replacement/mixed sequencing and full F5H remain separate. |
 | Complete actual HT significance/refinement plane | Both one/two-pass paths, all native header values and raw six-word states: actual reverse magnitude adjustment, stripe/neighborhood/causality, evolving discovery plane, per-patch delayed signs, every coefficient/flag/statistic, complete readers/claim/stuffing vectors and first-error/final-padding effects | Refinement continuation/replay, placeholder/replacement/mixed sequencing or full F5H |
 | Complete substantive HT segment byte entry | Actual style/pass/set admission, real pass/byte/work caps, parser partitions, internal metadata-to-numeric-to-refinement composition, complete decoder state and exact ordered failures, including `None` versus `Some(empty)` | Separate refinement-contribution replay, placeholder skipping, replacement/multiple-group orchestration, mixed legacy dispatch, normative endorsement or whole-decoder/F5H completion |
+| Complete retained HT refinement contribution | Actual retained-buffer clone/append and size/cumulative-byte admission, replay from the retained cleanup plane, native pass-group checks, empty-concatenation bypass, full output/data/control state and every transactional/late partial accounting error without normalized-state premises | Staged packet-group clone/commit orchestration, mixed legacy dispatch or full F5H |
+| Complete native HT placeholder/replacement step | All native pass/phase/set states and real pass caps, exact cleanup-flag/buffer reset, preserved stored cleanup/output, multiple-set permission/counting and partial segment-overflow effects | Entire staged multiple-group/packet or mixed dispatch; no assumed Clone/legacy outcome is supplied |
+| Actual selected HT staged packet group | Faithful whole-decoder raw cloning, original packet grouping, repeated skip-one/skip-two loop, substantive byte decode and whole-clone commit. Every failure preserves the complete original decoder; success reports the packet's original pass count. Includes raw malformed retained state and exact selected Mixed-with-cleanup-option route | Legacy dispatcher else, full mixed union, packet contribution/precinct orchestration or whole F5H; no supplied legacy/clone trace is accepted |
 | Raw Tier-1 producer interfaces | Actual decoder plane, raw dimensions/sequence/indexed result even for malformed shapes, full stored words/flags, exact legacy-midpoint signed magnitude and native arithmetic rejection; no normalized-coefficient premise | Entropy meaning, coefficient normalization, complete reconstruction coordinator or end-to-end pixel correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
