@@ -124,6 +124,22 @@ association, whole-decoder staging/cloning and packet-to-coefficient composition
 remain explicit obligations. A pass theorem must not be reported as a complete
 legacy code-block or codestream theorem.
 
+### Faithful raw legacy clone prerequisite
+
+`CodeBlockPlane`, `Tier1BitplaneState` and retained `LegacySegmentState` now use
+explicit faithful `Clone` implementations with unconditional complete raw-view
+postconditions. Their field order and each original `Vec::clone` allocation
+remain unchanged. These are data copies, not validated-plane duplication:
+zero/extreme geometry, mismatched vectors, non-normalized words and arbitrary
+flags/tags are preserved exactly. Independent mutation tests cover 1,600 raw
+source families with both absent and present retained bitplane state.
+
+Both whole-decoder and retained-legacy ghost frames use the same logical
+eight-field bitplane projection and full nineteen-context snapshot projection.
+They no longer treat non-Copy cloned vectors as opaque native identity.
+This supplies actual data-copy facts to later staging proofs; it does not itself
+establish the shared whole-decoder clone, contribution replay or dispatcher.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

@@ -4855,7 +4855,6 @@ pub struct SignificanceStep {
     pub became_significant: bool,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct Tier1BitplaneState {
     width: u16,
@@ -4866,6 +4865,24 @@ pub struct Tier1BitplaneState {
     significance_propagation_complete: bool,
     magnitude_refinement_complete: bool,
     cleanup_complete: bool,
+}
+
+impl Clone for Tier1BitplaneState {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_bitplane_view(&result) == legacy_bitplane_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            bitplane: self.bitplane,
+            significant_before: self.significant_before.clone(),
+            significance_visited: self.significance_visited.clone(),
+            significance_propagation_complete: self.significance_propagation_complete,
+            magnitude_refinement_complete: self.magnitude_refinement_complete,
+            cleanup_complete: self.cleanup_complete,
+        }
+    }
 }
 
 #[cfg(verus_keep_ghost)]
@@ -4905,7 +4922,6 @@ pub struct Tier1SegmentDecode {
     pub statistics: Tier1PassStatistics,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 struct LegacySegmentState {
     plane: CodeBlockPlane,
@@ -4918,6 +4934,26 @@ struct LegacySegmentState {
     decoded_bytes: u64,
     input: Vec<u8>,
     passes: u32,
+}
+
+impl Clone for LegacySegmentState {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_segment_view(&result) == legacy_segment_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            plane: self.plane.clone(),
+            next_pass: self.next_pass,
+            bitplane: self.bitplane,
+            bitplane_state: self.bitplane_state.clone(),
+            mq_context_state: self.mq_context_state,
+            reset_contexts_before_mq: self.reset_contexts_before_mq,
+            decoded_segments: self.decoded_segments,
+            decoded_bytes: self.decoded_bytes,
+            input: self.input.clone(),
+            passes: self.passes,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -4949,23 +4985,37 @@ pub struct Tier1CodeBlockDecoder {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn legacy_segment_view(legacy: &LegacySegmentState) -> crate::specs::Tier1LegacyFrame {
+        crate::specs::Tier1LegacyFrame {
+            plane: code_block_plane_view(&legacy.plane), next_pass: legacy.next_pass, bitplane: legacy.bitplane,
+            bitplane_state: match legacy.bitplane_state {
+                None => None, Some(state) => Some(legacy_bitplane_view(&state)),
+            },
+            mq_context_state: match legacy.mq_context_state {
+                None => None, Some(state) => Some(crate::mq::mq_context_state_view(state)),
+            },
+            reset_contexts_before_mq: legacy.reset_contexts_before_mq,
+            decoded_segments: legacy.decoded_segments, decoded_bytes: legacy.decoded_bytes,
+            input: legacy.input@, passes: legacy.passes,
+        }
+    }
+
     pub closed spec fn tier1_decoder_state(decoder: &Tier1CodeBlockDecoder) -> crate::specs::Tier1DecoderState {
         crate::specs::Tier1DecoderState {
             plane: code_block_plane_view(&decoder.plane), orientation: decoder.orientation,
             style: decoder.style, maximum_passes: decoder.maximum_passes, next_pass: decoder.next_pass,
             bitplane: decoder.bitplane, zero_bitplanes: decoder.zero_bitplanes,
-            bitplane_state: decoder.bitplane_state, mq_context_state: decoder.mq_context_state,
+            bitplane_state: match decoder.bitplane_state {
+                None => None, Some(state) => Some(legacy_bitplane_view(&state)),
+            },
+            mq_context_state: match decoder.mq_context_state {
+                None => None, Some(state) => Some(crate::mq::mq_context_state_view(state)),
+            },
             reset_contexts_before_mq: decoder.reset_contexts_before_mq,
             decoded_segments: decoder.decoded_segments, decoded_bytes: decoder.decoded_bytes,
             legacy_segment: match decoder.legacy_segment {
                 None => None,
-                Some(legacy) => Some(crate::specs::Tier1LegacyFrame {
-                    plane: code_block_plane_view(&legacy.plane), next_pass: legacy.next_pass, bitplane: legacy.bitplane,
-                    bitplane_state: legacy.bitplane_state, mq_context_state: legacy.mq_context_state,
-                    reset_contexts_before_mq: legacy.reset_contexts_before_mq,
-                    decoded_segments: legacy.decoded_segments, decoded_bytes: legacy.decoded_bytes,
-                    input: legacy.input@, passes: legacy.passes,
-                }),
+                Some(legacy) => Some(legacy_segment_view(&legacy)),
             },
             legacy_decode_work: decoder.legacy_decode_work,
             ht_cleanup_plane: match decoder.ht_cleanup_plane { None => None, Some(plane) => Some(code_block_plane_view(&plane)) },
@@ -7091,12 +7141,24 @@ fn ht_neighbor_summary_zero() -> NeighborSummary {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct CodeBlockPlane {
     width: u16,
     height: u16,
     coefficients: Vec<CoefficientState>,
+}
+
+impl Clone for CodeBlockPlane {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures code_block_plane_view(&result) == code_block_plane_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            coefficients: self.coefficients.clone(),
+        }
+    }
 }
 
 #[cfg(verus_keep_ghost)]
@@ -7686,6 +7748,74 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_raw_data_clones_preserve_malformed_shapes_words_and_independent_vectors() {
+        let mut mq = MqDecoder::new(&[0xff, 0x90], &ResourceLimits::default()).unwrap();
+        for index in 0..19 {
+            mq.set_context(index, (index * 2) as u8, index % 2 == 0)
+                .unwrap();
+        }
+        for (width, height) in [(0, 0), (1, 1), (u16::MAX, 0), (u16::MAX, u16::MAX)] {
+            for before_len in 0..=4 {
+                for visited_len in 0..=4 {
+                    for flags in 0..8 {
+                        let plane = CodeBlockPlane {
+                            width,
+                            height,
+                            coefficients: (0..3)
+                                .map(|i| CoefficientState {
+                                    magnitude: u64::MAX - i,
+                                    magnitude_high: [i, u64::MAX, 1 << 63, i + 1, 37],
+                                    legacy_bitplane: Some(u16::MAX),
+                                    negative: i != 1,
+                                    significant: i == 1,
+                                    refined: i == 2,
+                                })
+                                .collect(),
+                        };
+                        let bitplane_state = Tier1BitplaneState {
+                            width: height,
+                            height: width,
+                            bitplane: u16::MAX,
+                            significant_before: (0..before_len).map(|i| i % 2 == 0).collect(),
+                            significance_visited: (0..visited_len).map(|i| i % 2 != 0).collect(),
+                            significance_propagation_complete: flags & 1 != 0,
+                            magnitude_refinement_complete: flags & 2 != 0,
+                            cleanup_complete: flags & 4 != 0,
+                        };
+                        for retained in [None, Some(bitplane_state.clone())] {
+                            let original = LegacySegmentState {
+                                plane: plane.clone(),
+                                next_pass: u32::MAX,
+                                bitplane: u16::MAX,
+                                bitplane_state: retained,
+                                mq_context_state: Some(mq.context_state()),
+                                reset_contexts_before_mq: flags & 1 != 0,
+                                decoded_segments: u32::MAX,
+                                decoded_bytes: u64::MAX,
+                                input: vec![0xff, 0x90, 0, 0xff],
+                                passes: u32::MAX,
+                            };
+                            let before = format!("{original:?}");
+                            let mut cloned = original.clone();
+                            assert_eq!(format!("{cloned:?}"), before);
+                            cloned.input[0] = 0;
+                            cloned.plane.coefficients[0].magnitude_high[4] = 0;
+                            if let Some(state) = &mut cloned.bitplane_state {
+                                state.significant_before.push(false);
+                                state.significance_visited.push(true);
+                                state.bitplane = 0;
+                            }
+                            assert_eq!(format!("{original:?}"), before);
+                            assert_eq!(original.plane, plane);
+                            assert_eq!(bitplane_state.clone(), bitplane_state);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn legacy_raw_significance_refinement_and_mq_cleanup_have_exact_whole_results() {
