@@ -183,7 +183,21 @@ this exact contribution producer on each checked body slice. Its enclosing
 Those packet contribution associations, ordered final consumption/pass-total
 checks, full transactional caller result, header classification and mixed
 HT/legacy dispatcher union remain owner closure obligations, **not completed
-F5L**. No foreign packet/decode/image/transform implementation is changed here.
+F5L**. That producer stage did not change packet/decode/image/transform
+implementations; the subsequently authorized packet owner prerequisite follows.
+
+### Shared native contribution lookup prerequisite
+
+The sole `packet::code_block_contribution_view` now exposes all five public
+fields, the stored count and both complete 164-element pass/length arrays.
+The actual count getter returns the stored byte unchanged. The actual segment
+getter refines `part1_code_block_segment` over every native count/index pair,
+including stored counts above the physical array size. Count admission precedes
+physical bounds; failures remain `InvalidPacketHeader` at offset zero. No
+header, pass-total, nonzero-pass or normalized-count premise is introduced.
+Independent tests cover all 65,536 count/index pairs and preserve the entire
+supplied record. This owner interface supports both HT and legacy routing;
+it does not itself establish either packet execution loop.
 
 ## Reproduce verification
 

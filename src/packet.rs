@@ -1075,6 +1075,22 @@ pub struct CodeBlockContribution {
     segment_lengths: [u32; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn code_block_contribution_view(contribution: &CodeBlockContribution) -> crate::specs::Part1CodeBlockContribution {
+        crate::specs::Part1CodeBlockContribution {
+            first_inclusion: contribution.first_inclusion,
+            zero_bitplanes: contribution.zero_bitplanes,
+            new_passes: contribution.new_passes,
+            data_length: contribution.data_length,
+            high_throughput: contribution.high_throughput,
+            segment_count: contribution.segment_count,
+            segment_passes: contribution.segment_passes@,
+            segment_lengths: contribution.segment_lengths@,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct CodeBlockSegmentContribution {
@@ -2477,23 +2493,23 @@ fn packet_arithmetic_overflow() -> DecodeError {
 }
 
 impl CodeBlockContribution {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == code_block_contribution_view(self).segment_count,
+    ))]
     pub const fn segment_count(&self) -> u8 {
         self.segment_count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_code_block_segment(code_block_contribution_view(self), index),
+    ))]
     pub fn segment(&self, index: u8) -> Result<CodeBlockSegmentContribution, DecodeError> {
         if index >= self.segment_count {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidPacketHeader,
-            ));
+            return Err(invalid_packet_header());
         }
         let index = usize::from(index);
         if index >= self.segment_passes.len() || index >= self.segment_lengths.len() {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidPacketHeader,
-            ));
+            return Err(invalid_packet_header());
         }
         Ok(CodeBlockSegmentContribution {
             passes: self.segment_passes[index],
@@ -3262,6 +3278,43 @@ const fn ceil_div_two(value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_contribution_segment_lookup_covers_all_counts_indices_and_full_stored_arrays() {
+        let mut contribution = CodeBlockContribution {
+            first_inclusion: true,
+            zero_bitplanes: u16::MAX,
+            new_passes: u8::MAX,
+            data_length: u32::MAX,
+            high_throughput: true,
+            segment_count: 0,
+            segment_passes: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+        };
+        for index in 0..MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION {
+            contribution.segment_passes[index] = u8::MAX - index as u8;
+            contribution.segment_lengths[index] = u32::MAX - index as u32;
+        }
+        for count in 0..=u8::MAX {
+            contribution.segment_count = count;
+            let before = contribution;
+            assert_eq!(contribution.segment_count(), count);
+            for index in 0..=u8::MAX {
+                let expected = if index < count
+                    && usize::from(index) < MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION
+                {
+                    Ok(CodeBlockSegmentContribution {
+                        passes: u8::MAX - index,
+                        data_length: u32::MAX - u32::from(index),
+                    })
+                } else {
+                    Err(invalid_packet_header())
+                };
+                assert_eq!(contribution.segment(index), expected);
+                assert_eq!(contribution, before);
+            }
+        }
+    }
 
     #[test]
     fn readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices() {
