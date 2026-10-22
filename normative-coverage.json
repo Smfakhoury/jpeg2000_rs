@@ -4,6 +4,67 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-mixed-code-block-body",
+      "topic": "Unconditional actual mixed packet-body prepare, actual HT/legacy segment loops and complete staged/public clone-commit Result/state on every native contribution/body/decoder/cap. Includes all164 physical header entries, malformed stored counts, exact partial counters and whole outer rollback. Actual standalone public Tier1 dispatch is proved support, not an invented internal caller. Header/TagTree/precinct and full F5L/F5H remain separate.",
+      "contract_refs": [
+        {"path": "src/packet.rs", "symbol": "CodeBlockContribution::segment"},
+        {"path": "src/packet.rs", "symbol": "prepare_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_segment"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_segment_route"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_segment_body"},
+        {"path": "src/packet.rs", "symbol": "run_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body_staged"},
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body"}
+      ],
+      "implementation_refs": [
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body_staged"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "run_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_segment_body"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_segment"},
+        {"path": "src/packet.rs", "symbol": "decode_precinct_packet"},
+        {"path": "src/packet.rs", "symbol": "decode_multi_code_block_packet"}
+      ],
+      "spec_refs": [
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_segment"},
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_body_prepare"},
+        {"path": "specs/packet.rs", "symbol": "part1_legacy_code_block_segment"},
+        {"path": "specs/packet.rs", "symbol": "part1_legacy_code_block_body"},
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_body_staged"},
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_body_transaction"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_segment_route"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_segment_body"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_body_run"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_body_segments"},
+        {"path": "specs/mod.rs", "symbol": "part1_tier1_segment"}
+      ],
+      "proof_refs": [
+        {"path": "src/packet.rs", "symbol": "code_block_contribution_view"},
+        {"path": "src/packet.rs", "symbol": "legacy_packet_progress_view"},
+        {"path": "src/packet.rs", "symbol": "ht_body_progress_view"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockContribution::segment_count"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::clone"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_packet_dispatch_preserves_both_selected_profiles"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_packet_transaction_restores_every_decoder_field_on_error"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_packet_preparation_failure_precedes_both_actual_routes"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_tier1_dispatch_retains_actual_native_route_order"}
+      ],
+      "test_refs": [
+        {"path": "src/packet.rs", "symbol": "mixed_packet_union_routes_literal_bytes_and_keeps_empty_count_distinctions"},
+        {"path": "src/packet.rs", "symbol": "mixed_packet_union_preserves_each_route_late_error_and_full_outer_rollback"},
+        {"path": "src/packet.rs", "symbol": "mixed_packet_union_uses_actual_route_specific_input_budget"},
+        {"path": "src/packet.rs", "symbol": "ht_body_native_count_reaches_physical_header_boundary_without_count_normalization"},
+        {"path": "src/packet.rs", "symbol": "shared_code_block_body_prepare_has_exact_native_admission_and_frame"},
+        {"path": "src/packet.rs", "symbol": "legacy_packet_body_routes_real_mq_bytes_and_retains_late_total_error_mutations"},
+        {"path": "src/packet.rs", "symbol": "legacy_packet_segment_checks_real_range_and_counter_priority_without_input_invariants"}
+      ]
+    },
+    {
       "id": "part15-actual-selected-staged-ht-packet-group",
       "topic": "Actual selected HT decode_segment branch with faithful whole raw clone, complete placeholder-group loop, substantive decode, rollback/commit and native state/errors; legacy else/full mixed/packet composition remain open",
       "contract_refs": [

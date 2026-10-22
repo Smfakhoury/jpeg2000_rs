@@ -480,6 +480,62 @@ def validate_normative_coverage(
             }.get((reference["path"], short))
             if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
                 expected_result_model = "part2_typed_image_component"
+            packet_decoder_old = r"crate::tier1::tier1_decoder_state\s*\(\s*old\(\s*decoder\s*\)\s*\)"
+            packet_decoder_final = r"crate::tier1::tier1_decoder_state\s*\(\s*final\(\s*decoder\s*\)\s*\)"
+            packet_contribution = r"code_block_contribution_view\s*\(\s*contribution\s*\)"
+            packet_cap = r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)"
+            packet_byte_cap = r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)"
+            packet_input_cap = r"crate::limits::resource_input_byte_limit\s*\(\s*limits\s*\)"
+            packet_work_cap = r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)"
+            packet_all_caps = packet_cap + r"\s*,\s*" + packet_byte_cap + r"\s*,\s*" + packet_input_cap + r"\s*,\s*" + packet_work_cap
+            packet_ht_caps = packet_cap + r"\s*,\s*" + packet_byte_cap + r"\s*,\s*" + packet_work_cap
+            packet_body_arguments = packet_decoder_old + r"\s*,\s*" + packet_contribution + r"\s*,\s*body@\s*,\s*"
+            packet_contract = {
+                "CodeBlockContribution::segment": (
+                    "part1_code_block_segment", None,
+                    r"code_block_contribution_view\s*\(\s*self\s*\)\s*,\s*index",
+                ),
+                "prepare_code_block_contribution_body": (
+                    "part1_code_block_body_prepare", packet_decoder_final,
+                    packet_decoder_old + r"\s*,\s*" + packet_contribution + r"\s*,\s*body@",
+                ),
+                "decode_legacy_code_block_segment": (
+                    "part1_legacy_code_block_segment",
+                    r"legacy_packet_progress_view\s*\(\s*final\(\s*decoder\s*\)\s*,\s*\*\s*final\(\s*segment_index\s*\)\s*,\s*"
+                    r"\*\s*final\(\s*offset\s*\)\s*,\s*\*\s*final\(\s*decoded_passes\s*\)\s*\)",
+                    r"legacy_packet_progress_view\s*\(\s*old\(\s*decoder\s*\)\s*,\s*\*\s*old\(\s*segment_index\s*\)\s*,\s*"
+                    r"\*\s*old\(\s*offset\s*\)\s*,\s*\*\s*old\(\s*decoded_passes\s*\)\s*\)\s*,\s*"
+                    + packet_contribution + r"\s*,\s*body@\s*,\s*" + packet_all_caps,
+                ),
+                "decode_legacy_code_block_contribution_body": (
+                    "part1_legacy_code_block_body", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+                "decode_ht_segment_route": (
+                    "ht_packet_segment_route", packet_decoder_final,
+                    packet_decoder_old + r"\s*,\s*body@\s*,\s*passes\s*,\s*" + packet_ht_caps,
+                ),
+                "decode_ht_segment_body": (
+                    "ht_packet_segment_body",
+                    packet_decoder_final + r"\s*,\s*\*\s*final\(\s*offset\s*\)\s*,\s*\*\s*final\(\s*decoded_passes\s*\)",
+                    packet_decoder_old + r"\s*,\s*segment\s*,\s*body@\s*,\s*\*\s*old\(\s*offset\s*\)\s*,\s*"
+                    r"\*\s*old\(\s*decoded_passes\s*\)\s*,\s*" + packet_ht_caps,
+                ),
+                "run_ht_contribution_segments": (
+                    "ht_packet_body_run", packet_decoder_final + r"\s*,\s*ht_body_progress_view\s*\(\s*final\(\s*progress\s*\)\s*\)",
+                    packet_body_arguments + r"ht_body_progress_view\s*\(\s*old\(\s*progress\s*\)\s*\)\s*,\s*" + packet_ht_caps,
+                ),
+                "decode_ht_contribution_segments": (
+                    "ht_packet_body_segments", packet_decoder_final, packet_body_arguments + packet_ht_caps,
+                ),
+                "decode_code_block_contribution_body_staged": (
+                    "part1_code_block_body_staged", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+                "decode_code_block_contribution_body": (
+                    "part1_code_block_body_transaction", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+            }.get(reference["symbol"]) if reference["path"] == "src/packet.rs" else None
+            if packet_contract:
+                expected_result_model = packet_contract[0]
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
@@ -568,6 +624,11 @@ def validate_normative_coverage(
                     + model_suffix
                     + r"\s*ht_magsgn_view\(\s*old\(\s*reader\s*\)\s*\)\s*,\s*"
                     r"completed_u\s*,\s*embedded_bit\s*,\s*embedded_value\s*,\s*decoded_bitplanes\s*,?\s*\)",
+                    contract,
+                )
+            if packet_contract and packet_contract[1] is not None:
+                state_result = re.search(
+                    named_prefix + r"(?P<state>\(\s*\1\s*,\s*" + packet_contract[1] + r"\s*\))" + model_suffix,
                     contract,
                 )
             final_parameters = set(re.findall(
@@ -875,6 +936,10 @@ def validate_normative_coverage(
                     contract, named_result, component_contract_arguments[0], component_contract_arguments[1],
                 )
             )
+            packet_arguments_bound = (
+                packet_contract is None
+                or _coverage_result_arguments(contract, named_result, packet_contract[0], packet_contract[2])
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -898,6 +963,7 @@ def validate_normative_coverage(
                     or not refinement_arguments_bound
                     or not prepare_arguments_bound
                     or not component_arguments_bound
+                    or not packet_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

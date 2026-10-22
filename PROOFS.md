@@ -378,6 +378,28 @@ Whole joined production verification and targeted acceptance regressions pass.
 Full frozen qualification is separate; legacy/mixed packet orchestration and
 complete F5L/F5H remain open.
 
+## Complete actual mixed packet-body acceptance
+
+The actual staged body and outer whole-decoder clone/commit body now have
+unconditional complete native Result/state relations. They execute the shared
+preparation once, then the real HT or legacy loop, with exact body slices,
+all164 stored segment entries, ordered counters/caps and public rollback.
+Both earlier selected-route results remain consequences, not entry premises.
+
+Ten finite exact producer/model/state/input recipes cover the shared header
+segment accessor, preparation, both real helper families and the mixed
+staged/public body. Aggregate legacy progress binds every mutable decoder,
+index, offset and pass field; HT progress and separate counters likewise stay
+complete. Negative tests reject partial or success-only states, unrelated
+inputs/models, wrong caps, omitted mutable state and a bad primary binding
+hidden by a later correct clause. Real production callers are required.
+
+The standalone public Tier1 segment dispatcher is also proved unconditionally,
+but is listed as proved API support rather than inventing an internal caller
+for the curated inventory. No generic expression/implication matching or
+mutable-completeness policy is weakened. Actual header/TagTree and precinct
+composition remain separate F5L/F5H obligations.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
