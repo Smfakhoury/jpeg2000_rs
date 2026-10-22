@@ -1,6 +1,68 @@
 # Specification audit guide
 
-### Actual raw palette lookup
+## Frozen full F5H refinement-plane profile
+
+The continuing stage is the entire actual `decode_ht_refinement_plane`, for
+both one and two refinement passes and every native pass/bitplane/cap input.
+Initial rejection and complete duplication precede reader construction and the
+cleanup-significance snapshot. Two passes execute reverse magnitude refinement
+first, then forward significance propagation. All six raw words and flags,
+both physical readers, complete claimed/stuffed vectors, every statistic and
+the separate evolving discovery plane/pending sign coordinates are observed.
+
+Significance discovery follows actual four-row stripes and four-column patches,
+including vertical-causal neighbor suppression. Discovery writes precede delayed
+per-patch sign reads and output stores; discovery signs are not silently replaced
+with output signs. Final claim/padding/stuffing/collision/work rejection follows
+all stores. Each first-error partial state and transactional boundary must match
+the real producer. No valid-plane, normalized-coefficient, valid-stream,
+successful-decode or adequate-budget premise is introduced. Private geometry
+bounds must follow from the real duplicate checks. An additive-only, one-pass or
+reader-only result is not completion of this full S+R profile.
+
+The completed caller boundary includes both the unconditional inner symbol
+caller and actual `decode_high_throughput_segments` byte entry. All native style,
+pass counts, retained state and three real owner caps are admitted. Public pass
+and significant-bitplane preflight occurs before the real byte parser; byte and
+work admission then precede the inner caller. Inside that caller, actual metadata
+still precedes pass conversion. Neither order is transplanted onto the other.
+`None` and `Some(empty)` retain different pass/segment/refinement-state effects.
+Inner failures can clear retained refinement data before rejecting a refinement
+segment, while later accounting overflows retain prior committed fields.
+
+The private reader constructor wrapper was removed after the production entry
+began calling its existing shared verified free implementation directly; its one
+test uses the same implementation. No public API or second executable decoder
+was introduced. Pending sign vectors are still allocated once per actual patch
+and dropped at the original patch-iteration boundary. Magnitude operations use
+the real owner contracts, including complete native subtraction and zero.
+Continuation/empty replay, placeholder skipping, replacement orchestration and
+mixed HT/legacy routing remain outside this completed entry profile.
+
+## Earlier cleanup-only symbol-caller subprofile
+
+The earlier bounded caller profile was the **cleanup-only** branch of the actual
+`Tier1CodeBlockDecoder::decode_ht_coefficient_symbols`: the supplied parsed
+segment has `refinement == None`. This is an explicit format-profile selection,
+not a valid-stream, normalized-coefficient, successful-decode or budget premise.
+The real metadata producer's result feeds the real numerical reconstruction;
+metadata is not a theorem input. Metadata decoding precedes pass-to-bitplane
+conversion and subtraction. Reconstruction and the complete cleanup-plane
+duplicate precede clearing retained refinement bytes/passes. Plane/stencil/
+reader rejection therefore leaves the entire decoder unchanged. The final
+assignments precede checked set/pass/segment/byte accounting, so a later overflow
+can expose earlier committed fields. Every decoder field, including untouched
+legacy/MQ/bitplane state, must be framed.
+
+The shared cleanup preparation and final state-store stages remain unconditional
+over their native inputs. The earlier caller theorem selected absent refinement
+only; it did not assume a refinement trace. The complete current refinement and
+substantive public-byte profiles above now subsume this subset and provide their
+own unconditional production relations. Continuation/replay, placeholder
+skipping, replacement/mixed sequencing and whole-decoder composition remain
+separate closure obligations.
+
+## Actual raw palette lookup
 
 `part2_palette_value` uses the stored entry count, actual physical column
 descriptor sequence and actual physical signed-value sequence. It first checks
@@ -17,7 +79,31 @@ or the mapper's precision/sign/sample-index rules. The raw operation returns the
 stored `i64` unchanged, including both extrema, and ignores descriptor
 precision/sign. Its complete actual production relation is unconditional on
 stored shape and native coordinates. Palette parsing, component mapping and
-their composition remain unproved by this result alone.
+their composition remain unproved by this raw lookup result alone.
+
+### Complete component copy and palette interpretation
+
+`part2_typed_component_copy` preserves all input fields and the ordered CDEF
+sequence without adding geometry, precision or sample-tag validation.
+`part2_palette_component` instead changes precision/sign from the actual
+selected descriptor and starts with empty CDEF. It preserves the source's
+width/height, subsampling and registration even when those fields are malformed.
+
+The precision variable is the descriptor's bit count, restricted by the actual
+body to 1..38. `part2_palette_modulus` denotes the same power of two; explicit
+bit-vector facts relate its original multiply-by-two loop to the existing
+`part1_output_minimum`/`part1_output_maximum` signed/unsigned range functions.
+Source indices are interpreted independently of source precision/sign metadata.
+They must fit the native 16-bit palette index and stored logical entry count
+before `part2_palette_value` checks physical storage.
+
+`part2_palette_samples` is the ordered whole-sequence denotation, including the
+first failing sample. Its prefix is essential result semantics, not a separate
+execution trace premise. Empty samples still reject an invalid descriptor but
+do not trigger physical-column-count/table/entry failures absent from the
+executed body. The actual full result also contains the output sample tag and
+all metadata. Whole-header cmap selection, CDEF routing, typed-image admission,
+parsing and selected-pixel joins remain outside these component results.
 
 ## Frozen F5H cleanup-plane reconstruction profile
 
@@ -180,8 +266,39 @@ also expose complete Results over their full native `u16`/`u8` domains. Raw
 component counts and decomposition levels are not assumed to fit the physical
 64/32-entry arrays. These interfaces do not establish parser validity.
 
-F6 remains open: the entire coefficient-placement coordinator, actual multilevel
-and resolution-plan execution, general MCT paths and composition from
+The actual public `prepare_tile_component` now has a complete unconditional
+Result relation for its standard **None-kernel** call path. The same private
+`prepare_tile_component_with_kernel` body has the corresponding explicit
+`kernel.is_none()` result guarantee; its Some-kernel behavior is not inferred.
+Every actual raw plan/precinct/decoder/plane/coefficient field, style selector
+and cap is admitted. An Arbitrary transform with no kernel rejects exactly.
+No valid header, normalized coefficient, covered band, successful callee,
+adequate budget or supplied execution trace is an entry premise.
+
+The production coordinator shares its real initialization, collection,
+placement, coverage and resolution stages. It checks the selected band count
+before initializing bands, charges nine bytes per sample cumulatively before
+allocation, checks block geometry before collecting coefficients, reads the
+actual row-major raw coefficients with full 384-bit signed/midpoint semantics,
+then invokes the actual ROI/quantization and checked sample/mask writer.
+Unselected placements remain ignored. Coverage precedes reconstruction.
+The entire fold supports arbitrary native resolution selectors, None/H/V/2D
+directions, per-stage parity, the actual integer 5/3 or fixed-Q16 9/7 algorithms,
+ordered detail indices, output budgets and cursor errors. Final dimension,
+sample-count, component, origin and fraction fields are related exactly.
+The real prepared-to-tile getter also preserves every field/sample.
+
+Only derived private append-loop structure bounds are used to discharge a
+Vec-push precondition; they are proved from initialization and never imposed
+on the public plan input. Complete working-state views include all bands'
+metadata/samples/visited flags and the byte counter on failure. Independent
+whole-plan tests reuse the existing widened integer/rational transform oracles,
+not the production transforms, with nonzero completed one-bit input blocks,
+mixed/multilevel directions, parity, reordered and ignored placements and
+ordered malformed/resource cases.
+
+F6 remains open: the Some-kernel/arbitrary coordinator profiles, general MCT
+paths and actual whole-decoder composition from
 coefficients through reconstruction, assembly and typed conversion
 into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
@@ -231,6 +348,11 @@ parsing and entropy decoding.
     `part1_decoded_component_typed_samples`, `part1_decoded_typed_components`
     and `part1_decoded_image_typed` give the existing decoder conversion's
     complete sequence, metadata, empty-CDEF and first-error relation.
+11. `part1_prepare_init_prefix`, coefficient row/plane and placement prefixes,
+    `part1_prepare_coverage`, `part1_prepare_resolution` and `part1_prepare_fold`
+    compose the real standard coordinator. `part1_prepare_standard_component`
+    and `part1_prepare_finish` close the actual public Result, not a surrogate
+    coordinator or a theorem assuming the callees succeeded.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 
@@ -245,6 +367,14 @@ The original receiver operations have full native-domain contracts:
 
 - `checked_add`: exact natural sum below capacity; otherwise precisely
   `MalformedInput { offset: 0, kind: ArithmeticOverflow }`.
+- `checked_sub`: exact full-384-bit natural difference iff the first operand
+  is at least the second, including successful zero for equality. Every
+  underflow returns the same exact arithmetic error. Raw/value/shape/capacity
+  agreement is exported with no no-underflow or positive-result premise.
+  The original native borrow algorithm, including an incoming borrow across
+  a `u64::MAX` subtrahend word, is unchanged. A prefix-order proof connects the
+  existing lexicographic guard to natural order, and subtraction reuses the
+  proved carry algebra with the operands rearranged.
 - `checked_shl`: exact multiplication by `2^shift` when representable, for
   every `u16` shift. Zero succeeds even for shifts at least 384; nonzero
   values reject there. No HT-only success premise is imposed.

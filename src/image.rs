@@ -242,6 +242,28 @@ verus! {
             samples: typed_samples_view(&component.samples),
         }
     }
+
+    pub open spec fn typed_component_output_view(component: &TypedComponent)
+        -> crate::specs::Part2TypedComponentOutput
+    {
+        (typed_component_view(component),
+            channel_definition_views(typed_component_definitions(component)))
+    }
+
+    pub open spec fn typed_component_output(result: Result<TypedComponent, DecodeError>)
+        -> Result<crate::specs::Part2TypedComponentOutput, DecodeError>
+    {
+        match result {
+            Ok(component) => Ok(typed_component_output_view(&component)),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub open spec fn typed_component_value_view(component: TypedComponent)
+        -> crate::specs::Part2TypedComponentOutput
+    {
+        typed_component_output_view(&component)
+    }
 }
 
 pub(crate) struct NonlinearRegion<'a> {
@@ -1202,6 +1224,33 @@ impl TypedImage {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(component =>
+        ensures typed_component_value_view(component) == crate::specs::part2_typed_component_from_parts(
+            width, height, info, typed_samples_view(&samples),
+        ),
+        typed_component_output_view(&component) == crate::specs::part2_typed_component_from_parts(
+            width, height, info, typed_samples_view(&samples),
+        ),
+        typed_component_definitions(&component) == Seq::<ChannelDefinition>::empty(),
+    )
+)]
+pub(crate) fn typed_component_from_parts(
+    width: u32,
+    height: u32,
+    info: ComponentInfo,
+    samples: TypedSamples,
+) -> TypedComponent {
+    TypedComponent {
+        width,
+        height,
+        info,
+        samples,
+        channel_definitions: Vec::new(),
+    }
+}
+
 impl TypedComponent {
     pub(crate) fn from_parts(
         width: u32,
@@ -1209,19 +1258,28 @@ impl TypedComponent {
         info: ComponentInfo,
         samples: TypedSamples,
     ) -> Self {
-        Self {
-            width,
-            height,
-            info,
-            samples,
-            channel_definitions: Vec::new(),
-        }
+        typed_component_from_parts(width, height, info, samples)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            ensures typed_component_view(final(self)) == typed_component_view(old(self)),
+            typed_component_definitions(final(self))
+                == typed_component_definitions(old(self)).push(definition),
+        )
+    )]
     pub(crate) fn add_channel_definition(&mut self, definition: ChannelDefinition) {
         self.channel_definitions.push(definition);
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            ensures typed_component_view(final(self)) == typed_component_view(old(self)),
+            typed_component_definitions(final(self)) == Seq::<ChannelDefinition>::empty(),
+        )
+    )]
     pub(crate) fn clear_channel_definitions(&mut self) {
         self.channel_definitions.clear();
     }

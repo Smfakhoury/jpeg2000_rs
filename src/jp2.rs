@@ -729,6 +729,15 @@ pub struct ChannelDefinitionRecord {
 }
 
 impl Palette {
+    #[cfg(test)]
+    pub(crate) fn for_test(entries: u16, columns: Vec<PaletteColumn>, values: Vec<i64>) -> Self {
+        Self {
+            entries,
+            columns,
+            values,
+        }
+    }
+
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(value => ensures value == palette_view(self).0,)

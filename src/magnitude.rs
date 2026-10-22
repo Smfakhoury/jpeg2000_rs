@@ -254,7 +254,33 @@ impl Magnitude {
         Ok(Self { limbs })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures magnitude_value(self) == crate::specs::part1_magnitude_value(magnitude_limbs(self)),
+        magnitude_value(other) == crate::specs::part1_magnitude_value(magnitude_limbs(other)),
+        magnitude_value(self) < crate::specs::part1_magnitude_capacity(),
+        magnitude_value(other) < crate::specs::part1_magnitude_capacity(),
+        magnitude_limbs(self).len() == 6,
+        magnitude_limbs(other).len() == 6,
+        result.is_ok() == (magnitude_value(self) >= magnitude_value(other)),
+        match result {
+            Ok(value) => magnitude_value(value) == (magnitude_value(self) - magnitude_value(other)) as nat
+                && crate::specs::part1_magnitude_subtraction(magnitude_value(self), magnitude_value(other)) == Ok(magnitude_value(value))
+                && magnitude_value(value) == crate::specs::part1_magnitude_value(magnitude_limbs(value))
+                && magnitude_value(value) < crate::specs::part1_magnitude_capacity()
+                && magnitude_limbs(value).len() == 6,
+            Err(error) => magnitude_value(self) < magnitude_value(other)
+                && error == crate::specs::part1_transform_error(true),
+        },
+    ))]
     pub fn checked_sub(self, other: Self) -> Result<Self, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_magnitude_prefix_order(self.limbs@, other.limbs@, 6);
+            crate::proofs::production_impl::production_magnitude_value_bound(self.limbs@);
+            crate::proofs::production_impl::production_magnitude_value_bound(other.limbs@);
+            assert(crate::specs::part1_magnitude_prefix_less(self.limbs@, other.limbs@, 6)
+                == crate::specs::part1_magnitude_less(self.limbs@, other.limbs@));
+        }
         if self.less_than(other) {
             return Err(arithmetic_overflow());
         }
@@ -265,15 +291,32 @@ impl Magnitude {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= MAGNITUDE_LIMBS,
+                magnitude_value(self) >= magnitude_value(other),
+                magnitude_value(self) < crate::specs::part1_magnitude_capacity(),
+                magnitude_value(other) < crate::specs::part1_magnitude_capacity(),
+                crate::specs::part1_magnitude_prefix_value(self.limbs@, index as nat)
+                    + (if borrow { vstd::arithmetic::power2::pow2(64 * index as nat) } else { 0nat })
+                    == crate::specs::part1_magnitude_prefix_value(other.limbs@, index as nat)
+                        + crate::specs::part1_magnitude_prefix_value(limbs@, index as nat),
                 decreases MAGNITUDE_LIMBS - index,
             )
         )]
         while index < MAGNITUDE_LIMBS {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = limbs@; let ghost previous_borrow = borrow; }
             let subtrahend = if borrow {
                 match other.limbs[index].checked_add(1) {
                     Some(value) => value,
                     None => {
                         limbs[index] = self.limbs[index];
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            assert((self.limbs[index as int] as nat) + 18446744073709551616nat
+                                == (other.limbs[index as int] as nat) + 1 + limbs[index as int] as nat);
+                            crate::proofs::production_impl::production_magnitude_sub_prefix_step(
+                                self.limbs@, other.limbs@, before, index as nat, limbs[index as int], previous_borrow, borrow,
+                            );
+                        }
                         index += 1;
                         continue;
                     }
@@ -289,8 +332,18 @@ impl Magnitude {
                 limbs[index] = u64::MAX - (gap - 1);
                 borrow = true;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert((self.limbs[index as int] as nat) + (if borrow { 18446744073709551616nat } else { 0nat })
+                    == (other.limbs[index as int] as nat) + (if previous_borrow { 1nat } else { 0nat }) + limbs[index as int] as nat);
+                crate::proofs::production_impl::production_magnitude_sub_prefix_step(
+                    self.limbs@, other.limbs@, before, index as nat, limbs[index as int], previous_borrow, borrow,
+                );
+            }
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_magnitude_value_bound(limbs@); }
         if borrow {
             return Err(arithmetic_overflow());
         }
@@ -623,6 +676,61 @@ mod tests {
             let value = Magnitude::from_limbs(limbs);
             for index in (0..=12).chain([usize::MAX / 2, usize::MAX - 1, usize::MAX]) {
                 assert_eq!(value.limb(index), limbs.get(index).copied());
+            }
+        }
+    }
+
+    #[test]
+    fn full_native_subtraction_matches_independent_bit_borrow_and_exact_underflow() {
+        let mut vectors = vec![
+            [0; 6],
+            [u64::MAX; 6],
+            [1, 2, 3, 4, 5, 6],
+            [u64::MAX, 0, u64::MAX, 0, u64::MAX, 0],
+        ];
+        for word in 0..6 {
+            let mut power = [0; 6];
+            power[word] = 1;
+            vectors.push(power);
+            let mut below = [0; 6];
+            below[..word].fill(u64::MAX);
+            vectors.push(below);
+        }
+        let mut seed = 0xd1342543de82ef95_u64;
+        for _ in 0..64 {
+            let words = core::array::from_fn(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                seed
+            });
+            vectors.push(words);
+        }
+        let inputs: Vec<_> = vectors
+            .into_iter()
+            .map(|words| (words, reference_bits(words)))
+            .collect();
+        for (left, a) in &inputs {
+            for (right, b) in &inputs {
+                let mut difference = [false; 384];
+                let mut borrow = false;
+                for bit in 0..384 {
+                    let digit = i16::from(a[bit]) - i16::from(b[bit]) - i16::from(borrow);
+                    difference[bit] = digit.rem_euclid(2) != 0;
+                    borrow = digit < 0;
+                }
+                let expected = if borrow {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::ArithmeticOverflow,
+                    })
+                } else {
+                    Ok(reference_words(&difference))
+                };
+                let actual = Magnitude::from_limbs(*left)
+                    .checked_sub(Magnitude::from_limbs(*right))
+                    .map(observed_limbs);
+                assert_eq!(actual, expected, "left={left:?} right={right:?}");
             }
         }
     }

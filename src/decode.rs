@@ -17,9 +17,9 @@ use crate::{
         CodeBlockContribution, PacketGrid, PacketPrecinctDecoder, PacketSubbandExecution,
         decode_code_block_contribution_body,
     },
-    tier1::{SubbandOrientation, Tier1CodeBlockDecoder, Tier1CodingStyle},
+    tier1::{CodeBlockPlane, SubbandOrientation, Tier1CodeBlockDecoder, Tier1CodingStyle},
     transform::{
-        QuantizationStep, WaveletBand, WaveletLevel, inverse_horizontal_5_3,
+        QuantizationStep, SignedMagnitude, WaveletBand, WaveletLevel, inverse_horizontal_5_3,
         inverse_horizontal_9_7, inverse_horizontal_arbitrary, inverse_level_5_3, inverse_level_9_7,
         inverse_level_arbitrary, inverse_quantize_magnitudes, inverse_vertical_5_3,
         inverse_vertical_9_7, inverse_vertical_arbitrary,
@@ -572,6 +572,9 @@ impl PreparedTileComponent {
         &self.samples
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures crate::image::assembly_tile_view(result) == crate::specs::part1_prepared_as_tile(prepared_component_view(*self)),
+    ))]
     pub fn as_tile_component(&self) -> TileComponent<'_> {
         TileComponent {
             component: self.component,
@@ -1240,8 +1243,49 @@ struct WorkingSubband {
     visited: Vec<bool>,
 }
 
+struct PrepareWorking {
+    bands: Vec<WorkingSubband>,
+    bytes: u64,
+}
+
+struct PrepareFold {
+    width: u32,
+    height: u32,
+    samples: Vec<i64>,
+    first_detail: usize,
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn prepare_plan_view(plan: &PlannedTileComponent) -> crate::specs::Part1PreparePlan {
+        crate::specs::Part1PreparePlan {
+            component: plan.component, x: plan.x, y: plan.y, width: plan.width, height: plan.height,
+            resolution: plan.output_resolution, subbands: plan.subbands@, placements: plan.placements@,
+        }
+    }
+
+    pub closed spec fn prepare_style_view(style: CodingStyle) -> crate::specs::Part1PrepareStyle {
+        let selector = crate::codestream::decomposition_selector_view(style);
+        (style.transform, selector.0, selector.1)
+    }
+
+    pub open spec fn prepare_precincts_view(precincts: Seq<PacketPrecinctDecoder>) -> Seq<Seq<crate::specs::Tier1RawPlane>> {
+        Seq::new(precincts.len(), |i: int| {
+            let decoders = crate::packet::packet_precinct_decoders(&precincts[i]);
+            Seq::new(decoders.len(), |j: int| crate::tier1::tier1_decoder_plane_view(&decoders[j]))
+        })
+    }
+
+    pub closed spec fn prepared_component_view(value: PreparedTileComponent) -> crate::specs::Part1AssemblyTile {
+        (value.component, value.x, value.y, value.width, value.height, value.fraction_bits, value.samples@)
+    }
+
+    pub open spec fn prepared_component_outcome(result: Result<PreparedTileComponent, DecodeError>)
+        -> Result<crate::specs::Part1AssemblyTile, DecodeError>
+    {
+        match result { Ok(value) => Ok(prepared_component_view(value)), Err(error) => Err(error) }
+    }
+
     closed spec fn working_subband_view(value: WorkingSubband) -> crate::specs::Part1WorkingSubbandModel {
         (value.width, value.height, value.fraction_bits, value.samples@, value.visited@)
     }
@@ -1253,6 +1297,38 @@ verus! {
             working_subband_view(*self)
         }
     }
+
+        closed spec fn working_bands_view(values: Seq<WorkingSubband>) -> Seq<crate::specs::Part1WorkingSubbandModel> {
+            Seq::new(values.len(), |i: int| working_subband_view(values[i]))
+        }
+
+        impl View for PrepareWorking {
+            type V = crate::specs::Part1PrepareWorking;
+            closed spec fn view(&self) -> Self::V { (working_bands_view(self.bands@), self.bytes) }
+        }
+
+        closed spec fn prepare_working_outcome(result: Result<PrepareWorking, DecodeError>)
+            -> Result<crate::specs::Part1PrepareWorking, DecodeError>
+        {
+            match result { Ok(value) => Ok(value@), Err(error) => Err(error) }
+        }
+
+        impl View for PrepareFold {
+            type V = crate::specs::Part1PrepareFold;
+            closed spec fn view(&self) -> Self::V { (self.width, self.height, self.samples@, self.first_detail) }
+        }
+
+        closed spec fn prepare_fold_outcome(result: Result<PrepareFold, DecodeError>)
+            -> Result<crate::specs::Part1PrepareFold, DecodeError>
+        {
+            match result { Ok(value) => Ok(value@), Err(error) => Err(error) }
+        }
+
+        closed spec fn prepare_cell_outcome(result: Result<SignedMagnitude, DecodeError>)
+            -> Result<crate::specs::Part1QuantizedCoefficient, DecodeError>
+        {
+            match result { Ok(value) => Ok((crate::magnitude::magnitude_limbs(value.magnitude), value.negative)), Err(error) => Err(error) }
+        }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -1459,6 +1535,12 @@ fn make_subband_geometry(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures prepared_component_outcome(result) == crate::specs::part1_prepare_standard_component(
+        prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn prepare_tile_component(
     plan: &PlannedTileComponent,
     precincts: &[PacketPrecinctDecoder],
@@ -1468,6 +1550,314 @@ pub fn prepare_tile_component(
     prepare_tile_component_with_kernel(plan, precincts, coding_style, None, limits)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures prepare_working_outcome(result) == crate::specs::part1_prepare_init_prefix(bands@, fraction, crate::limits::resource_decoded_bytes_limit(limits), selected as nat),
+    result.is_ok() ==> result->Ok_0.bands.len() == selected,
+))]
+fn initialize_prepare_working(
+    bands: &[SubbandGeometry],
+    selected: usize,
+    fraction: u8,
+    limits: &ResourceLimits,
+) -> Result<PrepareWorking, DecodeError> {
+    let mut working = PrepareWorking {
+        bands: Vec::with_capacity(selected),
+        bytes: 0,
+    };
+    let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_prepare_init_empty(bands@, fraction, crate::limits::resource_decoded_bytes_limit(limits));
+        assert(working_bands_view(working.bands@) =~= Seq::empty());
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= selected, working.bands.len() == index,
+        crate::specs::part1_prepare_init_prefix(bands@, fraction, crate::limits::resource_decoded_bytes_limit(limits), index as nat) == Ok(working@),
+        decreases selected - index,
+    ))]
+    while index < selected {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_prepare_init_step(bands@, fraction, crate::limits::resource_decoded_bytes_limit(limits), index as nat); }
+        let operation = append_prepare_subband(&mut working, bands, index, fraction, limits);
+        match operation {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! { crate::proofs::production_impl::production_prepare_init_error(
+                    bands@, fraction, crate::limits::resource_decoded_bytes_limit(limits), index as nat + 1, selected as nat, error);
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(operation.is_ok());
+            assert(operation->Ok_0 == ());
+            assert(operation == Ok(()));
+        }
+        index += 1;
+    }
+    Ok(working)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires old(working).bands.len() < usize::MAX,
+    ensures (result, final(working)@) == crate::specs::part1_prepare_append_band(old(working)@, bands@, index, fraction, crate::limits::resource_decoded_bytes_limit(limits)),
+    result.is_ok() ==> final(working).bands.len() == old(working).bands.len() + 1,
+))]
+fn append_prepare_subband(
+    working: &mut PrepareWorking,
+    bands: &[SubbandGeometry],
+    index: usize,
+    fraction: u8,
+    limits: &ResourceLimits,
+) -> Result<(), DecodeError> {
+    let geometry = *bands.get(index).ok_or_else(invalid_decode)?;
+    let length = checked_area_u32(geometry.width, geometry.height)?;
+    let bytes = (length as u64)
+        .checked_mul(9)
+        .ok_or_else(arithmetic_overflow)?;
+    working.bytes = working
+        .bytes
+        .checked_add(bytes)
+        .ok_or_else(arithmetic_overflow)?;
+    if working.bytes > limits.maximum_decoded_bytes() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: limits.maximum_decoded_bytes(),
+            actual: working.bytes,
+        });
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = working.bands@; }
+    working.bands.push(WorkingSubband {
+        width: geometry.width,
+        height: geometry.height,
+        fraction_bits: fraction,
+        samples: vec![0_i64; length],
+        visited: vec![false; length],
+    });
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(working.bands@[working.bands.len() - 1].samples@ =~= Seq::new(length as nat, |i: int| 0i64));
+        assert(working.bands@[working.bands.len() - 1].visited@ =~= Seq::new(length as nat, |i: int| false));
+        assert(working_bands_view(working.bands@) =~= working_bands_view(before).push(working_subband_view(working.bands@[working.bands.len() - 1])));
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::transform::quantized_coefficients_outcome(result) == crate::specs::part1_prepare_collect_coefficients(crate::tier1::code_block_plane_view(plane)),
+))]
+fn collect_prepare_coefficients(
+    plane: &CodeBlockPlane,
+) -> Result<Vec<SignedMagnitude>, DecodeError> {
+    let count = usize::from(plane.width())
+        .checked_mul(usize::from(plane.height()))
+        .ok_or_else(arithmetic_overflow)?;
+    let mut coefficients = Vec::with_capacity(count);
+    let height = plane.height();
+    let width = plane.width();
+    let mut y = 0_u16;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::transform::representation_proofs::quantized_coefficients_fields(coefficients@);
+        crate::proofs::production_impl::production_prepare_rows_empty(crate::tier1::code_block_plane_view(plane));
+        assert(crate::transform::quantized_coefficients_view(coefficients@) =~= Seq::empty());
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant y <= height,
+        width == crate::tier1::code_block_plane_view(plane).width,
+        height == crate::tier1::code_block_plane_view(plane).height,
+        count as nat == width as nat * height as nat,
+        coefficients.len() as nat == y as nat * width as nat,
+        crate::specs::part1_prepare_coefficient_rows(crate::tier1::code_block_plane_view(plane), y as nat) == Ok(crate::transform::quantized_coefficients_view(coefficients@)),
+        decreases height - y,
+    ))]
+    while y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::transform::representation_proofs::quantized_coefficients_fields(coefficients@); }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost row_start = crate::transform::quantized_coefficients_view(coefficients@); }
+        let mut x = 0_u16;
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_prepare_row_empty(crate::tier1::code_block_plane_view(plane), y, row_start); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant x <= width, y < height,
+            width == crate::tier1::code_block_plane_view(plane).width,
+            height == crate::tier1::code_block_plane_view(plane).height,
+            count as nat == width as nat * height as nat,
+            row_start.len() == y as nat * width as nat,
+            coefficients.len() as nat == y as nat * width as nat + x as nat,
+            crate::specs::part1_prepare_coefficient_rows(crate::tier1::code_block_plane_view(plane), y as nat) == Ok(row_start),
+            crate::specs::part1_prepare_coefficient_row(crate::tier1::code_block_plane_view(plane), y, row_start, x as nat) == Ok(crate::transform::quantized_coefficients_view(coefficients@)),
+            decreases width - x,
+        ))]
+        while x < width {
+            #[cfg(verus_keep_ghost)]
+            proof! { crate::proofs::production_impl::production_prepare_row_step(crate::tier1::code_block_plane_view(plane), y, row_start, x as nat); }
+            let value = match collect_prepare_cell(plane, x, y) {
+                Ok(value) => value,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_prepare_row_error(crate::tier1::code_block_plane_view(plane), y, row_start, x as nat + 1, width as nat, error);
+                        crate::proofs::production_impl::production_prepare_rows_step(crate::tier1::code_block_plane_view(plane), y as nat);
+                        crate::proofs::production_impl::production_prepare_rows_error(crate::tier1::code_block_plane_view(plane), y as nat + 1, height as nat, error);
+                    }
+                    return Err(error);
+                }
+            };
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before_values = coefficients@; }
+            coefficients.push(value);
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::transform::representation_proofs::quantized_coefficients_fields(coefficients@);
+                crate::transform::representation_proofs::quantized_coefficients_push(before_values, value);
+            }
+            x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_prepare_rows_step(crate::tier1::code_block_plane_view(plane), y as nat);
+            assert(y as nat * width as nat + width as nat == (y as nat + 1) * width as nat) by(nonlinear_arith);
+        }
+        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(coefficients)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures prepare_cell_outcome(result) == crate::specs::part1_prepare_signed_cell(crate::tier1::code_block_plane_view(plane), x, y),
+))]
+fn collect_prepare_cell(
+    plane: &CodeBlockPlane,
+    x: u16,
+    y: u16,
+) -> Result<SignedMagnitude, DecodeError> {
+    let coefficient = plane.coefficient(x, y)?;
+    coefficient.signed_magnitude()
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(working)@) == crate::specs::part1_prepare_placement(
+        old(working)@, bands@, prepare_precincts_view(precincts@), placement, reversible, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    final(working).bands.len() == old(working).bands.len(),
+))]
+fn place_prepare_block(
+    working: &mut PrepareWorking,
+    bands: &[SubbandGeometry],
+    precincts: &[PacketPrecinctDecoder],
+    placement: ProgressionCodeBlockPlacement,
+    reversible: bool,
+    limits: &ResourceLimits,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_prepare_placement); }
+    if placement.subband_index >= working.bands.len() {
+        return Ok(());
+    }
+    let geometry = *bands
+        .get(placement.subband_index)
+        .ok_or_else(invalid_decode)?;
+    let precinct = precincts
+        .get(placement.precinct_index)
+        .ok_or_else(invalid_decode)?;
+    let decoder = precinct.decoder(placement.decoder_index)?;
+    let plane = decoder.plane();
+    let width = u32::from(plane.width());
+    let height = u32::from(plane.height());
+    if placement
+        .x
+        .checked_add(width)
+        .ok_or_else(arithmetic_overflow)?
+        > geometry.width
+        || placement
+            .y
+            .checked_add(height)
+            .ok_or_else(arithmetic_overflow)?
+            > geometry.height
+    {
+        return Err(invalid_decode());
+    }
+    let coefficients = collect_prepare_coefficients(plane)?;
+    let quantized = inverse_quantize_magnitudes(
+        &coefficients,
+        geometry.quantization_step,
+        geometry.dynamic_range,
+        reversible,
+        geometry.roi_shift,
+        limits,
+    )?;
+    if quantized.fraction_bits() != if reversible { 0 } else { 16 } {
+        return Err(invalid_decode());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = working.bands@; }
+    let destination = working
+        .bands
+        .get_mut(placement.subband_index)
+        .ok_or_else(invalid_decode)?;
+    let result = write_quantized_block(
+        destination,
+        quantized.samples(),
+        width,
+        height,
+        placement.x,
+        placement.y,
+    );
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(working_bands_view(working.bands@) =~= working_bands_view(before).update(
+            placement.subband_index as int, working_subband_view(working.bands@[placement.subband_index as int])));
+    }
+    result
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_prepare_coverage(working_bands_view(bands@)),
+))]
+fn validate_prepare_coverage(bands: &[WorkingSubband]) -> Result<(), DecodeError> {
+    let mut band = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant band <= bands.len(),
+        forall |b: int, i: int| 0 <= b < band && 0 <= i < bands@[b].visited.len() ==> bands@[b].visited@[i],
+        decreases bands.len() - band,
+    ))]
+    while band < bands.len() {
+        let subband = &bands[band];
+        let mut sample = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant band < bands.len(), sample <= subband.visited.len(),
+            subband == &bands@[band as int],
+            forall |b: int, i: int| 0 <= b < band && 0 <= i < bands@[b].visited.len() ==> bands@[b].visited@[i],
+            forall |i: int| 0 <= i < sample ==> subband.visited@[i],
+            decreases subband.visited.len() - sample,
+        ))]
+        while sample < subband.visited.len() {
+            if !subband.visited[sample] {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(working_bands_view(bands@)[band as int].4 == subband.visited@);
+                    assert(!working_bands_view(bands@)[band as int].4[sample as int]);
+                }
+                return Err(invalid_decode());
+            }
+            sample += 1;
+        }
+        band += 1;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> prepared_component_outcome(result) == crate::specs::part1_prepare_standard_component(
+        prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn prepare_tile_component_with_kernel(
     plan: &PlannedTileComponent,
     precincts: &[PacketPrecinctDecoder],
@@ -1475,6 +1865,8 @@ fn prepare_tile_component_with_kernel(
     kernel: Option<&ArbitraryKernel>,
     limits: &ResourceLimits,
 ) -> Result<PreparedTileComponent, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_prepare_standard_component); }
     if plan.subbands.is_empty() {
         return Err(invalid_decode());
     }
@@ -1489,52 +1881,41 @@ fn prepare_tile_component_with_kernel(
     if selected_subbands > plan.subbands.len() {
         return Err(invalid_decode());
     }
-    let mut working = Vec::with_capacity(selected_subbands);
-    let mut working_bytes = 0_u64;
-    let mut subband_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant subband_index <= selected_subbands,
-            decreases selected_subbands - subband_index,
-        )
-    )]
-    while subband_index < selected_subbands {
-        let geometry = *plan
-            .subbands
-            .get(subband_index)
-            .ok_or_else(invalid_decode)?;
-        let length = checked_area_u32(geometry.width, geometry.height)?;
-        let bytes = (length as u64)
-            .checked_mul(9)
-            .ok_or_else(arithmetic_overflow)?;
-        working_bytes = working_bytes
-            .checked_add(bytes)
-            .ok_or_else(arithmetic_overflow)?;
-        if working_bytes > limits.maximum_decoded_bytes() {
-            return Err(DecodeError::limit(
-                crate::Resource::DecodedBytes,
-                limits.maximum_decoded_bytes(),
-                working_bytes,
-            ));
-        }
-        working.push(WorkingSubband {
-            width: geometry.width,
-            height: geometry.height,
-            fraction_bits: expected_fraction_bits,
-            samples: vec![0_i64; length],
-            visited: vec![false; length],
-        });
-        subband_index = subband_index
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?;
-    }
+    let mut working = initialize_prepare_working(
+        &plan.subbands,
+        selected_subbands,
+        expected_fraction_bits,
+        limits,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial_working = working@; }
 
     let mut placement_index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_prepare_placements_empty(
+            initial_working, prepare_plan_view(plan), prepare_precincts_view(precincts@), reversible,
+            crate::limits::resource_decoded_bytes_limit(limits),
+        );
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant placement_index <= plan.placements.len(),
+            working.bands.len() == selected_subbands,
+            plan.subbands.len() > 0,
+            selected_subbands <= plan.subbands.len(),
+            expected_fraction_bits == crate::specs::part1_prepare_fraction(reversible),
+            crate::specs::part1_subband_count_through_resolution(
+                prepare_style_view(coding_style).1, prepare_style_view(coding_style).2, plan.output_resolution,
+            ) == Ok(selected_subbands),
+            crate::specs::part1_prepare_init_prefix(plan.subbands@, expected_fraction_bits, crate::limits::resource_decoded_bytes_limit(limits), selected_subbands as nat) == Ok(initial_working),
+            kernel.is_none() ==> !matches!(coding_style.transform, WaveletTransform::Arbitrary(_)),
+            kernel.is_none() ==> reversible == matches!(coding_style.transform, WaveletTransform::Reversible5x3),
+            crate::specs::part1_prepare_placements(
+                initial_working, prepare_plan_view(plan), prepare_precincts_view(precincts@), reversible,
+                crate::limits::resource_decoded_bytes_limit(limits), placement_index as nat,
+            ) == (Ok(()), working@),
             decreases plan.placements.len() - placement_index,
         )
     )]
@@ -1543,309 +1924,117 @@ fn prepare_tile_component_with_kernel(
             .placements
             .get(placement_index)
             .ok_or_else(invalid_decode)?;
-        if placement.subband_index >= selected_subbands {
-            placement_index = placement_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-            continue;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_prepare_placements_step(
+                initial_working, prepare_plan_view(plan), prepare_precincts_view(precincts@), reversible,
+                crate::limits::resource_decoded_bytes_limit(limits), placement_index as nat,
+            );
         }
-        let geometry = *plan
-            .subbands
-            .get(placement.subband_index)
-            .ok_or_else(invalid_decode)?;
-        let precinct = precincts
-            .get(placement.precinct_index)
-            .ok_or_else(invalid_decode)?;
-        let decoder = precinct.decoder(placement.decoder_index)?;
-        let plane = decoder.plane();
-        let block_width = u32::from(plane.width());
-        let block_height = u32::from(plane.height());
-        if placement
-            .x
-            .checked_add(block_width)
-            .ok_or_else(arithmetic_overflow)?
-            > geometry.width
-            || placement
-                .y
-                .checked_add(block_height)
-                .ok_or_else(arithmetic_overflow)?
-                > geometry.height
-        {
-            return Err(invalid_decode());
-        }
-        let coefficient_count = usize::from(plane.width())
-            .checked_mul(usize::from(plane.height()))
-            .ok_or_else(arithmetic_overflow)?;
-        let mut coefficients = Vec::with_capacity(coefficient_count);
-        let plane_height = plane.height();
-        let plane_width = plane.width();
-        let mut y = 0_u16;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant y <= plane_height,
-                decreases plane_height - y,
-            )
-        )]
-        while y < plane_height {
-            let mut x = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant x <= plane_width,
-                    decreases plane_width - x,
-                )
-            )]
-            while x < plane_width {
-                let coefficient = plane.coefficient(x, y)?;
-                coefficients.push(coefficient.signed_magnitude()?);
-                x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        let quantized = inverse_quantize_magnitudes(
-            &coefficients,
-            geometry.quantization_step,
-            geometry.dynamic_range,
+        let operation = place_prepare_block(
+            &mut working,
+            &plan.subbands,
+            precincts,
+            placement,
             reversible,
-            geometry.roi_shift,
             limits,
-        )?;
-        if quantized.fraction_bits() != expected_fraction_bits {
-            return Err(invalid_decode());
+        );
+        match operation {
+            Ok(()) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(operation.is_ok());
+                    assert(operation->Ok_0 == ());
+                    assert(operation == Ok(()));
+                }
+            }
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_prepare_placements_error(
+                        initial_working, prepare_plan_view(plan), prepare_precincts_view(precincts@), reversible,
+                        crate::limits::resource_decoded_bytes_limit(limits), placement_index as nat + 1, plan.placements.len() as nat,
+                    );
+                    assert(crate::specs::part1_prepare_placements(
+                        initial_working, prepare_plan_view(plan), prepare_precincts_view(precincts@), reversible,
+                        crate::limits::resource_decoded_bytes_limit(limits), plan.placements.len() as nat,
+                    ).0 == Err(error));
+                    reveal(crate::specs::part1_prepare_standard_component);
+                    assert(kernel.is_none() ==> crate::specs::part1_prepare_standard_component(
+                        prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
+                        crate::limits::resource_decoded_bytes_limit(limits),
+                    ) == Err(error));
+                }
+                return Err(error);
+            }
         }
-        let destination = working
-            .get_mut(placement.subband_index)
-            .ok_or_else(invalid_decode)?;
-        write_quantized_block(
-            destination,
-            quantized.samples(),
-            block_width,
-            block_height,
-            placement.x,
-            placement.y,
-        )?;
         placement_index = placement_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
-    subband_index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant subband_index <= working.len(),
-            decreases working.len() - subband_index,
-        )
-    )]
-    while subband_index < working.len() {
-        let subband = working.get(subband_index).ok_or_else(invalid_decode)?;
-        let mut sample_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant sample_index <= subband.visited.len(),
-                decreases subband.visited.len() - sample_index,
-            )
-        )]
-        while sample_index < subband.visited.len() {
-            if !subband.visited[sample_index] {
-                return Err(invalid_decode());
-            }
-            sample_index = sample_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        subband_index = subband_index
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?;
-    }
+    validate_prepare_coverage(&working.bands)?;
 
+    let folded = reconstruct_prepare_working(
+        &working.bands,
+        plan,
+        coding_style,
+        reversible,
+        kernel,
+        limits,
+    )?;
+    finish_prepared_component(plan, folded, expected_fraction_bits)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> prepare_fold_outcome(result) == crate::specs::part1_prepare_reconstruct(
+        working_bands_view(working@), prepare_plan_view(plan), prepare_style_view(coding_style), reversible,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn reconstruct_prepare_working(
+    working: &[WorkingSubband],
+    plan: &PlannedTileComponent,
+    coding_style: CodingStyle,
+    reversible: bool,
+    kernel: Option<&ArbitraryKernel>,
+    limits: &ResourceLimits,
+) -> Result<PrepareFold, DecodeError> {
     let ll = working.first().ok_or_else(invalid_decode)?;
-    let mut reconstructed_width = ll.width;
-    let mut reconstructed_height = ll.height;
-    let mut reconstructed = ll.samples.clone();
+    let mut folded = PrepareFold {
+        width: ll.width,
+        height: ll.height,
+        samples: ll.samples.clone(),
+        first_detail: 1,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = folded@; }
     let mut resolution = 1_u8;
-    let mut first_detail = 1_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant resolution as int <= plan.output_resolution as int + 1,
-            decreases plan.output_resolution as int + 1 - resolution as int,
-        )
-    )]
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_prepare_fold_empty(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::limits::resource_decoded_bytes_limit(limits)); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant 1 <= resolution as int <= plan.output_resolution as int + 1,
+        working.len() > 0, ll == &working@[0],
+        initial == (ll.width, ll.height, ll.samples@, 1usize),
+        kernel.is_none() ==> crate::specs::part1_prepare_fold(
+            initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible,
+            crate::limits::resource_decoded_bytes_limit(limits), (resolution - 1) as nat,
+        ) == Ok(folded@),
+        decreases plan.output_resolution as int + 1 - resolution as int,
+    ))]
     while resolution <= plan.output_resolution {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_prepare_fold_step(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::limits::resource_decoded_bytes_limit(limits), (resolution - 1) as nat);
+            crate::proofs::production_impl::production_prepare_fold_error_guard(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::limits::resource_decoded_bytes_limit(limits), resolution as nat, plan.output_resolution as nat);
+        }
         let direction = coding_style.direction_for_resolution(resolution)?;
         if matches!(direction, crate::codestream::DecompositionDirection::None) {
             resolution = resolution.checked_add(1).ok_or_else(arithmetic_overflow)?;
             continue;
         }
-        let detail = working.get(first_detail).ok_or_else(invalid_decode)?;
-        if detail.fraction_bits != expected_fraction_bits {
-            return Err(invalid_decode());
-        }
-        let geometry = *plan.subbands.get(first_detail).ok_or_else(invalid_decode)?;
-        let low = WaveletBand {
-            width: reconstructed_width,
-            height: reconstructed_height,
-            samples: &reconstructed,
-        };
-        let plane = match direction {
-            crate::codestream::DecompositionDirection::Horizontal => {
-                first_detail = first_detail
-                    .checked_add(crate::refinement::wavelet_detail_advance(1))
-                    .ok_or_else(arithmetic_overflow)?;
-                let high = WaveletBand {
-                    width: detail.width,
-                    height: detail.height,
-                    samples: &detail.samples,
-                };
-                if let Some(kernel) = kernel {
-                    inverse_horizontal_arbitrary(
-                        low,
-                        high,
-                        geometry.resolution_width,
-                        geometry.low_pass_first_x,
-                        kernel,
-                        limits,
-                    )?
-                } else if reversible {
-                    inverse_horizontal_5_3(
-                        low,
-                        high,
-                        geometry.resolution_width,
-                        geometry.low_pass_first_x,
-                        limits,
-                    )?
-                } else {
-                    inverse_horizontal_9_7(
-                        low,
-                        high,
-                        geometry.resolution_width,
-                        geometry.low_pass_first_x,
-                        limits,
-                    )?
-                }
-            }
-            crate::codestream::DecompositionDirection::Vertical => {
-                first_detail = first_detail
-                    .checked_add(crate::refinement::wavelet_detail_advance(2))
-                    .ok_or_else(arithmetic_overflow)?;
-                let high = WaveletBand {
-                    width: detail.width,
-                    height: detail.height,
-                    samples: &detail.samples,
-                };
-                if let Some(kernel) = kernel {
-                    inverse_vertical_arbitrary(
-                        low,
-                        high,
-                        geometry.resolution_height,
-                        geometry.low_pass_first_y,
-                        kernel,
-                        limits,
-                    )?
-                } else if reversible {
-                    inverse_vertical_5_3(
-                        low,
-                        high,
-                        geometry.resolution_height,
-                        geometry.low_pass_first_y,
-                        limits,
-                    )?
-                } else {
-                    inverse_vertical_9_7(
-                        low,
-                        high,
-                        geometry.resolution_height,
-                        geometry.low_pass_first_y,
-                        limits,
-                    )?
-                }
-            }
-            crate::codestream::DecompositionDirection::TwoDimensional => {
-                let lh = working
-                    .get(
-                        first_detail
-                            .checked_add(1)
-                            .ok_or_else(arithmetic_overflow)?,
-                    )
-                    .ok_or_else(invalid_decode)?;
-                let hh = working
-                    .get(
-                        first_detail
-                            .checked_add(2)
-                            .ok_or_else(arithmetic_overflow)?,
-                    )
-                    .ok_or_else(invalid_decode)?;
-                if lh.fraction_bits != expected_fraction_bits
-                    || hh.fraction_bits != expected_fraction_bits
-                {
-                    return Err(invalid_decode());
-                }
-                first_detail = first_detail
-                    .checked_add(crate::refinement::wavelet_detail_advance(3))
-                    .ok_or_else(arithmetic_overflow)?;
-                let level = WaveletLevel {
-                    ll: low,
-                    hl: WaveletBand {
-                        width: detail.width,
-                        height: detail.height,
-                        samples: &detail.samples,
-                    },
-                    lh: WaveletBand {
-                        width: lh.width,
-                        height: lh.height,
-                        samples: &lh.samples,
-                    },
-                    hh: WaveletBand {
-                        width: hh.width,
-                        height: hh.height,
-                        samples: &hh.samples,
-                    },
-                    output_width: geometry.resolution_width,
-                    output_height: geometry.resolution_height,
-                    low_pass_first_x: geometry.low_pass_first_x,
-                    low_pass_first_y: geometry.low_pass_first_y,
-                };
-                if let Some(kernel) = kernel {
-                    inverse_level_arbitrary(level, kernel, limits)?
-                } else if reversible {
-                    inverse_level_5_3(level, limits)?
-                } else {
-                    inverse_level_9_7(level, limits)?
-                }
-            }
-            crate::codestream::DecompositionDirection::None => {
-                return Err(invalid_decode());
-            }
-        };
-        if plane.fraction_bits() != expected_fraction_bits {
-            return Err(invalid_decode());
-        }
-        reconstructed_width = plane.width();
-        reconstructed_height = plane.height();
-        let plane_sample_count = plane.samples().len();
-        let mut next_samples = Vec::with_capacity(plane_sample_count);
-        let mut sample_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant sample_index <= plane_sample_count,
-                decreases plane_sample_count - sample_index,
-            )
-        )]
-        while sample_index < plane_sample_count {
-            next_samples.push(
-                *plane
-                    .samples()
-                    .get(sample_index)
-                    .ok_or_else(invalid_decode)?,
-            );
-            sample_index = sample_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        reconstructed = next_samples;
+        folded = reconstruct_prepare_resolution(
+            working, plan, folded, direction, reversible, kernel, limits,
+        )?;
         if resolution == u8::MAX {
             return Err(arithmetic_overflow());
         }
@@ -1855,9 +2044,231 @@ fn prepare_tile_component_with_kernel(
             return Err(arithmetic_overflow());
         }
     }
-    if reconstructed_width != plan.width
-        || reconstructed_height != plan.height
-        || reconstructed.len() != checked_area_u32(plan.width, plan.height)?
+    Ok(folded)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> prepare_fold_outcome(result) == crate::specs::part1_prepare_resolution(
+        before@, working_bands_view(working@), plan.subbands@, direction, reversible, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn reconstruct_prepare_resolution(
+    working: &[WorkingSubband],
+    plan: &PlannedTileComponent,
+    before: PrepareFold,
+    direction: crate::codestream::DecompositionDirection,
+    reversible: bool,
+    kernel: Option<&ArbitraryKernel>,
+    limits: &ResourceLimits,
+) -> Result<PrepareFold, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_prepare_resolution); }
+    let mut first_detail = before.first_detail;
+    let reconstructed_width = before.width;
+    let reconstructed_height = before.height;
+    let reconstructed = before.samples;
+    let expected_fraction_bits = if reversible { 0 } else { 16 };
+    let detail = working.get(first_detail).ok_or_else(invalid_decode)?;
+    if detail.fraction_bits != expected_fraction_bits {
+        return Err(invalid_decode());
+    }
+    let geometry = *plan.subbands.get(first_detail).ok_or_else(invalid_decode)?;
+    let low = WaveletBand {
+        width: reconstructed_width,
+        height: reconstructed_height,
+        samples: &reconstructed,
+    };
+    let plane = match direction {
+        crate::codestream::DecompositionDirection::Horizontal => {
+            first_detail = first_detail
+                .checked_add(crate::refinement::wavelet_detail_advance(1))
+                .ok_or_else(arithmetic_overflow)?;
+            let high = WaveletBand {
+                width: detail.width,
+                height: detail.height,
+                samples: &detail.samples,
+            };
+            if let Some(kernel) = kernel {
+                inverse_horizontal_arbitrary(
+                    low,
+                    high,
+                    geometry.resolution_width,
+                    geometry.low_pass_first_x,
+                    kernel,
+                    limits,
+                )?
+            } else if reversible {
+                inverse_horizontal_5_3(
+                    low,
+                    high,
+                    geometry.resolution_width,
+                    geometry.low_pass_first_x,
+                    limits,
+                )?
+            } else {
+                inverse_horizontal_9_7(
+                    low,
+                    high,
+                    geometry.resolution_width,
+                    geometry.low_pass_first_x,
+                    limits,
+                )?
+            }
+        }
+        crate::codestream::DecompositionDirection::Vertical => {
+            first_detail = first_detail
+                .checked_add(crate::refinement::wavelet_detail_advance(2))
+                .ok_or_else(arithmetic_overflow)?;
+            let high = WaveletBand {
+                width: detail.width,
+                height: detail.height,
+                samples: &detail.samples,
+            };
+            if let Some(kernel) = kernel {
+                inverse_vertical_arbitrary(
+                    low,
+                    high,
+                    geometry.resolution_height,
+                    geometry.low_pass_first_y,
+                    kernel,
+                    limits,
+                )?
+            } else if reversible {
+                inverse_vertical_5_3(
+                    low,
+                    high,
+                    geometry.resolution_height,
+                    geometry.low_pass_first_y,
+                    limits,
+                )?
+            } else {
+                inverse_vertical_9_7(
+                    low,
+                    high,
+                    geometry.resolution_height,
+                    geometry.low_pass_first_y,
+                    limits,
+                )?
+            }
+        }
+        crate::codestream::DecompositionDirection::TwoDimensional => {
+            let lh = working
+                .get(
+                    first_detail
+                        .checked_add(1)
+                        .ok_or_else(arithmetic_overflow)?,
+                )
+                .ok_or_else(invalid_decode)?;
+            let hh = working
+                .get(
+                    first_detail
+                        .checked_add(2)
+                        .ok_or_else(arithmetic_overflow)?,
+                )
+                .ok_or_else(invalid_decode)?;
+            if lh.fraction_bits != expected_fraction_bits
+                || hh.fraction_bits != expected_fraction_bits
+            {
+                return Err(invalid_decode());
+            }
+            first_detail = first_detail
+                .checked_add(crate::refinement::wavelet_detail_advance(3))
+                .ok_or_else(arithmetic_overflow)?;
+            let level = WaveletLevel {
+                ll: low,
+                hl: WaveletBand {
+                    width: detail.width,
+                    height: detail.height,
+                    samples: &detail.samples,
+                },
+                lh: WaveletBand {
+                    width: lh.width,
+                    height: lh.height,
+                    samples: &lh.samples,
+                },
+                hh: WaveletBand {
+                    width: hh.width,
+                    height: hh.height,
+                    samples: &hh.samples,
+                },
+                output_width: geometry.resolution_width,
+                output_height: geometry.resolution_height,
+                low_pass_first_x: geometry.low_pass_first_x,
+                low_pass_first_y: geometry.low_pass_first_y,
+            };
+            if let Some(kernel) = kernel {
+                inverse_level_arbitrary(level, kernel, limits)?
+            } else if reversible {
+                inverse_level_5_3(level, limits)?
+            } else {
+                inverse_level_9_7(level, limits)?
+            }
+        }
+        crate::codestream::DecompositionDirection::None => {
+            return Err(invalid_decode());
+        }
+    };
+    if plane.fraction_bits() != expected_fraction_bits {
+        return Err(invalid_decode());
+    }
+    copy_prepare_plane(plane, first_detail)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures prepare_fold_outcome(result) == crate::specs::part1_prepare_copy_plane(crate::transform::reconstructed_plane_view(plane), first_detail),
+))]
+fn copy_prepare_plane(
+    plane: crate::transform::ReconstructedPlane,
+    first_detail: usize,
+) -> Result<PrepareFold, DecodeError> {
+    let reconstructed_width = plane.width();
+    let reconstructed_height = plane.height();
+    let plane_sample_count = plane.samples().len();
+    let mut next_samples = Vec::with_capacity(plane_sample_count);
+    let mut sample_index = 0_usize;
+    #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant sample_index <= plane_sample_count,
+                    plane_sample_count == crate::transform::reconstructed_plane_view(plane).3.len(),
+                    reconstructed_width == crate::transform::reconstructed_plane_view(plane).0,
+                    reconstructed_height == crate::transform::reconstructed_plane_view(plane).1,
+                    next_samples@ == crate::transform::reconstructed_plane_view(plane).3.subrange(0, sample_index as int),
+                decreases plane_sample_count - sample_index,
+            )
+        )]
+    while sample_index < plane_sample_count {
+        next_samples.push(
+            *plane
+                .samples()
+                .get(sample_index)
+                .ok_or_else(invalid_decode)?,
+        );
+        sample_index = sample_index
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(next_samples@ =~= crate::transform::reconstructed_plane_view(plane).3); }
+    Ok(PrepareFold {
+        width: reconstructed_width,
+        height: reconstructed_height,
+        samples: next_samples,
+        first_detail,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures prepared_component_outcome(result) == crate::specs::part1_prepare_finish(prepare_plan_view(plan), fraction, folded@),
+))]
+fn finish_prepared_component(
+    plan: &PlannedTileComponent,
+    folded: PrepareFold,
+    fraction: u8,
+) -> Result<PreparedTileComponent, DecodeError> {
+    if folded.width != plan.width
+        || folded.height != plan.height
+        || folded.samples.len() != checked_area_u32(plan.width, plan.height)?
     {
         return Err(invalid_decode());
     }
@@ -1867,8 +2278,8 @@ fn prepare_tile_component_with_kernel(
         y: plan.y,
         width: plan.width,
         height: plan.height,
-        fraction_bits: expected_fraction_bits,
-        samples: reconstructed,
+        fraction_bits: fraction,
+        samples: folded.samples,
     })
 }
 
@@ -2596,6 +3007,13 @@ fn apply_jp2_output(
     )
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::image::typed_component_output(result)
+            == crate::specs::part2_typed_component_copy(crate::image::typed_component_output_view(source)),
+    )
+)]
 fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, DecodeError> {
     let samples = match source.samples() {
         TypedSamples::Signed(source_samples) => {
@@ -2605,6 +3023,7 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 verus_keep_ghost,
                 verus_spec(
                     invariant index <= source_samples.len(),
+                    copied@ == source_samples@.take(index as int),
                     decreases source_samples.len() - index,
                 )
             )]
@@ -2612,6 +3031,8 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 copied.push(*source_samples.get(index).ok_or_else(invalid_jp2_output)?);
                 index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(copied@ =~= source_samples@); }
             TypedSamples::Signed(copied)
         }
         TypedSamples::Unsigned(source_samples) => {
@@ -2621,6 +3042,7 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 verus_keep_ghost,
                 verus_spec(
                     invariant index <= source_samples.len(),
+                    copied@ == source_samples@.take(index as int),
                     decreases source_samples.len() - index,
                 )
             )]
@@ -2628,17 +3050,31 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 copied.push(*source_samples.get(index).ok_or_else(invalid_jp2_output)?);
                 index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(copied@ =~= source_samples@); }
             TypedSamples::Unsigned(copied)
         }
     };
-    let mut copied =
-        TypedComponent::from_parts(source.width(), source.height(), source.info(), samples);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::image::typed_samples_view(&samples) == crate::image::typed_component_view(source).samples);
+    }
+    let mut copied = crate::image::typed_component_from_parts(
+        source.width(),
+        source.height(),
+        source.info(),
+        samples,
+    );
     let definition_count = source.channel_definitions().len();
     let mut definition_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant definition_index <= definition_count,
+            definition_count == crate::image::typed_component_definitions(source).len(),
+            crate::image::typed_component_view(&copied) == crate::image::typed_component_view(source),
+            crate::image::typed_component_definitions(&copied)
+                == crate::image::typed_component_definitions(source).take(definition_index as int),
             decreases definition_count - definition_index,
         )
     )]
@@ -2653,9 +3089,22 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::image::typed_component_definitions(&copied)
+            =~= crate::image::typed_component_definitions(source));
+    }
     Ok(copied)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::image::typed_component_output(result) == crate::specs::part2_palette_component(
+            crate::image::typed_component_view(source), crate::jp2::palette_view(palette), column,
+        ),
+    )
+)]
 fn map_palette_component(
     source: &TypedComponent,
     palette: &jp2::Palette,
@@ -2665,7 +3114,8 @@ fn map_palette_component(
         .columns()
         .get(usize::from(column))
         .ok_or_else(invalid_jp2_output)?;
-    if descriptor.precision == 0 || descriptor.precision > 38 {
+    let precision = descriptor.precision;
+    if precision == 0 || precision > 38 {
         return Err(invalid_jp2_output());
     }
     let sample_count = match source.samples() {
@@ -2683,47 +3133,146 @@ fn map_palette_component(
         Vec::with_capacity(sample_count)
     };
     let mut sample_index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_palette_samples_empty(
+            crate::image::typed_component_view(source).samples, crate::jp2::palette_view(palette), column,
+        );
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant sample_index <= sample_count,
+            sample_count as nat == crate::specs::part2_typed_sample_count(crate::image::typed_component_view(source).samples),
+            column < crate::jp2::palette_view(palette).1.len(),
+            *descriptor == crate::jp2::palette_view(palette).1[column as int],
+            precision == descriptor.precision, 0 < precision <= 38,
+            crate::specs::part2_palette_samples(
+                crate::image::typed_component_view(source).samples, crate::jp2::palette_view(palette), column, sample_index as nat,
+            ) == Ok(if descriptor.signed {
+                crate::specs::Part1TypedSampleSequence::Signed(signed_samples@)
+            } else { crate::specs::Part1TypedSampleSequence::Unsigned(unsigned_samples@) }),
             decreases sample_count - sample_index,
         )
     )]
     while sample_index < sample_count {
-        let palette_index = match source.samples() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_palette_samples_step(
+                crate::image::typed_component_view(source).samples, crate::jp2::palette_view(palette), column, sample_index as nat,
+            );
+        }
+        let index_status = match source.samples() {
             TypedSamples::Signed(samples) => {
                 let value = *samples.get(sample_index).ok_or_else(invalid_jp2_output)?;
-                u16::try_from(value).map_err(|_| invalid_jp2_output())?
+                u16::try_from(value)
             }
             TypedSamples::Unsigned(samples) => {
                 let value = *samples.get(sample_index).ok_or_else(invalid_jp2_output)?;
-                u16::try_from(value).map_err(|_| invalid_jp2_output())?
+                u16::try_from(value)
+            }
+        };
+        let palette_index = match index_status {
+            Ok(index) => index,
+            Err(_) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_palette_sample_error(
+                        crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                        column, sample_index, crate::specs::part2_color_input_error(),
+                    );
+                }
+                return Err(invalid_jp2_output());
             }
         };
         if palette_index >= palette.entries() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_palette_sample_error(
+                    crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                    column, sample_index, crate::specs::part2_color_input_error(),
+                );
+            }
             return Err(invalid_jp2_output());
         }
-        let value = palette.value(palette_index, column)?;
+        let value_status = palette.value(palette_index, column);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = value_status {
+                crate::proofs::production_impl::production_palette_sample_error(
+                    crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                    column, sample_index, error,
+                );
+            }
+        }
+        let value = value_status?;
         if descriptor.signed {
-            let modulus = palette_modulus(descriptor.precision)?;
+            let modulus = palette_modulus(precision)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(2 <= modulus <= 274877906944) by(bit_vector)
+                    requires 0 < precision <= 38, modulus == 1u64 << precision;
+            }
             let half = i64::try_from(modulus.checked_div(2).ok_or_else(arithmetic_overflow)?)
                 .map_err(|_| arithmetic_overflow())?;
             let minimum = 0_i64.checked_sub(half).ok_or_else(arithmetic_overflow)?;
             let maximum = half.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(half == 1i64 << ((precision - 1) as u8)) by(bit_vector)
+                    requires 0 < precision <= 38, modulus == 1u64 << precision,
+                        half >= 0, half as u64 == modulus / 2;
+            }
             if value < minimum || value > maximum {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_palette_sample_error(
+                        crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                        column, sample_index, crate::specs::part2_color_input_error(),
+                    );
+                }
                 return Err(invalid_jp2_output());
             }
             signed_samples.push(value);
         } else {
-            let maximum = palette_modulus(descriptor.precision)?
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
-            let value = u64::try_from(value).map_err(|_| invalid_jp2_output())?;
-            if value > maximum {
+            let modulus = palette_modulus(precision)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(2 <= modulus <= 274877906944) by(bit_vector)
+                    requires 0 < precision <= 38, modulus == 1u64 << precision;
+            }
+            let maximum = modulus.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(maximum < 274877906944) by(bit_vector)
+                    requires 0 < precision <= 38, maximum == (1u64 << precision) - 1;
+                assert(maximum as i64 == ((1i64 << precision) - 1)) by(bit_vector)
+                    requires 0 < precision <= 38, maximum == (1u64 << precision) - 1;
+            }
+            let unsigned_value = match u64::try_from(value) {
+                Ok(value) => value,
+                Err(_) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_palette_sample_error(
+                            crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                            column, sample_index, crate::specs::part2_color_input_error(),
+                        );
+                    }
+                    return Err(invalid_jp2_output());
+                }
+            };
+            if unsigned_value > maximum {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_palette_sample_error(
+                        crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                        column, sample_index, crate::specs::part2_color_input_error(),
+                    );
+                }
                 return Err(invalid_jp2_output());
             }
-            unsigned_samples.push(value);
+            unsigned_samples.push(unsigned_value);
         }
         sample_index = sample_index
             .checked_add(1)
@@ -2737,7 +3286,7 @@ fn map_palette_component(
     } else {
         TypedSamples::Unsigned(unsigned_samples)
     };
-    Ok(TypedComponent::from_parts(
+    Ok(crate::image::typed_component_from_parts(
         source.width(),
         source.height(),
         info,
@@ -2745,28 +3294,49 @@ fn map_palette_component(
     ))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::part2_palette_modulus(precision),)
+)]
 fn palette_modulus(precision: u8) -> Result<u64, DecodeError> {
     if precision == 0 || precision > 38 {
         return Err(invalid_jp2_output());
     }
     let mut modulus = 1_u64;
     let mut bit = 0_u8;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1u64 << 0u32 == 1) by(bit_vector); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant bit <= precision,
+            invariant bit <= precision, 0 < precision <= 38,
+            modulus == 1u64 << (bit as u32),
             decreases precision - bit,
         )
     )]
     while bit < precision {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(modulus <= 137438953472) by(bit_vector)
+                requires bit < 38, modulus == 1u64 << (bit as u32);
+            assert(modulus * 2 == 1u64 << ((bit + 1) as u32)) by(bit_vector)
+                requires bit < 38, modulus == 1u64 << (bit as u32);
+        }
         modulus = modulus.checked_mul(2).ok_or_else(arithmetic_overflow)?;
         bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(modulus)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(error => ensures error == crate::specs::part2_color_input_error(),)
+)]
 fn invalid_jp2_output() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ContainerCodestreamMismatch)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ContainerCodestreamMismatch,
+    }
 }
 
 struct ValidatedSelection {
@@ -4055,11 +4625,11 @@ fn checked_index(width: u32, x: u32, y: u32) -> Result<usize, DecodeError> {
     crate::transform::transform_offset(y, width, x)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_area(width, height),
+))]
 fn checked_area_u32(width: u32, height: u32) -> Result<usize, DecodeError> {
-    usize::try_from(width)
-        .map_err(|_| arithmetic_overflow())?
-        .checked_mul(usize::try_from(height).map_err(|_| arithmetic_overflow())?)
-        .ok_or_else(arithmetic_overflow)
+    crate::transform::checked_area(width, height)
 }
 
 fn ceil_div_u32(value: u32, divisor: u32) -> Result<u32, DecodeError> {
@@ -4116,6 +4686,493 @@ mod tests {
         CodeBlockPacketContext, CodeBlockPacketState, PacketBitReader, TagTree,
         decode_code_block_contribution, decode_progression_tile_packets,
     };
+
+    fn reference_standard_prepare(
+        plan: &PlannedTileComponent,
+        precincts: &[PacketPrecinctDecoder],
+        style: CodingStyle,
+        maximum: u64,
+    ) -> Result<PreparedTileComponent, DecodeError> {
+        use codestream::DecompositionDirection::{Horizontal, None, TwoDimensional, Vertical};
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid_style = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        if plan.subbands.is_empty() {
+            return Err(invalid);
+        }
+        let reversible = match style.transform {
+            WaveletTransform::Reversible5x3 => true,
+            WaveletTransform::Irreversible9x7 => false,
+            WaveletTransform::Arbitrary(_) => return Err(invalid),
+        };
+        if plan.output_resolution > style.decomposition_levels {
+            return Err(invalid_style);
+        }
+        let mut directions = Vec::new();
+        for resolution in 1..=u16::from(plan.output_resolution) {
+            let stage = usize::from(style.decomposition_levels) - usize::from(resolution);
+            directions.push(
+                *style
+                    .decomposition_directions
+                    .get(stage)
+                    .ok_or(invalid_style)?,
+            );
+            if resolution == 255 {
+                return Err(arithmetic);
+            }
+        }
+        let selected = 1 + directions
+            .iter()
+            .map(|d| match d {
+                None => 0,
+                Horizontal | Vertical => 1,
+                TwoDimensional => 3,
+            })
+            .sum::<usize>();
+        if selected > plan.subbands.len() {
+            return Err(invalid);
+        }
+        let fraction = if reversible { 0 } else { 16 };
+        let mut bytes = 0_u128;
+        let mut bands = Vec::new();
+        for geometry in &plan.subbands[..selected] {
+            let count = u128::from(geometry.width) * u128::from(geometry.height);
+            if count > usize::MAX as u128 {
+                return Err(arithmetic);
+            }
+            bytes += count * 9;
+            if bytes > u128::from(u64::MAX) {
+                return Err(arithmetic);
+            }
+            if bytes > u128::from(maximum) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::DecodedBytes,
+                    limit: maximum,
+                    actual: u64::try_from(bytes).unwrap(),
+                });
+            }
+            bands.push(WorkingSubband {
+                width: geometry.width,
+                height: geometry.height,
+                fraction_bits: fraction,
+                samples: vec![0; usize::try_from(count).unwrap()],
+                visited: vec![false; usize::try_from(count).unwrap()],
+            });
+        }
+        for placement in &plan.placements {
+            if placement.subband_index >= selected {
+                continue;
+            }
+            let geometry = plan.subbands[placement.subband_index];
+            let precinct = precincts.get(placement.precinct_index).ok_or(invalid)?;
+            let decoder = precinct.decoders().get(placement.decoder_index).ok_or(
+                DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidPacketHeader,
+                },
+            )?;
+            let plane = decoder.plane();
+            let x1 = u64::from(placement.x) + u64::from(plane.width());
+            let y1 = u64::from(placement.y) + u64::from(plane.height());
+            if x1 > u64::from(u32::MAX) {
+                return Err(arithmetic);
+            }
+            if x1 > u64::from(geometry.width) {
+                return Err(invalid);
+            }
+            if y1 > u64::from(u32::MAX) {
+                return Err(arithmetic);
+            }
+            if y1 > u64::from(geometry.height) {
+                return Err(invalid);
+            }
+            let mut coefficients = Vec::new();
+            for y in 0..plane.height() {
+                for x in 0..plane.width() {
+                    let coefficient = plane
+                        .coefficients()
+                        .get(usize::from(y) * usize::from(plane.width()) + usize::from(x))
+                        .ok_or(invalid)?;
+                    let mut words = [0; 6];
+                    // Fixtures finish the one-bit legacy block: any midpoint is zero.
+                    if coefficient.significant {
+                        words[0] = coefficient.magnitude;
+                    }
+                    coefficients.push((words, coefficient.significant && coefficient.negative));
+                }
+            }
+            let quantized = crate::transform::tests::reference_reconstruction(
+                &coefficients,
+                geometry.quantization_step,
+                geometry.dynamic_range,
+                reversible,
+                geometry.roi_shift,
+                maximum,
+            )?;
+            if quantized.2 != fraction {
+                return Err(invalid);
+            }
+            reference_quantized_block(
+                &mut bands[placement.subband_index],
+                &quantized.3,
+                [u32::from(plane.width()), u32::from(plane.height())],
+                [placement.x, placement.y],
+            )?;
+        }
+        if bands.iter().any(|band| band.visited.iter().any(|v| !v)) {
+            return Err(invalid);
+        }
+        let ll = bands.first().ok_or(invalid)?;
+        let mut reconstructed = (ll.width, ll.height, fraction, ll.samples.clone());
+        let mut first = 1;
+        for direction in directions {
+            if direction == None {
+                continue;
+            }
+            let detail = bands.get(first).ok_or(invalid)?;
+            if detail.fraction_bits != fraction {
+                return Err(invalid);
+            }
+            let geometry = plan.subbands[first];
+            let low = WaveletBand {
+                width: reconstructed.0,
+                height: reconstructed.1,
+                samples: &reconstructed.3,
+            };
+            let high = WaveletBand {
+                width: detail.width,
+                height: detail.height,
+                samples: &detail.samples,
+            };
+            reconstructed = match direction {
+                Horizontal => {
+                    first += 1;
+                    crate::transform::tests::reference_horizontal(
+                        low,
+                        high,
+                        geometry.resolution_width,
+                        geometry.low_pass_first_x,
+                        !reversible,
+                        maximum,
+                    )?
+                }
+                Vertical => {
+                    first += 1;
+                    crate::transform::tests::reference_vertical(
+                        low,
+                        high,
+                        geometry.resolution_height,
+                        geometry.low_pass_first_y,
+                        !reversible,
+                        maximum,
+                    )?
+                }
+                TwoDimensional => {
+                    let lh = bands.get(first + 1).ok_or(invalid)?;
+                    let hh = bands.get(first + 2).ok_or(invalid)?;
+                    if lh.fraction_bits != fraction || hh.fraction_bits != fraction {
+                        return Err(invalid);
+                    }
+                    first += 3;
+                    crate::transform::tests::reference_level(
+                        WaveletLevel {
+                            ll: low,
+                            hl: high,
+                            lh: WaveletBand {
+                                width: lh.width,
+                                height: lh.height,
+                                samples: &lh.samples,
+                            },
+                            hh: WaveletBand {
+                                width: hh.width,
+                                height: hh.height,
+                                samples: &hh.samples,
+                            },
+                            output_width: geometry.resolution_width,
+                            output_height: geometry.resolution_height,
+                            low_pass_first_x: geometry.low_pass_first_x,
+                            low_pass_first_y: geometry.low_pass_first_y,
+                        },
+                        !reversible,
+                        maximum,
+                    )?
+                }
+                None => unreachable!(),
+            };
+            if reconstructed.2 != fraction {
+                return Err(invalid);
+            }
+        }
+        if reconstructed.0 != plan.width || reconstructed.1 != plan.height {
+            return Err(invalid);
+        }
+        let count = u128::from(plan.width) * u128::from(plan.height);
+        if count > usize::MAX as u128 {
+            return Err(arithmetic);
+        }
+        if reconstructed.3.len() as u128 != count {
+            return Err(invalid);
+        }
+        Ok(PreparedTileComponent {
+            component: plan.component,
+            x: plan.x,
+            y: plan.y,
+            width: plan.width,
+            height: plan.height,
+            fraction_bits: fraction,
+            samples: reconstructed.3,
+        })
+    }
+
+    fn standard_prepare_fixture(
+        pattern: &[codestream::DecompositionDirection],
+        reversible: bool,
+        parity: bool,
+        seed: u8,
+    ) -> (
+        PlannedTileComponent,
+        Vec<PacketPrecinctDecoder>,
+        CodingStyle,
+    ) {
+        use codestream::DecompositionDirection::*;
+        let mut width = 1;
+        let mut height = 1;
+        let mut subbands = vec![SubbandGeometry {
+            resolution: 0,
+            orientation: SubbandOrientation::Ll,
+            x0: u32::MAX,
+            y0: 17,
+            width,
+            height,
+            resolution_width: width,
+            resolution_height: height,
+            quantization_index: u16::MAX,
+            quantization_step: QuantizationStep {
+                exponent: 8,
+                mantissa: 137,
+            },
+            dynamic_range: 8,
+            significant_bitplanes: 1,
+            roi_shift: 0,
+            low_pass_first_x: parity,
+            low_pass_first_y: parity,
+        }];
+        for (index, direction) in pattern.iter().enumerate() {
+            let columns = width;
+            let rows = height;
+            if matches!(direction, Horizontal | TwoDimensional) {
+                width *= 2;
+            }
+            if matches!(direction, Vertical | TwoDimensional) {
+                height *= 2;
+            }
+            let count = match direction {
+                None => 0,
+                Horizontal | Vertical => 1,
+                TwoDimensional => 3,
+            };
+            for detail in 0..count {
+                subbands.push(SubbandGeometry {
+                    resolution: u8::try_from(index + 1).unwrap(),
+                    orientation: [
+                        SubbandOrientation::Hl,
+                        SubbandOrientation::Lh,
+                        SubbandOrientation::Hh,
+                    ][detail],
+                    width: columns,
+                    height: rows,
+                    resolution_width: width,
+                    resolution_height: height,
+                    ..subbands[0]
+                });
+            }
+        }
+        let limits = ResourceLimits::default();
+        let mut decoders = Vec::new();
+        for geometry in &subbands {
+            let mut decoder = Tier1CodeBlockDecoder::new(
+                u16::try_from(geometry.width).unwrap(),
+                u16::try_from(geometry.height).unwrap(),
+                1,
+                geometry.orientation,
+                Tier1CodingStyle::default(),
+            )
+            .unwrap();
+            decoder.decode_segment(&[seed; 64], 1, &limits).unwrap();
+            assert!(decoder.is_complete());
+            assert!(
+                decoder
+                    .plane()
+                    .coefficients()
+                    .iter()
+                    .all(|c| c.magnitude <= 1)
+            );
+            decoders.push(decoder);
+        }
+        let precinct = PacketPrecinctDecoder::new(
+            crate::packet::PacketPrecinctGeometry {
+                component: u16::MAX,
+                resolution: 0,
+                precinct: 0,
+                code_blocks_across: u32::try_from(decoders.len()).unwrap(),
+                code_blocks_down: 1,
+                maximum_zero_bitplanes: 1,
+            },
+            Tier1CodingStyle::default(),
+            decoders,
+            &limits,
+        )
+        .unwrap();
+        let mut placements: Vec<_> = (0..subbands.len())
+            .map(|index| ProgressionCodeBlockPlacement {
+                precinct_index: 0,
+                decoder_index: index,
+                subband_index: index,
+                x: 0,
+                y: 0,
+            })
+            .collect();
+        placements.reverse();
+        placements.push(ProgressionCodeBlockPlacement {
+            precinct_index: usize::MAX,
+            decoder_index: usize::MAX,
+            subband_index: usize::MAX,
+            x: u32::MAX,
+            y: u32::MAX,
+        });
+        let mut directions = [None; 32];
+        for (index, direction) in pattern.iter().rev().enumerate() {
+            directions[index] = *direction;
+        }
+        let style = CodingStyle {
+            progression_order: ProgressionOrder::Lrcp,
+            layers: 0,
+            multiple_component_transform: false,
+            decomposition_levels: u8::try_from(pattern.len()).unwrap(),
+            decomposition_structure: Option::None,
+            decomposition_directions: directions,
+            code_block_width: 0,
+            code_block_height: 0,
+            code_block_style: 0,
+            transform: if reversible {
+                WaveletTransform::Reversible5x3
+            } else {
+                WaveletTransform::Irreversible9x7
+            },
+            precincts_defined: false,
+            sop_markers: false,
+            eph_markers: false,
+            precinct_exponents: [(0, 0); 33],
+        };
+        (
+            PlannedTileComponent {
+                component: u16::MAX,
+                x: u32::MAX,
+                y: 123,
+                width,
+                height,
+                output_resolution: u8::try_from(pattern.len()).unwrap(),
+                subbands,
+                placements,
+            },
+            vec![precinct],
+            style,
+        )
+    }
+
+    #[test]
+    fn complete_standard_prepare_matches_independent_wide_multilevel_reference() {
+        use codestream::DecompositionDirection::*;
+        let patterns: &[&[_]] = &[
+            &[],
+            &[Horizontal],
+            &[Vertical],
+            &[TwoDimensional],
+            &[None, Horizontal],
+            &[Horizontal, None, Vertical],
+            &[TwoDimensional, TwoDimensional],
+            &[Horizontal, Vertical, TwoDimensional],
+        ];
+        let limits = ResourceLimits::default();
+        let mut nonzero = false;
+        for pattern in patterns {
+            for reversible in [false, true] {
+                for parity in [false, true] {
+                    for seed in [0, 17, 64, 128, 160] {
+                        let (plan, precincts, style) =
+                            standard_prepare_fixture(pattern, reversible, parity, seed);
+                        nonzero |= precincts[0]
+                            .decoders()
+                            .iter()
+                            .any(|d| d.plane().coefficients().iter().any(|c| c.significant));
+                        assert_eq!(
+                            prepare_tile_component(&plan, &precincts, style, &limits),
+                            reference_standard_prepare(
+                                &plan,
+                                &precincts,
+                                style,
+                                limits.maximum_decoded_bytes()
+                            )
+                        );
+                    }
+                }
+            }
+        }
+        assert!(nonzero);
+    }
+
+    #[test]
+    fn complete_standard_prepare_preserves_all_ordered_rejections() {
+        for variant in 0..15 {
+            for maximum in [1, 8, 9, 17, 18, 35, 36, 1024] {
+                let (mut plan, precincts, mut style) = standard_prepare_fixture(
+                    &[codestream::DecompositionDirection::TwoDimensional],
+                    true,
+                    true,
+                    17,
+                );
+                match variant {
+                    0 => plan.subbands.clear(),
+                    1 => style.transform = WaveletTransform::Arbitrary(255),
+                    2 => plan.output_resolution = 2,
+                    3 => style.decomposition_levels = 255,
+                    4 => {
+                        plan.subbands.pop();
+                    }
+                    5 => plan.subbands[0].width = u32::MAX,
+                    6 => plan.subbands[0].dynamic_range = 0,
+                    7 => plan.subbands[0].quantization_step.mantissa = u16::MAX,
+                    8 => plan.placements[0].precinct_index = usize::MAX,
+                    9 => plan.placements[0].decoder_index = usize::MAX,
+                    10 => plan.placements[0].x = u32::MAX,
+                    11 => {
+                        plan.placements.pop();
+                        plan.placements.push(plan.placements[0]);
+                    }
+                    12 => plan.placements.clear(),
+                    13 => plan.width += 1,
+                    _ => plan.subbands[1].resolution_width = 0,
+                }
+                let limits = ResourceLimits::default()
+                    .with_maximum_decoded_bytes(maximum)
+                    .unwrap();
+                assert_eq!(
+                    prepare_tile_component(&plan, &precincts, style, &limits),
+                    reference_standard_prepare(&plan, &precincts, style, maximum),
+                    "variant={variant} maximum={maximum}"
+                );
+            }
+        }
+    }
 
     fn copy_working_band(band: &WorkingSubband) -> WorkingSubband {
         WorkingSubband {
@@ -4716,6 +5773,202 @@ mod tests {
         jp2.extend(box32(*b"jp2h", &header));
         jp2.extend(box32(*b"jp2c", codestream));
         jp2
+    }
+
+    #[test]
+    fn palette_component_mapping_matches_independent_complete_native_oracle() {
+        use crate::codestream::ComponentInfo;
+        use crate::image::{ChannelAssociation, ChannelDefinition, ChannelType};
+
+        fn malformed(kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput { offset: 0, kind }
+        }
+
+        fn samples(case: usize) -> TypedSamples {
+            match case {
+                0 => TypedSamples::Signed(vec![]),
+                1 => TypedSamples::Signed(vec![-1]),
+                2 => TypedSamples::Signed(vec![0]),
+                3 => TypedSamples::Signed(vec![1, 0]),
+                4 => TypedSamples::Signed(vec![i64::from(u16::MAX)]),
+                5 => TypedSamples::Signed(vec![i64::MIN]),
+                6 => TypedSamples::Signed(vec![0, 2, 1]),
+                7 => TypedSamples::Signed(vec![i64::MAX]),
+                8 => TypedSamples::Unsigned(vec![]),
+                9 => TypedSamples::Unsigned(vec![0]),
+                10 => TypedSamples::Unsigned(vec![1, 0]),
+                11 => TypedSamples::Unsigned(vec![u64::from(u16::MAX)]),
+                12 => TypedSamples::Unsigned(vec![u64::MAX]),
+                13 => TypedSamples::Unsigned(vec![0, 2, 1]),
+                _ => unreachable!(),
+            }
+        }
+
+        fn oracle(
+            input: &TypedSamples,
+            entries: u16,
+            columns: &[jp2::PaletteColumn],
+            values: &[i64],
+            column: u8,
+        ) -> Result<TypedSamples, DecodeError> {
+            let descriptor = columns
+                .get(usize::from(column))
+                .ok_or(malformed(MalformedKind::ContainerCodestreamMismatch))?;
+            if descriptor.precision == 0 || descriptor.precision > 38 {
+                return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+            }
+            let input = match input {
+                TypedSamples::Signed(values) => values
+                    .iter()
+                    .map(|value| i128::from(*value))
+                    .collect::<Vec<_>>(),
+                TypedSamples::Unsigned(values) => values
+                    .iter()
+                    .map(|value| i128::from(*value))
+                    .collect::<Vec<_>>(),
+            };
+            let modulus = 2_i128.pow(u32::from(descriptor.precision));
+            let (minimum, maximum) = if descriptor.signed {
+                (-(modulus / 2), modulus / 2 - 1)
+            } else {
+                (0, modulus - 1)
+            };
+            let mut signed = Vec::new();
+            let mut unsigned = Vec::new();
+            for index in input {
+                if index < 0 || index > i128::from(u16::MAX) || index >= i128::from(entries) {
+                    return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+                }
+                if columns.len() > usize::from(u8::MAX) {
+                    return Err(malformed(MalformedKind::ArithmeticOverflow));
+                }
+                let address = (index as u128) * columns.len() as u128 + u128::from(column);
+                if address > usize::MAX as u128 {
+                    return Err(malformed(MalformedKind::ArithmeticOverflow));
+                }
+                let value = *values
+                    .get(address as usize)
+                    .ok_or(malformed(MalformedKind::InvalidBoxContents))?;
+                if i128::from(value) < minimum || i128::from(value) > maximum {
+                    return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+                }
+                if descriptor.signed {
+                    signed.push(value);
+                } else {
+                    unsigned.push(u64::try_from(value).unwrap());
+                }
+            }
+            Ok(if descriptor.signed {
+                TypedSamples::Signed(signed)
+            } else {
+                TypedSamples::Unsigned(unsigned)
+            })
+        }
+
+        let tables = [
+            vec![],
+            vec![0, -1],
+            vec![127, -128, 255, 0, i64::MIN, i64::MAX],
+            vec![
+                (1_i64 << 37) - 1,
+                -(1_i64 << 37),
+                (1_i64 << 38) - 1,
+                1_i64 << 38,
+            ],
+        ];
+        let mut contexts = 0;
+        for entries in [0, 1, 2, u16::MAX] {
+            for column_count in [0, 1, 2, 256] {
+                for column in [0, 1, u8::MAX] {
+                    for precision in [0, 1, 8, 16, 38, 39, u8::MAX] {
+                        for signed in [false, true] {
+                            let columns =
+                                vec![jp2::PaletteColumn { precision, signed }; column_count];
+                            for values in &tables {
+                                let palette = jp2::Palette::for_test(
+                                    entries,
+                                    columns.clone(),
+                                    values.clone(),
+                                );
+                                for case in 0..14 {
+                                    let info = ComponentInfo {
+                                        precision: [0, 1, 38, u8::MAX][case % 4],
+                                        signed: case % 2 == 0,
+                                        x_subsampling: [0, 2, u8::MAX][case % 3],
+                                        y_subsampling: [u8::MAX, 0, 1][case % 3],
+                                        x_registration: u16::MAX,
+                                        y_registration: case as u16,
+                                    };
+                                    let width = if case % 3 == 0 { 0 } else { 5 };
+                                    let height = if case % 5 == 0 { u32::MAX } else { 1 };
+                                    let mut source = TypedComponent::from_parts(
+                                        width,
+                                        height,
+                                        info,
+                                        samples(case),
+                                    );
+                                    source.add_channel_definition(ChannelDefinition::new(
+                                        ChannelType::Unspecified,
+                                        ChannelAssociation::Color(u16::MAX),
+                                    ));
+                                    source.add_channel_definition(ChannelDefinition::new(
+                                        ChannelType::PremultipliedOpacity,
+                                        ChannelAssociation::WholeImage,
+                                    ));
+                                    assert_eq!(copy_typed_component(&source).unwrap(), source);
+                                    let expected =
+                                        oracle(source.samples(), entries, &columns, values, column);
+                                    match (
+                                        expected,
+                                        map_palette_component(&source, &palette, column),
+                                    ) {
+                                        (Err(expected), Err(actual)) => {
+                                            assert_eq!(actual, expected)
+                                        }
+                                        (Ok(expected), Ok(actual)) => {
+                                            assert_eq!(actual.width(), width);
+                                            assert_eq!(actual.height(), height);
+                                            assert_eq!(
+                                                actual.info(),
+                                                ComponentInfo {
+                                                    precision,
+                                                    signed,
+                                                    ..info
+                                                }
+                                            );
+                                            assert_eq!(actual.samples(), &expected);
+                                            assert!(actual.channel_definitions().is_empty());
+                                        }
+                                        (expected, actual) => panic!(
+                                            "entries={entries} columns={column_count} column={column} precision={precision} signed={signed} case={case}: expected={expected:?} actual={actual:?}"
+                                        ),
+                                    }
+                                    assert_eq!(source.info(), info);
+                                    assert_eq!(source.channel_definitions().len(), 2);
+                                    contexts += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 37_632);
+    }
+
+    #[test]
+    fn palette_component_modulus_matches_all_native_precisions() {
+        for precision in 0..=u8::MAX {
+            let expected = if (1..=38).contains(&precision) {
+                Ok((1_u128 << precision) as u64)
+            } else {
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ContainerCodestreamMismatch,
+                })
+            };
+            assert_eq!(palette_modulus(precision), expected);
+        }
     }
 
     #[test]

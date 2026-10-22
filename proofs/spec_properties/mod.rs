@@ -32,6 +32,20 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn standard_prepare_preserves_complete_plan_metadata(
+    plan: crate::specs::Part1PreparePlan, precincts: Seq<Seq<crate::specs::Tier1RawPlane>>,
+    style: crate::specs::Part1PrepareStyle, maximum: u64,
+)
+    ensures match crate::specs::part1_prepare_standard_component(plan, precincts, style, maximum) {
+        Err(_) => true,
+        Ok(prepared) => prepared.0 == plan.component && prepared.1 == plan.x && prepared.2 == plan.y
+            && prepared.3 == plan.width && prepared.4 == plan.height
+            && prepared.5 == if matches!(style.0, crate::codestream::WaveletTransform::Reversible5x3) { 0u8 } else { 16u8 },
+    },
+{
+    reveal(crate::specs::part1_prepare_standard_component);
+}
+
 pub proof fn decoded_signed_prefix_has_complete_length(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
     ensures match crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) {
         Ok(values) => values.len() == count, Err(_) => true,
@@ -61,6 +75,90 @@ pub proof fn decoded_typed_component_preserves_kind_and_complete_length(componen
 {
     decoded_signed_prefix_has_complete_length(component.4, component.3, component.2.precision, component.4.len());
     decoded_unsigned_prefix_has_complete_length(component.4, component.3, component.2.precision, component.4.len());
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_full_refinement_rejects_front_parameters_before_any_plane_or_stream(
+    plane: crate::specs::Tier1RawPlane, segment: crate::specs::HtRefinementSegmentState,
+    passes: u8, planes: u16, causal: bool, work: u64,
+)
+    requires segment.encoded.len() <= usize::MAX, passes == 0 || passes > 2 || planes < 2,
+    ensures crate::specs::ht_refinement_plane(plane, segment, passes, planes, causal, work)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_delayed_signs_preserve_discovery_and_pending_on_every_return(
+    state: crate::specs::HtSignificancePatchState, index: nat, magnitude: (Seq<u64>, nat),
+)
+    ensures crate::specs::ht_patch_sign_sample(state, index, magnitude).1.discovery == state.discovery,
+        crate::specs::ht_patch_sign_sample(state, index, magnitude).1.pending == state.pending,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_neighbor_balance_overflow_keeps_the_prior_count_increment(state: crate::tier1::NeighborSummary)
+    requires state.horizontal_significant < u8::MAX, state.horizontal_sign_balance == i8::MAX,
+    ensures crate::specs::ht_neighbor_update(state, 0, false)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::tier1::NeighborSummary { horizontal_significant: (state.horizontal_significant + 1) as u8, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_complete_symbol_model_preserves_the_frozen_cleanup_only_profile(
+    state: crate::specs::Tier1DecoderState, segments: crate::specs::HtBlockSegmentsState,
+    passes: u32, maximum_u: u8, skipped: u16, work: u64,
+)
+    requires segments.refinement.is_none(),
+    ensures crate::specs::ht_coefficient_symbols(state, segments, passes, maximum_u, skipped, work)
+        == crate::specs::ht_cleanup_symbols_only(state, segments, passes, maximum_u, skipped, work),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_cleanup_caller_preparation_error_preserves_complete_decoder(
+    state: crate::specs::Tier1DecoderState, segments: crate::specs::HtBlockSegmentsState,
+    passes: u32, maximum_u: u8, skipped: u16, work: u64,
+)
+    requires crate::specs::ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped, work).is_err(),
+    ensures crate::specs::ht_cleanup_symbols_only(state, segments, passes, maximum_u, skipped, work).1 == state,
+        crate::specs::ht_cleanup_symbols_only(state, segments, passes, maximum_u, skipped, work).0.is_err(),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_cleanup_store_first_counter_overflow_retains_new_planes_and_all_other_fields(
+    state: crate::specs::Tier1DecoderState, output: crate::specs::Tier1RawPlane,
+    cleanup: crate::specs::Tier1RawPlane, statistics: crate::tier1::Tier1PassStatistics,
+    bitplanes: u16, passes: u32, bytes: u32, refinement: bool,
+)
+    requires state.ht_sets_seen == u16::MAX,
+    ensures crate::specs::ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, bytes, refinement)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { plane: output, ht_cleanup_plane: Some(cleanup),
+                ht_current_set_has_cleanup: true, ht_decoded_bitplanes: bitplanes, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_cleanup_store_final_byte_overflow_keeps_earlier_counter_updates(
+    state: crate::specs::Tier1DecoderState, output: crate::specs::Tier1RawPlane,
+    cleanup: crate::specs::Tier1RawPlane, statistics: crate::tier1::Tier1PassStatistics,
+    bitplanes: u16, passes: u32, bytes: u32, refinement: bool,
+)
+    requires state.ht_sets_seen < u16::MAX, state.next_pass as nat + passes as nat <= u32::MAX,
+        state.decoded_segments as nat + (if refinement { 2nat } else { 1nat }) <= u32::MAX,
+        state.decoded_bytes as nat + bytes as nat > u64::MAX,
+    ensures crate::specs::ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, bytes, refinement)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { plane: output, ht_cleanup_plane: Some(cleanup),
+                ht_current_set_has_cleanup: true, ht_decoded_bitplanes: bitplanes,
+                ht_sets_seen: (state.ht_sets_seen + 1) as u16,
+                next_pass: (state.next_pass + passes) as u32,
+                decoded_segments: (state.decoded_segments + if refinement { 2int } else { 1int }) as u32, ..state }),
+{
 }
 
 pub(crate) proof fn tier1_raw_result_interfaces_expose_consumed_fields(

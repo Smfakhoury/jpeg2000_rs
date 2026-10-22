@@ -44,9 +44,43 @@ contexts, signed extrema, physical stride and first-error priority. The source
 index binds the full Result, actual owner view, entry and column, with negative
 tests for wrong, partial, unrelated and reordered bindings.
 
-This boundary does not establish palette parsing, source-sample interpretation,
-output component mapping, CDEF application or their composition with selected
-pixels. Those actual callers remain separate F7 work.
+This raw lookup result alone does not establish palette parsing, source-sample
+interpretation or composition with selected pixels.
+
+## Complete native component copy and palette mapping
+
+The actual `decode::copy_typed_component` and `map_palette_component` now have
+unconditional complete Result relations. Copy preserves every metadata field,
+signed/unsigned sample and ordered channel definition, including duplicates and
+malformed source geometry. It does not invent validation of its inputs.
+
+Palette mapping checks the actual selected column and precision before sample
+access. Native signed/unsigned indices must fit `u16` and the stored entry
+count before raw table lookup. Every stored value must fit the selected signed
+or unsigned precision. Source geometry, subsampling and registration are
+preserved; precision/sign and the sample tag come from the descriptor, and
+incoming channel definitions are cleared. Empty input still checks the
+descriptor but does not access or validate unvisited table storage. All
+arithmetic, logical versus physical table and range errors retain their actual
+order/category/offset. No parsed/normalized/rectangular/success premise is used.
+
+The existing static component constructor API delegates to one verified free
+production constructor, which the proved callers use directly. This preserves
+the API and a single executable field-construction body while avoiding the
+conditional frontend's static-impl contract limitation. Full mutable
+channel-definition frames preserve component samples and metadata.
+
+An independent wide-integer oracle checks 37,632 complete supplied contexts,
+including invalid metadata/sign tags, integer extrema, empty/malformed tables,
+descriptor boundaries and error precedence. All 256 native precision values
+are checked separately. Five exact result/model/input recipes reject unrelated,
+partial, reordered and constant bindings. Existing sparse-magnitude arithmetic
+also explicitly instantiates its original final-limb premise to stabilize the
+joined proof; no theorem domain, native algorithm, trust or limit changed.
+
+Whole-header direct/palette component selection, CDEF record application,
+final typed-image admission, parser associations and selected-pixel composition
+remain separate F7 closure obligations.
 
 ## Reproduce verification
 
@@ -156,6 +190,15 @@ getter call. A separate property in `proofs/spec_properties` checks that this
 closed-view interface is usable from another module. These are raw
 representation facts, not additional Tier-1 coefficient meaning.
 
+`Magnitude::checked_sub` has a complete no-requires full-native Result
+contract: exact 384-bit natural difference when ordered, exact arithmetic
+underflow otherwise, including equal operands returning zero and full raw
+representation/value/shape/capacity binding. The optimized executable
+subtraction is unchanged. Its comparison guard is linked to natural prefix
+order, and the existing carry-prefix algebra is reused for borrow propagation,
+including incoming borrow with an all-ones subtrahend word. Independent bit
+borrow tests compare complete results across sparse, boundary and dense pairs.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
@@ -248,9 +291,31 @@ indexed reference Result, count and complete slice contracts. Parallel
 packet-state/context shape and entropy meaning are not assumed.
 
 These are input-relative integer/fixed-point stage results, not compressed
-parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
-the whole coefficient-placement coordinator, actual multilevel/resolution
-scheduling, arbitrary kernels, general MCT paths and the composed
+parsing/Tier-1 meaning or measured irreversible conformance.
+
+The actual public `prepare_tile_component` now closes the complete standard
+None-kernel plan coordinator: raw decoder/plane and six-limb coefficient reads,
+signed midpoint handling, initialization and nine-byte cumulative charging,
+ROI/quantization, placement/coverage/fraction checks, the entire mixed-direction
+multilevel 5/3 or Q16 9/7 fold and every final PreparedTileComponent field/error.
+Its original private with-kernel body shares these real stages and exposes the
+explicit None-kernel guarantee; no proof-only executable coordinator is added.
+All public native malformed-input and resource cases remain modeled rejection,
+not header/normalization/coverage/budget/success/trace preconditions.
+The prepared-to-tile getter also has exact full-field/sample semantics.
+Independent full-plan and ordered-error tests use the previous widened
+reference algorithms and completed one-bit input blocks, not subject transforms.
+
+Seven exact inventory recipes bind those complete returned objects to their
+actual plans, precincts, styles, planes, coordinates, fractions, selected counts,
+detail indices and decoded-byte cap. Negative tests reject incorrect listed
+models, unrelated or partial results, constant/reordered native inputs and
+success-only substitutions. The private with-kernel implementation remains a
+context link, not an unconditional Some-kernel contract: a regression explicitly
+rejects that promotion. No generic expression or implication matcher was added.
+
+F6 remains open: Some-kernel/arbitrary profiles, general MCT paths and the actual
+whole-decoder composed
 coefficient-to-component-sample bridge are not
 established here. Whole tile-sample-to-image assembly does not close those gaps.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
@@ -302,9 +367,34 @@ Read each contract according to its inputs and postcondition:
 | Complete actual HT cleanup metadata traversal | Exact public/segment result for all native header values and actual byte/work limits, ordered row/pair/member quads, north/west/east contexts, suppression/UVLC/events, sample bounds/counts, collision, work/counter first errors and every metadata field | Numerical magnitude/sign/exponent or coefficient-plane reconstruction, refinement passes, placeholder/replacement execution, mixed sequencing or full F5H |
 | Complete actual HT numeric MagSgn reconstruction | Every native parameter/flag and initial reader state: exact full 384-bit numeric magnitude, sign, exponent, typed first error and all final reader fields; actual full-value arithmetic through F6 contracts | Plane placement, raw high-limb storage, exponent stencils, final plane padding/termination, refinement or mixed sequencing |
 | Complete actual HT cleanup-plane reconstruction | Every raw output coefficient and all six words/flags, actual constructor and metadata rejection, coordinate-overflow-before-clipping, ordered numeric consumption/placement/counters, both full exponent stencils/reset/swap and final physical padding/stuffing/work termination; no valid-metadata, matching-shape or numeric-success premise | Refinement passes, replacement/placeholder/mixed sequencing, a composed metadata-plus-plane decoder theorem or complete F5H |
+| Earlier cleanup-only symbol stage, now subsumed | Actual metadata output feeds numerical reconstruction and complete duplication; decoder state and ordered accounting facts remain reusable native stages | This earlier stage alone did not establish supplied refinement or byte-input preflight; the complete entries below now do. Continuation/replay, placeholders/replacement/mixed sequencing and full F5H remain separate. |
+| Complete actual HT significance/refinement plane | Both one/two-pass paths, all native header values and raw six-word states: actual reverse magnitude adjustment, stripe/neighborhood/causality, evolving discovery plane, per-patch delayed signs, every coefficient/flag/statistic, complete readers/claim/stuffing vectors and first-error/final-padding effects | Refinement continuation/replay, placeholder/replacement/mixed sequencing or full F5H |
+| Complete substantive HT segment byte entry | Actual style/pass/set admission, real pass/byte/work caps, parser partitions, internal metadata-to-numeric-to-refinement composition, complete decoder state and exact ordered failures, including `None` versus `Some(empty)` | Separate refinement-contribution replay, placeholder skipping, replacement/multiple-group orchestration, mixed legacy dispatch, normative endorsement or whole-decoder/F5H completion |
 | Raw Tier-1 producer interfaces | Actual decoder plane, raw dimensions/sequence/indexed result even for malformed shapes, full stored words/flags, exact legacy-midpoint signed magnitude and native arithmetic rejection; no normalized-coefficient premise | Entropy meaning, coefficient normalization, complete reconstruction coordinator or end-to-end pixel correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
+
+The earlier cleanup-caller inventory retains three unconditional native stage
+contracts: complete preparation, complete decoder store state and complete
+plane duplication. Their exact result/model, old/final decoder view, actual
+planes, counters and work-cap arguments are checked through the existing
+conservative mechanisms. Negative tests reject unrelated, partial, reordered
+or constant bindings. The actual symbol caller is now unconditional for both
+absent and supplied refinement and is linked as a complete contract by the new
+substantive-byte-entry profile, not falsely promoted from its old conditional
+theorem. The pass-limit owner projection only specifies the existing getter;
+its runtime body and policy are unchanged.
+
+Twenty-seven finite exact result/model/view recipes bind all actual refinement
+and byte-entry producers. Every mutable receiver or summary must appear as
+complete final state, with the correct initial state, full-value magnitude,
+coordinates/stripe/patch arguments, causal flags, pass/bitplane values and real
+pass/byte/work caps. Refined statistics bind field three/count one, and merge
+binds the complete actual other record. Input patterns are anchored to the
+matched returned-result clause: a later correct occurrence of a model cannot
+mask incorrect primary arguments. Actual duplicate-clause and first-only
+mutation regressions cover that distinction. No generic expression/implication
+matcher or mutable-state relaxation was introduced.
 
 `normalize_component` has an unconditional complete result relation for
 supplied typed integer components, target dimensions and reference-grid

@@ -477,6 +477,386 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_palette_components_to_actual_results_and_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(
+            item for item in original_coverage["requirements"]
+            if item["id"] == "part2-complete-native-palette-component"
+        )
+        read_text = Path.read_text
+        for relative, symbol, projection, model, arguments in (
+            ("src/decode.rs", "copy_typed_component", "crate::image::typed_component_output",
+             "part2_typed_component_copy", (
+                ("typed_component_output_view(source)", "typed_component_output_view(unrelated)"),
+            )),
+            ("src/decode.rs", "map_palette_component", "crate::image::typed_component_output",
+             "part2_palette_component", (
+                ("typed_component_view(source)", "typed_component_view(unrelated)"),
+                ("palette_view(palette)", "palette_view(unrelated)"),
+                ("palette), column", "palette), 0"),
+            )),
+            ("src/decode.rs", "palette_modulus", None, "part2_palette_modulus", (
+                ("part2_palette_modulus(precision)", "part2_palette_modulus(0)"),
+            )),
+            ("src/decode.rs", "invalid_jp2_output", None, "part2_color_input_error", ()),
+            ("src/image.rs", "typed_component_from_parts", "typed_component_value_view",
+             "part2_typed_component_from_parts", (
+                ("width, height, info", "height, width, info"),
+                ("typed_samples_view(&samples)", "typed_samples_view(&unrelated)"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            reference = {"path": relative, "symbol": symbol}
+            self.assertIn(reference, entry["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / relative
+            original = source.read_text()
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            result = re.search(r"\bverus_spec\(\s*(\w+)\s*=>", contract)[1]
+            expression = f"{projection}({result})" if projection else result
+            wrong_model = (
+                "part2_typed_component_copy" if model == "part2_palette_component"
+                else "part2_palette_component"
+            )
+            mutations = [
+                (f"ensures {expression}", "ensures unrelated"),
+                (f"ensures {expression}", f"ensures {result}.is_ok()"),
+                (f"ensures {expression}", f"ensures {result}.is_ok() ==> {expression}"),
+                (f"crate::specs::{model}(", f"crate::specs::{wrong_model}("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ]
+            if projection:
+                mutations.extend((
+                    (f"ensures {expression}", f"ensures {projection}(unrelated)"),
+                    (f"ensures {expression}", f"ensures unlisted_projection({result})"),
+                ))
+            for before, after in mutations:
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after, 1) + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
+    def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(
+            item for item in original_coverage["requirements"]
+            if item["id"] == "part1-complete-standard-plan-coordinator"
+        )
+        conditional = {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"}
+        self.assertNotIn(conditional, entry["contract_refs"])
+        self.assertIn(conditional, entry["implementation_refs"])
+        conditional_coverage = copy.deepcopy(original_coverage)
+        conditional_coverage["requirements"] = [copy.deepcopy(entry)]
+        conditional_coverage["requirements"][0]["contract_refs"] = [conditional]
+        with self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+            framework.validate_normative_coverage(conditional_coverage)
+        read_text = Path.read_text
+        source = framework.ROOT / "src/decode.rs"
+        original = source.read_text()
+        for symbol, projection, model, arguments in (
+            ("prepare_tile_component", "prepared_component_outcome", "part1_prepare_standard_component", (
+                ("prepare_plan_view(plan)", "prepare_plan_view(unrelated)"),
+                ("prepare_precincts_view(precincts@)", "prepare_precincts_view(unrelated@)"),
+                ("prepare_style_view(coding_style)", "prepare_style_view(unrelated)"),
+                ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"),
+            )),
+            ("initialize_prepare_working", "prepare_working_outcome", "part1_prepare_init_prefix", (
+                ("bands@", "unrelated@"),
+                ("fraction", "0"),
+                ("selected as nat", "0"),
+                ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"),
+            )),
+            ("collect_prepare_coefficients", "crate::transform::quantized_coefficients_outcome",
+             "part1_prepare_collect_coefficients", (
+                ("code_block_plane_view(plane)", "code_block_plane_view(unrelated)"),
+            )),
+            ("collect_prepare_cell", "prepare_cell_outcome", "part1_prepare_signed_cell", (
+                ("code_block_plane_view(plane)", "code_block_plane_view(unrelated)"),
+                ("plane), x, y", "plane), y, x"),
+                ("plane), x, y", "plane), x, 0"),
+            )),
+            ("copy_prepare_plane", "prepare_fold_outcome", "part1_prepare_copy_plane", (
+                ("reconstructed_plane_view(plane)", "reconstructed_plane_view(unrelated)"),
+                ("first_detail", "0"),
+            )),
+            ("finish_prepared_component", "prepared_component_outcome", "part1_prepare_finish", (
+                ("prepare_plan_view(plan)", "prepare_plan_view(unrelated)"),
+                ("fraction", "0"),
+                ("folded@", "unrelated@"),
+            )),
+            ("PreparedTileComponent::as_tile_component", "crate::image::assembly_tile_view",
+             "part1_prepared_as_tile", (
+                ("prepared_component_view(*self)", "prepared_component_view(unrelated)"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            reference = {"path": "src/decode.rs", "symbol": symbol}
+            self.assertIn(reference, entry["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            wrong_model = (
+                "part1_prepare_finish" if model == "part1_prepare_standard_component"
+                else "part1_prepare_standard_component"
+            )
+            for before, after in (
+                (f"{projection}(result)", f"{projection}(unrelated)"),
+                (f"{projection}(result)", "unlisted_projection(result)"),
+                (f"{projection}(result)", "result.is_ok()"),
+                (f"ensures {projection}(result)", f"ensures result.is_ok() ==> {projection}(result)"),
+                (f"crate::specs::{model}(", f"crate::specs::{wrong_model}("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
+    def test_inventory_binds_all_actual_refinement_frames_and_public_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        cases = (
+            ("decode_ht_refinement_plane", "ht_refinement_plane", "ht_plane_outcome", None,
+             ((r"code_block_plane_view\(cleanup_plane\)", "code_block_plane_view(unrelated)"),
+              (r"resource_work_limit\(limits\)", "resource_work_limit(unrelated)"))),
+            ("HtRefinementPlaneState::magnitude_sample", "ht_magref_sample", None, "ht_refinement_core_view",
+             ((r"magnitude_value\(delta\)", "magnitude_limbs(delta)"),)),
+            ("HtRefinementPlaneState::magnitude_column", "ht_magref_rows", None, "ht_refinement_core_view",
+             ((r"\brows\s+as\s+nat\b", "0"), (r"\brows\s+as\s+nat\b", "rowsasnat"))),
+            ("HtRefinementPlaneState::magnitude_stripe", "ht_magref_columns", None, "ht_refinement_core_view",
+             ((r"\brows\s+as\s+nat\b", "0"),)),
+            ("HtRefinementPlaneState::magnitude_pass", "ht_magref_stripes", None, "ht_refinement_core_view",
+             ((r"\bwidth\s*,\s*height\b", "height, width"),)),
+            ("HtSignificancePatchState::discover_sample", "ht_discover_sample", None, "ht_sigprop_patch_view",
+             ((r"\bvertical_causal_context\b", "false"),)),
+            ("HtSignificancePatchState::discover_column", "ht_discovery_rows", None, "ht_sigprop_patch_view",
+             ((r"\brows\s+as\s+nat\b", "0"),)),
+            ("HtSignificancePatchState::discover_patch", "ht_discovery_columns", None, "ht_sigprop_patch_view",
+             ((r"\bstart\s+as\s+nat\b", "0"),)),
+            ("HtSignificancePatchState::sign_sample", "ht_patch_sign_sample", None, "ht_sigprop_patch_view",
+             ((r"\bindex\s+as\s+nat\b", "0"),)),
+            ("HtSignificancePatchState::signs", "ht_pending_signs", None, "ht_sigprop_patch_view",
+             ((r"ht_refinement_magnitude_view\(magnitude\)", "magnitude_value(magnitude)"),)),
+            ("run_ht_significance_stripe", "ht_sigprop_patches", "ht_sigprop_plane_outcome", None,
+             ((r"ht_sigprop_plane_view\(&input\)", "ht_sigprop_plane_view(&unrelated)"),
+              (r"\brows\s+as\s+nat\b", "0"))),
+            ("run_ht_significance_pass", "ht_sigprop_stripes", "ht_sigprop_plane_outcome", None,
+             ((r"\bwidth\s*,\s*height\b", "height, width"),)),
+            ("ht_significance_magnitude", "ht_significance_magnitude", "ht_refinement_magnitude_outcome", None,
+             ((r"\bdecoded_bitplanes\b", "0"),)),
+            ("ht_refinement_delta", "ht_refinement_delta", "ht_refinement_magnitude_outcome", None,
+             ((r"\bdecoded_bitplanes\b", "0"),)),
+            ("ht_collect_cleanup_significance", "ht_cleanup_significance", "ht_boolean_vector_view", None,
+             ((r"coefficient_raw_views\(coefficients@\)", "coefficient_slice_view(coefficients@)"),)),
+            ("CodeBlockPlane::apply_ht_refinement_decision", "ht_apply_refinement", None, "code_block_plane_view",
+             ((r"\brefinement_bit\b", "false"),)),
+            ("CodeBlockPlane::neighbor_summary_with_causality", "ht_neighbors", None, None,
+             ((r"code_block_plane_view\(self\)", "code_block_plane_view(unrelated)"),
+              (r"\bvertical_causal_context\b", "false"))),
+            ("CodeBlockPlane::accumulate_neighbor", "ht_accumulate_neighbor", None, None,
+             ((r"delta\.0\s*,\s*delta\.1", "delta.1, delta.0"),
+              (r"\*old\(summary\)", "*final(summary)"))),
+            ("ht_neighbor_summary_zero", "ht_neighbor_zero", None, None, ()),
+            ("significant_neighbor_count", "ht_significant_neighbor_count", None, None,
+             ((r"\bsummary\b", "unrelated"),)),
+            ("Tier1PassStatistics::refined", "tier1_statistics_increment", None, None,
+             ((r"\*old\(self\)\s*,\s*3\s*,\s*1", "*old(self), 0, 1"),
+              (r"\*old\(self\)\s*,\s*3\s*,\s*1", "*old(self), 3, 2"))),
+            ("Tier1CodeBlockDecoder::decode_high_throughput_segments", "ht_decode_segments", None, "tier1_decoder_state",
+             ((r"ht_optional_bytes_view\(refinement\)", "ht_optional_bytes_view(None)"),
+              (r"\bcleanup@", "cleanup@.take(0)"),
+              (r"resource_code_block_pass_limit", "resource_code_block_byte_limit"),
+              (r"resource_work_limit\(limits\)", "resource_work_limit(unrelated)"))),
+            ("Tier1CodeBlockDecoder::decode_ht_coefficient_symbols", "ht_coefficient_symbols", None, "tier1_decoder_state",
+             ((r"ht_block_segments_view\(&segments\)", "ht_block_segments_view(&unrelated)"),
+              (r"\bskipped_bitplanes\b", "0"))),
+            ("ht_significant_bitplanes", "ht_significant_bitplanes", None, None,
+             ((r"\bmaximum_passes\b", "0"),)),
+            ("Tier1BlockCoding::uses_high_throughput", "ht_block_coding_enabled", None, None,
+             ((r"\bself\b", "unrelated"),)),
+            ("copy_ht_refinement_bytes", "ht_copy_refinement_bytes", "ht_byte_vector_outcome", None,
+             ((r"\binput@", "input@.take(0)"),)),
+            ("Tier1PassStatistics::merge", "tier1_statistics_merge", None, None,
+             ((r"\bother\b", "*old(self)"),)),
+        )
+        self.assertEqual(len(cases), 27)
+        source = framework.ROOT / "src/tier1.rs"
+        original = source.read_text()
+        read_text = Path.read_text
+        for symbol, model, projection, view, arguments in cases:
+            entries = [
+                item for item in original_coverage["requirements"]
+                if {"path": "src/tier1.rs", "symbol": symbol} in item["contract_refs"]
+            ]
+            self.assertTrue(entries, symbol)
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entries[0])]
+            reference = {"path": "src/tier1.rs", "symbol": symbol}
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            whole = re.search(
+                r"\bensures\s+([\s\S]*?)\s*==\s*crate::specs::" + re.escape(model) + r"\(",
+                contract,
+            )
+            self.assertIsNotNone(whole, symbol)
+            lhs = whole[1]
+            self.assertRegex(lhs, r"\bresult\b")
+            if projection:
+                self.assertRegex(lhs, re.escape(projection) + r"\(\s*result\s*\)")
+            if view:
+                self.assertRegex(lhs, re.escape(view) + r"\(\s*final\(\s*self\s*\)\s*\)")
+            if symbol in (
+                "decode_ht_refinement_plane",
+                "Tier1CodeBlockDecoder::decode_high_throughput_segments",
+                "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols",
+            ):
+                self.assertNotRegex(contract, r"\brequires\b")
+            wrong_model = next(
+                ref["symbol"] for ref in entries[0]["spec_refs"] if ref["symbol"] != model
+            )
+            mutations = [
+                ("unbound result", contract.replace(lhs, re.sub(r"\bresult\b", "unrelated", lhs), 1)),
+                ("partial result", contract.replace(lhs, "result.is_ok()", 1)),
+                ("success only", contract.replace(lhs, "result.is_ok() ==> " + lhs, 1)),
+                ("wrong known model", contract.replace(
+                    f"crate::specs::{model}(", f"crate::specs::{wrong_model}(")),
+                ("unknown model", contract.replace(
+                    f"crate::specs::{model}(", "crate::specs::unlisted_model(")),
+            ]
+            if projection:
+                mutations.append(("unknown projection", contract.replace(projection, "unlisted_projection", 1)))
+            for parameter in re.findall(r"\bfinal\(\s*(\w+)\s*\)", lhs):
+                altered_lhs = re.sub(
+                    r"\bfinal\(\s*" + re.escape(parameter) + r"\s*\)", f"old({parameter})", lhs,
+                )
+                mutations.append(("old output state", contract.replace(lhs, altered_lhs, 1)))
+            if view:
+                mutations.append(("unknown output view", contract.replace(
+                    f"{view}(final(self))", "unlisted_view(final(self))", 1)))
+                mutations.append(("wrong input state", contract.replace(
+                    f"{view}(old(self))", f"{view}(final(self))")))
+            elif "*old(self)" in contract:
+                mutations.append(("wrong input state", contract.replace("*old(self)", "*final(self)")))
+            for pattern, replacement in arguments:
+                altered, count = re.subn(pattern, replacement, contract, count=1)
+                self.assertEqual(count, 1, (symbol, pattern))
+                mutations.append((pattern, altered))
+            for label, modified_contract in mutations:
+                self.assertNotEqual(modified_contract, contract, (symbol, label))
+                modified = original[:start] + modified_contract + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, mutation=label), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+            wrong_caller = (
+                "Tier1BlockCoding::uses_high_throughput" if symbol == "ht_neighbor_summary_zero"
+                else "ht_neighbor_summary_zero"
+            )
+            wrong_callers = copy.deepcopy(coverage)
+            wrong_callers["requirements"][0]["implementation_refs"] = [
+                {"path": "src/tier1.rs", "symbol": wrong_caller}
+            ]
+            with self.subTest(symbol=symbol, mutation="wrong actual caller"), \
+                    self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(wrong_callers)
+            wrong_impl = copy.deepcopy(coverage)
+            wrong_impl["requirements"][0]["contract_refs"] = [
+                {"path": "src/tier1.rs", "symbol": "UnlistedImpl::" + symbol.rsplit("::", 1)[-1]}
+            ]
+            with self.subTest(symbol=symbol, mutation="wrong impl"), \
+                    self.assertRaisesRegex(ValueError, "missing linked contract function"):
+                framework.validate_normative_coverage(wrong_impl)
+
+    def test_inventory_binds_complete_cleanup_caller_stages_to_exact_native_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        source = framework.ROOT / "src/tier1.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        for symbol, model, mutations in (
+            ("prepare_ht_cleanup_symbols", "ht_cleanup_prepare", (
+                ("ht_cleanup_prepare_outcome(result)", "ht_cleanup_prepare_outcome(unrelated)"),
+                ("ht_cleanup_prepare_outcome(result)", "code_block_plane_outcome(result)"),
+                ("ht_cleanup_prepare_outcome(result)", "result.is_ok()"),
+                ("code_block_plane_view(plane)", "code_block_plane_view(unrelated)"),
+                ("resource_work_limit(limits)", "resource_work_limit(unrelated)"),
+                ("skipped_bitplanes", "0"),
+            )),
+            ("Tier1CodeBlockDecoder::store_ht_coefficient_symbols", "ht_store_coefficient_symbols", (
+                ("(result,", "(unrelated,"),
+                ("(result,", "(result.is_ok(),"),
+                ("tier1_decoder_state(final(self))", "tier1_decoder_state(old(self))"),
+                ("tier1_decoder_state(old(self))", "tier1_decoder_state(final(self))"),
+                ("code_block_plane_view(&output)", "code_block_plane_view(&cleanup_plane)"),
+                ("has_refinement", "false"),
+                ("decoded_bitplanes", "0"),
+            )),
+            ("CodeBlockPlane::duplicate", "tier1_duplicate_plane", (
+                ("code_block_plane_outcome(result)", "code_block_plane_outcome(unrelated)"),
+                ("code_block_plane_outcome(result)", "ht_cleanup_prepare_outcome(result)"),
+                ("code_block_plane_outcome(result)", "result.is_ok()"),
+                ("code_block_plane_view(self)", "code_block_plane_view(unrelated)"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"]
+                if item["id"] == "part15-cleanup-only-actual-symbol-caller"
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            reference = {"path": "src/tier1.rs", "symbol": symbol}
+            self.assertIn(reference, coverage["requirements"][0]["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            wrong_model = "ht_cleanup_prepare" if model != "ht_cleanup_prepare" else "tier1_duplicate_plane"
+            for before, after in (
+                *mutations,
+                (f"crate::specs::{model}(", f"crate::specs::{wrong_model}("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
     def test_inventory_binds_complete_palette_lookup_to_actual_result_and_inputs(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

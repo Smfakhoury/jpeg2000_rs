@@ -4,6 +4,164 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part15-complete-actual-refinement-plane",
+      "topic": "Complete actual one/two-pass refinement with six-word magnitudes/raw flags, reverse magnitude before forward discovery, real stripe/patch/neighbor/causal order, delayed signs, full physical claim/stuffing state, exact first errors and final padding; not continuation/replay or mixed F5H closure",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "decode_ht_refinement_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_column"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_stripe"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_pass"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_column"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_patch"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::sign_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::signs"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_stripe"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_pass"},
+        {"path": "src/tier1.rs", "symbol": "ht_significance_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_delta"},
+        {"path": "src/tier1.rs", "symbol": "ht_collect_cleanup_significance"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::apply_ht_refinement_decision"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::neighbor_summary_with_causality"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::accumulate_neighbor"},
+        {"path": "src/tier1.rs", "symbol": "ht_neighbor_summary_zero"},
+        {"path": "src/tier1.rs", "symbol": "significant_neighbor_count"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::refined"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_refinement_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_column"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_stripe"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_pass"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_column"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_patch"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::sign_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::signs"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_stripe"},
+        {"path": "src/tier1.rs", "symbol": "run_ht_significance_pass"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::neighbor_summary_with_causality"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_refinement_plane"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_rows"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_columns"},
+        {"path": "specs/mod.rs", "symbol": "ht_magref_stripes"},
+        {"path": "specs/mod.rs", "symbol": "ht_discover_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_discovery_rows"},
+        {"path": "specs/mod.rs", "symbol": "ht_discovery_columns"},
+        {"path": "specs/mod.rs", "symbol": "ht_patch_sign_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_pending_signs"},
+        {"path": "specs/mod.rs", "symbol": "ht_sigprop_patches"},
+        {"path": "specs/mod.rs", "symbol": "ht_sigprop_stripes"},
+        {"path": "specs/mod.rs", "symbol": "ht_significance_magnitude"},
+        {"path": "specs/mod.rs", "symbol": "ht_refinement_delta"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_significance"},
+        {"path": "specs/mod.rs", "symbol": "ht_apply_refinement"},
+        {"path": "specs/mod.rs", "symbol": "ht_neighbors"},
+        {"path": "specs/mod.rs", "symbol": "ht_accumulate_neighbor"},
+        {"path": "specs/mod.rs", "symbol": "ht_neighbor_zero"},
+        {"path": "specs/mod.rs", "symbol": "ht_significant_neighbor_count"},
+        {"path": "specs/mod.rs", "symbol": "tier1_statistics_increment"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_core_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_sigprop_patch_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_sigprop_plane_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_sigprop_plane_outcome"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_magnitude_outcome"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_magnitude_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_boolean_vector_view"},
+        {"path": "src/tier1.rs", "symbol": "neighbor_kind_tag"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_full_refinement_rejects_front_parameters_before_any_plane_or_stream"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_delayed_signs_preserve_discovery_and_pending_on_every_return"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_neighbor_balance_overflow_keeps_the_prior_count_increment"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_both_passes_preserve_raw_flags_and_all_six_words"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_uses_wide_native_borrow_addition_and_no_midpoint_normalization"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_delays_patch_signs_and_keeps_discovery_distinct"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_vertical_causality_changes_only_actual_neighbor_admission"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_first_errors_keep_real_reader_claim_and_counter_order"},
+        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_native_rejections_overflow_underflow_and_zero_are_exact"},
+        {"path": "src/tier1.rs", "symbol": "ht_refinement_neighbor_overflows_and_malformed_shapes_have_ordered_effects"}
+      ]
+    },
+    {
+      "id": "part15-complete-substantive-segment-byte-entry",
+      "topic": "Actual complete cleanup-plus-optional-refinement byte entry with real style/pass/set/byte/work admission, parser/metadata/numeric/refinement composition and full decoder failure state; None differs from Some(empty); continuation/placeholder/replacement/mixed dispatch remain open",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "ht_significant_bitplanes"},
+        {"path": "src/tier1.rs", "symbol": "Tier1BlockCoding::uses_high_throughput"},
+        {"path": "src/tier1.rs", "symbol": "copy_ht_refinement_bytes"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::merge"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_decode_segments"},
+        {"path": "specs/mod.rs", "symbol": "ht_coefficient_symbols"},
+        {"path": "specs/mod.rs", "symbol": "ht_significant_bitplanes"},
+        {"path": "specs/mod.rs", "symbol": "ht_block_coding_enabled"},
+        {"path": "specs/mod.rs", "symbol": "ht_copy_refinement_bytes"},
+        {"path": "specs/mod.rs", "symbol": "tier1_statistics_merge"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "ht_byte_vector_outcome"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_complete_symbol_model_preserves_the_frozen_cleanup_only_profile"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_full_symbol_caller_distinguishes_none_empty_refinement_and_pre_refinement_plane"},
+        {"path": "src/tier1.rs", "symbol": "ht_public_segment_entry_binds_actual_pass_byte_work_admission_and_error_order"},
+        {"path": "src/tier1.rs", "symbol": "ht_public_segment_entry_keeps_none_and_some_empty_distinct_without_assumed_context"}
+      ]
+    },
+    {
+      "id": "part15-cleanup-only-actual-symbol-caller",
+      "topic": "Explicit absent-refinement actual symbol-caller composition from supplied parsed segments through real metadata/numeric/duplicate producers and complete decoder state, including ordered partial accounting errors; public byte preflight and refinement/mixed sequences remain open",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::store_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::duplicate"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_prepare"},
+        {"path": "specs/mod.rs", "symbol": "ht_store_coefficient_symbols"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_symbols_only"},
+        {"path": "specs/mod.rs", "symbol": "tier1_duplicate_plane"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_prepare_outcome"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_caller_preparation_error_preserves_complete_decoder"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_store_first_counter_overflow_retains_new_planes_and_all_other_fields"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_store_final_byte_overflow_keeps_earlier_counter_updates"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_composes_real_metadata_numeric_duplicate_and_complete_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_preserves_metadata_before_native_pass_error_order_and_full_failure_frame"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_metadata_work_failure_retains_every_decoder_field"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_accounting_failures_preserve_ordered_commits_not_rollback"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_duplicate_preserves_full_raw_coefficients_and_rejects_bad_shapes"}
+      ]
+    },
+    {
       "id": "part15-complete-actual-cleanup-plane",
       "topic": "Actual full cleanup-plane Result and complete sample/quad/termination states, arbitrary metadata/native domains, six-word coefficients, ordered first errors and exponent stencils; not refinement, mixed sequencing or full F5H",
       "contract_refs": [
@@ -23,6 +181,7 @@
       ],
       "implementation_refs": [
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::quad"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::sample"},
@@ -2288,6 +2447,50 @@
         }
       ],
       "topic": "Complete actual raw Palette::value Result for arbitrary stored entries, columns, values and native coordinates; physical-column-count validation precedes logical coordinates, checked row-major address and physical value access. Descriptor precision/sign are not lookup validation. Parser, output mapping and CDEF composition remain separate."
+    },
+    {
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "copy_typed_component"},
+        {"path": "src/decode.rs", "symbol": "map_palette_component"},
+        {"path": "src/decode.rs", "symbol": "palette_modulus"},
+        {"path": "src/decode.rs", "symbol": "invalid_jp2_output"},
+        {"path": "src/image.rs", "symbol": "typed_component_from_parts"}
+      ],
+      "id": "part2-complete-native-palette-component",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "apply_jp2_output"},
+        {"path": "src/decode.rs", "symbol": "copy_typed_component"},
+        {"path": "src/decode.rs", "symbol": "map_palette_component"},
+        {"path": "src/decode.rs", "symbol": "palette_modulus"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_component_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_sample_error"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::add_channel_definition"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::clear_channel_definitions"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_typed_component_from_parts"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_component_copy"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_samples"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_source_index"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_modulus"},
+        {"path": "specs/mod.rs", "symbol": "part2_color_input_error"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_output_minimum"},
+        {"path": "specs/mod.rs", "symbol": "part1_output_maximum"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_sample_count"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "palette_component_mapping_matches_independent_complete_native_oracle"},
+        {"path": "src/decode.rs", "symbol": "palette_component_modulus_matches_all_native_precisions"}
+      ],
+      "topic": "Complete actual typed component copy and palette component Result over every stored palette/source shape and native column: exact all sample values/tags/metadata, ordered native index and table errors, descriptor precision/range, empty-source bypass of unaccessed table defects, copy-preserved versus palette-cleared CDEF. No parsed/normalized/rectangular/success premise. Whole header cmap/CDEF application, final image admission and selected pixels remain separate."
     },
     {
       "contract_refs": [
@@ -4649,7 +4852,9 @@
         {"path": "src/tier1.rs", "symbol": "HtForwardMagSgnReader::new"},
         {"path": "src/tier1.rs", "symbol": "HtForwardRefinementReader::new"},
         {"path": "src/tier1.rs", "symbol": "HtReverseRefinementReader::new"},
-        {"path": "src/tier1.rs", "symbol": "HtRefinementReaders::new"},
+        {"path": "src/tier1.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1.rs", "symbol": "HtSignificancePatchState::sign_sample"},
         {"path": "src/tier1.rs", "symbol": "ht_refinement_readers_from_inputs"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
@@ -4906,6 +5111,7 @@
       ],
       "id": "part15-complete-cleanup-metadata",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"},
         {
           "path": "src/tier1.rs",
           "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"
@@ -5822,6 +6028,7 @@
       "id": "part1-complete-quantized-block-placement",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
         {"path": "src/decode.rs", "symbol": "write_quantized_block"},
         {"path": "src/decode.rs", "symbol": "write_quantized_row"},
         {"path": "src/decode.rs", "symbol": "write_quantized_pixel"}
@@ -5843,6 +6050,75 @@
         {"path": "src/decode.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
       ],
       "topic": "Actual row-major writes of supplied quantized block samples into working subband samples and visited masks, including all metadata, buffer mismatches, overlap and checked-coordinate errors with exact partial states; not the entire prepare/multilevel/tile-image assembly coordinator"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode.rs", "symbol": "initialize_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "append_prepare_subband"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_coefficients"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_cell"},
+        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode.rs", "symbol": "validate_prepare_coverage"},
+        {"path": "src/decode.rs", "symbol": "copy_prepare_plane"},
+        {"path": "src/decode.rs", "symbol": "finish_prepared_component"},
+        {"path": "src/decode.rs", "symbol": "PreparedTileComponent::as_tile_component"},
+        {"path": "src/decode.rs", "symbol": "checked_area_u32"}
+      ],
+      "id": "part1-complete-standard-plan-coordinator",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_progression_prepared_image"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "initialize_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "append_prepare_subband"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_coefficients"},
+        {"path": "src/decode.rs", "symbol": "collect_prepare_cell"},
+        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode.rs", "symbol": "validate_prepare_coverage"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"},
+        {"path": "src/decode.rs", "symbol": "copy_prepare_plane"},
+        {"path": "src/decode.rs", "symbol": "finish_prepared_component"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_init_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_row_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_rows_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_placements_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_fold_error_guard"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "standard_prepare_preserves_complete_plan_metadata"},
+        {"path": "src/transform.rs", "symbol": "quantized_coefficients_fields"},
+        {"path": "src/transform.rs", "symbol": "quantized_coefficients_push"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_standard_component"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_fraction"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_append_band"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_init_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_signed_cell"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_coefficient_row"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_coefficient_rows"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_collect_coefficients"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_place_plane"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_placement"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_placements"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_coverage"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_band"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_resolution"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_fold"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_reconstruct"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_copy_plane"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_finish"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepared_as_tile"},
+        {"path": "specs/mod.rs", "symbol": "part1_transform_area"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
+        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
+        {"path": "src/decode.rs", "symbol": "progression_plan_routes_all_subbands_and_prepares_image"}
+      ],
+      "topic": "Complete actual public prepare_tile_component Result over all native raw plans, precinct decoder/plane/coefficient fields, styles and caps for the None-kernel profile: initialization, raw six-limb signed/midpoint collection, quantization, placement/coverage/fraction checks, entire mixed-direction/multilevel 5/3 or Q16 9/7 fold, metadata and first errors. Missing Arbitrary kernel rejects exactly. Private Some-kernel/arbitrary, general MCT and whole decoder composition remain outside this result; no valid-header/normalized-coefficient/coverage/sufficient-budget/trace entry premise"
     },
     {
       "contract_refs": [
@@ -5946,6 +6222,8 @@
       ],
       "id": "part1-full-native-magnitude-values",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::apply_ht_refinement_decision"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_sub"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
         {"path": "src/tier1.rs", "symbol": "CoefficientState::set_magnitude"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::limb"},
@@ -5957,6 +6235,9 @@
         {"path": "src/magnitude.rs", "symbol": "magnitude_single_bit"}
       ],
       "proof_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_sub"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_prefix_order"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_sub_prefix_step"},
         {"path": "src/magnitude.rs", "symbol": "magnitude_limbs_shape"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "magnitude_limb_interface_covers_native_indices"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
@@ -5969,6 +6250,8 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_add_limb"}
       ],
       "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_subtraction"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_prefix_less"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_value"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_capacity"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_low_value"},
@@ -5980,6 +6263,7 @@
         {"path": "specs/mod.rs", "symbol": "magnitude_addition"}
       ],
       "test_refs": [
+        {"path": "src/magnitude.rs", "symbol": "full_native_subtraction_matches_independent_bit_borrow_and_exact_underflow"},
         {"path": "src/magnitude.rs", "symbol": "full_native_limb_getter_matches_independent_array_and_extreme_indices"},
         {"path": "src/magnitude.rs", "symbol": "full_native_bit_producers_preserve_all_limbs_and_exact_errors"},
         {"path": "src/magnitude.rs", "symbol": "full_u16_shifts_and_modulo_getters_match_independent_384_bit_reference"},
