@@ -346,8 +346,42 @@ Option/Result projection maps actual contribution storage while keeping `None`
 and `Some(empty)` distinct. Independent tests cover all two-byte inputs and
 complete final reader fields, raw threshold/budget states, duplicate 64/65-level
 paths, address-error priority, constructor rectangle/cap boundaries and every
-native Lblock byte. These are complete actual primitive boundaries, not a claim
-that the still-continuing full header/probe/rollback production is complete.
+native Lblock byte. These primitive boundaries alone are not a full header claim;
+their actual header/probe/rollback composition follows below.
+
+## Actual full native code-block header production
+
+`decode_code_block_contribution` now has an unconditional complete
+`part1_packet_header_decode` relation. It observes the full packet state, both
+raw TagTrees and all eight reader fields, and maps the entire optional native
+contribution through the sole owner projection. It runs the real inclusion and
+zero-bitplane trees, pass grammar, Lblock flags, descriptor reads and final
+commit. No valid header, normalized tree/packet state, supplied descriptor or
+successful/sufficient-budget trace is a premise.
+
+The actual Mixed probe forks the complete native reader before the first length
+read. A failing probe returns its real error while retaining the main reader's
+already-read HT prefix. Successful unselected probes do not charge or advance
+that main reader. A selected legacy probe is committed only after the actual
+accounted-pass check; all packet-state and routing effects retain their order.
+The descriptor loop keeps all 164 physical slots. Its mathematical attempt bound
+is derived from those actual slots plus the first failing capacity check, not a
+new native count restriction or proof-budget change. Raw private 164/165-count
+and post-commit conversion cases remain explicit.
+
+The public packet state is unchanged on every header error, as proved from the
+actual local state copy and guarded final conversion. Tree/reader changes before
+the error are deliberately retained. A first unincluded header returning `None`
+differs from an already-included empty contribution. Existing malformed zero
+tags and all Lblock bytes are admitted until an actual executed guard rejects
+them; unvisited trees are not invented validation obligations.
+
+Independent whole-result/owner-state fixtures cover literal encoded headers,
+every budget cutoff, both real probe choices and discarded probe failures,
+all stored Lblock bytes, empty/unvisited raw trees, late pass admission,
+physical descriptor-capacity priority and final state-commit/conversion order.
+This completes the actual header producer boundary, not precinct/progression,
+header-to-codestream association or all F5L/F5H.
 
 ## Reproduce verification
 
