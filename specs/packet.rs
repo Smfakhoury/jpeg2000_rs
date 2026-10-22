@@ -1,3 +1,4 @@
+use super::{Tier1DecoderState, ht_reader_error, part1_legacy_zero_bitplanes};
 use vstd::prelude::*;
 
 verus! {
@@ -25,6 +26,20 @@ pub open spec fn part1_code_block_segment(contribution: Part1CodeBlockContributi
             passes: contribution.segment_passes[index as int],
             data_length: contribution.segment_lengths[index as int],
         })
+    }
+}
+
+pub open spec fn part1_code_block_body_prepare(
+    decoder: Tier1DecoderState, contribution: Part1CodeBlockContribution, body: Seq<u8>,
+) -> (Result<(), crate::DecodeError>, Tier1DecoderState) {
+    if contribution.data_length as nat > usize::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), decoder)
+    } else if body.len() != contribution.data_length as nat {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), decoder)
+    } else if decoder.style.force_high_throughput && !contribution.high_throughput {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), decoder)
+    } else {
+        part1_legacy_zero_bitplanes(decoder, contribution.zero_bitplanes)
     }
 }
 

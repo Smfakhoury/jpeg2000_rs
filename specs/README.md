@@ -9,20 +9,35 @@ native header field and both complete physical segment arrays; no competing
 header view or parser is introduced. All native stored counts, malformed header
 combinations, old decoder states and supplied body bytes remain admitted.
 
-The real common prefix checks exact body length and route, then sets zero
+The sole actual common prefix refines `part1_code_block_body_prepare`; both
+selected branches reuse that producer and its model. It checks exact body length and route, then sets zero
 bitplanes before HT segment-count admission. HT traversal checks each actual
 segment Result, pass count, native length/address arithmetic and exact borrowed
 body subrange, then selects cleanup/placeholder/refinement using the current
 decoder phase and cleanup flag. Decoder effects precede decoded-pass accounting;
 offset/index updates follow. Final exact consumption and declared-pass mismatch
 errors retain the staged partial state, while the outer real clone/commit
-wrapper preserves the complete original decoder on every failure.
+wrapper preserves the complete original decoder on every failure. The private
+loop is unconditional; only the staged/public postconditions select the actual
+HT header flag. Their profiles are not restricted to a normalized header or a
+decoder whose coding style already guarantees successful HT execution.
+
+The complete models are `ht_packet_segment_route`, `ht_packet_segment_body`,
+`ht_packet_body_run`, `ht_packet_body_segments`, `ht_packet_body_staged` and
+`ht_packet_body`. `HtPacketBodyProgress` represents every local progress field;
+the native private record has one closed owner view. These relations include
+the current cleanup flag, exact `None`/stored cleanup distinctions, original
+decoder vectors/counters and all actual typed failure effects through the
+existing Tier-1 producers. The optional public byte-slice view is open because
+it contains no private fields; no private decoder representation is opened.
 
 No supplied decoder/legacy outcome, header/shape normalization, success, trace
 or adequate-budget premise is used. Empty slices route differently according to
 actual state; `None` and retained empty data are not conflated. Legacy branch and
 shared header parser are untouched. Shared contribution/zero-bitplane/route facts
-are owned by F5L and must be consumed from their real implementations.
+are owned by F5L and consumed from their real implementations. Full header
+parsing, mixed legacy/HT union and precinct orchestration remain separate
+producer obligations; this selected body boundary is not full F5H completion.
 
 ## Frozen whole-decoder clone and actual selected HT group profile
 

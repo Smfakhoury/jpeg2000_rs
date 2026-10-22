@@ -4807,15 +4807,9 @@ pub open spec fn ht_packet_body_staged(
     state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
     pass_limit: u32, byte_limit: u64, work_limit: u64,
 ) -> HtCodeBlockBodyResult {
-    if header.data_length > usize::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
-    else if body.len() != header.data_length
-        || (state.style.force_high_throughput && !header.high_throughput) {
-        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
-    } else {
-        let admitted = part1_legacy_zero_bitplanes(state, header.zero_bitplanes);
-        match admitted.0 { Err(error) => (Err(error), admitted.1), Ok(()) =>
-            ht_packet_body_segments(admitted.1, header, body, pass_limit, byte_limit, work_limit) }
-    }
+    let admitted = part1_code_block_body_prepare(state, header, body);
+    match admitted.0 { Err(error) => (Err(error), admitted.1), Ok(()) =>
+        ht_packet_body_segments(admitted.1, header, body, pass_limit, byte_limit, work_limit) }
 }
 
 pub open spec fn ht_packet_body(

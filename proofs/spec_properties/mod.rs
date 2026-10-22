@@ -2164,4 +2164,50 @@ pub proof fn quantized_block_preserves_metadata_and_previsited_samples(
     }
 }
 
+pub proof fn ht_packet_segment_pass_error_precedes_range_and_state_effects(
+    state: crate::specs::Tier1DecoderState, segment: crate::packet::CodeBlockSegmentContribution,
+    body: Seq<u8>, offset: usize, decoded_passes: u32,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures segment.passes == 0 || segment.passes > 2 ==>
+        crate::specs::ht_packet_segment_body(state, segment, body, offset, decoded_passes,
+            pass_limit, byte_limit, work_limit)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+            state, offset, decoded_passes),
+{
+}
+
+pub proof fn ht_packet_finished_progress_preserves_complete_state(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, progress: crate::specs::HtPacketBodyProgress,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures progress.segment_index >= header.segment_count ==>
+        crate::specs::ht_packet_body_run(state, header, body, progress, pass_limit, byte_limit, work_limit)
+        == (Ok(()), state, progress),
+{
+    reveal(crate::specs::ht_packet_body_run);
+}
+
+pub proof fn ht_packet_transaction_errors_restore_complete_decoder(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_packet_body(state, header, body, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_packet_body(state, header, body, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+pub proof fn ht_packet_success_reports_exact_declared_counts(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_packet_body_segments(state, header, body, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true,
+        Ok(result) => result.segments == header.segment_count
+            && result.passes == header.new_passes && result.bytes == header.data_length,
+    },
+{
+}
+
 }
