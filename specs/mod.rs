@@ -4406,7 +4406,7 @@ pub open spec fn ht_cleanup_symbols_only(
     match ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped_bitplanes, maximum_work) {
         Err(error) => (Err(error), state),
         Ok((output, cleanup, statistics, bitplanes)) => ht_store_coefficient_symbols(
-            Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state },
+            ht_clear_refinement_state(state),
             output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
     }
 }
@@ -4418,7 +4418,7 @@ pub open spec fn ht_coefficient_symbols(
     match ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped_bitplanes, maximum_work) {
         Err(error) => (Err(error), state),
         Ok((output, cleanup, statistics, bitplanes)) => {
-            let state = Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state };
+            let state = ht_clear_refinement_state(state);
             match segments.refinement {
                 None => ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
                 Some(segment) => {
@@ -4446,6 +4446,10 @@ pub open spec fn ht_coefficient_symbols(
             }
         },
     }
+}
+
+pub open spec fn ht_clear_refinement_state(state: Tier1DecoderState) -> Tier1DecoderState {
+    Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state }
 }
 
 pub open spec fn ht_significant_bitplanes(maximum_passes: u32) -> Result<u16, crate::DecodeError> {
@@ -4515,6 +4519,110 @@ pub open spec fn ht_decode_segments(
                     }
                 },
             }
+        }
+    }
+}
+
+pub open spec fn ht_finish_refinement_contribution(
+    state: Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+) -> HtDecoderResult {
+    let next = state.next_pass as nat + passes as nat;
+    if next > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let state = Tier1DecoderState { next_pass: next as u32, ..state };
+        if state.decoded_segments == u32::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + 1) as u32, ..state };
+            let state = if replayed { Tier1DecoderState { decoded_bytes: next_bytes, ..state } } else { state };
+            if bytes > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+            else { (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, bytes: bytes as u32, statistics }), state) }
+        }
+    }
+}
+
+pub open spec fn ht_decode_refinement_contribution(
+    state: Tier1DecoderState, input: Seq<u8>, passes: u8, maximum_bytes: u64, maximum_work: u64,
+) -> HtDecoderResult {
+    let total = state.ht_refinement_passes as nat + passes as nat;
+    if !ht_block_coding_enabled(state.style.block_coding) || state.next_pass == 0
+        || !state.ht_current_set_has_cleanup || state.next_pass % 3 == 0 || passes == 0 || total > 2 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        match state.ht_cleanup_plane {
+            None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+            Some(cleanup) => {
+                let next_bytes = state.decoded_bytes as nat + (input.len() as u64) as nat;
+                if next_bytes > u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+                else if next_bytes > maximum_bytes {
+                    (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlockBytes,
+                        limit: maximum_bytes, actual: next_bytes as u64 }), state)
+                } else {
+                    let data = state.ht_refinement_data + input;
+                    if data.len() > 2046 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+                    else if data.len() == 0 {
+                        ht_finish_refinement_contribution(Tier1DecoderState { ht_refinement_passes: total as u8, ..state },
+                            passes, 0, next_bytes as u64, tier1_statistics_zero(), false)
+                    } else {
+                        let segment = HtRefinementSegmentState {
+                            encoded: data,
+                            significance_propagation: HtSubstreamState { bytes: data, offset: 0, forward: true },
+                            magnitude_refinement: HtSubstreamState { bytes: data, offset: 0, forward: false },
+                        };
+                        match ht_refinement_plane(cleanup, segment, total as u8, state.ht_decoded_bitplanes,
+                            state.style.vertical_causal_context, maximum_work) {
+                            Err(error) => (Err(error), state),
+                            Ok((plane, statistics)) => ht_finish_refinement_contribution(Tier1DecoderState {
+                                plane, ht_refinement_data: data, ht_refinement_passes: total as u8, ..state },
+                                passes, input.len(), next_bytes as u64, statistics, true),
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn ht_skip_segment(state: Tier1DecoderState, passes: u8, maximum_passes: u32) -> HtDecoderResult {
+    let phase = state.next_pass % 3;
+    let next = state.next_pass as nat + passes as nat;
+    if !ht_block_coding_enabled(state.style.block_coding) || passes == 0 || passes > 2
+        || (phase == 0 && passes != 1) || (phase != 0 && passes as nat > 3 - phase as nat) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else if next > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else if next > state.maximum_passes { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else if next > maximum_passes {
+        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlockPasses,
+            limit: maximum_passes as u64, actual: next as u64 }), state)
+    } else if phase == 0 {
+        if !ht_replacement_allowed(phase as nat, state.ht_current_set_has_cleanup, true)
+            || (state.ht_sets_seen > 0 && !ht_multiple_set_allowed(state.ht_sets_seen as nat, state.allow_multiple_ht_sets)) {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else if state.ht_sets_seen == u16::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState {
+                ht_sets_seen: if state.ht_sets_seen > 0 { (state.ht_sets_seen + 1) as u16 } else { state.ht_sets_seen },
+                ht_current_set_has_cleanup: false, ht_refinement_data: Seq::empty(), ht_refinement_passes: 0,
+                next_pass: next as u32, ..state
+            };
+            if state.decoded_segments == u32::MAX {
+                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+            } else {
+                let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + 1) as u32, ..state };
+                (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, bytes: 0, statistics: tier1_statistics_zero() }), state)
+            }
+        }
+    } else if state.ht_current_set_has_cleanup {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        let state = Tier1DecoderState { next_pass: next as u32, ..state };
+        if state.decoded_segments == u32::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + 1) as u32, ..state };
+            (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, bytes: 0, statistics: tier1_statistics_zero() }), state)
         }
     }
 }

@@ -5504,8 +5504,7 @@ impl Tier1CodeBlockDecoder {
         )?;
         let mut output = plane;
         let mut statistics = statistics;
-        self.ht_refinement_data.clear();
-        self.ht_refinement_passes = 0;
+        self.clear_ht_refinement_state();
         if let Some(refinement) = segments.refinement() {
             let following_passes = pass_count.saturating_sub(1);
             if following_passes > u32::from(u8::MAX) {
@@ -5534,6 +5533,15 @@ impl Tier1CodeBlockDecoder {
             segments.bytes(),
             segments.refinement().is_some(),
         )
+    }
+
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        ensures tier1_decoder_state(final(self)) == crate::specs::ht_clear_refinement_state(tier1_decoder_state(old(self))),
+    ))]
+    fn clear_ht_refinement_state(&mut self) {
+        self.ht_refinement_data.clear();
+        self.ht_refinement_passes = 0;
     }
 
     #[allow(
@@ -5582,6 +5590,10 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_skip_segment(
+            tier1_decoder_state(old(self)), passes, crate::limits::resource_code_block_pass_limit(limits)),
+    ))]
     pub fn skip_high_throughput_segment(
         &mut self,
         passes: u8,
@@ -5604,11 +5616,11 @@ impl Tier1CodeBlockDecoder {
             return Err(invalid_code_block());
         }
         if next_pass > limits.maximum_code_block_passes() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlockPasses,
-                u64::from(limits.maximum_code_block_passes()),
-                u64::from(next_pass),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockPasses,
+                limit: u64::from(limits.maximum_code_block_passes()),
+                actual: u64::from(next_pass),
+            });
         }
         if phase == 0 {
             if !crate::refinement::ht_replacement_allowed(
@@ -5631,8 +5643,7 @@ impl Tier1CodeBlockDecoder {
                     .ok_or_else(arithmetic_overflow)?;
             }
             self.ht_current_set_has_cleanup = false;
-            self.ht_refinement_data.clear();
-            self.ht_refinement_passes = 0;
+            self.clear_ht_refinement_state();
         } else if self.ht_current_set_has_cleanup {
             return Err(invalid_code_block());
         }
@@ -5644,7 +5655,7 @@ impl Tier1CodeBlockDecoder {
         Ok(Tier1SegmentDecode {
             passes: u32::from(passes),
             bytes: 0,
-            statistics: Tier1PassStatistics::default(),
+            statistics: ht_statistics_zero(),
         })
     }
 
@@ -5652,12 +5663,19 @@ impl Tier1CodeBlockDecoder {
         self.ht_current_set_has_cleanup
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_refinement_contribution(
+            tier1_decoder_state(old(self)), input@, passes,
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
     pub fn decode_high_throughput_refinement(
         &mut self,
         input: &[u8],
         passes: u8,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = tier1_decoder_state(self); }
         if !self.style.block_coding.uses_high_throughput()
             || self.next_pass == 0
             || !self.ht_current_set_has_cleanup
@@ -5679,14 +5697,18 @@ impl Tier1CodeBlockDecoder {
             .checked_add(input.len() as u64)
             .ok_or_else(arithmetic_overflow)?;
         if next_bytes > limits.maximum_code_block_bytes() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlockBytes,
-                limits.maximum_code_block_bytes(),
-                next_bytes,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: limits.maximum_code_block_bytes(),
+                actual: next_bytes,
+            });
         }
         let mut refinement_data = self.ht_refinement_data.clone();
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(refinement_data@ == start.ht_refinement_data); }
         refinement_data.extend_from_slice(input);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(refinement_data@ == start.ht_refinement_data + input@); }
         if refinement_data.len() > MAX_HT_REFINEMENT_BYTES {
             return Err(invalid_code_block());
         }
@@ -5705,7 +5727,7 @@ impl Tier1CodeBlockDecoder {
             return Ok(Tier1SegmentDecode {
                 passes: u32::from(passes),
                 bytes: 0,
-                statistics: Tier1PassStatistics::default(),
+                statistics: ht_statistics_zero(),
             });
         }
         let segment = HtRefinementSegment {
@@ -5721,6 +5743,16 @@ impl Tier1CodeBlockDecoder {
                 direction: HtStreamDirection::Reverse,
             },
         };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(code_block_plane_view(cleanup_plane) == start.ht_cleanup_plane.get_Some_0());
+            assert(refinement_passes as nat == start.ht_refinement_passes as nat + passes as nat);
+            assert(ht_refinement_segment_view(&segment) == crate::specs::HtRefinementSegmentState {
+                encoded: refinement_data@,
+                significance_propagation: crate::specs::HtSubstreamState { bytes: refinement_data@, offset: 0, forward: true },
+                magnitude_refinement: crate::specs::HtSubstreamState { bytes: refinement_data@, offset: 0, forward: false },
+            });
+        }
         let (plane, statistics) = decode_ht_refinement_plane(
             cleanup_plane,
             segment,
@@ -8562,6 +8594,540 @@ mod tests {
             );
             assert_eq!(format!("{decoder:?}"), before);
         }
+    }
+
+    fn retained_refinement_decoder() -> Tier1CodeBlockDecoder {
+        let mut decoder = cleanup_caller_decoder();
+        let mut cleanup = CodeBlockPlane::new(2, 1).unwrap();
+        cleanup.coefficients[0] = CoefficientState {
+            magnitude: 3,
+            significant: true,
+            ..CoefficientState::default()
+        };
+        decoder.ht_cleanup_plane = Some(cleanup);
+        decoder.plane = CodeBlockPlane {
+            width: 1,
+            height: 1,
+            coefficients: vec![raw_refinement_coefficient(
+                29,
+                [1, 2, 3, 4, 5],
+                false,
+                true,
+                true,
+            )],
+        };
+        decoder.ht_refinement_data.clear();
+        decoder.ht_refinement_passes = 0;
+        decoder.ht_decoded_bitplanes = 2;
+        decoder.ht_current_set_has_cleanup = true;
+        decoder.next_pass = 1;
+        decoder.maximum_passes = 0;
+        decoder
+    }
+
+    fn literal_replayed_plane(magnitude: u64, refined: bool) -> CodeBlockPlane {
+        CodeBlockPlane {
+            width: 2,
+            height: 1,
+            coefficients: vec![
+                CoefficientState {
+                    magnitude,
+                    significant: true,
+                    refined,
+                    ..CoefficientState::default()
+                },
+                CoefficientState {
+                    magnitude: 1,
+                    significant: true,
+                    ..CoefficientState::default()
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn ht_continuation_replays_real_concatenation_from_cleanup_not_current_output() {
+        let limits = ResourceLimits::default()
+            .with_maximum_code_block_passes(0)
+            .unwrap();
+        let mut decoder = retained_refinement_decoder();
+        decoder.next_pass = 2;
+        decoder.ht_refinement_passes = 1;
+        decoder.ht_refinement_data = vec![1];
+        let mut expected = decoder.clone();
+        expected.plane = literal_replayed_plane(3, true);
+        expected.ht_refinement_data = vec![1, 1];
+        expected.ht_refinement_passes = 2;
+        expected.next_pass = 3;
+        expected.decoded_segments += 1;
+        expected.decoded_bytes += 1;
+        let result = decoder
+            .decode_high_throughput_refinement(&[1], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            result,
+            Tier1SegmentDecode {
+                passes: 1,
+                bytes: 1,
+                statistics: Tier1PassStatistics {
+                    coefficients_scanned: 4,
+                    coding_symbols: 3,
+                    newly_significant: 1,
+                    refined_coefficients: 1,
+                    run_mode_columns: 0,
+                }
+            }
+        );
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        assert!(decoder.next_pass > decoder.maximum_passes);
+
+        let mut decoder = retained_refinement_decoder();
+        decoder.ht_refinement_data = Vec::with_capacity(64);
+        decoder.ht_refinement_data.push(1);
+        let clone_capacity = decoder.ht_refinement_data.clone().capacity();
+        let mut expected = decoder.clone();
+        expected.plane = literal_replayed_plane(3, false);
+        expected.ht_refinement_passes = 1;
+        expected.next_pass = 2;
+        expected.decoded_segments += 1;
+        let result = decoder
+            .decode_high_throughput_refinement(&[], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                result.bytes,
+                result.statistics.coefficients_scanned,
+                result.statistics.coding_symbols
+            ),
+            (0, 2, 2)
+        );
+        assert_eq!(decoder.ht_refinement_data.capacity(), clone_capacity);
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn ht_continuation_empty_concatenation_preserves_output_and_skips_replay_only() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap()
+            .with_maximum_code_block_passes(0)
+            .unwrap();
+        let mut decoder = retained_refinement_decoder();
+        decoder.ht_cleanup_plane = Some(CodeBlockPlane {
+            width: 0,
+            height: 7,
+            coefficients: vec![],
+        });
+        decoder.ht_decoded_bitplanes = 0;
+        decoder.ht_refinement_data = Vec::with_capacity(64);
+        let mut expected = decoder.clone();
+        expected.ht_refinement_passes = 1;
+        expected.next_pass = 2;
+        expected.decoded_segments += 1;
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[], 1, &limits),
+            Ok(Tier1SegmentDecode {
+                passes: 1,
+                bytes: 0,
+                statistics: Tier1PassStatistics::default()
+            })
+        );
+        assert_eq!(decoder.ht_refinement_data.capacity(), 64);
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+
+        let before = format!("{decoder:?}");
+        let byte_limit = limits.with_maximum_code_block_bytes(10).unwrap();
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[], 1, &byte_limit),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: 10,
+                actual: 11
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.ht_cleanup_plane = None;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[], 1, &byte_limit),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_continuation_rejects_before_commit_but_keeps_exact_late_accounting_writes() {
+        let limits = ResourceLimits::default();
+        for (nonempty, segment_overflow) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let mut decoder = retained_refinement_decoder();
+            let (input, passes): (&[u8], u8) = if nonempty && !segment_overflow {
+                (&[1, 1], 2)
+            } else if nonempty {
+                (&[1], 1)
+            } else if segment_overflow {
+                (&[], 1)
+            } else {
+                (&[], 2)
+            };
+            if segment_overflow {
+                decoder.decoded_segments = u32::MAX;
+            } else {
+                decoder.next_pass = u32::MAX - 1;
+            }
+            let mut expected = decoder.clone();
+            if nonempty {
+                expected.plane = literal_replayed_plane(3, passes == 2);
+                expected.ht_refinement_data = input.to_vec();
+            }
+            expected.ht_refinement_passes = passes;
+            if segment_overflow {
+                expected.next_pass += u32::from(passes);
+            }
+            assert_eq!(
+                decoder.decode_high_throughput_refinement(input, passes, &limits),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+        for input in [&[0xff][..], &[0x80][..]] {
+            let mut decoder = retained_refinement_decoder();
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_high_throughput_refinement(input, 1, &limits),
+                Err(invalid_code_block())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        let mut decoder = retained_refinement_decoder();
+        decoder.decoded_bytes = u64::MAX;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[1], 1, &limits),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_continuation_native_pass_domain_and_retained_size_boundaries_are_exact() {
+        let limits = ResourceLimits::default();
+        let template = retained_refinement_decoder();
+        for existing in 0_u8..=u8::MAX {
+            for additional in 0_u8..=u8::MAX {
+                let mut decoder = template.clone();
+                decoder.ht_refinement_passes = existing;
+                decoder.ht_cleanup_plane = Some(CodeBlockPlane {
+                    width: 0,
+                    height: 0,
+                    coefficients: vec![],
+                });
+                let result = decoder.decode_high_throughput_refinement(&[], additional, &limits);
+                if additional > 0 && u16::from(existing) + u16::from(additional) <= 2 {
+                    assert!(result.is_ok());
+                    assert_eq!(decoder.ht_refinement_passes, existing + additional);
+                    assert_eq!(decoder.next_pass, 1 + u32::from(additional));
+                } else {
+                    assert_eq!(result, Err(invalid_code_block()));
+                    assert_eq!(
+                        (
+                            decoder.ht_refinement_passes,
+                            decoder.next_pass,
+                            decoder.decoded_segments
+                        ),
+                        (existing, 1, template.decoded_segments)
+                    );
+                }
+            }
+        }
+        for (retained, incoming, accepted) in [(2046, 0, true), (2046, 1, false), (2047, 0, false)]
+        {
+            let mut decoder = retained_refinement_decoder();
+            decoder.ht_refinement_data = vec![0; retained];
+            let before = format!("{decoder:?}");
+            let result = decoder.decode_high_throughput_refinement(&vec![0; incoming], 1, &limits);
+            if accepted {
+                let result = result.unwrap();
+                assert_eq!((result.bytes, result.statistics.coding_symbols), (0, 1));
+                assert_eq!(decoder.ht_refinement_data.len(), 2046);
+            } else {
+                assert_eq!(result, Err(invalid_code_block()));
+                assert_eq!(format!("{decoder:?}"), before);
+            }
+        }
+    }
+
+    #[test]
+    fn ht_placeholder_all_native_passes_and_phases_preserve_actual_admission() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap()
+            .with_maximum_code_block_bytes(0)
+            .unwrap();
+        let mut template = retained_refinement_decoder();
+        template.maximum_passes = u32::MAX;
+        template.ht_sets_seen = 0;
+        template.ht_refinement_data = vec![7, 9];
+        template.ht_refinement_passes = u8::MAX;
+        template.decoded_bytes = u64::MAX;
+        for phase in 0_u32..3 {
+            for has_cleanup in [false, true] {
+                for passes in 0_u8..=u8::MAX {
+                    let mut decoder = template.clone();
+                    decoder.next_pass = phase;
+                    decoder.ht_current_set_has_cleanup = has_cleanup;
+                    let before = format!("{decoder:?}");
+                    let admitted = (1..=2).contains(&passes)
+                        && if phase == 0 {
+                            passes == 1
+                        } else {
+                            u32::from(passes) <= 3 - phase && !has_cleanup
+                        };
+                    let result = decoder.skip_high_throughput_segment(passes, &limits);
+                    if !admitted {
+                        assert_eq!(result, Err(invalid_code_block()));
+                        assert_eq!(format!("{decoder:?}"), before);
+                    } else {
+                        let mut expected = template.clone();
+                        expected.next_pass = phase + u32::from(passes);
+                        expected.decoded_segments += 1;
+                        expected.ht_current_set_has_cleanup = has_cleanup;
+                        if phase == 0 {
+                            expected.ht_current_set_has_cleanup = false;
+                            expected.ht_refinement_data.clear();
+                            expected.ht_refinement_passes = 0;
+                        }
+                        assert_eq!(
+                            result,
+                            Ok(Tier1SegmentDecode {
+                                passes: u32::from(passes),
+                                bytes: 0,
+                                statistics: Tier1PassStatistics::default()
+                            })
+                        );
+                        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ht_placeholder_replacement_and_late_errors_retain_cleanup_option_and_prior_writes() {
+        let limits = ResourceLimits::default();
+        for failure in 0..4 {
+            let mut decoder = retained_refinement_decoder();
+            decoder.next_pass = 3;
+            decoder.maximum_passes = 10;
+            decoder.ht_refinement_data = vec![5, 6];
+            decoder.ht_refinement_passes = 2;
+            decoder.ht_sets_seen = if failure == 1 { u16::MAX } else { 1 };
+            decoder.allow_multiple_ht_sets = failure != 0;
+            if failure == 2 {
+                decoder.decoded_segments = u32::MAX;
+            }
+            let mut expected = decoder.clone();
+            let result = decoder.skip_high_throughput_segment(1, &limits);
+            if failure < 2 {
+                assert_eq!(
+                    result,
+                    Err(if failure == 0 {
+                        invalid_code_block()
+                    } else {
+                        arithmetic_overflow()
+                    })
+                );
+            } else {
+                expected.ht_sets_seen = 2;
+                expected.ht_current_set_has_cleanup = false;
+                expected.ht_refinement_data.clear();
+                expected.ht_refinement_passes = 0;
+                expected.next_pass = 4;
+                if failure == 2 {
+                    assert_eq!(result, Err(arithmetic_overflow()));
+                } else {
+                    expected.decoded_segments += 1;
+                    assert!(result.is_ok());
+                }
+            }
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+        let mut decoder = retained_refinement_decoder();
+        decoder.next_pass = 3;
+        decoder.maximum_passes = 3;
+        let before = format!("{decoder:?}");
+        let pass_zero = limits.with_maximum_code_block_passes(0).unwrap();
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &pass_zero),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.maximum_passes = 10;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &pass_zero),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockPasses,
+                limit: 0,
+                actual: 4,
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.next_pass = u32::MAX;
+        decoder.maximum_passes = u32::MAX;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &pass_zero),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        for (passes, planes, groups, magnitude) in [(4, 3, 1, 3), (7, 4, 2, 3), (163, 55, 54, 1)] {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, planes, SubbandOrientation::Ll, style).unwrap();
+            let result = decoder
+                .decode_segment(&[0, 0x63, 0], passes, &limits)
+                .unwrap();
+            assert_eq!((result.passes, result.bytes), (u32::from(passes), 3));
+            assert_eq!(
+                decoder.plane.coefficients()[0],
+                CoefficientState {
+                    magnitude,
+                    significant: true,
+                    negative: true,
+                    ..CoefficientState::default()
+                }
+            );
+            assert_eq!(
+                (
+                    decoder.next_pass,
+                    decoder.decoded_segments,
+                    decoder.decoded_bytes,
+                    decoder.ht_sets_seen
+                ),
+                (u32::from(passes), groups * 2 + 1, 3, 1)
+            );
+            assert_eq!(
+                result.statistics,
+                Tier1PassStatistics {
+                    coefficients_scanned: 1,
+                    coding_symbols: 1,
+                    newly_significant: 1,
+                    ..Tier1PassStatistics::default()
+                }
+            );
+        }
+        for (input, work, error) in [
+            (&[2, 0][..], 1000, invalid_code_block()),
+            (
+                &[0, 0x63, 0][..],
+                4,
+                DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: 4,
+                    actual: 5,
+                },
+            ),
+            (&[][..], 1000, invalid_code_block()),
+        ] {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 3, SubbandOrientation::Hh, style).unwrap();
+            decoder.legacy_segment = cleanup_caller_decoder().legacy_segment;
+            decoder.ht_refinement_data = vec![6, 7];
+            let before = format!("{decoder:?}");
+            let limits = limits.with_maximum_work_units(work).unwrap();
+            assert_eq!(decoder.decode_segment(input, 4, &limits), Err(error));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+    }
+
+    #[test]
+    fn ht_actual_groups_continue_and_replace_using_real_retained_state() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        let mut decoder =
+            Tier1CodeBlockDecoder::new(1, 1, 5, SubbandOrientation::Ll, style).unwrap();
+        decoder.decode_segment(&[0, 0x63, 0], 4, &limits).unwrap();
+        assert_eq!(
+            (
+                decoder.plane.coefficients()[0].magnitude,
+                decoder.ht_decoded_bitplanes,
+                decoder.next_pass
+            ),
+            (12, 4, 4)
+        );
+        let first = decoder
+            .decode_high_throughput_refinement(&[0], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                first.bytes,
+                first.statistics.coefficients_scanned,
+                first.statistics.coding_symbols
+            ),
+            (1, 1, 0)
+        );
+        let second = decoder
+            .decode_high_throughput_refinement(&[1], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                second.bytes,
+                second.statistics.coefficients_scanned,
+                second.statistics.refined_coefficients
+            ),
+            (1, 2, 1)
+        );
+        assert_eq!(decoder.ht_refinement_data, [0, 1]);
+        assert_eq!(
+            (
+                decoder.plane.coefficients()[0].magnitude,
+                decoder.next_pass,
+                decoder.decoded_bytes
+            ),
+            (14, 6, 5)
+        );
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.allow_multiple_ht_sets = true;
+        decoder.skip_high_throughput_segment(1, &limits).unwrap();
+        assert_eq!(
+            decoder.ht_cleanup_plane.as_ref().unwrap().coefficients()[0].magnitude,
+            12
+        );
+        assert!(!decoder.ht_current_set_has_cleanup);
+        assert!(decoder.ht_refinement_data.is_empty());
+        assert_eq!(decoder.ht_refinement_passes, 0);
+        decoder.skip_high_throughput_segment(2, &limits).unwrap();
+        decoder
+            .decode_high_throughput_segments(&[0, 0x63, 0], 1, None, 0, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                decoder.plane.coefficients()[0].magnitude,
+                decoder.ht_decoded_bitplanes
+            ),
+            (3, 2)
+        );
+        assert_eq!(
+            (
+                decoder.next_pass,
+                decoder.decoded_segments,
+                decoder.decoded_bytes,
+                decoder.ht_sets_seen
+            ),
+            (10, 8, 8, 3)
+        );
     }
 
     fn cleanup_caller_decoder() -> Tier1CodeBlockDecoder {
