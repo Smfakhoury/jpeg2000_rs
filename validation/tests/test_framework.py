@@ -548,6 +548,109 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_header_to_actual_native_results_inputs_and_owner(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(
+            item for item in original_coverage["requirements"]
+            if item["id"] == "part2-complete-native-output-header"
+        )
+        read_text = Path.read_text
+        for relative, symbol, projection, model, arguments in (
+            ("src/decode.rs", "apply_jp2_output", "crate::image::decoded_typed_image_outcome",
+             "part2_apply_output_header", (
+                ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)"),
+                ("output_header_view(header)", "output_header_view(unrelated)"),
+                ("crate::limits::resource_component_limit(limits)", "0"),
+                ("crate::limits::resource_decoded_bytes_limit(limits)", "0"),
+            )),
+            ("src/image.rs", "typed_image_from_components_with_origin", "decoded_typed_image_outcome",
+             "part2_typed_image_from_parts", (
+                ("width, height, x_origin, y_origin", "height, width, x_origin, y_origin"),
+                ("width, height, x_origin, y_origin", "width, height, y_origin, x_origin"),
+                ("typed_components_output_view(components@)", "typed_components_output_view(unrelated@)"),
+                ("crate::limits::resource_component_limit(limits)", "0"),
+                ("crate::limits::resource_decoded_bytes_limit(limits)", "0"),
+            )),
+            ("src/image.rs", "TypedImage::component", "typed_component_reference_output",
+             "part2_typed_image_component", (
+                ("typed_image_components(self)", "typed_image_components(unrelated)"),
+                ("typed_image_components(self)), index", "typed_image_components(self)), 0"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            reference = {"path": relative, "symbol": symbol}
+            self.assertIn(reference, entry["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / relative
+            original = source.read_text()
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            expression = f"{projection}(result)"
+            mutations = [
+                (f"ensures {expression}", "ensures unrelated"),
+                (f"ensures {expression}", "ensures result.is_ok()"),
+                (f"ensures {expression}", f"ensures result.is_ok() ==> {expression}"),
+                (expression, f"{projection}(unrelated)"),
+                (expression, "unlisted_projection(result)"),
+                (f"crate::specs::{model}(", "crate::specs::part2_typed_component_copy("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ]
+            for before, after in mutations:
+                self.assertIn(before, contract)
+                changed = contract.replace(before, after, 1)
+                variants = [changed]
+                if (before, after) in arguments:
+                    closing_match = re.search(r"\)\s*,?\s*\)\s*\]", changed)
+                    original_closing_match = re.search(r"\)\s*,?\s*\)\s*\]", contract)
+                    assert closing_match is not None and original_closing_match is not None
+                    closing = closing_match.start()
+                    original_closing = original_closing_match.start()
+                    variants.append(
+                        changed[:closing] + "\n" + contract[contract.index("ensures") + len("ensures"):original_closing]
+                        + changed[closing:]
+                    )
+                for variant in variants:
+                    modified = original[:start] + variant + original[signature:]
+
+                    def altered(path, *args, **kwargs):
+                        return modified if path == source else read_text(path, *args, **kwargs)
+
+                    with self.subTest(symbol=symbol, after=after, duplicate=variant != changed), \
+                            mock.patch.object(Path, "read_text", altered), \
+                            self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                        framework.validate_normative_coverage(coverage)
+        coverage["requirements"][0]["contract_refs"] = [{"path": "src/image.rs", "symbol": "DecodedImage::component"}]
+        with self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+            framework.validate_normative_coverage(coverage)
+
+    def test_qualified_coverage_resolves_unique_method_across_same_owner_impls(self):
+        text = (
+            "impl DecodedImage {\n"
+            "    pub fn component(&self) {}\n"
+            "}\n"
+            "impl TypedImage {\n"
+            "    pub fn unrelated(&self) {\n"
+            "        fn component() {}\n"
+            "    }\n"
+            "}\n"
+            "impl TypedImage {\n"
+            "    pub fn component(&self) {}\n"
+            "}\n"
+        )
+        header = framework._coverage_function_header(text, "TypedImage::component")
+        self.assertIsNotNone(header)
+        self.assertEqual(header.start(), text.rfind("    pub fn component"))
+        self.assertIsNone(framework._coverage_function_header(text, "OtherImage::component"))
+        without_method = text[:text.rfind("impl TypedImage")]
+        self.assertIsNone(framework._coverage_function_header(without_method, "TypedImage::component"))
+        duplicate = text + "impl TypedImage {\n    pub fn component(&self) {}\n}\n"
+        self.assertIsNone(framework._coverage_function_header(duplicate, "TypedImage::component"))
+
     def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         entry = next(

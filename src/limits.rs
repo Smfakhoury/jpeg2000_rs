@@ -49,6 +49,10 @@ verus! {
     pub closed spec fn resource_decoded_bytes_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_decoded_bytes
     }
+
+    pub closed spec fn resource_component_limit(limits: &ResourceLimits) -> u16 {
+        limits.maximum_components
+    }
 }
 
 impl ResourceLimits {
@@ -111,6 +115,9 @@ impl ResourceLimits {
         self.maximum_pixels
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value =>
+        ensures value == resource_component_limit(self),
+    ))]
     pub const fn maximum_components(&self) -> u16 {
         self.maximum_components
     }

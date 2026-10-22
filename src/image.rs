@@ -130,6 +130,12 @@ verus! {
         Seq::new(components.len(), |i: int| typed_component_view(&components[i]))
     }
 
+    pub open spec fn typed_components_output_view(components: Seq<TypedComponent>)
+        -> Seq<crate::specs::Part2TypedComponentOutput>
+    {
+        Seq::new(components.len(), |i: int| typed_component_output_view(&components[i]))
+    }
+
     pub open spec fn decoded_typed_image_outcome(result: Result<TypedImage, DecodeError>)
         -> Result<crate::specs::Part1DecodedTypedImage, DecodeError>
     {
@@ -263,6 +269,19 @@ verus! {
         -> crate::specs::Part2TypedComponentOutput
     {
         typed_component_output_view(&component)
+    }
+
+    pub open spec fn typed_component_reference_output(result: Result<&TypedComponent, DecodeError>)
+        -> Result<crate::specs::Part2TypedComponentOutput, DecodeError>
+    {
+        match result {
+            Ok(component) => Ok(typed_component_output_view(component)),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub open spec fn typed_image_value_view(image: TypedImage) -> crate::specs::Part1DecodedTypedImage {
+        (typed_image_geometry(&image), typed_image_component_views(&image), typed_image_definition_views(&image))
     }
 }
 
@@ -1119,62 +1138,122 @@ impl TypedImage {
         components: Vec<TypedComponent>,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        x_origin
-            .checked_add(width)
-            .ok_or_else(arithmetic_overflow)?;
-        y_origin
-            .checked_add(height)
-            .ok_or_else(arithmetic_overflow)?;
-        let component_count = u16::try_from(components.len()).map_err(|_| arithmetic_overflow())?;
-        if component_count > limits.maximum_components() {
-            return Err(DecodeError::limit(
-                Resource::Components,
-                u64::from(limits.maximum_components()),
-                components.len() as u64,
-            ));
+        typed_image_from_components_with_origin(
+            width, height, x_origin, y_origin, components, limits,
+        )
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures decoded_typed_image_outcome(result) == crate::specs::part2_typed_image_from_parts(
+            width, height, x_origin, y_origin, typed_components_output_view(components@),
+            crate::limits::resource_component_limit(limits),
+            crate::limits::resource_decoded_bytes_limit(limits),
+        ),
+    ))]
+pub(crate) fn typed_image_from_components_with_origin(
+    width: u32,
+    height: u32,
+    x_origin: u32,
+    y_origin: u32,
+    components: Vec<TypedComponent>,
+    limits: &ResourceLimits,
+) -> Result<TypedImage, DecodeError> {
+    x_origin
+        .checked_add(width)
+        .ok_or_else(arithmetic_overflow)?;
+    y_origin
+        .checked_add(height)
+        .ok_or_else(arithmetic_overflow)?;
+    let component_count = match u16::try_from(components.len()) {
+        Ok(count) => count,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    if component_count > limits.maximum_components() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::Components,
+            limit: u64::from(limits.maximum_components()),
+            actual: components.len() as u64,
+        });
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_typed_image_admission_empty(typed_components_output_view(components@), crate::limits::resource_decoded_bytes_limit(limits));
+    }
+    let mut decoded_bytes = 0_u64;
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant index <= components.len(),
+            x_origin as nat + width as nat <= u32::MAX,
+            y_origin as nat + height as nat <= u32::MAX,
+            components.len() <= u16::MAX,
+            components.len() <= crate::limits::resource_component_limit(limits),
+            crate::specs::part2_typed_image_admission_prefix(
+                typed_components_output_view(components@), crate::limits::resource_decoded_bytes_limit(limits), index as nat,
+            ) == Ok(decoded_bytes),
+            decreases components.len() - index,
+        ))]
+    while index < components.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_typed_image_admission_step(typed_components_output_view(components@), crate::limits::resource_decoded_bytes_limit(limits), index as nat);
+            crate::proofs::production_impl::production_typed_image_admission_error(typed_components_output_view(components@), crate::limits::resource_decoded_bytes_limit(limits), index as nat + 1, components.len() as nat);
         }
-        let mut decoded_bytes = 0_u64;
-        let mut index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= components.len(),
-                decreases components.len() - index,
+        let component = components.get(index).ok_or_else(invalid_image)?;
+        let sample_count = match &component.samples {
+            TypedSamples::Signed(samples) => samples.len(),
+            TypedSamples::Unsigned(samples) => samples.len(),
+        };
+        let expected_samples = checked_area(component.width, component.height)?;
+        if sample_count != expected_samples {
+            return Err(invalid_image());
+        }
+        decoded_bytes = decoded_bytes
+            .checked_add(
+                (sample_count as u64)
+                    .checked_mul(8)
+                    .ok_or_else(arithmetic_overflow)?,
             )
-        )]
-        while index < components.len() {
-            let component = components.get(index).ok_or_else(invalid_image)?;
-            let sample_count = match &component.samples {
-                TypedSamples::Signed(samples) => samples.len(),
-                TypedSamples::Unsigned(samples) => samples.len(),
-            };
-            let expected_samples = checked_area(component.width, component.height)?;
-            if sample_count != expected_samples {
-                return Err(invalid_image());
-            }
-            decoded_bytes = decoded_bytes
-                .checked_add(
-                    (sample_count as u64)
-                        .checked_mul(8)
-                        .ok_or_else(arithmetic_overflow)?,
-                )
-                .ok_or_else(arithmetic_overflow)?;
-            if decoded_bytes > limits.maximum_decoded_bytes() {
-                return Err(DecodeError::limit(
-                    Resource::DecodedBytes,
-                    limits.maximum_decoded_bytes(),
-                    decoded_bytes,
-                ));
-            }
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            .ok_or_else(arithmetic_overflow)?;
+        if decoded_bytes > limits.maximum_decoded_bytes() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: limits.maximum_decoded_bytes(),
+                actual: decoded_bytes,
+            });
         }
-        Ok(Self {
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(Seq::new(components@.len(), |i: int| typed_components_output_view(components@)[i].0) =~= decoded_typed_components_view(components@));
+        assert(Seq::new(components@.len(), |i: int| typed_components_output_view(components@)[i].1) =~= Seq::new(components@.len(), |i: int| channel_definition_views(typed_component_definitions(&components@[i]))));
+    }
+    Ok(TypedImage {
+        width,
+        height,
+        x_origin,
+        y_origin,
+        components,
+    })
+}
+
+impl TypedImage {
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        width: u32,
+        height: u32,
+        x_origin: u32,
+        y_origin: u32,
+        components: Vec<TypedComponent>,
+    ) -> Self {
+        Self {
             width,
             height,
             x_origin,
             y_origin,
             components,
-        })
+        }
     }
 
     #[cfg_attr(
@@ -1217,10 +1296,16 @@ impl TypedImage {
         &self.components
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures typed_component_reference_output(result) == crate::specs::part2_typed_image_component(
+            typed_components_output_view(typed_image_components(self)), index,
+        ),
+    ))]
     pub fn component(&self, index: u16) -> Result<&TypedComponent, DecodeError> {
-        self.components
-            .get(usize::from(index))
-            .ok_or_else(invalid_image)
+        match self.components.get(usize::from(index)) {
+            Some(component) => Ok(component),
+            None => Err(invalid_image()),
+        }
     }
 }
 
@@ -4145,6 +4230,103 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_image_admission_preserves_native_count_origin_shape_and_error_priority() {
+        fn components(count: usize) -> Vec<TypedComponent> {
+            (0..count)
+                .map(|_| {
+                    TypedComponent::from_parts(
+                        0,
+                        u32::MAX,
+                        ComponentInfo {
+                            precision: 0,
+                            signed: true,
+                            x_subsampling: 0,
+                            y_subsampling: 0,
+                            x_registration: u16::MAX,
+                            y_registration: u16::MAX,
+                        },
+                        TypedSamples::Unsigned(vec![]),
+                    )
+                })
+                .collect()
+        }
+        let limits = ResourceLimits::default()
+            .with_maximum_decoded_bytes(1)
+            .unwrap();
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for count in [0, 1, 64, 65, 65_535, 65_536] {
+            for (x_origin, y_origin) in [(0, 0), (u32::MAX, 0), (0, u32::MAX)] {
+                let result = typed_image_from_components_with_origin(
+                    1,
+                    1,
+                    x_origin,
+                    y_origin,
+                    components(count),
+                    &limits,
+                );
+                if x_origin == u32::MAX || y_origin == u32::MAX || count > usize::from(u16::MAX) {
+                    assert_eq!(result, Err(overflow));
+                } else if count > usize::from(limits.maximum_components()) {
+                    assert_eq!(
+                        result,
+                        Err(DecodeError::LimitExceeded {
+                            resource: Resource::Components,
+                            limit: u64::from(limits.maximum_components()),
+                            actual: count as u64,
+                        })
+                    );
+                } else {
+                    let result = result.unwrap();
+                    assert_eq!(result.components().len(), count);
+                    for component in result.components() {
+                        assert_eq!((component.width(), component.height()), (0, u32::MAX));
+                        assert_eq!(component.info().precision, 0);
+                        assert_eq!(component.info().x_subsampling, 0);
+                        assert!(
+                            matches!(component.samples(), TypedSamples::Unsigned(values) if values.is_empty())
+                        );
+                    }
+                }
+            }
+        }
+        let info = ComponentInfo {
+            precision: 0,
+            signed: false,
+            x_subsampling: 0,
+            y_subsampling: 0,
+            x_registration: 0,
+            y_registration: 0,
+        };
+        let malformed = || TypedComponent::from_parts(1, 1, info, TypedSamples::Signed(vec![]));
+        let valid = || TypedComponent::from_parts(1, 1, info, TypedSamples::Signed(vec![7]));
+        assert_eq!(
+            typed_image_from_components_with_origin(0, 0, 0, 0, vec![malformed()], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidImageGeometry
+            }),
+        );
+        assert_eq!(
+            TypedImage::from_components_with_origin(
+                0,
+                0,
+                0,
+                0,
+                vec![valid(), malformed()],
+                &limits
+            ),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 1,
+                actual: 8
+            }),
+        );
+    }
     use crate::codestream::{
         MctArrayKind, MctCollection, MctNumericFormat, MctStage, MctWaveletType,
     };
