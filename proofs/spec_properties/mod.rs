@@ -110,6 +110,13 @@ pub proof fn ht_metadata_quad_tick_overflow_preserves_the_store(
     ht_metadata_zero_samples_preserve_counter(significant, x, y, input.width, input.height, 0);
 }
 
+pub proof fn magnitude_limb_interface_covers_native_indices(value: crate::magnitude::Magnitude, index: usize)
+    ensures crate::magnitude::magnitude_limbs(value).len() == 6,
+        crate::specs::part1_magnitude_limb(crate::magnitude::magnitude_limbs(value), index).is_some() == (index < 6),
+{
+    crate::magnitude::representation_proofs::magnitude_limbs_shape(value);
+}
+
 pub proof fn ht_partition_budget_failure_precedes_any_scup_validation(
     cleanup: Seq<u8>, refinement: Option<Seq<u8>>, maximum: u64,
 )

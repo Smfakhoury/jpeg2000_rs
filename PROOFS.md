@@ -124,6 +124,15 @@ bounds, without raising verifier limits. This interface supports actual
 HT reconstruction but does not by itself prove HT byte meaning or F6's
 remaining assembly bridge.
 
+The unchanged native `Magnitude::limb` also has an exact full-`usize`
+`Option` contract: each index below six returns its corresponding raw word,
+and every other index returns `None`. The pure owner representation proof
+`magnitude::representation_proofs::magnitude_limbs_shape` exports the intrinsic
+six-word shape without exposing private fields or requiring an executable
+getter call. A separate property in `proofs/spec_properties` checks that this
+closed-view interface is usable from another module. These are raw
+representation facts, not additional Tier-1 coefficient meaning.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
@@ -675,10 +684,12 @@ and centering/shift overflow.
 
 The next actual cleanup-plane boundary reaches `CoefficientState::set_magnitude`,
 which uses the foreign `Magnitude::limb(index + 1)` to store all five high
-words. That getter still has no functional contract in this head. Its exact
-full-index `Some(magnitude_limbs(self)[index])`/`None` observation is required;
-the existing access is not replaced by shifted low-word arithmetic, an
-assumption or a duplicate limb algorithm. Plane reconstruction, placement,
+words. The owner now supplies its exact full-index
+`Some(magnitude_limbs(self)[index])`/`None` result and a public pure six-limb
+shape fact while keeping the representation closed. The actual stores and
+signed-result/plane consumers still need their complete relations through
+those interfaces; no shifted low-word replacement, assumption or duplicate
+limb algorithm is used. Plane reconstruction, placement,
 stencils and final padding/termination are not claimed by the numeric
 producer theorem.
 

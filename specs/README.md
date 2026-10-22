@@ -175,6 +175,15 @@ The original receiver operations have full native-domain contracts:
 - `low_u64`: full-value modulo `2^64`; `is_zero`: true iff the full value is
   zero. The numeric/raw representation agreement and intrinsic capacity
   bounds are exported by these contracts.
+- `limb`: for every native `usize` index, exactly the corresponding raw word
+  at indices 0..6 and `None` otherwise, with no index precondition.
+
+The public pure owner fact
+`magnitude::representation_proofs::magnitude_limbs_shape(value)` establishes
+`magnitude_limbs(value).len() == 6` without an executable getter call.
+Its small representation proof submodule stays under the owning module so
+the existing public closed projection and private fields remain closed;
+the indexed mathematical denotation is `part1_magnitude_limb` in `specs/mod.rs`.
 
 Verified native producers are `magnitude_zero`, `magnitude_from_u64`,
 `magnitude_from_limbs` and `magnitude_single_bit`. The zero helper returns
