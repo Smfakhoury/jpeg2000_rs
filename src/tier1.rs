@@ -35,72 +35,170 @@ pub struct RawBitReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> RawBitReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        let input_length = input.len() as u64;
-        if input_length > limits.maximum_input_bytes() {
-            return Err(DecodeError::limit(
-                Resource::InputBytes,
-                limits.maximum_input_bytes(),
-                input_length,
-            ));
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn raw_bit_reader_view(reader: &RawBitReader<'_>) -> crate::specs::Part1RawReaderState {
+        crate::specs::Part1RawReaderState {
+            input: reader.input@,
+            next_index: reader.next_index,
+            current_byte: reader.current_byte,
+            bits_remaining: reader.bits_remaining,
+            marker_padding_count: reader.marker_padding_count,
+            work_units: reader.work_units,
+            maximum_work_units: reader.maximum_work_units,
         }
-        Ok(Self {
-            input,
-            next_index: 0,
-            current_byte: 0,
-            bits_remaining: 0,
-            marker_padding_count: 0,
-            work_units: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
     }
 
+    #[verifier::inline]
+    spec fn raw_reader_outcome(result: Result<RawBitReader<'_>, DecodeError>)
+        -> Result<crate::specs::Part1RawReaderState, DecodeError>
+    {
+        match result {
+            Ok(reader) => Ok(raw_bit_reader_view(&reader)),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures raw_reader_outcome(result) == crate::specs::part1_raw_reader_initial(
+            input@, maximum_input_bytes, maximum_work_units,
+        ),
+    )
+)]
+fn raw_reader_from_input(
+    input: &[u8],
+    maximum_input_bytes: u64,
+    maximum_work_units: u64,
+) -> Result<RawBitReader<'_>, DecodeError> {
+    let input_length = input.len() as u64;
+    if input_length > maximum_input_bytes {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::InputBytes,
+            limit: maximum_input_bytes,
+            actual: input_length,
+        });
+    }
+    Ok(RawBitReader {
+        input,
+        next_index: 0,
+        current_byte: 0,
+        bits_remaining: 0,
+        marker_padding_count: 0,
+        work_units: 0,
+        maximum_work_units,
+    })
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(error =>
+        ensures error == crate::specs::part1_raw_reader_error(offset, kind),
+    )
+)]
+fn raw_reader_error(offset: usize, kind: MalformedKind) -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: offset as u64,
+        kind,
+    }
+}
+
+impl<'a> RawBitReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        raw_reader_from_input(
+            input,
+            limits.maximum_input_bytes(),
+            limits.maximum_work_units(),
+        )
+    }
+
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, raw_bit_reader_view(final(self)))
+                == crate::specs::part1_raw_reader_read(raw_bit_reader_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
         if self.bits_remaining == 0 {
             self.load_byte()?;
         }
         if self.bits_remaining == 0 || self.bits_remaining > 8 {
-            return Err(DecodeError::malformed(
-                self.next_index as u64,
+            return Err(raw_reader_error(
+                self.next_index,
                 MalformedKind::InvalidBitStuffing,
             ));
         }
-        self.bits_remaining = self.bits_remaining.checked_sub(1).ok_or_else(|| {
-            DecodeError::malformed(self.next_index as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        self.bits_remaining = self
+            .bits_remaining
+            .checked_sub(1)
+            .ok_or_else(|| raw_reader_error(self.next_index, MalformedKind::ArithmeticOverflow))?;
         let bit = (self.current_byte >> self.bits_remaining) & 1;
-        self.work_units = self.work_units.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(self.next_index as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        self.work_units = match self.work_units.checked_add(1) {
+            Some(work_units) => work_units,
+            None => {
+                return Err(raw_reader_error(
+                    self.next_index,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
         if self.work_units > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.work_units,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.work_units,
+            });
         }
         Ok(bit != 0)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == raw_bit_reader_view(self).next_index,)
+    )]
     pub const fn bytes_consumed(&self) -> usize {
         self.next_index
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == raw_bit_reader_view(self).marker_padding_count,)
+    )]
     pub const fn marker_padding_count(&self) -> u64 {
         self.marker_padding_count
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::part1_raw_reader_termination(raw_bit_reader_view(self)),
+        )
+    )]
     pub fn validate_predictable_termination(&self) -> Result<(), DecodeError> {
         if self.next_index == 0 {
-            return if self.input.len() == 1 && self.input[0] == 0x55 {
+            // A pass with no coded symbols need not emit a padding byte.
+            return if (self.input.is_empty() && self.work_units == 0)
+                || (self.input.len() == 1 && self.input[0] == 0x55)
+            {
                 Ok(())
             } else {
-                Err(invalid_code_block())
+                Err(raw_reader_error(0, MalformedKind::InvalidCodeBlock))
             };
         }
+        if self.bits_remaining == 0
+            && self.current_byte == 0xff
+            && self.next_index < self.input.len()
+            && self.next_index + 1 == self.input.len()
+            && self.input[self.next_index] == 0x2a
+        {
+            // ERTERM appends seven padding bits after a complete final 0xff.
+            return Ok(());
+        }
         if self.next_index != self.input.len() || self.bits_remaining > 8 {
-            return Err(invalid_code_block());
+            return Err(raw_reader_error(0, MalformedKind::InvalidCodeBlock));
         }
         if self.bits_remaining == 0 {
             return Ok(());
@@ -108,11 +206,18 @@ impl<'a> RawBitReader<'a> {
         let unread_mask = u8::MAX >> (8 - self.bits_remaining);
         let expected = 0x55_u8 >> (8 - self.bits_remaining);
         if self.current_byte & unread_mask != expected {
-            return Err(invalid_code_block());
+            return Err(raw_reader_error(0, MalformedKind::InvalidCodeBlock));
         }
         Ok(())
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, raw_bit_reader_view(final(self)))
+                == crate::specs::part1_raw_reader_load(raw_bit_reader_view(old(self))),
+        )
+    )]
     fn load_byte(&mut self) -> Result<(), DecodeError> {
         let next = if self.next_index < self.input.len() {
             self.input[self.next_index]
@@ -123,18 +228,20 @@ impl<'a> RawBitReader<'a> {
         if stuffed && next > 0x8f {
             self.current_byte = 0xff;
             self.bits_remaining = 8;
-            self.marker_padding_count =
-                self.marker_padding_count.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.next_index as u64,
+            self.marker_padding_count = match self.marker_padding_count.checked_add(1) {
+                Some(count) => count,
+                None => {
+                    return Err(raw_reader_error(
+                        self.next_index,
                         MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                    ));
+                }
+            };
             return Ok(());
         }
         if self.next_index < self.input.len() {
             self.next_index = self.next_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(self.next_index as u64, MalformedKind::ArithmeticOverflow)
+                raw_reader_error(self.next_index, MalformedKind::ArithmeticOverflow)
             })?;
         }
         self.current_byte = next;
@@ -2891,13 +2998,16 @@ impl Tier1CodeBlockDecoder {
         passes: u8,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
-        if input.is_empty() || passes == 0 {
+        if passes == 0 {
             return Err(invalid_code_block());
         }
         if matches!(self.style.block_coding, Tier1BlockCoding::HighThroughput)
             || (matches!(self.style.block_coding, Tier1BlockCoding::Mixed)
                 && self.ht_cleanup_plane.is_some())
         {
+            if input.is_empty() {
+                return Err(invalid_code_block());
+            }
             let grouping = HtPassGroup::from_packet_passes(passes)?;
             if grouping.refinement_passes != 0 {
                 return Err(invalid_code_block());
@@ -2931,7 +3041,8 @@ impl Tier1CodeBlockDecoder {
         pass_count: u32,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
-        if input.is_empty() || pass_count == 0 {
+        // Later terminated passes can carry no bytes; an initial empty block cannot.
+        if pass_count == 0 || (input.is_empty() && self.next_pass == 0) {
             return Err(invalid_code_block());
         }
         let next_pass = self
@@ -2958,6 +3069,12 @@ impl Tier1CodeBlockDecoder {
         }
         if next_pass > self.maximum_passes
             || self.style.segment_passes(self.next_pass, pass_count) != pass_count
+        {
+            return Err(invalid_code_block());
+        }
+        if input.is_empty()
+            && next_pass != self.maximum_passes
+            && !self.style.pass_plan(next_pass - 1).terminates_segment
         {
             return Err(invalid_code_block());
         }
@@ -2995,7 +3112,11 @@ impl Tier1CodeBlockDecoder {
             }
             self.mq_context_state = Some(decoder.context_state());
         } else {
-            let mut reader = RawBitReader::new(input, limits)?;
+            let mut reader = raw_reader_from_input(
+                input,
+                limits.maximum_input_bytes(),
+                limits.maximum_work_units(),
+            )?;
             let mut decoded = 0_u32;
             #[cfg_attr(
                 verus_keep_ghost,
@@ -4513,6 +4634,386 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn raw_token_oracle(input: &[u8], rank: usize) -> (bool, usize, u8, u8, u64) {
+        assert!(input.len() <= 2);
+        let remaining = |position: usize| u8::try_from(7 - position % 8).unwrap();
+        let bit = |byte: u8, position: usize| {
+            (u16::from(byte) / 2_u16.pow(u32::try_from(position).unwrap())) % 2 == 1
+        };
+        if input.is_empty() {
+            return (
+                true,
+                0,
+                0xff,
+                remaining(rank),
+                u64::try_from(rank / 8).unwrap(),
+            );
+        }
+        if rank < 8 {
+            return (bit(input[0], 7 - rank), 1, input[0], remaining(rank), 0);
+        }
+        if input.len() == 1 || (input[0] == 0xff && input[1] > 0x8f) {
+            let offset = rank - 8;
+            return (
+                true,
+                1,
+                0xff,
+                remaining(offset),
+                u64::try_from(offset / 8).unwrap() + u64::from(input[0] == 0xff),
+            );
+        }
+        let width = if input[0] == 0xff { 7 } else { 8 };
+        if rank < 8 + width {
+            let shift = width - 1 - (rank - 8);
+            return (
+                bit(input[1], shift),
+                2,
+                input[1],
+                u8::try_from(shift).unwrap(),
+                0,
+            );
+        }
+        let offset = rank - 8 - width;
+        (
+            true,
+            2,
+            0xff,
+            remaining(offset),
+            u64::try_from(offset / 8).unwrap() + u64::from(input[1] == 0xff),
+        )
+    }
+
+    fn check_raw_token_trace(input: &[u8]) {
+        let limits = ResourceLimits::default();
+        let mut reader = RawBitReader::new(input, &limits).unwrap();
+        for rank in 0..24 {
+            let (bit, next_index, current_byte, bits_remaining, marker_padding_count) =
+                raw_token_oracle(input, rank);
+            assert_eq!(reader.read_bit(), Ok(bit));
+            assert_eq!(
+                reader,
+                RawBitReader {
+                    input,
+                    next_index,
+                    current_byte,
+                    bits_remaining,
+                    marker_padding_count,
+                    work_units: u64::try_from(rank + 1).unwrap(),
+                    maximum_work_units: limits.maximum_work_units(),
+                },
+            );
+            assert_eq!(reader.bytes_consumed(), next_index);
+            assert_eq!(reader.marker_padding_count(), marker_padding_count);
+        }
+    }
+
+    #[test]
+    fn raw_reader_transitions_match_exhaustive_two_byte_token_oracle() {
+        check_raw_token_trace(&[]);
+        for first in 0..=u8::MAX {
+            check_raw_token_trace(&[first]);
+            for second in 0..=u8::MAX {
+                check_raw_token_trace(&[first, second]);
+            }
+        }
+    }
+
+    #[test]
+    fn raw_reader_limits_preserve_post_bit_counter_and_exact_state() {
+        for input in [
+            &[][..],
+            &[0][..],
+            &[0xff][..],
+            &[0xff, 0x7f][..],
+            &[0xff, 0x8f][..],
+            &[0xff, 0x90][..],
+            &[0x12, 0xff][..],
+        ] {
+            for maximum_work_units in 0..=20 {
+                let mut reader =
+                    raw_reader_from_input(input, u64::MAX, maximum_work_units).unwrap();
+                for rank in 0..24 {
+                    let work_units = u64::try_from(rank + 1).unwrap();
+                    let (bit, next_index, current_byte, bits_remaining, marker_padding_count) =
+                        raw_token_oracle(input, rank);
+                    let expected = if work_units <= maximum_work_units {
+                        Ok(bit)
+                    } else {
+                        Err(DecodeError::LimitExceeded {
+                            resource: Resource::WorkUnits,
+                            limit: maximum_work_units,
+                            actual: work_units,
+                        })
+                    };
+                    assert_eq!(reader.read_bit(), expected);
+                    assert_eq!(
+                        reader,
+                        RawBitReader {
+                            input,
+                            next_index,
+                            current_byte,
+                            bits_remaining,
+                            marker_padding_count,
+                            work_units,
+                            maximum_work_units,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn raw_reader_overflow_and_invalid_state_errors_preserve_complete_state() {
+        let mut work = raw_reader_from_input(&[0xa5], u64::MAX, u64::MAX).unwrap();
+        work.work_units = u64::MAX;
+        let mut expected = work;
+        expected.next_index = 1;
+        expected.current_byte = 0xa5;
+        expected.bits_remaining = 7;
+        assert_eq!(
+            work.read_bit(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::ArithmeticOverflow,
+            }),
+        );
+        assert_eq!(work, expected);
+
+        let mut padding = raw_reader_from_input(&[0xff, 0x90], u64::MAX, 5).unwrap();
+        padding.next_index = 1;
+        padding.current_byte = 0xff;
+        padding.marker_padding_count = u64::MAX;
+        padding.work_units = 5;
+        let mut expected = padding;
+        expected.bits_remaining = 8;
+        assert_eq!(
+            padding.read_bit(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::ArithmeticOverflow,
+            }),
+        );
+        assert_eq!(padding, expected);
+        expected.bits_remaining = 7;
+        expected.work_units = 6;
+        assert_eq!(
+            padding.read_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 5,
+                actual: 6,
+            }),
+        );
+        assert_eq!(padding, expected);
+
+        for bits_remaining in [9, u8::MAX] {
+            let mut invalid = raw_reader_from_input(&[], u64::MAX, u64::MAX).unwrap();
+            invalid.bits_remaining = bits_remaining;
+            let expected = invalid;
+            assert_eq!(
+                invalid.read_bit(),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidBitStuffing,
+                }),
+            );
+            assert_eq!(invalid, expected);
+        }
+        let mut past = raw_reader_from_input(&[], u64::MAX, 1).unwrap();
+        past.next_index = usize::MAX;
+        let mut expected = past;
+        expected.current_byte = 0xff;
+        expected.bits_remaining = 7;
+        expected.work_units = 1;
+        assert_eq!(past.read_bit(), Ok(true));
+        assert_eq!(past, expected);
+    }
+
+    #[test]
+    fn raw_reader_initial_input_limits_match_exact_claims() {
+        let bytes = [1, 2];
+        for length in 0..=2 {
+            for limit in 0..=2 {
+                let input = &bytes[..length];
+                let result = raw_reader_from_input(input, limit, 17);
+                if u64::try_from(length).unwrap() > limit {
+                    assert_eq!(
+                        result,
+                        Err(DecodeError::LimitExceeded {
+                            resource: Resource::InputBytes,
+                            limit,
+                            actual: u64::try_from(length).unwrap(),
+                        }),
+                    );
+                } else {
+                    assert_eq!(
+                        result,
+                        Ok(RawBitReader {
+                            input,
+                            next_index: 0,
+                            current_byte: 0,
+                            bits_remaining: 0,
+                            marker_padding_count: 0,
+                            work_units: 0,
+                            maximum_work_units: 17,
+                        }),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn raw_reader_termination_matches_independent_alternating_suffix_arithmetic() {
+        let limits = ResourceLimits::default();
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        });
+        for byte in 0..=u8::MAX {
+            let input = [byte];
+            let mut reader = RawBitReader::new(&input, &limits).unwrap();
+            assert_eq!(
+                reader.validate_predictable_termination(),
+                if byte == 0x55 { Ok(()) } else { invalid },
+            );
+            for consumed in 1..=8 {
+                reader.read_bit().unwrap();
+                let tail_modulus = 2_u16.pow(8 - consumed);
+                let valid = u16::from(byte) % tail_modulus == (tail_modulus - 1) / 3;
+                assert_eq!(
+                    reader.validate_predictable_termination(),
+                    if valid { Ok(()) } else { invalid },
+                );
+            }
+        }
+        let mut empty = RawBitReader::new(&[], &limits).unwrap();
+        assert_eq!(empty.validate_predictable_termination(), Ok(()));
+        empty.read_bit().unwrap();
+        assert_eq!(empty.validate_predictable_termination(), invalid);
+        let mut unread = RawBitReader::new(&[0x55, 0x55], &limits).unwrap();
+        unread.read_bit().unwrap();
+        assert_eq!(unread.validate_predictable_termination(), invalid);
+        let mut marker = RawBitReader::new(&[0xff, 0x90], &limits).unwrap();
+        for _ in 0..24 {
+            marker.read_bit().unwrap();
+            assert_eq!(marker.validate_predictable_termination(), invalid);
+        }
+    }
+
+    #[test]
+    fn later_empty_terminated_mq_pass_preserves_real_pass_accounting() {
+        let style = Tier1CodingStyle::from_code_block_style(0x14).unwrap();
+        let limits = ResourceLimits::default();
+        let mut decoder =
+            Tier1CodeBlockDecoder::new(1, 1, 2, SubbandOrientation::Ll, style).unwrap();
+        decoder.next_pass = 1;
+        decoder.bitplane = 0;
+        let plane = decoder.plane.clone();
+        let result = decoder.decode_segment(&[], 1, &limits).unwrap();
+        assert_eq!(result.passes, 1);
+        assert_eq!(result.bytes, 0);
+        assert_eq!(result.statistics.coding_symbols, 0);
+        assert_eq!(result.statistics.coefficients_scanned, 1);
+        assert_eq!(decoder.next_pass, 2);
+        assert_eq!(decoder.decoded_segments, 1);
+        assert_eq!(decoder.decoded_bytes, 0);
+        assert_eq!(decoder.plane, plane);
+        assert!(decoder.mq_context_state.is_some());
+        assert!(
+            decoder
+                .bitplane_state
+                .as_ref()
+                .unwrap()
+                .significance_propagation_complete()
+        );
+    }
+
+    #[test]
+    fn empty_initial_and_unterminated_legacy_segments_remain_invalid() {
+        let limits = ResourceLimits::default();
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        });
+        for style in [
+            Tier1CodingStyle::default(),
+            Tier1CodingStyle::from_code_block_style(0x14).unwrap(),
+        ] {
+            let mut initial =
+                Tier1CodeBlockDecoder::new(1, 1, 2, SubbandOrientation::Ll, style).unwrap();
+            assert_eq!(initial.decode_segment(&[], 1, &limits), invalid);
+            assert_eq!(initial.next_pass, 0);
+            assert_eq!(initial.decoded_segments, 0);
+            assert_eq!(initial.decoded_bytes, 0);
+        }
+        let mut unfinished = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            2,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        unfinished.next_pass = 1;
+        unfinished.bitplane = 0;
+        assert_eq!(unfinished.decode_segment(&[], 1, &limits), invalid);
+        assert_eq!(unfinished.next_pass, 1);
+        assert_eq!(unfinished.decoded_segments, 0);
+        assert_eq!(unfinished.decoded_bytes, 0);
+    }
+
+    #[test]
+    fn empty_raw_predictable_termination_requires_no_consumed_symbols() {
+        let limits = ResourceLimits::default();
+        let mut reader = RawBitReader::new(&[], &limits).unwrap();
+        assert_eq!(reader.validate_predictable_termination(), Ok(()));
+        reader.read_bit().unwrap();
+        assert_eq!(
+            reader.validate_predictable_termination(),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            }),
+        );
+        assert_eq!(reader.bytes_consumed(), 0);
+        assert_eq!(reader.work_units, 1);
+    }
+
+    #[test]
+    fn raw_predictable_termination_checks_the_exact_stuffed_ff_tail() {
+        let limits = ResourceLimits::default();
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        });
+        for first in 0..=u8::MAX {
+            for tail in 0..=u8::MAX {
+                let input = [first, tail];
+                let mut reader = RawBitReader::new(&input, &limits).unwrap();
+                for _ in 0..8 {
+                    reader.read_bit().unwrap();
+                }
+                assert_eq!(
+                    reader.validate_predictable_termination(),
+                    if first == 0xff && tail == 0x2a {
+                        Ok(())
+                    } else {
+                        invalid
+                    },
+                );
+                assert_eq!(reader.bytes_consumed(), 1);
+                assert_eq!(reader.work_units, 8);
+            }
+        }
+        let mut partial = RawBitReader::new(&[0xff, 0x2a], &limits).unwrap();
+        for _ in 0..7 {
+            partial.read_bit().unwrap();
+            assert_eq!(partial.validate_predictable_termination(), invalid);
+        }
+    }
 
     #[test]
     fn ht_cleanup_u_bound_includes_packet_msbs_and_placeholders() {
