@@ -5311,6 +5311,8 @@ impl Tier1CodeBlockDecoder {
     ) -> Result<(u32, u32, u32), DecodeError> {
         #[cfg(verus_keep_ghost)]
         proof! { reveal(crate::specs::part1_legacy_contribution_admission); }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = tier1_decoder_state(self); }
         if passes == 0 {
             return Err(invalid_code_block());
         }
@@ -5331,27 +5333,20 @@ impl Tier1CodeBlockDecoder {
         }
         .checked_add(u32::from(passes))
         .ok_or_else(arithmetic_overflow)?;
-        let base_work =
-            match (self.plane.coefficients().len() as u64).checked_mul(u64::from(replay_passes)) {
-                Some(work) => work,
-                None => return Err(arithmetic_overflow()),
-            };
-        let input_work = match base_work.checked_add(next_bytes) {
-            Some(work) => work,
-            None => return Err(arithmetic_overflow()),
-        };
-        let work = match input_work.checked_add(self.legacy_decode_work) {
-            Some(work) => work,
-            None => return Err(arithmetic_overflow()),
-        };
-        if work > limits.maximum_work_units() {
-            return Err(crate::mq::mq_limit(
-                Resource::WorkUnits,
-                limits.maximum_work_units(),
-                work,
-            ));
-        }
+        let work = legacy_contribution_work(
+            self.plane.coefficients().len(),
+            replay_passes,
+            next_bytes,
+            self.legacy_decode_work,
+            limits.maximum_work_units(),
+        )?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(tier1_decoder_state(self) == before); }
         self.legacy_decode_work = work;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(tier1_decoder_state(self) == (crate::specs::Tier1DecoderState { legacy_decode_work: work, ..before }));
+        }
         let next_pass = self
             .next_pass
             .checked_add(u32::from(passes))
@@ -6323,6 +6318,36 @@ impl Tier1CodeBlockDecoder {
         }
         Ok(())
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_contribution_work(samples as nat, replay, bytes, previous, maximum),
+))]
+fn legacy_contribution_work(
+    samples: usize,
+    replay: u32,
+    bytes: u64,
+    previous: u64,
+    maximum: u64,
+) -> Result<u64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_contribution_work); }
+    let base_work = match (samples as u64).checked_mul(u64::from(replay)) {
+        Some(work) => work,
+        None => return Err(arithmetic_overflow()),
+    };
+    let input_work = match base_work.checked_add(bytes) {
+        Some(work) => work,
+        None => return Err(arithmetic_overflow()),
+    };
+    let work = match input_work.checked_add(previous) {
+        Some(work) => work,
+        None => return Err(arithmetic_overflow()),
+    };
+    if work > maximum {
+        return Err(crate::mq::mq_limit(Resource::WorkUnits, maximum, work));
+    }
+    Ok(work)
 }
 
 impl Tier1BitplaneState {
@@ -8198,6 +8223,42 @@ mod tests {
         expected.decoded_bytes = 1;
         expected.reset_contexts_before_mq = reset;
         expected
+    }
+
+    #[test]
+    fn legacy_contribution_work_phase_matches_wide_native_extrema_and_error_priority() {
+        let words = [0, 1, 255, 65_535, u64::MAX - 1, u64::MAX];
+        for samples in [0, 1, 2, 3, usize::MAX] {
+            for replay in [0, 1, 2, 3, u32::MAX] {
+                for bytes in words {
+                    for previous in words {
+                        for maximum in words {
+                            let wide = samples as u128 * u128::from(replay)
+                                + u128::from(bytes)
+                                + u128::from(previous);
+                            let expected = if wide > u128::from(u64::MAX) {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                })
+                            } else if wide > u128::from(maximum) {
+                                Err(DecodeError::LimitExceeded {
+                                    resource: Resource::WorkUnits,
+                                    limit: maximum,
+                                    actual: wide as u64,
+                                })
+                            } else {
+                                Ok(wide as u64)
+                            };
+                            assert_eq!(
+                                legacy_contribution_work(samples, replay, bytes, previous, maximum),
+                                expected
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

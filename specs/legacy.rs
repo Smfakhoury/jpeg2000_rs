@@ -927,6 +927,19 @@ pub open spec fn part1_legacy_segment(
 }
 
 #[verifier::opaque]
+pub open spec fn part1_legacy_contribution_work(
+    samples: nat, replay: u32, bytes: u64, previous: u64, maximum: u64,
+) -> Result<u64, crate::DecodeError> {
+    let base = samples * replay as nat;
+    if base > u64::MAX || base + bytes as nat > u64::MAX || base + bytes as nat + previous as nat > u64::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let work = (base + bytes as nat + previous as nat) as u64;
+        if work > maximum { Err(part1_mq_limit(crate::Resource::WorkUnits, maximum, work)) } else { Ok(work) }
+    }
+}
+
+#[verifier::opaque]
 pub open spec fn part1_legacy_contribution_admission(
     s: Tier1DecoderState, input: Seq<u8>, passes: u8, byte_limit: u64, work_limit: u64,
 ) -> (Result<(u32, u32, u32), crate::DecodeError>, Tier1DecoderState) {
@@ -940,14 +953,9 @@ pub open spec fn part1_legacy_contribution_admission(
             if previous as nat + passes as nat > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
             else {
                 let replay = (previous + passes) as u32;
-                let base_work = s.plane.coefficients.len() * replay as nat;
-                if base_work > u64::MAX || base_work + bytes as nat > u64::MAX
-                    || base_work + bytes as nat + s.legacy_decode_work as nat > u64::MAX {
-                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s)
-                } else {
-                    let work = (base_work + bytes as nat + s.legacy_decode_work as nat) as u64;
-                    if work > work_limit { (Err(part1_mq_limit(crate::Resource::WorkUnits, work_limit, work)), s) }
-                    else {
+                match part1_legacy_contribution_work(s.plane.coefficients.len(), replay, bytes, s.legacy_decode_work, work_limit) {
+                    Err(error) => (Err(error), s),
+                    Ok(work) => {
                         let s = Tier1DecoderState { legacy_decode_work: work, ..s };
                         if s.next_pass as nat + passes as nat > u32::MAX {
                             (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s)
@@ -956,7 +964,7 @@ pub open spec fn part1_legacy_contribution_admission(
                             if next == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s) }
                             else { (Ok((replay, next, (next - 1) as u32)), s) }
                         }
-                    }
+                    },
                 }
             }
         }
