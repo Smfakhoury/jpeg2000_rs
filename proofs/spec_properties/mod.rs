@@ -32,6 +32,93 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn ht_reverse_vlc_budget_failure_precedes_eager_load(state: crate::specs::HtReverseVlcState)
+    requires state.has_byte, state.next_bit < 8, state.bits_read < u64::MAX,
+        state.bits_read >= state.maximum_work_units,
+    ensures crate::specs::ht_reverse_vlc_read(state) == (
+        Err(crate::specs::ht_reader_work_error(state.maximum_work_units, (state.bits_read + 1) as u64)),
+        crate::specs::HtReverseVlcState {
+            next_bit: (state.next_bit + 1) as u8, bits_read: (state.bits_read + 1) as u64, ..state
+        },
+    ),
+{
+}
+
+pub proof fn ht_cleanup_vlc_collision_does_not_consume(state: crate::specs::HtCleanupReaderState, position: (u16, u8))
+    requires crate::specs::ht_reverse_vlc_position(state.vlc) == Some(position),
+        !crate::specs::ht_cleanup_reader_can_claim(state, false, position.0),
+    ensures crate::specs::ht_cleanup_reader_read_vlc(state)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+{
+}
+
+pub proof fn ht_cleanup_outer_budget_failure_retains_inner_bit_and_claim(
+    state: crate::specs::HtCleanupReaderState, position: (u16, u8), bit: bool,
+    consumed: crate::specs::HtReverseVlcState,
+)
+    requires crate::specs::ht_reverse_vlc_position(state.vlc) == Some(position),
+        crate::specs::ht_cleanup_reader_can_claim(state, false, position.0),
+        crate::specs::ht_reverse_vlc_read(state.vlc) == (Ok(bit), consumed),
+        state.work_units < u64::MAX, state.work_units >= state.maximum_work_units,
+    ensures crate::specs::ht_cleanup_reader_read_vlc(state) == (
+        Err(crate::specs::ht_reader_work_error(state.maximum_work_units, (state.work_units + 1) as u64)),
+        crate::specs::HtCleanupReaderState {
+            vlc: consumed, vlc_last_byte: Some(position.0),
+            work_units: (state.work_units + 1) as u64, ..state
+        },
+    ),
+{
+}
+
+pub proof fn ht_reverse_vlc_counter_overflow_preserves_advanced_cursor(state: crate::specs::HtReverseVlcState)
+    requires state.has_byte, state.next_bit < 8, state.bits_read == u64::MAX,
+    ensures crate::specs::ht_reverse_vlc_read(state) == (
+        Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+        crate::specs::HtReverseVlcState { next_bit: (state.next_bit + 1) as u8, ..state },
+    ),
+{
+}
+
+pub proof fn ht_mel_stuffing_failure_is_atomic(state: crate::specs::HtMelState)
+    requires state.next_bit < 0, state.next_byte < state.input.len(),
+        state.previous_was_ff, state.input[state.next_byte as int] > 0x8f,
+    ensures crate::specs::ht_mel_read(state) == (
+        Err(crate::DecodeError::MalformedInput {
+            offset: state.next_byte as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+        }), state,
+    ),
+{
+    let value = state.input[state.next_byte as int];
+    assert((value | 0x0fu8) > 0x8f) by (bit_vector)
+        requires value > 0x8f;
+}
+
+pub proof fn ht_mel_prefix_first_error_is_absorbing(
+    state: crate::specs::HtMelState, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end, crate::specs::ht_mel_prefix(state, count).0 == Err(error),
+    ensures crate::specs::ht_mel_prefix(state, end) == crate::specs::ht_mel_prefix(state, count),
+    decreases end - count,
+{
+    if end > count {
+        ht_mel_prefix_first_error_is_absorbing(state, count, (end - 1) as nat, error);
+        crate::proofs::production_impl::production_ht_mel_prefix_step(state, (end - 1) as nat);
+    }
+}
+
+pub proof fn ht_reverse_vlc_prefix_first_error_is_absorbing(
+    state: crate::specs::HtReverseVlcState, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end, crate::specs::ht_reverse_vlc_prefix(state, count).0 == Err(error),
+    ensures crate::specs::ht_reverse_vlc_prefix(state, end) == crate::specs::ht_reverse_vlc_prefix(state, count),
+    decreases end - count,
+{
+    if end > count {
+        ht_reverse_vlc_prefix_first_error_is_absorbing(state, count, (end - 1) as nat, error);
+        crate::proofs::production_impl::production_ht_reverse_vlc_prefix_step(state, (end - 1) as nat);
+    }
+}
+
 pub proof fn normalized_composition_domain_matches_binary_width()
     ensures
         crate::specs::PART2_NORMALIZED_SAMPLE_MAX as nat + 1

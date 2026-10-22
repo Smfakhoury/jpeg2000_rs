@@ -543,25 +543,66 @@ pub struct HtMelBitReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtMelBitReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.is_empty() || input.len() > MAX_HT_SCUP - 1 {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_mel_view(reader: &HtMelBitReader<'_>) -> crate::specs::HtMelState {
+        crate::specs::HtMelState {
+            input: reader.input@, next_byte: reader.next_byte, current_byte: reader.current_byte,
+            value: reader.value, next_bit: reader.next_bit, previous_was_ff: reader.previous_was_ff,
+            bits_read: reader.bits_read, maximum_work_units: reader.maximum_work_units,
         }
-        let mut reader = Self {
-            input,
-            next_byte: 0,
-            current_byte: 0,
-            value: 0,
-            next_bit: -1,
-            previous_was_ff: false,
-            bits_read: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        };
-        reader.load_byte()?;
-        Ok(reader)
     }
 
+    #[verifier::inline]
+    spec fn ht_mel_outcome(result: Result<HtMelBitReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtMelState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_mel_view(&reader)), Err(error) => Err(error) }
+    }
+
+    pub closed spec fn ht_position_view(position: Option<HtBitPosition>) -> Option<(u16, u8)> {
+        match position { Some(position) => Some((position.byte, position.bit)), None => None }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_mel_outcome(result) == crate::specs::ht_mel_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_mel_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtMelBitReader<'_>, DecodeError> {
+    if input.is_empty() || input.len() > MAX_HT_SCUP - 1 {
+        return Err(invalid_code_block());
+    }
+    let mut reader = HtMelBitReader {
+        input,
+        next_byte: 0,
+        current_byte: 0,
+        value: 0,
+        next_bit: -1,
+        previous_was_ff: false,
+        bits_read: 0,
+        maximum_work_units,
+    };
+    reader.load_byte()?;
+    Ok(reader)
+}
+
+impl<'a> HtMelBitReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_mel_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures ht_position_view(result) == crate::specs::ht_mel_position(ht_mel_view(self)),
+        )
+    )]
     pub fn next_position(&self) -> Option<HtBitPosition> {
         if self.next_bit < 0 {
             None
@@ -573,10 +614,20 @@ impl<'a> HtMelBitReader<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result => ensures result == ht_mel_view(self).bits_read,)
+    )]
     pub const fn bits_read(&self) -> u64 {
         self.bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_mel_view(final(self))) == crate::specs::ht_mel_read(ht_mel_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
         if self.next_bit < 0 {
             self.load_byte()?;
@@ -595,15 +646,21 @@ impl<'a> HtMelBitReader<'a> {
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.bits_read > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.bits_read,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.bits_read,
+            });
         }
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_mel_view(final(self))) == crate::specs::ht_mel_load(ht_mel_view(old(self))),
+        )
+    )]
     fn load_byte(&mut self) -> Result<(), DecodeError> {
         if self.next_byte >= self.input.len() {
             self.next_bit = -1;
@@ -615,10 +672,10 @@ impl<'a> HtMelBitReader<'a> {
             value |= 0x0f;
         }
         if !crate::refinement::ht_mel_stuffing_valid(self.previous_was_ff, value) {
-            return Err(DecodeError::malformed(
-                index as u64,
-                MalformedKind::InvalidBitStuffing,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: index as u64,
+                kind: MalformedKind::InvalidBitStuffing,
+            });
         }
         self.current_byte = index;
         self.value = value;
@@ -646,27 +703,65 @@ pub struct HtReverseVlcReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtReverseVlcReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.len() < 2 || input.len() > MAX_HT_SCUP {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_reverse_vlc_view(reader: &HtReverseVlcReader<'_>) -> crate::specs::HtReverseVlcState {
+        crate::specs::HtReverseVlcState {
+            input: reader.input@, current_byte: reader.current_byte, value: reader.value,
+            next_bit: reader.next_bit, last_bit: reader.last_bit, has_byte: reader.has_byte,
+            later_byte_requires_unstuffing: reader.later_byte_requires_unstuffing,
+            bits_read: reader.bits_read, maximum_work_units: reader.maximum_work_units,
         }
-        let current_byte = input.len().checked_sub(2).ok_or_else(arithmetic_overflow)?;
-        let value = *input.get(current_byte).ok_or_else(invalid_code_block)?;
-        let nibble = value >> 4;
-        Ok(Self {
-            input,
-            current_byte,
-            value,
-            next_bit: 4,
-            last_bit: if nibble & 0x07 == 0x07 { 6 } else { 7 },
-            has_byte: true,
-            later_byte_requires_unstuffing: value | 0x0f > 0x8f,
-            bits_read: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
     }
 
+    #[verifier::inline]
+    spec fn ht_reverse_vlc_outcome(result: Result<HtReverseVlcReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtReverseVlcState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_reverse_vlc_view(&reader)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_reverse_vlc_outcome(result) == crate::specs::ht_reverse_vlc_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_reverse_vlc_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtReverseVlcReader<'_>, DecodeError> {
+    if input.len() < 2 || input.len() > MAX_HT_SCUP {
+        return Err(invalid_code_block());
+    }
+    let current_byte = input.len().checked_sub(2).ok_or_else(arithmetic_overflow)?;
+    let value = *input.get(current_byte).ok_or_else(invalid_code_block)?;
+    let nibble = value >> 4;
+    Ok(HtReverseVlcReader {
+        input,
+        current_byte,
+        value,
+        next_bit: 4,
+        last_bit: if nibble & 0x07 == 0x07 { 6 } else { 7 },
+        has_byte: true,
+        later_byte_requires_unstuffing: value | 0x0f > 0x8f,
+        bits_read: 0,
+        maximum_work_units,
+    })
+}
+
+impl<'a> HtReverseVlcReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_reverse_vlc_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures ht_position_view(result) == crate::specs::ht_reverse_vlc_position(ht_reverse_vlc_view(self)),
+        )
+    )]
     pub fn next_position(&self) -> Option<HtBitPosition> {
         if !self.has_byte {
             None
@@ -678,10 +773,21 @@ impl<'a> HtReverseVlcReader<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result => ensures result == ht_reverse_vlc_view(self).bits_read,)
+    )]
     pub const fn bits_read(&self) -> u64 {
         self.bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_vlc_view(final(self)))
+                == crate::specs::ht_reverse_vlc_read(ht_reverse_vlc_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
         if !self.has_byte || self.next_bit >= 8 {
             return Err(invalid_code_block());
@@ -696,11 +802,11 @@ impl<'a> HtReverseVlcReader<'a> {
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.bits_read > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.bits_read,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.bits_read,
+            });
         }
         if self.next_bit > self.last_bit {
             self.load_previous_byte()?;
@@ -708,6 +814,13 @@ impl<'a> HtReverseVlcReader<'a> {
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_vlc_view(final(self)))
+                == crate::specs::ht_reverse_vlc_load(ht_reverse_vlc_view(old(self))),
+        )
+    )]
     fn load_previous_byte(&mut self) -> Result<(), DecodeError> {
         if self.current_byte == 0 {
             self.has_byte = false;
@@ -1401,46 +1514,104 @@ struct HtCleanupReaders<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtCleanupReaders<'a> {
-    fn new(segment: HtCleanupSegment<'a>, limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        Ok(Self {
-            mel: HtMelBitReader::new(segment.mel().bytes(), limits)?,
-            vlc: HtReverseVlcReader::new(segment.vlc().bytes(), limits)?,
-            mel_last_byte: None,
-            vlc_last_byte: None,
-            terminal_byte: u16::try_from(
-                segment
-                    .vlc()
-                    .bytes()
-                    .len()
-                    .checked_sub(2)
-                    .ok_or_else(invalid_code_block)?,
-            )
-            .map_err(|_| arithmetic_overflow())?,
-            mel_state: 0,
-            mel_zero_events: 0,
-            mel_terminating_one: false,
-            mel_events: 0,
-            work_units: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn ht_cleanup_readers_view(readers: &HtCleanupReaders<'_>) -> crate::specs::HtCleanupReaderState {
+        crate::specs::HtCleanupReaderState {
+            mel: ht_mel_view(&readers.mel), vlc: ht_reverse_vlc_view(&readers.vlc),
+            mel_last_byte: readers.mel_last_byte, vlc_last_byte: readers.vlc_last_byte,
+            terminal_byte: readers.terminal_byte, mel_state: readers.mel_state,
+            mel_zero_events: readers.mel_zero_events, mel_terminating_one: readers.mel_terminating_one,
+            mel_events: readers.mel_events, work_units: readers.work_units,
+            maximum_work_units: readers.maximum_work_units,
+        }
     }
 
+    pub closed spec fn ht_direction_forward(direction: HtStreamDirection) -> bool {
+        matches!(direction, HtStreamDirection::Forward)
+    }
+
+    #[verifier::inline]
+    spec fn ht_cleanup_readers_outcome(result: Result<HtCleanupReaders<'_>, DecodeError>)
+        -> Result<crate::specs::HtCleanupReaderState, DecodeError>
+    {
+        match result { Ok(readers) => Ok(ht_cleanup_readers_view(&readers)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_cleanup_readers_outcome(result) == crate::specs::ht_cleanup_readers_initial(
+            mel_input@, vlc_input@, maximum_work_units,
+        ),
+    )
+)]
+fn ht_cleanup_readers_from_inputs<'a>(
+    mel_input: &'a [u8],
+    vlc_input: &'a [u8],
+    maximum_work_units: u64,
+) -> Result<HtCleanupReaders<'a>, DecodeError> {
+    Ok(HtCleanupReaders {
+        mel: ht_mel_from_input(mel_input, maximum_work_units)?,
+        vlc: ht_reverse_vlc_from_input(vlc_input, maximum_work_units)?,
+        mel_last_byte: None,
+        vlc_last_byte: None,
+        terminal_byte: u16::try_from(
+            vlc_input
+                .len()
+                .checked_sub(2)
+                .ok_or_else(invalid_code_block)?,
+        )
+        .map_err(|_| arithmetic_overflow())?,
+        mel_state: 0,
+        mel_zero_events: 0,
+        mel_terminating_one: false,
+        mel_events: 0,
+        work_units: 0,
+        maximum_work_units,
+    })
+}
+
+impl<'a> HtCleanupReaders<'a> {
+    fn new(segment: HtCleanupSegment<'a>, limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_cleanup_readers_from_inputs(
+            segment.mel().bytes(),
+            segment.vlc().bytes(),
+            limits.maximum_work_units(),
+        )
+    }
+
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_reader_tick(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn tick(&mut self) -> Result<(), DecodeError> {
         self.work_units = self
             .work_units
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.work_units > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.work_units,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.work_units,
+            });
         }
         Ok(())
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::ht_cleanup_reader_can_claim(
+                ht_cleanup_readers_view(self), ht_direction_forward(direction), byte,
+            ),
+        )
+    )]
     fn can_claim_byte(&self, direction: HtStreamDirection, byte: u16) -> bool {
         let value = match self.vlc.input.get(usize::from(byte)) {
             Some(value) => *value,
@@ -1468,6 +1639,13 @@ impl<'a> HtCleanupReaders<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_reader_read_mel(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn read_mel_bit(&mut self) -> Result<bool, DecodeError> {
         if self.mel.next_position().is_none() {
             self.mel.load_byte()?;
@@ -1482,6 +1660,13 @@ impl<'a> HtCleanupReaders<'a> {
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_reader_read_vlc(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn read_vlc_bit(&mut self) -> Result<bool, DecodeError> {
         let position = self.vlc.next_position().ok_or_else(invalid_code_block)?;
         if !self.can_claim_byte(HtStreamDirection::Reverse, position.byte) {
@@ -4193,12 +4378,26 @@ const fn is_bitplane_mask(bitplane_mask: u64) -> bool {
     bitplane_mask != 0 && bitplane_mask & (bitplane_mask - 1) == 0
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_reader_error(MalformedKind::InvalidCodeBlock),)
+)]
 fn invalid_code_block() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidCodeBlock)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidCodeBlock,
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_reader_error(MalformedKind::ArithmeticOverflow),)
+)]
 fn arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
 }
 
 pub fn apply_significance_decision(
@@ -5237,6 +5436,343 @@ mod tests {
         );
         assert_eq!(metadata.mel_bits, 1);
         assert_eq!(metadata.vlc_bits, 4);
+    }
+
+    #[test]
+    fn ht_cleanup_pair_collision_precedes_bit_and_outer_budget_follows_claim() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0x21, 0], &[0x7f, 0x90, 0], 20).unwrap();
+        readers.mel_last_byte = Some(1);
+        let before_mel = readers.mel;
+        let before_vlc = readers.vlc;
+        assert_eq!(readers.read_vlc_bit(), Err(invalid_code_block()));
+        assert_eq!(readers.mel, before_mel);
+        assert_eq!(readers.vlc, before_vlc);
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.terminal_byte,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events
+            ),
+            (Some(1), None, 1, 0, 20, 0, 0, false, 0),
+        );
+
+        let mut readers = ht_cleanup_readers_from_inputs(&[0x21, 0], &[0x7f, 0x90, 0], 1).unwrap();
+        readers.work_units = 1;
+        let before_mel = readers.mel;
+        assert_eq!(
+            readers.read_vlc_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(readers.mel, before_mel);
+        assert_eq!(
+            (
+                readers.vlc.current_byte,
+                readers.vlc.value,
+                readers.vlc.next_bit,
+                readers.vlc.last_bit,
+                readers.vlc.has_byte,
+                readers.vlc.later_byte_requires_unstuffing,
+                readers.vlc.bits_read,
+                readers.vlc.maximum_work_units
+            ),
+            (1, 0x90, 5, 7, true, true, 1, 1),
+        );
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.terminal_byte,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events
+            ),
+            (None, Some(1), 1, 2, 1, 0, 0, false, 0),
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_pair_inner_failure_preserves_claims_and_outer_counter() {
+        let mut readers =
+            ht_cleanup_readers_from_inputs(&[0xff, 0x90], &[0x7f, 0x90, 0], 20).unwrap();
+        for _ in 0..8 {
+            assert_eq!(readers.read_mel_bit(), Ok(true));
+        }
+        let before_mel = readers.mel;
+        let before_vlc = readers.vlc;
+        assert_eq!(
+            readers.read_mel_bit(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing,
+            })
+        );
+        assert_eq!(readers.mel, before_mel);
+        assert_eq!(readers.vlc, before_vlc);
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.terminal_byte,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events
+            ),
+            (Some(0), None, 1, 8, 20, 0, 0, false, 0),
+        );
+
+        let mut readers = ht_cleanup_readers_from_inputs(&[0x21, 0], &[0x7f, 0x90, 0], 1).unwrap();
+        assert_eq!(readers.read_vlc_bit(), Ok(true));
+        assert_eq!(
+            readers.read_vlc_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            (
+                readers.vlc.next_bit,
+                readers.vlc.bits_read,
+                readers.vlc_last_byte,
+                readers.work_units
+            ),
+            (6, 2, Some(1), 1)
+        );
+    }
+
+    #[test]
+    fn ht_reverse_vlc_fixed_stream_has_exact_terminal_and_stuffed_cursors() {
+        let mut reader =
+            HtReverseVlcReader::new(&[0x7f, 0x90, 0x00], &ResourceLimits::default()).unwrap();
+        for (index, expected) in [
+            true, false, false, true, true, true, true, true, true, true, true,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(reader.read_bit(), Ok(expected));
+            assert_eq!(reader.bits_read(), index as u64 + 1);
+            if index == 3 {
+                assert_eq!(
+                    (
+                        reader.current_byte,
+                        reader.value,
+                        reader.next_bit,
+                        reader.last_bit,
+                        reader.has_byte,
+                        reader.later_byte_requires_unstuffing
+                    ),
+                    (0, 0x7f, 0, 6, true, false),
+                );
+            }
+        }
+        assert_eq!(
+            (
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.last_bit,
+                reader.has_byte,
+                reader.later_byte_requires_unstuffing,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (0, 0x7f, 7, 6, false, false, 11, 1_000_000_000),
+        );
+        let exhausted = reader;
+        assert_eq!(reader.next_position(), None);
+        assert_eq!(reader.read_bit(), Err(invalid_code_block()));
+        assert_eq!(reader, exhausted);
+
+        let mut terminal = HtReverseVlcReader::new(&[0x70, 0], &ResourceLimits::default()).unwrap();
+        assert_eq!(terminal.last_bit, 6);
+        assert_eq!(terminal.read_bit(), Ok(true));
+        assert_eq!(terminal.read_bit(), Ok(true));
+        assert_eq!(terminal.read_bit(), Ok(true));
+        assert_eq!(
+            (terminal.next_bit, terminal.has_byte, terminal.bits_read),
+            (7, false, 3)
+        );
+    }
+
+    #[test]
+    fn ht_reverse_vlc_first_budget_error_does_not_eagerly_load() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(3)
+            .unwrap();
+        let mut reader = HtReverseVlcReader::new(&[0x7f, 0x90, 0], &limits).unwrap();
+        assert_eq!(reader.read_bit(), Ok(true));
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(
+            reader.read_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 3,
+                actual: 4,
+            })
+        );
+        assert_eq!(
+            (
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.last_bit,
+                reader.has_byte,
+                reader.later_byte_requires_unstuffing,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (1, 0x90, 8, 7, true, true, 4, 3),
+        );
+        assert_eq!(
+            reader.next_position(),
+            Some(HtBitPosition { byte: 1, bit: 8 })
+        );
+        let failed = reader;
+        assert_eq!(reader.read_bit(), Err(invalid_code_block()));
+        assert_eq!(reader, failed);
+    }
+
+    #[test]
+    fn ht_cleanup_reader_overflow_keeps_the_exact_partial_cursor_update() {
+        let limits = ResourceLimits::default();
+        let mut reverse = HtReverseVlcReader::new(&[0x90, 0], &limits).unwrap();
+        reverse.bits_read = u64::MAX;
+        let mut expected = reverse;
+        expected.next_bit = 5;
+        assert_eq!(reverse.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(reverse, expected);
+
+        let mut mel = HtMelBitReader::new(&[0x20], &limits).unwrap();
+        mel.bits_read = u64::MAX;
+        let mut expected = mel;
+        expected.next_bit = 6;
+        assert_eq!(mel.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(mel, expected);
+    }
+
+    #[test]
+    fn ht_mel_fixed_stream_covers_terminal_nibble_stuffing_and_exhaustion() {
+        let limits = ResourceLimits::default();
+        let mut reader = HtMelBitReader::new(&[0x21], &limits).unwrap();
+        for expected in [false, false, true, false, true, true, true, true] {
+            assert_eq!(reader.read_bit(), Ok(expected));
+        }
+        assert_eq!(
+            (
+                reader.next_byte,
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.previous_was_ff,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (1, 0, 0x2f, -1, false, 8, 1_000_000_000),
+        );
+        let exhausted = reader;
+        assert_eq!(reader.next_position(), None);
+        assert_eq!(reader.read_bit(), Err(invalid_code_block()));
+        assert_eq!(reader, exhausted);
+
+        let mut stuffed = HtMelBitReader::new(&[0xff, 0x80], &limits).unwrap();
+        for expected in [
+            true, true, true, true, true, true, true, true, false, false, false, true, true, true,
+            true,
+        ] {
+            assert_eq!(stuffed.read_bit(), Ok(expected));
+        }
+        assert_eq!(
+            (
+                stuffed.next_byte,
+                stuffed.current_byte,
+                stuffed.value,
+                stuffed.next_bit,
+                stuffed.previous_was_ff,
+                stuffed.bits_read
+            ),
+            (2, 1, 0x8f, -1, false, 15),
+        );
+    }
+
+    #[test]
+    fn ht_mel_first_stuffing_and_budget_errors_preserve_full_state() {
+        let mut malformed = HtMelBitReader::new(&[0xff, 0x90], &ResourceLimits::default()).unwrap();
+        for _ in 0..8 {
+            assert_eq!(malformed.read_bit(), Ok(true));
+        }
+        let failed = malformed;
+        assert_eq!(
+            malformed.read_bit(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing,
+            })
+        );
+        assert_eq!(malformed, failed);
+
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(1)
+            .unwrap();
+        let mut reader = HtMelBitReader::new(&[0x21], &limits).unwrap();
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(
+            reader.read_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            (
+                reader.next_byte,
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.previous_was_ff,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (1, 0, 0x2f, 5, false, 2, 1),
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_reader_length_boundaries_are_typed() {
+        let limits = ResourceLimits::default();
+        for length in [0, 1, 4080] {
+            assert_eq!(
+                HtReverseVlcReader::new(&vec![0; length], &limits),
+                Err(invalid_code_block()),
+            );
+        }
+        for length in [0, 4079] {
+            assert_eq!(
+                HtMelBitReader::new(&vec![0; length], &limits),
+                Err(invalid_code_block())
+            );
+        }
+        assert!(HtReverseVlcReader::new(&vec![0; 4079], &limits).is_ok());
+        assert!(HtMelBitReader::new(&vec![0; 4078], &limits).is_ok());
     }
 
     #[test]

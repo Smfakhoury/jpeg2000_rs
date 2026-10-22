@@ -138,6 +138,7 @@ Read each contract according to its inputs and postcondition:
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
+| Selected HT cleanup single-bit reader state | Actual MEL/reverse-VLC construction, loaded bytes, exact returned bit, terminal nibble, directional stuffing, positions, exhaustion, full cursors/counters, shared-byte collision and first inner/outer budget or overflow error with all nested fields framed | MagSgn words/termination, refinement readers/physical-bit claims, VLC peek/advance, MEL events, cleanup block reconstruction, replacement/placeholders, mixed routing or complete F5H acceptance |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -167,6 +168,43 @@ Stuffed data use seven bits; marker-like bytes beyond `0x8f` after `0xff`
 remain unconsumed while synthetic `0xff` bits are supplied. Exhausted input
 uses the same selected bounded-reader policy. These are input-relative
 implementation semantics, not a completed selected-edition audit.
+
+The frozen first F5H subprofile is documented in [specs/README.md](specs/README.md#frozen-f5h-directional-reader-stages).
+It comprises `HtMelBitReader` and `HtReverseVlcReader` construction, loading,
+single-bit reads, positions and counters, plus the actual shared cleanup
+pair's constructor, `can_claim_byte`, `tick`, `read_mel_bit` and `read_vlc_bit`.
+The three constructor bodies are shared private free implementations because
+the pinned conditional attribute cannot infer associated static context.
+The existing constructors remain thin Rust-tested adapters; no additional
+executable decoder or trusted codec specification is introduced.
+
+The mathematical transitions consume the actual input sequences. Their
+postconditions specify the exact typed result **and every final field** on
+both success and failure, without restricting the `u64` counter range.
+VLC's terminal nibble starts at bit four; reverse stuffing excludes bit seven
+only in the selected later-byte context. VLC charges the bit before eagerly
+loading its predecessor, so the first rejected work charge leaves the old
+byte and advanced cursor. MEL forces the low terminal nibble to ones before
+testing its distinct stuffing rule. Invalid MEL stuffing leaves the entire
+reader unchanged. Exhaustion and counter overflow retain their actual partial
+state effects rather than being modeled as rollback.
+
+The cleanup wrapper contracts compose those actual transitions, byte-claim
+checks and outer accounting with complete nested-reader and MEL-event frames.
+A collision precedes consumption; an inner failure does not record a claim or
+charge outer work; an outer failure retains the consumed bit and recorded
+claim. Mathematical prefix definitions and checked first-error absorption
+lemmas describe fail-fast clients; they do not assert that callers retrying
+after an error leave state unchanged. Independent fixed bytes and literal
+expected bits/full cursors cover terminal stuffing, exhaustion, constructor
+capacities, inner/outer budget order, collisions and full-width overflow.
+
+This is a complete **selected single-bit subprofile**, not the whole directional
+reader stage or F5H epic. In particular, the MagSgn word and finish operations,
+refinement physical-bit claims/padding, multi-bit VLC helpers, MEL events,
+cleanup/significance/refinement block denotations, placeholder/replacement
+sequencing and mixed routing remain required. The mathematical models and a
+green exact-root run are not human endorsement of the authorized T.814 text.
 
 Error states are not transactional: work-limit failure preserves the consumed
 bit and incremented work counter; work overflow preserves the consumed bit

@@ -32,6 +32,42 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_ht_reverse_vlc_prefix_step(state: crate::specs::HtReverseVlcState, count: nat)
+    ensures crate::specs::ht_reverse_vlc_prefix(state, count + 1) == {
+        let prefix = crate::specs::ht_reverse_vlc_prefix(state, count);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = crate::specs::ht_reverse_vlc_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::ht_reverse_vlc_prefix, 1);
+}
+
+pub proof fn production_ht_mel_prefix_step(state: crate::specs::HtMelState, count: nat)
+    ensures crate::specs::ht_mel_prefix(state, count + 1) == {
+        let prefix = crate::specs::ht_mel_prefix(state, count);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = crate::specs::ht_mel_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::ht_mel_prefix, 1);
+}
+
 pub proof fn production_layer_scan_empty(channels: Seq<crate::specs::Part2LayerChannel>, color_count: nat)
     ensures crate::specs::part2_layer_channel_scan(channels, color_count, 0)
         == Ok((Seq::new(color_count, |i: int| None), Seq::empty())),

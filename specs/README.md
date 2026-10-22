@@ -30,6 +30,34 @@ units and ranges beside the corresponding model and evidence. The unresolved
 edition boundaries above must remain unresolved until the authorized source
 is available; a successful solver run does not fill them in.
 
+## Frozen F5H directional-reader stages
+
+The first finite subprofile is the actual cleanup MEL/reverse-VLC reader pair:
+MEL accepts 1..=4078 bytes, reverse VLC 2..=4079. Contracts cover constructor
+rejection, exact loaded bytes and returned bits, terminal-nibble handling,
+directional stuffing, exhaustion, positions, all final fields, counter overflow,
+and the first work-limit failure. Counter domains retain the full `u64` range;
+failure is not assumed absent. Reverse VLC eagerly loads the previous byte only
+after charging a successful bit; budget rejection therefore preserves its old
+loaded byte with an advanced bit cursor. MEL exhaustion sets its cursor to -1.
+The pair's actual `read_mel_bit`/`read_vlc_bit` wrapper includes shared-byte
+claim/collision rejection and both inner and outer work counters. All nested
+reader fields and MEL event fields are framed, including failed reads after
+loading and failures after recording a successful byte claim. Constructor
+order is MEL, then VLC, then terminal-byte setup. The model accepts the actual
+supplied slices; it does not assume they were partitioned correctly upstream.
+These are selected implementation-state relations, not a human normative
+endorsement of T.814.
+
+Subsequent, separate stages remain required for MagSgn word/fill/termination,
+forward/reverse refinement plus physical-bit claims and padding/collision,
+cleanup quad/block reconstruction, significance/refinement block transitions,
+replacement/placeholder sequencing, and mixed HT/legacy routing. Completing
+the first subprofile does not close F5H or full-block acceptance.
+The pair's multi-bit VLC peek/advance and MEL event machine are also deferred;
+the selected API for this first stage is construction, single-bit reads,
+positions, counters and shared-byte claims, not the entire cleanup caller.
+
 ## Normalized source-over vocabulary
 
 These symbols describe the selected composition stage, not the original
