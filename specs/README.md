@@ -32,6 +32,42 @@ is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
 
+The next frozen substage is the complete actual MagSgn reader API: construction
+from 0..=65534 bytes; LSB-first words of 0..=39 bits and unchanged-state rejection
+of larger counts; physical and synthetic `0xff` bits with forward stuffing;
+all physical/fill/work counters and cursor fields; and `finish`'s exact
+bounded drain, padding-one rejection and first typed failure. All native
+counter values remain admitted. Cursor advancement precedes selected-counter
+charging, which precedes work charging and the work-limit check. The finish
+fuel is the checked native-width product `input.len() * 8`, including its
+overflow error before testing whether physical bits remain. Neither a valid
+stream nor enough budget is assumed. The word and drain recurrences belong
+to the semantic reading path, not to invariant-only support.
+
+The following frozen substage is both actual refinement directional readers
+and their shared claim/padding wrapper. Each input accepts 0..=2046 bytes.
+Forward reads supply zero fill after physical data; reverse reads begin with
+unstuffing enabled and supply zero fill after exhaustion. Positioned reads
+report the actual native-width byte/bit position, then advance the cursor,
+charge the selected physical/fill counter, check their sum for overflow and
+check the work cap. Counter errors and budget errors preserve those ordered
+partial mutations. The wrapper records successful physical claims, rejects
+repeat claims, records reverse stuffed-bit masks at the actual loaded byte,
+and checks all unclaimed/unstuffed padding bits at finish. Models include both
+complete readers, optional reverse-reader absence and both complete vectors.
+No successful decoding, sufficient budget, disjoint claims or valid padding
+is assumed.
+
+The next frozen cleanup-caller substage includes the complete actual VLC
+`peek_vlc` and `advance_vlc` APIs for every `u8` count, and `mel_event` for every
+native cache/state/counter value. Peek is non-mutating and returns the word
+accumulated before copied-reader exhaustion, collision, budget/overflow
+failure or a set bit above its 16-bit result capacity. Advance stops at the
+first actual read failure with its full nested state retained. MEL cache
+priority, 0..=12 state validation, head/suffix consumption, state adaptation,
+termination caching and event-counter overflow are explicit, including
+partial suffix-reader mutations on failure. Event suffixes are MSB-first.
+
 The first finite subprofile is the actual cleanup MEL/reverse-VLC reader pair:
 MEL accepts 1..=4078 bytes, reverse VLC 2..=4079. Contracts cover constructor
 rejection, exact loaded bytes and returned bits, terminal-nibble handling,
@@ -49,14 +85,16 @@ supplied slices; it does not assume they were partitioned correctly upstream.
 These are selected implementation-state relations, not a human normative
 endorsement of T.814.
 
-Subsequent, separate stages remain required for MagSgn word/fill/termination,
-forward/reverse refinement plus physical-bit claims and padding/collision,
-cleanup quad/block reconstruction, significance/refinement block transitions,
-replacement/placeholder sequencing, and mixed HT/legacy routing. Completing
-the first subprofile does not close F5H or full-block acceptance.
-The pair's multi-bit VLC peek/advance and MEL event machine are also deferred;
-the selected API for this first stage is construction, single-bit reads,
-positions, counters and shared-byte claims, not the entire cleanup caller.
+The directional substage now includes all five actual readers, MagSgn words
+and finish, refinement physical-bit claims/padding, VLC peek/advance and MEL
+events. The cleanup pair's final shared-byte collision check is included.
+The remaining stages are upstream partitioning and pass sequencing, UVLC/
+quad interpretation, cleanup block reconstruction, significance/refinement
+block transitions, replacement/placeholder sequencing and mixed HT/legacy
+routing. Completing directional stages does not close F5H or full-block
+acceptance. In particular, matching the byte-reader state machine does not
+prove that the block caller requests the right symbols or reconstructs the
+right coefficients.
 
 ## Normalized source-over vocabulary
 

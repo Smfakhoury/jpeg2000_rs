@@ -32,6 +32,78 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn ht_cleanup_cached_zero_event_precedes_invalid_state_and_counter_overflow(
+    state: crate::specs::HtCleanupReaderState,
+)
+    requires state.mel_zero_events > 0, state.mel_events == u32::MAX,
+    ensures crate::specs::ht_cleanup_mel_event(state) == (
+        Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+        crate::specs::HtCleanupReaderState { mel_zero_events: (state.mel_zero_events - 1) as u8, ..state },
+    ),
+{
+}
+
+pub proof fn ht_cleanup_invalid_uncached_mel_state_does_not_consume(state: crate::specs::HtCleanupReaderState)
+    requires state.mel_zero_events == 0, !state.mel_terminating_one, state.mel_state > 12,
+    ensures crate::specs::ht_cleanup_mel_event(state)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+{
+}
+
+pub proof fn ht_refinement_absent_reverse_preserves_all_state(state: crate::specs::HtRefinementReadersState)
+    requires state.reverse.is_none(),
+    ensures crate::specs::ht_refinement_read_reverse(state)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+{
+}
+
+pub proof fn ht_refinement_duplicate_claim_preserves_both_vectors_and_readers(
+    state: crate::specs::HtRefinementReadersState, position: crate::tier1::HtBitPosition,
+)
+    requires position.bit < 8, position.byte < state.claimed.len(),
+        state.claimed[position.byte as int] & (1u8 << position.bit) != 0,
+    ensures crate::specs::ht_refinement_claim(state, Some(position))
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+{
+}
+
+pub proof fn ht_forward_refinement_sum_overflow_retains_physical_consumption(
+    state: crate::specs::HtForwardRefinementState,
+)
+    requires state.has_byte, state.next_bit <= state.last_bit, state.next_bit < 8,
+        state.current_byte < state.input.len(), state.physical_bits_read < u64::MAX,
+        state.physical_bits_read + state.fill_bits_read >= u64::MAX,
+    ensures crate::specs::ht_forward_refinement_positioned(state) == (
+        Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+        crate::specs::HtForwardRefinementState {
+            next_bit: (state.next_bit + 1) as u8, physical_bits_read: (state.physical_bits_read + 1) as u64, ..state
+        },
+    ),
+{
+}
+
+pub proof fn ht_magsgn_selected_counter_overflow_precedes_work(state: crate::specs::HtMagSgnState)
+    requires state.has_byte, state.next_bit <= state.last_bit, state.next_bit < 8,
+        (if state.current_is_physical { state.physical_bits_read } else { state.fill_bits_read }) == u64::MAX,
+    ensures crate::specs::ht_magsgn_read(state) == (
+        Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+        crate::specs::HtMagSgnState { next_bit: (state.next_bit + 1) as u8, ..state },
+    ),
+{
+}
+
+pub proof fn ht_magsgn_work_overflow_retains_consumed_physical_bit(state: crate::specs::HtMagSgnState)
+    requires state.has_byte, state.next_bit <= state.last_bit, state.next_bit < 8,
+        state.current_is_physical, state.physical_bits_read < u64::MAX, state.work_units == u64::MAX,
+    ensures crate::specs::ht_magsgn_read(state) == (
+        Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+        crate::specs::HtMagSgnState {
+            next_bit: (state.next_bit + 1) as u8, physical_bits_read: (state.physical_bits_read + 1) as u64, ..state
+        },
+    ),
+{
+}
+
 pub proof fn ht_reverse_vlc_budget_failure_precedes_eager_load(state: crate::specs::HtReverseVlcState)
     requires state.has_byte, state.next_bit < 8, state.bits_read < u64::MAX,
         state.bits_read >= state.maximum_work_units,

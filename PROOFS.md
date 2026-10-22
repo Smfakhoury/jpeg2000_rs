@@ -138,7 +138,8 @@ Read each contract according to its inputs and postcondition:
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
-| Selected HT cleanup single-bit reader state | Actual MEL/reverse-VLC construction, loaded bytes, exact returned bit, terminal nibble, directional stuffing, positions, exhaustion, full cursors/counters, shared-byte collision and first inner/outer budget or overflow error with all nested fields framed | MagSgn words/termination, refinement readers/physical-bit claims, VLC peek/advance, MEL events, cleanup block reconstruction, replacement/placeholders, mixed routing or complete F5H acceptance |
+| HT directional reader/substream state | All five actual readers: exact constructors, bytes/bits/positions, MagSgn words and drain, zero/one fill, stuffing, exhaustion, full cursors/counters, shared cleanup byte claims and refinement physical-bit vectors/padding, exact inner/outer budget and overflow effects | Upstream partition/pass accounting, UVLC/quad interpretation, coefficient/block reconstruction, replacement/placeholders, mixed sequencing or complete F5H acceptance |
+| HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -199,15 +200,49 @@ after an error leave state unchanged. Independent fixed bytes and literal
 expected bits/full cursors cover terminal stuffing, exhaustion, constructor
 capacities, inner/outer budget order, collisions and full-width overflow.
 
-This is a complete **selected single-bit subprofile**, not the whole directional
-reader stage or F5H epic. In particular, the MagSgn word and finish operations,
-refinement physical-bit claims/padding, multi-bit VLC helpers, MEL events,
-cleanup/significance/refinement block denotations, placeholder/replacement
-sequencing and mixed routing remain required. The mathematical models and a
-green exact-root run are not human endorsement of the authorized T.814 text.
+The subsequent complete directional substages also cover the actual MagSgn
+constructor, little-endian word loop, physical/fill/work counters and
+bounded finish drain. The models include zero-count no-op, oversized-count
+rejection, stuffed `0xff` synthetic fill, bad padding consumption and every
+ordered overflow/budget effect. Finish checks the native `input.len() * 8`
+fuel before testing pending physical data. Its semantic recurrence is not
+an invariant-only witness and does not assume termination succeeds.
 
-Error states are not transactional: work-limit failure preserves the consumed
-bit and incremented work counter; work overflow preserves the consumed bit
+Both actual refinement readers have exact positioned and public bit-read
+contracts. Their pair's full state includes both complete readers (including
+an absent reverse reader), the entire claim vector and the entire stuffed-bit
+vector. Reverse stuffed-bit recording precedes claim collision, so rejection
+can retain both a consumed bit and a new stuffed mask. Work is the checked
+sum of physical/fill counters after selected-counter charging. Padding finish
+checks all encoded bytes without changing any state. A lexical mutable-borrow
+scope and extensional vector frames make the existing claim mutation visible
+to the verifier; the two public result projections use equivalent explicit
+matches rather than a standard-library `Result::map` contract. No decoding
+algorithm is duplicated or changed to suit an inventory expression.
+
+The actual VLC peek/advance loops and MEL event machine refine semantic
+recurrences for every native count/cache/counter input. Peek intentionally
+returns a partial `u16` on copied-reader failure or result-width exhaustion,
+without changing the real reader. Its loop distinguishes break-only results
+from normal continuation. MEL cache priority precedes state validation;
+event-counter overflow retains cache changes, and suffix-read failure retains
+only actual nested reader/claim/work mutations. A literal maximum-exponent
+fixture checks the five-bit MSB-first suffix and subsequent cached events.
+
+These are complete **selected directional/multi-bit/event substages**, not
+full-block or F5H completion. Upstream segment partition/accounting, UVLC/
+quad interpretation, cleanup/significance/refinement block denotations,
+placeholder/replacement sequencing and mixed routing remain required.
+The inventory indexes the already supported immutable peek/pending/finish
+contracts and references all new models/proofs/tests. Additional exact
+constructor and mutating-view mappings are requested from the inventory's
+owner before indexing those contracts; no generic-expression fallback or
+relaxed mutation test is used. The exact-root verifier checks the actual
+new state contracts independently of that non-exhaustive source index.
+The models and a green solver run are not human endorsement of T.814.
+
+For raw bypass, error states are not transactional: work-limit failure preserves
+the consumed bit and incremented work counter; work overflow preserves the consumed bit
 and old counter. Marker-padding overflow preserves the already installed
 synthetic byte/eight-bit count, without consuming the bit or charging work.
 The constructor's private free helper is shared by the unchanged public

@@ -32,6 +32,93 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_ht_cleanup_peek_unfold(
+    owner: crate::specs::HtCleanupReaderState, copy: crate::specs::HtReverseVlcState,
+    remaining: nat, index: nat, value: u16,
+)
+    requires index + remaining <= 255,
+    ensures crate::specs::ht_cleanup_peek_run(owner, copy, remaining, index, value)
+        == if remaining == 0 { value } else {
+            let available = match crate::specs::ht_reverse_vlc_position(copy) {
+                None => false, Some(position) => crate::specs::ht_cleanup_reader_can_claim(owner, false, position.0),
+            };
+            if !available { value } else {
+                let read = crate::specs::ht_reverse_vlc_read(copy);
+                match read.0 {
+                    Err(_) => value,
+                    Ok(bit) => if bit && index >= 16 { value } else {
+                        crate::specs::ht_cleanup_peek_run(owner, read.1, (remaining - 1) as nat, index + 1,
+                            if bit { value | (1u16 << index as u8) } else { value })
+                    },
+                }
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_cleanup_peek_run, 1);
+}
+
+pub proof fn production_ht_cleanup_advance_unfold(state: crate::specs::HtCleanupReaderState, count: nat)
+    ensures crate::specs::ht_cleanup_advance_vlc(state, count)
+        == if count == 0 { (Ok(()), state) } else {
+            let read = crate::specs::ht_cleanup_reader_read_vlc(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(_) => crate::specs::ht_cleanup_advance_vlc(read.1, (count - 1) as nat),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_cleanup_advance_vlc, 1);
+}
+
+pub proof fn production_ht_cleanup_mel_suffix_unfold(state: crate::specs::HtCleanupReaderState, remaining: nat, suffix: u8)
+    requires remaining <= 5,
+    ensures crate::specs::ht_cleanup_mel_suffix(state, remaining, suffix)
+        == if remaining == 0 { (Ok(suffix), state) } else {
+            let read = crate::specs::ht_cleanup_reader_read_mel(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => crate::specs::ht_cleanup_mel_suffix(read.1, (remaining - 1) as nat,
+                    if bit { (suffix << 1u8) | 1u8 } else { suffix << 1u8 }),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_cleanup_mel_suffix, 1);
+}
+
+pub proof fn production_ht_magsgn_word_unfold(
+    state: crate::specs::HtMagSgnState, remaining: nat, index: nat, value: u64,
+)
+    requires index + remaining <= 39,
+    ensures crate::specs::ht_magsgn_word_run(state, remaining, index, value)
+        == if remaining == 0 { (Ok(value), state) } else {
+            let read = crate::specs::ht_magsgn_read(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => crate::specs::ht_magsgn_word_run(read.1, (remaining - 1) as nat, index + 1,
+                    if bit { value | (1u64 << index as u8) } else { value }),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_magsgn_word_run, 1);
+}
+
+pub proof fn production_ht_magsgn_finish_unfold(state: crate::specs::HtMagSgnState, remaining: nat)
+    ensures crate::specs::ht_magsgn_finish_run(state, remaining)
+        == if !crate::specs::ht_magsgn_pending(state) { (Ok(()), state) }
+        else if remaining == 0 {
+            (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else {
+            let read = crate::specs::ht_magsgn_read(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(false) => (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1),
+                Ok(true) => crate::specs::ht_magsgn_finish_run(read.1, (remaining - 1) as nat),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_magsgn_finish_run, 1);
+}
+
 pub proof fn production_ht_reverse_vlc_prefix_step(state: crate::specs::HtReverseVlcState, count: nat)
     ensures crate::specs::ht_reverse_vlc_prefix(state, count + 1) == {
         let prefix = crate::specs::ht_reverse_vlc_prefix(state, count);
