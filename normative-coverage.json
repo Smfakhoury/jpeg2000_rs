@@ -5,6 +5,59 @@
   "requirements": [
     {
       "contract_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "convert_color_channel"},
+        {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
+        {"path": "src/color.rs", "symbol": "convert_sycc_pixel"},
+        {"path": "src/color.rs", "symbol": "validate_components"},
+        {"path": "src/color.rs", "symbol": "validate_component_index"},
+        {"path": "src/color.rs", "symbol": "validate_component"},
+        {"path": "src/color.rs", "symbol": "validate_output_size"}
+      ],
+      "id": "part1-complete-typed-color-conversion",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "decode_layer"},
+        {"path": "src/decode.rs", "symbol": "convert_selected_color"},
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "convert_color_channel"},
+        {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
+        {"path": "src/color.rs", "symbol": "convert_sycc_pixel"},
+        {"path": "src/color.rs", "symbol": "validate_components"},
+        {"path": "src/color.rs", "symbol": "validate_component_index"}
+      ],
+      "proof_refs": [
+        {"path": "src/color.rs", "symbol": "converted_channel_views_push"},
+        {"path": "src/jp2.rs", "symbol": "color_specification_method"},
+        {"path": "src/limits.rs", "symbol": "resource_decoded_bytes_limit"},
+        {"path": "proofs/internal_specs.rs", "symbol": "color_conversion_ready"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_channels_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_alphas_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_sycc_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_validation_error"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_convert_jp2"},
+        {"path": "specs/mod.rs", "symbol": "color_convert_colors"},
+        {"path": "specs/mod.rs", "symbol": "color_convert_channel"},
+        {"path": "specs/mod.rs", "symbol": "color_convert_alpha"},
+        {"path": "specs/mod.rs", "symbol": "color_sycc_pixel"},
+        {"path": "specs/mod.rs", "symbol": "color_convert_channels_prefix"},
+        {"path": "specs/mod.rs", "symbol": "color_append_alphas_prefix"},
+        {"path": "specs/mod.rs", "symbol": "color_sycc_planes_prefix"},
+        {"path": "specs/mod.rs", "symbol": "color_validate_components"},
+        {"path": "specs/mod.rs", "symbol": "color_validate_component_index"},
+        {"path": "specs/mod.rs", "symbol": "color_validate_component"},
+        {"path": "specs/mod.rs", "symbol": "color_validate_output_size"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "complete_color_conversion_matches_independent_registered_planes_and_metadata"},
+        {"path": "src/color.rs", "symbol": "complete_color_admission_matches_wide_checked_count_and_limit_model"},
+        {"path": "src/color.rs", "symbol": "complete_color_conversion_preserves_format_metadata_budget_and_sample_error_priority"}
+      ],
+      "topic": "Complete actual typed JP2 color converter: format and CDEF selection, component validation, exact output admission, all raster/color/alpha samples and metadata, and every typed first failure"
+    },
+    {
+      "contract_refs": [
         {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
         {"path": "src/color.rs", "symbol": "rounded_fixed"},
         {"path": "src/color.rs", "symbol": "clamp_u16"},
@@ -14,6 +67,7 @@
       "id": "part1-complete-fixed-point-sycc-pixel",
       "implementation_refs": [
         {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "convert_sycc_pixel"},
         {"path": "src/color.rs", "symbol": "sycc_to_srgb"}
       ],
       "proof_refs": [
@@ -80,6 +134,8 @@
       "id": "part1-complete-normalized-component-plane",
       "implementation_refs": [
         {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "convert_color_channel"},
+        {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
         {"path": "src/color.rs", "symbol": "normalize_component"},
         {"path": "src/color.rs", "symbol": "normalized_component_at"},
         {"path": "src/color.rs", "symbol": "nominal_component_at"}

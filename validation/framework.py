@@ -283,6 +283,19 @@ def validate_normative_coverage(
                 ("src/color.rs", "from_composited"): "converted_image_result",
                 ("src/color.rs", "normalize_component"): "normalized_plane_result",
                 ("src/color.rs", "channel_layout"): "channel_layout_result",
+                ("src/color.rs", "convert_jp2_color"): "converted_image_result",
+                ("src/color.rs", "convert_color_channel"): "converted_channel_result",
+                ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
+            }.get((reference["path"], short))
+            expected_color_model = {
+                ("src/color.rs", "convert_jp2_color"): "color_convert_jp2",
+                ("src/color.rs", "convert_color_channel"): "color_convert_channel",
+                ("src/color.rs", "convert_alpha_channel"): "color_convert_alpha",
+                ("src/color.rs", "convert_sycc_pixel"): "color_sycc_pixel",
+                ("src/color.rs", "validate_components"): "color_validate_components",
+                ("src/color.rs", "validate_component_index"): "color_validate_component_index",
+                ("src/color.rs", "validate_component"): "color_validate_component",
+                ("src/color.rs", "validate_output_size"): "color_validate_output_size",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
@@ -309,6 +322,8 @@ def validate_normative_coverage(
             named_result = state_result if mutating else scalar_result or projected_result or state_result
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
+                    or (expected_color_model is not None
+                        and (named_result is None or named_result["model"] != expected_color_model))
                     or not ("ensures returns" in contract
                             or (named_result is not None and named_result["model"] in spec_symbols))):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")

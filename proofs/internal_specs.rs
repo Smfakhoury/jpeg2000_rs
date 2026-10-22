@@ -4,6 +4,22 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn color_conversion_ready(
+    components: Seq<crate::specs::Part1TypedComponentModel>,
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, geometry: crate::specs::ColorGeometry,
+    method: crate::jp2::ColorMethod, layout: crate::specs::ColorLayoutState,
+    format: (usize, crate::color::ConvertedColorSpace, bool), area: usize, byte_limit: u64, work_limit: u64,
+) -> bool {
+    geometry.0 > 0 && geometry.1 > 0
+        && crate::specs::color_output_format(method) == Ok(format)
+        && crate::specs::color_channel_layout(definitions, format.0) == Ok(layout)
+        && crate::specs::color_validate_components(components, geometry, layout) == Ok(())
+        && crate::specs::color_validate_output_size(
+            geometry.0, geometry.1, format.0, layout.1.len() as usize, byte_limit, work_limit,
+        ) == Ok(())
+        && crate::specs::part2_layer_area(geometry.0, geometry.1) == Ok(area)
+}
+
 pub open spec fn part2_timeline_state_valid(
     state: crate::specs::Part2TimelineState, layers: usize, maximum_frames: u32, limit: usize,
 ) -> bool {

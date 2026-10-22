@@ -364,6 +364,13 @@ pub struct ColorSpecification {
     icc_profile: Option<Vec<u8>>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn color_specification_method(color: &ColorSpecification) -> ColorMethod {
+        color.method
+    }
+}
+
 impl ColorSpecification {
     pub const fn enumerated(color_space: u32) -> Self {
         Self {
@@ -374,6 +381,10 @@ impl ColorSpecification {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(method => ensures method == color_specification_method(self),)
+    )]
     pub const fn method(&self) -> ColorMethod {
         self.method
     }
