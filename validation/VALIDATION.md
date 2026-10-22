@@ -581,14 +581,21 @@ both the reconstructed codestream hash and decoded sample hash, with no
 replacement by subject-derived expectations. A reference disagreement is
 retained as an unqualified failure with source/encoded/reference artifacts.
 
-The existing harness exposes configured byte/work limits only for codestream
-decoding, not selection, JPX composition or JPIP reconstruction. The four
-baseline adjacent budget frontiers remain the directly observed accounting
-evidence; typed output sample storage is not accounted decoder allocation.
-Broader per-path byte/work instrumentation, maximum/default-limit
-characterization beyond these safe declarations, sustained stress and
-non-Linux process measurements remain open R1 work. Passing this finite
-matrix alone does not close R1 or establish a universal resource envelope.
+The baseline retains four codestream-decoding budget frontiers. The bounded
+accounting stage adds ten effective path frontiers through test-harness-only
+`select-limited`, `select-color-limited`, `render-limited`,
+`reconstruct-limited` and `progressive-limited` operations. The harness also
+supports limited conversion/layer/frame modes, but these are not additional
+qualified accounting paths. Append the ordinary selection arguments first,
+then `decoded-bytes|work-units` and the checked numeric limit; legacy
+`decode-limited` and ordinary invocations keep their interfaces. Unsupported
+limited operations, selectors, malformed limits and attempts to raise
+hardened defaults fail as usage errors before reading the input.
+No global counter or alternative codec was added. Global cumulative byte/work
+instrumentation across reset scopes, broader profiles and amplification
+attribution remain open; default-maximum allocation and sustained R2 stress
+are not authorized by this stage. Passing these finite matrices alone does
+not close R1 or establish a universal resource envelope.
 
 `--ht-encoder` and `--ht-decoder`, or `OPENJPH_ENCODER` and
 `OPENJPH_DECODER`, select trusted HT tools. Missing unconfigured tools block
@@ -608,7 +615,8 @@ Each accepted frontier and the budget one unit below it are then rerun three
 times. The lower budget must report the exact configured resource/limit and an
 excessive claim; process failure or a different typed error cannot qualify.
 
-Each of the forty-five final cases is measured three times. Every search probe
+Each of the forty-five baseline and twenty accounting final cases is measured
+three times. Every search probe
 also retains its budget, wall time, peak RSS, return code and exact output hash
 or typed limit claim. GNU Time reports actual peak
 instrumented-subject process RSS and user/system CPU time (seconds converted
@@ -641,7 +649,7 @@ implementation accounting threshold, not a CPU-time or instruction count.
 These finite fixtures do not characterize all production-default or worst-case
 inputs, every high-component/precision/HT/container combination or every supported platform.
 
-Resource report schema version 4 records the declared matrix, original/reference
+Resource report schema version 5 records the declared matrices, original/reference
 qualification hashes (including source/reference files), CPU measurements,
 default typed declaration claims, exact JPIP reconstructed-byte hashes,
 configured budgets, finite search evidence and repeated frontier observations.
@@ -660,6 +668,21 @@ each observation must report `Pixels`, limit 100,000,000 and actual
 `MalformedInput/Truncated` diagnostic. Missing observations are not inferred
 from expectations or backfilled into earlier reports; category/reason/claim
 disagreements fail validation.
+The baseline `records` array still has exactly 45 cases; the separate
+`accounting_records` array has 20 cases. Both arrays' final and search runs
+contribute to the same CPU/wall aggregates. The resource CLI's ordinary
+`cases` summary remains the baseline count; inspect `accounting_records` for
+the additional stage. The report binds the frozen accounting matrix hash,
+actual limited commands, output protocols and independent expectations.
+Progressive observations additionally retain actual update metadata and the
+captured protocol hash, including valid update prefixes before typed errors.
+`typed_sample_bytes` uses the existing canonical eight-byte-per-integer-sample
+convention, not physical converted-u16 buffer size or accounted decoder
+claims. Accounting rejection rows retain the independent expected output
+metadata so any emitted progressive image prefix can be checked; their actual
+observation still has no accepted output hash. These expected sizes and
+RSS/expected-size diagnostic ratios are never substituted for observed
+admission claims.
 `resource-results.json` retains source/tool/input/output hashes, repetitions,
 individual observations, median times, peak RSS, thresholds and explicit
 failures. Positive records also report typed-output/input-byte expansion and

@@ -109,6 +109,91 @@ fn parse_resource_limit(arguments: &[String]) -> Result<ResourceLimits, String> 
     .map_err(|error| error.to_string())
 }
 
+fn parse_packet_lengths(mode: &str) -> Result<Option<Vec<u64>>, String> {
+    if mode == "auto" {
+        return Ok(None);
+    }
+    let lengths = mode
+        .split(',')
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("invalid packet lengths: {error}"))?;
+    if lengths.contains(&0) || u16::try_from(lengths.len()).is_err() {
+        return Err("packet lengths require 1..65535 positive lengths".to_owned());
+    }
+    Ok(Some(lengths))
+}
+
+struct Invocation<'a> {
+    operation: &'a str,
+    format: &'a str,
+    input: &'a str,
+    selection: DecodeSelection,
+    options: DecodeOptions,
+}
+
+fn parse_invocation(arguments: &[String]) -> Result<Invocation<'_>, String> {
+    let requested = arguments.get(1).ok_or("missing operation")?;
+    let (operation, limited) = match requested.strip_suffix("-limited") {
+        Some(operation)
+            if matches!(
+                operation,
+                "decode"
+                    | "convert"
+                    | "select"
+                    | "select-color"
+                    | "render"
+                    | "render-layer"
+                    | "render-frame"
+                    | "reconstruct"
+                    | "progressive"
+            ) =>
+        {
+            (operation, true)
+        }
+        Some(_) => return Err(format!("unsupported limited operation: {requested}")),
+        None => (requested.as_str(), false),
+    };
+    let selecting = matches!(operation, "select" | "select-color");
+    let base_length = if selecting { 7 } else { 4 };
+    if arguments.len() != base_length + if limited { 2 } else { 0 } {
+        return Err("incorrect number of operation arguments".to_owned());
+    }
+    let format = arguments[2].as_str();
+    let supported = match operation {
+        "decode" | "select" => matches!(format, "raw" | "jp2" | "jph" | "jpx"),
+        "convert" | "select-color" => matches!(format, "jp2" | "jph" | "jpx"),
+        "render" => format == "jpx",
+        "render-layer" | "render-frame" => format.parse::<usize>().is_ok(),
+        "reconstruct" | "ingest" => format == "jpip",
+        "inspect" => format == "jph",
+        "progressive" => parse_packet_lengths(format).is_ok(),
+        _ => false,
+    };
+    if !supported {
+        return Err(format!(
+            "unsupported operation/selector: {operation}/{format}"
+        ));
+    }
+    let selection = if selecting {
+        parse_selection(&arguments[4..7])?
+    } else {
+        DecodeSelection::full_image()
+    };
+    let options = if limited {
+        DecodeOptions::new(parse_resource_limit(&arguments[base_length..])?)
+    } else {
+        DecodeOptions::default()
+    };
+    Ok(Invocation {
+        operation,
+        format,
+        input: &arguments[3],
+        selection,
+        options,
+    })
+}
+
 fn print_selected_image(image: &TypedImage) {
     println!("FRAME\t{}\t{}", image.x_origin(), image.y_origin());
     print_image(image);
@@ -171,17 +256,10 @@ fn report_progressive(
 
 fn progressive(input: &[u8], mode: &str, options: &DecodeOptions) -> Result<(), DecodeError> {
     let limits = options.limits();
-    let mut manual = if mode == "auto" {
-        None
-    } else {
-        let lengths = mode
-            .split(',')
-            .map(str::parse::<u64>)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_else(|error| {
-                eprintln!("invalid packet lengths: {error}");
-                process::exit(2);
-            });
+    let mut manual = if let Some(lengths) = parse_packet_lengths(mode).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        process::exit(2);
+    }) {
         let layers = u16::try_from(lengths.len()).unwrap_or_else(|error| {
             eprintln!("invalid layer count: {error}");
             process::exit(2);
@@ -211,6 +289,8 @@ fn progressive(input: &[u8], mode: &str, options: &DecodeOptions) -> Result<(), 
                 limits,
             )?,
         ))
+    } else {
+        None
     };
     let mut automatic = JpipAutomaticProgressiveDecoder::new(0);
     let mut cache = DatabinCache::new(*limits);
@@ -231,66 +311,33 @@ fn progressive(input: &[u8], mode: &str, options: &DecodeOptions) -> Result<(), 
 
 fn main() {
     let arguments = env::args().collect::<Vec<_>>();
-    let selecting = arguments
-        .get(1)
-        .is_some_and(|value| matches!(value.as_str(), "select" | "select-color"));
-    let limited = arguments
-        .get(1)
-        .is_some_and(|value| value == "decode-limited");
-    if arguments.len()
-        != if selecting {
-            7
-        } else if limited {
-            6
-        } else {
-            4
-        }
-    {
+    let Invocation {
+        operation,
+        format,
+        input,
+        selection,
+        options,
+    } = parse_invocation(&arguments).unwrap_or_else(|error| {
         eprintln!(
-            "usage: validation_decoder <decode|convert|inspect|ingest> <format> <input>\n\
+            "{error}\nusage: validation_decoder <decode|convert|inspect|ingest> <format> <input>\n\
              or: validation_decoder <select|select-color> <format> <input> <discard-levels> \
              <all|tile-indices> <all|x,y,width,height>\n\
              or: validation_decoder decode-limited <format> <input> \
              <decoded-bytes|work-units> <limit>\n\
              or: validation_decoder <render|render-layer|render-frame|reconstruct|progressive> \
-             <jpx|layer-index|frame-index|jpip|auto|packet-lengths> <input>"
+             <jpx|layer-index|frame-index|jpip|auto|packet-lengths> <input>\n\
+             Limited decode/convert/select/select-color/render/render-layer/render-frame/\
+             reconstruct/progressive: append '-limited' to the operation and append \
+             <decoded-bytes|work-units> <limit> after its ordinary arguments."
         );
         process::exit(2);
-    }
-    let operation = if limited {
-        "decode"
-    } else {
-        arguments[1].as_str()
-    };
-    let format = arguments[2].as_str();
-    let selection = if selecting {
-        match parse_selection(&arguments[4..]) {
-            Ok(selection) => selection,
-            Err(error) => {
-                eprintln!("invalid selection: {error}");
-                process::exit(2);
-            }
-        }
-    } else {
-        DecodeSelection::full_image()
-    };
-    let input = match fs::read(&arguments[3]) {
+    });
+    let input = match fs::read(input) {
         Ok(input) => input,
         Err(error) => {
             eprintln!("cannot read input: {error}");
             process::exit(2);
         }
-    };
-    let options = if limited {
-        match parse_resource_limit(&arguments[4..]) {
-            Ok(limits) => DecodeOptions::new(limits),
-            Err(error) => {
-                eprintln!("invalid resource configuration: {error}");
-                process::exit(2);
-            }
-        }
-    } else {
-        DecodeOptions::default()
     };
     match (operation, format) {
         ("decode", "raw") => match decode_codestream(&input, &options) {
@@ -429,6 +476,161 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn limited_invocations_reuse_checked_limits_and_preserve_ordinary_modes() {
+        for (operation, selector) in [
+            ("decode", "raw"),
+            ("convert", "jp2"),
+            ("select", "raw"),
+            ("select-color", "jp2"),
+            ("render", "jpx"),
+            ("render-layer", "0"),
+            ("render-frame", "1"),
+            ("reconstruct", "jpip"),
+            ("progressive", "auto"),
+            ("progressive", "5,7"),
+        ] {
+            let mut ordinary = arguments(&["subject", operation, selector, "input"]);
+            if matches!(operation, "select" | "select-color") {
+                ordinary.extend(arguments(&["0", "0", "all"]));
+            }
+            let parsed = parse_invocation(&ordinary).unwrap();
+            assert_eq!(parsed.operation, operation);
+            assert_eq!(parsed.options.limits(), &ResourceLimits::default());
+            for resource in ["decoded-bytes", "work-units"] {
+                let mut limited = ordinary.clone();
+                limited[1] = format!("{operation}-limited");
+                limited.extend(arguments(&[resource, "0"]));
+                let parsed = parse_invocation(&limited).unwrap();
+                assert_eq!(parsed.operation, operation);
+                assert_eq!(
+                    parsed.options.limits(),
+                    &parse_resource_limit(&arguments(&[resource, "0"])).unwrap()
+                );
+                if matches!(operation, "select" | "select-color") {
+                    assert!(matches!(
+                        parsed.selection.tile_selection(),
+                        TileSelection::Index(0)
+                    ));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_limited_modes_selectors_and_budgets_are_usage_errors() {
+        for values in [
+            vec![],
+            vec!["subject"],
+            vec![
+                "subject",
+                "inspect-limited",
+                "jph",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "render-limited",
+                "raw",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "render-layer-limited",
+                "-1",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "render-frame-limited",
+                "x",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "reconstruct-limited",
+                "raw",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "progressive-limited",
+                "",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "progressive-limited",
+                "1,",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "progressive-limited",
+                "0",
+                "input",
+                "work-units",
+                "1",
+            ],
+            vec!["subject", "decode-limited", "raw", "input", "work-units"],
+            vec!["subject", "decode-limited", "raw", "input", "pixels", "1"],
+            vec![
+                "subject",
+                "decode-limited",
+                "raw",
+                "input",
+                "work-units",
+                "-1",
+            ],
+            vec![
+                "subject",
+                "decode-limited",
+                "raw",
+                "input",
+                "work-units",
+                "1000000001",
+            ],
+            vec![
+                "subject",
+                "select-limited",
+                "raw",
+                "input",
+                "0",
+                "0",
+                "work-units",
+                "1",
+            ],
+            vec![
+                "subject",
+                "select-color-limited",
+                "jp2",
+                "input",
+                "x",
+                "all",
+                "all",
+                "work-units",
+                "1",
+            ],
+        ] {
+            assert!(parse_invocation(&arguments(&values)).is_err(), "{values:?}");
+        }
+        assert!(parse_packet_lengths(&vec!["1"; 65536].join(",")).is_err());
     }
 
     #[test]

@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schema_version", "scope", "provenance", "status", "blockers", "errors", "tools", "address_space_limit_bytes", "file_size_limit_bytes", "output_limit_bytes", "declaration", "remaining_r1_gaps", "qualification_failures", "repetitions", "records", "native_total_ms", "native_user_cpu_ms", "native_system_cpu_ms", "native_total_cpu_ms", "maximum_native_total_ms", "maximum_selection_rss_ratio", "subject_build"],
+  "required": ["$schema", "schema_version", "scope", "provenance", "status", "blockers", "errors", "tools", "address_space_limit_bytes", "file_size_limit_bytes", "output_limit_bytes", "declaration", "accounting_declaration", "accounting_declaration_sha256", "accounting_records", "remaining_r1_gaps", "qualification_failures", "repetitions", "records", "native_total_ms", "native_user_cpu_ms", "native_system_cpu_ms", "native_total_cpu_ms", "maximum_native_total_ms", "maximum_selection_rss_ratio", "subject_build"],
   "properties": {
     "$schema": {"type": "string"},
-    "schema_version": {"const": 4},
+    "schema_version": {"const": 5},
     "scope": {"type": "string", "minLength": 1},
     "provenance": {"type": "object"},
     "status": {"enum": ["passed", "failed", "blocked"]},
@@ -61,6 +61,30 @@
         }
       }
     },
+    "accounting_declaration_sha256": {"const": "cc25a51fec71019cd8cfe8a2418b441d0d27214c2a46328ed89b16e3fc79d1f4"},
+    "accounting_declaration": {"const": {
+      "id": "r1-effective-frontiers-v2", "baseline_cases": 45,
+      "paths": [
+        {"id": "selected-raw", "family": "selected", "operation": "select", "format": "raw", "size": 32, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "selected-image", "output_components": 1},
+        {"id": "selected-color", "family": "selected-color", "operation": "select-color", "format": "jp2", "size": 32, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "output_components": 3},
+        {"id": "jpx-compose", "family": "composition", "operation": "render", "format": "jpx", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "composited_layers": 2, "output_components": 4},
+        {"id": "jpip-reconstruct", "family": "jpip", "operation": "reconstruct", "format": "jpip", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "reconstructed-image", "output_components": 3},
+        {"id": "jpip-progressive", "family": "jpip", "operation": "progressive", "format": "auto", "size": 16, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 0, "output_protocol": "progressive", "expected_updates": 7, "output_components": 1}
+      ],
+      "ceilings": {"DecodedBytes": 1048576, "WorkUnits": 100000}, "maximum_search_probes": 32
+    }},
+    "accounting_records": {
+      "type": "array", "maxItems": 20,
+      "items": {"allOf": [
+        {"$ref": "#/$defs/record"},
+        {"properties": {
+          "accounting_path": {"type": "string"},
+          "configured_limit": {"$ref": "#/$defs/limit"},
+          "qualifications": {"minItems": 1},
+          "expected_output_sha256": {"$ref": "#/$defs/hash"}
+        }}
+      ]}
+    },
     "remaining_r1_gaps": {"type": "array", "minItems": 3, "items": {"type": "string", "minLength": 1}},
     "qualification_failures": {
       "type": "array", "items": {
@@ -86,13 +110,22 @@
       "blockers": {"maxItems": 0},
       "errors": {"maxItems": 0},
       "qualification_failures": {"maxItems": 0},
+      "accounting_records": {
+        "minItems": 20, "maxItems": 20,
+        "items": {"properties": {"status": {"const": "passed"}}},
+        "contains": {"properties": {"search_ceiling": {"type": "integer"}}, "required": ["search_ceiling"]},
+        "minContains": 10, "maxContains": 10
+      },
       "records": {
         "minItems": 45, "maxItems": 45,
         "items": {"properties": {"status": {"const": "passed"}}},
         "contains": {"properties": {"search_ceiling": {"type": "integer"}}, "required": ["search_ceiling"]},
         "minContains": 4, "maxContains": 4
       }
-    }, "allOf": [{"properties": {"records": {
+    }, "allOf": [{"properties": {"accounting_records": {
+      "contains": {"properties": {"expected_category": {"const": "LimitExceeded"}}, "required": ["expected_category"]},
+      "minContains": 10, "maxContains": 10
+    }}}, {"properties": {"records": {
       "contains": {
         "properties": {"configured_limit": {"type": "object"}, "expected_category": {"const": "LimitExceeded"}},
         "required": ["configured_limit", "expected_category"]
@@ -170,7 +203,27 @@
         "output_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "limit_value": {"type": "integer", "minimum": 0},
         "limit_claim": {"$ref": "#/$defs/claim"},
-        "observed_error": {"$ref": "#/$defs/observed-error"}
+        "observed_error": {"$ref": "#/$defs/observed-error"},
+        "protocol_sha256": {"$ref": "#/$defs/hash"},
+        "progressive_updates": {
+          "type": "array", "maxItems": 7, "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["status", "previous_layers", "available_layers", "image_present", "missing_ranges", "output_sha256"],
+            "properties": {
+              "status": {"enum": ["WaitingForData", "Complete"]},
+              "previous_layers": {"enum": [0, 1]},
+              "available_layers": {"enum": [0, 1]},
+              "image_present": {"type": "boolean"},
+              "missing_ranges": {"type": "integer", "minimum": 0},
+              "output_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}
+            },
+            "allOf": [{
+              "if": {"properties": {"image_present": {"const": true}}, "required": ["image_present"]},
+              "then": {"properties": {"output_sha256": {"$ref": "#/$defs/hash"}}},
+              "else": {"properties": {"output_sha256": {"type": "null"}}}
+            }]
+          }
+        }
       },
       "allOf": [{
         "if": {"properties": {"returncode": {"const": 0}}, "required": ["returncode"]},
@@ -193,9 +246,13 @@
     },
     "record": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "input_bytes", "input_sha256", "expected_category", "expected_reason", "expected_output_sha256", "qualifications", "expected_reconstructed_sha256", "expected_limit_claim", "limit_mode", "mode", "typed_sample_bytes", "output_width", "output_height", "output_components", "thresholds", "runs", "status", "error", "artifacts", "configured_limit", "search_ceiling", "search_runs"],
+      "required": ["id", "accounting_path", "command", "output_protocol", "progressive_updates_expected", "input_bytes", "input_sha256", "expected_category", "expected_reason", "expected_output_sha256", "qualifications", "expected_reconstructed_sha256", "expected_limit_claim", "limit_mode", "mode", "typed_sample_bytes", "output_width", "output_height", "output_components", "thresholds", "runs", "status", "error", "artifacts", "configured_limit", "search_ceiling", "search_runs"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
+        "accounting_path": {"enum": [null, "selected-raw", "selected-color", "jpx-compose", "jpip-reconstruct", "jpip-progressive"]},
+        "command": {"type": "array", "minItems": 4, "maxItems": 9, "items": {"type": "string", "minLength": 1}},
+        "output_protocol": {"enum": ["image", "selected-image", "reconstructed-image", "progressive"]},
+        "progressive_updates_expected": {"enum": [null, 7]},
         "input_bytes": {"type": "integer", "minimum": 1},
         "input_sha256": {"$ref": "#/$defs/hash"},
         "expected_category": {"enum": [null, "LimitExceeded", "MalformedInput"]},
@@ -255,6 +312,14 @@
         }
       },
       "allOf": [{
+        "if": {"properties": {"output_protocol": {"const": "progressive"}}, "required": ["output_protocol"]},
+        "then": {"properties": {
+          "progressive_updates_expected": {"const": 7},
+          "runs": {"items": {"required": ["progressive_updates", "protocol_sha256"]}},
+          "search_runs": {"items": {"required": ["progressive_updates", "protocol_sha256"]}}
+        }},
+        "else": {"properties": {"progressive_updates_expected": {"type": "null"}}}
+      }, {
         "if": {"properties": {"id": {"const": "declared-pixel-limit"}}, "required": ["id"]},
         "then": {"properties": {
           "expected_category": {"const": "LimitExceeded"},
