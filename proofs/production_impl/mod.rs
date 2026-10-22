@@ -398,6 +398,19 @@ pub proof fn production_typed_image_admission_error(
     }
 }
 
+pub proof fn production_legacy_magnitude_u64(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures match crate::specs::part1_magnitude_u64(limbs) {
+        Some(value) => crate::specs::part1_magnitude_value(limbs) == value as nat,
+        None => true,
+    },
+{
+    if crate::specs::part1_magnitude_u64(limbs).is_some() {
+        production_magnitude_value_expansion(limbs);
+        assert(limbs[1] == 0 && limbs[2] == 0 && limbs[3] == 0 && limbs[4] == 0 && limbs[5] == 0);
+    }
+}
+
 pub proof fn production_prepare_fold_empty(
     initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
     geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64,

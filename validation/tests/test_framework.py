@@ -647,6 +647,207 @@ class FrameworkTests(WorkingFiles):
                             self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                         framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_native_ht_continuation_placeholder_and_staged_groups(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        read_text = Path.read_text
+        for symbol, model, arguments in (
+            ("decode_high_throughput_refinement", "ht_decode_refinement_contribution", (
+                ("input@", "unrelated@"), ("input@, passes", "input@, 0"),
+                ("resource_code_block_byte_limit(limits)", "resource_code_block_byte_limit(unrelated)"),
+                ("resource_work_limit(limits)", "resource_work_limit(unrelated)"),
+                ("resource_code_block_byte_limit(limits)", "resource_work_limit(limits)"),
+            )),
+            ("skip_high_throughput_segment", "ht_skip_segment", (
+                ("old(self)), passes", "old(self)), 0"),
+                ("resource_code_block_pass_limit(limits)", "resource_code_block_pass_limit(unrelated)"),
+            )),
+            ("run_ht_placeholder_groups", "ht_placeholder_group_run", (
+                ("placeholder_passes as nat", "0"),
+                ("resource_code_block_pass_limit(limits)", "resource_code_block_pass_limit(unrelated)"),
+            )),
+            ("decode_ht_staged_group", "ht_decode_staged_group", (
+                ("input@", "unrelated@"), ("input@, passes", "input@, 0"),
+                ("resource_code_block_pass_limit(limits)", "resource_code_block_pass_limit(unrelated)"),
+                ("resource_code_block_byte_limit(limits)", "resource_work_limit(limits)"),
+                ("resource_work_limit(limits)", "resource_work_limit(unrelated)"),
+            )),
+        ):
+            reference = {"path": "src/tier1.rs", "symbol": f"Tier1CodeBlockDecoder::{symbol}"}
+            entry = next(item for item in original_coverage["requirements"] if reference in item["contract_refs"])
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / reference["path"]
+            original = source.read_text()
+            header = framework._coverage_function_header(original, reference["symbol"])
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            complete = "(result, tier1_decoder_state(final(self)))"
+            mutations = [
+                (f"ensures {complete}", "ensures result.is_ok()"),
+                (f"ensures {complete}", f"ensures result.is_ok() ==> {complete}"),
+                (complete, "(unrelated, tier1_decoder_state(final(self)))"),
+                ("tier1_decoder_state(final(self))", "tier1_decoder_state(old(self))"),
+                ("tier1_decoder_state(final(self))", "unlisted_view(final(self))"),
+                ("tier1_decoder_state(old(self))", "tier1_decoder_state(unrelated)"),
+                (f"crate::specs::{model}(", "crate::specs::ht_decode_segments("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ]
+            for before, after in mutations:
+                self.assertIn(before, contract)
+                changed = contract.replace(before, after, 1)
+                variants = [changed]
+                if (before, after) in arguments:
+                    closing = re.search(r"\)\s*,?\s*\)\s*\]", changed)
+                    original_closing = re.search(r"\)\s*,?\s*\)\s*\]", contract)
+                    assert closing is not None and original_closing is not None
+                    variants.append(changed[:closing.start()] + "\n"
+                        + contract[contract.index("ensures") + len("ensures"):original_closing.start()]
+                        + changed[closing.start():])
+                for variant in variants:
+                    modified = original[:start] + variant + original[signature:]
+
+                    def altered(path, *args, **kwargs):
+                        return modified if path == source else read_text(path, *args, **kwargs)
+
+                    with self.subTest(symbol=symbol, after=after, duplicate=variant != changed), \
+                            mock.patch.object(Path, "read_text", altered), \
+                            self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                        framework.validate_normative_coverage(coverage)
+            body = original.find("{", signature)
+            modified = original[:signature] + original[signature:body].replace(
+                "&mut self,", "&mut self, unrelated: &mut u64,", 1,
+            ) + original[body:]
+            self.assertNotEqual(modified, original)
+
+            def extra_mutable(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(symbol=symbol, mutation="unbound additional mutable state"), \
+                    mock.patch.object(Path, "read_text", extra_mutable), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+            wrong_owner = copy.deepcopy(coverage)
+            wrong_owner["requirements"][0]["contract_refs"][0]["symbol"] = f"OtherDecoder::{symbol}"
+            with self.assertRaisesRegex(ValueError, "missing linked contract function"):
+                framework.validate_normative_coverage(wrong_owner)
+            no_caller = copy.deepcopy(coverage)
+            no_caller["requirements"][0]["implementation_refs"] = [reference]
+            with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(no_caller)
+
+    def test_inventory_binds_complete_native_mixed_packet_body_and_all_mutable_progress(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(item for item in original_coverage["requirements"]
+                     if item["id"] == "part1-complete-native-mixed-code-block-body")
+        read_text = Path.read_text
+        cases = (
+            ("CodeBlockContribution::segment", "part1_code_block_segment"),
+            ("prepare_code_block_contribution_body", "part1_code_block_body_prepare"),
+            ("decode_legacy_code_block_segment", "part1_legacy_code_block_segment"),
+            ("decode_legacy_code_block_contribution_body", "part1_legacy_code_block_body"),
+            ("decode_ht_segment_route", "ht_packet_segment_route"),
+            ("decode_ht_segment_body", "ht_packet_segment_body"),
+            ("run_ht_contribution_segments", "ht_packet_body_run"),
+            ("decode_ht_contribution_segments", "ht_packet_body_segments"),
+            ("decode_code_block_contribution_body_staged", "part1_code_block_body_staged"),
+            ("decode_code_block_contribution_body", "part1_code_block_body_transaction"),
+        )
+        for symbol, model in cases:
+            reference = {"path": "src/packet.rs", "symbol": symbol}
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / reference["path"]
+            original = source.read_text()
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            inputs = [
+                (r"code_block_contribution_view\(\s*contribution\s*\)", "code_block_contribution_view(unrelated)"),
+                (r"\bbody@", "unrelated@"),
+                (r"old\(\s*decoder\s*\)", "old(unrelated)"),
+                (r"resource_code_block_pass_limit\(\s*limits\s*\)", "resource_code_block_pass_limit(unrelated)"),
+                (r"resource_code_block_byte_limit\(\s*limits\s*\)", "resource_work_limit(limits)"),
+                (r"resource_input_byte_limit\(\s*limits\s*\)", "resource_input_byte_limit(unrelated)"),
+                (r"resource_work_limit\(\s*limits\s*\)", "resource_work_limit(unrelated)"),
+                (r"old\(\s*offset\s*\)", "old(unrelated)"),
+                (r"old\(\s*decoded_passes\s*\)", "old(unrelated)"),
+                (r"old\(\s*segment_index\s*\)", "old(unrelated)"),
+                (r"ht_body_progress_view\(\s*old\(\s*progress\s*\)\s*\)", "ht_body_progress_view(old(unrelated))"),
+            ]
+            if symbol == "CodeBlockContribution::segment":
+                inputs = [
+                    (r"code_block_contribution_view\(\s*self\s*\)", "code_block_contribution_view(unrelated)"),
+                    (r"\bindex\s*\)", "0)"),
+                ]
+            else:
+                inputs.extend((
+                    (r"body@\s*,\s*passes\b", "body@, 0"),
+                    (r"\bsegment\s*,\s*body@", "unrelated, body@"),
+                ))
+            inputs = [(before, after) for before, after in inputs if re.search(before, contract)]
+            self.assertGreaterEqual(len(inputs), 2)
+            mutations = [
+                (r"\bensures\s+", "ensures result.is_ok() ==> "),
+                (rf"crate::specs::{model}\(", "crate::specs::ht_decode_segments("),
+                (rf"crate::specs::{model}\(", "crate::specs::unlisted_model("),
+                *inputs,
+            ]
+            if symbol != "CodeBlockContribution::segment":
+                mutations.extend((
+                    (r"\bensures\s*\(\s*result\s*,", "ensures (unrelated,"),
+                    (r"final\(\s*decoder\s*\)", "old(decoder)"),
+                    (r"final\(\s*decoder\s*\)", "final(unrelated)"),
+                ))
+                for parameter in ("segment_index", "offset", "decoded_passes", "progress"):
+                    if re.search(rf"final\(\s*{parameter}\s*\)", contract):
+                        mutations.append((rf"final\(\s*{parameter}\s*\)", f"old({parameter})"))
+            for before, after in mutations:
+                changed, count = re.subn(before, after, contract, count=1)
+                self.assertEqual(count, 1)
+                self.assertNotEqual(changed, contract)
+                variants = [changed]
+                if (before, after) in inputs:
+                    closing = re.search(r"\)\s*,?\s*\)\s*\]", changed)
+                    original_closing = re.search(r"\)\s*,?\s*\)\s*\]", contract)
+                    assert closing is not None and original_closing is not None
+                    variants.append(changed[:closing.start()] + "\n"
+                        + contract[contract.index("ensures") + len("ensures"):original_closing.start()]
+                        + changed[closing.start():])
+                for variant in variants:
+                    modified = original[:start] + variant + original[signature:]
+
+                    def altered(path, *args, **kwargs):
+                        return modified if path == source else read_text(path, *args, **kwargs)
+
+                    with self.subTest(symbol=symbol, after=after, duplicate=variant != changed), \
+                            mock.patch.object(Path, "read_text", altered), \
+                            self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                        framework.validate_normative_coverage(coverage)
+            if symbol != "CodeBlockContribution::segment":
+                body = original.find("{", signature)
+                prefix, count = re.subn(r"\(\s*", "(extra: &mut u64, ", original[signature:body], count=1)
+                self.assertEqual(count, 1)
+                modified = original[:signature] + prefix + original[body:]
+
+                def extra_mutable(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, mutation="omitted mutable state"), \
+                        mock.patch.object(Path, "read_text", extra_mutable), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+            no_caller = copy.deepcopy(coverage)
+            no_caller["requirements"][0]["implementation_refs"] = [reference]
+            with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(no_caller)
+
     def test_inventory_binds_complete_header_to_actual_native_results_inputs_and_owner(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         entry = next(
@@ -749,6 +950,29 @@ class FrameworkTests(WorkingFiles):
         self.assertIsNone(framework._coverage_function_header(without_method, "TypedImage::component"))
         duplicate = text + "impl TypedImage {\n    pub fn component(&self) {}\n}\n"
         self.assertIsNone(framework._coverage_function_header(duplicate, "TypedImage::component"))
+
+    def test_qualified_raw_adapter_resolves_only_exact_symbol_decoder_trait_and_owner(self):
+        correct = (
+            "impl Tier1SymbolDecoder for RawBitReader<'_> {\n"
+            "    fn decode(&mut self, context: usize) {\n"
+            "        self.read_bit();\n"
+            "    }\n"
+            "}\n"
+        )
+        foreign_trait = correct.replace("Tier1SymbolDecoder", "OtherTrait")
+        foreign_owner = correct.replace("RawBitReader", "OtherReader")
+        text = foreign_trait + foreign_owner + correct
+        header = framework._coverage_function_header(text, "RawBitReader::decode")
+        self.assertIsNotNone(header)
+        self.assertEqual(header.start(), text.rfind("    fn decode"))
+        self.assertTrue(framework._coverage_same_file_call(text, "RawBitReader::decode", "read_bit"))
+        self.assertIsNone(framework._coverage_function_header(foreign_trait + foreign_owner, "RawBitReader::decode"))
+        self.assertIsNone(framework._coverage_function_header(correct, "Tier1SymbolDecoder::decode"))
+        self.assertIsNone(framework._coverage_function_header(correct, "OtherReader::decode"))
+        duplicate = correct + "impl RawBitReader<'_> {\n    fn decode(&mut self) {}\n}\n"
+        self.assertIsNone(framework._coverage_function_header(duplicate, "RawBitReader::decode"))
+        nested = "impl Tier1SymbolDecoder for RawBitReader<'_> {\n    fn unrelated() {\n        fn decode() {}\n    }\n}\n"
+        self.assertIsNone(framework._coverage_function_header(nested, "RawBitReader::decode"))
 
     def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())

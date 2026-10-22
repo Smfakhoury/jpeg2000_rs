@@ -1,5 +1,207 @@
 # Specification audit guide
 
+## Complete actual mixed native body and segment dispatch
+
+`part1_code_block_body_staged` consumes the sole full native contribution view,
+actual body sequence, raw decoder state and four real owner caps. It composes
+the single `part1_code_block_body_prepare` producer and then the actual
+`high_throughput` branch: `ht_packet_body_segments` or
+`part1_legacy_code_block_body`. No route result is an input.
+`part1_code_block_body_transaction` models the real whole-decoder clone/commit
+operation. Both actual staged/public functions have unconditional complete
+Result/state posts; their earlier selected posts remain available too.
+
+`part1_tier1_segment` likewise joins the actual Tier-1 public segment dispatcher:
+zero-pass rejection, then `ht_group_route` using the stored cleanup **option**,
+then actual HT group or legacy segment execution. It does not replace the option
+with a flag, normalize private state or introduce a decoder-validity premise.
+The old conditional HT relation remains a proved consequence.
+
+All native primitive/helper bodies and resource policies are preserved. In
+particular, a zero-count empty legacy contribution can succeed while the HT
+route rejects it; the legacy replay/input limit is not invented for HT decoding.
+Selector-only loop invariants used for the former disjoint proofs are gone.
+The actual shared header parser and complete precinct/packet caller remain
+separate composition obligations, not assumed successful traces.
+
+## Frozen actual HT packet contribution-body route
+
+This stage is the actual HT branch of
+`packet::decode_code_block_contribution_body_staged` and its outer transactional
+clone/commit entry. The sole F5L contribution projection/getters supply every
+native header field and both complete physical segment arrays; no competing
+header view or parser is introduced. All native stored counts, malformed header
+combinations, old decoder states and supplied body bytes remain admitted.
+
+The sole actual common prefix refines `part1_code_block_body_prepare`; both
+selected branches reuse that producer and its model. It checks exact body length and route, then sets zero
+bitplanes before HT segment-count admission. HT traversal checks each actual
+segment Result, pass count, native length/address arithmetic and exact borrowed
+body subrange, then selects cleanup/placeholder/refinement using the current
+decoder phase and cleanup flag. Decoder effects precede decoded-pass accounting;
+offset/index updates follow. Final exact consumption and declared-pass mismatch
+errors retain the staged partial state, while the outer real clone/commit
+wrapper preserves the complete original decoder on every failure. The private
+loop is unconditional; only the staged/public postconditions select the actual
+HT header flag. Their profiles are not restricted to a normalized header or a
+decoder whose coding style already guarantees successful HT execution.
+
+The complete models are `ht_packet_segment_route`, `ht_packet_segment_body`,
+`ht_packet_body_run`, `ht_packet_body_segments`, `ht_packet_body_staged` and
+`ht_packet_body`. `HtPacketBodyProgress` represents every local progress field;
+the native private record has one closed owner view. These relations include
+the current cleanup flag, exact `None`/stored cleanup distinctions, original
+decoder vectors/counters and all actual typed failure effects through the
+existing Tier-1 producers. The optional public byte-slice view is open because
+it contains no private fields; no private decoder representation is opened.
+
+No supplied decoder/legacy outcome, header/shape normalization, success, trace
+or adequate-budget premise is used. Empty slices route differently according to
+actual state; `None` and retained empty data are not conflated. Legacy branch and
+shared header parser are untouched. Shared contribution/zero-bitplane/route facts
+are owned by F5L and consumed from their real implementations. Full header
+parsing, mixed legacy/HT union and precinct orchestration remain separate
+producer obligations; this selected body boundary is not full F5H completion.
+
+## Frozen whole-decoder clone and actual selected HT group profile
+
+The next boundary is the actual staged HT branch of `decode_segment`, selected
+by HighThroughput coding or Mixed coding with a retained cleanup-plane option.
+The selector is not normalized to the current-cleanup flag. Its whole-decoder
+raw clone preserves every field, vector, malformed shape and retained state
+through the existing sole F5L logical bitplane/MQ/legacy projections and three
+actual data clone contracts. Original field/vector allocation order is retained.
+
+The real packet-pass grouping, repeated skip-one/skip-two placeholder loop,
+substantive byte entry and final clone/commit are modeled directly. Any failure
+after staging preserves the entire original decoder, even if the staged copy
+has partial counter/reset effects. Success commits the entire actual staged
+state and reports the original packet pass count. No supplied clone/replay/
+legacy outcome, normalized old state, valid stream/shape or sufficient budget
+premise is introduced. The legacy dispatcher else remains untouched and outside
+this selected-branch theorem until actual legacy composition is available.
+
+## Frozen retained-refinement and placeholder orchestration profile
+
+The next native boundary is the complete actual
+`decode_high_throughput_refinement`, including arbitrary retained byte buffers,
+cleanup planes, pass counters and flags. Its actual admission does **not** check
+the configured pass limit or `maximum_passes`; those checks must not be invented.
+The cumulative-byte check precedes cloning/appending the retained buffer, and
+the 2046-byte check remains after those real operations. Nonempty input is
+replayed from the retained cleanup plane through the actual complete refinement
+producer, not from a supplied trace or the current output plane.
+
+An empty concatenated buffer records refinement passes and segment accounting
+without replaying or replacing the output plane. Empty input with nonempty
+retained bytes instead replays those bytes. Replay rejection preserves the
+entire decoder; successful replay stores plane/data/passes before checked
+pass/segment accounting, so late errors retain prior writes. No normalized old
+state, valid stream/plane, success or adequate-budget premise is admitted.
+
+The accompanying complete `skip_high_throughput_segment` profile retains actual
+phase/pass/set admission, placeholder/replacement flags and first-error writes.
+A phase-zero placeholder clears retained refinement bytes/passes and the
+current-cleanup flag, but preserves the old cleanup-plane option and output.
+Set-count updates precede those resets; pass/segment updates follow. Byte/work
+limits absent from this operation are not added. Staged multiple-group/mixed
+dispatch remains a separate boundary requiring actual clone/legacy relations.
+
+The existing two-statement retained-buffer reset is now shared by the real
+symbol caller and phase-zero skip operation. Its unconditional whole-decoder
+state contract isolates that frame join without changing operation order,
+capacity, proof budgets or solver context flags. The void helper is referenced
+as a proved implementation fact, not mislabeled as a named-Result contract.
+Independent integration regressions also execute the existing real staged
+packet-group loop, rollback and successive continuation/replacement calls.
+Those regressions are not a substitute for a full clone/dispatch theorem.
+The pinned non-Copy derived `Clone` implementations expose no functional
+specification; full group closure must use actual raw cloning relations,
+including the shared logical bitplane-state view, rather than opaque native
+identity or a supplied legacy outcome.
+
+## Actual legacy MQ/bypass three-pass boundary
+
+[mq.rs](mq.rs) supplies a complete declarative MQ state/Result denotation.
+The stored nineteen contexts are pairs of probability-state index and MPS bit.
+The forty-seven probability transitions are an independent ghost sequence joined
+to the production table, not an assumed transition trace. Initialization,
+context mutation/save/restore, byte loading, conditional exchanges,
+renormalization, exact work admission, consumed-byte reporting and the existing
+predictable-termination test retain all native error priorities and mutations.
+In particular, byte advancement can survive addition failure; code/count loading
+can survive padding-counter overflow; a work-limit error retains its increment.
+
+[legacy.rs](legacy.rs) composes those real MQ effects and the complete raw-reader
+effects with actual significance, refinement and cleanup operations. The whole
+bitplane state observes geometry, bitplane, both bool vectors and all three
+completion flags. The plane observes all six words, sign, significance,
+refinement and optional legacy bitplane of every coefficient. Context selection
+uses the real complete ordered-neighborhood producer, including causal
+suppression. Stripe, column and row folds model the actual optimized traversal,
+not a normalized or reordered coefficient list. Cleanup includes run-mode
+eligibility/interruption, the two uniform run bits, sign reads, remaining rows
+and optional segmentation-symbol reads.
+
+Native invalid states are not erased by constructor invariants: the pass
+preflight checks geometry/vector lengths and completion order, while actual
+coefficient operations retain their own different bitplane bounds. For example,
+marking accepts the magnitude owner's native 0..383 domain, whereas refinement
+first rejects bitplanes at or above 292. Both behaviors remain in the models.
+Symbol/visit/plane/statistic changes before a later failure are retained.
+No public pass assumes valid bytes, successful decoding, normalized words,
+valid headers, adequate budgets or a supplied trace.
+
+Opaque model phase boundaries control proof unfolding only. The concrete
+production stages prove each phase against its body; both private reader-adapter
+implementations delegate to proved actual readers. There is no second executable
+decoder or uninterpreted successful entropy outcome.
+
+The same module now composes actual segment scheduling and contribution replay.
+`part1_legacy_segment` checks the real pass/byte/empty-segment admission before
+reader construction, restores or initializes real contexts, runs the actual
+MQ/raw pass loop, checks existing termination policy and commits accounting in
+its real order. `part1_legacy_contribution` preserves exact replay-work charging,
+retained-record take/append/restore, the real segment's result and final record
+retention. Its starting numerical state and input bytes come from the actual
+retained record, never from a supplied successful decoder outcome.
+
+Complete logical bitplane and nineteen-context projections appear in both
+whole-decoder and retained-record frames. The actual faithful raw plane,
+bitplane and legacy-record Clone implementations preserve malformed shapes and
+all words/flags and retain original field/allocation order. Private arithmetic
+lemmas receive their six-word facts from those real native representations, not
+from a normalized-coefficient premise. Native record restoration and data
+append are verified operations, not assumed state transformers.
+
+The actual route/pass/accounting getters and zero-bitplane setter supply native
+owner facts for the next packet caller. The setter checks a previously stored
+value before its phase/counter checks and does not invent a 292-bitplane bound.
+Its existing checked multiply/add is one verified production helper over every
+native `u16`, with unchanged field commits. Header validity is not a premise.
+
+The internal contribution entry is not transactional: work charging can precede
+a later arithmetic error, and a taken retained record need not be restored on
+replay failure. These Tier-1 results alone do not establish outer clone/commit,
+body/pass-total joins, packet/header associations or the public mixed dispatcher;
+the next actual packet stage closes the selected code-block caller boundary.
+
+The next actual packet stage is now in [packet.rs](packet.rs). Its sole raw
+contribution projection includes every public field, the stored count and both
+complete 164-entry arrays. Real descriptor lookup, checked body subranges,
+actual legacy contribution execution and ordered pass/offset/index commits
+form the complete legacy packet-body model. Final consumption/pass-total
+errors occur after decoder effects, not before them.
+
+Shared preparation models actual length/route/zero-setting admission. On the
+actual legacy selector `!contribution.high_throughput`, the staged and public
+packet-body callers now have complete Result/full-state refinements through the
+actual faithful whole-decoder Clone. Staged errors can expose partial work;
+public errors roll back every decoder field. This profile predicate selects a
+real format branch only: it adds no header validity, geometry, normalization,
+success, budget or trace premise. The HT packet branch and whole packet/header
+association remain separate integration obligations, not guessed outcomes.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

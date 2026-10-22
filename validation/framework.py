@@ -213,9 +213,13 @@ def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
     )
     if "::" in symbol:
         owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        trait_scope = (
+            r"(?:Tier1SymbolDecoder[ \t]+for[ \t]+)?"
+            if symbol == "RawBitReader::decode" else ""
+        )
         implementations = re.finditer(
             rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
-            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
+            rf"{trait_scope}{re.escape(owner)}\b(?![^{{}}\n]*\bfor\b)[^{{}}\n]*\{{", text,
         )
         matches = []
         for implementation in implementations:
@@ -565,6 +569,62 @@ def validate_normative_coverage(
             }.get((reference["path"], reference["symbol"]))
             if arbitrary_contract:
                 result_projection, expected_result_model = arbitrary_contract[:2]
+            packet_decoder_old = r"crate::tier1::tier1_decoder_state\s*\(\s*old\(\s*decoder\s*\)\s*\)"
+            packet_decoder_final = r"crate::tier1::tier1_decoder_state\s*\(\s*final\(\s*decoder\s*\)\s*\)"
+            packet_contribution = r"code_block_contribution_view\s*\(\s*contribution\s*\)"
+            packet_cap = r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)"
+            packet_byte_cap = r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)"
+            packet_input_cap = r"crate::limits::resource_input_byte_limit\s*\(\s*limits\s*\)"
+            packet_work_cap = r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)"
+            packet_all_caps = packet_cap + r"\s*,\s*" + packet_byte_cap + r"\s*,\s*" + packet_input_cap + r"\s*,\s*" + packet_work_cap
+            packet_ht_caps = packet_cap + r"\s*,\s*" + packet_byte_cap + r"\s*,\s*" + packet_work_cap
+            packet_body_arguments = packet_decoder_old + r"\s*,\s*" + packet_contribution + r"\s*,\s*body@\s*,\s*"
+            packet_contract = {
+                "CodeBlockContribution::segment": (
+                    "part1_code_block_segment", None,
+                    r"code_block_contribution_view\s*\(\s*self\s*\)\s*,\s*index",
+                ),
+                "prepare_code_block_contribution_body": (
+                    "part1_code_block_body_prepare", packet_decoder_final,
+                    packet_decoder_old + r"\s*,\s*" + packet_contribution + r"\s*,\s*body@",
+                ),
+                "decode_legacy_code_block_segment": (
+                    "part1_legacy_code_block_segment",
+                    r"legacy_packet_progress_view\s*\(\s*final\(\s*decoder\s*\)\s*,\s*\*\s*final\(\s*segment_index\s*\)\s*,\s*"
+                    r"\*\s*final\(\s*offset\s*\)\s*,\s*\*\s*final\(\s*decoded_passes\s*\)\s*\)",
+                    r"legacy_packet_progress_view\s*\(\s*old\(\s*decoder\s*\)\s*,\s*\*\s*old\(\s*segment_index\s*\)\s*,\s*"
+                    r"\*\s*old\(\s*offset\s*\)\s*,\s*\*\s*old\(\s*decoded_passes\s*\)\s*\)\s*,\s*"
+                    + packet_contribution + r"\s*,\s*body@\s*,\s*" + packet_all_caps,
+                ),
+                "decode_legacy_code_block_contribution_body": (
+                    "part1_legacy_code_block_body", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+                "decode_ht_segment_route": (
+                    "ht_packet_segment_route", packet_decoder_final,
+                    packet_decoder_old + r"\s*,\s*body@\s*,\s*passes\s*,\s*" + packet_ht_caps,
+                ),
+                "decode_ht_segment_body": (
+                    "ht_packet_segment_body",
+                    packet_decoder_final + r"\s*,\s*\*\s*final\(\s*offset\s*\)\s*,\s*\*\s*final\(\s*decoded_passes\s*\)",
+                    packet_decoder_old + r"\s*,\s*segment\s*,\s*body@\s*,\s*\*\s*old\(\s*offset\s*\)\s*,\s*"
+                    r"\*\s*old\(\s*decoded_passes\s*\)\s*,\s*" + packet_ht_caps,
+                ),
+                "run_ht_contribution_segments": (
+                    "ht_packet_body_run", packet_decoder_final + r"\s*,\s*ht_body_progress_view\s*\(\s*final\(\s*progress\s*\)\s*\)",
+                    packet_body_arguments + r"ht_body_progress_view\s*\(\s*old\(\s*progress\s*\)\s*\)\s*,\s*" + packet_ht_caps,
+                ),
+                "decode_ht_contribution_segments": (
+                    "ht_packet_body_segments", packet_decoder_final, packet_body_arguments + packet_ht_caps,
+                ),
+                "decode_code_block_contribution_body_staged": (
+                    "part1_code_block_body_staged", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+                "decode_code_block_contribution_body": (
+                    "part1_code_block_body_transaction", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+            }.get(reference["symbol"]) if reference["path"] == "src/packet.rs" else None
+            if packet_contract:
+                expected_result_model = packet_contract[0]
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
@@ -587,6 +647,10 @@ def validate_normative_coverage(
                 "CodeBlockPlane::apply_ht_refinement_decision": ("code_block_plane_view", "ht_apply_refinement"),
                 "Tier1CodeBlockDecoder::decode_high_throughput_segments": ("tier1_decoder_state", "ht_decode_segments"),
                 "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols": ("tier1_decoder_state", "ht_coefficient_symbols"),
+                "Tier1CodeBlockDecoder::decode_high_throughput_refinement": ("tier1_decoder_state", "ht_decode_refinement_contribution"),
+                "Tier1CodeBlockDecoder::skip_high_throughput_segment": ("tier1_decoder_state", "ht_skip_segment"),
+                "Tier1CodeBlockDecoder::run_ht_placeholder_groups": ("tier1_decoder_state", "ht_placeholder_group_run"),
+                "Tier1CodeBlockDecoder::decode_ht_staged_group": ("tier1_decoder_state", "ht_decode_staged_group"),
                 "Tier1CodeBlockDecoder::store_ht_coefficient_symbols": (
                     "tier1_decoder_state", "ht_store_coefficient_symbols",
                 ),
@@ -649,6 +713,11 @@ def validate_normative_coverage(
                     + model_suffix
                     + r"\s*ht_magsgn_view\(\s*old\(\s*reader\s*\)\s*\)\s*,\s*"
                     r"completed_u\s*,\s*embedded_bit\s*,\s*embedded_value\s*,\s*decoded_bitplanes\s*,?\s*\)",
+                    contract,
+                )
+            if packet_contract and packet_contract[1] is not None:
+                state_result = re.search(
+                    named_prefix + r"(?P<state>\(\s*\1\s*,\s*" + packet_contract[1] + r"\s*\))" + model_suffix,
                     contract,
                 )
             final_parameters = set(re.findall(
@@ -839,6 +908,29 @@ def validate_normative_coverage(
                     r"pass_count\s*,\s*maximum_u\s*,\s*skipped_bitplanes\s*,\s*"
                     r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
                 ),
+                "Tier1CodeBlockDecoder::decode_high_throughput_refinement": (
+                    "ht_decode_refinement_contribution",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*input@\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::skip_high_throughput_segment": (
+                    "ht_skip_segment",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::run_ht_placeholder_groups": (
+                    "ht_placeholder_group_run",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*placeholder_passes\s+as\s+nat\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::decode_ht_staged_group": (
+                    "ht_decode_staged_group",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*input@\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
                 "ht_significant_bitplanes": ("ht_significant_bitplanes", r"maximum_passes"),
                 "Tier1BlockCoding::uses_high_throughput": ("ht_block_coding_enabled", r"self"),
                 "copy_ht_refinement_bytes": ("ht_copy_refinement_bytes", r"input@"),
@@ -937,6 +1029,10 @@ def validate_normative_coverage(
                 arbitrary_contract is None
                 or _coverage_result_arguments(contract, named_result, arbitrary_contract[1], arbitrary_contract[2])
             )
+            packet_arguments_bound = (
+                packet_contract is None
+                or _coverage_result_arguments(contract, named_result, packet_contract[0], packet_contract[2])
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -961,6 +1057,7 @@ def validate_normative_coverage(
                     or not prepare_arguments_bound
                     or not component_arguments_bound
                     or not arbitrary_arguments_bound
+                    or not packet_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

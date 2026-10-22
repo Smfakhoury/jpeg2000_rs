@@ -32,6 +32,75 @@ use crate::specs::{
 
 verus! {
 
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_every_failure_preserves_complete_original_decoder(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_success_reports_original_packet_pass_count(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true, Ok(result) => result.passes == passes as u32,
+    },
+{
+}
+
+pub proof fn ht_group_route_uses_retained_option_not_current_cleanup_flag(state: crate::specs::Tier1DecoderState)
+    requires matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::Mixed),
+        state.ht_cleanup_plane.is_some(),
+    ensures crate::specs::ht_group_route(state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_continuation_first_accounting_overflow_preserves_already_prepared_state(
+    state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+)
+    requires state.next_pass as nat + passes as nat > u32::MAX,
+    ensures crate::specs::ht_finish_refinement_contribution(state, passes, bytes, next_bytes, statistics, replayed)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_continuation_segment_overflow_keeps_pass_but_not_byte_update(
+    state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+)
+    requires state.next_pass as nat + passes as nat <= u32::MAX, state.decoded_segments == u32::MAX,
+    ensures crate::specs::ht_finish_refinement_contribution(state, passes, bytes, next_bytes, statistics, replayed)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { next_pass: (state.next_pass + passes) as u32, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_placeholder_preserves_output_and_retained_cleanup_on_every_return(
+    state: crate::specs::Tier1DecoderState, passes: u8, maximum_passes: u32,
+)
+    ensures crate::specs::ht_skip_segment(state, passes, maximum_passes).1.plane == state.plane,
+        crate::specs::ht_skip_segment(state, passes, maximum_passes).1.ht_cleanup_plane == state.ht_cleanup_plane,
+        crate::specs::ht_skip_segment(state, passes, maximum_passes).1.decoded_bytes == state.decoded_bytes,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_refinement_reset_frames_all_unrelated_decoder_fields(state: crate::specs::Tier1DecoderState)
+    ensures crate::specs::ht_clear_refinement_state(state) == (crate::specs::Tier1DecoderState {
+        ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state
+    }),
+{
+}
+
 pub proof fn standard_prepare_preserves_complete_plan_metadata(
     plan: crate::specs::Part1PreparePlan, precincts: Seq<Seq<crate::specs::Tier1RawPlane>>,
     style: crate::specs::Part1PrepareStyle, maximum: u64,
@@ -2094,6 +2163,105 @@ pub proof fn quantized_block_preserves_metadata_and_previsited_samples(
             crate::specs::part1_quantized_block_row(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat).1,
         );
     }
+}
+
+pub proof fn ht_packet_segment_pass_error_precedes_range_and_state_effects(
+    state: crate::specs::Tier1DecoderState, segment: crate::packet::CodeBlockSegmentContribution,
+    body: Seq<u8>, offset: usize, decoded_passes: u32,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures segment.passes == 0 || segment.passes > 2 ==>
+        crate::specs::ht_packet_segment_body(state, segment, body, offset, decoded_passes,
+            pass_limit, byte_limit, work_limit)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+            state, offset, decoded_passes),
+{
+}
+
+pub proof fn ht_packet_finished_progress_preserves_complete_state(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, progress: crate::specs::HtPacketBodyProgress,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures progress.segment_index >= header.segment_count ==>
+        crate::specs::ht_packet_body_run(state, header, body, progress, pass_limit, byte_limit, work_limit)
+        == (Ok(()), state, progress),
+{
+    reveal(crate::specs::ht_packet_body_run);
+}
+
+pub proof fn ht_packet_transaction_errors_restore_complete_decoder(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_packet_body(state, header, body, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_packet_body(state, header, body, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+pub proof fn ht_packet_success_reports_exact_declared_counts(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_packet_body_segments(state, header, body, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true,
+        Ok(result) => result.segments == header.segment_count
+            && result.passes == header.new_passes && result.bytes == header.data_length,
+    },
+{
+}
+
+pub proof fn mixed_packet_dispatch_preserves_both_selected_profiles(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        header.high_throughput ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::ht_packet_body_staged(state, header, body, pass_limit, byte_limit, work_limit),
+        !header.high_throughput ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::part1_legacy_code_block_staged(
+                state, header, body, pass_limit, byte_limit, input_limit, work_limit),
+{
+    reveal(crate::specs::part1_legacy_code_block_staged);
+}
+
+pub proof fn mixed_packet_transaction_restores_every_decoder_field_on_error(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_code_block_body_transaction(
+        state, header, body, pass_limit, byte_limit, input_limit, work_limit).0.is_err()
+        ==> crate::specs::part1_code_block_body_transaction(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit).1 == state,
+{
+}
+
+pub proof fn mixed_packet_preparation_failure_precedes_both_actual_routes(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_code_block_body_prepare(state, header, body).0.is_err()
+        ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit).1
+            == crate::specs::part1_code_block_body_prepare(state, header, body).1,
+{
+}
+
+pub proof fn mixed_tier1_dispatch_retains_actual_native_route_order(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        passes == 0 ==> crate::specs::part1_tier1_segment(
+            state, input, passes, pass_limit, byte_limit, input_limit, work_limit)
+            == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        passes > 0 && !crate::specs::ht_group_route(state) ==> crate::specs::part1_tier1_segment(
+            state, input, passes, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::part1_legacy_segment(
+                state, input, passes as u32, pass_limit, byte_limit, input_limit, work_limit),
+{
 }
 
 }
