@@ -571,6 +571,139 @@ of the full independent lossless decode; native reduction uses independent
 `-skip_res` synthesis, not decimation. The shared crop helper also serves the
 selection tests and rejects inconsistent frame/component geometry.
 
+### R1 finite workload declaration (before measurement)
+
+#### R1 bounded accounting-frontier stage (frozen before measurement)
+
+The following separate matrix extends, rather than replaces, the existing
+45-case gate. It declares four small fixture families and five actual harness
+paths, with both `DecodedBytes` and `WorkUnits` admission-budget tasks for each
+path. Each task observes zero rejection, an independently qualified accepted
+ceiling, at most 32 binary-search probes, and an observed accepted frontier
+and adjacent typed rejection, each then repeated three times. Thus the stage
+adds exactly 20 final cases / 60 final observations and at most 320 probes.
+All observations, including the unchanged baseline 45 cases and its probes,
+share the original 30-second aggregate wall gate. No per-case, rejection,
+selection, RSS, child-address-space, file or capture cap is relaxed. New
+rejection probes additionally obey the 1-second / 128-MiB rejection cap.
+If qualification, a ceiling, a frontier or the aggregate gate fails, the stage
+is failed/incomplete; no path is dropped or ceiling/cap tuned after measuring.
+
+This JSON is the canonical matrix: hash its UTF-8 canonical JSON (sorted keys,
+compact separators, followed by one newline). The report retains that hash.
+
+```json
+{
+  "id": "r1-effective-frontiers-v2",
+  "baseline_cases": 45,
+  "paths": [
+    {"id": "selected-raw", "family": "selected", "operation": "select", "format": "raw", "size": 32, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "selected-image", "output_components": 1},
+    {"id": "selected-color", "family": "selected-color", "operation": "select-color", "format": "jp2", "size": 32, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "output_components": 3},
+    {"id": "jpx-compose", "family": "composition", "operation": "render", "format": "jpx", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "composited_layers": 2, "output_components": 4},
+    {"id": "jpip-reconstruct", "family": "jpip", "operation": "reconstruct", "format": "jpip", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "reconstructed-image", "output_components": 3},
+    {"id": "jpip-progressive", "family": "jpip", "operation": "progressive", "format": "auto", "size": 16, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 0, "output_protocol": "progressive", "expected_updates": 7, "output_components": 1}
+  ],
+  "ceilings": {"DecodedBytes": 1048576, "WorkUnits": 100000},
+  "maximum_search_probes": 32
+}
+```
+
+Revision v1 (matrix hash
+`f26c3dfe59b6605045a1dd62e12c7863843c9e54a6b7d0c4365c995d8736e993`)
+is retained as a failed/incomplete stage: its selected-color oracle incorrectly
+invented an opaque alpha channel for RGB JP2 conversion. `convert` constructs
+only declared color/alpha channels; composition separately supplies implicit
+opacity. Revision v2 freezes the corrected three-channel RGB source
+expectation and makes all expected output cardinalities explicit before
+remeasurement. No fixture input, path, sample-value budget, search ceiling,
+process cap or baseline case was changed; composition still tests RGBA16.
+
+Selected paths use discard zero / tile zero and exact checked crops of the
+original/reference full decode. Selected color uses authored sRGB JP2 metadata
+and the exact RGB16 source crop (no undeclared alpha channel). Composition uses
+two independently losslessly qualified full-canvas opaque RGB16 layers; the
+foreground source plus opaque alpha is the expected canvas. Reconstruction
+uses the existing split/reordered/duplicated main/tile/body databins and must
+reproduce both encoded bytes and decoded samples exactly. Progression uses a
+separate zero-DWT, single-layer lossless grayscale stream with checked PLT
+single-packet signaling and three complete main/tile/precinct databins.
+It must report seven updates, exactly one independently qualified image, and
+final complete layer one; partial error prefixes remain observed, not invented
+from expectations. No multi-quality-layer progression claim is made here.
+
+The harness only tightens one existing hardened default through the existing
+checked limit builder and passes those options into the real selected,
+conversion, composition, cache/reconstruction and progressive APIs. These
+are **effective admission-budget frontiers / maximum prefix claims for these
+exact paths**, not global cumulative work across counter-reset scopes, total
+allocations, process RSS, CPU time, or universal minimum budgets. Expected
+sample storage remains separate. This matrix does not cover arbitrary
+selections, HT accounting, all container/color/opacity combinations, multiple
+progressive quality layers, sustained R2 campaigns or default-maximum stress.
+Passing it is not whole-R1 completion or integration into actual main.
+
+The original 22 cases, 66 final measurements, four finite budget searches,
+and all existing caps remain mandatory. The following additional Linux
+production-default workloads are declared before collecting R1 measurements.
+All positive streams are reversible, use two decomposition levels and require
+exact original/reference qualification before any subject observation. These
+are safe representatives, not allocations at the production maxima.
+
+| ID/family | Declared workload | Subject observations |
+|---|---|---|
+| `large-gray` | 1536x1536 unsigned8, 128x128 tiles | full, tile zero, native discard 2 |
+| `components8` | 128x128, eight unsigned16 planes, no MCT | full |
+| `precision24` | 256x256 unsigned24 PGX | full |
+| `tiles256` | 512x512 unsigned8, 32x32 tiles (256 tiles) | full, tile zero, native discard 2 |
+| `layers16` | 128x128 RGB16, 16 quality layers, final lossless layer | full |
+| `ht-large` | 768x768 RGB16, 128x128 HT tiles | full, tile zero, native discard 2 |
+| `jpx-components` | 256x256 RGB16 payload in authored JPX metadata | codestream decode |
+| `jpx-compose` | two independently qualified 128x128 RGB16 opaque layers | two-layer composition, exact RGBA16 source oracle |
+| `jpip-fragments` | 256x256 RGB16 single tile; three databins, split/reordered/duplicated fragments | reconstruction bytes and exact decoded image |
+| `jpip-ht-fragments` | same geometry and fragmentation, true HT payload | reconstruction bytes and exact decoded image |
+| `declared-*` | tiny declarations exceeding default width, height, component, tile, layer, JPX-codestream or JPIP-fragment-offset limits | exact typed early rejections |
+
+The implementation adds 16 positive observations and seven early rejections
+to the 22-case baseline: 45 cases and 135 final measurements, in addition to
+the unchanged four bounded searches (104 probes for these baseline fixtures).
+Every final observation is repeated three times. Existing full/selection/
+rejection wall/RSS caps, selection/full RSS ratio <=0.75, child address space
+<=1 GiB, file <=32 MiB, captured output <=16 MiB and aggregate native wall
+<=30 seconds are unchanged. CPU user/system seconds are measured separately
+with GNU Time; work units are not CPU time. Positive output must fit capture
+without truncation. Unsupported reference formats and original/reference
+disagreements remain unqualified failures, never substituted expectations.
+No giant maximum-sized stream, unbounded stress, fuzz-limit replacement or
+cap tuning is authorized by this matrix.
+
+The eight-component case uses independently encoded planar unsigned16 raw
+samples (`-mct 0`), with each original plane compared exactly against an
+independent PGX decode. Other positive payloads likewise require exact
+original/reference agreement and checked SIZ/COD geometry, precision,
+component count, tiling and layer count; HT additionally requires CAP/style
+signaling. JPX metadata is first-party authored, not third-party composition
+evidence. Its opaque full-canvas foreground expectation is calculated from
+the qualified source samples with an explicit RGBA16 alpha plane. JPIP checks
+both the reconstructed codestream hash and decoded sample hash, with no
+replacement by subject-derived expectations. A reference disagreement is
+retained as an unqualified failure with source/encoded/reference artifacts.
+
+The baseline retains four codestream-decoding budget frontiers. The bounded
+accounting stage adds ten effective path frontiers through test-harness-only
+`select-limited`, `select-color-limited`, `render-limited`,
+`reconstruct-limited` and `progressive-limited` operations. The harness also
+supports limited conversion/layer/frame modes, but these are not additional
+qualified accounting paths. Append the ordinary selection arguments first,
+then `decoded-bytes|work-units` and the checked numeric limit; legacy
+`decode-limited` and ordinary invocations keep their interfaces. Unsupported
+limited operations, selectors, malformed limits and attempts to raise
+hardened defaults fail as usage errors before reading the input.
+No global counter or alternative codec was added. Global cumulative byte/work
+instrumentation across reset scopes, broader profiles and amplification
+attribution remain open; default-maximum allocation and sustained R2 stress
+are not authorized by this stage. Passing these finite matrices alone does
+not close R1 or establish a universal resource envelope.
+
 `--ht-encoder` and `--ht-decoder`, or `OPENJPH_ENCODER` and
 `OPENJPH_DECODER`, select trusted HT tools. Missing unconfigured tools block
 the full gate; an explicitly configured missing tool is an error. Legacy and
@@ -589,10 +722,13 @@ Each accepted frontier and the budget one unit below it are then rerun three
 times. The lower budget must report the exact configured resource/limit and an
 excessive claim; process failure or a different typed error cannot qualify.
 
-Each of the twenty-two final cases is measured three times. Every search probe
+Each of the forty-five baseline and twenty accounting final cases is measured
+three times. Every search probe
 also retains its budget, wall time, peak RSS, return code and exact output hash
 or typed limit claim. GNU Time reports actual peak
-process RSS; the bounded runner measures wall time including process startup
+instrumented-subject process RSS and user/system CPU time (seconds converted
+to milliseconds, with the tool's native 0.01-second CPU granularity, so short
+calls can report zero CPU). The bounded runner measures wall time including process startup
 and image-observation serialization. The engineering thresholds are:
 
 | Case | Maximum time per process | Maximum peak RSS |
@@ -601,7 +737,11 @@ and image-observation serialization. The engineering thresholds are:
 | Tile/native-resolution selection | 2.5 seconds | 256 MiB |
 | Early typed rejection | 1 second | 128 MiB |
 
-Aggregate measured native time, including search probes, is limited to 30 seconds.
+Aggregate measured native wall time, including search probes, is limited to 30 seconds.
+User CPU, system CPU and their sum are aggregated separately, not inferred from
+wall time or work units. These aggregates exclude reference fixture generation
+and the Python driver's image comparison; peak RSS is not a sum over the
+driver/reference/subject process tree.
 Search probes obey the same per-process thresholds as their accepted-frontier
 case. Tile-zero peak RSS
 must be at least 25 percent lower than full decode for each generated image.
@@ -614,13 +754,54 @@ for every decoder path, nor a universal minimum budget. A decoded-byte limit
 controls accounted decoder claims, not total process RSS. Work units are an
 implementation accounting threshold, not a CPU-time or instruction count.
 These finite fixtures do not characterize all production-default or worst-case
-inputs, high-component layouts, broader HT/container paths or every supported platform.
+inputs, every high-component/precision/HT/container combination or every supported platform.
 
-Resource report schema version 2 records configured budgets, finite search
-evidence and the separate repeated frontier observations.
+Resource report schema version 5 records the declared matrices, original/reference
+qualification hashes (including source/reference files), CPU measurements,
+default typed declaration claims, exact JPIP reconstructed-byte hashes,
+configured budgets, finite search evidence and repeated frontier observations.
+The runner rejects omitted/duplicate cases, changed declarations, mismatched
+hashes/CPU aggregates and absent adjacent search observations. Schema checks
+also fix the original wall/RSS/aggregate/process caps rather than accepting
+report-specific relaxed values.
+Every nonzero final measurement or search probe retains its actual parsed
+typed category, reason and diagnostic in `observed_error`, independently of
+the row's expected metadata. Every actual `LimitExceeded` observation also
+retains its parsed resource/limit/actual claim, even when no limit was
+configured. The unchanged baseline `declared-pixel-limit` fixture declares
+65535-by-65535 pixels against the production default of 100,000,000 pixels;
+each observation must report `Pixels`, limit 100,000,000 and actual
+4,294,836,225. The truncated-header case retains its actual
+`MalformedInput/Truncated` diagnostic. Missing observations are not inferred
+from expectations or backfilled into earlier reports; category/reason/claim
+disagreements fail validation.
+The baseline `records` array still has exactly 45 cases; the separate
+`accounting_records` array has 20 cases. Both arrays' final and search runs
+contribute to the same CPU/wall aggregates. The resource CLI's ordinary
+`cases` summary remains the baseline count; inspect `accounting_records` for
+the additional stage. The report binds the frozen accounting matrix hash,
+actual limited commands, output protocols and independent expectations.
+Progressive observations additionally retain actual update metadata and the
+captured protocol hash, including valid update prefixes before typed errors.
+`typed_sample_bytes` uses the existing canonical eight-byte-per-integer-sample
+convention, not physical converted-u16 buffer size or accounted decoder
+claims. Accounting rejection rows retain the independent expected output
+metadata so any emitted progressive image prefix can be checked; their actual
+observation still has no accepted output hash. These expected sizes and
+RSS/expected-size diagnostic ratios are never substituted for observed
+admission claims.
 `resource-results.json` retains source/tool/input/output hashes, repetitions,
 individual observations, median times, peak RSS, thresholds and explicit
-failures. Unavailable default tooling/platform support blocks the gate;
+failures. Positive records also report typed-output/input-byte expansion and
+peak-RSS/typed-output-byte ratios, and tile cases report selection/full RSS.
+These are diagnostic amplification ratios, not new resource guarantees or
+post-measurement thresholds. The larger grayscale fixture exercises
+whole-image output/serialization growth; the 256-tile fixture makes fixed
+per-process/tile metadata overhead visible even for tiny selected outputs;
+HT JPIP additionally exercises reconstruction/hex-observation storage.
+Their exact-output, unchanged RSS/time and tile/full-ratio gates are actionable
+regressions without pretending typed output accounts for those other costs.
+Unavailable default tooling/platform support blocks the gate;
 explicitly configured missing tools and absent measurements cannot pass.
 Failed inputs are preserved under ignored `resource-failures/` and uploaded
 by CI. `all` does not implicitly invoke this Linux-specific gate; CI calls it
