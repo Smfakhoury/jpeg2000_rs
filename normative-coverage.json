@@ -2273,6 +2273,60 @@
     {
       "contract_refs": [
         {
+          "path": "src/jp2.rs",
+          "symbol": "Palette::value"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "palette_value_error"
+        }
+      ],
+      "id": "part2-complete-native-palette-lookup",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "map_palette_component"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "Palette::value"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "valid_palette_lookup_has_bounded_linear_index"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_palette_value"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_palette_coordinates_valid"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_composition_error"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/jp2.rs",
+          "symbol": "palette_lookup_matches_independent_complete_native_shape_oracle"
+        },
+        {
+          "path": "src/jp2.rs",
+          "symbol": "palette_lookup_preserves_physical_stride_and_first_error"
+        }
+      ],
+      "topic": "Complete actual raw Palette::value Result for arbitrary stored entries, columns, values and native coordinates; physical-column-count validation precedes logical coordinates, checked row-major address and physical value access. Descriptor precision/sign are not lookup validation. Parser, output mapping and CDEF composition remain separate."
+    },
+    {
+      "contract_refs": [
+        {
           "path": "src/refinement.rs",
           "symbol": "signed_to_nominal"
         }

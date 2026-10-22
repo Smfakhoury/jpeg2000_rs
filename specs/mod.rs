@@ -2133,6 +2133,27 @@ pub open spec fn part2_palette_coordinates_valid(
     entry < entries && column < columns
 }
 
+pub type Part2PaletteModel = (u16, Seq<crate::jp2::PaletteColumn>, Seq<i64>);
+
+pub open spec fn part2_palette_value(
+    palette: Part2PaletteModel, entry: u16, column: u8,
+) -> Result<i64, crate::DecodeError> {
+    if palette.1.len() > u8::MAX {
+        Err(part2_composition_error(true))
+    } else if !part2_palette_coordinates_valid(
+        entry, palette.0, column, palette.1.len() as u8,
+    ) {
+        Err(part2_composition_error(false))
+    } else {
+        let index = (entry as nat) * palette.1.len() + (column as nat);
+        if index > usize::MAX {
+            Err(part2_composition_error(true))
+        } else if index >= palette.2.len() {
+            Err(part2_composition_error(false))
+        } else { Ok(palette.2[index as int]) }
+    }
+}
+
 pub open spec fn part2_component_mapping_valid(
     component: u16,
     components: u16,

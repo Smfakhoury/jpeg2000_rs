@@ -23,6 +23,25 @@ The public byte-input dispatch/pass-limit preflight, actual refinement plane
 passes, and placeholder/replacement/mixed sequencing remain separate closure
 obligations. No additional foreign source edits are authorized here.
 
+## Actual raw palette lookup
+
+`part2_palette_value` uses the stored entry count, actual physical column
+descriptor sequence and actual physical signed-value sequence. It first checks
+whether the physical column count fits `u8`, then the logical entry/column
+coordinates, then the checked `usize` row-major address, then actual value
+presence. A physical value outside the logical table is not a valid lookup;
+truncation inside it returns `InvalidBoxContents`. Column-count/address overflow
+returns `ArithmeticOverflow`, with offset zero. The common existing
+`part2_composition_error` denotes these same two error values; it adds no
+composition premise.
+
+This deliberately models the raw lookup, not the parser's palette-shape rules
+or the mapper's precision/sign/sample-index rules. The raw operation returns the
+stored `i64` unchanged, including both extrema, and ignores descriptor
+precision/sign. Its complete actual production relation is unconditional on
+stored shape and native coordinates. Palette parsing, component mapping and
+their composition remain unproved by this result alone.
+
 ## Frozen F5H cleanup-plane reconstruction profile
 
 The next full numerical boundary is the actual `reconstruct_ht_cleanup_plane`,
