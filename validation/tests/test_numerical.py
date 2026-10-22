@@ -633,7 +633,7 @@ class NumericalTests(unittest.TestCase):
             if case.signed:
                 self.assertNotEqual(record["encoder_input_sha256"], record["input_sha256"])
         pgx = [record for record in result["records"] if record["source_format"] == "pgx"]
-        self.assertEqual(len(pgx), 23)
+        self.assertEqual(len(pgx), 24)
         self.assertEqual({record["precision"] for record in pgx}, {1, 2, 4, 7, 8, 9, 12, 16, 17, 20, 24, 25})
         for record in pgx:
             self.assertEqual(record["source_metrics"]["maximum_error"], 0)
@@ -682,3 +682,14 @@ class NumericalTests(unittest.TestCase):
         self.assertEqual(len(roi), 9)
         self.assertTrue(all(record["verified_features"] == ["component-maxshift"] for record in roi))
         framework.validate_evidence_schemas(self.work)
+
+    def test_q2_additions_keep_fixed_prequalification_budgets(self):
+        cases = [case for case in numerical.CASES if case.name.startswith("q2-")]
+        self.assertEqual([case.name for case in cases], [
+            "q2-roi-gray20", "q2-roi-rgb16-independent", "q2-roi-gray16-irreversible",
+        ])
+        self.assertEqual([(case.width, case.height, case.decomposition_levels) for case in cases],
+                         [(47, 35, 2)] * 3)
+        self.assertEqual([(case.maximum_error, case.maximum_rmse) for case in cases],
+                         [(0, 0), (0, 0), (8, 2.0)])
+        self.assertTrue(cases[-1].prequalify_irreversible)

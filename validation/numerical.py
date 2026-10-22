@@ -22,6 +22,15 @@ NATIVE_ADDRESS_BYTES = 512 << 20
 NATIVE_FILE_BYTES = 2 << 20
 NATIVE_OUTPUT_BYTES = 1 << 20
 
+# Reproduction recipes, not a claim that an arbitrary configured binary was built here.
+REFERENCE_SOURCE_RECIPES = {
+    "OpenJPEG": {"repository": "https://github.com/uclouvain/openjpeg",
+                 "revision": "a5891555eb49ed7cc26b2901ea680acda136d811", "version": "2.5.0"},
+    "OpenJPH": {"repository": "https://github.com/aous72/OpenJPH",
+               "revision": "8ca3abdd3b185cd737e70c0d443171205b3e6f15", "version": "0.33.0",
+               "simd_disabled": True},
+}
+
 
 @dataclass(frozen=True)
 class NumericalCase:
@@ -101,6 +110,14 @@ CASES = (
     NumericalCase("rgb16-lossless", channels=3, precision=16, options=("-mct", "1")),
     NumericalCase("rgb16-irreversible", channels=3, precision=16,
                   options=("-mct", "1", "-I", "-r", "1"),
+                  lossless=False, maximum_error=8, maximum_rmse=2.0,
+                  prequalify_irreversible=True),
+    NumericalCase("q2-roi-gray20", width=47, height=35, precision=20,
+                  options=("-ROI", "c=0,U=1", "-d", "3,3", "-t", "16,16")),
+    NumericalCase("q2-roi-rgb16-independent", width=47, height=35, channels=3, precision=16,
+                  options=("-ROI", "c=2,U=2", "-mct", "0", "-d", "3,5", "-t", "16,16")),
+    NumericalCase("q2-roi-gray16-irreversible", width=47, height=35, precision=16,
+                  options=("-ROI", "c=0,U=2", "-I", "-r", "1", "-d", "3,5", "-t", "16,16"),
                   lossless=False, maximum_error=8, maximum_rmse=2.0,
                   prequalify_irreversible=True),
 )
