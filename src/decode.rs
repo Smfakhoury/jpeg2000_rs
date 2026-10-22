@@ -1240,6 +1240,155 @@ struct WorkingSubband {
     visited: Vec<bool>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn working_subband_view(value: WorkingSubband) -> crate::specs::Part1WorkingSubbandModel {
+        (value.width, value.height, value.fraction_bits, value.samples@, value.visited@)
+    }
+
+    impl View for WorkingSubband {
+        type V = crate::specs::Part1WorkingSubbandModel;
+
+        closed spec fn view(&self) -> Self::V {
+            working_subband_view(*self)
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(destination)@) == crate::specs::part1_quantized_block_pixel(
+        old(destination)@, source@, block_width, placement_x, placement_y, x, y,
+    ),
+))]
+fn write_quantized_pixel(
+    destination: &mut WorkingSubband,
+    source: &[i64],
+    block_width: u32,
+    placement_x: u32,
+    placement_y: u32,
+    x: u32,
+    y: u32,
+) -> Result<(), DecodeError> {
+    let destination_index = checked_index(
+        destination.width,
+        placement_x.checked_add(x).ok_or_else(arithmetic_overflow)?,
+        placement_y.checked_add(y).ok_or_else(arithmetic_overflow)?,
+    )?;
+    let source_index = checked_index(block_width, x, y)?;
+    if destination_index >= destination.samples.len()
+        || destination_index >= destination.visited.len()
+        || source_index >= source.len()
+        || destination.visited[destination_index]
+    {
+        return Err(invalid_decode());
+    }
+    destination.samples[destination_index] =
+        *source.get(source_index).ok_or_else(invalid_decode)?;
+    destination.visited[destination_index] = true;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(destination)@) == crate::specs::part1_quantized_block_row(
+        old(destination)@, source@, block_width, placement_x, placement_y, y, block_width as nat,
+    ),
+))]
+fn write_quantized_row(
+    destination: &mut WorkingSubband,
+    source: &[i64],
+    block_width: u32,
+    placement_x: u32,
+    placement_y: u32,
+    y: u32,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = destination@; }
+    let mut x = 0_u32;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant x <= block_width,
+        original == old(destination)@,
+        crate::specs::part1_quantized_block_row(
+            original, source@, block_width, placement_x, placement_y, y, x as nat,
+        ) == (Ok(()), destination@),
+        decreases block_width - x,
+    ))]
+    while x < block_width {
+        match write_quantized_pixel(
+            destination,
+            source,
+            block_width,
+            placement_x,
+            placement_y,
+            x,
+            y,
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_quantized_row_error_persists(
+                        original, source@, block_width, placement_x, placement_y, y,
+                        x as nat + 1, block_width as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(destination)@) == crate::specs::part1_quantized_block_rows(
+        old(destination)@, source@, block_width, placement_x, placement_y, block_height as nat,
+    ),
+))]
+fn write_quantized_block(
+    destination: &mut WorkingSubband,
+    source: &[i64],
+    block_width: u32,
+    block_height: u32,
+    placement_x: u32,
+    placement_y: u32,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = destination@; }
+    let mut y = 0_u32;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant y <= block_height,
+        original == old(destination)@,
+        crate::specs::part1_quantized_block_rows(
+            original, source@, block_width, placement_x, placement_y, y as nat,
+        ) == (Ok(()), destination@),
+        decreases block_height - y,
+    ))]
+    while y < block_height {
+        match write_quantized_row(
+            destination,
+            source,
+            block_width,
+            placement_x,
+            placement_y,
+            y,
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_quantized_block_error_persists(
+                        original, source@, block_width, placement_x, placement_y,
+                        y as nat + 1, block_height as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn make_subband_geometry(
     resolution: u8,
@@ -1468,52 +1617,14 @@ fn prepare_tile_component_with_kernel(
         let destination = working
             .get_mut(placement.subband_index)
             .ok_or_else(invalid_decode)?;
-        let mut block_y = 0_u32;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant block_y <= block_height,
-                decreases block_height - block_y,
-            )
-        )]
-        while block_y < block_height {
-            let mut block_x = 0_u32;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant block_x <= block_width,
-                    decreases block_width - block_x,
-                )
-            )]
-            while block_x < block_width {
-                let destination_index = checked_index(
-                    destination.width,
-                    placement
-                        .x
-                        .checked_add(block_x)
-                        .ok_or_else(arithmetic_overflow)?,
-                    placement
-                        .y
-                        .checked_add(block_y)
-                        .ok_or_else(arithmetic_overflow)?,
-                )?;
-                let source_index = checked_index(block_width, block_x, block_y)?;
-                if destination_index >= destination.samples.len()
-                    || destination_index >= destination.visited.len()
-                    || source_index >= quantized.samples().len()
-                    || destination.visited[destination_index]
-                {
-                    return Err(invalid_decode());
-                }
-                destination.samples[destination_index] = *quantized
-                    .samples()
-                    .get(source_index)
-                    .ok_or_else(invalid_decode)?;
-                destination.visited[destination_index] = true;
-                block_x = block_x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            block_y = block_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        write_quantized_block(
+            destination,
+            quantized.samples(),
+            block_width,
+            block_height,
+            placement.x,
+            placement.y,
+        )?;
         placement_index = placement_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
@@ -3900,10 +4011,10 @@ fn component_coordinate_bounds(
     ])
 }
 
-#[cfg_attr(
-    verus_keep_ghost,
-    verus_spec(error => ensures error == crate::specs::color_selection_target_error(),)
-)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::color_selection_target_error()
+        && result == crate::specs::part1_block_placement_error(false),
+))]
 fn invalid_decode() -> DecodeError {
     DecodeError::MalformedInput {
         offset: 0,
@@ -3924,16 +4035,21 @@ const fn wavelet_transforms_equal(left: WaveletTransform, right: WaveletTransfor
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_block_placement_error(true),
+))]
 fn arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_offset(y, width, x),
+))]
 fn checked_index(width: u32, x: u32, y: u32) -> Result<usize, DecodeError> {
-    usize::try_from(y)
-        .map_err(|_| arithmetic_overflow())?
-        .checked_mul(usize::try_from(width).map_err(|_| arithmetic_overflow())?)
-        .and_then(|row| row.checked_add(usize::try_from(x).ok()?))
-        .ok_or_else(arithmetic_overflow)
+    crate::transform::transform_offset(y, width, x)
 }
 
 fn checked_area_u32(width: u32, height: u32) -> Result<usize, DecodeError> {
@@ -4110,6 +4226,221 @@ mod tests {
                 kind: MalformedKind::ContainerCodestreamMismatch
             })
         );
+    }
+
+    fn copy_working_band(band: &WorkingSubband) -> WorkingSubband {
+        WorkingSubband {
+            width: band.width,
+            height: band.height,
+            fraction_bits: band.fraction_bits,
+            samples: band.samples.clone(),
+            visited: band.visited.clone(),
+        }
+    }
+
+    fn observed_working_band(band: WorkingSubband) -> (u32, u32, u8, Vec<i64>, Vec<bool>) {
+        (
+            band.width,
+            band.height,
+            band.fraction_bits,
+            band.samples,
+            band.visited,
+        )
+    }
+
+    fn reference_quantized_block(
+        destination: &mut WorkingSubband,
+        source: &[i64],
+        block: [u32; 2],
+        origin: [u32; 2],
+    ) -> Result<(), DecodeError> {
+        for y in 0..block[1] {
+            for x in 0..block[0] {
+                let destination_x = u64::from(origin[0]) + u64::from(x);
+                let destination_y = u64::from(origin[1]) + u64::from(y);
+                if destination_x > u64::from(u32::MAX) || destination_y > u64::from(u32::MAX) {
+                    return Err(arithmetic_overflow());
+                }
+                let output = u128::from(destination_y) * u128::from(destination.width)
+                    + u128::from(destination_x);
+                if u128::from(destination_y) > usize::MAX as u128
+                    || u128::from(destination.width) > usize::MAX as u128
+                    || u128::from(destination_x) > usize::MAX as u128
+                    || output > usize::MAX as u128
+                {
+                    return Err(arithmetic_overflow());
+                }
+                let input = u128::from(y) * u128::from(block[0]) + u128::from(x);
+                if u128::from(y) > usize::MAX as u128
+                    || u128::from(block[0]) > usize::MAX as u128
+                    || u128::from(x) > usize::MAX as u128
+                    || input > usize::MAX as u128
+                {
+                    return Err(arithmetic_overflow());
+                }
+                let output = output as usize;
+                let input = input as usize;
+                if output >= destination.samples.len()
+                    || output >= destination.visited.len()
+                    || input >= source.len()
+                    || destination.visited[output]
+                {
+                    return Err(invalid_decode());
+                }
+                destination.samples[output] = source[input];
+                destination.visited[output] = true;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn complete_quantized_block_placement_matches_independent_wide_reference() {
+        for width in 0..=5_u32 {
+            for height in 0..=4_u32 {
+                for block_width in 0..=4_u32 {
+                    for block_height in 0..=3_u32 {
+                        let source: Vec<_> = (0..block_width * block_height + 1)
+                            .map(|i| i64::from(i) * 13 - 29)
+                            .collect();
+                        for origin in [[0, 0], [1, 1], [width, height]] {
+                            for source_count in [
+                                (block_width * block_height) as usize,
+                                (block_width * block_height).saturating_sub(1) as usize,
+                                source.len(),
+                            ] {
+                                for previsited in [false, true] {
+                                    let mut actual = WorkingSubband {
+                                        width,
+                                        height,
+                                        fraction_bits: 13,
+                                        samples: vec![9; (width * height) as usize],
+                                        visited: vec![false; (width * height) as usize],
+                                    };
+                                    if previsited && !actual.visited.is_empty() {
+                                        let index = actual.visited.len() / 2;
+                                        actual.visited[index] = true;
+                                    }
+                                    let mut expected = copy_working_band(&actual);
+                                    let expected_status = reference_quantized_block(
+                                        &mut expected,
+                                        &source[..source_count],
+                                        [block_width, block_height],
+                                        origin,
+                                    );
+                                    let status = write_quantized_block(
+                                        &mut actual,
+                                        &source[..source_count],
+                                        block_width,
+                                        block_height,
+                                        origin[0],
+                                        origin[1],
+                                    );
+                                    assert_eq!(
+                                        (status, observed_working_band(actual)),
+                                        (expected_status, observed_working_band(expected))
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn complete_quantized_block_failures_preserve_samples_visits_and_metadata() {
+        for (band, source, block, origin) in [
+            (
+                WorkingSubband {
+                    width: 2,
+                    height: 3,
+                    fraction_bits: 16,
+                    samples: vec![9; 6],
+                    visited: vec![false; 6],
+                },
+                vec![i64::MIN, i64::MAX, 7, 8, 9],
+                [2, 3],
+                [0, 0],
+            ),
+            (
+                WorkingSubband {
+                    width: 2,
+                    height: 123,
+                    fraction_bits: 0,
+                    samples: vec![9; 6],
+                    visited: vec![false; 3],
+                },
+                vec![1, 2, 3, 4, 5, 6],
+                [2, 3],
+                [0, 0],
+            ),
+            (
+                WorkingSubband {
+                    width: 0,
+                    height: 0,
+                    fraction_bits: 255,
+                    samples: vec![9],
+                    visited: vec![false],
+                },
+                vec![7, 8],
+                [1, 2],
+                [0, u32::MAX],
+            ),
+            (
+                WorkingSubband {
+                    width: 1,
+                    height: 1,
+                    fraction_bits: 7,
+                    samples: vec![9],
+                    visited: vec![true],
+                },
+                vec![],
+                [1, 1],
+                [0, 0],
+            ),
+            (
+                WorkingSubband {
+                    width: u32::MAX,
+                    height: u32::MAX,
+                    fraction_bits: 0,
+                    samples: vec![],
+                    visited: vec![],
+                },
+                vec![1],
+                [1, 1],
+                [u32::MAX, u32::MAX],
+            ),
+            (
+                WorkingSubband {
+                    width: 0,
+                    height: 0,
+                    fraction_bits: 19,
+                    samples: vec![],
+                    visited: vec![],
+                },
+                vec![],
+                [0, 2],
+                [u32::MAX, u32::MAX],
+            ),
+        ] {
+            let mut actual = band;
+            let mut expected = copy_working_band(&actual);
+            let expected_status = reference_quantized_block(&mut expected, &source, block, origin);
+            let status = write_quantized_block(
+                &mut actual,
+                &source,
+                block[0],
+                block[1],
+                origin[0],
+                origin[1],
+            );
+            assert_eq!(
+                (status, observed_working_band(actual)),
+                (expected_status, observed_working_band(expected))
+            );
+        }
     }
 
     fn segment(marker: u16, payload: &[u8]) -> Vec<u8> {

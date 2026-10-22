@@ -73,6 +73,9 @@ For a fresh local report, clean only this crate's verification artifacts with
 `cargo clean -p jpeg2000_rs --target-dir target/verus`, then repeat the report
 command. CI uses a fresh checkout. Reports are generated evidence, not
 committed snapshots; an empty/cached output cannot become a new proof report.
+If Cargo refuses to clean because the target lacks a valid `CACHEDIR.TAG`,
+respect that safety check. Use a new dedicated `--target-dir` for fresh
+verification instead of deleting the unrecognized directory.
 
 The checker rejects missing/zero/dependency-only/wrong-crate/ambiguous/partial
 results, any termination opt-out, and forbidden trusted codec escapes.
@@ -102,6 +105,91 @@ only after a reproducibly pinned fixed verifier passes the exact production
 root and the relevant upstream regression suites.
 
 ## What the proofs establish
+
+### Full native magnitude arithmetic
+
+`magnitude_value` is the closed natural-value projection of all six
+little-endian limbs. Native `checked_add`, `checked_shl`, `shift_right`,
+`low_u64` and `is_zero` refine exact sum/capacity, multiplication/floor
+division by powers of two, modulo-low-word and full-value zero semantics.
+All `u16` shift values are covered, including large-shift zero success and
+nonzero overflow. No coefficient-normalization or HT-success premise is
+assumed. Public associated factories retain their API while verified free
+factories supply complete producer contracts, including exact invalid-bit
+errors and identity with `Magnitude::ZERO`.
+
+The existing limb implementations are related to natural arithmetic through
+proved one-bit word composition, full-value carry identities and capacity
+bounds, without raising verifier limits. This interface supports actual
+HT reconstruction but does not by itself prove HT byte meaning or F6's
+remaining assembly bridge.
+
+### Bounded supplied-coefficient reconstruction
+
+`transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
+are the real production cores shared by the public integer and internal
+signed-magnitude adapters. Their complete-result contracts relate every sample
+and all `ReconstructedPlane` metadata to
+`part1_inverse_integer_quantization` / `part1_inverse_quantization`, including
+parameter, explicit decoded-byte-budget, ROI, arithmetic and final width
+rejections in execution order. The domain includes all six-limb coefficients,
+signs and `u8` ROI shifts; out-of-range restored magnitudes are rejected rather
+than assumed absent. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` adapters also have complete Result contracts
+using the closed `ResourceLimits` byte-field projection and its verified getter.
+
+`transform::inverse_5_3` and `transform::inverse_9_7` have whole-sequence
+contracts covering both parities, empty/singleton handling, mirrored boundaries,
+all scaling/lifting passes and checked errors. The horizontal, vertical and
+single-level 2D public entry points for both standard kernels additionally
+specify every plane sample, all metadata and the actual configured byte limit.
+The real level implementation reuses the proved production row/column
+coordinators. `inverse_lift`, scaling, the four-stage 9/7 coordinator and column
+storage specify complete mutable states on first failure, with untouched
+positions retained. Supporting model properties establish complete sequence
+lengths and plane sample-count/metadata consistency.
+
+The existing public `convert_samples` API has full Result semantics for its
+actual 1..38 precision policy, rounding, level shifting, clipping and checked
+failures. Its concrete consumer is an independent API test, not the decoder's
+separate image/component conversion path. Independent tests compare complete
+outputs and error/mutation boundaries with bit-expanded ROI, rational Q16 and
+widened-integer sequence/plane/conversion references.
+
+The actual free `apply_reversible_component_transform` and
+`apply_irreversible_component_transform` APIs have complete mutable-image
+contracts, not just scalar arithmetic bounds. A closed `DecodedImage` view
+contains every image/component metadata field and all sample buffers. The
+shared real loop's ordered compatibility, length and arithmetic checks are
+modeled together with complete failure states; metadata, lengths and every
+extra component remain unchanged. Independent widened-integer tests compare
+entire images, including earlier committed pixels on a later error.
+No typed/CDEF structure or conversion is duplicated or modified.
+
+Raw closed arbitrary-kernel/step/coefficient views and exact receiver getter
+contracts make their consumed representation available without validation or
+coefficient-normalization assumptions. They are interfaces for further
+arbitrary-kernel work, not a whole-kernel theorem.
+
+The actual quantized-block placement loop in
+`decode::prepare_tile_component_with_kernel` is a shared, verified production
+block/row/pixel transition. Its complete working-subband view includes both
+samples and visited flags with exact first-failure buffers, unchanged metadata
+and lengths, monotone visited flags and protected previsited values. Independent
+wide-index tests cover full grids, short buffers, overlaps, empty blocks and
+coordinate failures. Geometry/quantization checks stay before the same real
+call. This is the complete write stage, not a result theorem for its surrounding
+placement, multilevel or tile/image assembly coordinator.
+
+These are input-relative integer/fixed-point stage results, not compressed
+parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
+the whole coefficient-placement coordinator, actual multilevel/resolution
+scheduling, arbitrary
+kernels, multiple-component transforms, decoder typed conversion, component/
+tile assembly and composed component-sample relations are not established here.
+See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
+
+### General scope
 
 Verification checks the properties expressed by contracts and loop invariants,
 including bounds, arithmetic checks, termination, and selected functional
@@ -140,6 +228,7 @@ Read each contract according to its inputs and postcondition:
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
+| Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -325,6 +414,33 @@ integration/review and package acceptance remain separate from these local
 theorems. The two new complete output projections need parent-owned exact
 inventory-scanner mappings for `build_timeline` and `render_normalized_frame`;
 the prior four projections and their `contract_refs` are linked.
+
+The raw-bypass reader has unconditional exact typed result/state relations
+for byte loading and bit reads, plus exact termination classification.
+Its state model includes the immutable byte sequence, current byte, remaining
+bits, consumed-byte index, marker-padding count and actual work counter/cap.
+Stuffed data use seven bits; marker-like bytes beyond `0x8f` after `0xff`
+remain unconsumed while synthetic `0xff` bits are supplied. Exhausted input
+uses the same selected bounded-reader policy. These are input-relative
+implementation semantics, not a completed selected-edition audit.
+
+Error states are not transactional: work-limit failure preserves the consumed
+bit and incremented work counter; work overflow preserves the consumed bit
+and old counter. Marker-padding overflow preserves the already installed
+synthetic byte/eight-bit count, without consuming the bit or charging work.
+The constructor's private free helper is shared by the unchanged public
+`RawBitReader::new` wrapper and actual legacy decode path; there is no second
+executable reader. Its contract proves the initial state and exact input-byte
+claim. These stage contracts do not complete the F5L packet/MQ/pass epic.
+
+A separately reference-qualified layered/tiled RGB16 all-style regression
+identified three termination corrections. Later completed coding segments
+may have zero payload bytes; initial empty blocks, unfinished empty segments
+and empty HT inputs remain rejected. Empty raw predictable termination is
+valid only before any coded bit is consumed. A complete final raw `0xff`
+may retain its exact seven-bit `0x2a` termination byte without that byte being
+an entropy decision. The model and exhaustive terminal-pair regressions cover
+these corrected outcomes; no oracle expectation, budget or cap was relaxed.
 
 The production placed-layer compositor uses the complete `source_over_pixel`
 evaluator. Its executable contract equates the entire optional color/alpha

@@ -287,6 +287,112 @@
     {
       "contract_refs": [
         {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_from_input"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::read_bit"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::validate_predictable_termination"
+        }
+      ],
+      "id": "part1-raw-bitstream-state",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1SymbolDecoder::decode"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_legacy_segment"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_raw_significance_propagation_pass"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_raw_magnitude_refinement_pass"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_bit_reader_view"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::load_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_outcome"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_initial"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_load"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_read"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_termination"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_transitions_match_exhaustive_two_byte_token_oracle"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_limits_preserve_post_bit_counter_and_exact_state"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_overflow_and_invalid_state_errors_preserve_complete_state"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_initial_input_limits_match_exact_claims"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_termination_matches_independent_alternating_suffix_arithmetic"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "later_empty_terminated_mq_pass_preserves_real_pass_accounting"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "empty_initial_and_unterminated_legacy_segments_remain_invalid"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "empty_raw_predictable_termination_requires_no_consumed_symbols"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_predictable_termination_checks_the_exact_stuffed_ff_tail"
+        }
+      ],
+      "topic": "Complete selected raw-bypass reader initialization, state/error transitions and predictable termination; not complete MQ/packet/pass semantics"
+    },
+    {
+      "contract_refs": [
+        {
           "path": "src/refinement.rs",
           "symbol": "packet_data_bits"
         },
@@ -4549,6 +4655,608 @@
         }
       ],
       "topic": "SINGLEHT/MULTIHT enforcement, empty replacement sets, and continued refinement pass accumulation"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_values"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_plane"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "undo_maxshift_magnitude"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantize_magnitude_sample"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_quantization_size"
+        }
+      ],
+      "id": "part1-complete-supplied-coefficient-quantization",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "prepare_tile_component_with_kernel"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_values"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_plane"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantize_magnitude_sample"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_quantization_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_quantization_has_complete_plane_metadata"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_integer_quantization"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_quantization"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_roi_coefficient"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_quantized_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_quantization_budget"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_quantization_planes_match_independent_bit_and_rational_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
+        }
+      ],
+      "topic": "Complete supplied-coefficient ROI and reversible/Q16 inverse quantization planes, including actual configured budgets and typed first failures; the public integer API's concrete consumer is its independent adapter test, while decode directly uses the wide adapter; not entropy-decoder meaning or irreversible conformance"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "interleave"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lifting_value"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "fixed_mul"
+        }
+      ],
+      "id": "part1-complete-five-three-sequence",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_row_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_column_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lifting_value"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_lifting_sample_frame"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_lifting_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_five_three_preserves_complete_sequence_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_five_three"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_interleaved"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_lifting_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_lifting_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_fixed_product"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "full_five_three_sequences_and_rejections_match_wide_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_lifting_buffers_preserve_first_error_state_and_opposite_parity"
+        }
+      ],
+      "topic": "Complete input-relative inverse 5/3 sequences, geometry, parity, singleton and checked-error semantics, plus shared lifting-buffer first-failure states; plane and 9/7 profiles have separate requirements below"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "scale_parity"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_nine_seven_lifts"
+        }
+      ],
+      "id": "part1-complete-nine-seven-sequence",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_row_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_column_pair"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_9_7"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_scaling_error_persists"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_nine_seven_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_nine_seven_preserves_complete_sequence_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_nine_seven"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_scaling_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_nine_seven_lifting_prefix"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_nine_seven_sequences_match_independent_wide_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_scaling_lifting_and_column_store_states_match_independent_arithmetic"
+        }
+      ],
+      "topic": "Whole input-relative fixed-point 9/7 sequences with both scaling passes, four lifting passes, geometry, singletons, typed errors and complete partial buffers; not real-valued irreversible conformance"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_vertical_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_vertical_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level_9_7"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_level"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_band"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "checked_area"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "store_column"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "store_column_sample"
+        }
+      ],
+      "id": "part1-complete-standard-wavelet-planes",
+      "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "prepare_tile_component_with_kernel"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_level"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_horizontal"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_vertical"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_level"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_columns"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "store_column"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_horizontal_error_persists"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_vertical_error_persists"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_store_column_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "standard_horizontal_plane_has_complete_shape"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "standard_vertical_plane_has_complete_shape"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "standard_level_plane_has_complete_shape"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_horizontal"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_vertical"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_level"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_validate_level"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_validate_band"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_transform_area"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_store_column_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_store_column_sample"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_standard_planes_match_independent_reference_for_all_small_geometries"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_plane_rejections_preserve_late_band_checks_and_resource_order"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_scaling_lifting_and_column_store_states_match_independent_arithmetic"
+        }
+      ],
+      "topic": "Complete actual standard-kernel horizontal, vertical and single-level 2D plane composition, metadata, configured budgets and ordered typed failures; not multilevel scheduling, arbitrary kernels or component/tile assembly"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_samples"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_sample"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "round_fixed"
+        }
+      ],
+      "id": "part1-complete-public-sample-conversion",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_sample_conversion_matches_wide_reference_and_error_boundaries"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_samples"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "convert_sample"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_conversion_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "converted_samples_preserve_complete_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_convert_samples"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_convert_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_round_fixed"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_sample_conversion_matches_wide_reference_and_error_boundaries"
+        }
+      ],
+      "topic": "Existing public conversion API's complete ordered rounding, level shifting, clipping, byte-budget and checked-error semantics, with an independent concrete API consumer; not the decoder's separate image/component conversion path"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "apply_reversible_component_transform"},
+        {"path": "src/image.rs", "symbol": "apply_irreversible_component_transform"},
+        {"path": "src/image.rs", "symbol": "apply_component_transform"},
+        {"path": "src/image.rs", "symbol": "apply_component_pixel"},
+        {"path": "src/image.rs", "symbol": "inverse_component_values"},
+        {"path": "src/image.rs", "symbol": "validate_transform_components"},
+        {"path": "src/image.rs", "symbol": "component_sample"},
+        {"path": "src/image.rs", "symbol": "set_component_sample"},
+        {"path": "src/image.rs", "symbol": "fixed_mul"}
+      ],
+      "id": "part1-complete-decoded-component-transforms",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_prepared_image"},
+        {"path": "src/image.rs", "symbol": "apply_reversible_component_transform"},
+        {"path": "src/image.rs", "symbol": "apply_irreversible_component_transform"},
+        {"path": "src/image.rs", "symbol": "apply_component_transform"},
+        {"path": "src/image.rs", "symbol": "apply_component_pixel"},
+        {"path": "src/image.rs", "symbol": "inverse_component_values"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_component_transform_error_persists"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "component_transforms_preserve_complete_metadata_and_extra_planes"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_transform"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_pixel_state"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_values"},
+        {"path": "specs/mod.rs", "symbol": "part1_validate_transform_components"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_component_sample"},
+        {"path": "specs/mod.rs", "symbol": "part1_set_decoded_component_sample"},
+        {"path": "specs/mod.rs", "symbol": "part1_fixed_product"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_transform_frame"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "complete_component_images_match_independent_wide_reference"},
+        {"path": "src/image.rs", "symbol": "complete_component_transform_validation_preserves_error_order_and_state"},
+        {"path": "src/image.rs", "symbol": "complete_component_pixel_frames_and_rejections_match_independent_reference"}
+      ],
+      "topic": "Complete actual in-place reversible and fixed-Q16 three-component inverse transforms, including image/component metadata, untouched extra planes, compatibility/length rejection and exact first-failure buffers; not MCT, typed conversion or tile assembly"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "write_quantized_block"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_row"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_pixel"},
+        {"path": "src/decode.rs", "symbol": "checked_index"}
+      ],
+      "id": "part1-complete-quantized-block-placement",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_block"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_row"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_pixel"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_quantized_row_error_persists"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_quantized_block_error_persists"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "quantized_block_preserves_metadata_and_previsited_samples"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_quantized_block_rows"},
+        {"path": "specs/mod.rs", "symbol": "part1_quantized_block_row"},
+        {"path": "specs/mod.rs", "symbol": "part1_quantized_block_pixel"},
+        {"path": "specs/mod.rs", "symbol": "part1_transform_offset"},
+        {"path": "specs/mod.rs", "symbol": "part1_working_subband_frame"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "complete_quantized_block_placement_matches_independent_wide_reference"},
+        {"path": "src/decode.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
+      ],
+      "topic": "Actual row-major writes of supplied quantized block samples into working subband samples and visited masks, including all metadata, buffer mismatches, overlap and checked-coordinate errors with exact partial states; not the entire prepare/multilevel/tile-image assembly coordinator"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::is_zero"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::low_u64"}
+      ],
+      "id": "part1-full-native-magnitude-values",
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_shl"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::shift_right"},
+        {"path": "src/magnitude.rs", "symbol": "magnitude_zero"},
+        {"path": "src/magnitude.rs", "symbol": "magnitude_from_u64"},
+        {"path": "src/magnitude.rs", "symbol": "magnitude_single_bit"}
+      ],
+      "proof_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_shl"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::shift_right"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_prefix_properties"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_right_shift_value"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_left_shift_value"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_left_fits_value"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_add_limb"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_capacity"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_low_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_zero"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_left"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_left_fits"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_shift"},
+        {"path": "specs/mod.rs", "symbol": "magnitude_addition"}
+      ],
+      "test_refs": [
+        {"path": "src/magnitude.rs", "symbol": "full_native_bit_producers_preserve_all_limbs_and_exact_errors"},
+        {"path": "src/magnitude.rs", "symbol": "full_u16_shifts_and_modulo_getters_match_independent_384_bit_reference"},
+        {"path": "src/magnitude.rs", "symbol": "exact_full_capacity_addition_matches_bit_carry_reference"}
+      ],
+      "topic": "Complete six-limb unsigned natural-value interfaces, exact capacity overflow, full native shift domains and modulo low-word semantics; not coefficient normalization or HT bitstream meaning"
     }
   ]
 }
