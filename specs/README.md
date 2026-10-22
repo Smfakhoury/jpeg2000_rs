@@ -1,5 +1,34 @@
 # Specification audit guide
 
+## Frozen F5H cleanup-plane reconstruction profile
+
+The next full numerical boundary is the actual `reconstruct_ht_cleanup_plane`,
+not a validated-metadata wrapper. It admits arbitrary stored quads, dimensions,
+initial-row flags, masks, coordinates, U values and native bitplane/work limits.
+Only metadata width is checked before creating the blank output using the input
+plane's dimensions; old input coefficients are ignored. Coordinate addition
+precedes metadata clipping. Scanning precedes MagSgn consumption, which precedes
+placement and both success counters. Duplicate or out-of-output placements can
+therefore fail after consuming a magnitude. All six stored words, flags,
+statistics, both exponent stencils and every reader field are observed by the
+shared production stages, including their first-error partial states.
+
+Column-zero reset, sample-one maximum, sample-three overwrite and end-of-row
+stencil swap follow actual metadata vector order, not assumed geometric order.
+Noninitial kappa retains its conservative base-plus-exponent overflow check.
+No-significance, empty or fully clipped metadata does not impose numeric-domain
+checks absent from the body. Final physical padding, stuffing and work errors
+remain after all placements. This profile does not establish refinement,
+placeholder/replacement/mixed routing or complete entropy conformance.
+
+The raw `Tier1CodeBlockDecoder::plane` postcondition is an existing API bridge
+consumed by `decode::prepare_tile_component_with_kernel`. It remains outside the
+same-file internal-caller index: there is no invented Tier-1 caller or generic
+API-root exemption. Its exact view is listed as a proof reference.
+The raw and signed `Result` projections are open over their public payloads and
+closed owner views, so outside-module consumers can connect actual returned
+fields to the mathematical result without revealing private stored fields.
+
 ## F6 reconstruction profiles (bounded stage contracts)
 
 The first F6 stage starts with supplied signed 384-bit magnitudes (six
@@ -52,6 +81,25 @@ does not validate plane geometry. Checked rounding/level-shift overflow occurs
 before clipping. This API is exercised by concrete consumer tests; it is not
 the decoder's separate image/component conversion path.
 
+The decoder's existing `DecodedComponent::typed_samples` and
+`DecodedImage::typed` now have their own complete Result relations. They use
+the actual F7 typed-sample, component, geometry and channel-definition views:
+the result includes every signed/unsigned sample, all image/component metadata
+and the existing empty output channel-definition lists. No typed/CDEF class,
+getter, metadata definition or color conversion is changed or duplicated.
+The original loops use the same actual scalar rounding/clipping stages.
+
+Their domains and order differ from the separate transform conversion API.
+Component conversion rejects precision outside 1..38 before its sample-length
+byte budget. Image conversion instead charges the cumulative eight-byte count
+before calling each component, so that budget error precedes that component's
+precision error. Fraction values above 62 reject only when a sample is read;
+empty valid-precision components therefore retain success even with arbitrary
+fraction bits. Checked rounding bias and unsigned level shift may overflow
+before clipping. Dimensions, subsampling and registration are copied as raw
+metadata, not assumed valid or newly validated. Prefix models preserve the
+first error through the entire sample/component sequence.
+
 The actual free reversible and fixed-Q16 irreversible component transforms
 have complete mutable `DecodedImage` state relations. Their shared production
 loop checks the existing first-three-component compatibility and sample
@@ -68,6 +116,13 @@ Raw kernel/step/coefficient views and exact getter contracts expose only the
 actual consumed representation fields, including all coefficient bytes and
 the recorded width. They impose no parser validation or normalization facts
 and do not by themselves prove an arbitrary-kernel algorithm.
+
+The actual read-only `PacketPrecinctDecoder` decoder/count/slice accessors
+expose a public closed projection of the complete private decoder Vec.
+The indexed Result covers every `usize`, returns the exact initialized entry
+or `MalformedInput { offset: 0, kind: InvalidPacketHeader }`, and makes no
+assumption that the parallel packet-state/context vectors have matching shapes.
+This raw representation interface does not assign entropy or packet meaning.
 
 The real quantized-block write loop in
 `decode::prepare_tile_component_with_kernel` now calls one shared verified
@@ -107,8 +162,8 @@ component counts and decomposition levels are not assumed to fit the physical
 64/32-entry arrays. These interfaces do not establish parser validity.
 
 F6 remains open: the entire coefficient-placement coordinator, actual multilevel
-and resolution-plan execution, multiple-component transforms, decoder typed
-conversion and composition from coefficients through reconstruction and assembly
+and resolution-plan execution, general MCT paths and composition from
+coefficients through reconstruction, assembly and typed conversion
 into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
 Part-2 kernels and unavailable-reference adjudication remain separate, as do
@@ -153,6 +208,10 @@ parsing and entropy decoding.
    including complete write masks and ordered byte accounting.
    `part1_assemble_image` and `part1_assemble_selected_image` close the actual
    full image entry points relative to supplied tiles, not supplied coefficients.
+10. `part1_decoded_signed_prefix`, `part1_decoded_unsigned_prefix`,
+    `part1_decoded_component_typed_samples`, `part1_decoded_typed_components`
+    and `part1_decoded_image_typed` give the existing decoder conversion's
+    complete sequence, metadata, empty-CDEF and first-error relation.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 
@@ -241,6 +300,15 @@ edition boundaries above must remain unresolved until the authorized source
 is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
+
+The raw Tier-1 observation substage retains every stored coefficient limb,
+legacy midpoint tag and sign/significance/refinement flag. Plane dimensions
+and the actual coefficient sequence are not normalized to a rectangle:
+coordinate bounds, native checked address arithmetic and actual sequence
+length determine the exact indexed result/error. Signed observation ignores
+stored bits/tags when insignificant, otherwise applies the actual full-native
+legacy midpoint and checked overflow branch without entropy or normalization
+premises. It is a raw producer interface, not coefficient reconstruction.
 
 The frozen numerical MagSgn substage is the actual complete
 `reconstruct_ht_magnitude` operation for every native completed-U,
@@ -394,6 +462,16 @@ the named mathematical quantities to the prior word constants; they do not
 replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
+
+`ht_cleanup_plane` and its sample/quad/finish models describe complete actual
+cleanup coefficient reconstruction from supplied metadata and bytes, not
+merely a scalar magnitude. Read counter/read/store ordering and both exponent
+stencils alongside the actual final reader termination. Raw Tier-1 models
+preserve all six limbs, significance/sign/refinement and legacy midpoint
+behavior without assuming a well-shaped plane or normalized coefficient.
+The small `tier1_raw_plane_*`, `tier1_coefficient_*` and `tier1_set_magnitude`
+denotations are complete field/record projections used by real producer
+contracts; they do not introduce an alternate executable implementation.
 
 `color_crop_image` describes the actual selected-output crop on a supplied
 converted image. Its ordered checks preserve the zero-size, coordinate-

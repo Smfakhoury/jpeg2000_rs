@@ -32,6 +32,119 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_decoded_signed_empty(samples: Seq<i64>, fraction: u8, precision: u8)
+    ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+}
+
+pub proof fn production_decoded_signed_step(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
+    ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count + 1)
+        == match crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) {
+            Err(error) => Err(error),
+            Ok(output) => match crate::specs::part1_decoded_signed_sample(samples[count as int], fraction, precision) {
+                Err(error) => Err(error), Ok(value) => Ok(output.push(value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+}
+
+pub proof fn production_decoded_signed_error(samples: Seq<i64>, fraction: u8, precision: u8, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) == Err(error),
+    ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+    if count < end { production_decoded_signed_error(samples, fraction, precision, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_decoded_unsigned_empty(samples: Seq<i64>, fraction: u8, precision: u8)
+    ensures crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+}
+
+pub proof fn production_decoded_unsigned_step(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
+    ensures crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count + 1)
+        == match crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count) {
+            Err(error) => Err(error),
+            Ok(output) => match crate::specs::part1_decoded_unsigned_sample(samples[count as int], fraction, precision) {
+                Err(error) => Err(error), Ok(value) => Ok(output.push(value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+}
+
+pub proof fn production_decoded_unsigned_error(samples: Seq<i64>, fraction: u8, precision: u8, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count) == Err(error),
+    ensures crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+    if count < end { production_decoded_unsigned_error(samples, fraction, precision, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_decoded_typed_components_empty(components: Seq<crate::specs::Part1DecodedComponentModel>, maximum: u64)
+    ensures crate::specs::part1_decoded_typed_components(components, maximum, 0) == Ok((Seq::empty(), 0)),
+{
+    reveal_with_fuel(crate::specs::part1_decoded_typed_components, 1);
+}
+
+pub proof fn production_decoded_typed_components_step(components: Seq<crate::specs::Part1DecodedComponentModel>, maximum: u64, count: nat)
+    ensures crate::specs::part1_decoded_typed_components(components, maximum, count + 1)
+        == match crate::specs::part1_decoded_typed_components(components, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let component = components[count as int];
+                let charged = crate::specs::part1_accumulate_decoded_bytes(component.4.len(), previous.1, maximum);
+                match charged.0 {
+                    Err(error) => Err(error),
+                    Ok(()) => match crate::specs::part1_decoded_component_typed_samples(component, maximum) {
+                        Err(error) => Err(error),
+                        Ok(samples) => Ok((previous.0.push(crate::specs::Part1TypedComponentModel {
+                            width: component.0, height: component.1, info: component.2, samples,
+                        }), charged.1)),
+                    },
+                }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_decoded_typed_components, 1);
+}
+
+pub proof fn production_decoded_typed_components_error(
+    components: Seq<crate::specs::Part1DecodedComponentModel>, maximum: u64, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end, crate::specs::part1_decoded_typed_components(components, maximum, count) == Err(error),
+    ensures crate::specs::part1_decoded_typed_components(components, maximum, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_typed_components, 1);
+    if count < end { production_decoded_typed_components_error(components, maximum, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_tier1_value_limbs(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures limbs == crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs)),
+{
+    vstd::arithmetic::power2::lemma2_to64();
+    assert forall |i: int| 0 <= i < 6 implies limbs[i]
+        == crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs))[i] by {
+        let shift = (64 * i) as u16;
+        assert(shift / 64 == i && shift % 64 == 0);
+        let shifted = crate::specs::part1_magnitude_shift(limbs, shift);
+        production_magnitude_right_shift_value(limbs, shift);
+        production_magnitude_low_word(shifted);
+        assert(shifted[0] == limbs[i]) by {
+            let word = limbs[i];
+            assert(word >> 0u32 == word) by(bit_vector);
+        }
+    }
+    assert(limbs =~= crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs)));
+}
+
 pub proof fn production_assembly_row_error_persists(
     plane: crate::specs::Part1AssemblyPlane, tile: crate::specs::Part1AssemblyTile,
     x: u32, y: u32, crop: Option<(u32, u32)>, completed: nat, total: nat,
@@ -3206,4 +3319,39 @@ pub proof fn production_mct_wavelet_work_is_explicit(
     reveal(mct_wavelet_work_units);
 }
 
+}
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub proof fn production_ht_plane_samples_error(
+        state: crate::specs::HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+        column: nat, completed_u: u8, bitplanes: u16, prefix: nat, count: nat,
+    )
+        requires prefix <= count <= 4, column + 1 < state.current.len(),
+            crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, prefix).0.is_err(),
+        ensures crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, count)
+            == crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, prefix),
+        decreases count - prefix,
+    {
+        if prefix < count {
+            production_ht_plane_samples_error(state, quad, width, height, column, completed_u, bitplanes, prefix, (count - 1) as nat);
+            reveal(crate::specs::ht_plane_samples);
+        }
+    }
+
+    pub proof fn production_ht_plane_quads_error(
+        state: crate::specs::HtPlaneState, quads: Seq<crate::tier1::HtQuadMetadata>, width: u16, height: u16,
+        maximum_u: u8, bitplanes: u16, quads_per_row: nat, prefix: nat, count: nat,
+    )
+        requires prefix <= count <= quads.len(), 0 < quads_per_row <= 32768,
+            state.current.len() == quads_per_row + 1, state.previous.len() == quads_per_row + 1,
+            crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix).0.is_err(),
+        ensures crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, count)
+            == crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix),
+        decreases count - prefix,
+    {
+        if prefix < count {
+            production_ht_plane_quads_error(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix, (count - 1) as nat);
+            reveal(crate::specs::ht_plane_quads);
+        }
+    }
 }
