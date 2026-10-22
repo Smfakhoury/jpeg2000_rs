@@ -230,6 +230,23 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`color_crop_image` describes the actual selected-output crop on a supplied
+converted image. Its ordered checks preserve the zero-size, coordinate-
+overflow and bounds error precedence. The whole-image identity shortcut is
+explicit and does not silently validate existing channel lengths. Otherwise
+the complete ordered channel/row/column denotations stop at the first checked
+address or missing requested sample. All source metadata other than output
+dimensions is retained. These definitions do not assume canonical color
+channels or prove earlier region selection, palette interpretation or pixels.
+The `color_crop_ready` invariant bundle is internal proof support.
+
+`color_convert_selected` connects conversion and cropping at the actual
+selected-output caller. Its input is the supplied typed image and requested
+reference-grid target, not a precomputed converted plane. Conversion completes
+first; only then are target-origin/extent subtractions checked with the
+existing target error, followed by cropping. It does not model the earlier
+algorithm that derived the requested target or decoded the typed components.
+
 `color_convert_jp2` is the complete result denotation for the actual public
 typed-component converter. Read `color_output_format`, `color_channel_layout`,
 `color_validate_components`, `color_validate_output_size`, then

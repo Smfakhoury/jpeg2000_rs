@@ -4,6 +4,17 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn color_crop_ready(
+    image: crate::specs::ColorImageModel, x: u32, y: u32, width: u32, height: u32, x1: u32, y1: u32, count: usize,
+) -> bool {
+    width > 0 && height > 0
+        && x1 as nat == (x as nat) + width as nat
+        && y1 as nat == (y as nat) + height as nat
+        && x1 <= image.0 && y1 <= image.1
+        && !(x == 0 && y == 0 && width == image.0 && height == image.1)
+        && crate::specs::part2_layer_area(width, height) == Ok(count)
+}
+
 pub open spec fn color_conversion_ready(
     components: Seq<crate::specs::Part1TypedComponentModel>,
     definitions: Seq<Seq<crate::specs::ColorDefinition>>, geometry: crate::specs::ColorGeometry,

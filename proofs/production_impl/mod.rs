@@ -32,6 +32,116 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_crop_columns_empty(samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>)
+    ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::color_crop_columns, 1);
+}
+
+pub proof fn production_crop_columns_step(samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>, count: nat)
+    ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, count + 1)
+        == match crate::specs::color_crop_columns(samples, source_width, row, x, initial, count) {
+            Err(error) => Err(error),
+            Ok(output) => if (x as nat) + count > u32::MAX as nat { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    match crate::specs::color_crop_sample(samples, source_width, row, ((x as nat) + count) as u32) {
+                        Err(error) => Err(error),
+                        Ok(value) => Ok(output.push(value)),
+                    }
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_crop_columns, 1);
+}
+
+pub proof fn production_crop_columns_error(
+    samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_crop_columns(samples, source_width, row, x, initial, count) == Err(error),
+    ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_crop_columns_step(samples, source_width, row, x, initial, count);
+        production_crop_columns_error(samples, source_width, row, x, initial, count + 1, end, error);
+    }
+}
+
+pub proof fn production_crop_rows_empty(samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32)
+    ensures crate::specs::color_crop_rows(samples, source_width, x, y, width, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::color_crop_rows, 1);
+}
+
+pub proof fn production_crop_rows_step(samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32, count: nat)
+    ensures crate::specs::color_crop_rows(samples, source_width, x, y, width, count + 1)
+        == match crate::specs::color_crop_rows(samples, source_width, x, y, width, count) {
+            Err(error) => Err(error),
+            Ok(output) => if (y as nat) + count > u32::MAX as nat { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    crate::specs::color_crop_columns(samples, source_width, ((y as nat) + count) as u32, x, output, width as nat)
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_crop_rows, 1);
+}
+
+pub proof fn production_crop_rows_error(
+    samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_crop_rows(samples, source_width, x, y, width, count) == Err(error),
+    ensures crate::specs::color_crop_rows(samples, source_width, x, y, width, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_crop_rows_step(samples, source_width, x, y, width, count);
+        production_crop_rows_error(samples, source_width, x, y, width, count + 1, end, error);
+    }
+}
+
+pub proof fn production_crop_channels_empty(
+    channels: Seq<crate::specs::ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32,
+)
+    ensures crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::color_crop_channels, 1);
+}
+
+pub proof fn production_crop_channels_step(
+    channels: Seq<crate::specs::ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32, count: nat,
+)
+    requires count < channels.len(),
+    ensures crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, count + 1)
+        == match crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, count) {
+            Err(error) => Err(error),
+            Ok(output) => match crate::specs::color_crop_plane(channels[count as int].1, source_width, x, y, x1, y1) {
+                Err(error) => Err(error),
+                Ok(samples) => Ok(output.push((channels[count as int].0, samples))),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::color_crop_channels, 1);
+}
+
+pub proof fn production_crop_channels_error(
+    channels: Seq<crate::specs::ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= channels.len(),
+        crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, count) == Err(error),
+    ensures crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_crop_channels_step(channels, source_width, x, y, x1, y1, count);
+        production_crop_channels_error(channels, source_width, x, y, x1, y1, count + 1, end, error);
+    }
+}
+
 pub proof fn production_color_channels_empty(
     components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
     colors: Seq<usize>, color_count: usize,

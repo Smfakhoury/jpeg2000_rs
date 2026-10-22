@@ -288,6 +288,9 @@ def validate_normative_coverage(
                 ("src/color.rs", "convert_jp2_color"): "converted_image_result",
                 ("src/color.rs", "convert_color_channel"): "converted_channel_result",
                 ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
+                ("src/color.rs", "crop"): "converted_image_result",
+                ("src/color.rs", "crop_plane"): "normalized_plane_result",
+                ("src/decode.rs", "convert_selected_color"): "crate::color::converted_image_result",
                 ("src/transform.rs", "inverse_quantize_values"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
@@ -305,6 +308,10 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
             }.get((reference["path"], short))
             expected_color_model = {
+                ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
+                ("src/color.rs", "crop"): "color_crop_image",
+                ("src/color.rs", "crop_plane"): "color_crop_plane",
+                ("src/color.rs", "crop_sample"): "color_crop_sample",
                 ("src/color.rs", "convert_jp2_color"): "color_convert_jp2",
                 ("src/color.rs", "convert_color_channel"): "color_convert_channel",
                 ("src/color.rs", "convert_alpha_channel"): "color_convert_alpha",

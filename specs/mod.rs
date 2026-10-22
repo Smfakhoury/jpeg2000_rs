@@ -351,6 +351,7 @@ pub open spec fn color_validate_output_size(
 
 pub type ColorChannelModel = (crate::color::ConvertedChannelType, Seq<u16>);
 pub type ColorSyccPlanes = (Seq<u16>, Seq<u16>, Seq<u16>);
+pub type ColorImageModel = (u32, u32, crate::color::ConvertedColorSpace, u8, Seq<ColorChannelModel>);
 
 pub open spec fn color_convert_channel(
     components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
@@ -553,6 +554,131 @@ pub open spec fn color_convert_jp2(
                 },
             },
         }
+    }
+}
+
+pub open spec fn color_crop_sample(samples: Seq<u16>, width: u32, row: u32, column: u32)
+    -> Result<u16, crate::DecodeError>
+{
+    let index = (row as nat) * (width as nat) + column as nat;
+    if index > usize::MAX as nat { Err(part2_composition_error(true)) }
+    else if index >= samples.len() { Err(part2_color_input_error()) }
+    else { Ok(samples[index as int]) }
+}
+
+#[verifier::opaque]
+pub open spec fn color_crop_columns(
+    samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>, count: nat,
+) -> Result<Seq<u16>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match color_crop_columns(samples, source_width, row, x, initial, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => {
+                let column = (x as nat) + count - 1;
+                if column > u32::MAX as nat { Err(part2_composition_error(true)) }
+                else {
+                    match color_crop_sample(samples, source_width, row, column as u32) {
+                        Err(error) => Err(error),
+                        Ok(value) => Ok(output.push(value)),
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_crop_rows(
+    samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32, count: nat,
+) -> Result<Seq<u16>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_crop_rows(samples, source_width, x, y, width, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => {
+                let row = (y as nat) + count - 1;
+                if row > u32::MAX as nat { Err(part2_composition_error(true)) }
+                else { color_crop_columns(samples, source_width, row as u32, x, output, width as nat) }
+            },
+        }
+    }
+}
+
+pub open spec fn color_crop_plane(
+    samples: Seq<u16>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32,
+) -> Result<Seq<u16>, crate::DecodeError> {
+    if x > x1 || y > y1 { Err(part2_color_input_error()) }
+    else { color_crop_rows(samples, source_width, x, y, (x1 - x) as u32, (y1 - y) as nat) }
+}
+
+#[verifier::opaque]
+pub open spec fn color_crop_channels(
+    channels: Seq<ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32, count: nat,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError>
+    recommends count <= channels.len(),
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_crop_channels(channels, source_width, x, y, x1, y1, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => {
+                let channel = channels[count - 1];
+                match color_crop_plane(channel.1, source_width, x, y, x1, y1) {
+                    Err(error) => Err(error),
+                    Ok(samples) => Ok(output.push((channel.0, samples))),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_crop_image(image: ColorImageModel, x: u32, y: u32, width: u32, height: u32)
+    -> Part2ConvertedImageResult
+{
+    if width == 0 || height == 0 { Err(part2_color_input_error()) }
+    else if (x as nat) + width as nat > u32::MAX as nat
+        || (y as nat) + height as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        let x1 = (x + width) as u32;
+        let y1 = (y + height) as u32;
+        if x1 > image.0 || y1 > image.1 { Err(part2_color_input_error()) }
+        else if x == 0 && y == 0 && width == image.0 && height == image.1 { Ok(image) }
+        else {
+            match part2_layer_area(width, height) {
+                Err(error) => Err(error),
+                Ok(_) => match color_crop_channels(image.4, image.0, x, y, x1, y1, image.4.len()) {
+                    Err(error) => Err(error),
+                    Ok(channels) => Ok((width, height, image.2, image.3, channels)),
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn color_selection_target_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidCodeBlock }
+}
+
+pub open spec fn color_convert_selected(
+    components: Seq<Part1TypedComponentModel>, definitions: Seq<Seq<ColorDefinition>>,
+    geometry: ColorGeometry, method: crate::jp2::ColorMethod, target: [u32; 4],
+    byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    match color_convert_jp2(components, definitions, geometry, method, byte_limit, work_limit) {
+        Err(error) => Err(error),
+        Ok(image) => {
+            if target[0] < geometry.2 || target[1] < geometry.3
+                || target[2] < target[0] || target[3] < target[1] {
+                Err(color_selection_target_error())
+            } else {
+                color_crop_image(image, (target[0] - geometry.2) as u32, (target[1] - geometry.3) as u32,
+                    (target[2] - target[0]) as u32, (target[3] - target[1]) as u32)
+            }
+        },
     }
 }
 
