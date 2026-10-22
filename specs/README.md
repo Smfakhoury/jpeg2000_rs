@@ -1,5 +1,16 @@
 # Specification audit guide
 
+The complete actual native header/reader/raw-tree and single-precinct chain is
+now bound by39 finite qualified whole-result/input recipes. Start at
+`part1_packet_header_decode`, then `part1_precinct_headers` and
+`part1_precinct_packet`: raw native metadata and actual bytes flow through
+real style selection, SOP/prefix parsing, every mutable header association,
+alignment/EPH, whole preflight, actual mixed coefficient execution and final
+packed/inline accounting. Only packet state is restored on a header error;
+tree/reader and later coefficient/counter effects retain their exact native
+order. There is no supplied outcome/trace, normalized descriptor/window or
+adequate-budget premise. Full progression/reassembly remain separate.
+
 The actual component-style owner returns its complete native style/error with
 logical-count rejection before physical-array lookup, including contradictory
 counts. The complete native Tier1 byte parser preserves every flag, the exact

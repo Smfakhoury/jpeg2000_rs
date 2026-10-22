@@ -271,6 +271,179 @@ def _coverage_result_arguments(
     return re.match(r"\s*" + arguments + r"\s*,?\s*\)", contract[result.end():]) is not None
 
 
+def _coverage_call(name: str, *arguments: str) -> str:
+    return re.escape(name) + r"\s*\(\s*" + r"\s*,\s*".join(arguments) + r"\s*\)"
+
+
+def _packet_header_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
+    def old(name: str) -> str:
+        return _coverage_call("old", re.escape(name))
+
+    def final(name: str) -> str:
+        return _coverage_call("final", re.escape(name))
+
+    def view(name: str, *values: str) -> str:
+        return _coverage_call(name, *values)
+
+    def arguments(*values: str) -> str:
+        return r"\s*,\s*".join(values)
+
+    def cap(name: str) -> str:
+        return _coverage_call("crate::limits::resource_" + name + "_limit", "limits")
+
+    def reader(value: str) -> str:
+        return view("packet_bit_reader_view", value)
+
+    def packet(value: str) -> str:
+        return view("code_block_packet_state_view", value)
+
+    def tree(value: str) -> str:
+        return view("tag_tree_view", value)
+
+    def segments(value: str) -> str:
+        return view("header_segments_view", value)
+
+    state_reader = arguments(packet(final("state")), reader(final("reader")))
+    full_header = arguments(packet(final("state")), tree(final("inclusion_tree")),
+                            tree(final("zero_bitplane_tree")), reader(final("reader")))
+    old_header = arguments(packet(old("state")), tree(old("inclusion_tree")),
+                           tree(old("zero_bitplane_tree")))
+    segment_state = arguments(packet(final("state")), segments(final("segments")), reader(final("reader")))
+    segment_old = arguments(packet(old("state")), segments(old("segments")), reader(old("reader")))
+    body_caps = arguments(cap("code_block_pass"), cap("code_block_byte"), cap("input_byte"), cap("work"))
+    precinct_caps = arguments(cap("packet_header_byte"), body_caps)
+    precinct_old = view("packet_precinct_view", old("precinct"))
+    precinct_final = view("packet_precinct_view", final("precinct"))
+    parameters = view("precinct_payload_parameters_view", "parameters")
+    association_final = view("precinct_header_view", *(final(name) for name in (
+        "states", "subbands", "contributions", "reader", "progress",
+    )))
+    association_old = view("precinct_header_view", *(old(name) for name in (
+        "states", "subbands", "contributions", "reader", "progress",
+    )))
+    packet_contracts = {
+        "packet_reader_error": ("part1_packet_reader_error", r"\1", None, arguments("offset", "kind")),
+        "packet_reader_limit": ("part1_packet_reader_limit", r"\1", None, arguments("resource", "limit", "actual")),
+        "packet_reader_prefix_from_input": (
+            "part1_packet_reader_prefix", reader(r"&\s*\1"), None, arguments("input@", "header_limit", "work_limit")),
+        "packet_reader_from_input": (
+            "part1_packet_reader_initial", view("packet_reader_outcome", r"\1"), None,
+            arguments("input@", "header_limit", "work_limit")),
+        "packet_reader_new": (
+            "part1_packet_reader_initial", view("packet_reader_outcome", r"\1"), None,
+            arguments("input@", cap("packet_header_byte"), cap("work"))),
+        "packet_reader_prefix": (
+            "part1_packet_reader_prefix", reader(r"&\s*\1"), None,
+            arguments("input@", cap("packet_header_byte"), cap("work"))),
+        "PacketBitReader::read_bit": (
+            "part1_packet_reader_read", r"\1", reader(final("self")), reader(old("self"))),
+        "PacketBitReader::read_bits": (
+            "part1_packet_reader_read_bits", r"\1", reader(final("self")), arguments(reader(old("self")), "count")),
+        "PacketBitReader::load_byte": (
+            "part1_packet_reader_load", r"\1", reader(final("self")), reader(old("self"))),
+        "code_block_packet_state_new": (
+            "part1_code_block_packet_initial", packet(r"&\s*\1"), None, ""),
+        "header_segments_new": (
+            "part1_header_segments_initial", segments(r"&\s*\1"), None, arguments(packet("state"), "style")),
+        "read_header_segment_length": (
+            "part1_header_segment_length", r"\1", segment_state,
+            arguments(segment_old, "first_pass", "remaining_passes", "passes", "length_bits")),
+        "read_header_prefix": (
+            "part1_header_prefix", r"\1", full_header, arguments(old_header, "context", reader(old("reader")))),
+        "decode_code_block_contribution": (
+            "part1_packet_header_decode", view("code_block_header_outcome", r"\1"), full_header,
+            arguments(old_header, "context", reader(old("reader")))),
+        "read_header_segments": (
+            "part1_header_segments", view("header_segments_outcome", r"\1"), state_reader,
+            arguments(packet(old("state")), reader(old("reader")), "new_passes", "context")),
+        "read_header_segment": (
+            "part1_header_segment_step", r"\1", segment_state,
+            arguments(segment_old, "new_passes", "context")),
+        "commit_header_contribution": (
+            "part1_header_commit", view("code_block_header_outcome", r"\1"), packet(final("state")),
+            arguments(packet(old("state")), packet(r"&\s*next_state"), segments(r"&\s*segments"),
+                      "first_inclusion", "new_passes", reader("reader"))),
+        "read_header_zero_bitplanes": (
+            "part1_header_zero_loop", r"\1",
+            arguments(packet(final("state")), tree(final("tree")), reader(final("reader"))),
+            arguments(packet(old("state")), tree(old("tree")), "context", reader(old("reader")), "1")),
+        "read_new_passes": (
+            "part1_header_new_passes", r"\1", reader(final("reader")), reader(old("reader"))),
+        "read_header_lblock": (
+            "part1_header_lblock", r"\1", state_reader,
+            arguments(packet(old("state")), reader(old("reader")), "32")),
+        "floor_log2": ("part1_header_floor_log2", r"\1", None, "value"),
+        "TagTree::leaf_count": ("part1_tag_leaf_count", r"\1", None, tree("self")),
+        "TagTree::decode_path": (
+            "part1_tag_path", view("tag_path_outcome", r"\1"), None,
+            arguments(tree("self"), "leaf_x", "leaf_y", "error_offset")),
+        "TagTree::decode_path_nodes": (
+            "part1_tag_reverse", r"\1", arguments(tree(final("self")), reader(final("reader"))),
+            arguments(tree(old("self")), view("tag_path_view", "path"), r"path\.length\s+as\s+nat",
+                      "0", "threshold", reader(old("reader")))),
+        "TagTree::decode": (
+            "part1_tag_tree_decode", r"\1", arguments(tree(final("self")), reader(final("reader"))),
+            arguments(tree(old("self")), "leaf_x", "leaf_y", "threshold", reader(old("reader")))),
+        "decode_tag_tree_node": (
+            "part1_tag_node_decode", r"\1",
+            arguments(view("tag_node_view", r"\*\s*" + final("node")), reader(final("reader"))),
+            arguments(view("tag_node_view", r"\*\s*" + old("node")), "inherited", "threshold", reader(old("reader")))),
+        "tag_tree_new": (
+            "part1_tag_initial", view("tag_tree_outcome", r"\1"), None,
+            arguments("width", "height", cap("tag_tree_node"))),
+        "tag_tree_from_dimensions": (
+            "part1_tag_initial", view("tag_tree_outcome", r"\1"), None,
+            arguments("width", "height", "maximum_nodes")),
+        "decode_precinct_header_slot": (
+            "part1_precinct_header_slot", r"\1", association_final,
+            arguments(association_old, "contexts@", r"parameters\.layer", r"parameters\.style")),
+        "decode_precinct_header_members": (
+            "part1_precinct_header_members", r"\1", association_final,
+            arguments(association_old, "contexts@", r"parameters\.0\.layer", r"parameters\.0\.style", r"parameters\.1")),
+        "decode_precinct_contribution_headers": (
+            "part1_precinct_headers", r"\1", association_final,
+            arguments(association_old, "contexts@", r"parameters\.layer", r"parameters\.style")),
+        "decode_precinct_packet": (
+            "part1_precinct_packet", r"\1", precinct_final,
+            arguments(precinct_old, "tile_part", "offset", "packed_headers@", "packed_offset",
+                      "expected_packet_length", "expected_sop_sequence", "decode_tier1", cap("code_block"), precinct_caps)),
+        "decode_precinct_packet_payload_prefix": (
+            "part1_precinct_payload_prefix", view("precinct_payload_reader_outcome", r"\1"), None,
+            arguments("data@", "packed_headers@", parameters, cap("packet_header_byte"), cap("work"))),
+        "decode_precinct_packet_payload": (
+            "part1_precinct_payload", r"\1", precinct_final,
+            arguments(precinct_old, "data@", "packed_headers@", parameters, precinct_caps)),
+        "decode_precinct_packet_payload_after_headers": (
+            "part1_precinct_payload_after_headers", r"\1", precinct_final,
+            arguments(precinct_old, parameters, "data@",
+                      view("precinct_payload_header_view", "header") + r"\.0\.packet_data",
+                      view("precinct_payload_header_view", "header") + r"\.0\.reader",
+                      view("precinct_payload_header_view", "header") + r"\.1",
+                      view("precinct_payload_header_view", "header") + r"\.2",
+                      view("precinct_payload_header_view", "header") + r"\.0\.present",
+                      view("precinct_payload_header_view", "header") + r"\.0\.sop_bytes", body_caps)),
+    }
+    tier1_contracts = {
+        "Tier1CodeBlockDecoder::admit_legacy_contribution": (
+            "part1_legacy_contribution_admission", r"\1", view("tier1_decoder_state", final("self")),
+            arguments(view("tier1_decoder_state", old("self")), "input@", "passes", cap("code_block_byte"), cap("work"))),
+        "legacy_contribution_work": (
+            "part1_legacy_contribution_work", r"\1", None,
+            arguments(r"samples\s+as\s+nat", "replay", "bytes", "previous", "maximum")),
+        "tier1_coding_style_from_code_block_style": (
+            "part1_tier1_coding_style_byte", r"\1", None, "value"),
+        "tier1_block_coding_from_code_block_style": (
+            "part1_tier1_block_coding_byte", r"\1", None, "value"),
+    }
+    return {
+        **{("src/packet.rs", name): value for name, value in packet_contracts.items()},
+        **{("src/tier1.rs", name): value for name, value in tier1_contracts.items()},
+    }
+
+
+_PACKET_HEADER_CONTRACTS = _packet_header_contracts()
+
+
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -625,10 +798,15 @@ def validate_normative_coverage(
             }.get(reference["symbol"]) if reference["path"] == "src/packet.rs" else None
             if packet_contract:
                 expected_result_model = packet_contract[0]
+            header_contract = _PACKET_HEADER_CONTRACTS.get((reference["path"], reference["symbol"]))
+            if header_contract:
+                expected_result_model = header_contract[0]
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
             ) if result_projection else None
+            if header_contract:
+                projected_result = re.search(named_prefix + header_contract[1] + model_suffix, contract)
             state_term = (
                 r"(?:final\(\s*\w+\s*\)@|"
                 r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
@@ -719,6 +897,11 @@ def validate_normative_coverage(
                 state_result = re.search(
                     named_prefix + r"(?P<state>\(\s*\1\s*,\s*" + packet_contract[1] + r"\s*\))" + model_suffix,
                     contract,
+                )
+            if header_contract and header_contract[2] is not None:
+                state_result = re.search(
+                    named_prefix + r"(?P<state>\(\s*" + header_contract[1] + r"\s*,\s*"
+                    + header_contract[2] + r"\s*\))" + model_suffix, contract,
                 )
             final_parameters = set(re.findall(
                 r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
@@ -1033,6 +1216,11 @@ def validate_normative_coverage(
                 packet_contract is None
                 or _coverage_result_arguments(contract, named_result, packet_contract[0], packet_contract[2])
             )
+            header_arguments_bound = (
+                header_contract is None
+                or (re.search(r"\brequires\b", contract) is None
+                    and _coverage_result_arguments(contract, named_result, header_contract[0], header_contract[3]))
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -1058,6 +1246,7 @@ def validate_normative_coverage(
                     or not component_arguments_bound
                     or not arbitrary_arguments_bound
                     or not packet_arguments_bound
+                    or not header_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

@@ -563,6 +563,27 @@ for the curated inventory. No generic expression/implication matching or
 mutable-completeness policy is weakened. Actual header/TagTree and precinct
 composition remain separate F5L/F5H obligations.
 
+## Conservative complete header and precinct acceptance
+
+Thirty-nine finite owner-qualified producer/model/result/input recipes bind
+the actual reader/raw-tree/header, byte-style and scalar-admission producers,
+all three real slot/member/subband association traversals, and the four actual
+single-precinct prefix/header/body/accounting callers. Heterogeneous whole
+result tuples have explicit finite projection/state patterns, not a general
+expression or implication matcher. Every actual mutable parameter must occur
+in the complete final tuple; primary old-input/cap matching is anchored at the
+same full-result model occurrence. Complete native producers reject newly
+inserted validity/success/budget preconditions.
+
+Owner observations, alignment, static APIs and raw-tree clone support remain
+whole-root-proved support rather than invented independent result consumers.
+Tests mutate every registered result/model/native input/cap/state/old-final
+projection, guarded post and fabricated caller, including later correct clauses
+that must not mask a wrong primary relation. The conservative index is still a
+curated technical reference inventory, not exhaustive normative conformance.
+Full progression, packed reassembly, length iteration, JPIP transaction and
+whole F5L/F5H closure remain separate from this actual single-precinct stage.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

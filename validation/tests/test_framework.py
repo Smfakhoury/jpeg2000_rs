@@ -548,6 +548,98 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_header_and_precinct_native_results(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entries = [entry for entry in original_coverage["requirements"] if entry["id"] in {
+            "part1-complete-native-header-tree-producers", "part1-complete-native-precinct-composition",
+        }]
+        references = [reference for entry in entries for reference in entry["contract_refs"]]
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(len(references), 39)
+        self.assertEqual({(ref["path"], ref["symbol"]) for ref in references}, set(framework._PACKET_HEADER_CONTRACTS))
+        read_text = Path.read_text
+
+        def closing_parenthesis(text, opening):
+            depth = 0
+            for index in range(opening, len(text)):
+                if text[index] == "(":
+                    depth += 1
+                elif text[index] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        return index
+            self.fail("Unbalanced actual model invocation")
+
+        for reference in references:
+            key = (reference["path"], reference["symbol"])
+            model = framework._PACKET_HEADER_CONTRACTS[key][0]
+            entry = next(entry for entry in entries if reference in entry["contract_refs"])
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / reference["path"]
+            original = source.read_text()
+            header = framework._coverage_function_header(original, reference["symbol"])
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            body_start = original.find("{", signature)
+            native_signature = original[signature:body_start]
+            model_start = contract.index(f"crate::specs::{model}")
+            opening = contract.index("(", model_start)
+            closing = closing_parenthesis(contract, opening)
+            expression_start = contract.index("ensures") + len("ensures")
+            original_expression = contract[expression_start:closing + 1]
+            primary_arguments = contract[opening + 1:closing]
+            alternate = "part1_header_floor_log2" if model != "part1_header_floor_log2" else "part1_packet_reader_error"
+            mutations = [
+                contract.replace("ensures", "requires false, ensures", 1),
+                contract.replace("ensures", "ensures result.is_ok() ==>", 1),
+                contract.replace("ensures", "ensures unrelated", 1),
+                contract.replace(f"crate::specs::{model}", f"crate::specs::{alternate}", 1),
+                contract[:opening + 1] + "unrelated" + contract[closing:],
+            ]
+            parameter_names = set(re.findall(r"\b(\w+)\s*:(?!:)\s*", native_signature))
+            if re.search(r"&\s*(?:'\w+\s+)?(?:mut\s+)?self\b", native_signature):
+                parameter_names.add("self")
+            argument_mutations = ["unrelated"]
+            for parameter in sorted(parameter_names):
+                changed, replacements = re.subn(
+                    rf"(?<!:)\b{re.escape(parameter)}\b", "unrelated", primary_arguments, count=1,
+                )
+                if replacements:
+                    argument_mutations.append(changed)
+            for match in re.finditer(r"\bcrate::limits::(resource_\w+_limit)\s*\(", primary_arguments):
+                argument_mutations.append(primary_arguments[:match.start(1)] + "unlisted_cap" + primary_arguments[match.end(1):])
+            for arguments in argument_mutations:
+                changed = contract[:opening + 1] + arguments + contract[closing:]
+                mutations.append(changed)
+                changed_closing = closing_parenthesis(changed, opening)
+                mutations.append(changed[:changed_closing + 1] + ",\n" + original_expression + changed[changed_closing + 1:])
+            for match in re.finditer(r"\bold\s*\(\s*(\w+)\s*\)", primary_arguments):
+                arguments = primary_arguments[:match.start()] + f"final({match[1]})" + primary_arguments[match.end():]
+                mutations.append(contract[:opening + 1] + arguments + contract[closing:])
+            primary_left = contract[expression_start:model_start]
+            for view in set(re.findall(r"\b(\w+_view|code_block_header_outcome|header_segments_outcome)\s*\(", primary_left)):
+                mutations.append(contract.replace(view, "unlisted_state_projection", 1))
+            for parameter in set(re.findall(r"\bfinal\s*\(\s*(\w+)\s*\)", primary_left)):
+                mutations.append(re.sub(rf"\bfinal\s*\(\s*{re.escape(parameter)}\s*\)", "final(unrelated)", contract, count=1))
+            for number, changed in enumerate(mutations):
+                modified = original[:start] + changed + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=reference["symbol"], mutation=number), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+            no_caller = copy.deepcopy(coverage)
+            no_caller["requirements"][0]["implementation_refs"] = [reference]
+            with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(no_caller)
+
     def test_inventory_binds_all_native_arbitrary_kernel_and_preparation_results(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         entry = next(item for item in original_coverage["requirements"]
