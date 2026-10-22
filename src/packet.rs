@@ -1394,6 +1394,19 @@ struct PrecinctHeaderProgress {
     contribution_count: u32,
 }
 
+#[derive(Clone, Copy)]
+struct PrecinctPayloadParameters {
+    error_offset: usize,
+    packed_offset: usize,
+    expected_packet_length: Option<u32>,
+    expected_sop_sequence: u16,
+    style: Tier1CodingStyle,
+    sop: bool,
+    eph: bool,
+    packed: bool,
+    decode_tier1: bool,
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
     pub closed spec fn packet_subband_view(value: &PacketSubbandState) -> crate::specs::Part1PacketSubbandState {
@@ -1401,6 +1414,25 @@ verus! {
             orientation: value.orientation, first_decoder: value.first_decoder, decoder_count: value.decoder_count,
             code_blocks_across: value.code_blocks_across, code_blocks_down: value.code_blocks_down,
             inclusion_tree: tag_tree_view(&value.inclusion_tree), zero_bitplane_tree: tag_tree_view(&value.zero_bitplane_tree),
+        }
+    }
+
+    pub closed spec fn packet_precinct_view(value: &PacketPrecinctDecoder) -> crate::specs::Part1PacketPrecinctState {
+        crate::specs::Part1PacketPrecinctState {
+            component: value.component, resolution: value.resolution, precinct: value.precinct,
+            states: value.states@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state)),
+            contexts: value.contexts@,
+            decoders: value.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+            subbands: value.subbands@.map_values(|subband: PacketSubbandState| packet_subband_view(&subband)),
+        }
+    }
+
+    pub closed spec fn precinct_payload_parameters_view(value: PrecinctPayloadParameters)
+        -> crate::specs::Part1PrecinctPayloadParameters {
+        crate::specs::Part1PrecinctPayloadParameters {
+            error_offset: value.error_offset, packed_offset: value.packed_offset,
+            expected_packet_length: value.expected_packet_length, expected_sop_sequence: value.expected_sop_sequence,
+            style: value.style, sop: value.sop, eph: value.eph, packed: value.packed, decode_tier1: value.decode_tier1,
         }
     }
 
@@ -2548,51 +2580,119 @@ fn decode_precinct_packet(
         .component_coding_styles
         .style(component)?
         .tier1_coding_style()?;
+    decode_precinct_packet_payload(
+        data,
+        packed_headers,
+        PrecinctPayloadParameters {
+            error_offset: offset,
+            packed_offset,
+            expected_packet_length,
+            expected_sop_sequence,
+            style: tier1_style,
+            sop: tile_part.coding_style.sop_markers,
+            eph: tile_part.coding_style.eph_markers,
+            packed: tile_part.packed_packet_headers.is_present(),
+            decode_tier1,
+        },
+        precinct,
+        limits,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, packet_precinct_view(final(precinct))) == crate::specs::part1_precinct_payload(
+        packet_precinct_view(old(precinct)), data@, packed_headers@, precinct_payload_parameters_view(parameters),
+        crate::limits::resource_packet_header_byte_limit(limits),
+        crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+        crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+fn decode_precinct_packet_payload(
+    data: &[u8],
+    packed_headers: &[u8],
+    parameters: PrecinctPayloadParameters,
+    precinct: &mut PacketPrecinctDecoder,
+    limits: &ResourceLimits,
+) -> Result<(PacketBodyDecode, usize, usize), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial_precinct = packet_precinct_view(precinct);
+        let ghost expected_payload = crate::specs::part1_precinct_payload(
+            initial_precinct, data@, packed_headers@, precinct_payload_parameters_view(parameters),
+            crate::limits::resource_packet_header_byte_limit(limits),
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_precinct_payload_headers);
+        reveal(crate::specs::part1_precinct_payload_body);
+    }
+    let code_blocks = precinct.states.len() as u64;
+    let offset = parameters.error_offset;
+    let packed_offset = parameters.packed_offset;
+    let expected_packet_length = parameters.expected_packet_length;
+    let expected_sop_sequence = parameters.expected_sop_sequence;
+    let tier1_style = parameters.style;
+    let decode_tier1 = parameters.decode_tier1;
     let mut tile_offset = 0_usize;
     let mut packed_bytes_consumed = 0_usize;
-    if tile_part.coding_style.sop_markers {
+    if parameters.sop {
         let marker = data
             .get(0..2)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-        let marker_length = data
-            .get(2..4)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
+            .ok_or_else(|| packet_reader_error(offset, MalformedKind::Truncated))?;
+        let marker_length = match data.get(2..4) {
+            Some(marker) => marker,
+            None => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(data@.len() < 4);
+                    assert(packet_precinct_view(precinct) == initial_precinct);
+                    assert(expected_payload == (Err(crate::specs::part1_packet_reader_error(
+                        offset, MalformedKind::Truncated)), initial_precinct));
+                }
+                return Err(packet_reader_error(offset, MalformedKind::Truncated));
+            }
+        };
         if !crate::refinement::sop_valid(marker[0], marker[1], marker_length[0], marker_length[1]) {
             return Err(invalid_packet_header());
         }
         let sequence = data
             .get(4..6)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
+            .ok_or_else(|| packet_reader_error(offset, MalformedKind::Truncated))?;
         let sequence_number = crate::refinement::sop_sequence(sequence[0], sequence[1]);
         if sequence_number != expected_sop_sequence {
             return Err(invalid_packet_header());
         }
         tile_offset = 6;
     }
-    let packed = tile_part.packed_packet_headers.is_present();
+    let packed = parameters.packed;
     let packet_data = if packed {
         packed_headers
             .get(packed_offset..)
-            .ok_or_else(|| DecodeError::malformed(packed_offset as u64, MalformedKind::Truncated))?
+            .ok_or_else(|| packet_reader_error(packed_offset, MalformedKind::Truncated))?
     } else {
         data.get(tile_offset..)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?
+            .ok_or_else(|| packet_reader_error(offset, MalformedKind::Truncated))?
     };
     let mut reader = packet_reader_prefix(packet_data, limits);
     let packet_present = reader.read_bit()?;
-    let mut contributions = vec![None; states.len()];
+    let mut contributions = vec![None; precinct.states.len()];
     let mut contribution_count = 0_u32;
-    if packet_present && !contexts.is_empty() {
-        let layer = contexts.first().ok_or_else(invalid_packet_header)?.layer;
+    if packet_present && !precinct.contexts.is_empty() {
+        let layer = precinct
+            .contexts
+            .first()
+            .ok_or_else(invalid_packet_header)?
+            .layer;
         let mut progress = PrecinctHeaderProgress {
             subband_index: 0,
             local_index: 0,
             contribution_count,
         };
         decode_precinct_contribution_headers(
-            states,
-            contexts,
-            subbands,
+            &mut precinct.states,
+            &precinct.contexts,
+            &mut precinct.subbands,
             &mut contributions,
             &mut reader,
             PrecinctHeaderParameters {
@@ -2612,14 +2712,14 @@ fn decode_precinct_packet(
             .checked_add(header_bytes)
             .ok_or_else(packet_arithmetic_overflow)?;
     }
-    if tile_part.coding_style.eph_markers {
+    if parameters.eph {
         let marker_start = header_bytes;
         let marker_end = marker_start
             .checked_add(2)
             .ok_or_else(packet_arithmetic_overflow)?;
         let marker = packet_data
             .get(marker_start..marker_end)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
+            .ok_or_else(|| packet_reader_error(offset, MalformedKind::Truncated))?;
         if !crate::refinement::eph_valid(marker[0], marker[1]) {
             return Err(invalid_packet_header());
         }
@@ -2645,7 +2745,7 @@ fn decode_precinct_packet(
         passes: 0,
     };
     execute_packet_body_contributions(
-        decoders,
+        &mut precinct.decoders,
         &contributions,
         data,
         &mut execution,
@@ -2668,8 +2768,8 @@ fn decode_precinct_packet(
         None => true,
     };
     if !packet_length_matches {
-        return Err(DecodeError::malformed(
-            offset as u64,
+        return Err(packet_reader_error(
+            offset,
             MalformedKind::InvalidPacketLength,
         ));
     }
