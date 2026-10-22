@@ -52,8 +52,25 @@ does not validate plane geometry. Checked rounding/level-shift overflow occurs
 before clipping. This API is exercised by concrete consumer tests; it is not
 the decoder's separate image/component conversion path.
 
+The actual free reversible and fixed-Q16 irreversible component transforms
+have complete mutable `DecodedImage` state relations. Their shared production
+loop checks the existing first-three-component compatibility and sample
+lengths, then transforms samples in order. All `i64` triples are admitted;
+checked sum/product/bias/addition failures determine rejection. Every image
+and component metadata field, sample length and component beyond the first
+three is preserved, including on failure. The previously completed sample
+prefix remains committed when a later pixel fails. These functions do not
+add a plane-area consistency or precision/registration policy absent from
+their existing compatibility checks. A closed `View` covers all decoded
+fields; it does not reuse or alter F7's typed/CDEF structures.
+
+Raw kernel/step/coefficient views and exact getter contracts expose only the
+actual consumed representation fields, including all coefficient bytes and
+the recorded width. They impose no parser validation or normalization facts
+and do not by themselves prove an arbitrary-kernel algorithm.
+
 F6 remains open: coefficient placement into subband buffers, actual multilevel
-and resolution-plan execution, component transforms, decoder image/component
+and resolution-plan execution, multiple-component transforms, decoder typed
 conversion, component/tile assembly and their composition into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
 Part-2 kernels and unavailable-reference adjudication remain separate, as do
@@ -83,6 +100,11 @@ parsing and entropy decoding.
    `part1_inverse_level` add actual geometry, budgets and plane metadata.
 6. `part1_round_fixed`, `part1_conversion_prefix` and `part1_convert_samples`
    describe the existing public final-sample conversion API.
+7. `part1_component_values`, `part1_component_pixel_state`,
+   `part1_component_transform_prefix` and `part1_apply_component_transform`
+   give the actual complete decoded-image component-transform relation.
+   `part1_component_transform_frame` states its complete metadata/extra-plane
+   preservation property, not a substitute for sample semantics.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 

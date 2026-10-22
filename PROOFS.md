@@ -135,10 +135,25 @@ separate image/component conversion path. Independent tests compare complete
 outputs and error/mutation boundaries with bit-expanded ROI, rational Q16 and
 widened-integer sequence/plane/conversion references.
 
+The actual free `apply_reversible_component_transform` and
+`apply_irreversible_component_transform` APIs have complete mutable-image
+contracts, not just scalar arithmetic bounds. A closed `DecodedImage` view
+contains every image/component metadata field and all sample buffers. The
+shared real loop's ordered compatibility, length and arithmetic checks are
+modeled together with complete failure states; metadata, lengths and every
+extra component remain unchanged. Independent widened-integer tests compare
+entire images, including earlier committed pixels on a later error.
+No typed/CDEF structure or conversion is duplicated or modified.
+
+Raw closed arbitrary-kernel/step/coefficient views and exact receiver getter
+contracts make their consumed representation available without validation or
+coefficient-normalization assumptions. They are interfaces for further
+arbitrary-kernel work, not a whole-kernel theorem.
+
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
 coefficient placement, actual multilevel/resolution scheduling, arbitrary
-kernels, component transforms, decoder image/component conversion, component/
+kernels, multiple-component transforms, decoder typed conversion, component/
 tile assembly and composed component-sample relations are not established here.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 
