@@ -93,6 +93,17 @@ implicitly assumed. All geometry/range/tag/missing-sample errors remain
 part of the model. The prefix definition describes the first actual sampling
 failure; it is not a sufficient-budget or valid-input-only theorem.
 
+`part1_raw_reader_initial`, `part1_raw_reader_load`, `part1_raw_reader_read`
+and `part1_raw_reader_termination` describe the complete selected raw-bypass
+reader state and typed outcomes. Byte/bit order, stuffing, synthetic marker
+padding, consumed-byte position and counter/error ordering belong on the
+semantic reading path. Native fields retain their stated widths; the initial
+sequence is constrained to representable slice lengths. These models do not
+claim that callers choose the correct pass/segment or normative context.
+The termination model distinguishes an empty, zero-work raw pass from
+synthetic bits consumed from missing input, and recognizes the unconsumed
+`0xff`/`0x2a` full-byte/stuffed-padding boundary.
+
 `part2_layer_input` describes selection from supplied converted channels:
 scan all channel kinds first, then check the area and required color planes,
 then validate and combine alpha planes. Required colors are returned in slot

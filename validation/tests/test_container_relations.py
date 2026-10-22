@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import framework
 import numerical
+import container_relations
+import selection
 
 
 def image(width, height, planes, precision=16):
@@ -293,6 +295,186 @@ class ContainerRelationsTests(unittest.TestCase):
 
     def assert_image(self, expected, actual):
         self.assertEqual(numerical.image_error_metrics(expected, actual)["maximum_error"], 0)
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_q2_independent_color_opacity_and_composition_profiles(self):
+        directory = framework.RESULTS_DIR / "q2-container"
+        directory.mkdir(parents=True, exist_ok=True)
+        opacity_profiles = [(f"q2-gray-alpha{precision}-{'premultiplied' if premultiplied else 'straight'}",
+                             precision, premultiplied) for precision in (8, 16) for premultiplied in (False, True)]
+        framework.write_json(directory / "matrix.json", {
+            "color": container_relations.COLOR_PROFILES, "opacity": opacity_profiles,
+            "opacity_maximum_error": 0, "opacity_maximum_rmse": 0,
+            "color_rmse_ceiling": "same as maximum_error; normalized 16-bit units",
+            "containers": ["jp2", "jph-declared-legacy", "jpx-indexed"],
+            "discards": [0, 1, 2], "premultiplied_discards": [0],
+        })
+        matrix_hash = framework.sha256_file(directory / "matrix.json")
+        encoder, decoder = shutil.which("opj_compress"), shutil.which("opj_decompress")
+        commands, prepared = [], []
+
+        def append(name, path, expected, budget, operation, format_name, discard=None, request=None):
+            prepared.append({"id": name, "path": str(path), "expected": expected,
+                             "maximum_error": budget, "maximum_rmse": budget, "operation": operation,
+                             "format": format_name, "discard": discard, "request": request})
+
+        def selected_expectations(name, path, references, frame, sampling, space, budget, format_name, alpha=False):
+            for discard, reference in references.items():
+                native = selection.native_rectangle(frame, discard)
+                expected = container_relations.convert(reference, native, sampling, space, alpha)
+                if discard == 0:
+                    append(name, path, expected, budget, "convert", format_name)
+                for request in selection.requests(frame, discard):
+                    append(name, path, selection.expected_crop(expected, native, request["bounds"]),
+                           budget, "select-color", format_name, discard, request)
+
+        for name, precision, space, origin, sampling, budget in container_relations.COLOR_PROFILES:
+            inputs = directory / name
+            inputs.mkdir(exist_ok=True)
+            raw, references = container_relations.planar_reference(
+                inputs, container_relations.generated_planes(precision, sampling), sampling, origin,
+                encoder, decoder, commands)
+            frame = (*origin, origin[0] + 32, origin[1] + 32)
+            for format_name, brand in (("jp2", b"jp2 "), ("jph", b"jph "), ("jpx", b"jpx ")):
+                path = inputs / f"image.{format_name}"
+                path.write_bytes(framework.jp2_file(
+                    declared_legacy_jph(raw.read_bytes()) if format_name == "jph" else raw.read_bytes(),
+                    brand, width=32, height=32, components=3, precision=precision, color_space=space))
+                selected_expectations(name, path, references, frame, sampling, space, budget, format_name)
+        for name, precision, premultiplied in opacity_profiles:
+            inputs = directory / name
+            inputs.mkdir(exist_ok=True)
+            sampling, frame = ((1, 1), (1, 1)), (3, 5, 35, 37)
+            raw, references = container_relations.planar_reference(
+                inputs, container_relations.gray_alpha_planes(precision, premultiplied),
+                sampling, (3, 5), encoder, decoder, commands, 0 if premultiplied else 2)
+            header = container_relations.gray_alpha_header(precision, premultiplied)
+            case = numerical.NumericalCase(name, channels=2, precision=precision)
+            for format_name, brand in (("jp2", b"jp2 "), ("jph", b"jph "), ("jpx", b"jpx ")):
+                path = inputs / f"image.{format_name}"
+                if format_name == "jpx":
+                    data = jpx_file([raw.read_bytes()], case, headers=[header])
+                else:
+                    codestream = declared_legacy_jph(raw.read_bytes()) if format_name == "jph" else raw.read_bytes()
+                    data = (framework.box(b"jP  ", b"\x0d\x0a\x87\x0a") +
+                            framework.box(b"ftyp", brand + b"\0" * 4 + brand) +
+                            framework.box(b"jp2h", header) + framework.box(b"jp2c", codestream))
+                path.write_bytes(data)
+                selected_expectations(name, path, references, frame, sampling, 17, 0, format_name, True)
+            full = (0, 0, 32, 32)
+            target, source = (3, 2, 24, 20), (1, 3, 12, 10)
+            records = [(0, 0, 32, 32, 0x80000000, 0, *full), (*target, 100, 0, *source)]
+            path = inputs / "composition.jpx"
+            path.write_bytes(jpx_file([raw.read_bytes(), raw.read_bytes()], case, records, headers=[header, header]))
+            layer = container_relations.convert(references[0], frame, sampling, 17, True)
+            expected = container_relations.source_over(36, 35, [
+                (layer, premultiplied, full, full), (layer, premultiplied, target, source),
+            ])
+            append(name, path, expected, 0, "render", "jpx")
+            append(name, path, expected, 0, "render-frame", "0")
+        reference_path = directory / "references.json"
+        framework.write_json(reference_path, {
+            "matrix_sha256": matrix_hash, "provenance": framework.source_binding(), "commands": commands,
+            "reference_source_recipes": numerical.REFERENCE_SOURCE_RECIPES,
+            "tools": {role: {"path": path, "sha256": framework.sha256_file(Path(path))}
+                      for role, path in (("encoder", encoder), ("decoder", decoder))},
+            "records": prepared,
+            "files": {path.relative_to(directory).as_posix(): framework.sha256_file(path)
+                      for path in directory.rglob("*") if path.is_file() and path.name not in ("references.json", "results.json")},
+        })
+        reference_hash = framework.sha256_file(reference_path)
+        results = []
+        for record in prepared:
+            with self.subTest(case=record["id"], operation=record["operation"],
+                              format=record["format"], discard=record["discard"], request=record["request"]):
+                if record["discard"] is None:
+                    actual = self.observe(record["operation"], record["format"], Path(record["path"]))
+                else:
+                    actual, _ = selection.observe(self.subject, record["operation"], record["format"],
+                                                  Path(record["path"]), record["discard"], record["request"])
+                metrics = numerical.image_error_metrics(record["expected"], actual)
+                self.assertLessEqual(metrics["maximum_error"], record["maximum_error"])
+                self.assertLessEqual(metrics["worst_component_rmse"], record["maximum_rmse"])
+                results.append({key: value for key, value in record.items() if key != "expected"} | {"metrics": metrics})
+        framework.write_json(directory / "results.json", {
+            "reference_sha256": reference_hash, "provenance": framework.source_binding(),
+            "subject_sha256": framework.sha256_file(self.subject), "records": results,
+            "summary": {"expected": len(prepared), "observed": len(results),
+                        "status": "passed" if len(results) == len(prepared) else "failed"},
+        })
+
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress")
+                         and shutil.which(os.environ.get("OPENJPH_ENCODER", "ojph_compress"))
+                         and shutil.which(os.environ.get("OPENJPH_DECODER", "ojph_expand")),
+                         "independent OpenJPEG/OpenJPH tools are not installed")
+    def test_q2_nonzero_mixed_tiles_require_whole_stream_reference(self):
+        directory = framework.RESULTS_DIR / "q2-mixed"
+        directory.mkdir(parents=True, exist_ok=True)
+        framework.write_json(directory / "matrix.json", {
+            "formats": ["raw", "jph"], "geometry": [64, 32], "tile": [32, 32],
+            "discards": [0, 1, 2], "maximum_error": 0, "maximum_rmse": 0,
+            "reference": "Unmodified OpenJPEG whole-stream output, not stitched subject/constituent outputs",
+        })
+        matrix_hash = framework.sha256_file(directory / "matrix.json")
+        case = numerical.NumericalCase("mixed")
+        legacy, original = self.encode(directory, case)
+        ht, _ = self.encode(directory, numerical.NumericalCase("mixed-ht"), high_throughput=True)
+        raw = container_relations.mixed_codestream(legacy, ht)
+        path = directory / "mixed.j2k"
+        path.write_bytes(raw)
+        expected = copy.deepcopy(original)
+        expected["image"]["width"] = 64
+        component = expected["image"]["components"][0]
+        values = component["samples"]
+        component["samples"] = [value for row in range(32) for value in values[row * 32:(row + 1) * 32] * 2]
+        component["width"] = 64
+        decoder = shutil.which("opj_decompress")
+        references, commands = {}, []
+        for discard in range(3):
+            output = directory / f"reference-{discard}.pgm"
+            command = [decoder, "-i", str(path), "-o", str(output), "-r", str(discard)]
+            commands.append(command)
+            numerical._run_checked(command, 10.0)
+            references[discard] = framework.parse_pnm(output)
+        self.assert_image(expected, references[0])
+        framework.write_json(directory / "references.json", {
+            "matrix_sha256": matrix_hash, "commands": commands, "references": references,
+            "reference_source_recipes": numerical.REFERENCE_SOURCE_RECIPES,
+            "codestream_sha256": framework.sha256_file(path), "provenance": framework.source_binding(),
+            "decoder": {"path": decoder, "sha256": framework.sha256_file(Path(decoder))},
+        })
+        reference_hash = framework.sha256_file(directory / "references.json")
+        results = []
+        for format_name in ("raw", "jph"):
+            encoded = path
+            if format_name == "jph":
+                encoded = directory / "mixed.jph"
+                encoded.write_bytes(framework.jp2_file(raw, b"jph ", width=64, height=32))
+            self.assert_image(expected, self.observe("decode", format_name, encoded))
+            for discard, reference in references.items():
+                frame = selection.native_rectangle((0, 0, 64, 32), discard)
+                for tiles, region, rectangle in (
+                    ("all", None, (0, 0, 64, 32)), ("all", (1, 1, 62, 30), (1, 1, 63, 31)),
+                    ("0", None, (0, 0, 32, 32)), ("1", None, (32, 0, 64, 32)),
+                    ("1", (33, 1, 30, 30), (33, 1, 63, 31)),
+                ):
+                    bounds = selection.native_rectangle(rectangle, discard)
+                    request = {"tiles": tiles, "region": region}
+                    with self.subTest(format=format_name, discard=discard, request=request):
+                        actual, origin = selection.observe(self.subject, "select", format_name, encoded, discard, request)
+                        self.assertEqual(origin, bounds[:2])
+                        expected_native = selection.expected_crop(reference, frame, bounds)
+                        self.assert_image(expected_native, actual)
+                        results.append({"format": format_name, "discard": discard, "request": request,
+                                        "expected_sha256": framework.normalized_hash(expected_native),
+                                        "actual_sha256": framework.normalized_hash(actual)})
+        framework.write_json(directory / "results.json", {
+            "reference_sha256": reference_hash, "provenance": framework.source_binding(),
+            "subject_sha256": framework.sha256_file(self.subject), "records": results,
+            "summary": {"expected": 30, "observed": len(results),
+                        "status": "passed" if len(results) == 30 else "failed"},
+        })
 
     def encode_nonuniform(self, directory, sampling, precision, origin, tiled=False):
         width, height = 32, 32
@@ -759,6 +941,68 @@ class ContainerRelationsTests(unittest.TestCase):
 
 
 class ContainerFixtureTests(unittest.TestCase):
+    def test_q2_planar_prequalification_rejects_reference_mismatch_and_wrong_headers(self):
+        root = framework.RESULTS_DIR / "test-work"
+        root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=root) as work:
+            directory = Path(work)
+            planes = container_relations.generated_planes(8, ((1, 1),))
+            for wrong_header in (False, True):
+                def fake_run(command, timeout):
+                    output = Path(command[command.index("-o") + 1])
+                    if command[0] == "encoder":
+                        siz = struct.pack(">H8IH", 0, 32, 32, 0, 0, 16, 16, 0, 0, 1)
+                        siz += bytes((7, 2 if wrong_header else 1, 1))
+                        cod = bytes((0, 0, 0, 1, 0, 2, 4, 4, 0, 1))
+                        output.write_bytes(b"\xff\x4f" + framework.segment(0xff51, siz) +
+                                           framework.segment(0xff52, cod) + b"\xff\x90")
+                    else:
+                        discard = int(command[command.index("-r") + 1])
+                        size = 32 >> discard
+                        output.with_stem(output.stem + "_0").write_bytes(
+                            f"PG ML + 8 {size} {size}\n".encode() + bytes(size * size))
+                    return subprocess.CompletedProcess(command, 0, b"", b""), 0.0
+                with self.subTest(wrong_header=wrong_header), mock.patch.object(numerical, "_run_checked", fake_run):
+                    with self.assertRaisesRegex(ValueError, "SIZ/COD|original/reference"):
+                        container_relations.planar_reference(
+                            directory, planes, ((1, 1),), (0, 0), "encoder", "decoder", [])
+
+    def test_q2_rational_color_normalization_and_gray_alpha_source_over(self):
+        for precision in (1, 8, 12, 16, 31):
+            peak = (1 << precision) - 1
+            self.assertEqual(container_relations.normalize(0, precision), 0)
+            self.assertEqual(container_relations.normalize(peak, precision), 65535)
+            self.assertEqual(container_relations.normalize(-(1 << (precision - 1)), precision, True), 0)
+        for arguments in ((-1, 8), (256, 8), (True, 8), (0, 0), (0, 8, 1)):
+            with self.assertRaises(ValueError):
+                container_relations.normalize(*arguments)
+        back = image(1, 1, [[10000], [32768]])
+        front = image(1, 1, [[50000], [32768]])
+        full = (0, 0, 1, 1)
+        actual = container_relations.source_over(1, 1, [
+            (back, False, full, full), (front, False, full, full),
+        ])
+        self.assertEqual([component["samples"] for component in actual["image"]["components"]],
+                         [[36667], [49152]])
+        invalid = image(1, 1, [[65535], [1]])
+        with self.assertRaisesRegex(ValueError, "exceeds alpha"):
+            container_relations.source_over(1, 1, [(invalid, True, full, full)])
+        with self.assertRaises(ValueError):
+            container_relations.source_over(1, 1, [])
+        with self.assertRaises(ValueError):
+            container_relations.source_over(1, 1, [(back, False, full, (1, 0, 1, 1))])
+        planes = [{"width": 1, "height": 1, "precision": 8, "signed": False,
+                   "sample_kind": "unsigned", "samples": [value]} for value in (128, 128, 128)]
+        neutral = {"accepted": True, "image": {"width": 1, "height": 1, "components": planes}}
+        expected = container_relations.convert(neutral, (0, 0, 1, 1), ((1, 1),) * 3, 18)
+        self.assertEqual([component["samples"] for component in expected["image"]["components"]], [[32896]] * 3)
+        for space, sampling in ((99, ((1, 1),) * 3), (17, ((1, 1),) * 3), (16, ((1, 1),))):
+            with self.assertRaises(ValueError):
+                container_relations.convert(neutral, (0, 0, 1, 1), sampling, space)
+        incomplete = copy.deepcopy(neutral)
+        incomplete["image"]["components"][0]["samples"].clear()
+        with self.assertRaises(ValueError):
+            container_relations.convert(incomplete, (0, 0, 1, 1), ((1, 1),) * 3, 16)
     def test_fractional_oracle_matches_known_straight_and_premultiplied_results(self):
         full = (0, 0, 1, 1)
         black = image(1, 1, [[0], [0], [0], [65535]])

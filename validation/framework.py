@@ -269,6 +269,8 @@ def validate_normative_coverage(
             mutable_parameters = set(re.findall(
                 r"\b(\w+)\s*:\s*&\s*(?:'\w+\s+)?mut\b", text[signature:body_start],
             ))
+            if re.search(r"&\s*(?:'\w+\s+)?mut\s+self\b", text[signature:body_start]):
+                mutable_parameters.add("self")
             named_prefix = r"\bverus_spec\(\s*(\w+)\s*=>\s*(?:requires\b[\s\S]*?)?ensures\s+"
             model_suffix = r"\s*==\s*crate::specs::(?P<model>\w+)\s*\("
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
@@ -283,6 +285,7 @@ def validate_normative_coverage(
                 ("src/color.rs", "from_composited"): "converted_image_result",
                 ("src/color.rs", "normalize_component"): "normalized_plane_result",
                 ("src/color.rs", "channel_layout"): "channel_layout_result",
+                ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
@@ -293,6 +296,11 @@ def validate_normative_coverage(
                 r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
+            if reference["path"] == "src/tier1.rs" and short in ("read_bit", "load_byte"):
+                state_term = (
+                    r"(?:" + state_term
+                    + r"|raw_bit_reader_view\(\s*final\(\s*self\s*\)\s*\))"
+                )
             state_tail = r"\s*,\s*" + state_term + r"(?:\s*,\s*" + state_term + r")*\s*\))"
             state_result = re.search(
                 named_prefix + r"(?P<state>\(\s*\1" + state_tail + model_suffix, contract,
