@@ -2217,6 +2217,7 @@ fn packet_input_limit(resource: Resource, limit: u64, actual: u64) -> DecodeErro
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures packed_packet_headers_view(&result) == (crate::specs::Part1PackedHeaders {
         source: crate::specs::Part1PackedHeaderSource::None, length: 0, fragments: 0 }),
+        !packed_packet_headers_present(&result),
 ))]
 pub(crate) const fn packed_packet_headers_none<'a>() -> PackedPacketHeaders<'a> {
     PackedPacketHeaders {
