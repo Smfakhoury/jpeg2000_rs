@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -211,6 +212,55 @@ class FrameworkTests(WorkingFiles):
             with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
+
+    def test_inventory_checks_each_complete_frame_stage_result_projection(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part2-normalized-layer-frame-stages"
+        ]
+        requirement = coverage["requirements"][0]
+        requirement["implementation_refs"] = [
+            {"path": "src/jpx.rs", "symbol": "inspect_file"},
+            {"path": "src/jpx.rs", "symbol": "render_inspected_frame"},
+            {"path": "src/jpx.rs", "symbol": "render_normalized_frame"},
+            {"path": "src/jpx.rs", "symbol": "render_decoded_layers"},
+            {"path": "src/color.rs", "symbol": "from_composited"},
+        ]
+        read_text = Path.read_text
+        for relative, symbol, projection in (
+            ("src/jpx.rs", "render_decoded_layers", "crate::color::converted_image_result"),
+            ("src/jpx.rs", "select_frame_instructions", "frame_selection_result"),
+            ("src/jpx.rs", "build_timeline", "timeline_frames_result"),
+            ("src/jpx.rs", "render_normalized_frame", "crate::color::converted_image_result"),
+            ("src/color.rs", "from_layer", "converted_image_result"),
+            ("src/color.rs", "from_composited", "converted_image_result"),
+        ):
+            requirement["contract_refs"] = [{"path": relative, "symbol": symbol}]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            text = read_text(framework.ROOT / relative)
+            signature = re.search(rf"\bfn\s+{re.escape(symbol)}\b", text).start()
+            start = text.rfind("#[cfg_attr", 0, signature)
+            contract = text[start:signature]
+            for before, after in (
+                (f"ensures {projection}(result)", f"ensures {projection}(unrelated)"),
+                (f"ensures {projection}(result)", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}(result)", "ensures owned_layer_outcome(result)"),
+                ("== crate::specs::", "<= crate::specs::"),
+            ):
+                self.assertIn(before, contract)
+                replacement = contract.replace(before, after)
+
+                def altered(path, *args, **kwargs):
+                    original = read_text(path, *args, **kwargs)
+                    if path == framework.ROOT / relative:
+                        return original[:start] + replacement + original[signature:]
+                    return original
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
 
     def test_inventory_checks_complete_reconstruction_and_sequence_projections(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())

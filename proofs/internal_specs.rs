@@ -4,6 +4,12 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn part2_timeline_state_valid(
+    state: crate::specs::Part2TimelineState, layers: usize, maximum_frames: u32, limit: usize,
+) -> bool {
+    state.2 <= layers && state.3 as nat <= state.1.len() <= limit as nat && state.0.len() <= maximum_frames as nat
+}
+
 pub open spec fn magnitude_left_prefix(limbs: Seq<u64>, shift: u16, completed: nat) -> Seq<u64> {
     Seq::new(6, |i: int| {
         let source = i - shift / 64;

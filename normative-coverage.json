@@ -2214,6 +2214,10 @@
         },
         {
           "path": "src/jpx.rs",
+          "symbol": "charge_layer_bytes"
+        },
+        {
+          "path": "src/jpx.rs",
           "symbol": "composite_placed_layer"
         },
         {
@@ -2552,6 +2556,320 @@
         }
       ],
       "topic": "Composition instruction timing, repetitions, loops, source-over alpha, clipping, scaled sampling, row-major addressing, and frame rendering"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "charge_layer_bytes"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_decoded_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "select_frame_instructions"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_layer"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_composited"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_instruction_limit"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "build_timeline"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_normalized_frame"
+        }
+      ],
+      "id": "part2-normalized-layer-frame-stages",
+      "implementation_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "inspect_file"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_normalized_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "collect_supplied_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "take_supplied_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "build_timeline"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "apply_timeline_instruction"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "append_timeline_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_decoded_layers"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "render_inspected_frame"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "select_frame_instructions"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_layer"
+        },
+        {
+          "path": "src/color.rs",
+          "symbol": "from_composited"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_render_error"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_sequence_empty"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_frame_sequence_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_instruction_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_instruction_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_instruction_halt"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_repetition_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_repetition_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_repetition_halt"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_set_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_set_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_timeline_set_halt"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_supply_search_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_gather_base"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_gather_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_gather_error"
+        },
+        {
+          "path": "proofs/internal_specs.rs",
+          "symbol": "part2_timeline_state_valid"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_image_from_planes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_space"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_layer_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_charge_layer_bytes"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_initial"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_frame_index"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_frame_instruction_sequence"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_select_frame"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_limit"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_work_error"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_assign"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_frame"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_instructions"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_repetitions"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_timeline_sets"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_build_timeline"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_supply_search"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_take_supplied_layer"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_gather_layer_step"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_gather_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_collect_supplied_layers"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_render_normalized_frame"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/color.rs",
+          "symbol": "normalized_plane_constructor_preserves_all_metadata_and_rejects_each_shape_fault"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_matches_independent_rational_stack"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_preserves_resource_and_first_error_precedence"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_layer_sequence_selects_space_globally_and_preserves_empty_canvas_metadata"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_frame_selection_matches_ordered_sequence_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_multiframe_reuse_persistence_and_reset_match_rational_images"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_matches_independent_flat_schedule_and_grouping_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "timeline_checked_errors_precede_later_reuse_and_layer_exhaustion"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composed_normalized_frames_match_independent_indexed_supply_and_rational_model"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "composed_normalized_frames_preserve_selection_supply_and_render_error_precedence"
+        }
+      ],
+      "topic": "Input-relative whole timeline construction and complete indexed normalized layer-result selection, persistence and frame rendering; compressed decoding and normalization are outside this boundary"
     },
     {
       "contract_refs": [

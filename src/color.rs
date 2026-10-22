@@ -64,6 +64,18 @@ verus! {
     {
         Seq::new(channels.len(), |i: int| converted_channel_view(&channels[i]))
     }
+
+    pub open spec fn converted_image_result(result: Result<ConvertedImage, DecodeError>)
+        -> crate::specs::Part2ConvertedImageResult
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(image) => {
+                let view = converted_image_view(&image);
+                Ok((view.0, view.1, view.2, view.3, converted_channel_views(view.4)))
+            },
+        }
+    }
 }
 
 impl ConvertedChannel {
@@ -163,87 +175,175 @@ impl ConvertedImage {
                 .collect(),
         }
     }
+}
 
-    pub(crate) fn from_composited(
-        width: u32,
-        height: u32,
-        color_space: ConvertedColorSpace,
-        color_samples: Vec<Vec<u16>>,
-        alpha_samples: Vec<u16>,
-    ) -> Result<Self, DecodeError> {
-        Self::from_layer(
-            width,
-            height,
-            color_space,
-            color_samples,
-            alpha_samples,
-            false,
+#[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures converted_image_result(result) == crate::specs::part2_image_from_planes(
+                width, height, color_space, crate::specs::part2_composition_planes(color_samples@), alpha_samples@, false,
+            ),
         )
-    }
+    )]
+pub(crate) fn from_composited(
+    width: u32,
+    height: u32,
+    color_space: ConvertedColorSpace,
+    color_samples: Vec<Vec<u16>>,
+    alpha_samples: Vec<u16>,
+) -> Result<ConvertedImage, DecodeError> {
+    from_layer(
+        width,
+        height,
+        color_space,
+        color_samples,
+        alpha_samples,
+        false,
+    )
+}
 
-    pub(crate) fn from_layer(
-        width: u32,
-        height: u32,
-        color_space: ConvertedColorSpace,
-        color_samples: Vec<Vec<u16>>,
-        alpha_samples: Vec<u16>,
-        premultiplied: bool,
-    ) -> Result<Self, DecodeError> {
-        let expected_colors = match color_space {
-            ConvertedColorSpace::Srgb => 3_usize,
-            ConvertedColorSpace::Grayscale => 1_usize,
-        };
-        let expected_samples = checked_area(width, height)?;
-        if color_samples.len() != expected_colors || alpha_samples.len() != expected_samples {
-            return Err(invalid_color_input());
-        }
-        let mut channels = Vec::with_capacity(
-            expected_colors
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?,
-        );
-        let mut index = 0_usize;
-        #[cfg_attr(
+#[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures converted_image_result(result) == crate::specs::part2_image_from_planes(
+                width, height, color_space, crate::specs::part2_composition_planes(color_samples@), alpha_samples@, premultiplied,
+            ),
+        )
+    )]
+pub(crate) fn from_layer(
+    width: u32,
+    height: u32,
+    color_space: ConvertedColorSpace,
+    color_samples: Vec<Vec<u16>>,
+    alpha_samples: Vec<u16>,
+    premultiplied: bool,
+) -> Result<ConvertedImage, DecodeError> {
+    let expected_colors = match color_space {
+        ConvertedColorSpace::Srgb => 3_usize,
+        ConvertedColorSpace::Grayscale => 1_usize,
+    };
+    let expected_samples = checked_area(width, height)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = crate::specs::part2_composition_planes(color_samples@);
+        let ghost input_alpha = alpha_samples@;
+    }
+    if color_samples.len() != expected_colors || alpha_samples.len() != expected_samples {
+        return Err(invalid_color_input());
+    }
+    let mut channels = Vec::with_capacity(
+        expected_colors
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?,
+    );
+    let mut index = 0_usize;
+    #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= color_samples.len(),
+                    color_samples.len() == expected_colors,
+                    expected_colors as nat == crate::specs::part2_layer_color_count(color_space),
+                    crate::specs::part2_layer_area(width, height) == Ok(expected_samples),
+                    alpha_samples.len() == expected_samples,
+                    channels.len() == index,
+                    input == crate::specs::part2_composition_planes(color_samples@),
+                    input_alpha == alpha_samples@,
+                    forall|i: int| 0 <= i < index ==> #[trigger] input[i].len() == expected_samples,
+                    converted_channel_views(channels@) == Seq::new(index as nat, |i: int|
+                        (crate::specs::part2_output_channel(color_space, i), input[i])),
                 decreases color_samples.len() - index,
             )
         )]
-        while index < color_samples.len() {
-            let samples = color_samples.get(index).ok_or_else(invalid_color_input)?;
-            if samples.len() != expected_samples {
-                return Err(invalid_color_input());
-            }
-            let channel_type = match (color_space, index) {
-                (ConvertedColorSpace::Grayscale, 0) => ConvertedChannelType::Gray,
-                (ConvertedColorSpace::Srgb, 0) => ConvertedChannelType::Red,
-                (ConvertedColorSpace::Srgb, 1) => ConvertedChannelType::Green,
-                (ConvertedColorSpace::Srgb, 2) => ConvertedChannelType::Blue,
-                _ => return Err(invalid_color_input()),
-            };
-            channels.push(ConvertedChannel {
-                channel_type,
-                samples: samples.clone(),
-            });
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    while index < color_samples.len() {
+        let samples = color_samples.get(index).ok_or_else(invalid_color_input)?;
+        if samples.len() != expected_samples {
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(input[index as int].len() != expected_samples); }
+            return Err(invalid_color_input());
+        }
+        let channel_type = match (color_space, index) {
+            (ConvertedColorSpace::Grayscale, 0) => ConvertedChannelType::Gray,
+            (ConvertedColorSpace::Srgb, 0) => ConvertedChannelType::Red,
+            (ConvertedColorSpace::Srgb, 1) => ConvertedChannelType::Green,
+            (ConvertedColorSpace::Srgb, 2) => ConvertedChannelType::Blue,
+            _ => return Err(invalid_color_input()),
+        };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost previous = channels@; }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(channel_type == crate::specs::part2_output_channel(color_space, index as int));
+            assert(samples@ == input[index as int]);
         }
         channels.push(ConvertedChannel {
-            channel_type: ConvertedChannelType::Alpha {
-                premultiplied,
-                association: ChannelAssociation::WholeImage,
-            },
-            samples: alpha_samples,
+            channel_type,
+            samples: copy_channel_samples(samples),
         });
-        Ok(Self {
-            width,
-            height,
-            color_space,
-            precision: 16,
-            channels,
-        })
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert forall|i: int| 0 <= i < channels.len() implies
+                #[trigger] converted_channel_view(&channels@[i])
+                    == (crate::specs::part2_output_channel(color_space, i), input[i]) by {
+                if i < index {
+                    assert(channels@[i] == previous[i]);
+                    assert(converted_channel_views(previous)[i]
+                        == (crate::specs::part2_output_channel(color_space, i), input[i]));
+                } else {
+                    assert(converted_channel_view(&channels@[i]).0 == channel_type);
+                    assert(converted_channel_view(&channels@[i]).1 == input[i]);
+                }
+            }
+            assert(converted_channel_views(channels@) =~= Seq::new((index + 1) as nat, |i: int|
+                (crate::specs::part2_output_channel(color_space, i), input[i])));
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost previous = channels@; }
+    channels.push(ConvertedChannel {
+        channel_type: ConvertedChannelType::Alpha {
+            premultiplied,
+            association: ChannelAssociation::WholeImage,
+        },
+        samples: alpha_samples,
+    });
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall|i: int| 0 <= i < previous.len() implies
+            #[trigger] converted_channel_view(&channels@[i]) == converted_channel_view(&previous[i]) by {}
+        assert(converted_channel_views(channels@) =~=
+            Seq::new(color_samples.len() as nat, |i: int|
+                (crate::specs::part2_output_channel(color_space, i), input[i]))
+            .push((ConvertedChannelType::Alpha { premultiplied, association: ChannelAssociation::WholeImage }, input_alpha)));
+    }
+    Ok(ConvertedImage {
+        width,
+        height,
+        color_space,
+        precision: 16,
+        channels,
+    })
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(output => ensures output@ == input@,))]
+fn copy_channel_samples(input: &[u16]) -> Vec<u16> {
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0_usize;
+    #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant index <= input.len(), output@ == input@.take(index as int),
+                decreases input.len() - index,
+            )
+        )]
+    while index < input.len() {
+        output.push(input[index]);
+        index += 1;
+    }
+    output
+}
+
+impl ConvertedImage {
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(width => ensures width == converted_image_view(self).0,)
@@ -1069,11 +1169,23 @@ fn registered_floor_div(value: u32, divisor: u32, registration: u16) -> Result<u
     u32::try_from(adjusted / denominator).map_err(|_| arithmetic_overflow())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(area => ensures area == crate::specs::part2_layer_area(width, height),)
+)]
 fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part2_layer_area);
+        assert((width as int) * (height as int) <= 18446744065119617025) by(nonlinear_arith);
+    }
     let area = u64::from(width)
         .checked_mul(u64::from(height))
         .ok_or_else(arithmetic_overflow)?;
-    usize::try_from(area).map_err(|_| arithmetic_overflow())
+    match usize::try_from(area) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 const fn unsupported(reason: UnsupportedColorConversion) -> DecodeError {
@@ -1084,12 +1196,20 @@ const fn invalid_channel_layout() -> DecodeError {
     DecodeError::malformed(0, MalformedKind::InvalidChannelLayout)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::part2_color_input_error(),))]
 fn invalid_color_input() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ContainerCodestreamMismatch)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ContainerCodestreamMismatch,
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(error => ensures error == crate::specs::part2_composition_error(true),))]
 fn arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
 }
 
 #[cfg(test)]
@@ -1251,9 +1371,112 @@ mod tests {
     }
 
     #[test]
+    fn normalized_plane_constructor_preserves_all_metadata_and_rejects_each_shape_fault() {
+        for space in [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb] {
+            let kinds: &[ConvertedChannelType] = match space {
+                ConvertedColorSpace::Grayscale => &[ConvertedChannelType::Gray],
+                ConvertedColorSpace::Srgb => &[
+                    ConvertedChannelType::Red,
+                    ConvertedChannelType::Green,
+                    ConvertedChannelType::Blue,
+                ],
+            };
+            for premultiplied in [false, true] {
+                for (width, height) in [(0, 2), (2, 0), (2, 1)] {
+                    let pixels = width as usize * height as usize;
+                    let colors: Vec<Vec<u16>> = (0..kinds.len())
+                        .map(|channel| {
+                            (0..pixels)
+                                .map(|pixel| (100 * channel + pixel) as u16)
+                                .collect()
+                        })
+                        .collect();
+                    let alpha: Vec<u16> = (0..pixels).map(|pixel| 32_768 + pixel as u16).collect();
+                    let image = from_layer(
+                        width,
+                        height,
+                        space,
+                        colors.clone(),
+                        alpha.clone(),
+                        premultiplied,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        (
+                            image.width(),
+                            image.height(),
+                            image.color_space(),
+                            image.precision()
+                        ),
+                        (width, height, space, 16)
+                    );
+                    assert_eq!(image.channels().len(), kinds.len() + 1);
+                    for (index, kind) in kinds.iter().enumerate() {
+                        assert_eq!(image.channel(index as u16).unwrap().channel_type(), *kind);
+                        assert_eq!(
+                            image.channel(index as u16).unwrap().samples(),
+                            colors[index]
+                        );
+                    }
+                    assert_eq!(
+                        image.channel(kinds.len() as u16).unwrap().channel_type(),
+                        ConvertedChannelType::Alpha {
+                            premultiplied,
+                            association: ChannelAssociation::WholeImage,
+                        }
+                    );
+                    assert_eq!(image.channel(kinds.len() as u16).unwrap().samples(), alpha);
+                    let mut wrong_colors = colors.clone();
+                    wrong_colors.push(vec![0; pixels]);
+                    assert_eq!(
+                        from_layer(
+                            width,
+                            height,
+                            space,
+                            wrong_colors,
+                            alpha.clone(),
+                            premultiplied
+                        )
+                        .err(),
+                        Some(invalid_color_input())
+                    );
+                    assert_eq!(
+                        from_layer(
+                            width,
+                            height,
+                            space,
+                            colors.clone(),
+                            vec![0; pixels + 1],
+                            premultiplied
+                        )
+                        .err(),
+                        Some(invalid_color_input())
+                    );
+                    for index in 0..kinds.len() {
+                        let mut wrong_colors = colors.clone();
+                        wrong_colors[index].push(0);
+                        assert_eq!(
+                            from_layer(
+                                width,
+                                height,
+                                space,
+                                wrong_colors,
+                                alpha.clone(),
+                                premultiplied
+                            )
+                            .err(),
+                            Some(invalid_color_input())
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn converted_crop_preserves_color_and_alpha_metadata_and_checks_bounds() {
         let make_image = || {
-            ConvertedImage::from_composited(
+            from_composited(
                 3,
                 2,
                 ConvertedColorSpace::Srgb,

@@ -277,6 +277,12 @@ def validate_normative_coverage(
             result_projection = {
                 ("src/jpx.rs", "layer_channels"): "layer_channels_outcome",
                 ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
+                ("src/jpx.rs", "render_decoded_layers"): "crate::color::converted_image_result",
+                ("src/jpx.rs", "select_frame_instructions"): "frame_selection_result",
+                ("src/jpx.rs", "build_timeline"): "timeline_frames_result",
+                ("src/jpx.rs", "render_normalized_frame"): "crate::color::converted_image_result",
+                ("src/color.rs", "from_layer"): "converted_image_result",
+                ("src/color.rs", "from_composited"): "converted_image_result",
                 ("src/transform.rs", "inverse_quantize_values"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",

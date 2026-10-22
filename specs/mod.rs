@@ -1258,7 +1258,54 @@ pub type Part2LayerChannel = (crate::color::ConvertedChannelType, Seq<u16>);
 pub type Part2LayerAlpha = (Seq<u16>, bool);
 pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
+pub type Part2OwnedLayer = (u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>);
+pub type Part2ConvertedImage = (u32, u32, crate::color::ConvertedColorSpace, u8, Seq<Part2LayerChannel>);
+pub type Part2ConvertedImageResult = Result<Part2ConvertedImage, crate::DecodeError>;
+pub type Part2Instruction = (usize, u32, u32, u32, u32, u32, u32, u32, u32, bool, u32);
+pub type Part2Placement = (Part2OwnedLayer, Part2Instruction);
+pub type Part2Frame = (usize, u64, u32, bool, Seq<Part2Instruction>);
+pub type Part2TimelineInstruction = (Part2Instruction, u32);
+pub type Part2TimelineSet = (u16, Seq<Part2TimelineInstruction>);
+pub type Part2TimelineState = (Seq<Part2Frame>, Seq<Option<usize>>, usize, usize, u64);
+pub type Part2TimelineExecution = Result<(bool, Part2TimelineState), crate::DecodeError>;
+pub type Part2SuppliedLayer = (usize, Option<Part2OwnedLayerResult>);
+pub type Part2GatheredLayers = (Result<(), crate::DecodeError>, Seq<Part2Placement>, Seq<Part2SuppliedLayer>);
+pub type Part2RenderState = (Result<(), crate::DecodeError>, Seq<Seq<u16>>, Seq<u16>, nat, nat);
 pub type Part2LayerScanResult = Result<(Seq<Option<Seq<u16>>>, Seq<Part2LayerAlpha>), crate::DecodeError>;
+
+pub open spec fn part2_color_input_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::ContainerCodestreamMismatch }
+}
+
+pub open spec fn part2_output_channel(space: crate::color::ConvertedColorSpace, index: int)
+    -> crate::color::ConvertedChannelType
+{
+    match space {
+        crate::color::ConvertedColorSpace::Grayscale => crate::color::ConvertedChannelType::Gray,
+        crate::color::ConvertedColorSpace::Srgb => if index == 0 { crate::color::ConvertedChannelType::Red }
+            else if index == 1 { crate::color::ConvertedChannelType::Green }
+            else { crate::color::ConvertedChannelType::Blue },
+    }
+}
+
+pub open spec fn part2_image_from_planes(
+    width: u32, height: u32, space: crate::color::ConvertedColorSpace,
+    colors: Seq<Seq<u16>>, alpha: Seq<u16>, premultiplied: bool,
+) -> Part2ConvertedImageResult {
+    match part2_layer_area(width, height) {
+        Err(error) => Err(error),
+        Ok(area) => if colors.len() != part2_layer_color_count(space) || alpha.len() != area
+            || exists|i: int| 0 <= i < colors.len() && colors[i].len() != area {
+            Err(part2_color_input_error())
+        } else {
+            Ok((width, height, space, 16,
+                Seq::new(colors.len(), |i: int| (part2_output_channel(space, i), colors[i]))
+                    .push((crate::color::ConvertedChannelType::Alpha {
+                        premultiplied, association: crate::image::ChannelAssociation::WholeImage,
+                    }, alpha))))
+        },
+    }
+}
 
 #[verifier::opaque]
 pub open spec fn part2_layer_area(width: u32, height: u32) -> Result<usize, crate::DecodeError> {
@@ -1779,6 +1826,354 @@ pub open spec fn part2_composition_layer_transition(
             source, source_alpha, destination, destination_alpha,
             geometry, expand_grayscale, initial_work, work_limit, geometry.copy_width * geometry.copy_height,
         )
+    }
+}
+
+pub open spec fn part2_render_space(layers: Seq<Part2Placement>) -> crate::color::ConvertedColorSpace {
+    if exists|i: int| 0 <= i < layers.len() && #[trigger] layers[i].0.2 == crate::color::ConvertedColorSpace::Srgb {
+        crate::color::ConvertedColorSpace::Srgb
+    } else {
+        crate::color::ConvertedColorSpace::Grayscale
+    }
+}
+
+pub open spec fn part2_render_layer_bytes(layer: Part2OwnedLayer) -> Result<nat, crate::DecodeError> {
+    let channels = (layer.3.len() + 1) * 2;
+    if layer.3.len() + 1 > u64::MAX as nat || channels > u64::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match part2_layer_area(layer.0, layer.1) {
+            Err(error) => Err(error),
+            Ok(area) => if area as nat * channels > u64::MAX as nat {
+                Err(part2_composition_error(true))
+            } else { Ok(area as nat * channels) },
+        }
+    }
+}
+
+pub open spec fn part2_charge_layer_bytes(layer: Part2OwnedLayer, previous: nat, byte_limit: u64)
+    -> (Result<(), crate::DecodeError>, nat)
+{
+    match part2_render_layer_bytes(layer) {
+        Err(error) => (Err(error), previous),
+        Ok(bytes) => if previous + bytes > u64::MAX as nat {
+            (Err(part2_composition_error(true)), previous)
+        } else if previous + bytes > byte_limit as nat {
+            (Err(crate::DecodeError::LimitExceeded {
+                resource: crate::Resource::DecodedBytes, limit: byte_limit, actual: (previous + bytes) as u64,
+            }), previous + bytes)
+        } else { (Ok(()), previous + bytes) },
+    }
+}
+
+pub open spec fn part2_render_step(
+    width: u32, height: u32, space: crate::color::ConvertedColorSpace,
+    placement: Part2Placement, previous: Part2RenderState, byte_limit: u64, work_limit: u64,
+) -> Part2RenderState {
+    if previous.0.is_err() { previous } else {
+        let charge = part2_charge_layer_bytes(placement.0, previous.4, byte_limit);
+        match charge.0 {
+            Err(error) => (Err(error), previous.1, previous.2, previous.3, charge.1),
+            Ok(()) => {
+                let layer = placement.0;
+                let instruction = placement.1;
+                let state = part2_composition_layer_transition(
+                    layer.3, layer.4, previous.1, previous.2,
+                    part2_composition_geometry(layer.0, layer.1, width, height,
+                        instruction.1, instruction.2, instruction.3, instruction.4,
+                        instruction.5, instruction.6, instruction.7, instruction.8),
+                    matches!((space, layer.2), (crate::color::ConvertedColorSpace::Srgb, crate::color::ConvertedColorSpace::Grayscale)),
+                    previous.3, work_limit,
+                );
+                (state.0, state.1, state.2, state.3, charge.1)
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_render_prefix(
+    width: u32, height: u32, layers: Seq<Part2Placement>, initial: Part2RenderState,
+    byte_limit: u64, work_limit: u64, count: nat,
+) -> Part2RenderState
+    recommends count <= layers.len(),
+    decreases count,
+{
+    if count == 0 { initial } else {
+        part2_render_step(width, height, part2_render_space(layers), layers[count as int - 1],
+            part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, (count - 1) as nat),
+            byte_limit, work_limit)
+    }
+}
+
+pub open spec fn part2_render_initial(width: u32, height: u32, layers: Seq<Part2Placement>) -> Part2RenderState {
+    match part2_layer_area(width, height) {
+        Err(error) => (Err(error), Seq::empty(), Seq::empty(), 0, 0),
+        Ok(area) => {
+            let colors = part2_layer_color_count(part2_render_space(layers));
+            let bytes = area as nat * ((colors + 1) * 2);
+            if bytes > u64::MAX as nat {
+                (Err(part2_composition_error(true)), Seq::empty(), Seq::empty(), 0, 0)
+            } else {
+                (Ok(()), Seq::new(colors, |i: int| Seq::new(area as nat, |j: int| 0u16)),
+                    Seq::new(area as nat, |j: int| 0u16), area as nat, bytes)
+            }
+        },
+    }
+}
+
+pub open spec fn part2_render_layers(
+    width: u32, height: u32, layers: Seq<Part2Placement>, byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    if layers.len() == 0 { Err(part2_composition_error(false)) } else {
+        let state = part2_render_prefix(width, height, layers,
+            part2_render_initial(width, height, layers), byte_limit, work_limit, layers.len());
+        match state.0 {
+            Err(error) => Err(error),
+            Ok(()) => part2_image_from_planes(width, height, part2_render_space(layers), state.1, state.2, false),
+        }
+    }
+}
+
+pub open spec fn part2_frame_index(requested: usize, frames: nat, loop_count: u8) -> Result<usize, crate::DecodeError> {
+    if frames == 0 {
+        Err(crate::DecodeError::FrameIndexOutOfRange { index: requested, frames: 0 })
+    } else if loop_count == 0 {
+        Ok((requested as nat % frames) as usize)
+    } else if frames * loop_count as nat > usize::MAX as nat {
+        Err(part2_composition_error(true))
+    } else if requested as nat >= frames * loop_count as nat {
+        Err(crate::DecodeError::FrameIndexOutOfRange { index: requested, frames: (frames * loop_count as nat) as usize })
+    } else {
+        Ok((requested as nat % frames) as usize)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_frame_instruction_sequence(frames: Seq<Part2Frame>, selected: nat, count: nat) -> Seq<Part2Instruction>
+    recommends selected < frames.len(), count <= selected + 1,
+    decreases count,
+{
+    if count == 0 { Seq::empty() } else {
+        let prior = part2_frame_instruction_sequence(frames, selected, (count - 1) as nat);
+        if count - 1 == selected || frames[count as int - 1].3 {
+            prior + frames[count as int - 1].4
+        } else { prior }
+    }
+}
+
+pub open spec fn part2_select_frame(frames: Seq<Part2Frame>, requested: usize, loop_count: u8)
+    -> Result<Seq<Part2Instruction>, crate::DecodeError>
+{
+    match part2_frame_index(requested, frames.len(), loop_count) {
+        Err(error) => Err(error),
+        Ok(selected) => Ok(part2_frame_instruction_sequence(frames, selected as nat, selected as nat + 1)),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_supply_search(supplied: Seq<Part2SuppliedLayer>, reference: usize, start: nat) -> Option<nat>
+    recommends start <= supplied.len(),
+    decreases supplied.len() - start,
+{
+    if start >= supplied.len() { None }
+    else if supplied[start as int].0 == reference && supplied[start as int].1.is_some() { Some(start) }
+    else { part2_supply_search(supplied, reference, start + 1) }
+}
+
+pub open spec fn part2_take_supplied_layer(supplied: Seq<Part2SuppliedLayer>, reference: usize)
+    -> (Part2OwnedLayerResult, Seq<Part2SuppliedLayer>)
+{
+    match part2_supply_search(supplied, reference, 0) {
+        None => (Err(part2_composition_error(false)), supplied),
+        Some(index) => (supplied[index as int].1.unwrap(), supplied.update(index as int, (reference, None))),
+    }
+}
+
+pub open spec fn part2_gather_layer_step(instruction: Part2Instruction, prior: Part2GatheredLayers) -> Part2GatheredLayers {
+    if prior.0.is_err() { prior } else {
+        let taken = part2_take_supplied_layer(prior.2, instruction.0);
+        match taken.0 {
+            Err(error) => (Err(error), prior.1, taken.1),
+            Ok(layer) => (Ok(()), prior.1.push((layer, instruction)), taken.1),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_gather_layers(
+    instructions: Seq<Part2Instruction>, supplied: Seq<Part2SuppliedLayer>, count: nat,
+) -> Part2GatheredLayers
+    recommends count <= instructions.len(),
+    decreases count,
+{
+    if count == 0 { (Ok(()), Seq::empty(), supplied) } else {
+        part2_gather_layer_step(instructions[count as int - 1], part2_gather_layers(instructions, supplied, (count - 1) as nat))
+    }
+}
+
+pub open spec fn part2_collect_supplied_layers(instructions: Seq<Part2Instruction>, supplied: Seq<Part2SuppliedLayer>)
+    -> Result<Seq<Part2Placement>, crate::DecodeError>
+{
+    let result = part2_gather_layers(instructions, supplied, instructions.len());
+    match result.0 { Err(error) => Err(error), Ok(()) => Ok(result.1) }
+}
+
+pub open spec fn part2_render_normalized_frame(
+    width: u32, height: u32, frames: Seq<Part2Frame>, loop_count: u8, requested: usize,
+    supplied: Seq<Part2SuppliedLayer>, byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    match part2_select_frame(frames, requested, loop_count) {
+        Err(error) => Err(error),
+        Ok(instructions) => match part2_collect_supplied_layers(instructions, supplied) {
+            Err(error) => Err(error),
+            Ok(placements) => part2_render_layers(width, height, placements, byte_limit, work_limit),
+        },
+    }
+}
+
+pub open spec fn part2_timeline_limit(layer_count: usize, maximum_frames: u32) -> Result<usize, crate::DecodeError> {
+    let layers = if layer_count == 0 { 1nat } else { layer_count as nat };
+    let limit = layers * maximum_frames as nat;
+    if limit > usize::MAX as nat { Err(part2_composition_error(true)) } else { Ok(limit as usize) }
+}
+
+pub open spec fn part2_timeline_work_error(limit: usize, index: nat) -> crate::DecodeError {
+    if index + 1 > u64::MAX as nat { part2_composition_error(true) } else {
+        crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits, limit: limit as u64, actual: (index + 1) as u64 }
+    }
+}
+
+pub open spec fn part2_timeline_assign(layer: usize, instruction: Part2TimelineInstruction) -> Part2Instruction {
+    let i = instruction.0;
+    (layer, i.1, i.2, i.3, i.4, i.5, i.6, i.7, i.8, i.9, i.10)
+}
+
+pub open spec fn part2_timeline_frame(
+    frames: Seq<Part2Frame>, time: u64, instruction: Part2Instruction, life: u32, maximum_frames: u32,
+) -> Result<(Seq<Part2Frame>, u64), crate::DecodeError> {
+    let fresh = frames.len() == 0 || frames.last().2 != 0;
+    if fresh && frames.len() >= maximum_frames as nat {
+        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Frames,
+            limit: maximum_frames as u64, actual: (frames.len() + 1) as u64 })
+    } else if time as nat + life as nat > u64::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        let next = if fresh {
+            frames.push((frames.len() as usize, time, life, instruction.9, seq![instruction]))
+        } else {
+            let last = frames.last();
+            frames.update(frames.len() as int - 1, (last.0, last.1, life, instruction.9, last.4.push(instruction)))
+        };
+        Ok((next, (time as nat + life as nat) as u64))
+    }
+}
+
+pub open spec fn part2_timeline_step(
+    state: Part2TimelineState, instruction: Part2TimelineInstruction,
+    layer_count: usize, maximum_frames: u32, maximum_instructions: usize,
+) -> Part2TimelineExecution {
+    let (frames, old_assignments, next_layer, index, time) = state;
+    if index >= maximum_instructions {
+        Err(part2_timeline_work_error(maximum_instructions, index as nat))
+    } else {
+        let assignments = if index as nat >= old_assignments.len() { old_assignments.push(None) } else { old_assignments };
+        let assigned = if (index as nat) < assignments.len() { assignments[index as int] } else { None };
+        if assigned.is_none() && next_layer >= layer_count {
+            Ok((false, (frames, assignments, next_layer, index, time)))
+        } else {
+            let layer = if assigned.is_some() { assigned.unwrap() } else { next_layer };
+            let next = if assigned.is_some() { next_layer as nat } else { next_layer as nat + 1 };
+            if next > usize::MAX as nat { Err(part2_composition_error(true)) } else {
+                match part2_timeline_frame(frames, time, part2_timeline_assign(layer, instruction), instruction.1, maximum_frames) {
+                    Err(error) => Err(error),
+                    Ok((new_frames, new_time)) => {
+                        let target = index as nat + instruction.0.10 as nat;
+                        if instruction.0.10 != 0 && target > usize::MAX as nat {
+                            Err(part2_composition_error(true))
+                        } else if instruction.0.10 != 0 && target >= maximum_instructions as nat {
+                            Err(part2_timeline_work_error(maximum_instructions, target))
+                        } else if instruction.0.10 != 0 && target < assignments.len()
+                            && assignments[target as int].is_some() && assignments[target as int].unwrap() != layer {
+                            Err(part2_composition_error(false))
+                        } else if index as nat + 1 > usize::MAX as nat {
+                            Err(part2_composition_error(true))
+                        } else {
+                            let extended = if target < assignments.len() { assignments } else {
+                                assignments + Seq::new((target + 1 - assignments.len()) as nat, |i: int| None)
+                            };
+                            let new_assignments = if instruction.0.10 == 0 { assignments }
+                                else { extended.update(target as int, Some(layer)) };
+                            Ok((true, (new_frames, new_assignments, next as usize, (index + 1) as usize, new_time)))
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn part2_timeline_finished(execution: Part2TimelineExecution) -> bool {
+    execution.is_err() || !execution.ok().unwrap().0
+}
+
+#[verifier::opaque]
+pub open spec fn part2_timeline_instructions(
+    instructions: Seq<Part2TimelineInstruction>, initial: Part2TimelineExecution, count: nat,
+    layers: usize, maximum_frames: u32, maximum_instructions: usize,
+) -> Part2TimelineExecution
+    recommends count <= instructions.len(),
+    decreases count,
+{
+    if count == 0 { initial } else {
+        let prior = part2_timeline_instructions(instructions, initial, (count - 1) as nat, layers, maximum_frames, maximum_instructions);
+        if part2_timeline_finished(prior) { prior } else {
+            part2_timeline_step(prior.ok().unwrap().1, instructions[count as int - 1], layers, maximum_frames, maximum_instructions)
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_timeline_repetitions(
+    instructions: Seq<Part2TimelineInstruction>, initial: Part2TimelineExecution, count: nat,
+    layers: usize, maximum_frames: u32, maximum_instructions: usize,
+) -> Part2TimelineExecution
+    decreases count,
+{
+    if count == 0 { initial } else {
+        part2_timeline_instructions(instructions,
+            part2_timeline_repetitions(instructions, initial, (count - 1) as nat, layers, maximum_frames, maximum_instructions),
+            instructions.len(), layers, maximum_frames, maximum_instructions)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_timeline_sets(
+    sets: Seq<Part2TimelineSet>, initial: Part2TimelineExecution, count: nat,
+    layers: usize, maximum_frames: u32, maximum_instructions: usize,
+) -> Part2TimelineExecution
+    recommends count <= sets.len(),
+    decreases count,
+{
+    if count == 0 { initial } else {
+        let set = sets[count as int - 1];
+        part2_timeline_repetitions(set.1,
+            part2_timeline_sets(sets, initial, (count - 1) as nat, layers, maximum_frames, maximum_instructions),
+            set.0 as nat + 1, layers, maximum_frames, maximum_instructions)
+    }
+}
+
+pub open spec fn part2_timeline_frames(execution: Part2TimelineExecution) -> Result<Seq<Part2Frame>, crate::DecodeError> {
+    match execution { Err(error) => Err(error), Ok((_, state)) => Ok(state.0) }
+}
+
+pub open spec fn part2_build_timeline(sets: Seq<Part2TimelineSet>, layers: usize, maximum_frames: u32)
+    -> Result<Seq<Part2Frame>, crate::DecodeError>
+{
+    match part2_timeline_limit(layers, maximum_frames) {
+        Err(error) => Err(error),
+        Ok(limit) => part2_timeline_frames(part2_timeline_sets(sets,
+            Ok((true, (Seq::empty(), Seq::empty(), 0, 0, 0))), sets.len(), layers, maximum_frames, limit)),
     }
 }
 

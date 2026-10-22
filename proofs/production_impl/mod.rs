@@ -32,6 +32,220 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_supply_search_step(supplied: Seq<crate::specs::Part2SuppliedLayer>, reference: usize, start: nat)
+    requires start <= supplied.len(),
+    ensures crate::specs::part2_supply_search(supplied, reference, start)
+        == if start == supplied.len() { None }
+        else if supplied[start as int].0 == reference && supplied[start as int].1.is_some() { Some(start) }
+        else { crate::specs::part2_supply_search(supplied, reference, start + 1) },
+{
+    reveal_with_fuel(crate::specs::part2_supply_search, 1);
+}
+
+pub proof fn production_gather_base(instructions: Seq<crate::specs::Part2Instruction>, supplied: Seq<crate::specs::Part2SuppliedLayer>)
+    ensures crate::specs::part2_gather_layers(instructions, supplied, 0) == (Ok::<(), crate::DecodeError>(()), Seq::<crate::specs::Part2Placement>::empty(), supplied),
+{
+    reveal(crate::specs::part2_gather_layers);
+}
+
+pub proof fn production_gather_step(instructions: Seq<crate::specs::Part2Instruction>, supplied: Seq<crate::specs::Part2SuppliedLayer>, count: nat)
+    requires count < instructions.len(),
+    ensures crate::specs::part2_gather_layers(instructions, supplied, count + 1)
+        == crate::specs::part2_gather_layer_step(instructions[count as int], crate::specs::part2_gather_layers(instructions, supplied, count)),
+{
+    reveal_with_fuel(crate::specs::part2_gather_layers, 1);
+}
+
+pub proof fn production_gather_error(instructions: Seq<crate::specs::Part2Instruction>, supplied: Seq<crate::specs::Part2SuppliedLayer>, count: nat)
+    requires count <= instructions.len(), crate::specs::part2_gather_layers(instructions, supplied, count).0.is_err(),
+    ensures crate::specs::part2_gather_layers(instructions, supplied, instructions.len())
+        == crate::specs::part2_gather_layers(instructions, supplied, count),
+    decreases instructions.len() - count,
+{
+    if count < instructions.len() {
+        production_gather_step(instructions, supplied, count);
+        production_gather_error(instructions, supplied, count + 1);
+    }
+}
+
+pub proof fn production_timeline_instruction_base(
+    instructions: Seq<crate::specs::Part2TimelineInstruction>, initial: crate::specs::Part2TimelineExecution,
+    layers: usize, frames: u32, limit: usize,
+)
+    ensures crate::specs::part2_timeline_instructions(instructions, initial, 0, layers, frames, limit) == initial,
+{
+    reveal(crate::specs::part2_timeline_instructions);
+}
+
+pub proof fn production_timeline_instruction_step(
+    instructions: Seq<crate::specs::Part2TimelineInstruction>, initial: crate::specs::Part2TimelineExecution,
+    count: nat, layers: usize, frames: u32, limit: usize,
+)
+    requires count < instructions.len(),
+    ensures crate::specs::part2_timeline_instructions(instructions, initial, count + 1, layers, frames, limit)
+        == {
+            let prior = crate::specs::part2_timeline_instructions(instructions, initial, count, layers, frames, limit);
+            if crate::specs::part2_timeline_finished(prior) { prior } else {
+                crate::specs::part2_timeline_step(prior.ok().unwrap().1, instructions[count as int], layers, frames, limit)
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_timeline_instructions, 1);
+}
+
+pub proof fn production_timeline_instruction_halt(
+    instructions: Seq<crate::specs::Part2TimelineInstruction>, initial: crate::specs::Part2TimelineExecution,
+    start: nat, end: nat, layers: usize, frames: u32, limit: usize,
+)
+    requires start <= end <= instructions.len(),
+        crate::specs::part2_timeline_finished(crate::specs::part2_timeline_instructions(instructions, initial, start, layers, frames, limit)),
+    ensures crate::specs::part2_timeline_instructions(instructions, initial, end, layers, frames, limit)
+        == crate::specs::part2_timeline_instructions(instructions, initial, start, layers, frames, limit),
+    decreases end - start,
+{
+    if start < end {
+        production_timeline_instruction_halt(instructions, initial, start, (end - 1) as nat, layers, frames, limit);
+        production_timeline_instruction_step(instructions, initial, (end - 1) as nat, layers, frames, limit);
+    }
+}
+
+pub proof fn production_timeline_repetition_base(
+    instructions: Seq<crate::specs::Part2TimelineInstruction>, initial: crate::specs::Part2TimelineExecution,
+    layers: usize, frames: u32, limit: usize,
+)
+    ensures crate::specs::part2_timeline_repetitions(instructions, initial, 0, layers, frames, limit) == initial,
+{
+    reveal(crate::specs::part2_timeline_repetitions);
+}
+
+pub proof fn production_timeline_repetition_step(
+    instructions: Seq<crate::specs::Part2TimelineInstruction>, initial: crate::specs::Part2TimelineExecution,
+    count: nat, layers: usize, frames: u32, limit: usize,
+)
+    ensures crate::specs::part2_timeline_repetitions(instructions, initial, count + 1, layers, frames, limit)
+        == crate::specs::part2_timeline_instructions(instructions,
+            crate::specs::part2_timeline_repetitions(instructions, initial, count, layers, frames, limit),
+            instructions.len(), layers, frames, limit),
+{
+    reveal_with_fuel(crate::specs::part2_timeline_repetitions, 1);
+}
+
+pub proof fn production_timeline_repetition_halt(
+    instructions: Seq<crate::specs::Part2TimelineInstruction>, initial: crate::specs::Part2TimelineExecution,
+    start: nat, end: nat, layers: usize, frames: u32, limit: usize,
+)
+    requires start <= end,
+        crate::specs::part2_timeline_finished(crate::specs::part2_timeline_repetitions(instructions, initial, start, layers, frames, limit)),
+    ensures crate::specs::part2_timeline_repetitions(instructions, initial, end, layers, frames, limit)
+        == crate::specs::part2_timeline_repetitions(instructions, initial, start, layers, frames, limit),
+    decreases end - start,
+{
+    if start < end {
+        production_timeline_repetition_halt(instructions, initial, start, (end - 1) as nat, layers, frames, limit);
+        let prior = crate::specs::part2_timeline_repetitions(instructions, initial, (end - 1) as nat, layers, frames, limit);
+        production_timeline_instruction_base(instructions, prior, layers, frames, limit);
+        production_timeline_instruction_halt(instructions, prior, 0, instructions.len(), layers, frames, limit);
+        production_timeline_repetition_step(instructions, initial, (end - 1) as nat, layers, frames, limit);
+    }
+}
+
+pub proof fn production_timeline_set_base(
+    sets: Seq<crate::specs::Part2TimelineSet>, initial: crate::specs::Part2TimelineExecution,
+    layers: usize, frames: u32, limit: usize,
+)
+    ensures crate::specs::part2_timeline_sets(sets, initial, 0, layers, frames, limit) == initial,
+{
+    reveal(crate::specs::part2_timeline_sets);
+}
+
+pub proof fn production_timeline_set_step(
+    sets: Seq<crate::specs::Part2TimelineSet>, initial: crate::specs::Part2TimelineExecution,
+    count: nat, layers: usize, frames: u32, limit: usize,
+)
+    requires count < sets.len(),
+    ensures crate::specs::part2_timeline_sets(sets, initial, count + 1, layers, frames, limit)
+        == crate::specs::part2_timeline_repetitions(sets[count as int].1,
+            crate::specs::part2_timeline_sets(sets, initial, count, layers, frames, limit),
+            sets[count as int].0 as nat + 1, layers, frames, limit),
+{
+    reveal_with_fuel(crate::specs::part2_timeline_sets, 1);
+}
+
+pub proof fn production_timeline_set_halt(
+    sets: Seq<crate::specs::Part2TimelineSet>, initial: crate::specs::Part2TimelineExecution,
+    start: nat, end: nat, layers: usize, frames: u32, limit: usize,
+)
+    requires start <= end <= sets.len(),
+        crate::specs::part2_timeline_finished(crate::specs::part2_timeline_sets(sets, initial, start, layers, frames, limit)),
+    ensures crate::specs::part2_timeline_sets(sets, initial, end, layers, frames, limit)
+        == crate::specs::part2_timeline_sets(sets, initial, start, layers, frames, limit),
+    decreases end - start,
+{
+    if start < end {
+        production_timeline_set_halt(sets, initial, start, (end - 1) as nat, layers, frames, limit);
+        let prior = crate::specs::part2_timeline_sets(sets, initial, (end - 1) as nat, layers, frames, limit);
+        let set = sets[end as int - 1];
+        production_timeline_repetition_base(set.1, prior, layers, frames, limit);
+        production_timeline_repetition_halt(set.1, prior, 0, set.0 as nat + 1, layers, frames, limit);
+        production_timeline_set_step(sets, initial, (end - 1) as nat, layers, frames, limit);
+    }
+}
+
+pub proof fn production_frame_sequence_empty(frames: Seq<crate::specs::Part2Frame>, selected: nat)
+    requires selected < frames.len(),
+    ensures crate::specs::part2_frame_instruction_sequence(frames, selected, 0) == Seq::<crate::specs::Part2Instruction>::empty(),
+{
+    reveal(crate::specs::part2_frame_instruction_sequence);
+}
+
+pub proof fn production_frame_sequence_step(frames: Seq<crate::specs::Part2Frame>, selected: nat, count: nat)
+    requires selected < frames.len(), count <= selected,
+    ensures crate::specs::part2_frame_instruction_sequence(frames, selected, count + 1)
+        == if count == selected || frames[count as int].3 {
+            crate::specs::part2_frame_instruction_sequence(frames, selected, count) + frames[count as int].4
+        } else { crate::specs::part2_frame_instruction_sequence(frames, selected, count) },
+{
+    reveal_with_fuel(crate::specs::part2_frame_instruction_sequence, 1);
+}
+
+pub proof fn production_render_empty(
+    width: u32, height: u32, layers: Seq<crate::specs::Part2Placement>,
+    initial: crate::specs::Part2RenderState, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, 0) == initial,
+{
+    reveal(crate::specs::part2_render_prefix);
+}
+
+pub proof fn production_render_step(
+    width: u32, height: u32, layers: Seq<crate::specs::Part2Placement>,
+    initial: crate::specs::Part2RenderState, byte_limit: u64, work_limit: u64, count: nat,
+)
+    requires count < layers.len(),
+    ensures crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count + 1)
+        == crate::specs::part2_render_step(width, height, crate::specs::part2_render_space(layers), layers[count as int],
+            crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count),
+            byte_limit, work_limit),
+{
+    reveal_with_fuel(crate::specs::part2_render_prefix, 1);
+}
+
+pub proof fn production_render_error(
+    width: u32, height: u32, layers: Seq<crate::specs::Part2Placement>,
+    initial: crate::specs::Part2RenderState, byte_limit: u64, work_limit: u64, count: nat,
+)
+    requires count <= layers.len(),
+        crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count).0.is_err(),
+    ensures crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, layers.len())
+        == crate::specs::part2_render_prefix(width, height, layers, initial, byte_limit, work_limit, count),
+    decreases layers.len() - count,
+{
+    if count < layers.len() {
+        production_render_step(width, height, layers, initial, byte_limit, work_limit, count);
+        production_render_error(width, height, layers, initial, byte_limit, work_limit, count + 1);
+    }
+}
+
 pub proof fn production_magnitude_radix_powers()
     ensures
         vstd::arithmetic::power2::pow2(0) == 1,
@@ -338,6 +552,7 @@ pub proof fn production_magnitude_value_bound(limbs: Seq<u64>)
     production_magnitude_prefix_properties(limbs, 6);
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
 pub proof fn production_magnitude_double_telescope(limbs: Seq<u64>, shifted: Seq<u64>, high: Seq<u64>)
     requires
         limbs.len() == 6, shifted.len() == 6, high.len() == 6,
@@ -352,6 +567,38 @@ pub proof fn production_magnitude_double_telescope(limbs: Seq<u64>, shifted: Seq
     production_magnitude_value_expansion(limbs);
     production_magnitude_value_expansion(shifted);
     production_magnitude_radix_powers();
+    assert(crate::specs::part1_magnitude_capacity()
+        == 39402006196394479212279040100143613805079739270465446667948293404245721771497210611414266254884915640806627990306816);
+    assert((shifted[0] as nat) + (high[0] as nat) * 18446744073709551616 == (limbs[0] as nat) * 2);
+    assert((shifted[1] as nat) + (high[1] as nat) * 18446744073709551616 == (limbs[1] as nat) * 2 + high[0] as nat);
+    assert((shifted[2] as nat) + (high[2] as nat) * 18446744073709551616 == (limbs[2] as nat) * 2 + high[1] as nat);
+    assert((shifted[3] as nat) + (high[3] as nat) * 18446744073709551616 == (limbs[3] as nat) * 2 + high[2] as nat);
+    assert((shifted[4] as nat) + (high[4] as nat) * 18446744073709551616 == (limbs[4] as nat) * 2 + high[3] as nat);
+    assert((shifted[5] as nat) + (high[5] as nat) * 18446744073709551616 == (limbs[5] as nat) * 2 + high[4] as nat);
+    assert(2 * crate::specs::part1_magnitude_value(limbs)
+        == (high[5] as nat) * crate::specs::part1_magnitude_capacity()
+            + crate::specs::part1_magnitude_value(shifted)) by(nonlinear_arith)
+        requires
+            crate::specs::part1_magnitude_value(limbs) == (limbs[0] as nat)
+                + (limbs[1] as nat) * 18446744073709551616
+                + (limbs[2] as nat) * 340282366920938463463374607431768211456
+                + (limbs[3] as nat) * 6277101735386680763835789423207666416102355444464034512896
+                + (limbs[4] as nat) * 115792089237316195423570985008687907853269984665640564039457584007913129639936
+                + (limbs[5] as nat) * 2135987035920910082395021706169552114602704522356652769947041607822219725780640550022962086936576,
+            crate::specs::part1_magnitude_value(shifted) == (shifted[0] as nat)
+                + (shifted[1] as nat) * 18446744073709551616
+                + (shifted[2] as nat) * 340282366920938463463374607431768211456
+                + (shifted[3] as nat) * 6277101735386680763835789423207666416102355444464034512896
+                + (shifted[4] as nat) * 115792089237316195423570985008687907853269984665640564039457584007913129639936
+                + (shifted[5] as nat) * 2135987035920910082395021706169552114602704522356652769947041607822219725780640550022962086936576,
+            crate::specs::part1_magnitude_capacity()
+                == 39402006196394479212279040100143613805079739270465446667948293404245721771497210611414266254884915640806627990306816,
+            (shifted[0] as nat) + (high[0] as nat) * 18446744073709551616 == (limbs[0] as nat) * 2,
+            (shifted[1] as nat) + (high[1] as nat) * 18446744073709551616 == (limbs[1] as nat) * 2 + high[0] as nat,
+            (shifted[2] as nat) + (high[2] as nat) * 18446744073709551616 == (limbs[2] as nat) * 2 + high[1] as nat,
+            (shifted[3] as nat) + (high[3] as nat) * 18446744073709551616 == (limbs[3] as nat) * 2 + high[2] as nat,
+            (shifted[4] as nat) + (high[4] as nat) * 18446744073709551616 == (limbs[4] as nat) * 2 + high[3] as nat,
+            (shifted[5] as nat) + (high[5] as nat) * 18446744073709551616 == (limbs[5] as nat) * 2 + high[4] as nat;
 }
 
 pub proof fn production_magnitude_left_bit_equation(limbs: Seq<u64>)
