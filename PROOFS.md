@@ -381,9 +381,13 @@ Native regressions cover all 256 kinds, four physical-width hints and all
 flag/parity/reversibility combinations in 32,768 contexts, independent
 integer-rational Q32 rounding and binary-layout edges, exact exponent-127
 rejection, reverse-step parity, ignored/unvisited defects, late partial writes
-and real None/Some preparation/fraction/budget error order. Whole-production
-verification passes; conservative inventory and complete frozen qualification
-remain separate acceptance gates.
+and real None/Some preparation/fraction/budget error order. Twenty-one finite
+exact producer/model/result/input recipes bind every newly claimed scalar,
+sequence, plane, partial buffer and preparation stage. Negative tests reject
+wrong native views/flags/counts/caps, partial or success-only results and a
+wrong primary clause followed by a correct duplicate. Whole-production
+verification and targeted inventory tests pass; complete frozen numerical,
+resource and hosted qualification remain separate acceptance gates.
 
 F6 remains open: general MCT paths and the actual
 whole-decoder composed

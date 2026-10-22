@@ -476,6 +476,95 @@ def validate_normative_coverage(
             }.get((reference["path"], short))
             if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
                 expected_result_model = "part2_typed_image_component"
+            kernel_view = r"crate::codestream::raw_kernel_view\s*\(\s*\*\s*kernel\s*\)"
+            kernel_step_view = r"crate::codestream::raw_kernel_step_view\s*\(\s*\*\s*step\s*\)"
+            kernel_coefficient_view = r"crate::codestream::raw_kernel_coefficient_view\s*\(\s*coefficient\s*\)"
+            kernel_option = r"crate::transform::arbitrary_kernel_option\s*\(\s*kernel\s*\)"
+            decoded_cap = r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)"
+            arbitrary_contract = {
+                ("src/transform.rs", "inverse_arbitrary"): (
+                    "sequence_outcome", "part2_inverse_arbitrary",
+                    r"low@\s*,\s*high@\s*,\s*low_pass_first\s*,\s*" + kernel_view,
+                ),
+                ("src/transform.rs", "inverse_horizontal_arbitrary"): (
+                    "reconstruction_outcome", "part2_atk_inverse_horizontal",
+                    r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
+                    r"output_width\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/transform.rs", "inverse_vertical_arbitrary"): (
+                    "reconstruction_outcome", "part2_atk_inverse_vertical",
+                    r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
+                    r"output_height\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/transform.rs", "inverse_level_arbitrary"): (
+                    "reconstruction_outcome", "part2_atk_inverse_level",
+                    r"wavelet_level_view\s*\(\s*level\s*\)\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/transform.rs", "apply_arbitrary_steps"): (
+                    None, "part2_atk_steps",
+                    r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*" + kernel_view + r"\.6\.len\s*\(\s*\)",
+                ),
+                ("src/transform.rs", "apply_arbitrary_step"): (
+                    None, "part2_atk_step",
+                    r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*update_odd",
+                ),
+                ("src/transform.rs", "arbitrary_reversible_target"): (
+                    None, "part2_atk_reversible_target",
+                    r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
+                ),
+                ("src/transform.rs", "arbitrary_irreversible_target"): (
+                    None, "part2_atk_irreversible_target",
+                    r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
+                ),
+                ("src/transform.rs", "lifting_source_sum"): (
+                    None, "part2_atk_source_sum",
+                    r"samples@\s*,\s*target\s*,\s*coefficient\s*,\s*offset\s*,\s*whole_sample_filter\s*,\s*whole_sample_extension",
+                ),
+                ("src/transform.rs", "extended_sample"): (
+                    None, "part2_atk_extended", r"samples@\s*,\s*original_index\s*,\s*whole_sample_extension",
+                ),
+                ("src/transform.rs", "coefficient_integer"): (
+                    None, "part2_atk_integer", kernel_coefficient_view + r"\s*,\s*coefficient_type",
+                ),
+                ("src/transform.rs", "coefficient_fixed"): (
+                    None, "part2_atk_fixed_coefficient", kernel_coefficient_view + r"\s*,\s*coefficient_type",
+                ),
+                ("src/transform.rs", "bytes_to_u128"): (
+                    None, "part2_atk_bytes_prefix", r"bytes@\s*,\s*16",
+                ),
+                ("src/transform.rs", "binary_to_fixed"): (
+                    None, "part2_atk_binary_format", r"bits\s*,\s*total_bits\s*,\s*exponent_bits\s*,\s*fraction_bits\s*,\s*bias",
+                ),
+                ("src/transform.rs", "fixed_from_binary_q32"): (
+                    None, "part2_atk_binary_q32", r"negative\s*,\s*significand\s*,\s*binary_exponent",
+                ),
+                ("src/transform.rs", "fixed_mul_q32"): (
+                    None, "part2_atk_fixed_mul", r"value\s*,\s*factor",
+                ),
+                ("src/transform.rs", "fixed_div_q32"): (
+                    None, "part2_atk_fixed_div", r"value\s*,\s*divisor",
+                ),
+                ("src/transform.rs", "round_shift_i128"): (
+                    None, "part2_atk_round_shift", r"value\s*,\s*shift",
+                ),
+                ("src/decode.rs", "prepare_tile_component_with_kernel"): (
+                    "prepared_component_outcome", "part2_prepare_component",
+                    r"prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*prepare_precincts_view\s*\(\s*precincts@\s*\)\s*,\s*"
+                    r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/decode.rs", "reconstruct_prepare_working"): (
+                    "prepare_fold_outcome", "part2_prepare_reconstruct",
+                    r"working_bands_view\s*\(\s*working@\s*\)\s*,\s*prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*"
+                    r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*reversible\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/decode.rs", "reconstruct_prepare_resolution"): (
+                    "prepare_fold_outcome", "part2_prepare_resolution",
+                    r"before@\s*,\s*working_bands_view\s*\(\s*working@\s*\)\s*,\s*plan\.subbands@\s*,\s*"
+                    r"direction\s*,\s*reversible\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
+                ),
+            }.get((reference["path"], reference["symbol"]))
+            if arbitrary_contract:
+                result_projection, expected_result_model = arbitrary_contract[:2]
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
@@ -844,6 +933,10 @@ def validate_normative_coverage(
                     contract, named_result, component_contract_arguments[0], component_contract_arguments[1],
                 )
             )
+            arbitrary_arguments_bound = (
+                arbitrary_contract is None
+                or _coverage_result_arguments(contract, named_result, arbitrary_contract[1], arbitrary_contract[2])
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -867,6 +960,7 @@ def validate_normative_coverage(
                     or not refinement_arguments_bound
                     or not prepare_arguments_bound
                     or not component_arguments_bound
+                    or not arbitrary_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))
