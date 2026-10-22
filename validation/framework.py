@@ -280,6 +280,14 @@ def validate_normative_coverage(
                 ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize_plane"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_5_3"): "sequence_outcome",
+                ("src/transform.rs", "inverse_9_7"): "sequence_outcome",
+                ("src/transform.rs", "inverse_horizontal_5_3"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_horizontal_9_7"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_vertical_5_3"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_vertical_9_7"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_level_5_3"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_level_9_7"): "reconstruction_outcome",
+                ("src/transform.rs", "convert_samples"): "sequence_outcome",
                 ("src/transform.rs", "interleave"): "sequence_outcome",
             }.get((reference["path"], short))
             projected_result = re.search(
