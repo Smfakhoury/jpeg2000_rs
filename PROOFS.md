@@ -174,6 +174,29 @@ They no longer treat non-Copy cloned vectors as opaque native identity.
 This supplies actual data-copy facts to later staging proofs; it does not itself
 establish the shared whole-decoder clone, contribution replay or dispatcher.
 
+## Exact retained HT and selected group acceptance
+
+Four finite result/model/complete-state/input recipes bind the actual retained
+refinement, placeholder step, repeated placeholder loop and staged group
+producers. Mutations reject unrelated returns/models, old or partial final
+states, wrong actual inputs/pass counts/caps, extra unbound mutable state and
+incorrect owners/callers. A later correct clause cannot mask the primary
+whole-result clause's wrong argument binding. Trait Clone is proved data
+support, not a request for generic trait or implication matching.
+
+The legacy three-pass refactor's actual direct bypass caller is
+`RawBitReader::decode` in `impl Tier1SymbolDecoder for RawBitReader`, not the
+trait declaration or an older direct-pass wrapper. The curated raw-reader
+entry names that real edge. Only this exact known trait/owner method has
+additional formatted-scope resolution; unknown traits, foreign owners, nested
+functions and ambiguous inherent/trait duplicates reject. A trait name before
+`for` is not misidentified as the implementation's receiver type. No runtime
+adapter or decoder body is added to satisfy the inventory.
+
+Whole joined production verification and targeted acceptance regressions pass.
+Full frozen qualification is separate; legacy/mixed packet orchestration and
+complete F5L/F5H remain open.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

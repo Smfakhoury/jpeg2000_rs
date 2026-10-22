@@ -213,9 +213,13 @@ def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
     )
     if "::" in symbol:
         owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        trait_scope = (
+            r"(?:Tier1SymbolDecoder[ \t]+for[ \t]+)?"
+            if symbol == "RawBitReader::decode" else ""
+        )
         implementations = re.finditer(
             rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
-            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
+            rf"{trait_scope}{re.escape(owner)}\b(?![^{{}}\n]*\bfor\b)[^{{}}\n]*\{{", text,
         )
         matches = []
         for implementation in implementations:
@@ -498,6 +502,10 @@ def validate_normative_coverage(
                 "CodeBlockPlane::apply_ht_refinement_decision": ("code_block_plane_view", "ht_apply_refinement"),
                 "Tier1CodeBlockDecoder::decode_high_throughput_segments": ("tier1_decoder_state", "ht_decode_segments"),
                 "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols": ("tier1_decoder_state", "ht_coefficient_symbols"),
+                "Tier1CodeBlockDecoder::decode_high_throughput_refinement": ("tier1_decoder_state", "ht_decode_refinement_contribution"),
+                "Tier1CodeBlockDecoder::skip_high_throughput_segment": ("tier1_decoder_state", "ht_skip_segment"),
+                "Tier1CodeBlockDecoder::run_ht_placeholder_groups": ("tier1_decoder_state", "ht_placeholder_group_run"),
+                "Tier1CodeBlockDecoder::decode_ht_staged_group": ("tier1_decoder_state", "ht_decode_staged_group"),
                 "Tier1CodeBlockDecoder::store_ht_coefficient_symbols": (
                     "tier1_decoder_state", "ht_store_coefficient_symbols",
                 ),
@@ -748,6 +756,29 @@ def validate_normative_coverage(
                     r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*"
                     r"ht_block_segments_view\s*\(\s*&\s*segments\s*\)\s*,\s*"
                     r"pass_count\s*,\s*maximum_u\s*,\s*skipped_bitplanes\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::decode_high_throughput_refinement": (
+                    "ht_decode_refinement_contribution",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*input@\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::skip_high_throughput_segment": (
+                    "ht_skip_segment",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::run_ht_placeholder_groups": (
+                    "ht_placeholder_group_run",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*placeholder_passes\s+as\s+nat\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::decode_ht_staged_group": (
+                    "ht_decode_staged_group",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*input@\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
                     r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
                 ),
                 "ht_significant_bitplanes": ("ht_significant_bitplanes", r"maximum_passes"),

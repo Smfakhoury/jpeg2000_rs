@@ -717,7 +717,7 @@
       "implementation_refs": [
         {
           "path": "src/tier1.rs",
-          "symbol": "Tier1SymbolDecoder::decode"
+          "symbol": "RawBitReader::decode"
         },
         {
           "path": "src/tier1.rs",
