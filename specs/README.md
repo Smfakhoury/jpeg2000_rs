@@ -133,14 +133,17 @@ All four actual result fields and the typed rejection are modeled. This is
 the actual `HtPassGroup::from_packet_passes` implementation, not a theorem
 that a block caller executes, replaces or routes those passes correctly.
 
-The next byte-partition contract requires the actual selected code-block
-byte limit, not a chosen or existential budget. Its intended inputs are both
+The frozen byte-partition contract uses the actual selected code-block
+byte limit, not a chosen or existential budget. Its inputs are both
 actual supplied slices (including `Some(empty)` versus `None`), all native
 lengths and the actual `ResourceLimits` object; its output includes every
 encoded/substream slice, offset and direction. The current foreign limits
-getter has no functional spec view. A narrowly scoped owner-provided limit
-view/getter contract is required before claiming that complete public-parser
-relation; no arbitrary-budget parser wrapper is substituted.
+getter now has the specifically authorized owner-local limit view and exact
+postcondition. Cleanup/refinement size rejection precedes the code-block
+budget check, which precedes Scup interpretation. Every encoded/substream
+slice, offset, direction and total byte count is included. Invalid Scup
+bounds retain their typed rejection. No arbitrary-budget parser wrapper,
+successful-input assumption or narrowed native object domain is substituted.
 
 The next frozen interpretation substage is the actual cleanup UVLC/quad-word
 caller: prefix, every native `u8` suffix length, combined prefix value,

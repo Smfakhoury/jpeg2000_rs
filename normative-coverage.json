@@ -4036,10 +4036,30 @@
       "proof_refs": [
         {
           "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_partition_budget_failure_precedes_any_scup_validation"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_successful_partition_preserves_optional_refinement_presence"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
           "symbol": "ht_scup_partitions_cleanup"
         }
       ],
       "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_parse_block_segments"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_block_segments_outcome"
+        },
+        {
+          "path": "src/limits.rs",
+          "symbol": "resource_code_block_byte_limit"
+        },
         {
           "path": "specs/mod.rs",
           "symbol": "ht_scup"
@@ -4052,6 +4072,18 @@
       "test_refs": [
         {
           "path": "src/tier1.rs",
+          "symbol": "ht_complete_partition_preserves_every_stream_and_optional_empty"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_partition_checks_actual_budget_before_scup_and_sizes_before_budget"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_partition_native_capacity_and_scup_boundaries_are_exact"
+        },
+        {
+          "path": "src/tier1.rs",
           "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
         },
         {
@@ -4059,7 +4091,7 @@
           "symbol": "rejects_invalid_ht_cleanup_termination_and_limits"
         }
       ],
-      "topic": "Scup termination decode with a MagSgn prefix and bounded shared MEL/VLC suffix"
+      "topic": "Complete actual parser result: every encoded/substream byte sequence, offset, direction, Scup and byte count; actual object byte-limit rejection before Scup and preserved None versus Some(empty); public outcome recipe awaits separate indexing authorization"
     },
     {
       "contract_refs": [

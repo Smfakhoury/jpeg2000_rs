@@ -429,16 +429,24 @@ that returns the complete actual four-field group, retaining the static
 public wrapper and all original native bounds/error behavior. This is an
 input-relative grouping theorem, not placeholder/replacement execution.
 
-The next complete public segment-parser relation is blocked on a foreign
-interface: `ResourceLimits::maximum_code_block_bytes` has no functional
-specification or public closed view of its private field. Its exact selected
-value is needed to prove that budget rejection precedes Scup interpretation.
-An arbitrary/existential budget wrapper would not establish that public
-relation, and no trusted shim or partial-success guarantee is substituted.
-The limits owner is asked for the same minimal view/getter pairing already
-provided for `resource_work_limit`. Subsequent magnitude reconstruction also
-needs the F6-owned private magnitude value view and exact operation contracts;
-the current branch exposes only executable, functionally unspecified methods.
+The complete actual public segment parser now refines `ht_parse_block_segments`
+through a public closed outcome projection of every result field. The sole
+authorized foreign edit supplies the owner-local `resource_code_block_byte_limit`
+view and exact getter postcondition. The parser model therefore uses the actual
+selected `ResourceLimits` value, not a chosen or existential budget. Size
+rejection precedes the exact CodeBlockBytes failure, which precedes Scup
+interpretation and partitioning. All encoded/substream bytes, offsets,
+directions, Scup and total bytes are included, retaining the observable
+distinction between absent and present empty refinement. No public-parser
+wrapper or successful-input assumption is introduced. Its complete outcome
+shape is proved by the root; the non-exhaustive source index awaits one exact
+function/outcome/model recipe rather than any matcher widening.
+
+Existing public F6 limb, constructor, zero-test and right-shift contracts are
+available in this combined branch and are reused as needed. Full magnitude
+reconstruction still requires exact checked-add, checked-left-shift and
+low-limb contracts from that owner; their current executable methods do not
+have those functional postconditions. No magnitude source is modified.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit
