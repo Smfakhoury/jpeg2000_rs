@@ -117,6 +117,27 @@ verus! {
             Err(error) => Err(error),
         }
     }
+
+    pub open spec fn decoded_typed_samples_outcome(result: Result<TypedSamples, DecodeError>)
+        -> Result<crate::specs::Part1TypedSampleSequence, DecodeError>
+    {
+        match result { Ok(samples) => Ok(typed_samples_view(&samples)), Err(error) => Err(error) }
+    }
+
+    pub open spec fn decoded_typed_components_view(components: Seq<TypedComponent>)
+        -> Seq<crate::specs::Part1TypedComponentModel>
+    {
+        Seq::new(components.len(), |i: int| typed_component_view(&components[i]))
+    }
+
+    pub open spec fn decoded_typed_image_outcome(result: Result<TypedImage, DecodeError>)
+        -> Result<crate::specs::Part1DecodedTypedImage, DecodeError>
+    {
+        match result {
+            Ok(image) => Ok((typed_image_geometry(&image), typed_image_component_views(&image), typed_image_definition_views(&image))),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
@@ -259,48 +280,108 @@ impl DecodedImage {
             .ok_or_else(invalid_image)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures decoded_typed_image_outcome(result) == crate::specs::part1_decoded_image_typed(
+            decoded_image_view(*self), crate::limits::resource_decoded_bytes_limit(limits),
+        ),
+    ))]
     pub fn typed(&self, limits: &ResourceLimits) -> Result<TypedImage, DecodeError> {
         let mut components = Vec::with_capacity(self.components.len());
         let mut decoded_bytes = 0_u64;
         let mut index = 0_usize;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_decoded_typed_components_empty(
+                decoded_components_view(self.components@), crate::limits::resource_decoded_bytes_limit(limits),
+            );
+            assert(decoded_typed_components_view(components@) =~= Seq::empty());
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.components.len(),
+                components.len() == index,
+                crate::specs::part1_decoded_typed_components(
+                    decoded_components_view(self.components@), crate::limits::resource_decoded_bytes_limit(limits), index as nat,
+                ) == Ok((decoded_typed_components_view(components@), decoded_bytes)),
+                forall |i: int| 0 <= i < components.len() ==> typed_component_definitions(&components@[i]).len() == 0,
                 decreases self.components.len() - index,
             )
         )]
         while index < self.components.len() {
-            let component = self.components.get(index).ok_or_else(invalid_image)?;
-            let bytes = (component.samples.len() as u64)
-                .checked_mul(8)
-                .ok_or_else(arithmetic_overflow)?;
-            decoded_bytes = decoded_bytes
-                .checked_add(bytes)
-                .ok_or_else(arithmetic_overflow)?;
-            if decoded_bytes > limits.maximum_decoded_bytes() {
-                return Err(DecodeError::limit(
-                    Resource::DecodedBytes,
-                    limits.maximum_decoded_bytes(),
-                    decoded_bytes,
-                ));
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_decoded_typed_components_step(
+                    decoded_components_view(self.components@), crate::limits::resource_decoded_bytes_limit(limits), index as nat,
+                );
             }
+            let component = self.components.get(index).ok_or_else(invalid_image)?;
+            match charge_assembly_bytes(
+                component.samples.len(),
+                &mut decoded_bytes,
+                limits.maximum_decoded_bytes(),
+            ) {
+                Ok(()) => {}
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_decoded_typed_components_error(
+                            decoded_components_view(self.components@), crate::limits::resource_decoded_bytes_limit(limits),
+                            index as nat + 1, self.components.len() as nat, error,
+                        );
+                    }
+                    return Err(error);
+                }
+            }
+            let samples = match component.typed_samples(limits) {
+                Ok(samples) => samples,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_decoded_typed_components_error(
+                            decoded_components_view(self.components@), crate::limits::resource_decoded_bytes_limit(limits),
+                            index as nat + 1, self.components.len() as nat, error,
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = components@; }
             components.push(TypedComponent {
                 width: component.width,
                 height: component.height,
                 info: component.info,
-                samples: component.typed_samples(limits)?,
+                samples,
                 channel_definitions: Vec::new(),
             });
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(decoded_typed_components_view(components@) =~= decoded_typed_components_view(before).push(
+                    typed_component_view(&components@[index as int]),
+                ));
+                assert forall |i: int| 0 <= i < components.len() implies
+                    typed_component_definitions(&components@[i]).len() == 0 by {};
+            }
             index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        Ok(TypedImage {
+        let image = TypedImage {
             width: self.width,
             height: self.height,
             x_origin: self.x_origin,
             y_origin: self.y_origin,
             components,
-        })
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert forall |i: int| 0 <= i < image.components.len() implies
+                typed_image_definition_views(&image)[i] == Seq::empty() by {
+                assert(typed_component_definitions(&image.components@[i]).len() == 0);
+                assert(channel_definition_views(typed_component_definitions(&image.components@[i])) =~= Seq::empty());
+            }
+            assert(typed_image_definition_views(&image) =~= Seq::new(image.components.len() as nat, |i: int| Seq::empty()));
+        }
+        Ok(image)
     }
 }
 
@@ -1232,38 +1313,95 @@ impl DecodedComponent {
         &self.samples
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures decoded_typed_samples_outcome(result) == crate::specs::part1_decoded_component_typed_samples(
+            decoded_component_view(*self), crate::limits::resource_decoded_bytes_limit(limits),
+        ),
+    ))]
     pub fn typed_samples(&self, limits: &ResourceLimits) -> Result<TypedSamples, DecodeError> {
         if self.info.precision == 0 || self.info.precision > 38 {
             return Err(invalid_image());
         }
         validate_bytes(self.samples.len(), 8, limits)?;
+        let precision = self.info.precision;
         let shift = self
             .info
             .precision
             .checked_sub(1)
             .ok_or_else(arithmetic_overflow)?;
+        let signed_power = 1_i64 << u32::from(shift);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(signed_power > 0) by(bit_vector)
+                requires shift <= 37, signed_power == 1i64 << (shift as u32);
+        }
         let signed_min = 0_i64
-            .checked_sub(1_i64 << u32::from(shift))
+            .checked_sub(signed_power)
             .ok_or_else(arithmetic_overflow)?;
-        let signed_max = (1_i64 << u32::from(shift))
+        let signed_max = signed_power
             .checked_sub(1)
             .ok_or_else(arithmetic_overflow)?;
-        let unsigned_max = (1_u64 << u32::from(self.info.precision))
+        let unsigned_power = 1_u64 << u32::from(precision);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(unsigned_power > 0) by(bit_vector)
+                requires precision <= 38,
+                    unsigned_power == 1u64 << (precision as u32);
+        }
+        let unsigned_max = unsigned_power
             .checked_sub(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.info.signed {
             let mut output = Vec::with_capacity(self.samples.len());
             let mut index = 0;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_decoded_signed_empty(
+                    self.samples@, self.fraction_bits, self.info.precision,
+                );
+            }
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant index <= self.samples.len(),
+                    0 < self.info.precision <= 38,
+                    self.info.signed,
+                    signed_min == crate::specs::part1_output_minimum(self.info.precision, true),
+                    signed_max == crate::specs::part1_output_maximum(self.info.precision, true),
+                    crate::specs::part1_image_byte_budget(
+                        self.samples.len() as nat, 8, crate::limits::resource_decoded_bytes_limit(limits),
+                    ) == Ok(()),
+                    crate::specs::part1_decoded_signed_prefix(
+                        self.samples@, self.fraction_bits, self.info.precision, index as nat,
+                    ) == Ok(output@),
                     decreases self.samples.len() - index,
                 )
             )]
             while index < self.samples.len() {
-                let value = round_fixed(self.samples[index], self.fraction_bits)?;
-                output.push(value.max(signed_min).min(signed_max));
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_decoded_signed_step(
+                        self.samples@, self.fraction_bits, self.info.precision, index as nat,
+                    );
+                }
+                let value = match decoded_signed_sample(
+                    self.samples[index],
+                    self.fraction_bits,
+                    signed_min,
+                    signed_max,
+                ) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            crate::proofs::production_impl::production_decoded_signed_error(
+                                self.samples@, self.fraction_bits, self.info.precision, index as nat + 1, self.samples.len() as nat, error,
+                            );
+                        }
+                        return Err(error);
+                    }
+                };
+                output.push(value);
                 index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             Ok(TypedSamples::Signed(output))
@@ -1271,22 +1409,54 @@ impl DecodedComponent {
             let level_shift = 1_i64 << u32::from(shift);
             let mut output = Vec::with_capacity(self.samples.len());
             let mut index = 0;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_decoded_unsigned_empty(
+                    self.samples@, self.fraction_bits, self.info.precision,
+                );
+            }
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant index <= self.samples.len(),
+                    0 < self.info.precision <= 38,
+                    !self.info.signed,
+                    level_shift == 1i64 << ((self.info.precision - 1) as u8),
+                    unsigned_max == (1u64 << self.info.precision) - 1,
+                    crate::specs::part1_image_byte_budget(
+                        self.samples.len() as nat, 8, crate::limits::resource_decoded_bytes_limit(limits),
+                    ) == Ok(()),
+                    crate::specs::part1_decoded_unsigned_prefix(
+                        self.samples@, self.fraction_bits, self.info.precision, index as nat,
+                    ) == Ok(output@),
                     decreases self.samples.len() - index,
                 )
             )]
             while index < self.samples.len() {
-                let value = round_fixed(self.samples[index], self.fraction_bits)?
-                    .checked_add(level_shift)
-                    .ok_or_else(arithmetic_overflow)?;
-                output.push(
-                    u64::try_from(value.max(0))
-                        .map_err(|_| arithmetic_overflow())?
-                        .min(unsigned_max),
-                );
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_decoded_unsigned_step(
+                        self.samples@, self.fraction_bits, self.info.precision, index as nat,
+                    );
+                }
+                let value = match decoded_unsigned_sample(
+                    self.samples[index],
+                    self.fraction_bits,
+                    level_shift,
+                    unsigned_max,
+                ) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            crate::proofs::production_impl::production_decoded_unsigned_error(
+                                self.samples@, self.fraction_bits, self.info.precision, index as nat + 1, self.samples.len() as nat, error,
+                            );
+                        }
+                        return Err(error);
+                    }
+                };
+                output.push(value);
                 index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             Ok(TypedSamples::Unsigned(output))
@@ -3770,6 +3940,38 @@ fn fixed_mul(value: i64, factor: i64) -> Result<i64, DecodeError> {
     Ok(biased >> FIXED_BITS)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_decoded_signed_value(value, fraction_bits, minimum, maximum),
+))]
+fn decoded_signed_sample(
+    value: i64,
+    fraction_bits: u8,
+    minimum: i64,
+    maximum: i64,
+) -> Result<i64, DecodeError> {
+    Ok(round_fixed(value, fraction_bits)?.max(minimum).min(maximum))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_decoded_unsigned_value(value, fraction_bits, level_shift, maximum),
+))]
+fn decoded_unsigned_sample(
+    value: i64,
+    fraction_bits: u8,
+    level_shift: i64,
+    maximum: u64,
+) -> Result<u64, DecodeError> {
+    let shifted = round_fixed(value, fraction_bits)?
+        .checked_add(level_shift)
+        .ok_or_else(arithmetic_overflow)?;
+    Ok(u64::try_from(shifted.max(0))
+        .map_err(|_| arithmetic_overflow())?
+        .min(maximum))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_round_fixed(value, fraction_bits),
+))]
 fn round_fixed(value: i64, fraction_bits: u8) -> Result<i64, DecodeError> {
     if fraction_bits == 0 {
         return Ok(value);
@@ -3835,6 +4037,11 @@ fn index(width: u32, x: u32, y: u32) -> Result<usize, DecodeError> {
     crate::transform::transform_offset(y, width, x)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_byte_budget(
+        samples as nat, bytes_per_sample, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn validate_bytes(
     samples: usize,
     bytes_per_sample: u64,
@@ -3844,11 +4051,11 @@ fn validate_bytes(
         .checked_mul(bytes_per_sample)
         .ok_or_else(arithmetic_overflow)?;
     if bytes > limits.maximum_decoded_bytes() {
-        return Err(DecodeError::limit(
-            Resource::DecodedBytes,
-            limits.maximum_decoded_bytes(),
-            bytes,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: limits.maximum_decoded_bytes(),
+            actual: bytes,
+        });
     }
     Ok(())
 }
@@ -4155,6 +4362,291 @@ mod tests {
             tiles_across: 1,
             tiles_down: 1,
             component_info,
+        }
+    }
+
+    fn reference_decoded_typed_samples(
+        component: &DecodedComponent,
+        maximum: u64,
+    ) -> Result<TypedSamples, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let precision = component.info.precision;
+        if precision == 0 || precision > 38 {
+            return Err(invalid);
+        }
+        let bytes = component.samples.len() as u128 * 8;
+        if bytes > u128::from(u64::MAX) {
+            return Err(arithmetic);
+        }
+        if bytes > u128::from(maximum) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: maximum,
+                actual: u64::try_from(bytes).unwrap(),
+            });
+        }
+        let signed_power = 1_i128 << (precision - 1);
+        let unsigned_maximum = (1_i128 << precision) - 1;
+        let mut signed = Vec::new();
+        let mut unsigned = Vec::new();
+        for &sample in &component.samples {
+            let rounded = if component.fraction_bits == 0 {
+                i128::from(sample)
+            } else {
+                if component.fraction_bits > 62 {
+                    return Err(invalid);
+                }
+                let biased = i128::from(sample) + (1_i128 << (component.fraction_bits - 1));
+                if biased > i128::from(i64::MAX) || biased < i128::from(i64::MIN) {
+                    return Err(arithmetic);
+                }
+                biased >> component.fraction_bits
+            };
+            if component.info.signed {
+                signed.push(i64::try_from(rounded.clamp(-signed_power, signed_power - 1)).unwrap());
+            } else {
+                let shifted = rounded + signed_power;
+                if shifted > i128::from(i64::MAX) || shifted < i128::from(i64::MIN) {
+                    return Err(arithmetic);
+                }
+                unsigned.push(u64::try_from(shifted.clamp(0, unsigned_maximum)).unwrap());
+            }
+        }
+        Ok(if component.info.signed {
+            TypedSamples::Signed(signed)
+        } else {
+            TypedSamples::Unsigned(unsigned)
+        })
+    }
+
+    fn reference_decoded_typed_image(
+        image: &DecodedImage,
+        maximum: u64,
+    ) -> Result<TypedImage, DecodeError> {
+        let mut bytes = 0_u128;
+        let mut components = Vec::new();
+        for component in &image.components {
+            bytes += component.samples.len() as u128 * 8;
+            if bytes > u128::from(u64::MAX) {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+            if bytes > u128::from(maximum) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::DecodedBytes,
+                    limit: maximum,
+                    actual: u64::try_from(bytes).unwrap(),
+                });
+            }
+            components.push(TypedComponent {
+                width: component.width,
+                height: component.height,
+                info: component.info,
+                samples: reference_decoded_typed_samples(component, maximum)?,
+                channel_definitions: Vec::new(),
+            });
+        }
+        Ok(TypedImage {
+            width: image.width,
+            height: image.height,
+            x_origin: image.x_origin,
+            y_origin: image.y_origin,
+            components,
+        })
+    }
+
+    #[test]
+    fn complete_decoded_typed_samples_match_independent_wide_reference_all_u8_parameters() {
+        let payloads = [vec![], vec![i64::MIN, -65536, -1, 0, 1, i64::MAX]];
+        let limits = [
+            ResourceLimits::default(),
+            ResourceLimits::default()
+                .with_maximum_decoded_bytes(1)
+                .unwrap(),
+            ResourceLimits::default()
+                .with_maximum_decoded_bytes(47)
+                .unwrap(),
+            ResourceLimits::default()
+                .with_maximum_decoded_bytes(48)
+                .unwrap(),
+        ];
+        for precision in 0..=u8::MAX {
+            for fraction_bits in 0..=u8::MAX {
+                for signed in [false, true] {
+                    for samples in &payloads {
+                        let component = DecodedComponent {
+                            width: u32::MAX,
+                            height: 0,
+                            info: ComponentInfo {
+                                precision,
+                                signed,
+                                x_subsampling: 0,
+                                y_subsampling: 255,
+                                x_registration: u16::MAX,
+                                y_registration: 32768,
+                            },
+                            fraction_bits,
+                            samples: samples.clone(),
+                        };
+                        for limit in &limits {
+                            assert_eq!(
+                                component.typed_samples(limit),
+                                reference_decoded_typed_samples(
+                                    &component,
+                                    limit.maximum_decoded_bytes()
+                                ),
+                                "precision={precision} fraction={fraction_bits} signed={signed} count={} maximum={}",
+                                samples.len(),
+                                limit.maximum_decoded_bytes()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn complete_decoded_typed_images_match_all_metadata_and_error_order() {
+        for precision in [0, 1, 8, 38, 39, 255] {
+            for fraction_bits in [0, 1, 16, 62, 63, 255] {
+                for signed in [false, true] {
+                    for maximum in [1, 8, 15, 16, 47, 48, 64, 128] {
+                        let limits = ResourceLimits::default()
+                            .with_maximum_decoded_bytes(maximum)
+                            .unwrap();
+                        let info = ComponentInfo {
+                            precision,
+                            signed,
+                            x_subsampling: 0,
+                            y_subsampling: 255,
+                            x_registration: u16::MAX,
+                            y_registration: 123,
+                        };
+                        let image = DecodedImage {
+                            width: 0,
+                            height: u32::MAX,
+                            x_origin: u32::MAX,
+                            y_origin: 7,
+                            components: vec![
+                                DecodedComponent {
+                                    width: 7,
+                                    height: 0,
+                                    info: ComponentInfo {
+                                        precision: 8,
+                                        ..info
+                                    },
+                                    fraction_bits: 0,
+                                    samples: vec![-1],
+                                },
+                                DecodedComponent {
+                                    width: u32::MAX,
+                                    height: 2,
+                                    info,
+                                    fraction_bits,
+                                    samples: vec![0, i64::MAX],
+                                },
+                                DecodedComponent {
+                                    width: 1,
+                                    height: 19,
+                                    info,
+                                    fraction_bits: 255,
+                                    samples: vec![],
+                                },
+                            ],
+                        };
+                        assert_eq!(
+                            image.typed(&limits),
+                            reference_decoded_typed_image(&image, maximum)
+                        );
+                    }
+                }
+            }
+        }
+        let limits = ResourceLimits::default()
+            .with_maximum_decoded_bytes(1)
+            .unwrap();
+        let info = ComponentInfo {
+            precision: 0,
+            ..ComponentInfo::default()
+        };
+        let component = DecodedComponent {
+            width: 0,
+            height: 0,
+            info,
+            fraction_bits: 255,
+            samples: vec![i64::MAX],
+        };
+        assert_eq!(
+            component.typed_samples(&limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidImageGeometry
+            })
+        );
+        let image = DecodedImage {
+            width: 0,
+            height: 0,
+            x_origin: 9,
+            y_origin: 17,
+            components: vec![component],
+        };
+        assert_eq!(
+            image.typed(&limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 1,
+                actual: 8
+            })
+        );
+        let empty = DecodedImage {
+            width: u32::MAX,
+            height: 0,
+            x_origin: u32::MAX,
+            y_origin: 1,
+            components: vec![],
+        };
+        assert_eq!(
+            empty.typed(&limits),
+            reference_decoded_typed_image(&empty, 1)
+        );
+    }
+
+    #[test]
+    fn decoded_byte_validation_matches_full_native_wide_products() {
+        for samples in [0, 1, 8, usize::MAX / 8, usize::MAX / 8 + 1, usize::MAX] {
+            for bytes_per_sample in [0, 1, 8, u64::MAX] {
+                for maximum in [1, 8, 64] {
+                    let limits = ResourceLimits::default()
+                        .with_maximum_decoded_bytes(maximum)
+                        .unwrap();
+                    let bytes = samples as u128 * u128::from(bytes_per_sample);
+                    let expected = if bytes > u128::from(u64::MAX) {
+                        Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::ArithmeticOverflow,
+                        })
+                    } else if bytes > u128::from(maximum) {
+                        Err(DecodeError::LimitExceeded {
+                            resource: Resource::DecodedBytes,
+                            limit: maximum,
+                            actual: u64::try_from(bytes).unwrap(),
+                        })
+                    } else {
+                        Ok(())
+                    };
+                    assert_eq!(validate_bytes(samples, bytes_per_sample, &limits), expected);
+                }
+            }
         }
     }
 

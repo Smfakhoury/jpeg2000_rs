@@ -52,6 +52,25 @@ does not validate plane geometry. Checked rounding/level-shift overflow occurs
 before clipping. This API is exercised by concrete consumer tests; it is not
 the decoder's separate image/component conversion path.
 
+The decoder's existing `DecodedComponent::typed_samples` and
+`DecodedImage::typed` now have their own complete Result relations. They use
+the actual F7 typed-sample, component, geometry and channel-definition views:
+the result includes every signed/unsigned sample, all image/component metadata
+and the existing empty output channel-definition lists. No typed/CDEF class,
+getter, metadata definition or color conversion is changed or duplicated.
+The original loops use the same actual scalar rounding/clipping stages.
+
+Their domains and order differ from the separate transform conversion API.
+Component conversion rejects precision outside 1..38 before its sample-length
+byte budget. Image conversion instead charges the cumulative eight-byte count
+before calling each component, so that budget error precedes that component's
+precision error. Fraction values above 62 reject only when a sample is read;
+empty valid-precision components therefore retain success even with arbitrary
+fraction bits. Checked rounding bias and unsigned level shift may overflow
+before clipping. Dimensions, subsampling and registration are copied as raw
+metadata, not assumed valid or newly validated. Prefix models preserve the
+first error through the entire sample/component sequence.
+
 The actual free reversible and fixed-Q16 irreversible component transforms
 have complete mutable `DecodedImage` state relations. Their shared production
 loop checks the existing first-three-component compatibility and sample
@@ -68,6 +87,13 @@ Raw kernel/step/coefficient views and exact getter contracts expose only the
 actual consumed representation fields, including all coefficient bytes and
 the recorded width. They impose no parser validation or normalization facts
 and do not by themselves prove an arbitrary-kernel algorithm.
+
+The actual read-only `PacketPrecinctDecoder` decoder/count/slice accessors
+expose a public closed projection of the complete private decoder Vec.
+The indexed Result covers every `usize`, returns the exact initialized entry
+or `MalformedInput { offset: 0, kind: InvalidPacketHeader }`, and makes no
+assumption that the parallel packet-state/context vectors have matching shapes.
+This raw representation interface does not assign entropy or packet meaning.
 
 The real quantized-block write loop in
 `decode::prepare_tile_component_with_kernel` now calls one shared verified
@@ -107,8 +133,8 @@ component counts and decomposition levels are not assumed to fit the physical
 64/32-entry arrays. These interfaces do not establish parser validity.
 
 F6 remains open: the entire coefficient-placement coordinator, actual multilevel
-and resolution-plan execution, multiple-component transforms, decoder typed
-conversion and composition from coefficients through reconstruction and assembly
+and resolution-plan execution, general MCT paths and composition from
+coefficients through reconstruction, assembly and typed conversion
 into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
 Part-2 kernels and unavailable-reference adjudication remain separate, as do
@@ -153,6 +179,10 @@ parsing and entropy decoding.
    including complete write masks and ordered byte accounting.
    `part1_assemble_image` and `part1_assemble_selected_image` close the actual
    full image entry points relative to supplied tiles, not supplied coefficients.
+10. `part1_decoded_signed_prefix`, `part1_decoded_unsigned_prefix`,
+    `part1_decoded_component_typed_samples`, `part1_decoded_typed_components`
+    and `part1_decoded_image_typed` give the existing decoder conversion's
+    complete sequence, metadata, empty-CDEF and first-error relation.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 

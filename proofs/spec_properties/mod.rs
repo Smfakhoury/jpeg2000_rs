@@ -32,6 +32,37 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn decoded_signed_prefix_has_complete_length(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
+    ensures match crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) {
+        Ok(values) => values.len() == count, Err(_) => true,
+    },
+    decreases count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+    if count > 0 { decoded_signed_prefix_has_complete_length(samples, fraction, precision, (count - 1) as nat); }
+}
+
+pub proof fn decoded_unsigned_prefix_has_complete_length(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
+    ensures match crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count) {
+        Ok(values) => values.len() == count, Err(_) => true,
+    },
+    decreases count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+    if count > 0 { decoded_unsigned_prefix_has_complete_length(samples, fraction, precision, (count - 1) as nat); }
+}
+
+pub proof fn decoded_typed_component_preserves_kind_and_complete_length(component: crate::specs::Part1DecodedComponentModel, maximum: u64)
+    ensures match crate::specs::part1_decoded_component_typed_samples(component, maximum) {
+        Ok(crate::specs::Part1TypedSampleSequence::Signed(values)) => component.2.signed && values.len() == component.4.len(),
+        Ok(crate::specs::Part1TypedSampleSequence::Unsigned(values)) => !component.2.signed && values.len() == component.4.len(),
+        Err(_) => true,
+    },
+{
+    decoded_signed_prefix_has_complete_length(component.4, component.3, component.2.precision, component.4.len());
+    decoded_unsigned_prefix_has_complete_length(component.4, component.3, component.2.precision, component.4.len());
+}
+
 pub proof fn ht_numeric_invalid_parameters_preserve_complete_reader(
     reader: crate::specs::HtMagSgnState, completed_u: u8,
     embedded_bit: bool, embedded_value: bool, decoded_bitplanes: u16,

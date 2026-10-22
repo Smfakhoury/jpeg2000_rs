@@ -208,11 +208,27 @@ full-native-domain Result contracts with no valid-header or array-size premise.
 The only deleted inactive implementation is the nested selected-assembly
 duplicate; active production callers use the shared verified stages.
 
+The existing decoder component/image typed conversions now have complete
+Result relations using the actual F7 views, including all signed/unsigned
+samples, image/component metadata and the existing empty channel definitions.
+The original production loops retain their precision, per-component and
+cumulative byte-budget order. Fraction validation happens per accessed sample,
+so empty components with valid precision keep their native arbitrary-fraction
+behavior. Rounding bias and unsigned level-shift overflow precede clipping;
+no geometry, normalized-input or sufficient-budget premise is introduced.
+Independent widened references cover every `u8` precision/fraction value,
+complete sequences, whole images and exact error precedence.
+
+The narrowly scoped read-only packet decoder accessors also expose their
+actual private Vec through a public closed view, exact entire-`usize`
+indexed reference Result, count and complete slice contracts. Parallel
+packet-state/context shape and entropy meaning are not assumed.
+
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
 the whole coefficient-placement coordinator, actual multilevel/resolution
-scheduling, arbitrary kernels, multiple-component transforms, decoder typed
-conversion and the composed coefficient-to-component-sample bridge are not
+scheduling, arbitrary kernels, general MCT paths and the composed
+coefficient-to-component-sample bridge are not
 established here. Whole tile-sample-to-image assembly does not close those gaps.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 

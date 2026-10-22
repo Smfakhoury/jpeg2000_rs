@@ -1121,6 +1121,19 @@ pub struct PacketPrecinctDecoder {
     subbands: Vec<PacketSubbandState>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn packet_precinct_decoders(value: &PacketPrecinctDecoder) -> Seq<Tier1CodeBlockDecoder> {
+        value.decoders@
+    }
+
+    pub open spec fn packet_decoder_outcome(result: Result<&Tier1CodeBlockDecoder, DecodeError>)
+        -> Result<Tier1CodeBlockDecoder, DecodeError>
+    {
+        match result { Ok(value) => Ok(*value), Err(error) => Err(error) }
+    }
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct PacketPrecinctGeometry {
@@ -1303,14 +1316,23 @@ impl PacketPrecinctDecoder {
         &self.states
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result@ == packet_precinct_decoders(self),
+    ))]
     pub fn decoders(&self) -> &[Tier1CodeBlockDecoder] {
         &self.decoders
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result as nat == crate::specs::part1_packet_decoder_count(packet_precinct_decoders(self)),
+    ))]
     pub const fn decoder_count(&self) -> usize {
         self.decoders.len()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packet_decoder_outcome(result) == crate::specs::part1_packet_precinct_decoder(packet_precinct_decoders(self), index),
+    ))]
     pub fn decoder(&self, index: usize) -> Result<&Tier1CodeBlockDecoder, DecodeError> {
         self.decoders.get(index).ok_or_else(invalid_packet_header)
     }
@@ -2440,8 +2462,14 @@ fn tier1_styles_equal(left: Tier1CodingStyle, right: Tier1CodingStyle) -> bool {
         && left.segmentation_symbols == right.segmentation_symbols
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_packet_header_error(),
+))]
 fn invalid_packet_header() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidPacketHeader)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidPacketHeader,
+    }
 }
 
 fn packet_arithmetic_overflow() -> DecodeError {
@@ -3234,6 +3262,54 @@ const fn ceil_div_two(value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices() {
+        for count in 0..=4 {
+            let mut decoders = Vec::with_capacity(count + 8);
+            for index in 0..count {
+                decoders.push(
+                    Tier1CodeBlockDecoder::new(
+                        u16::try_from(index + 1).unwrap(),
+                        1,
+                        1,
+                        SubbandOrientation::Ll,
+                        Tier1CodingStyle::default(),
+                    )
+                    .unwrap(),
+                );
+            }
+            let precinct = PacketPrecinctDecoder {
+                component: u16::MAX,
+                resolution: u8::MAX,
+                precinct: u32::MAX,
+                states: Vec::new(),
+                contexts: Vec::new(),
+                decoders,
+                subbands: Vec::new(),
+            };
+            assert_eq!(precinct.decoder_count(), count);
+            assert_eq!(precinct.decoders().len(), count);
+            for index in (0..count + 9).chain([usize::MAX / 2, usize::MAX - 1, usize::MAX]) {
+                match precinct.decoder(index) {
+                    Ok(value) => {
+                        assert!(index < count);
+                        assert!(core::ptr::eq(value, &precinct.decoders()[index]));
+                    }
+                    Err(error) => {
+                        assert!(index >= count);
+                        assert_eq!(
+                            error,
+                            DecodeError::MalformedInput {
+                                offset: 0,
+                                kind: MalformedKind::InvalidPacketHeader
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
     use crate::codestream::{
         CodingStyle, ComponentCodingStyles, ComponentQuantizations, Quantization, WaveletTransform,
     };
