@@ -2187,4 +2187,307 @@ pub open spec fn part1_component_output_shape_valid(
     width > 0 && height > 0 && part1_wavelet_sample_count(width, height, samples)
 }
 
+pub open spec fn part1_magnitude_zero(limbs: Seq<u64>) -> bool {
+    forall |i: int| 0 <= i < limbs.len() ==> limbs[i] == 0
+}
+
+pub open spec fn part1_magnitude_u64(limbs: Seq<u64>) -> Option<u64> {
+    if forall |i: int| 1 <= i < limbs.len() ==> limbs[i] == 0 {
+        Some(limbs[0])
+    } else {
+        None
+    }
+}
+
+pub open spec fn part1_magnitude_less(left: Seq<u64>, right: Seq<u64>) -> bool {
+    exists |i: int| 0 <= i < left.len() && left[i] < right[i]
+        && forall |j: int| i < j < left.len() ==> left[j] == right[j]
+}
+
+pub open spec fn part1_magnitude_bit(bit: u16) -> Seq<u64> {
+    Seq::new(6, |i: int| if i == bit / 64 { 1u64 << (bit % 64) } else { 0 })
+}
+
+pub open spec fn part1_magnitude_shift_limb(limbs: Seq<u64>, shift: u16, i: int) -> u64 {
+    let source = i + shift / 64;
+    let partial = (shift % 64) as u32;
+    if shift >= 384 || source >= 6 {
+        0
+    } else if partial == 0 || source + 1 >= 6 {
+        limbs[source] >> partial
+    } else {
+        (limbs[source] >> partial) | (limbs[source + 1] << (64 - partial))
+    }
+}
+
+pub open spec fn part1_magnitude_shift(limbs: Seq<u64>, shift: u16) -> Seq<u64> {
+    Seq::new(6, |i: int| part1_magnitude_shift_limb(limbs, shift, i))
+}
+
+pub open spec fn part1_transform_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidTransform },
+    }
+}
+
+pub open spec fn part1_checked_sample(value: int) -> Result<i64, crate::DecodeError> {
+    if i64::MIN <= value <= i64::MAX {
+        Ok(value as i64)
+    } else {
+        Err(part1_transform_error(true))
+    }
+}
+
+pub open spec fn part1_roi_coefficient(
+    limbs: Seq<u64>, negative: bool, shift: u8,
+) -> Result<i64, crate::DecodeError> {
+    if part1_magnitude_zero(limbs) {
+        Ok(0)
+    } else {
+        let restored = if shift == 0 || part1_magnitude_less(limbs, part1_magnitude_bit(shift as u16)) {
+            limbs
+        } else {
+            part1_magnitude_shift(limbs, shift as u16)
+        };
+        match part1_magnitude_u64(restored) {
+            Some(value) => if value <= i64::MAX {
+                Ok((if negative { -(value as int) } else { value as int }) as i64)
+            } else {
+                Err(part1_transform_error(true))
+            },
+            None => Err(part1_transform_error(true)),
+        }
+    }
+}
+
+pub open spec fn part1_quantization_step(
+    exponent: u8, mantissa: u16, dynamic_range: u8,
+) -> Result<i64, crate::DecodeError> {
+    let base = ((2048 + mantissa as int) * 65536 / 2048) as i64;
+    if dynamic_range >= exponent {
+        let shift = (dynamic_range - exponent) as u8;
+        if shift > 38 {
+            Err(part1_transform_error(false))
+        } else {
+            part1_checked_sample((base as int) * ((1i64 << shift) as int))
+        }
+    } else {
+        let shift = (exponent - dynamic_range) as u8;
+        if shift > 62 {
+            Err(part1_transform_error(false))
+        } else {
+            Ok((base / (1i64 << shift)) as i64)
+        }
+    }
+}
+
+pub open spec fn part1_dequantized_sample(
+    coefficient: i64, step: i64, reversible: bool,
+) -> Result<i64, crate::DecodeError> {
+    if reversible || coefficient == 0 {
+        Ok(part1_reversible_inverse_quantize(coefficient as int) as i64)
+    } else {
+        let magnitude = if coefficient < 0 { -(coefficient as int) } else { coefficient as int };
+        let scaled = (2 * magnitude + 1) * (step as int) / 2;
+        if coefficient == i64::MIN || step < 0 || scaled > i64::MAX {
+            Err(part1_transform_error(true))
+        } else {
+            Ok((if coefficient < 0 { -scaled } else { scaled }) as i64)
+        }
+    }
+}
+
+pub type Part1QuantizedCoefficient = (Seq<u64>, bool);
+pub type Part1ReconstructedPlane = (u32, u32, u8, Seq<i64>);
+pub type Part1ReconstructionResult = Result<Part1ReconstructedPlane, crate::DecodeError>;
+
+pub open spec fn part1_quantized_sample(
+    coefficient: Part1QuantizedCoefficient, shift: u8, step: i64, reversible: bool,
+) -> Result<i64, crate::DecodeError> {
+    match part1_roi_coefficient(coefficient.0, coefficient.1, shift) {
+        Err(error) => Err(error),
+        Ok(value) => part1_dequantized_sample(value, step, reversible),
+    }
+}
+
+pub open spec fn part1_quantized_prefix(
+    coefficients: Seq<Part1QuantizedCoefficient>, shift: u8, step: i64, reversible: bool, count: nat,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        Ok(Seq::empty())
+    } else {
+        match part1_quantized_prefix(coefficients, shift, step, reversible, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(prefix) => match part1_quantized_sample(coefficients[count - 1], shift, step, reversible) {
+                Err(error) => Err(error),
+                Ok(sample) => Ok(prefix.push(sample)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_quantization_budget(count: nat, maximum: u64) -> Result<(), crate::DecodeError> {
+    if count * 8 > u64::MAX {
+        Err(part1_transform_error(true))
+    } else if count * 8 > maximum {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::DecodedBytes, limit: maximum, actual: (count * 8) as u64,
+        })
+    } else {
+        Ok(())
+    }
+}
+
+pub open spec fn part1_inverse_quantization(
+    coefficients: Seq<Part1QuantizedCoefficient>, exponent: u8, mantissa: u16,
+    dynamic_range: u8, reversible: bool, shift: u8, maximum: u64,
+) -> Part1ReconstructionResult {
+    if dynamic_range == 0 || dynamic_range > 38 || mantissa > 2047 || exponent > 31 {
+        Err(part1_transform_error(false))
+    } else {
+        match part1_quantization_budget(coefficients.len(), maximum) {
+            Err(error) => Err(error),
+            Ok(()) => match if reversible { Ok(1i64) }
+                else { part1_quantization_step(exponent, mantissa, dynamic_range) } {
+                Err(error) => Err(error),
+                Ok(step) => match part1_quantized_prefix(coefficients, shift, step, reversible, coefficients.len()) {
+                    Err(error) => Err(error),
+                    Ok(samples) => if coefficients.len() > u32::MAX {
+                        Err(part1_transform_error(true))
+                    } else {
+                        Ok((coefficients.len() as u32, 1u32, if reversible { 0u8 } else { 16u8 }, samples))
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_integer_coefficients(coefficients: Seq<i64>) -> Seq<Part1QuantizedCoefficient> {
+    Seq::new(coefficients.len(), |i: int| {
+        let value = coefficients[i];
+        let magnitude = (if value < 0 { -(value as int) } else { value as int }) as u64;
+        (Seq::new(6, |j: int| if j == 0 { magnitude } else { 0u64 }), value < 0)
+    })
+}
+
+pub open spec fn part1_inverse_integer_quantization(
+    coefficients: Seq<i64>, exponent: u8, mantissa: u16,
+    dynamic_range: u8, reversible: bool, shift: u8, maximum: u64,
+) -> Part1ReconstructionResult {
+    if exists |i: int| 0 <= i < coefficients.len() && coefficients[i] == i64::MIN {
+        Err(part1_transform_error(true))
+    } else {
+        part1_inverse_quantization(
+            part1_integer_coefficients(coefficients), exponent, mantissa,
+            dynamic_range, reversible, shift, maximum,
+        )
+    }
+}
+
+pub open spec fn part1_interleaved(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    let length = low.len() + high.len();
+    let expected = if low_first { length / 2 + length % 2 } else { length / 2 };
+    if length > usize::MAX {
+        Err(part1_transform_error(true))
+    } else if low.len() != expected || high.len() != length - expected {
+        Err(part1_transform_error(false))
+    } else {
+        Ok(Seq::new(length, |i: int| if (i % 2 == 0) == low_first { low[i / 2] } else { high[i / 2] }))
+    }
+}
+
+pub open spec fn part1_fixed_product(value: i64, factor: i64) -> Result<i64, crate::DecodeError> {
+    let product = (value as int) * (factor as int);
+    if product < i64::MIN || product > i64::MAX
+        || product + 32768 < i64::MIN || product + 32768 > i64::MAX {
+        Err(part1_transform_error(true))
+    } else {
+        Ok(((product + 32768) as i64) >> 16)
+    }
+}
+
+// Kinds 0/1 are the reversible update/predict; kind 2 is the fixed-point lift.
+pub open spec fn part1_lifting_sample(
+    samples: Seq<i64>, index: nat, target_even: bool, kind: u8, factor: i64,
+) -> Result<i64, crate::DecodeError> {
+    if (index % 2 == 0) != target_even || samples.len() <= 1 {
+        Ok(samples[index as int])
+    } else {
+        let left = samples[if index == 0 { 1 } else { index - 1 }];
+        let right = samples[if index + 1 < samples.len() { index as int + 1 } else { index - 1 }];
+        match part1_checked_sample((left as int) + (right as int)) {
+            Err(error) => Err(error),
+            Ok(sum) => {
+                let adjustment = if kind == 2 {
+                    part1_fixed_product(sum, factor)
+                } else if kind == 0 {
+                    match part1_checked_sample((sum as int) + 2) {
+                        Err(error) => Err(error),
+                        Ok(biased) => Ok(biased >> 2),
+                    }
+                } else {
+                    Ok(sum >> 1)
+                };
+                match adjustment {
+                    Err(error) => Err(error),
+                    Ok(delta) => part1_checked_sample(
+                        (samples[index as int] as int) + if kind == 1 { delta as int } else { -(delta as int) },
+                    ),
+                }
+            },
+        }
+    }
+}
+
+pub type Part1LiftingState = (Result<(), crate::DecodeError>, Seq<i64>);
+
+pub open spec fn part1_lifting_prefix(
+    samples: Seq<i64>, target_even: bool, kind: u8, factor: i64, count: nat,
+) -> Part1LiftingState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), samples)
+    } else {
+        let previous = part1_lifting_prefix(samples, target_even, kind, factor, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => match part1_lifting_sample(samples, (count - 1) as nat, target_even, kind, factor) {
+                Err(error) => (Err(error), previous.1),
+                Ok(value) => (Ok(()), previous.1.update(count - 1, value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_inverse_five_three(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    match part1_interleaved(low, high, low_first) {
+        Err(error) => Err(error),
+        Ok(samples) => if samples.len() == 1 && !low_first {
+            Ok(samples.update(0, samples[0] >> 1))
+        } else {
+            let update = part1_lifting_prefix(samples, low_first, 0, 0, samples.len());
+            match update.0 {
+                Err(error) => Err(error),
+                Ok(()) => {
+                    let predict = part1_lifting_prefix(update.1, !low_first, 1, 0, update.1.len());
+                    match predict.0 {
+                        Err(error) => Err(error),
+                        Ok(()) => Ok(predict.1),
+                    }
+                },
+            }
+        },
+    }
+}
+
 }

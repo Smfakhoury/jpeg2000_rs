@@ -4012,6 +4012,182 @@
         }
       ],
       "topic": "SINGLEHT/MULTIHT enforcement, empty replacement sets, and continued refinement pass accumulation"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_values"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_plane"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "undo_maxshift_magnitude"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantize_magnitude_sample"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "validate_quantization_size"
+        }
+      ],
+      "id": "part1-complete-supplied-coefficient-quantization",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_values"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_plane"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantize_magnitude_sample"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_quantization_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_quantization_has_complete_plane_metadata"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_integer_quantization"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_quantization"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_roi_coefficient"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_quantized_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_quantization_budget"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_quantization_planes_match_independent_bit_and_rational_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
+        }
+      ],
+      "topic": "Complete supplied-coefficient ROI and reversible/Q16 inverse quantization planes, with explicit byte budgets and typed first failures; not entropy-decoder meaning or irreversible conformance"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "interleave"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lifting_value"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "fixed_mul"
+        }
+      ],
+      "id": "part1-complete-five-three-sequence",
+      "implementation_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_5_3"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lift"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_lifting_value"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_lifting_sample_frame"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_lifting_error_persists"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
+          "symbol": "inverse_five_three_preserves_complete_sequence_length"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_inverse_five_three"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_interleaved"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_lifting_prefix"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_lifting_sample"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_fixed_product"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/transform.rs",
+          "symbol": "full_five_three_sequences_and_rejections_match_wide_reference"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "complete_lifting_buffers_preserve_first_error_state_and_opposite_parity"
+        }
+      ],
+      "topic": "Complete input-relative inverse 5/3 sequences, geometry, parity, singleton and checked-error semantics, plus shared lifting-buffer first-failure states; not a complete plane or 9/7 theorem"
     }
   ]
 }

@@ -1149,4 +1149,70 @@ pub proof fn ht_refinement_continuation_is_additive(existing: nat, additional: n
 {
 }
 
+pub proof fn quantized_prefix_has_exact_length(
+    coefficients: Seq<crate::specs::Part1QuantizedCoefficient>, shift: u8,
+    step: i64, reversible: bool, count: nat,
+)
+    requires count <= coefficients.len(),
+    ensures match crate::specs::part1_quantized_prefix(coefficients, shift, step, reversible, count) {
+        Ok(samples) => samples.len() == count,
+        Err(_) => true,
+    },
+    decreases count,
+{
+    if count > 0 {
+        quantized_prefix_has_exact_length(coefficients, shift, step, reversible, (count - 1) as nat);
+    }
+}
+
+pub proof fn inverse_quantization_has_complete_plane_metadata(
+    coefficients: Seq<crate::specs::Part1QuantizedCoefficient>, exponent: u8, mantissa: u16,
+    range: u8, reversible: bool, shift: u8, maximum: u64,
+)
+    ensures match crate::specs::part1_inverse_quantization(
+        coefficients, exponent, mantissa, range, reversible, shift, maximum,
+    ) {
+        Ok(plane) => plane.0 == coefficients.len() && plane.1 == 1
+            && plane.2 == (if reversible { 0u8 } else { 16u8 })
+            && plane.3.len() == coefficients.len(),
+        Err(_) => true,
+    },
+{
+    let step_result = if reversible { Ok(1i64) }
+        else { crate::specs::part1_quantization_step(exponent, mantissa, range) };
+    if let Ok(step) = step_result {
+        quantized_prefix_has_exact_length(coefficients, shift, step, reversible, coefficients.len());
+    }
+}
+
+pub proof fn lifting_prefix_preserves_length_and_opposite_parity(
+    samples: Seq<i64>, target_even: bool, kind: u8, factor: i64, count: nat,
+)
+    requires count <= samples.len(),
+    ensures
+        crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, count).1.len() == samples.len(),
+        forall |i: int| 0 <= i < samples.len() && (i >= count || (i % 2 == 0) != target_even) ==>
+            crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, count).1[i] == samples[i],
+    decreases count,
+{
+    if count > 0 {
+        lifting_prefix_preserves_length_and_opposite_parity(samples, target_even, kind, factor, (count - 1) as nat);
+    }
+}
+
+pub proof fn inverse_five_three_preserves_complete_sequence_length(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+)
+    ensures match crate::specs::part1_inverse_five_three(low, high, low_first) {
+        Ok(samples) => samples.len() == low.len() + high.len(),
+        Err(_) => true,
+    },
+{
+    if let Ok(samples) = crate::specs::part1_interleaved(low, high, low_first) {
+        lifting_prefix_preserves_length_and_opposite_parity(samples, low_first, 0, 0, samples.len());
+        let updated = crate::specs::part1_lifting_prefix(samples, low_first, 0, 0, samples.len());
+        lifting_prefix_preserves_length_and_opposite_parity(updated.1, !low_first, 1, 0, updated.1.len());
+    }
+}
+
 }

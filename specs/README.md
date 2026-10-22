@@ -1,5 +1,60 @@
 # Specification audit guide
 
+## F6 reconstruction profiles (bounded stage contracts)
+
+The first F6 stage starts with supplied signed 384-bit magnitudes (six
+little-endian `u64` limbs), not compressed bytes or Tier-1 meaning. It covers
+every ROI shift in `u8`, both quantization modes, the full coefficient sequence,
+and the returned one-row plane's samples, width, height and fraction bits.
+The integer-input adapter must reject `i64::MIN` before validating quantization
+parameters or the decoded-byte budget, as the production call order requires.
+The magnitude path validates parameters, then the eight-byte-per-sample budget,
+then samples in order, and finally the `u32` width. Restored magnitudes must fit
+`i64::MAX`, including for negative inputs; this is not a normalization premise.
+Irreversible results describe the implementation's integer Q16 arithmetic,
+including zero-sized steps after truncation, not real-valued 9/7 conformance.
+
+The second bounded profile is the entire `inverse_5_3` sequence: geometry
+validation and interleaving, symmetric boundary extension, both lifting
+passes, either low-pass parity, empty input, and the high-only singleton's
+arithmetic right shift. Every `i64` input is admitted to the relation; checked
+neighbor-sum, update-bias and sample arithmetic determine typed rejection,
+not an assumed coefficient bound. The shared lifting contract also describes
+the complete partially modified buffer on failure, retaining all untouched
+positions. Its fixed-product branch is an integer implementation model used
+by 9/7, not a whole-9/7 theorem.
+
+Later F6 acceptance still requires inverse-transform plane and remaining
+sequence profiles, component transforms, component/tile assembly and their
+composition into component-sample relations. These completed quantization
+and 5/3 sequence profiles do not complete F6. Arbitrary Part-2 kernels and
+unavailable-reference adjudication remain separate, as do parsing and
+entropy decoding.
+
+### Reconstruction reading path
+
+1. `part1_magnitude_*` defines six little-endian limbs, lexicographic magnitude
+   comparison and cross-limb logical shifting. These are finite bit-vector
+   denotations on all 384 bits, not an assumption that coefficients already fit
+   a machine sample.
+2. `part1_roi_coefficient`, `part1_quantization_step` and
+   `part1_dequantized_sample` specify restoration before narrowing, Q16 step
+   truncation, centered scaling and checked signed output.
+3. `part1_quantized_prefix` fixes sample order and first-error absorption.
+   `part1_inverse_quantization` adds parameter validation, budget checks and
+   complete plane metadata. `part1_inverse_integer_quantization` adds the
+   integer adapter's earlier `i64::MIN` rejection.
+4. `part1_interleaved`, `part1_lifting_sample`, `part1_lifting_prefix` and
+   `part1_inverse_five_three` specify full sequences and mutable lifting states.
+   Prefixes here are algorithm denotations, not invariant-only witnesses.
+
+The executable theorem entry points `inverse_quantize_values` and
+`inverse_quantize_plane` take an explicit decoded-byte budget. Both actual
+`ResourceLimits` adapters call these cores with `maximum_decoded_bytes()`;
+the adapters' getter-to-private-field linkage is not a separately contracted
+resource-projection theorem. No width, pixel or work-unit policy is silently
+added to this stage.
+
 This directory contains the semantic models used by production contracts.
 It is an audit entry point, not a claim that every selected standard clause
 has been reconciled or proved.

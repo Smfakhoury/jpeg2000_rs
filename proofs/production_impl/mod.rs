@@ -777,6 +777,68 @@ pub proof fn production_ht_refinement_segment_is_bounded(bytes: nat, passes: nat
     reveal(valid_ht_refinement_segment);
 }
 
+pub proof fn production_quantization_error_persists(
+    coefficients: Seq<crate::specs::Part1QuantizedCoefficient>, shift: u8,
+    step: i64, reversible: bool, completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires
+        completed <= total <= coefficients.len(),
+        crate::specs::part1_quantized_prefix(coefficients, shift, step, reversible, completed) == Err(error),
+    ensures
+        crate::specs::part1_quantized_prefix(coefficients, shift, step, reversible, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_quantization_error_persists(
+            coefficients, shift, step, reversible, completed, (total - 1) as nat, error,
+        );
+    }
+}
+
+pub proof fn production_lifting_sample_frame(
+    original: Seq<i64>, current: Seq<i64>, index: nat, target_even: bool, kind: u8, factor: i64,
+)
+    requires
+        original.len() == current.len(),
+        index < original.len(),
+        forall |i: int| 0 <= i < current.len() && (i >= index || (i % 2 == 0) != target_even) ==>
+            current[i] == original[i],
+    ensures
+        crate::specs::part1_lifting_sample(original, index, target_even, kind, factor)
+            == crate::specs::part1_lifting_sample(current, index, target_even, kind, factor),
+{
+    if (index % 2 == 0) == target_even && original.len() > 1 {
+        let left = if index == 0 { 1int } else { index - 1 };
+        let right = if index + 1 < original.len() { index as int + 1 } else { index - 1 };
+        assert((left % 2 == 0) != target_even);
+        assert((right % 2 == 0) != target_even);
+        assert(current[left] == original[left]);
+        assert(current[right] == original[right]);
+    }
+}
+
+pub proof fn production_index_parity(index: usize)
+    ensures (index & 1 == 0) == (index % 2 == 0),
+{
+    assert((index & 1) == index % 2) by(bit_vector);
+}
+
+pub proof fn production_lifting_error_persists(
+    samples: Seq<i64>, target_even: bool, kind: u8, factor: i64, completed: nat, total: nat,
+)
+    requires
+        completed <= total <= samples.len(),
+        crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, completed).0.is_err(),
+    ensures
+        crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, total)
+            == crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_lifting_error_persists(samples, target_even, kind, factor, completed, (total - 1) as nat);
+    }
+}
+
 pub proof fn production_magnitude_bit_selects_bounded_limb(bit: nat)
     requires
         valid_magnitude_bit(bit),

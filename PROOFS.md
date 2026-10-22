@@ -103,6 +103,37 @@ root and the relevant upstream regression suites.
 
 ## What the proofs establish
 
+### Bounded supplied-coefficient reconstruction
+
+`transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
+are the real production cores shared by the public integer and internal
+signed-magnitude adapters. Their complete-result contracts relate every sample
+and all `ReconstructedPlane` metadata to
+`part1_inverse_integer_quantization` / `part1_inverse_quantization`, including
+parameter, explicit decoded-byte-budget, ROI, arithmetic and final width
+rejections in execution order. The domain includes all six-limb coefficients,
+signs and `u8` ROI shifts; out-of-range restored magnitudes are rejected rather
+than assumed absent. The resource adapters supply their getter's value;
+the theorem boundary is the explicit budget, not a private-field projection
+contract for `ResourceLimits`.
+
+`transform::inverse_5_3` has a whole-sequence contract covering both parities,
+empty/singleton handling, mirrored boundaries, both checked lifting passes
+and typed errors. `inverse_lift` additionally specifies the complete mutable
+buffer after success or first failure, including its untouched frame, for
+reversible and fixed-product steps. Magnitude representation operations,
+interleaving, fixed multiplication and plane getters have supporting contracts.
+Independent tests compare complete outputs and error/mutation boundaries with
+bit-expanded ROI, rational Q16 and widened-integer lifting references.
+
+These are input-relative integer/fixed-point stage results, not compressed
+parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
+whole plane synthesis, remaining inverse-transform profiles, component/tile
+assembly and composed component-sample relations are not established here.
+See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
+
+### General scope
+
 Verification checks the properties expressed by contracts and loop invariants,
 including bounds, arithmetic checks, termination, and selected functional
 relations to specification helpers. The technical inventory
