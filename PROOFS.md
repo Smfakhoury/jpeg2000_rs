@@ -133,6 +133,15 @@ getter call. A separate property in `proofs/spec_properties` checks that this
 closed-view interface is usable from another module. These are raw
 representation facts, not additional Tier-1 coefficient meaning.
 
+`Magnitude::checked_sub` has a complete no-requires full-native Result
+contract: exact 384-bit natural difference when ordered, exact arithmetic
+underflow otherwise, including equal operands returning zero and full raw
+representation/value/shape/capacity binding. The optimized executable
+subtraction is unchanged. Its comparison guard is linked to natural prefix
+order, and the existing carry-prefix algebra is reused for borrow propagation,
+including incoming borrow with an all-ones subtrahend word. Independent bit
+borrow tests compare complete results across sparse, boundary and dense pairs.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`

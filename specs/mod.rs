@@ -6027,6 +6027,15 @@ pub open spec fn part1_magnitude_less(left: Seq<u64>, right: Seq<u64>) -> bool {
         && forall |j: int| i < j < left.len() ==> left[j] == right[j]
 }
 
+pub open spec fn part1_magnitude_prefix_less(left: Seq<u64>, right: Seq<u64>, count: nat) -> bool {
+    exists |i: int| 0 <= i < count && left[i] < right[i]
+        && forall |j: int| i < j < count ==> left[j] == right[j]
+}
+
+pub open spec fn part1_magnitude_subtraction(left: nat, right: nat) -> Result<nat, crate::DecodeError> {
+    if left < right { Err(part1_transform_error(true)) } else { Ok((left - right) as nat) }
+}
+
 pub open spec fn part1_magnitude_bit(bit: u16) -> Seq<u64> {
     Seq::new(6, |i: int| if i == bit / 64 { 1u64 << (bit % 64) } else { 0 })
 }

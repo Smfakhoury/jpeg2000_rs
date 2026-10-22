@@ -5962,6 +5962,8 @@
       ],
       "id": "part1-full-native-magnitude-values",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::apply_ht_refinement_decision"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_sub"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
         {"path": "src/tier1.rs", "symbol": "CoefficientState::set_magnitude"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::limb"},
@@ -5973,6 +5975,9 @@
         {"path": "src/magnitude.rs", "symbol": "magnitude_single_bit"}
       ],
       "proof_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_sub"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_prefix_order"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_sub_prefix_step"},
         {"path": "src/magnitude.rs", "symbol": "magnitude_limbs_shape"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "magnitude_limb_interface_covers_native_indices"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
@@ -5985,6 +5990,8 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_add_limb"}
       ],
       "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_subtraction"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_prefix_less"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_value"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_capacity"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_low_value"},
@@ -5996,6 +6003,7 @@
         {"path": "specs/mod.rs", "symbol": "magnitude_addition"}
       ],
       "test_refs": [
+        {"path": "src/magnitude.rs", "symbol": "full_native_subtraction_matches_independent_bit_borrow_and_exact_underflow"},
         {"path": "src/magnitude.rs", "symbol": "full_native_limb_getter_matches_independent_array_and_extreme_indices"},
         {"path": "src/magnitude.rs", "symbol": "full_native_bit_producers_preserve_all_limbs_and_exact_errors"},
         {"path": "src/magnitude.rs", "symbol": "full_u16_shifts_and_modulo_getters_match_independent_384_bit_reference"},

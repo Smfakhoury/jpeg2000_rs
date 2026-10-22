@@ -2084,6 +2084,79 @@ pub proof fn production_magnitude_add_limb(sum: u128)
         requires sum <= 36893488147419103231;
 }
 
+pub proof fn production_magnitude_prefix_order(left: Seq<u64>, right: Seq<u64>, count: nat)
+    requires left.len() == 6, right.len() == 6, count <= 6,
+    ensures crate::specs::part1_magnitude_prefix_less(left, right, count)
+        == (crate::specs::part1_magnitude_prefix_value(left, count) < crate::specs::part1_magnitude_prefix_value(right, count)),
+    decreases count,
+{
+    if count > 0 {
+        let last = (count - 1) as nat;
+        production_magnitude_prefix_order(left, right, last);
+        production_magnitude_prefix_properties(left, last);
+        production_magnitude_prefix_properties(right, last);
+        vstd::arithmetic::power2::lemma_pow2_pos(64 * last);
+        let a = left[last as int] as nat;
+        let b = right[last as int] as nat;
+        let low_a = crate::specs::part1_magnitude_prefix_value(left, last);
+        let low_b = crate::specs::part1_magnitude_prefix_value(right, last);
+        let weight = vstd::arithmetic::power2::pow2(64 * last);
+        if a < b {
+            assert(crate::specs::part1_magnitude_prefix_less(left, right, count));
+            assert(low_a + a * weight < low_b + b * weight) by(nonlinear_arith)
+                requires low_a < weight, low_b < weight, weight > 0, a < b;
+        } else if b < a {
+            if crate::specs::part1_magnitude_prefix_less(left, right, count) {
+                let witness = choose |i: int| 0 <= i < count && left[i] < right[i]
+                    && forall |j: int| i < j < count ==> left[j] == right[j];
+                assert(witness < last);
+                assert(left[last as int] == right[last as int]);
+            }
+            assert(low_b + b * weight < low_a + a * weight) by(nonlinear_arith)
+                requires low_a < weight, low_b < weight, weight > 0, b < a;
+        } else {
+            if crate::specs::part1_magnitude_prefix_less(left, right, count) {
+                let witness = choose |i: int| 0 <= i < count && left[i] < right[i]
+                    && forall |j: int| i < j < count ==> left[j] == right[j];
+                assert(witness < last);
+                assert(crate::specs::part1_magnitude_prefix_less(left, right, last));
+            }
+            if crate::specs::part1_magnitude_prefix_less(left, right, last) {
+                let witness = choose |i: int| 0 <= i < last && left[i] < right[i]
+                    && forall |j: int| i < j < last ==> left[j] == right[j];
+                assert forall |j: int| witness < j < count implies left[j] == right[j] by {
+                    if j != last { assert(j < last); }
+                }
+                assert(crate::specs::part1_magnitude_prefix_less(left, right, count));
+            }
+        }
+    }
+}
+
+pub proof fn production_magnitude_sub_prefix_step(
+    left: Seq<u64>, right: Seq<u64>, output: Seq<u64>, index: nat, digit: u64, old_borrow: bool, next_borrow: bool,
+)
+    requires left.len() == 6, right.len() == 6, output.len() == 6, index < 6,
+        crate::specs::part1_magnitude_prefix_value(left, index) + (if old_borrow { vstd::arithmetic::power2::pow2(64 * index) } else { 0nat })
+            == crate::specs::part1_magnitude_prefix_value(right, index) + crate::specs::part1_magnitude_prefix_value(output, index),
+        left[index as int] as nat + (if next_borrow { 18446744073709551616nat } else { 0nat })
+            == right[index as int] as nat + (if old_borrow { 1nat } else { 0nat }) + digit as nat,
+    ensures crate::specs::part1_magnitude_prefix_value(left, index + 1) + (if next_borrow { vstd::arithmetic::power2::pow2(64 * (index + 1)) } else { 0nat })
+        == crate::specs::part1_magnitude_prefix_value(right, index + 1)
+            + crate::specs::part1_magnitude_prefix_value(output.update(index as int, digit), index + 1),
+{
+    vstd::arithmetic::power2::lemma_pow2_adds(64 * index, 64);
+    vstd::arithmetic::power2::lemma2_to64();
+    production_magnitude_prefix_update(output, index, digit);
+    production_magnitude_add_prefix_step(
+        crate::specs::part1_magnitude_prefix_value(right, index),
+        crate::specs::part1_magnitude_prefix_value(output, index),
+        crate::specs::part1_magnitude_prefix_value(left, index),
+        right[index as int], digit, left[index as int], old_borrow, next_borrow,
+        vstd::arithmetic::power2::pow2(64 * index), vstd::arithmetic::power2::pow2(64 * (index + 1)),
+    );
+}
+
 pub proof fn production_magnitude_prefix_agrees(left: Seq<u64>, right: Seq<u64>, count: nat)
     requires left.len() == 6, right.len() == 6, count <= 6,
         forall |i: int| 0 <= i < count ==> left[i] == right[i],

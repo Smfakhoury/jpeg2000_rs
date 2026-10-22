@@ -262,6 +262,14 @@ The original receiver operations have full native-domain contracts:
 
 - `checked_add`: exact natural sum below capacity; otherwise precisely
   `MalformedInput { offset: 0, kind: ArithmeticOverflow }`.
+- `checked_sub`: exact full-384-bit natural difference iff the first operand
+  is at least the second, including successful zero for equality. Every
+  underflow returns the same exact arithmetic error. Raw/value/shape/capacity
+  agreement is exported with no no-underflow or positive-result premise.
+  The original native borrow algorithm, including an incoming borrow across
+  a `u64::MAX` subtrahend word, is unchanged. A prefix-order proof connects the
+  existing lexicographic guard to natural order, and subtraction reuses the
+  proved carry algebra with the operands rearranged.
 - `checked_shl`: exact multiplication by `2^shift` when representable, for
   every `u16` shift. Zero succeeds even for shifts at least 384; nonzero
   values reject there. No HT-only success premise is imposed.
