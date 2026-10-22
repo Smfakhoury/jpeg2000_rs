@@ -72,6 +72,172 @@ pub struct Part1TypedComponentModel {
     pub samples: Part1TypedSampleSequence,
 }
 
+pub type Part1DecodedTypedImage = (
+    ColorGeometry, Seq<Part1TypedComponentModel>,
+    Seq<Seq<(crate::image::ChannelType, crate::image::ChannelAssociation)>>,
+);
+
+pub open spec fn part1_packet_header_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidPacketHeader }
+}
+
+pub open spec fn part1_packet_decoder_count(decoders: Seq<crate::tier1::Tier1CodeBlockDecoder>) -> nat {
+    decoders.len()
+}
+
+pub open spec fn part1_packet_precinct_decoder(
+    decoders: Seq<crate::tier1::Tier1CodeBlockDecoder>, index: usize,
+) -> Result<crate::tier1::Tier1CodeBlockDecoder, crate::DecodeError> {
+    if index < decoders.len() { Ok(decoders[index as int]) } else { Err(part1_packet_header_error()) }
+}
+
+pub open spec fn part1_image_round_fixed(value: i64, fraction_bits: u8) -> Result<i64, crate::DecodeError> {
+    if fraction_bits > 62 { Err(part1_image_error(false)) }
+    else { part1_round_fixed(value, fraction_bits) }
+}
+
+pub open spec fn part1_image_byte_budget(samples: nat, bytes_per_sample: u64, maximum: u64)
+    -> Result<(), crate::DecodeError>
+{
+    let bytes = samples * bytes_per_sample;
+    if bytes > u64::MAX { Err(part1_image_error(true)) }
+    else if bytes > maximum {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::DecodedBytes, limit: maximum, actual: bytes as u64,
+        })
+    } else { Ok(()) }
+}
+
+pub open spec fn part1_decoded_signed_value(value: i64, fraction_bits: u8, minimum: i64, maximum: i64)
+    -> Result<i64, crate::DecodeError>
+{
+    match part1_image_round_fixed(value, fraction_bits) {
+        Err(error) => Err(error),
+        Ok(rounded) => {
+            let raised = if rounded < minimum { minimum } else { rounded };
+            Ok(if raised > maximum { maximum } else { raised })
+        },
+    }
+}
+
+pub open spec fn part1_decoded_unsigned_value(value: i64, fraction_bits: u8, level_shift: i64, maximum: u64)
+    -> Result<u64, crate::DecodeError>
+{
+    match part1_image_round_fixed(value, fraction_bits) {
+        Err(error) => Err(error),
+        Ok(rounded) => match part1_checked_sample((rounded as int) + (level_shift as int)) {
+            Err(error) => Err(error),
+            Ok(shifted) => {
+                let nonnegative = if shifted < 0 { 0u64 } else { shifted as u64 };
+                Ok(if nonnegative < maximum { nonnegative } else { maximum })
+            },
+        },
+    }
+}
+
+pub open spec fn part1_decoded_signed_sample(value: i64, fraction_bits: u8, precision: u8)
+    -> Result<i64, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 { Err(part1_image_error(false)) } else {
+        part1_decoded_signed_value(value, fraction_bits, part1_output_minimum(precision, true), part1_output_maximum(precision, true))
+    }
+}
+
+pub open spec fn part1_decoded_unsigned_sample(value: i64, fraction_bits: u8, precision: u8)
+    -> Result<u64, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 { Err(part1_image_error(false)) } else {
+        part1_decoded_unsigned_value(value, fraction_bits, 1i64 << ((precision - 1) as u8), ((1u64 << precision) - 1) as u64)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decoded_signed_prefix(samples: Seq<i64>, fraction_bits: u8, precision: u8, count: nat)
+    -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match part1_decoded_signed_prefix(samples, fraction_bits, precision, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => match part1_decoded_signed_sample(samples[count - 1], fraction_bits, precision) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(output.push(value)),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decoded_unsigned_prefix(samples: Seq<i64>, fraction_bits: u8, precision: u8, count: nat)
+    -> Result<Seq<u64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match part1_decoded_unsigned_prefix(samples, fraction_bits, precision, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => match part1_decoded_unsigned_sample(samples[count - 1], fraction_bits, precision) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(output.push(value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_decoded_component_typed_samples(component: Part1DecodedComponentModel, maximum: u64)
+    -> Result<Part1TypedSampleSequence, crate::DecodeError>
+{
+    if component.2.precision == 0 || component.2.precision > 38 { Err(part1_image_error(false)) } else {
+        match part1_image_byte_budget(component.4.len(), 8, maximum) {
+            Err(error) => Err(error),
+            Ok(()) => if component.2.signed {
+                match part1_decoded_signed_prefix(component.4, component.3, component.2.precision, component.4.len()) {
+                    Err(error) => Err(error), Ok(values) => Ok(Part1TypedSampleSequence::Signed(values)),
+                }
+            } else {
+                match part1_decoded_unsigned_prefix(component.4, component.3, component.2.precision, component.4.len()) {
+                    Err(error) => Err(error), Ok(values) => Ok(Part1TypedSampleSequence::Unsigned(values)),
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decoded_typed_components(
+    components: Seq<Part1DecodedComponentModel>, maximum: u64, count: nat,
+) -> Result<(Seq<Part1TypedComponentModel>, u64), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), 0)) } else {
+        match part1_decoded_typed_components(components, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let component = components[count - 1];
+                let charged = part1_accumulate_decoded_bytes(component.4.len(), previous.1, maximum);
+                match charged.0 {
+                    Err(error) => Err(error),
+                    Ok(()) => match part1_decoded_component_typed_samples(component, maximum) {
+                        Err(error) => Err(error),
+                        Ok(samples) => Ok((previous.0.push(Part1TypedComponentModel {
+                            width: component.0, height: component.1, info: component.2, samples,
+                        }), charged.1)),
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_decoded_image_typed(image: Part1DecodedImageModel, maximum: u64)
+    -> Result<Part1DecodedTypedImage, crate::DecodeError>
+{
+    match part1_decoded_typed_components(image.4, maximum, image.4.len()) {
+        Err(error) => Err(error),
+        Ok(converted) => Ok(((image.0, image.1, image.2, image.3), converted.0,
+            Seq::new(converted.0.len(), |i: int| Seq::empty()))),
+    }
+}
+
 pub open spec fn color_registered_coordinate(value: u32, divisor: u32, registration: u16, ceil: bool)
     -> Result<u32, crate::DecodeError>
 {

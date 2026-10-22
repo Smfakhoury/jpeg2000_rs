@@ -5,6 +5,82 @@
   "requirements": [
     {
       "contract_refs": [
+        {"path": "src/image.rs", "symbol": "DecodedComponent::typed_samples"},
+        {"path": "src/image.rs", "symbol": "DecodedImage::typed"},
+        {"path": "src/image.rs", "symbol": "decoded_signed_sample"},
+        {"path": "src/image.rs", "symbol": "decoded_unsigned_sample"},
+        {"path": "src/image.rs", "symbol": "round_fixed"},
+        {"path": "src/image.rs", "symbol": "validate_bytes"}
+      ],
+      "id": "part1-complete-decoded-typed-conversion",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "typed_layout"},
+        {"path": "src/image.rs", "symbol": "DecodedImage::typed"},
+        {"path": "src/image.rs", "symbol": "DecodedComponent::typed_samples"},
+        {"path": "src/image.rs", "symbol": "decoded_signed_sample"},
+        {"path": "src/image.rs", "symbol": "decoded_unsigned_sample"},
+        {"path": "src/image.rs", "symbol": "round_fixed"},
+        {"path": "src/image.rs", "symbol": "validate_bytes"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_decoded_signed_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_decoded_unsigned_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_decoded_typed_components_error"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "decoded_typed_component_preserves_kind_and_complete_length"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_image_typed"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_typed_components"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_component_typed_samples"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_signed_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_unsigned_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_signed_sample"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_unsigned_sample"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_signed_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_unsigned_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_image_round_fixed"},
+        {"path": "specs/mod.rs", "symbol": "part1_image_byte_budget"},
+        {"path": "specs/mod.rs", "symbol": "part1_accumulate_decoded_bytes"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "complete_decoded_typed_samples_match_independent_wide_reference_all_u8_parameters"},
+        {"path": "src/image.rs", "symbol": "complete_decoded_typed_images_match_all_metadata_and_error_order"},
+        {"path": "src/image.rs", "symbol": "decoded_byte_validation_matches_full_native_wide_products"}
+      ],
+      "topic": "Complete existing decoded component and image typed conversions, signed/unsigned full sequences, every image/component metadata field and empty channel definitions, precision-first component errors versus cumulative-budget-first image errors, rounding/level-shift overflow before clipping and per-sample fraction checks; no geometry/normalized-input/budget premise and no duplicate executable conversion"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder_count"},
+        {"path": "src/packet.rs", "symbol": "invalid_packet_header"}
+      ],
+      "id": "part1-complete-raw-packet-decoder-access",
+      "implementation_refs": [
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::new_subbands"},
+        {"path": "src/packet.rs", "symbol": "readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoders"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder_count"}
+      ],
+      "proof_refs": [
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoders"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder_count"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_packet_precinct_decoder"},
+        {"path": "specs/mod.rs", "symbol": "part1_packet_decoder_count"},
+        {"path": "specs/mod.rs", "symbol": "part1_packet_header_error"}
+      ],
+      "test_refs": [
+        {"path": "src/packet.rs", "symbol": "readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices"}
+      ],
+      "topic": "Actual read-only raw decoder Vec projection, exact full-native indexed shared-reference Result, complete slice and count getters, physical initialized-length bounds and InvalidPacketHeader error without assumptions relating packet states/contexts or claiming entropy/state meaning"
+    },
+    {
+      "contract_refs": [
         {"path": "src/decode.rs", "symbol": "convert_selected_color"}
       ],
       "id": "part1-connected-typed-color-selection",
