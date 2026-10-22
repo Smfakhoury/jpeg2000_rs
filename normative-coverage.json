@@ -151,6 +151,22 @@
         {
           "path": "src/tier1.rs",
           "symbol": "raw_reader_termination_matches_independent_alternating_suffix_arithmetic"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "later_empty_terminated_mq_pass_preserves_real_pass_accounting"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "empty_initial_and_unterminated_legacy_segments_remain_invalid"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "empty_raw_predictable_termination_requires_no_consumed_symbols"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_predictable_termination_checks_the_exact_stuffed_ff_tail"
         }
       ],
       "topic": "Complete selected raw-bypass reader initialization, state/error transitions and predictable termination; not complete MQ/packet/pass semantics"

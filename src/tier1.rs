@@ -4890,7 +4890,7 @@ mod tests {
             }
         }
         let mut empty = RawBitReader::new(&[], &limits).unwrap();
-        assert_eq!(empty.validate_predictable_termination(), invalid);
+        assert_eq!(empty.validate_predictable_termination(), Ok(()));
         empty.read_bit().unwrap();
         assert_eq!(empty.validate_predictable_termination(), invalid);
         let mut unread = RawBitReader::new(&[0x55, 0x55], &limits).unwrap();

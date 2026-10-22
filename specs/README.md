@@ -67,6 +67,9 @@ padding, consumed-byte position and counter/error ordering belong on the
 semantic reading path. Native fields retain their stated widths; the initial
 sequence is constrained to representable slice lengths. These models do not
 claim that callers choose the correct pass/segment or normative context.
+The termination model distinguishes an empty, zero-work raw pass from
+synthetic bits consumed from missing input, and recognizes the unconsumed
+`0xff`/`0x2a` full-byte/stuffed-padding boundary.
 
 `part2_layer_input` describes selection from supplied converted channels:
 scan all channel kinds first, then check the area and required color planes,

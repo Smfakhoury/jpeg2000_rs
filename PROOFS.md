@@ -177,6 +177,15 @@ The constructor's private free helper is shared by the unchanged public
 executable reader. Its contract proves the initial state and exact input-byte
 claim. These stage contracts do not complete the F5L packet/MQ/pass epic.
 
+A separately reference-qualified layered/tiled RGB16 all-style regression
+identified three termination corrections. Later completed coding segments
+may have zero payload bytes; initial empty blocks, unfinished empty segments
+and empty HT inputs remain rejected. Empty raw predictable termination is
+valid only before any coded bit is consumed. A complete final raw `0xff`
+may retain its exact seven-bit `0x2a` termination byte without that byte being
+an entropy decision. The model and exhaustive terminal-pair regressions cover
+these corrected outcomes; no oracle expectation, budget or cap was relaxed.
+
 The production placed-layer compositor uses the complete `source_over_pixel`
 evaluator. Its executable contract equates the entire optional color/alpha
 result with one model: invalid channel counts or active premultiplied samples

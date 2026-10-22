@@ -1899,7 +1899,13 @@ pub open spec fn part1_raw_reader_read(state: Part1RawReaderState)
 
 pub open spec fn part1_raw_reader_termination(state: Part1RawReaderState) -> Result<(), crate::DecodeError> {
     let valid = if state.next_index == 0 {
-        state.input.len() == 1 && state.input[0] == 0x55
+        (state.input.len() == 0 && state.work_units == 0)
+            || (state.input.len() == 1 && state.input[0] == 0x55)
+    } else if state.bits_remaining == 0 && state.current_byte == 0xff
+        && state.next_index < state.input.len()
+        && state.next_index + 1 == state.input.len()
+        && state.input[state.next_index as int] == 0x2a {
+        true
     } else if state.next_index != state.input.len() || state.bits_remaining > 8 {
         false
     } else if state.bits_remaining == 0 {
