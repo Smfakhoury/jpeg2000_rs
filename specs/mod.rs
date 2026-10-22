@@ -1,6 +1,11 @@
 use vstd::arithmetic::power2::pow2;
 use vstd::prelude::*;
 
+mod mq;
+pub use mq::*;
+mod legacy;
+pub use legacy::*;
+
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
 };
@@ -3855,8 +3860,8 @@ pub struct Tier1LegacyFrame {
     pub plane: Tier1RawPlane,
     pub next_pass: u32,
     pub bitplane: u16,
-    pub bitplane_state: Option<crate::tier1::Tier1BitplaneState>,
-    pub mq_context_state: Option<crate::mq::MqContextState>,
+    pub bitplane_state: Option<Part1LegacyBitplane>,
+    pub mq_context_state: Option<Seq<Part1MqContext>>,
     pub reset_contexts_before_mq: bool,
     pub decoded_segments: u32,
     pub decoded_bytes: u64,
@@ -4314,8 +4319,8 @@ pub struct Tier1DecoderState {
     pub next_pass: u32,
     pub bitplane: u16,
     pub zero_bitplanes: Option<u16>,
-    pub bitplane_state: Option<crate::tier1::Tier1BitplaneState>,
-    pub mq_context_state: Option<crate::mq::MqContextState>,
+    pub bitplane_state: Option<Part1LegacyBitplane>,
+    pub mq_context_state: Option<Seq<Part1MqContext>>,
     pub reset_contexts_before_mq: bool,
     pub decoded_segments: u32,
     pub decoded_bytes: u64,
