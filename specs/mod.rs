@@ -3361,6 +3361,124 @@ pub struct HtPlaneState {
     pub statistics: crate::tier1::Tier1PassStatistics,
 }
 
+pub struct Tier1LegacyFrame {
+    pub plane: Tier1RawPlane,
+    pub next_pass: u32,
+    pub bitplane: u16,
+    pub bitplane_state: Option<crate::tier1::Tier1BitplaneState>,
+    pub mq_context_state: Option<crate::mq::MqContextState>,
+    pub reset_contexts_before_mq: bool,
+    pub decoded_segments: u32,
+    pub decoded_bytes: u64,
+    pub input: Seq<u8>,
+    pub passes: u32,
+}
+
+pub struct Tier1DecoderState {
+    pub plane: Tier1RawPlane,
+    pub orientation: crate::tier1::SubbandOrientation,
+    pub style: crate::tier1::Tier1CodingStyle,
+    pub maximum_passes: u32,
+    pub next_pass: u32,
+    pub bitplane: u16,
+    pub zero_bitplanes: Option<u16>,
+    pub bitplane_state: Option<crate::tier1::Tier1BitplaneState>,
+    pub mq_context_state: Option<crate::mq::MqContextState>,
+    pub reset_contexts_before_mq: bool,
+    pub decoded_segments: u32,
+    pub decoded_bytes: u64,
+    pub legacy_segment: Option<Tier1LegacyFrame>,
+    pub legacy_decode_work: u64,
+    pub ht_cleanup_plane: Option<Tier1RawPlane>,
+    pub ht_refinement_data: Seq<u8>,
+    pub ht_refinement_passes: u8,
+    pub ht_decoded_bitplanes: u16,
+    pub ht_current_set_has_cleanup: bool,
+    pub ht_sets_seen: u16,
+    pub allow_multiple_ht_sets: bool,
+    pub ht_magnitude_bound: u8,
+}
+
+pub open spec fn tier1_duplicate_plane(plane: Tier1RawPlane) -> Result<Tier1RawPlane, crate::DecodeError> {
+    match tier1_empty_plane(plane.width, plane.height) {
+        Err(error) => Err(error),
+        Ok(blank) => if blank.coefficients.len() != plane.coefficients.len() {
+            Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+        } else { Ok(plane) },
+    }
+}
+
+pub open spec fn ht_cleanup_prepare(
+    plane: Tier1RawPlane, cleanup: HtCleanupSegmentState, maximum_passes: u32,
+    maximum_u: u8, skipped_bitplanes: u16, maximum_work: u64,
+) -> Result<(Tier1RawPlane, Tier1RawPlane, crate::tier1::Tier1PassStatistics, u16), crate::DecodeError> {
+    match ht_cleanup_segment_metadata(cleanup, plane.width, plane.height, maximum_u, maximum_work) {
+        Err(error) => Err(error),
+        Ok(metadata) => {
+            let significant = (maximum_passes as nat + 2) / 3;
+            if maximum_passes as nat + 2 > u32::MAX || significant > u16::MAX
+                || significant < skipped_bitplanes {
+                Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+            } else {
+                let bitplanes = (significant - skipped_bitplanes) as u16;
+                match ht_cleanup_plane(plane, cleanup, metadata, maximum_u, bitplanes, maximum_work) {
+                    Err(error) => Err(error),
+                    Ok((output, statistics)) => match tier1_duplicate_plane(output) {
+                        Err(error) => Err(error),
+                        Ok(duplicate) => Ok((output, duplicate, statistics, bitplanes)),
+                    },
+                }
+            }
+        },
+    }
+}
+
+pub type HtDecoderResult = (Result<crate::tier1::Tier1SegmentDecode, crate::DecodeError>, Tier1DecoderState);
+
+pub open spec fn ht_store_coefficient_symbols(
+    state: Tier1DecoderState, output: Tier1RawPlane, cleanup: Tier1RawPlane,
+    statistics: crate::tier1::Tier1PassStatistics, bitplanes: u16,
+    passes: u32, bytes: u32, has_refinement: bool,
+) -> HtDecoderResult {
+    let state = Tier1DecoderState {
+        plane: output, ht_cleanup_plane: Some(cleanup),
+        ht_current_set_has_cleanup: true, ht_decoded_bitplanes: bitplanes, ..state
+    };
+    if state.ht_sets_seen == u16::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let state = Tier1DecoderState { ht_sets_seen: (state.ht_sets_seen + 1) as u16, ..state };
+        if state.next_pass as nat + passes as nat > u32::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState { next_pass: (state.next_pass + passes) as u32, ..state };
+            let segments = if has_refinement { 2nat } else { 1nat };
+            if state.decoded_segments as nat + segments > u32::MAX {
+                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+            } else {
+                let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + segments) as u32, ..state };
+                if state.decoded_bytes as nat + bytes as nat > u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+                } else {
+                    let state = Tier1DecoderState { decoded_bytes: (state.decoded_bytes + bytes) as u64, ..state };
+                    (Ok(crate::tier1::Tier1SegmentDecode { passes, bytes, statistics }), state)
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_symbols_only(
+    state: Tier1DecoderState, segments: HtBlockSegmentsState, passes: u32,
+    maximum_u: u8, skipped_bitplanes: u16, maximum_work: u64,
+) -> HtDecoderResult {
+    match ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped_bitplanes, maximum_work) {
+        Err(error) => (Err(error), state),
+        Ok((output, cleanup, statistics, bitplanes)) => ht_store_coefficient_symbols(
+            Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state },
+            output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
+    }
+}
+
 pub type HtPlaneResult = (Result<(), crate::DecodeError>, HtPlaneState);
 
 pub open spec fn ht_plane_sample_store(

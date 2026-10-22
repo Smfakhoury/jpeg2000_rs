@@ -4,6 +4,40 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part15-cleanup-only-actual-symbol-caller",
+      "topic": "Explicit absent-refinement actual symbol-caller composition from supplied parsed segments through real metadata/numeric/duplicate producers and complete decoder state, including ordered partial accounting errors; public byte preflight and refinement/mixed sequences remain open",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::store_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::duplicate"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_prepare"},
+        {"path": "specs/mod.rs", "symbol": "ht_store_coefficient_symbols"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_symbols_only"},
+        {"path": "specs/mod.rs", "symbol": "tier1_duplicate_plane"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_prepare_outcome"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_caller_preparation_error_preserves_complete_decoder"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_store_first_counter_overflow_retains_new_planes_and_all_other_fields"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_store_final_byte_overflow_keeps_earlier_counter_updates"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_composes_real_metadata_numeric_duplicate_and_complete_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_preserves_metadata_before_native_pass_error_order_and_full_failure_frame"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_metadata_work_failure_retains_every_decoder_field"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_accounting_failures_preserve_ordered_commits_not_rollback"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_duplicate_preserves_full_raw_coefficients_and_rejects_bad_shapes"}
+      ]
+    },
+    {
       "id": "part15-complete-actual-cleanup-plane",
       "topic": "Actual full cleanup-plane Result and complete sample/quad/termination states, arbitrary metadata/native domains, six-word coefficients, ordered first errors and exponent stencils; not refinement, mixed sequencing or full F5H",
       "contract_refs": [
@@ -23,6 +57,7 @@
       ],
       "implementation_refs": [
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::quad"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::sample"},
@@ -4852,6 +4887,7 @@
       ],
       "id": "part15-complete-cleanup-metadata",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "prepare_ht_cleanup_symbols"},
         {
           "path": "src/tier1.rs",
           "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"

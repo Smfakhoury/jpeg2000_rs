@@ -63,6 +63,50 @@ pub proof fn decoded_typed_component_preserves_kind_and_complete_length(componen
     decoded_unsigned_prefix_has_complete_length(component.4, component.3, component.2.precision, component.4.len());
 }
 
+#[verifier::spinoff_prover]
+pub proof fn ht_cleanup_caller_preparation_error_preserves_complete_decoder(
+    state: crate::specs::Tier1DecoderState, segments: crate::specs::HtBlockSegmentsState,
+    passes: u32, maximum_u: u8, skipped: u16, work: u64,
+)
+    requires crate::specs::ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped, work).is_err(),
+    ensures crate::specs::ht_cleanup_symbols_only(state, segments, passes, maximum_u, skipped, work).1 == state,
+        crate::specs::ht_cleanup_symbols_only(state, segments, passes, maximum_u, skipped, work).0.is_err(),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_cleanup_store_first_counter_overflow_retains_new_planes_and_all_other_fields(
+    state: crate::specs::Tier1DecoderState, output: crate::specs::Tier1RawPlane,
+    cleanup: crate::specs::Tier1RawPlane, statistics: crate::tier1::Tier1PassStatistics,
+    bitplanes: u16, passes: u32, bytes: u32, refinement: bool,
+)
+    requires state.ht_sets_seen == u16::MAX,
+    ensures crate::specs::ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, bytes, refinement)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { plane: output, ht_cleanup_plane: Some(cleanup),
+                ht_current_set_has_cleanup: true, ht_decoded_bitplanes: bitplanes, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_cleanup_store_final_byte_overflow_keeps_earlier_counter_updates(
+    state: crate::specs::Tier1DecoderState, output: crate::specs::Tier1RawPlane,
+    cleanup: crate::specs::Tier1RawPlane, statistics: crate::tier1::Tier1PassStatistics,
+    bitplanes: u16, passes: u32, bytes: u32, refinement: bool,
+)
+    requires state.ht_sets_seen < u16::MAX, state.next_pass as nat + passes as nat <= u32::MAX,
+        state.decoded_segments as nat + (if refinement { 2nat } else { 1nat }) <= u32::MAX,
+        state.decoded_bytes as nat + bytes as nat > u64::MAX,
+    ensures crate::specs::ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, bytes, refinement)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { plane: output, ht_cleanup_plane: Some(cleanup),
+                ht_current_set_has_cleanup: true, ht_decoded_bitplanes: bitplanes,
+                ht_sets_seen: (state.ht_sets_seen + 1) as u16,
+                next_pass: (state.next_pass + passes) as u32,
+                decoded_segments: (state.decoded_segments + if refinement { 2int } else { 1int }) as u32, ..state }),
+{
+}
+
 pub(crate) proof fn tier1_raw_result_interfaces_expose_consumed_fields(
     coefficient: Result<crate::tier1::CoefficientState, crate::DecodeError>,
     signed: Result<crate::transform::SignedMagnitude, crate::DecodeError>,
