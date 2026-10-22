@@ -1764,23 +1764,44 @@ pub struct MctCollection {
     wavelet: Option<MctWavelet>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) proof fn mct_fixed_precision_is_q32()
+        ensures MCT_FIXED_BITS == 32,
+    {
+    }
+
+    pub closed spec fn mct_array_view(array: &MctArray) -> crate::specs::Part2MctArray {
+        (array.index, array.kind, array.numeric_format, array.fraction_bits, array.values@)
+    }
+
+    pub open spec fn mct_array_option(value: Option<&MctArray>) -> Option<crate::specs::Part2MctArray> {
+        match value { None => None, Some(array) => Some(mct_array_view(array)) }
+    }
+}
+
 impl MctArray {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).0,))]
     pub const fn index(&self) -> u8 {
         self.index
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).1,))]
     pub const fn kind(&self) -> MctArrayKind {
         self.kind
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).2,))]
     pub const fn numeric_format(&self) -> MctNumericFormat {
         self.numeric_format
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).3,))]
     pub const fn fraction_bits(&self) -> u8 {
         self.fraction_bits
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == mct_array_view(self).4,))]
     pub fn values(&self) -> &[i64] {
         &self.values
     }

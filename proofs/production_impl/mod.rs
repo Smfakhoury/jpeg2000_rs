@@ -32,6 +32,43 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_mct_dot_empty(
+    initial: i128, matrix: crate::specs::Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>, start: usize,
+)
+    ensures crate::specs::part2_mct_dot_prefix(initial, matrix, source, fractions, start, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::part2_mct_dot_prefix, 1);
+}
+
+pub proof fn production_mct_dot_step(
+    initial: i128, matrix: crate::specs::Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>, start: usize, count: nat,
+)
+    ensures crate::specs::part2_mct_dot_prefix(initial, matrix, source, fractions, start, count + 1)
+        == match crate::specs::part2_mct_dot_prefix(initial, matrix, source, fractions, start, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_mct_dot_term(matrix, source, fractions, start, count as usize) {
+                Err(error) => Err(error),
+                Ok(product) => crate::specs::part2_atk_checked_i128(previous as int + product as int),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_dot_prefix, 1);
+}
+
+pub proof fn production_mct_dot_error_guard(
+    initial: i128, matrix: crate::specs::Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>,
+    start: usize, count: nat, end: nat,
+)
+    requires count <= end,
+    ensures crate::specs::part2_mct_dot_prefix(initial, matrix, source, fractions, start, count).is_err()
+        ==> crate::specs::part2_mct_dot_prefix(initial, matrix, source, fractions, start, end)
+            == crate::specs::part2_mct_dot_prefix(initial, matrix, source, fractions, start, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_mct_dot_prefix, 1);
+    if count < end { production_mct_dot_error_guard(initial, matrix, source, fractions, start, count, (end - 1) as nat); }
+}
+
 pub proof fn production_prepare_kernel_fold_empty(
     initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
     geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle,

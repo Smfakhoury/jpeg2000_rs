@@ -3181,6 +3181,9 @@ fn apply_mct_wavelet(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_offset(crate::codestream::mct_array_option(offsets), row),
+))]
 fn offset_value(offsets: Option<&MctArray>, row: usize) -> Result<i64, DecodeError> {
     match offsets {
         Some(offsets) if offsets.fraction_bits() == 0 => {
@@ -3191,7 +3194,15 @@ fn offset_value(offsets: Option<&MctArray>, row: usize) -> Result<i64, DecodeErr
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_offset_scaled(crate::codestream::mct_array_option(offsets), row),
+))]
 fn offset_value_scaled(offsets: Option<&MctArray>, row: usize) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::codestream::mct_fixed_precision_is_q32();
+        reveal(crate::specs::part2_mct_offset_scaled);
+    }
     match offsets {
         Some(offsets) if offsets.fraction_bits() <= MCT_FIXED_BITS => rescale_i128(
             i128::from(*offsets.values().get(row).ok_or_else(invalid_transform)?),
@@ -3203,6 +3214,11 @@ fn offset_value_scaled(offsets: Option<&MctArray>, row: usize) -> Result<i128, D
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_charge_work(
+        *old(work), operations, crate::limits::resource_work_limit(limits),
+    ),
+))]
 fn charge_mct_work(
     work: &mut u64,
     operations: u64,
@@ -3212,25 +3228,28 @@ fn charge_mct_work(
         .checked_add(operations)
         .ok_or_else(arithmetic_overflow)?;
     if *work > limits.maximum_work_units() {
-        return Err(DecodeError::limit(
-            Resource::WorkUnits,
-            limits.maximum_work_units(),
-            *work,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: limits.maximum_work_units(),
+            actual: *work,
+        });
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_byte_budget(values as nat, 8, crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 fn check_mct_scratch(values: usize, limits: &ResourceLimits) -> Result<(), DecodeError> {
     let bytes = (values as u64)
         .checked_mul(core::mem::size_of::<i64>() as u64)
         .ok_or_else(arithmetic_overflow)?;
     if bytes > limits.maximum_decoded_bytes() {
-        return Err(DecodeError::limit(
-            Resource::DecodedBytes,
-            limits.maximum_decoded_bytes(),
-            bytes,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: limits.maximum_decoded_bytes(),
+            actual: bytes,
+        });
     }
     Ok(())
 }
@@ -3388,6 +3407,11 @@ fn apply_multiple_component_transform_legacy(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_matrix_row(
+        crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), source@, None, row,
+    ),
+))]
 fn reversible_mct_row(
     matrix: &MctArray,
     offsets: Option<&MctArray>,
@@ -3407,15 +3431,30 @@ fn reversible_mct_row(
     };
     let width = source.len();
     let row_start = row.checked_mul(width).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = sum; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= width,
+            width == source.len(),
+            row_start as nat == row as nat * width as nat,
+            crate::specs::part2_mct_row_initial(crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), width as nat, None, row) == Ok(initial),
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start, column as nat) == Ok(sum),
             decreases width - column,
         )
     )]
     while column < width {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start, column as nat + 1, width as nat);
+        }
         let coefficient = *matrix
             .values()
             .get(
@@ -3432,9 +3471,17 @@ fn reversible_mct_row(
         sum = sum.checked_add(product).ok_or_else(arithmetic_overflow)?;
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    i64::try_from(sum).map_err(|_| arithmetic_overflow())
+    match i64::try_from(sum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_matrix_row(
+        crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), source@, Some(source_fraction_bits@), row,
+    ),
+))]
 fn fixed_mct_row_scaled(
     matrix: &MctArray,
     offsets: Option<&MctArray>,
@@ -3442,6 +3489,8 @@ fn fixed_mct_row_scaled(
     source_fraction_bits: &[u8],
     row: usize,
 ) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
     let invalid_offset_precision = match offsets {
         Some(array) => array.fraction_bits() > MCT_FIXED_BITS,
         None => false,
@@ -3462,15 +3511,31 @@ fn fixed_mct_row_scaled(
     };
     let width = source.len();
     let row_start = row.checked_mul(width).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = sum; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= width,
+            width == source.len(),
+            row_start as nat == row as nat * width as nat,
+            crate::specs::part2_mct_row_initial(crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), width as nat, Some(source_fraction_bits@), row) == Ok(initial),
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start, column as nat) == Ok(sum),
             decreases width - column,
         )
     )]
     while column < width {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::codestream::mct_fixed_precision_is_q32();
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start, column as nat + 1, width as nat);
+        }
         let coefficient = *matrix
             .values()
             .get(
@@ -3500,9 +3565,15 @@ fn fixed_mct_row_scaled(
             .ok_or_else(arithmetic_overflow)?;
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    i64::try_from(sum).map_err(|_| arithmetic_overflow())
+    match i64::try_from(sum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_rescale(value, from_bits, to_bits),
+))]
 fn rescale_i128(value: i128, from_bits: u8, to_bits: u8) -> Result<i128, DecodeError> {
     if from_bits == to_bits {
         return Ok(value);
@@ -3589,6 +3660,9 @@ fn fixed_array_value(array: &MctArray, index: usize) -> Result<i64, DecodeError>
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_round_shift(value, bits),
+))]
 fn rounded_shift_i128(value: i128, bits: u8) -> Result<i128, DecodeError> {
     if bits == 0 {
         return Ok(value);
@@ -3601,10 +3675,17 @@ fn rounded_shift_i128(value: i128, bits: u8) -> Result<i128, DecodeError> {
     if divisor == 0 || divisor == -1 {
         return Err(arithmetic_overflow());
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((1i128 << (bits as u32)) > 0) by (bit_vector)
+            requires bits > 0, bits <= 126;
+        assert((1i128 << ((bits - 1) as u32)) > 0) by (bit_vector)
+            requires bits > 0, bits <= 126;
+    }
     if value < 0 {
-        let magnitude = 0_i128
-            .checked_sub(value)
-            .and_then(|magnitude| magnitude.checked_add(half))
+        let magnitude = 0_i128.checked_sub(value).ok_or_else(arithmetic_overflow)?;
+        let magnitude = magnitude
+            .checked_add(half)
             .ok_or_else(arithmetic_overflow)?;
         let rounded = magnitude / divisor;
         0_i128.checked_sub(rounded).ok_or_else(arithmetic_overflow)
@@ -4213,8 +4294,14 @@ fn invalid_image() -> DecodeError {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_error(false),
+))]
 fn invalid_transform() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidTransform)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidTransform,
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4230,6 +4317,258 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_matrix_rows_preserve_numeric_values_raw_precision_domains_and_error_order() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let array = |fraction, values| {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float64,
+                fraction,
+                values,
+            )
+        };
+        let matrix = array(0, vec![2, -3, 4]);
+        let offset = array(0, vec![1]);
+        assert_eq!(
+            reversible_mct_row(&matrix, Some(&offset), &[5, 7], 0),
+            Ok(-10)
+        );
+        assert_eq!(
+            fixed_mct_row_scaled(&matrix, Some(&offset), &[5, 7], &[0, 0], 0),
+            Ok(-10_i64 << 32)
+        );
+        let fixed = array(32, vec![2_i64 << 32, -(3_i64 << 32)]);
+        let offset = array(16, vec![1_i64 << 16]);
+        assert_eq!(
+            fixed_mct_row_scaled(
+                &fixed,
+                Some(&offset),
+                &[5_i64 << 32, 7_i64 << 32],
+                &[32, 32],
+                0
+            ),
+            Ok(-10_i64 << 32)
+        );
+        let one = array(32, vec![1]);
+        assert_eq!(fixed_mct_row_scaled(&one, None, &[1], &[1], 0), Ok(1));
+        assert_eq!(fixed_mct_row_scaled(&one, None, &[-1], &[1], 0), Ok(-1));
+        let empty = array(0, vec![]);
+        assert_eq!(reversible_mct_row(&empty, None, &[], usize::MAX), Ok(0));
+        assert_eq!(
+            fixed_mct_row_scaled(&empty, None, &[], &[], usize::MAX),
+            Ok(0)
+        );
+        assert_eq!(reversible_mct_row(&empty, None, &[1], 0), Err(invalid));
+        assert_eq!(
+            reversible_mct_row(&matrix, None, &[1, 2], usize::MAX),
+            Err(overflow)
+        );
+        assert_eq!(
+            reversible_mct_row(&matrix, Some(&empty), &[1, 2], usize::MAX),
+            Err(invalid)
+        );
+        assert_eq!(
+            fixed_mct_row_scaled(&one, Some(&empty), &[1], &[], usize::MAX),
+            Err(invalid)
+        );
+        let wide = array(0, vec![i64::MAX; 3]);
+        assert_eq!(
+            reversible_mct_row(&wide, None, &[i64::MAX; 3], 0),
+            Err(overflow)
+        );
+        let short = array(32, vec![]);
+        assert_eq!(
+            fixed_mct_row_scaled(&short, None, &[1], &[u8::MAX], 0),
+            Err(invalid)
+        );
+        assert_eq!(
+            fixed_mct_row_scaled(&one, None, &[1], &[u8::MAX], 0),
+            Err(overflow)
+        );
+        for precision in 0..=u8::MAX {
+            let zero = array(precision, vec![]);
+            assert_eq!(
+                reversible_mct_row(&zero, None, &[], usize::MAX),
+                if precision == 0 { Ok(0) } else { Err(invalid) }
+            );
+            assert_eq!(
+                fixed_mct_row_scaled(&zero, None, &[], &[], usize::MAX),
+                if precision <= 32 { Ok(0) } else { Err(invalid) }
+            );
+            let zero = array(0, vec![0]);
+            assert_eq!(
+                fixed_mct_row_scaled(&zero, None, &[0], &[precision], 0),
+                if precision <= 158 {
+                    Ok(0)
+                } else {
+                    Err(overflow)
+                }
+            );
+            let offsets = array(precision, vec![0]);
+            assert_eq!(
+                fixed_mct_row_scaled(&zero, Some(&offsets), &[0], &[0], 0),
+                if precision <= 32 { Ok(0) } else { Err(invalid) }
+            );
+        }
+    }
+
+    #[test]
+    fn native_mct_round_rescale_offsets_and_work_match_wide_reference_and_full_u8_domains() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let round = |value: i128, bits: u8| {
+            if bits == 0 {
+                return Ok(value);
+            }
+            if bits > 126 {
+                return Err(overflow);
+            }
+            let magnitude = value.checked_abs().ok_or(overflow)?;
+            let half = 2_i128.pow(u32::from(bits - 1));
+            if magnitude > i128::MAX - half {
+                return Err(overflow);
+            }
+            let divisor = 2_i128.pow(u32::from(bits));
+            let rounded = magnitude / divisor + i128::from(magnitude % divisor >= half);
+            Ok(if value < 0 { -rounded } else { rounded })
+        };
+        let values = [
+            i128::MIN,
+            i128::MIN + 1,
+            -(1_i128 << 126),
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3,
+            1_i128 << 126,
+            i128::MAX - 1,
+            i128::MAX,
+        ];
+        for bits in 0..=u8::MAX {
+            for value in values {
+                assert_eq!(rounded_shift_i128(value, bits), round(value, bits));
+            }
+            assert_eq!(rescale_i128(i128::MIN, bits, bits), Ok(i128::MIN));
+        }
+        for from in 0..=u8::MAX {
+            for to in 0..=u8::MAX {
+                for value in [-3_i128, -1, 0, 1, 3] {
+                    let expected = if from == to {
+                        Ok(value)
+                    } else if from > to {
+                        round(value, from - to)
+                    } else if to - from > 126 {
+                        Err(overflow)
+                    } else {
+                        value
+                            .checked_mul(2_i128.pow(u32::from(to - from)))
+                            .ok_or(overflow)
+                    };
+                    assert_eq!(
+                        rescale_i128(value, from, to),
+                        expected,
+                        "value={value} from={from} to={to}"
+                    );
+                }
+            }
+        }
+        let samples = vec![i64::MIN, -3, 0, 3, i64::MAX];
+        for fraction in 0..=u8::MAX {
+            let array = MctArray::from_values(
+                u8::MAX,
+                crate::codestream::MctArrayKind::Dependency,
+                crate::codestream::MctNumericFormat::Float64,
+                fraction,
+                samples.clone(),
+            );
+            for row in [0, 1, 4, 5, usize::MAX] {
+                let direct = if fraction != 0 {
+                    Err(invalid)
+                } else {
+                    samples.get(row).copied().ok_or(invalid)
+                };
+                assert_eq!(offset_value(Some(&array), row), direct);
+                let scaled = if fraction > 32 {
+                    Err(invalid)
+                } else {
+                    samples
+                        .get(row)
+                        .map(|value| i128::from(*value) * 2_i128.pow(u32::from(32 - fraction)))
+                        .ok_or(invalid)
+                };
+                assert_eq!(offset_value_scaled(Some(&array), row), scaled);
+                assert_eq!(offset_value(None, row), Ok(0));
+                assert_eq!(offset_value_scaled(None, row), Ok(0));
+            }
+        }
+        let limits = ResourceLimits::default();
+        let maximum = limits.maximum_work_units();
+        for before in [0, maximum, maximum + 1, u64::MAX] {
+            for operations in [0, 1, 2, u64::MAX] {
+                let mut work = before;
+                let expected = match before.checked_add(operations) {
+                    None => (Err(overflow), before),
+                    Some(after) => (
+                        if after > maximum {
+                            Err(DecodeError::LimitExceeded {
+                                resource: Resource::WorkUnits,
+                                limit: maximum,
+                                actual: after,
+                            })
+                        } else {
+                            Ok(())
+                        },
+                        after,
+                    ),
+                };
+                assert_eq!(
+                    (charge_mct_work(&mut work, operations, &limits), work),
+                    expected
+                );
+            }
+        }
+        for count in [
+            0,
+            1,
+            limits.maximum_decoded_bytes() as usize / 8,
+            limits.maximum_decoded_bytes() as usize / 8 + 1,
+            usize::MAX,
+        ] {
+            let bytes = count as u128 * 8;
+            let expected = if bytes > u128::from(u64::MAX) {
+                Err(overflow)
+            } else if bytes > u128::from(limits.maximum_decoded_bytes()) {
+                Err(DecodeError::LimitExceeded {
+                    resource: Resource::DecodedBytes,
+                    limit: limits.maximum_decoded_bytes(),
+                    actual: bytes as u64,
+                })
+            } else {
+                Ok(())
+            };
+            assert_eq!(check_mct_scratch(count, &limits), expected);
+        }
+    }
 
     #[test]
     fn typed_image_admission_preserves_native_count_origin_shape_and_error_priority() {

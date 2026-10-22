@@ -7,6 +7,152 @@ pub use crate::proofs::internal_specs::{
 
 verus! {
 
+pub type Part2MctArray = (u8, crate::codestream::MctArrayKind, crate::codestream::MctNumericFormat, u8, Seq<i64>);
+
+pub open spec fn part2_mct_row_initial(
+    matrix: Part2MctArray, offsets: Option<Part2MctArray>, width: nat,
+    fractions: Option<Seq<u8>>, row: usize,
+) -> Result<i128, crate::DecodeError> {
+    match fractions {
+        None => {
+            if matrix.3 != 0 || match offsets { None => false, Some(array) => array.3 != 0 } {
+                Err(part1_transform_error(false))
+            } else {
+                match part2_mct_offset(offsets, row) {
+                    Err(error) => Err(error), Ok(value) => Ok(value as i128),
+                }
+            }
+        },
+        Some(bits) => {
+            if width != bits.len() || matrix.3 > 32
+                || match offsets { None => false, Some(array) => array.3 > 32 } {
+                Err(part1_transform_error(false))
+            } else { part2_mct_offset_scaled(offsets, row) }
+        },
+    }
+}
+
+pub open spec fn part2_mct_dot_term(
+    matrix: Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>,
+    start: usize, column: usize,
+) -> Result<i128, crate::DecodeError> {
+    if start as nat + column as nat > usize::MAX { Err(part1_transform_error(true)) }
+    else if start as nat + column as nat >= matrix.4.len() || column >= source.len() { Err(part1_transform_error(false)) }
+    else {
+        let coefficient = matrix.4[start as int + column as int];
+        let sample = source[column as int];
+        match fractions {
+            None => part2_atk_checked_i128(coefficient as int * sample as int),
+            Some(bits) => {
+                if column >= bits.len() { Err(part1_transform_error(false)) }
+                else if matrix.3 as nat + bits[column as int] as nat > u8::MAX { Err(part1_transform_error(true)) }
+                else {
+                    match part2_atk_checked_i128(coefficient as int * sample as int) {
+                        Err(error) => Err(error),
+                        Ok(product) => part2_mct_rescale(product, (matrix.3 + bits[column as int]) as u8, 32),
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_dot_prefix(
+    initial: i128, matrix: Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>,
+    start: usize, count: nat,
+) -> Result<i128, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(initial) }
+    else {
+        match part2_mct_dot_prefix(initial, matrix, source, fractions, start, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_mct_dot_term(matrix, source, fractions, start, (count - 1) as usize) {
+                Err(error) => Err(error),
+                Ok(product) => part2_atk_checked_i128(previous as int + product as int),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_matrix_row(
+    matrix: Part2MctArray, offsets: Option<Part2MctArray>, source: Seq<i64>,
+    fractions: Option<Seq<u8>>, row: usize,
+) -> Result<i64, crate::DecodeError> {
+    match part2_mct_row_initial(matrix, offsets, source.len(), fractions, row) {
+        Err(error) => Err(error),
+        Ok(initial) => {
+            if row as nat * source.len() > usize::MAX { Err(part1_transform_error(true)) }
+            else {
+                match part2_mct_dot_prefix(initial, matrix, source, fractions, (row as nat * source.len()) as usize, source.len()) {
+                    Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part2_mct_round_shift(value: i128, bits: u8) -> Result<i128, crate::DecodeError> {
+    if bits == 0 { Ok(value) }
+    else if bits > 126 { Err(part1_transform_error(true)) }
+    else {
+        let half = 1i128 << ((bits - 1) as u32);
+        let divisor = 1i128 << (bits as u32);
+        if divisor == 0 || divisor == -1 { Err(part1_transform_error(true)) }
+        else if value < 0 {
+            match part2_atk_checked_i128(-(value as int)) {
+                Err(error) => Err(error),
+                Ok(magnitude) => match part2_atk_checked_i128(magnitude as int + half as int) {
+                    Err(error) => Err(error),
+                    Ok(biased) => part2_atk_checked_i128(-((biased / divisor) as int)),
+                },
+            }
+        } else {
+            match part2_atk_checked_i128(value as int + half as int) {
+                Err(error) => Err(error), Ok(biased) => Ok((biased / divisor) as i128),
+            }
+        }
+    }
+}
+
+pub open spec fn part2_mct_rescale(value: i128, from_bits: u8, to_bits: u8) -> Result<i128, crate::DecodeError> {
+    if from_bits == to_bits { Ok(value) }
+    else if from_bits < to_bits {
+        let shift = (to_bits - from_bits) as u8;
+        if shift > 126 { Err(part1_transform_error(true)) }
+        else { part2_atk_checked_i128(value as int * (1i128 << (shift as u32)) as int) }
+    } else { part2_mct_round_shift(value, (from_bits - to_bits) as u8) }
+}
+
+pub open spec fn part2_mct_offset(offsets: Option<Part2MctArray>, row: usize) -> Result<i64, crate::DecodeError> {
+    match offsets {
+        None => Ok(0),
+        Some(array) => if array.3 != 0 || row >= array.4.len() { Err(part1_transform_error(false)) }
+            else { Ok(array.4[row as int]) },
+    }
+}
+
+pub open spec fn part2_mct_offset_scaled(offsets: Option<Part2MctArray>, row: usize) -> Result<i128, crate::DecodeError> {
+    match offsets {
+        None => Ok(0),
+        Some(array) => if array.3 > 32 || row >= array.4.len() { Err(part1_transform_error(false)) }
+            else { part2_mct_rescale(array.4[row as int] as i128, array.3, 32) },
+    }
+}
+
+pub open spec fn part2_mct_charge_work(before: u64, operations: u64, maximum: u64)
+    -> (Result<(), crate::DecodeError>, u64)
+{
+    if before as nat + operations as nat > u64::MAX { (Err(part1_transform_error(true)), before) }
+    else {
+        let next = (before as nat + operations as nat) as u64;
+        (if next > maximum { Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::WorkUnits, limit: maximum, actual: next,
+        }) } else { Ok(()) }, next)
+    }
+}
+
 pub type Part2RawKernelCoefficient = (Seq<u8>, u8);
 pub type Part2RawKernelStep = (i8, u8, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelCoefficient>);
 pub type Part2RawKernel = (bool, u8, bool, bool, bool, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelStep>);

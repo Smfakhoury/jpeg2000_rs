@@ -389,6 +389,30 @@ wrong primary clause followed by a correct duplicate. Whole-production
 verification and targeted inventory tests pass; complete frozen numerical,
 resource and hosted qualification remain separate acceptance gates.
 
+### Complete native MCT arithmetic and matrix-row boundary
+
+The actual MCT rounding/rescaling, optional integer/scaled offsets, scratch
+admission and nontransactional work charging now have complete native
+result/state relations. Raw array owner views and exact getters preserve all
+stored metadata/values. The owner proves the crate-private Q32 constant's value;
+clients consume that fact without revealing private representation or raising
+proof budgets. Equal source/destination precision bypasses later shift checks,
+including native precision255, exactly as the body does.
+
+The actual reversible and per-source-fraction matrix-row loops refine one
+shared declarative dot fold. Coefficient indexing, native row multiplication,
+precision/offset admission, every checked wide term/sum and final narrowing
+are ordered exactly; empty rows and malformed physical arrays are not
+normalized. Full matrix/offset/source/fraction/row inputs are bound, not
+successful-row or rectangular-matrix premises.
+
+Whole-production verification and strict Clippy pass. Independent arithmetic
+tests cover all65,536 source/destination precision pairs, full-u8 rounding and
+offset domains, native extrema, work counter partial errors and raw matrix-row
+precision/index/error frontiers. This is a local arithmetic/row milestone,
+not complete collection, dependency, wavelet, stage or general MCT execution,
+external array-MCT qualification or whole F6 completion.
+
 F6 remains open: general MCT paths and the actual
 whole-decoder composed
 coefficient-to-component-sample bridge are not

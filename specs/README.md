@@ -339,6 +339,18 @@ standard names delegate to precisely the None case. Independent raw-context
 and arithmetic regressions supplement the full production proof; inventory
 and frozen numerical/resource qualification are not presumed from it.
 
+`part2_mct_round_shift` and `part2_mct_rescale` denote actual MCT signed
+rounding and every native precision pair; they are not the arbitrary-kernel
+lifting-bias operation. Raw MCT array views bind metadata and full values,
+including metadata contradictions the row body does not inspect.
+`part2_mct_row_initial`, `part2_mct_dot_term`, `part2_mct_dot_prefix` and
+`part2_mct_matrix_row` give complete actual reversible/scaled matrix-row
+results and first errors. Optional offset, scratch and work-charge models
+include native malformed states and exact partial counter writes. The owner
+Q32 identity is proved rather than treating the private constant as a new
+assumption. These arithmetic/row results do not establish collection/stage
+dispatch or dependency/wavelet orchestration.
+
 F6 remains open: general MCT
 paths and actual whole-decoder composition from
 coefficients through reconstruction, assembly and typed conversion
