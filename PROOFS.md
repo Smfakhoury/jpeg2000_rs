@@ -113,9 +113,9 @@ and all `ReconstructedPlane` metadata to
 parameter, explicit decoded-byte-budget, ROI, arithmetic and final width
 rejections in execution order. The domain includes all six-limb coefficients,
 signs and `u8` ROI shifts; out-of-range restored magnitudes are rejected rather
-than assumed absent. The resource adapters supply their getter's value;
-the theorem boundary is the explicit budget, not a private-field projection
-contract for `ResourceLimits`.
+than assumed absent. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` adapters also have complete Result contracts
+using the closed `ResourceLimits` byte-field projection and its verified getter.
 
 `transform::inverse_5_3` has a whole-sequence contract covering both parities,
 empty/singleton handling, mirrored boundaries, both checked lifting passes

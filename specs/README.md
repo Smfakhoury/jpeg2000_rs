@@ -48,12 +48,12 @@ entropy decoding.
    `part1_inverse_five_three` specify full sequences and mutable lifting states.
    Prefixes here are algorithm denotations, not invariant-only witnesses.
 
-The executable theorem entry points `inverse_quantize_values` and
-`inverse_quantize_plane` take an explicit decoded-byte budget. Both actual
-`ResourceLimits` adapters call these cores with `maximum_decoded_bytes()`;
-the adapters' getter-to-private-field linkage is not a separately contracted
-resource-projection theorem. No width, pixel or work-unit policy is silently
-added to this stage.
+The executable cores `inverse_quantize_values` and `inverse_quantize_plane`
+take an explicit decoded-byte budget. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` entry points additionally have complete Result
+contracts using `resource_decoded_bytes_limit`: the actual getter is proved
+equal to that closed private-field projection. No width, pixel or work-unit
+policy is silently added to this stage.
 
 This directory contains the semantic models used by production contracts.
 It is an audit entry point, not a claim that every selected standard clause

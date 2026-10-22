@@ -77,7 +77,7 @@ verus! {
         }
     }
 
-    pub closed spec fn quantized_coefficients_view(coefficients: Seq<SignedMagnitude>)
+    pub(crate) closed spec fn quantized_coefficients_view(coefficients: Seq<SignedMagnitude>)
         -> Seq<crate::specs::Part1QuantizedCoefficient>
     {
         Seq::new(coefficients.len(), |i: int|
@@ -122,6 +122,12 @@ impl ReconstructedPlane {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_integer_quantization(
+        coefficients@, step.exponent, step.mantissa, dynamic_range, reversible, roi_shift,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_quantize(
     coefficients: &[i64],
     step: QuantizationStep,
@@ -196,6 +202,12 @@ fn inverse_quantize_values(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_quantization(
+        quantized_coefficients_view(coefficients@), step.exponent, step.mantissa,
+        dynamic_range, reversible, roi_shift, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub(crate) fn inverse_quantize_magnitudes(
     coefficients: &[SignedMagnitude],
     step: QuantizationStep,
@@ -1991,6 +2003,18 @@ mod tests {
                                     )),
                                     expected,
                                     "range={range} step={step:?} reversible={reversible} shift={shift}"
+                                );
+                                assert_eq!(
+                                    observed_reconstruction(inverse_quantize_magnitudes(
+                                        &coefficients,
+                                        step,
+                                        range,
+                                        reversible,
+                                        shift,
+                                        &ResourceLimits::default(),
+                                    )),
+                                    expected,
+                                    "configured budget adapter range={range} step={step:?} reversible={reversible} shift={shift}"
                                 );
                             }
                         }

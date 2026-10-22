@@ -4017,6 +4017,14 @@
       "contract_refs": [
         {
           "path": "src/transform.rs",
+          "symbol": "inverse_quantize"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "inverse_quantize_magnitudes"
+        },
+        {
+          "path": "src/transform.rs",
           "symbol": "inverse_quantize_values"
         },
         {
@@ -4038,6 +4046,14 @@
       ],
       "id": "part1-complete-supplied-coefficient-quantization",
       "implementation_refs": [
+        {
+          "path": "src/decode.rs",
+          "symbol": "prepare_tile_component_with_kernel"
+        },
+        {
+          "path": "src/transform.rs",
+          "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
+        },
         {
           "path": "src/transform.rs",
           "symbol": "inverse_quantize"
@@ -4101,7 +4117,7 @@
           "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
         }
       ],
-      "topic": "Complete supplied-coefficient ROI and reversible/Q16 inverse quantization planes, with explicit byte budgets and typed first failures; not entropy-decoder meaning or irreversible conformance"
+      "topic": "Complete supplied-coefficient ROI and reversible/Q16 inverse quantization planes, including actual configured budgets and typed first failures; the public integer API's concrete consumer is its independent adapter test, while decode directly uses the wide adapter; not entropy-decoder meaning or irreversible conformance"
     },
     {
       "contract_refs": [
