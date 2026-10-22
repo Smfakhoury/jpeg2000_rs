@@ -2201,6 +2201,67 @@ pub open spec fn part1_magnitude_zero(limbs: Seq<u64>) -> bool {
     forall |i: int| 0 <= i < limbs.len() ==> limbs[i] == 0
 }
 
+pub open spec fn part1_magnitude_prefix_value(limbs: Seq<u64>, count: nat) -> nat
+    decreases count,
+{
+    if count == 0 { 0 }
+    else {
+        part1_magnitude_prefix_value(limbs, (count - 1) as nat)
+            + (limbs[count - 1] as nat) * pow2((64 * (count - 1)) as nat)
+    }
+}
+
+pub open spec fn part1_magnitude_value(limbs: Seq<u64>) -> nat {
+    part1_magnitude_prefix_value(limbs, 6)
+}
+
+pub open spec fn part1_magnitude_capacity() -> nat {
+    pow2(384)
+}
+
+pub open spec fn part1_magnitude_low_value(limbs: Seq<u64>) -> nat {
+    part1_magnitude_value(limbs) % pow2(64)
+}
+
+pub open spec fn part1_magnitude_limb_or_zero(limbs: Seq<u64>, index: int) -> u64 {
+    if 0 <= index < 6 { limbs[index] } else { 0 }
+}
+
+pub open spec fn part1_magnitude_right_word(low: u64, high: u64, partial: u32) -> u64 {
+    if partial == 0 { low } else { (low >> partial) | (high << ((64 - partial) as u32)) }
+}
+
+pub open spec fn part1_magnitude_left_word(current: u64, previous: u64, partial: u32) -> u64 {
+    if partial == 0 { current } else { (current << partial) | (previous >> ((64 - partial) as u32)) }
+}
+
+pub open spec fn part1_magnitude_left_limb(limbs: Seq<u64>, shift: u16, index: int) -> u64 {
+    if shift >= 384 { 0 } else {
+        let source = index - shift / 64;
+        part1_magnitude_left_word(
+            part1_magnitude_limb_or_zero(limbs, source),
+            part1_magnitude_limb_or_zero(limbs, source - 1),
+            (shift % 64) as u32,
+        )
+    }
+}
+
+pub open spec fn part1_magnitude_left(limbs: Seq<u64>, shift: u16) -> Seq<u64> {
+    Seq::new(6, |i: int| part1_magnitude_left_limb(limbs, shift, i))
+}
+
+pub open spec fn part1_magnitude_left_fits(limbs: Seq<u64>, shift: u16) -> bool {
+    if shift >= 384 {
+        part1_magnitude_zero(limbs)
+    } else {
+        forall |i: int| 0 <= i < 6 ==>
+            if i + shift / 64 >= 6 { limbs[i] == 0 }
+            else if shift % 64 != 0 && i + shift / 64 == 5 {
+                limbs[i] >> ((64 - shift % 64) as u32) == 0
+            } else { true }
+    }
+}
+
 pub open spec fn part1_magnitude_u64(limbs: Seq<u64>) -> Option<u64> {
     if forall |i: int| 1 <= i < limbs.len() ==> limbs[i] == 0 {
         Some(limbs[0])

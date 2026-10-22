@@ -103,6 +103,24 @@ root and the relevant upstream regression suites.
 
 ## What the proofs establish
 
+### Full native magnitude arithmetic
+
+`magnitude_value` is the closed natural-value projection of all six
+little-endian limbs. Native `checked_add`, `checked_shl`, `shift_right`,
+`low_u64` and `is_zero` refine exact sum/capacity, multiplication/floor
+division by powers of two, modulo-low-word and full-value zero semantics.
+All `u16` shift values are covered, including large-shift zero success and
+nonzero overflow. No coefficient-normalization or HT-success premise is
+assumed. Public associated factories retain their API while verified free
+factories supply complete producer contracts, including exact invalid-bit
+errors and identity with `Magnitude::ZERO`.
+
+The existing limb implementations are related to natural arithmetic through
+proved one-bit word composition, full-value carry identities and capacity
+bounds, without raising verifier limits. This interface supports actual
+HT reconstruction but does not by itself prove HT byte meaning or F6's
+remaining assembly bridge.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`

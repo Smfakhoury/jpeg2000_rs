@@ -4572,6 +4572,48 @@
         {"path": "src/decode.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
       ],
       "topic": "Actual row-major writes of supplied quantized block samples into working subband samples and visited masks, including all metadata, buffer mismatches, overlap and checked-coordinate errors with exact partial states; not the entire prepare/multilevel/tile-image assembly coordinator"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::is_zero"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::low_u64"}
+      ],
+      "id": "part1-full-native-magnitude-values",
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_shl"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::shift_right"},
+        {"path": "src/magnitude.rs", "symbol": "magnitude_zero"},
+        {"path": "src/magnitude.rs", "symbol": "magnitude_from_u64"},
+        {"path": "src/magnitude.rs", "symbol": "magnitude_single_bit"}
+      ],
+      "proof_refs": [
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_shl"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::shift_right"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_prefix_properties"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_right_shift_value"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_left_shift_value"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_left_fits_value"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_magnitude_add_limb"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_capacity"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_low_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_zero"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_left"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_left_fits"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_shift"},
+        {"path": "specs/mod.rs", "symbol": "magnitude_addition"}
+      ],
+      "test_refs": [
+        {"path": "src/magnitude.rs", "symbol": "full_native_bit_producers_preserve_all_limbs_and_exact_errors"},
+        {"path": "src/magnitude.rs", "symbol": "full_u16_shifts_and_modulo_getters_match_independent_384_bit_reference"},
+        {"path": "src/magnitude.rs", "symbol": "exact_full_capacity_addition_matches_bit_carry_reference"}
+      ],
+      "topic": "Complete six-limb unsigned natural-value interfaces, exact capacity overflow, full native shift domains and modulo low-word semantics; not coefficient normalization or HT bitstream meaning"
     }
   ]
 }

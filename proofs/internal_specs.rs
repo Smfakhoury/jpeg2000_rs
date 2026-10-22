@@ -4,6 +4,18 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn magnitude_left_prefix(limbs: Seq<u64>, shift: u16, completed: nat) -> Seq<u64> {
+    Seq::new(6, |i: int| {
+        let source = i - shift / 64;
+        let partial = (shift % 64) as u32;
+        let low = if 0 <= source < completed { limbs[source] << partial } else { 0u64 };
+        let high = if partial > 0 && 0 <= source - 1 < completed {
+            limbs[source - 1] >> ((64 - partial) as u32)
+        } else { 0u64 };
+        low | high
+    })
+}
+
 pub open spec fn part2_layer_alpha_product_prefix(
     first: Seq<u16>, second: Seq<u16>, count: nat,
 ) -> Seq<u16> {
