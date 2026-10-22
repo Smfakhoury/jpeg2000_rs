@@ -4540,6 +4540,38 @@
         {"path": "src/image.rs", "symbol": "complete_component_pixel_frames_and_rejections_match_independent_reference"}
       ],
       "topic": "Complete actual in-place reversible and fixed-Q16 three-component inverse transforms, including image/component metadata, untouched extra planes, compatibility/length rejection and exact first-failure buffers; not MCT, typed conversion or tile assembly"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "write_quantized_block"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_row"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_pixel"},
+        {"path": "src/decode.rs", "symbol": "checked_index"}
+      ],
+      "id": "part1-complete-quantized-block-placement",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_block"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_row"},
+        {"path": "src/decode.rs", "symbol": "write_quantized_pixel"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_quantized_row_error_persists"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_quantized_block_error_persists"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "quantized_block_preserves_metadata_and_previsited_samples"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_quantized_block_rows"},
+        {"path": "specs/mod.rs", "symbol": "part1_quantized_block_row"},
+        {"path": "specs/mod.rs", "symbol": "part1_quantized_block_pixel"},
+        {"path": "specs/mod.rs", "symbol": "part1_transform_offset"},
+        {"path": "specs/mod.rs", "symbol": "part1_working_subband_frame"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "complete_quantized_block_placement_matches_independent_wide_reference"},
+        {"path": "src/decode.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
+      ],
+      "topic": "Actual row-major writes of supplied quantized block samples into working subband samples and visited masks, including all metadata, buffer mismatches, overlap and checked-coordinate errors with exact partial states; not the entire prepare/multilevel/tile-image assembly coordinator"
     }
   ]
 }

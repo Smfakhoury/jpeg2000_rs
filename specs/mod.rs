@@ -14,6 +14,8 @@ pub type Part2RawKernel = (bool, u8, bool, bool, bool, Option<Part2RawKernelCoef
 pub type Part1DecodedComponentModel = (u32, u32, crate::codestream::ComponentInfo, u8, Seq<i64>);
 pub type Part1DecodedImageModel = (u32, u32, u32, u32, Seq<Part1DecodedComponentModel>);
 pub type Part1DecodedImageState = (Result<(), crate::DecodeError>, Part1DecodedImageModel);
+pub type Part1WorkingSubbandModel = (u32, u32, u8, Seq<i64>, Seq<bool>);
+pub type Part1WorkingSubbandState = (Result<(), crate::DecodeError>, Part1WorkingSubbandModel);
 
 pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
 pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
@@ -3166,6 +3168,85 @@ pub open spec fn part1_component_transform_frame(
                 && before.4[i].3 == after.4[i].3
                 && before.4[i].4.len() == after.4[i].4.len()
                 && (i >= 3 ==> before.4[i] == after.4[i])
+}
+
+pub open spec fn part1_block_placement_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidCodeBlock },
+    }
+}
+
+pub open spec fn part1_quantized_block_pixel(
+    band: Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, x: u32, y: u32,
+) -> Part1WorkingSubbandState {
+    let destination_x = (placement_x as int) + (x as int);
+    let destination_y = (placement_y as int) + (y as int);
+    if destination_x > u32::MAX || destination_y > u32::MAX {
+        (Err(part1_block_placement_error(true)), band)
+    } else {
+        match part1_transform_offset(destination_y as u32, band.0, destination_x as u32) {
+            Err(error) => (Err(error), band),
+            Ok(destination) => match part1_transform_offset(y, block_width, x) {
+                Err(error) => (Err(error), band),
+                Ok(input) => if destination >= band.3.len() || destination >= band.4.len()
+                    || input >= source.len() || band.4[destination as int]
+                {
+                    (Err(part1_block_placement_error(false)), band)
+                } else {
+                    (Ok(()), (band.0, band.1, band.2,
+                        band.3.update(destination as int, source[input as int]),
+                        band.4.update(destination as int, true)))
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_quantized_block_row(
+    band: Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, y: u32, count: nat,
+) -> Part1WorkingSubbandState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), band)
+    } else {
+        let previous = part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_quantized_block_pixel(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, y),
+        }
+    }
+}
+
+pub open spec fn part1_quantized_block_rows(
+    band: Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, count: nat,
+) -> Part1WorkingSubbandState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), band)
+    } else {
+        let previous = part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_quantized_block_row(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat),
+        }
+    }
+}
+
+pub open spec fn part1_working_subband_frame(
+    before: Part1WorkingSubbandModel, after: Part1WorkingSubbandModel,
+) -> bool {
+    before.0 == after.0 && before.1 == after.1 && before.2 == after.2
+        && before.3.len() == after.3.len() && before.4.len() == after.4.len()
+        && (forall |i: int| 0 <= i < before.4.len() && before.4[i] ==> after.4[i])
+        && (forall |i: int| 0 <= i < before.4.len() && i < before.3.len() && before.4[i] ==>
+            before.3[i] == after.3[i])
 }
 
 }
