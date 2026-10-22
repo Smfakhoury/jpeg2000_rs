@@ -1,5 +1,14 @@
 # Specification audit guide
 
+Actual POC records are exposed as their complete ordered native values,
+including duplicate/inverted/empty windows and progression-order tags.
+Actual membership preserves its layer-end, resolution and component
+comparisons without normalized-window premises. The existing typed
+tile-part/component/resolution/layer cap getters expose only their real
+fields; defaults, limits, API and execution are unchanged. These owner
+facts feed the pending real progression iterator and packet caller, not a
+supplied coordinate or outcome bank.
+
 The actual component-style owner returns its complete native style/error with
 logical-count rejection before physical-array lookup, including contradictory
 counts. The complete native Tier1 byte parser preserves every flag, the exact
