@@ -1087,11 +1087,53 @@ pub struct KernelCoefficient {
     width: u8,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn raw_kernel_coefficient_view(value: KernelCoefficient) -> crate::specs::Part2RawKernelCoefficient {
+        (value.bytes@, value.width)
+    }
+
+    pub open spec fn raw_kernel_coefficient_option(value: Option<KernelCoefficient>)
+        -> Option<crate::specs::Part2RawKernelCoefficient>
+    {
+        match value {
+            Some(coefficient) => Some(raw_kernel_coefficient_view(coefficient)),
+            None => None,
+        }
+    }
+
+    pub open spec fn raw_kernel_coefficients_view(values: Seq<KernelCoefficient>)
+        -> Seq<crate::specs::Part2RawKernelCoefficient>
+    {
+        Seq::new(values.len(), |i: int| raw_kernel_coefficient_view(values[i]))
+    }
+
+    pub closed spec fn raw_kernel_step_view(value: KernelLiftingStep) -> crate::specs::Part2RawKernelStep {
+        (value.offset, value.exponent, raw_kernel_coefficient_option(value.residue),
+            raw_kernel_coefficients_view(value.coefficients@))
+    }
+
+    pub open spec fn raw_kernel_steps_view(values: Seq<KernelLiftingStep>) -> Seq<crate::specs::Part2RawKernelStep> {
+        Seq::new(values.len(), |i: int| raw_kernel_step_view(values[i]))
+    }
+
+    pub closed spec fn raw_kernel_view(value: ArbitraryKernel) -> crate::specs::Part2RawKernel {
+        (value.reversible, value.coefficient_type, value.whole_sample_filter, value.initial_odd,
+            value.whole_sample_extension, raw_kernel_coefficient_option(value.scaling), raw_kernel_steps_view(value.steps@))
+    }
+}
+
 impl KernelCoefficient {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result@ == raw_kernel_coefficient_view(*self).0,
+    ))]
     pub const fn bytes(&self) -> &[u8; 16] {
         &self.bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_coefficient_view(*self).1,
+    ))]
     pub const fn width(&self) -> u8 {
         self.width
     }
@@ -1107,18 +1149,30 @@ pub struct KernelLiftingStep {
 }
 
 impl KernelLiftingStep {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_step_view(*self).0,
+    ))]
     pub const fn offset(&self) -> i8 {
         self.offset
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_step_view(*self).1,
+    ))]
     pub const fn exponent(&self) -> u8 {
         self.exponent
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures raw_kernel_coefficient_option(result) == raw_kernel_step_view(*self).2,
+    ))]
     pub const fn residue(&self) -> Option<KernelCoefficient> {
         self.residue
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures raw_kernel_coefficients_view(result@) == raw_kernel_step_view(*self).3,
+    ))]
     pub fn coefficients(&self) -> &[KernelCoefficient] {
         &self.coefficients
     }
@@ -1129,6 +1183,9 @@ impl ArbitraryKernel {
         self.index
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_view(*self).0,
+    ))]
     pub const fn reversible(&self) -> bool {
         self.reversible
     }
@@ -1137,26 +1194,44 @@ impl ArbitraryKernel {
         self.descriptor
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_view(*self).1,
+    ))]
     pub const fn coefficient_type(&self) -> u8 {
         self.coefficient_type
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_view(*self).2,
+    ))]
     pub const fn whole_sample_filter(&self) -> bool {
         self.whole_sample_filter
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_view(*self).3,
+    ))]
     pub const fn initial_odd(&self) -> bool {
         self.initial_odd
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == raw_kernel_view(*self).4,
+    ))]
     pub const fn whole_sample_extension(&self) -> bool {
         self.whole_sample_extension
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures raw_kernel_coefficient_option(result) == raw_kernel_view(*self).5,
+    ))]
     pub const fn scaling(&self) -> Option<KernelCoefficient> {
         self.scaling
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures raw_kernel_steps_view(result@) == raw_kernel_view(*self).6,
+    ))]
     pub fn steps(&self) -> &[KernelLiftingStep] {
         &self.steps
     }
