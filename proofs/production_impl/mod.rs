@@ -1530,6 +1530,7 @@ pub proof fn production_magnitude_value_bound(limbs: Seq<u64>)
     production_magnitude_prefix_properties(limbs, 6);
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
 pub proof fn production_magnitude_double_telescope(limbs: Seq<u64>, shifted: Seq<u64>, high: Seq<u64>)
     requires
         limbs.len() == 6, shifted.len() == 6, high.len() == 6,
