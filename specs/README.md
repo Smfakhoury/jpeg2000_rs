@@ -64,8 +64,26 @@ their own complete relations, without a validated-tree premise.
 The packet-state projection preserves all five fields. The sole public Option
 and Result contribution projections retain `None` versus `Some(empty)` and all
 164 descriptor slots. These actual primitive producers are prerequisites for
-the continuing full header/probe/rollback relation, not a supplied header or
+the full header/probe/rollback relation below, not a supplied header or
 successful decoder outcome.
+
+The continuing actual header join is now complete as
+`part1_packet_header_decode`: the production entry feeds real reader and raw
+TagTree results into its real pass/Lblock/length grammar, Mixed probe and final
+packet-state commit. Local next-state updates are not silently treated as public
+commits. Public errors preserve packet state while retaining exact reader/tree
+partial effects. Probe errors retain the already-read main cursor; only actual
+legacy selection commits the probe. Every optional result contains complete
+physical descriptor arrays, including unvisited storage.
+
+The descriptor-fold bound comes from its actual 164-element arrays and first
+failing check. It is not a normalized-count, sufficient-resource or supplied
+trace condition on the native entry. Native header context/state fields remain
+arbitrary; the model uses the real supported-bitplane/pass constants where the
+actual producer checks them. Raw helper count165 and final conversion cases are
+not erased. Precinct/progression callers must consume this actual producer
+relation; their larger rollback and association claims do not follow merely
+from this header result.
 
 ## Complete actual mixed native body and segment dispatch
 
