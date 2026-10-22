@@ -22,6 +22,152 @@ pub struct Part1PacketIterator {
     pub emitted: u64,
 }
 
+pub struct Part1ProgressionPacketIterator {
+    pub grid: Part1PacketGrid,
+    pub changes: Seq<crate::codestream::ProgressionChange>,
+    pub default: Option<Part1PacketIterator>,
+    pub window_index: usize,
+    pub window_candidate: u64,
+    pub window_candidates: u64,
+    pub emitted: u64,
+}
+
+#[verifier::opaque]
+pub open spec fn part1_progression_admission(
+    grid: Part1PacketGrid, records: Seq<crate::codestream::ProgressionChange>,
+    index: usize, work: u64, maximum: u64,
+) -> Result<(), crate::DecodeError>
+    decreases records.len() - index as nat,
+{
+    if index >= records.len() { Ok(()) }
+    else {
+        match part1_packet_window_count(grid, records[index as int]) {
+            Err(error) => Err(error),
+            Ok(amount) => if work as nat + amount as nat > u64::MAX {
+                Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+            } else if work as nat + amount as nat > maximum {
+                Err(super::part1_packet_reader_limit(crate::Resource::WorkUnits, maximum, (work + amount) as u64))
+            } else if index == usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+            else { part1_progression_admission(grid, records, (index+1) as usize, (work+amount) as u64, maximum) },
+        }
+    }
+}
+
+pub open spec fn part1_progression_iterator_initial(
+    grid: Part1PacketGrid, order: crate::codestream::ProgressionOrder,
+    records: Seq<crate::codestream::ProgressionChange>, maximum_work: u64,
+) -> Result<Part1ProgressionPacketIterator, crate::DecodeError> {
+    match part1_progression_admission(grid, records, 0, 0, maximum_work) {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let first = if records.len() == 0 { Ok(0u64) } else { part1_packet_window_count(grid, records[0]) };
+            match first {
+                Err(error) => Err(error),
+                Ok(count) => Ok(Part1ProgressionPacketIterator {
+                    grid, changes:records, default:if records.len()==0 {
+                        Some(Part1PacketIterator { grid, order, candidate_index:0, emitted:0 })
+                    } else { None },
+                    window_index:0, window_candidate:0, window_candidates:count, emitted:0,
+                }),
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_progression_prior_contains(
+    records: Seq<crate::codestream::ProgressionChange>, end: usize, index: usize,
+    coordinate: crate::packet::PacketCoordinate,
+) -> Result<bool, crate::DecodeError>
+    decreases if index >= end { 0nat } else { (end-index) as nat },
+{
+    if index >= end { Ok(false) }
+    else if index >= records.len() { Err(ht_reader_error(crate::MalformedKind::InvalidProgressionOrderChange)) }
+    else if crate::codestream::progression_change_contains(records[index as int],
+        coordinate.layer, coordinate.resolution, coordinate.component) { Ok(true) }
+    else if index == usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else { part1_progression_prior_contains(records, end, (index+1) as usize, coordinate) }
+}
+
+pub open spec fn part1_progression_candidate_step(
+    state: Part1ProgressionPacketIterator, record: crate::codestream::ProgressionChange,
+) -> (Result<Option<crate::packet::PacketCoordinate>,crate::DecodeError>,Part1ProgressionPacketIterator) {
+    if state.window_candidate == u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),state) }
+    else {
+        let candidate = state.window_candidate;
+        let state = Part1ProgressionPacketIterator { window_candidate:(candidate+1) as u64, ..state };
+        match part1_packet_window_candidate(state.grid, record, candidate) {
+            Err(error) => (Err(error),state),
+            Ok(coordinate) => match part1_packet_grid_precinct_count(state.grid, coordinate.component, coordinate.resolution) {
+                Err(error) => (Err(error),state),
+                Ok(count) => if coordinate.precinct >= count { (Ok(None),state) }
+                else {
+                    match part1_progression_prior_contains(state.changes, state.window_index, 0, coordinate) {
+                        Err(error) => (Err(error),state),
+                        Ok(true) => (Ok(None),state),
+                        Ok(false) => if state.emitted == u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),state) }
+                        else {
+                            let state = Part1ProgressionPacketIterator { emitted:(state.emitted+1) as u64, ..state };
+                            if state.emitted > state.grid.packet_count {
+                                (Err(ht_reader_error(crate::MalformedKind::InvalidProgressionOrderChange)),state)
+                            } else { (Ok(Some(coordinate)),state) }
+                        },
+                    }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_progression_next_window(state: Part1ProgressionPacketIterator)
+    -> (Result<(),crate::DecodeError>,Part1ProgressionPacketIterator) {
+    if state.window_index == usize::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),state) }
+    else {
+        let state = Part1ProgressionPacketIterator { window_index:(state.window_index+1) as usize, window_candidate:0, ..state };
+        let next = if state.window_index < state.changes.len() {
+            part1_packet_window_count(state.grid, state.changes[state.window_index as int])
+        } else { Ok(0u64) };
+        match next {
+            Err(error) => (Err(error),state),
+            Ok(count) => (Ok(()),Part1ProgressionPacketIterator { window_candidates:count, ..state }),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_progression_windows_next(state: Part1ProgressionPacketIterator)
+    -> (Result<Option<crate::packet::PacketCoordinate>,crate::DecodeError>,Part1ProgressionPacketIterator)
+    decreases state.changes.len() - state.window_index as nat,
+        if state.window_candidate >= state.window_candidates { 0nat }
+        else { (state.window_candidates-state.window_candidate) as nat },
+{
+    if state.window_index >= state.changes.len() {
+        if state.emitted != state.grid.packet_count { (Err(ht_reader_error(crate::MalformedKind::InvalidProgressionOrderChange)),state) }
+        else { (Ok(None),state) }
+    } else if state.window_candidate < state.window_candidates {
+        let step = part1_progression_candidate_step(state,state.changes[state.window_index as int]);
+        match step.0 { Ok(None) => part1_progression_windows_next(step.1), _ => step }
+    } else {
+        let step = part1_progression_next_window(state);
+        match step.0 { Ok(()) => part1_progression_windows_next(step.1), Err(error) => (Err(error),step.1) }
+    }
+}
+
+pub open spec fn part1_progression_iterator_next(state: Part1ProgressionPacketIterator)
+    -> (Result<Option<crate::packet::PacketCoordinate>,crate::DecodeError>,Part1ProgressionPacketIterator) {
+    match state.default {
+        None => part1_progression_windows_next(state),
+        Some(default) => {
+            let step = part1_packet_iterator_next(default);
+            let state = Part1ProgressionPacketIterator { default:Some(step.1), ..state };
+            match step.0 {
+                Err(error) => (Err(error),state),
+                Ok(coordinate) => (Ok(coordinate),Part1ProgressionPacketIterator { emitted:step.1.emitted, ..state }),
+            }
+        },
+    }
+}
+
 #[verifier::opaque]
 pub open spec fn part1_grid_resolution_summary(
     values: Seq<u8>, index: usize, maximum: u8, zero: bool,

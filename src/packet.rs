@@ -1044,6 +1044,99 @@ pub struct ProgressionPacketIterator<'a> {
     emitted: u64,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn progression_packet_iterator_view(value: &ProgressionPacketIterator<'_>)
+        -> crate::specs::Part1ProgressionPacketIterator {
+        crate::specs::Part1ProgressionPacketIterator {
+            grid:packet_grid_view(value.grid), changes:crate::codestream::progression_changes_view(value.changes),
+            default:match value.default { Some(default) => Some(packet_iterator_view(&default)), None => None },
+            window_index:value.window_index, window_candidate:value.window_candidate,
+            window_candidates:value.window_candidates, emitted:value.emitted,
+        }
+    }
+
+    pub open spec fn progression_packet_iterator_outcome(value: Result<ProgressionPacketIterator<'_>,DecodeError>)
+        -> Result<crate::specs::Part1ProgressionPacketIterator,DecodeError> {
+        match value { Ok(iterator) => Ok(progression_packet_iterator_view(&iterator)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures progression_packet_iterator_outcome(result) == crate::specs::part1_progression_iterator_initial(
+        packet_grid_view(grid), default_order, crate::codestream::progression_changes_view(changes),
+        crate::limits::resource_work_limit(limits)),
+))]
+pub(crate) fn progression_packet_iterator_new<'a>(
+    grid: &'a PacketGrid,
+    default_order: ProgressionOrder,
+    changes: &'a ProgressionChanges,
+    limits: &ResourceLimits,
+) -> Result<ProgressionPacketIterator<'a>, DecodeError> {
+    let default = if changes.is_empty() {
+        Some(packet_iterator_new(grid, default_order))
+    } else {
+        None
+    };
+    let mut candidate_work = 0_u64;
+    let change_count = changes.records().len();
+    let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_progression_admission); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= change_count,
+            change_count == crate::codestream::progression_changes_view(changes).len(),
+            crate::specs::part1_progression_admission(packet_grid_view(grid),
+                crate::codestream::progression_changes_view(changes),0,0,crate::limits::resource_work_limit(limits))
+            == crate::specs::part1_progression_admission(packet_grid_view(grid),
+                crate::codestream::progression_changes_view(changes),index,candidate_work,crate::limits::resource_work_limit(limits)),
+        decreases change_count-index,
+    ))]
+    while index < change_count {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_progression_admission); }
+        let record = match changes.records().get(index) {
+            Some(record) => *record,
+            None => {
+                return Err(packet_reader_error(
+                    0,
+                    MalformedKind::InvalidProgressionOrderChange,
+                ));
+            }
+        };
+        candidate_work = match candidate_work.checked_add(window_candidate_count(grid, record)?) {
+            Some(work) => work,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        if candidate_work > limits.maximum_work_units() {
+            return Err(packet_reader_limit(
+                Resource::WorkUnits,
+                limits.maximum_work_units(),
+                candidate_work,
+            ));
+        }
+        index = match index.checked_add(1) {
+            Some(index) => index,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_progression_admission); }
+    let window_candidates = match changes.records().first() {
+        Some(record) => window_candidate_count(grid, *record)?,
+        None => 0,
+    };
+    Ok(ProgressionPacketIterator {
+        grid,
+        changes,
+        default,
+        window_index: 0,
+        window_candidate: 0,
+        window_candidates,
+        emitted: 0,
+    })
+}
+
 impl<'a> ProgressionPacketIterator<'a> {
     pub fn new(
         grid: &'a PacketGrid,
@@ -1051,150 +1144,200 @@ impl<'a> ProgressionPacketIterator<'a> {
         changes: &'a ProgressionChanges,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        let default = if changes.is_empty() {
-            Some(PacketIterator::new(grid, default_order))
-        } else {
-            None
-        };
-        let mut candidate_work = 0_u64;
-        let change_count = changes.records().len();
-        let mut index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases change_count - index,)
-        )]
-        while index < change_count {
-            let record = *changes.records().get(index).ok_or_else(|| {
-                DecodeError::malformed(0, MalformedKind::InvalidProgressionOrderChange)
-            })?;
-            candidate_work = candidate_work
-                .checked_add(window_candidate_count(grid, record)?)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            if candidate_work > limits.maximum_work_units() {
-                return Err(DecodeError::limit(
-                    Resource::WorkUnits,
-                    limits.maximum_work_units(),
-                    candidate_work,
-                ));
-            }
-            index = index
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        }
-        let window_candidates = match changes.records().first() {
-            Some(record) => window_candidate_count(grid, *record)?,
-            None => 0,
-        };
-        Ok(Self {
-            grid,
-            changes,
-            default,
-            window_index: 0,
-            window_candidate: 0,
-            window_candidates,
-            emitted: 0,
-        })
+        progression_packet_iterator_new(grid, default_order, changes, limits)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == progression_packet_iterator_view(self).emitted,
+    ))]
     pub const fn emitted(&self) -> u64 {
         self.emitted
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, progression_packet_iterator_view(final(self))) ==
+            crate::specs::part1_progression_iterator_next(progression_packet_iterator_view(old(self))),
+    ))]
     pub fn next_packet(&mut self) -> Result<Option<PacketCoordinate>, DecodeError> {
-        if let Some(default) = self.default.as_mut() {
-            let coordinate = default.next_packet()?;
-            self.emitted = default.emitted();
+        let default_step = {
+            if let Some(default) = self.default.as_mut() {
+                let result = default.next_packet();
+                Some((result, default.emitted()))
+            } else {
+                None
+            }
+        };
+        if let Some((result, emitted)) = default_step {
+            let coordinate = result?;
+            self.emitted = emitted;
             return Ok(coordinate);
         }
         let change_count = self.changes.records().len();
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_progression_windows_next); }
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases change_count - self.window_index,)
+            verus_spec(
+                invariant change_count == progression_packet_iterator_view(self).changes.len(),
+                    self.default.is_none(),
+                    crate::specs::part1_progression_iterator_next(progression_packet_iterator_view(old(self)))
+                        == crate::specs::part1_progression_windows_next(progression_packet_iterator_view(self)),
+                decreases change_count - self.window_index,
+            )
         )]
         while self.window_index < change_count {
-            let record = *self
-                .changes
-                .records()
-                .get(self.window_index)
-                .ok_or_else(|| {
-                    DecodeError::malformed(0, MalformedKind::InvalidProgressionOrderChange)
-                })?;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(decreases self.window_candidates - self.window_candidate,)
-            )]
-            while self.window_candidate < self.window_candidates {
-                let candidate = self.window_candidate;
-                self.window_candidate = self
-                    .window_candidate
-                    .checked_add(1)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-                let coordinate = decode_window_candidate(self.grid, record, candidate)?;
-                if coordinate.precinct
-                    >= self
-                        .grid
-                        .precinct_count(coordinate.component, coordinate.resolution)?
-                {
-                    continue;
-                }
-                let mut prior = 0_usize;
-                let mut already_emitted = false;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant prior <= self.window_index,
-                        decreases self.window_index - prior,
-                    )
-                )]
-                while prior < self.window_index {
-                    let prior_record = *self.changes.records().get(prior).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::InvalidProgressionOrderChange)
-                    })?;
-                    if prior_record.contains(
-                        coordinate.layer,
-                        coordinate.resolution,
-                        coordinate.component,
-                    ) {
-                        already_emitted = true;
-                        break;
-                    }
-                    prior = prior.checked_add(1).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                }
-                if !crate::refinement::progression_emit_allowed(already_emitted) {
-                    continue;
-                }
-                self.emitted = self
-                    .emitted
-                    .checked_add(1)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-                if self.emitted > self.grid.packet_count {
-                    return Err(DecodeError::malformed(
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_progression_windows_next); }
+            let record = match self.changes.records().get(self.window_index) {
+                Some(record) => *record,
+                None => {
+                    return Err(packet_reader_error(
                         0,
                         MalformedKind::InvalidProgressionOrderChange,
                     ));
                 }
-                return Ok(Some(coordinate));
-            }
-            self.window_index = self
-                .window_index
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            self.window_candidate = 0;
-            self.window_candidates = match self.changes.records().get(self.window_index) {
-                Some(next) => window_candidate_count(self.grid, *next)?,
-                None => 0,
             };
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost initial_window_index = self.window_index; }
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant change_count == progression_packet_iterator_view(self).changes.len(),
+                        self.default.is_none(),
+                        self.window_index < change_count,
+                        self.window_index == initial_window_index,
+                        record == progression_packet_iterator_view(self).changes[self.window_index as int],
+                        crate::specs::part1_progression_iterator_next(progression_packet_iterator_view(old(self)))
+                            == crate::specs::part1_progression_windows_next(progression_packet_iterator_view(self)),
+                    decreases self.window_candidates - self.window_candidate,
+                )
+            )]
+            while self.window_candidate < self.window_candidates {
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal(crate::specs::part1_progression_windows_next); }
+                if let Some(coordinate) = self.candidate_step(record)? {
+                    return Ok(Some(coordinate));
+                }
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_progression_windows_next); }
+            self.next_window()?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_progression_windows_next); }
         if self.emitted != self.grid.packet_count {
-            return Err(DecodeError::malformed(
+            return Err(packet_reader_error(
                 0,
                 MalformedKind::InvalidProgressionOrderChange,
             ));
         }
         Ok(None)
     }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, progression_packet_iterator_view(final(self))) ==
+            crate::specs::part1_progression_candidate_step(progression_packet_iterator_view(old(self)), record),
+    ))]
+    fn candidate_step(
+        &mut self,
+        record: ProgressionChange,
+    ) -> Result<Option<PacketCoordinate>, DecodeError> {
+        let candidate = self.window_candidate;
+        self.window_candidate = match self.window_candidate.checked_add(1) {
+            Some(candidate) => candidate,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        let coordinate = decode_window_candidate(self.grid, record, candidate)?;
+        if coordinate.precinct
+            >= self
+                .grid
+                .precinct_count(coordinate.component, coordinate.resolution)?
+        {
+            return Ok(None);
+        }
+        let already_emitted =
+            progression_prior_contains(self.changes, self.window_index, coordinate)?;
+        if !crate::refinement::progression_emit_allowed(already_emitted) {
+            return Ok(None);
+        }
+        self.emitted = match self.emitted.checked_add(1) {
+            Some(emitted) => emitted,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        if self.emitted > self.grid.packet_count {
+            return Err(packet_reader_error(
+                0,
+                MalformedKind::InvalidProgressionOrderChange,
+            ));
+        }
+        Ok(Some(coordinate))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, progression_packet_iterator_view(final(self))) ==
+            crate::specs::part1_progression_next_window(progression_packet_iterator_view(old(self))),
+    ))]
+    fn next_window(&mut self) -> Result<(), DecodeError> {
+        self.window_index = match self.window_index.checked_add(1) {
+            Some(index) => index,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        self.window_candidate = 0;
+        self.window_candidates = match self.changes.records().get(self.window_index) {
+            Some(next) => window_candidate_count(self.grid, *next)?,
+            None => 0,
+        };
+        Ok(())
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_progression_prior_contains(
+        crate::codestream::progression_changes_view(changes),end,0,coordinate),
+))]
+fn progression_prior_contains(
+    changes: &ProgressionChanges,
+    end: usize,
+    coordinate: PacketCoordinate,
+) -> Result<bool, DecodeError> {
+    let mut prior = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_progression_prior_contains); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant prior <= end,
+                crate::specs::part1_progression_prior_contains(crate::codestream::progression_changes_view(changes),
+                    end,0,coordinate)
+                == crate::specs::part1_progression_prior_contains(crate::codestream::progression_changes_view(changes),
+                    end,prior,coordinate),
+            decreases end-prior,
+        ))]
+    while prior < end {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_progression_prior_contains); }
+        let prior_record = match changes.records().get(prior) {
+            Some(record) => *record,
+            None => {
+                return Err(packet_reader_error(
+                    0,
+                    MalformedKind::InvalidProgressionOrderChange,
+                ));
+            }
+        };
+        if prior_record.contains(
+            coordinate.layer,
+            coordinate.resolution,
+            coordinate.component,
+        ) {
+            return Ok(true);
+        }
+        prior = match prior.checked_add(1) {
+            Some(prior) => prior,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_progression_prior_contains); }
+    Ok(false)
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -6478,6 +6621,155 @@ mod tests {
                 MalformedKind::InvalidProgressionOrderChange
             ))
         );
+    }
+
+    fn literal_progression_window() -> ProgressionChange {
+        ProgressionChange {
+            resolution_start: 0,
+            component_start: 0,
+            layer_end: 1,
+            resolution_end: 1,
+            component_end: 1,
+            progression_order: ProgressionOrder::Lrcp,
+        }
+    }
+
+    #[test]
+    fn raw_progression_default_error_commits_nested_state_without_syncing_outer_emitted() {
+        let mut grid = raw_iterator_grid();
+        grid.packet_count = 0;
+        let changes = ProgressionChanges::none();
+        let mut iterator = progression_packet_iterator_new(
+            &grid,
+            ProgressionOrder::Lrcp,
+            &changes,
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        iterator.emitted = 17;
+        assert_eq!(iterator.next_packet(), Err(packet_arithmetic_overflow()));
+        assert_eq!(iterator.emitted, 17);
+        let default = iterator.default.as_ref().unwrap();
+        assert_eq!((default.candidate_index, default.emitted), (1, 1));
+        assert_eq!(
+            (
+                iterator.window_index,
+                iterator.window_candidate,
+                iterator.window_candidates
+            ),
+            (0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn raw_progression_window_advance_retains_partial_cursor_before_next_window_rejection() {
+        let grid = raw_iterator_grid();
+        let good = literal_progression_window();
+        let bad = ProgressionChange {
+            resolution_start: 2,
+            ..good
+        };
+        let changes = ProgressionChanges::from_records(vec![good, bad]);
+        let mut iterator = ProgressionPacketIterator {
+            grid: &grid,
+            changes: &changes,
+            default: None,
+            window_index: 0,
+            window_candidate: 5,
+            window_candidates: 5,
+            emitted: 0,
+        };
+        assert_eq!(
+            iterator.next_packet(),
+            Err(packet_reader_error(
+                0,
+                MalformedKind::InvalidProgressionOrderChange
+            ))
+        );
+        assert_eq!(
+            (
+                iterator.window_index,
+                iterator.window_candidate,
+                iterator.window_candidates,
+                iterator.emitted
+            ),
+            (1, 0, 5, 0)
+        );
+        let empty = ProgressionChanges::none();
+        iterator.changes = &empty;
+        iterator.window_index = 3;
+        iterator.window_candidate = 0;
+        let record = literal_progression_window();
+        assert_eq!(
+            iterator.candidate_step(record),
+            Err(packet_reader_error(
+                0,
+                MalformedKind::InvalidProgressionOrderChange
+            ))
+        );
+        assert_eq!(
+            (
+                iterator.window_index,
+                iterator.window_candidate,
+                iterator.window_candidates,
+                iterator.emitted
+            ),
+            (3, 1, 5, 0)
+        );
+    }
+
+    #[test]
+    fn actual_progression_constructor_charges_duplicate_windows_and_next_suppresses_only_prior_membership()
+     {
+        let grid = raw_iterator_grid();
+        let record = literal_progression_window();
+        let changes = ProgressionChanges::from_records(vec![record, record]);
+        let limited = ResourceLimits::default()
+            .with_maximum_work_units(1)
+            .unwrap();
+        assert!(matches!(
+            progression_packet_iterator_new(&grid, ProgressionOrder::Cprl, &changes, &limited),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2
+            })
+        ));
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(2)
+            .unwrap();
+        let mut iterator =
+            progression_packet_iterator_new(&grid, ProgressionOrder::Cprl, &changes, &limits)
+                .unwrap();
+        assert_eq!(
+            iterator.next_packet(),
+            Ok(Some(PacketCoordinate {
+                layer: 0,
+                resolution: 0,
+                component: 0,
+                precinct: 0
+            }))
+        );
+        assert_eq!(
+            (
+                iterator.window_index,
+                iterator.window_candidate,
+                iterator.window_candidates,
+                iterator.emitted
+            ),
+            (0, 1, 1, 1)
+        );
+        assert_eq!(iterator.next_packet(), Ok(None));
+        assert_eq!(
+            (
+                iterator.window_index,
+                iterator.window_candidate,
+                iterator.window_candidates,
+                iterator.emitted
+            ),
+            (2, 0, 0, 1)
+        );
+        assert_eq!(iterator.next_packet(), Ok(None));
     }
 
     fn literal_payload_parameters() -> PrecinctPayloadParameters {

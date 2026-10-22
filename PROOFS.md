@@ -485,6 +485,30 @@ preflight-before-coefficients and every prior state effect at final accounting.
 This is not progression, tile-part/header reassembly, packet-length iteration,
 JPIP outer-transaction or whole-F5H completion.
 
+### Actual raw packet and progression iterators
+
+`packet_progression.rs` and the actual `PacketGrid` lookup/selected-count
+methods admit all nine stored grid fields, including inconsistent physical
+arrays, totals and offsets. Actual `unravel`, candidate decoding, packet
+iteration, POC candidate counts and offset decoding have complete typed results.
+Inverted component spans deliberately have different count/decode behavior.
+
+Both actual iterator constructors share one verified production free factory
+with their preserved public static wrappers. The complete packet iterator
+relation retains grid/order and both counters. The complete progression
+relation additionally observes every raw POC record, all three window cursors,
+outer emission and the entire optional nested default iterator. Default errors
+retain nested cursor/emission changes without synchronizing outer emission.
+POC errors retain candidate advancement, late emission rejection and ordered
+window advancement before a failing next-window count.
+
+Actual prior-window membership, one candidate step and window advancement are
+production phases, not proof-only decoder copies or supplied coordinate traces.
+Native fixtures cover physical lookup boundaries, skipped candidates, saturated
+counts, duplicate-window work charging/suppression and exact late-error frames.
+Full grid construction and outer tile-part/progression composition remain open
+at this intermediate stage; no full F5H or codestream claim follows.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
