@@ -234,6 +234,113 @@ An empty-resolution precinct consumes its packet header even when its present
 flag is set and it contains no code blocks. Input/tool/source hashes and failing
 fixtures are retained under the existing `container-failures/` artifacts.
 
+### Broader selected color, opacity, ROI, quality and mixed profiles
+
+A finite twenty-candidate generated-profile qualification was declared and
+hashed before native measurements. All original/reference dispositions were
+persisted before subject measurements: fourteen references qualified and
+fourteen subject profiles passed; six candidates remained reference-unqualified
+or explicitly excluded.
+No thresholds were changed to admit a candidate. These are engineering
+observations, not official Part 4 evidence or a normative certificate.
+
+Four additional 47x35, 16x16-tiled, two-decomposition numerical cases retain
+the original 56 legacy/48 HT cases and budgets:
+
+| Profile | Origin | Original/reference and reference/subject budget |
+|---|---|---|
+| `q2-roi-gray20`, component 0 upshift 1 | (3,3) | exact |
+| `q2-roi-rgb16-independent`, component 2 upshift 2, MCT disabled | (3,5) | exact |
+| `q2-roi-gray16-irreversible`, component 0 upshift 2 | (3,5) | maximum error 8, worst-component RMSE 2.0 |
+| `q2-quality-rgb16-layered`, layers `8,3,1`, coding style 63, MCT enabled | (3,5) | exact |
+
+Both comparisons must meet the irreversible budget, before/after the subject
+respectively. PGX uses equal x/y origin because the pinned PGX encoder's
+asymmetric-offset handling changes the requested geometry; actual SIZ/COD
+must still match. This does not qualify the rejected asymmetric PGX path.
+`selection.py` obtains every native reference at discard 0/1/2 before testing
+full, region, single tile, tile-contained region and rectangular tile-set
+selections. Its expected crops come exclusively from independent native
+planes, with absolute-grid ceilings and exact origin checks.
+The layered RGB16 case also covers zero-byte later terminated MQ/RAW passes
+and raw ERTERM tails in a complete independently encoded image. Its earlier
+`InvalidCodeBlock` disagreement is resolved by the corrected shared Tier-1
+reader/pass termination behavior, not by changing the input or expectations.
+Full decoding and every selection at discard 0/1/2 must remain exact; final
+quality-layer success alone does not qualify arbitrary quality-prefix output.
+
+`container_relations.py` uses `fractions.Fraction` for independent sample
+normalization and source-over, not a call into Rust color/composition code.
+Four nonuniform 32x32 color profiles cover 8/16-bit sRGB at odd origin (1,3)
+and sYCC at aligned origin (2,4), 4:2:0 or 4:2:2 sampling, 16x16 tiles and
+native discard 0/1/2. Independently decoded component PGX planes must first
+reproduce the originals exactly. Nearest-component sampling retains the
+absolute native-grid phase. sRGB requires exact normalized-16 output.
+sYCC uses rational coefficients 1.402, 0.344136, 0.714136 and 1.772, clipping
+in the original sample range before normalization, with frozen normalized-16
+maximum-error and worst-component-RMSE ceilings of 514 at 8 bits and 12 at
+16 bits. These intentionally fixed engineering ceilings are not official
+colorimetric tolerances.
+
+Four gray/global-alpha profiles add unsigned 8/16-bit straight/premultiplied
+samples with alpha physically first, fractional/boundary alpha, nonzero
+origin (3,5), and JP2/indexed-JPX/HTDECLARED all-legacy JPH wrappers.
+Full and selected conversion is exact against independently decoded planes;
+straight-alpha cases additionally use discard 1/2. Premultiplied cases are
+deliberately zero-DWT/full-resolution: general wavelet-domain preservation
+of the color-not-exceeding-alpha constraint is not presumed. JPX static/frame
+composition, cropped/scaled placement and overlap require exact rational
+source-over, rounding each placement to the nearest output sample. Gray plus
+alpha retains two channels; it is not silently relabeled RGBA.
+
+Two nonzero mixed legacy/HT profiles author a 64x32 two-tile codestream from
+independently qualified 32x32 legacy/OpenJPH tiles. The main CAP explicitly
+declares HTDECLARED and heterogeneous tile headers; the legacy tile carries
+its own COD/QCD. Constituent roundtrips alone are insufficient: unmodified
+OpenJPEG must decode the **complete mixed stream** exactly to the original
+two-tile image before any subject comparison. Its native reduced output is
+also the reference for full/region/both single tiles/tile-contained selections
+at discard 0/1/2 in raw and JPH. OpenJPH's rejection of legacy tile headers is
+retained in qualification evidence, not patched or counted as another pass.
+This is selected mixed-tile evidence, not arbitrary in-code-block HT/MQ
+switching or every mixed-profile capability combination.
+
+The six nonpassing candidates remain explicit boundaries:
+
+| Candidate | Disposition |
+|---|---|
+| Signed12 Maxshift `U=2`, layers `8,3,1`, bypass, tiled DWT2 | original/reference maximum error 752 exceeds exactness |
+| RGB8 irreversible layers `8,3,1`, tiled DWT2 | original/reference maximum error 3/RMSE 0.6991 exceeds frozen 2/0.5 |
+| Gray8 and gray16, 32x32, zero-DWT `8,3,1` quality prefixes | first independent prefix is constant; no meaningful three-prefix qualification |
+| Native JPX compositor | neither pinned CLI exposes independent layer/frame rendering; rational generated profiles are a narrower substitute, not native semantic equivalence |
+| ICC execution | deliberately not implemented; pinned reference build has ICC execution disabled |
+
+None of these six has been turned into an expected-rejection “passing
+numerical case” or erased from the denominator. Existing quality-prefix
+regressions remain; the qualified final-layer RGB16 addition does not add a
+qualified new three-prefix profile.
+
+The existing three-platform native regression invocation runs the new
+numerical, selection and container tests without platform-specific thresholds:
+
+```sh
+PYTHONPATH=validation python -m unittest -v \
+  validation.tests.test_numerical \
+  validation.tests.test_selection \
+  validation.tests.test_container_relations
+```
+
+All four native executable directories must be on `PATH` (or the supported
+OpenJPH environment paths) so optional native tests actually execute.
+New supplemental matrices, reference snapshots (written before subjects),
+sample/input/tool hashes, commands and subject observations are retained in
+ignored `target/validation/q2-selection/`, `q2-container/` and `q2-mixed/`.
+The numerical command continues to use the existing numerical report schema.
+The supplemental JSON is regression evidence, not a new normative report
+schema. Local execution does not satisfy exact-head three-OS or final-main
+integration gates, and neither case count nor these fourteen profiles closes
+the remaining broader qualification gaps.
+
 ### Component Maxshift and binary-complement NLT
 
 Additional legacy cases exercise component-wide `RGN` upshifts for grayscale,

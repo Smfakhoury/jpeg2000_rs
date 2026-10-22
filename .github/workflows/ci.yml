@@ -131,6 +131,9 @@ jobs:
             target/validation/numerical-failures/**
             target/validation/selection-failures/**
             target/validation/container-failures/**
+            target/validation/q2-selection/**
+            target/validation/q2-container/**
+            target/validation/q2-mixed/**
           if-no-files-found: warn
           retention-days: 14
 
@@ -183,5 +186,8 @@ jobs:
             target/validation/selection-failures/**
             target/validation/container-failures/**
             target/validation/resource-failures/**
+            target/validation/q2-selection/**
+            target/validation/q2-container/**
+            target/validation/q2-mixed/**
           if-no-files-found: warn
           retention-days: 14

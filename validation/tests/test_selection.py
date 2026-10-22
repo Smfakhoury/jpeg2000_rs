@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import framework
 import numerical
+import selection
 
 
 def native_rectangle(rectangle, discard):
@@ -244,8 +245,76 @@ class SelectionTests(unittest.TestCase):
                     options=("-ROI", f"c={component},U={shift}"),
                 ), False, (3, 5), True)
 
+    @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
+                         "independent OpenJPEG tools are not installed")
+    def test_q2_prequalified_roi_and_layered_native_grid_expectations(self):
+        with self.subTest(scope="independent native planes before selections"):
+            directory = framework.RESULTS_DIR / "q2-selection"
+            directory.mkdir(parents=True, exist_ok=True)
+            cases = [case for case in numerical.CASES if case.name.startswith("q2-")]
+            declarations = [{"id": case.name, "options": case.options,
+                             "maximum_error": case.maximum_error, "maximum_rmse": case.maximum_rmse}
+                            for case in cases]
+            framework.write_json(directory / "matrix.json", declarations)
+            matrix_hash = framework.sha256_file(directory / "matrix.json")
+            encoder, decoder = shutil.which("opj_compress"), shutil.which("opj_decompress")
+            commands, prepared = [], []
+            for case in cases:
+                inputs = directory / case.name
+                inputs.mkdir(exist_ok=True)
+                encoded, frame, references = selection.prepare_reference(case, inputs, encoder, decoder, commands)
+                if case.name == "q2-quality-rgb16-layered":
+                    self.assertEqual(
+                        framework.normalized_hash(references[0]),
+                        "02a1798008c55cf5edaf0a82daea3a703fd9998eaf459bd2d7b4121df9763118",
+                    )
+                prepared.append((case, encoded, frame, references))
+            framework.write_json(directory / "references.json", {
+                "matrix_sha256": matrix_hash, "provenance": framework.source_binding(), "commands": commands,
+                "reference_source_recipes": numerical.REFERENCE_SOURCE_RECIPES,
+                "tools": {role: {"path": path, "sha256": framework.sha256_file(Path(path))}
+                          for role, path in (("encoder", encoder), ("decoder", decoder))},
+                "references": {case.name: references for case, _, _, references in prepared},
+                "files": {path.relative_to(directory).as_posix(): framework.sha256_file(path)
+                          for path in directory.rglob("*")
+                          if path.is_file() and path.name not in ("references.json", "results.json")},
+            })
+            reference_hash = framework.sha256_file(directory / "references.json")
+            results = []
+            for case, encoded, frame, references in prepared:
+                for discard, reference in references.items():
+                    native = selection.native_rectangle(frame, discard)
+                    for request in selection.requests(frame, discard):
+                        with self.subTest(case=case.name, discard=discard, request=request):
+                            expected = selection.expected_crop(reference, native, request["bounds"])
+                            actual, origin = selection.observe(self.subject, "select", "raw", encoded, discard, request)
+                            self.assertEqual(origin, tuple(request["bounds"][:2]))
+                            metrics = numerical.image_error_metrics(expected, actual)
+                            self.assertLessEqual(metrics["maximum_error"], case.maximum_error)
+                            self.assertLessEqual(metrics["worst_component_rmse"], case.maximum_rmse)
+                            results.append({"case": case.name, "discard": discard, "request": request, "metrics": metrics})
+            framework.write_json(directory / "results.json", {
+                "reference_sha256": reference_hash, "provenance": framework.source_binding(),
+                "subject_sha256": framework.sha256_file(self.subject), "records": results,
+                "summary": {"expected": 60, "observed": len(results),
+                            "status": "passed" if len(results) == 60 else "failed"},
+            })
+
 
 class SelectionGeometryTests(unittest.TestCase):
+    def test_q2_expected_crop_is_independent_and_native_bounds_are_absolute(self):
+        original = {"accepted": True, "image": {"width": 3, "height": 2, "components": [{
+            "width": 3, "height": 2, "precision": 8, "signed": False,
+            "sample_kind": "unsigned", "samples": [1, 2, 3, 4, 5, 6],
+        }]}}
+        cropped = selection.expected_crop(original, (2, 3, 5, 5), (3, 3, 5, 5))
+        self.assertEqual(cropped["image"]["components"][0]["samples"], [2, 3, 5, 6])
+        self.assertEqual(selection.native_rectangle((3, 5, 50, 40), 2), (1, 2, 13, 10))
+        cropped["image"]["components"][0]["samples"][0] = 99
+        self.assertEqual(original["image"]["components"][0]["samples"][1], 2)
+        for invalid in (-1, 33, True):
+            with self.assertRaises(ValueError):
+                selection.native_rectangle((0, 0, 32, 32), invalid)
     def test_failed_reference_retains_bound_reproduction_files(self):
         root = framework.RESULTS_DIR / "test-work"
         root.mkdir(parents=True, exist_ok=True)
