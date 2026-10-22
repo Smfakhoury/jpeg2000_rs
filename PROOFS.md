@@ -234,6 +234,7 @@ Read each contract according to its inputs and postcondition:
 | HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
 | Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
 | Complete actual HT cleanup metadata traversal | Exact public/segment result for all native header values and actual byte/work limits, ordered row/pair/member quads, north/west/east contexts, suppression/UVLC/events, sample bounds/counts, collision, work/counter first errors and every metadata field | Numerical magnitude/sign/exponent or coefficient-plane reconstruction, refinement passes, placeholder/replacement execution, mixed sequencing or full F5H |
+| Complete actual HT numeric MagSgn reconstruction | Every native parameter/flag and initial reader state: exact full 384-bit numeric magnitude, sign, exponent, typed first error and all final reader fields; actual full-value arithmetic through F6 contracts | Plane placement, raw high-limb storage, exponent stencils, final plane padding/termination, refinement or mixed sequencing |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -621,6 +622,40 @@ they are not merged or duplicated in this metadata head. A clean joined
 baseline is required before consuming them for the next magnitude/plane
 stage. Neither metadata nor its positive tests complete coefficient blocks
 or mixed sequencing.
+
+### Complete numeric MagSgn boundary
+
+`reconstruct_ht_magnitude` now refines the deterministic
+`ht_reconstruct_numeric_magnitude` result/state model on every return. Invalid
+completed-U/bitplane parameters precede all reader operations. The actual
+payload loop consumes LSB-first physical/stuffed/fill bits with the already
+proved complete reader transition; every first read/counter/budget error
+retains its actual final reader state. Sign and exponent are accumulated
+alongside the full numeric value, not a low-word proxy.
+
+Embedding, odd-center correction, centering, checked left scaling, right
+division and zero rejection are one moved executable completion body using
+the real F6 factories and full-domain arithmetic contracts. Its private
+geometry facts are derived from the original public-entry checks; the
+completion body itself admits every native 384-bit magnitude and exponent,
+including capacity rejection. A checked modular-arithmetic lemma connects
+the real low-word parity test to full-value parity. No arithmetic algorithm,
+foreign source shim, assumed success or new limit is introduced.
+
+Independent fixtures cover sign/exponent/scaling and inconsistent native
+embedded flags, zero-bit reconstruction without touching even over-budget
+reader state, all six limbs at bit 365, stuffing and physical/fill budget
+errors with complete literal cursor/counter states, native counter overflow
+and centering/shift overflow.
+
+The next actual cleanup-plane boundary reaches `CoefficientState::set_magnitude`,
+which uses the foreign `Magnitude::limb(index + 1)` to store all five high
+words. That getter still has no functional contract in this head. Its exact
+full-index `Some(magnitude_limbs(self)[index])`/`None` observation is required;
+the existing access is not replaced by shifted low-word arithmetic, an
+assumption or a duplicate limb algorithm. Plane reconstruction, placement,
+stencils and final padding/termination are not claimed by the numeric
+producer theorem.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit

@@ -3022,6 +3022,80 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub type HtNumericMagnitudeResult = (Result<(nat, bool, u8), crate::DecodeError>, HtMagSgnState);
+
+#[verifier::opaque]
+pub open spec fn ht_numeric_payload(
+    reader: HtMagSgnState, remaining: nat, index: nat, value: nat, negative: bool, exponent: u8,
+) -> HtNumericMagnitudeResult
+    recommends index + remaining <= 75, value < part1_magnitude_capacity(),
+    decreases remaining,
+{
+    if remaining == 0 { (Ok((value, negative, exponent)), reader) } else {
+        let read = ht_magsgn_read(reader);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => if bit {
+                let changed = value + pow2(index);
+                if changed >= part1_magnitude_capacity() {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), read.1)
+                } else {
+                    ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, changed,
+                        negative || index == 0, (index + 1) as u8)
+                }
+            } else {
+                ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, value, negative, exponent)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_numeric_center(
+    base: nat, negative: bool, exponent: u8, magnitude_bits: u8, embedded_value: bool, decoded_bitplanes: u16,
+) -> Result<(nat, bool, u8), crate::DecodeError>
+    recommends magnitude_bits <= 75, 1 <= decoded_bitplanes <= 292,
+{
+    let embedded = if embedded_value { base + pow2(magnitude_bits as nat) } else { base };
+    let exp = if embedded_value { (magnitude_bits + 1) as u8 } else { exponent };
+    if embedded >= part1_magnitude_capacity() {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let odd = if embedded % 2 == 0 { embedded + 1 } else { embedded };
+        let exp = if embedded % 2 == 0 && exp < 1 { 1u8 } else { exp };
+        let centered = odd + 2;
+        let scaled = centered * pow2((decoded_bitplanes - 1) as nat);
+        if odd >= part1_magnitude_capacity() || centered >= part1_magnitude_capacity()
+            || scaled >= part1_magnitude_capacity() {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else if scaled / 2 == 0 {
+            Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+        } else { Ok(((scaled / 2) as nat, negative, exp)) }
+    }
+}
+
+pub open spec fn ht_numeric_finish(
+    payload: HtNumericMagnitudeResult, magnitude_bits: u8, embedded_value: bool, decoded_bitplanes: u16,
+) -> HtNumericMagnitudeResult
+    recommends magnitude_bits <= 75, 1 <= decoded_bitplanes <= 292,
+{
+    (match payload.0 {
+        Err(error) => Err(error),
+        Ok((base, negative, exponent)) => ht_numeric_center(base, negative, exponent, magnitude_bits, embedded_value, decoded_bitplanes),
+    }, payload.1)
+}
+
+pub open spec fn ht_reconstruct_numeric_magnitude(
+    reader: HtMagSgnState, completed_u: u8, embedded_bit: bool, embedded_value: bool, decoded_bitplanes: u16,
+) -> HtNumericMagnitudeResult {
+    if completed_u == 0 || completed_u > 75 || decoded_bitplanes == 0 || decoded_bitplanes > 292 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), reader)
+    } else {
+        let bits = ht_magnitude_payload_bits(completed_u as nat, embedded_bit) as u8;
+        ht_numeric_finish(ht_numeric_payload(reader, bits as nat, 0, 0, false, 0),
+            bits, embedded_value, decoded_bitplanes)
+    }
+}
+
 pub struct HtMetadataWordsState {
     pub readers: HtCleanupReaderState,
     pub current: Seq<u8>,
