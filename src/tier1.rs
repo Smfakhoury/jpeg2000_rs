@@ -4005,7 +4005,7 @@ verus! {
         Seq::new(values.len(), |i: int| coefficient_raw_view(values[i]))
     }
 
-    pub(crate) closed spec fn coefficient_signed_outcome(result: Result<SignedMagnitude, DecodeError>)
+    pub(crate) open spec fn coefficient_signed_outcome(result: Result<SignedMagnitude, DecodeError>)
         -> Result<(Seq<u64>, nat, bool), DecodeError>
     {
         match result {
@@ -4015,7 +4015,7 @@ verus! {
         }
     }
 
-    pub closed spec fn coefficient_raw_outcome(result: Result<CoefficientState, DecodeError>)
+    pub open spec fn coefficient_raw_outcome(result: Result<CoefficientState, DecodeError>)
         -> Result<crate::specs::Tier1RawCoefficient, DecodeError>
     {
         match result { Err(error) => Err(error), Ok(value) => Ok(coefficient_raw_view(value)) }

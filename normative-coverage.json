@@ -94,6 +94,7 @@
         {"path": "src/tier1.rs", "symbol": "coefficient_raw_outcome"},
         {"path": "src/tier1.rs", "symbol": "coefficient_signed_outcome"},
         {"path": "src/tier1.rs", "symbol": "coefficient_raw_shape"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "tier1_raw_result_interfaces_expose_consumed_fields"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_tier1_value_limbs"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "tier1_raw_index_rejects_missing_storage_without_a_rectangular_premise"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "tier1_raw_insignificance_ignores_stale_full_words_and_legacy_tags"}

@@ -25,6 +25,9 @@ The raw `Tier1CodeBlockDecoder::plane` postcondition is an existing API bridge
 consumed by `decode::prepare_tile_component_with_kernel`. It remains outside the
 same-file internal-caller index: there is no invented Tier-1 caller or generic
 API-root exemption. Its exact view is listed as a proof reference.
+The raw and signed `Result` projections are open over their public payloads and
+closed owner views, so outside-module consumers can connect actual returned
+fields to the mathematical result without revealing private stored fields.
 
 ## F6 reconstruction profiles (bounded stage contracts)
 

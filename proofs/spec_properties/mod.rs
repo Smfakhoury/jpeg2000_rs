@@ -32,6 +32,23 @@ use crate::specs::{
 
 verus! {
 
+pub(crate) proof fn tier1_raw_result_interfaces_expose_consumed_fields(
+    coefficient: Result<crate::tier1::CoefficientState, crate::DecodeError>,
+    signed: Result<crate::transform::SignedMagnitude, crate::DecodeError>,
+)
+    ensures match coefficient {
+        Ok(value) => crate::tier1::coefficient_raw_outcome(coefficient) == Ok(crate::tier1::coefficient_raw_view(value)),
+        Err(error) => crate::tier1::coefficient_raw_outcome(coefficient) == Err(error),
+    },
+    match signed {
+        Ok(value) => crate::tier1::coefficient_signed_outcome(signed)
+            == Ok((crate::magnitude::magnitude_limbs(value.magnitude),
+                crate::magnitude::magnitude_value(value.magnitude), value.negative)),
+        Err(error) => crate::tier1::coefficient_signed_outcome(signed) == Err(error),
+    },
+{
+}
+
 #[verifier::spinoff_prover]
 pub proof fn ht_plane_zero_metadata_width_precedes_all_other_rejections(
     plane: crate::specs::Tier1RawPlane, cleanup: crate::specs::HtCleanupSegmentState,
