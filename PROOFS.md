@@ -118,11 +118,9 @@ exercise all 65,536 native legacy sign bitplanes; and check actual three-pass
 composition and every raw cleanup/run/segmentation-symbol budget prefix.
 Native reference-decoder qualification remains a separate gate.
 
-This completes the entropy and three-pass producer boundary, **not F5L**.
-Segment/pass scheduling and admission, retained contribution replay, packet
-association, whole-decoder staging/cloning and packet-to-coefficient composition
-remain explicit obligations. A pass theorem must not be reported as a complete
-legacy code-block or codestream theorem.
+This entropy and three-pass producer boundary alone is **not F5L**. The
+segment/contribution composition below closes its next actual callers; packet
+association and whole-decoder transactional composition remain distinct.
 
 ### Faithful raw legacy clone prerequisite
 
@@ -137,8 +135,69 @@ source families with both absent and present retained bitplane state.
 Both whole-decoder and retained-legacy ghost frames use the same logical
 eight-field bitplane projection and full nineteen-context snapshot projection.
 They no longer treat non-Copy cloned vectors as opaque native identity.
-This supplies actual data-copy facts to later staging proofs; it does not itself
-establish the shared whole-decoder clone, contribution replay or dispatcher.
+This supplies actual data-copy facts to staging proofs. It does not itself
+establish the shared whole-decoder clone or dispatcher.
+
+### Actual legacy segment and retained-contribution composition
+
+The actual `decode_legacy_segment` now has an unconditional complete Result and
+whole-decoder-state relation, using actual MQ/raw construction, all three pass
+producers, pass scheduling, advancement, context initialization/restoration/reset,
+termination validation and final accounting. Every native pass count, coding
+style, coefficient/state vector, retained context and real owner cap is admitted.
+The ordinary MQ and selective-bypass profiles, including reset, terminate-all,
+causal, predictable-termination and segmentation-symbol controls, use the actual
+style operations; no valid parsed coding-style/header premise is supplied.
+
+The actual `decode_legacy_contribution` then composes resource admission,
+retained-prefix selection/take, faithful snapshots, concatenation, restoration,
+real segment replay and retention. Its model observes the complete original
+retained record, not a supplied decoder result. The replay-work estimate is
+charged at its actual position before the later pass-addition check. Taking a
+retained record and restoring its starting state precedes the real replay:
+errors can therefore retain charged work and a restored prefix while consuming
+the retained record. These internal operations are deliberately **not**
+transactional. Final segment/byte commits also precede the real `u32` byte-count
+conversion, preserving those partial effects on conversion failure.
+
+The existing loops and operation order are preserved in real admission,
+pass-loop, append, restore and commit stages with complete contracts; opaque
+mathematical phase boundaries only control unfolding. No extra codec, decoder
+algorithm, tracing input, proof budget or resource default is introduced.
+Independent whole-state tests cover an actual complete MQ cleanup block, raw
+pass pairs, predictable-termination and work failures, retained replay versus
+whole contribution, late replay-input rejection, accounting overflow and
+full-width pass-index/style boundaries. Unvisited HT state is framed too.
+
+Packet-facing route/pass/accounting getters and the actual zero-bitplane setter
+also have unconditional owner relations. A previously stored equal zero-bitplane
+value succeeds before checking phase/counters; a different value fails first.
+The original checked multiply/add calculation is isolated once, retaining its
+complete native `u16` range (including values beyond the supported bitplane
+ceiling), arithmetic order and the setter's original field-commit order.
+
+The foreign packet caller is
+`packet::decode_code_block_contribution_body_staged`, whose legacy loop invokes
+this exact contribution producer on each checked body slice. Its enclosing
+`decode_code_block_contribution_body` performs actual clone/commit staging.
+Those packet contribution associations, ordered final consumption/pass-total
+checks, full transactional caller result, header classification and mixed
+HT/legacy dispatcher union remain owner closure obligations, **not completed
+F5L**. That producer stage did not change packet/decode/image/transform
+implementations; the subsequently authorized packet owner prerequisite follows.
+
+### Shared native contribution lookup prerequisite
+
+The sole `packet::code_block_contribution_view` now exposes all five public
+fields, the stored count and both complete 164-element pass/length arrays.
+The actual count getter returns the stored byte unchanged. The actual segment
+getter refines `part1_code_block_segment` over every native count/index pair,
+including stored counts above the physical array size. Count admission precedes
+physical bounds; failures remain `InvalidPacketHeader` at offset zero. No
+header, pass-total, nonzero-pass or normalized-count premise is introduced.
+Independent tests cover all 65,536 count/index pairs and preserve the entire
+supplied record. This owner interface supports both HT and legacy routing;
+it does not itself establish either packet execution loop.
 
 ## Reproduce verification
 

@@ -5,6 +5,8 @@ mod mq;
 pub use mq::*;
 mod legacy;
 pub use legacy::*;
+mod packet;
+pub use packet::*;
 
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
