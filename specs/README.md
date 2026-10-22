@@ -125,6 +125,43 @@ parsing and entropy decoding.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 
+### Full native magnitude interface
+
+`magnitude::magnitude_value` is a public **closed** natural-number view of all
+six little-endian `u64` limbs, defined by `part1_magnitude_value`; it is not a
+low-word surrogate. Capacity is `part1_magnitude_capacity() = 2^384`.
+The existing raw `magnitude_limbs` view and ROI contracts remain available.
+
+The original receiver operations have full native-domain contracts:
+
+- `checked_add`: exact natural sum below capacity; otherwise precisely
+  `MalformedInput { offset: 0, kind: ArithmeticOverflow }`.
+- `checked_shl`: exact multiplication by `2^shift` when representable, for
+  every `u16` shift. Zero succeeds even for shifts at least 384; nonzero
+  values reject there. No HT-only success premise is imposed.
+- `shift_right`: floor division by `2^shift`, including zero at shifts
+  at least 384, with the complete raw-buffer relation retained.
+- `low_u64`: full-value modulo `2^64`; `is_zero`: true iff the full value is
+  zero. The numeric/raw representation agreement and intrinsic capacity
+  bounds are exported by these contracts.
+
+Verified native producers are `magnitude_zero`, `magnitude_from_u64`,
+`magnitude_from_limbs` and `magnitude_single_bit`. The zero helper returns
+exactly the existing `Magnitude::ZERO`; the bit helper accepts the entire
+`u16` domain and returns the exact arithmetic error at bit indices at least
+384. Existing public associated factories retain their API and delegate to
+these same implementations. Verified internal callers should use the free
+factories because the pinned conditional-attribute frontend cannot infer
+associated static-function contexts; no trusted specification compensates
+for that limitation.
+
+Only the partial native left-shift buffer witness is in
+`proofs/internal_specs.rs`. Full value, shift and overflow denotations remain
+on this reading path; their word-composition, carry and natural arithmetic
+lemmas are proved in the production proof module. Native optimized limb
+algorithms remain in `src/magnitude.rs`. Independent bit-array tests cover
+every `u16` shift/bit index and complete 384-bit carry propagation.
+
 The executable cores `inverse_quantize_values` and `inverse_quantize_plane`
 take an explicit decoded-byte budget. The original `inverse_quantize` and
 `inverse_quantize_magnitudes` entry points additionally have complete Result
