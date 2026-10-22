@@ -1503,4 +1503,66 @@ pub proof fn component_transforms_preserve_complete_metadata_and_extra_planes(
     }
 }
 
+pub proof fn quantized_pixel_preserves_metadata_and_previsited_samples(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, x: u32, y: u32,
+)
+    ensures crate::specs::part1_working_subband_frame(
+        band, crate::specs::part1_quantized_block_pixel(band, source, block_width, placement_x, placement_y, x, y).1,
+    ),
+{
+}
+
+pub proof fn working_subband_frame_is_transitive(
+    before: crate::specs::Part1WorkingSubbandModel,
+    middle: crate::specs::Part1WorkingSubbandModel,
+    after: crate::specs::Part1WorkingSubbandModel,
+)
+    requires
+        crate::specs::part1_working_subband_frame(before, middle),
+        crate::specs::part1_working_subband_frame(middle, after),
+    ensures crate::specs::part1_working_subband_frame(before, after),
+{
+}
+
+pub proof fn quantized_row_preserves_metadata_and_previsited_samples(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, y: u32, count: nat,
+)
+    ensures crate::specs::part1_working_subband_frame(
+        band, crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, count).1,
+    ),
+    decreases count,
+{
+    if count > 0 {
+        quantized_row_preserves_metadata_and_previsited_samples(band, source, block_width, placement_x, placement_y, y, (count - 1) as nat);
+        let previous = crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, (count - 1) as nat);
+        quantized_pixel_preserves_metadata_and_previsited_samples(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, y);
+        working_subband_frame_is_transitive(
+            band, previous.1,
+            crate::specs::part1_quantized_block_pixel(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, y).1,
+        );
+    }
+}
+
+pub proof fn quantized_block_preserves_metadata_and_previsited_samples(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, count: nat,
+)
+    ensures crate::specs::part1_working_subband_frame(
+        band, crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, count).1,
+    ),
+    decreases count,
+{
+    if count > 0 {
+        quantized_block_preserves_metadata_and_previsited_samples(band, source, block_width, placement_x, placement_y, (count - 1) as nat);
+        let previous = crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, (count - 1) as nat);
+        quantized_row_preserves_metadata_and_previsited_samples(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat);
+        working_subband_frame_is_transitive(
+            band, previous.1,
+            crate::specs::part1_quantized_block_row(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat).1,
+        );
+    }
+}
+
 }

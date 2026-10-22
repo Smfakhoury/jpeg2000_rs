@@ -153,9 +153,20 @@ contracts make their consumed representation available without validation or
 coefficient-normalization assumptions. They are interfaces for further
 arbitrary-kernel work, not a whole-kernel theorem.
 
+The actual quantized-block placement loop in
+`decode::prepare_tile_component_with_kernel` is a shared, verified production
+block/row/pixel transition. Its complete working-subband view includes both
+samples and visited flags with exact first-failure buffers, unchanged metadata
+and lengths, monotone visited flags and protected previsited values. Independent
+wide-index tests cover full grids, short buffers, overlaps, empty blocks and
+coordinate failures. Geometry/quantization checks stay before the same real
+call. This is the complete write stage, not a result theorem for its surrounding
+placement, multilevel or tile/image assembly coordinator.
+
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
-coefficient placement, actual multilevel/resolution scheduling, arbitrary
+the whole coefficient-placement coordinator, actual multilevel/resolution
+scheduling, arbitrary
 kernels, multiple-component transforms, decoder typed conversion, component/
 tile assembly and composed component-sample relations are not established here.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).

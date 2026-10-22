@@ -889,6 +889,40 @@ pub proof fn production_vertical_error_persists(
     }
 }
 
+pub proof fn production_quantized_row_error_persists(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, y: u32, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, completed).0.is_err(),
+    ensures
+        crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, total)
+            == crate::specs::part1_quantized_block_row(band, source, block_width, placement_x, placement_y, y, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_quantized_row_error_persists(band, source, block_width, placement_x, placement_y, y, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_quantized_block_error_persists(
+    band: crate::specs::Part1WorkingSubbandModel, source: Seq<i64>, block_width: u32,
+    placement_x: u32, placement_y: u32, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, completed).0.is_err(),
+    ensures
+        crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, total)
+            == crate::specs::part1_quantized_block_rows(band, source, block_width, placement_x, placement_y, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_quantized_block_error_persists(band, source, block_width, placement_x, placement_y, completed, (total - 1) as nat);
+    }
+}
+
 pub proof fn production_component_transform_error_persists(
     image: crate::specs::Part1DecodedImageModel, irreversible: bool, completed: nat, total: nat,
 )

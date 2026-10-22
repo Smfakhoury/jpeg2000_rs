@@ -69,7 +69,19 @@ actual consumed representation fields, including all coefficient bytes and
 the recorded width. They impose no parser validation or normalization facts
 and do not by themselves prove an arbitrary-kernel algorithm.
 
-F6 remains open: coefficient placement into subband buffers, actual multilevel
+The real quantized-block write loop in
+`decode::prepare_tile_component_with_kernel` now calls one shared verified
+production block/row/pixel implementation. Its complete working-subband state
+model includes width, height, fraction bits, samples and the entire visited
+mask. Source/destination/mask length mismatches, previsited cells and checked
+coordinate/index errors retain all prior writes. Metadata and buffer lengths
+remain unchanged; marked cells never become unmarked and previsited sample
+values are protected. No rectangular-shape, prevalidated-buffer or sufficient
+length premise is imposed on this transition. The caller's earlier geometry,
+coefficient extraction, quantization and fraction checks remain in their
+original order; this theorem does not silently replace those checks.
+
+F6 remains open: the entire coefficient-placement coordinator, actual multilevel
 and resolution-plan execution, multiple-component transforms, decoder typed
 conversion, component/tile assembly and their composition into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
@@ -105,6 +117,11 @@ parsing and entropy decoding.
    give the actual complete decoded-image component-transform relation.
    `part1_component_transform_frame` states its complete metadata/extra-plane
    preservation property, not a substitute for sample semantics.
+8. `part1_quantized_block_pixel`, `part1_quantized_block_row` and
+   `part1_quantized_block_rows` describe the actual coefficient write stage,
+   including samples and visited flags. They do not establish the entire
+   `prepare_tile_component_with_kernel` result simply because its callees
+   now have contracts.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 
