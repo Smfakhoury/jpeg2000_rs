@@ -1426,20 +1426,6 @@ fn ht_refinement_readers_from_inputs<'a>(
 }
 
 impl<'a> HtRefinementReaders<'a> {
-    fn new(
-        segment: HtRefinementSegment<'a>,
-        has_magnitude_refinement: bool,
-        limits: &ResourceLimits,
-    ) -> Result<Self, DecodeError> {
-        ht_refinement_readers_from_inputs(
-            segment.significance_propagation().bytes(),
-            segment.magnitude_refinement().bytes(),
-            segment.encoded().len(),
-            has_magnitude_refinement,
-            limits.maximum_work_units(),
-        )
-    }
-
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(result =>
@@ -1759,6 +1745,9 @@ impl Tier1BlockCoding {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::ht_block_coding_enabled(self),
+    ))]
     pub const fn uses_high_throughput(self) -> bool {
         !matches!(self, Self::Legacy)
     }
@@ -3761,33 +3750,82 @@ fn reconstruct_ht_cleanup_plane(
     Ok((state.output, state.statistics))
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    spec fn ht_boolean_vector_view(value: Vec<bool>) -> Seq<bool> { value@ }
+
+    spec fn ht_refinement_magnitude_outcome(result: Result<Magnitude, DecodeError>) -> Result<(Seq<u64>, nat), DecodeError> {
+        match result { Err(error) => Err(error), Ok(value) => Ok((
+            crate::magnitude::magnitude_limbs(value), crate::magnitude::magnitude_value(value))) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_refinement_magnitude_outcome(result) == crate::specs::ht_significance_magnitude(decoded_bitplanes),
+))]
 fn ht_significance_magnitude(decoded_bitplanes: u16) -> Result<Magnitude, DecodeError> {
     if !(2..=MAX_TIER1_BITPLANES).contains(&decoded_bitplanes) {
         return Err(invalid_code_block());
     }
-    Magnitude::from_u64(3)
-        .checked_shl(decoded_bitplanes - 2)
-        .map(|centered| centered.shift_right(1))
+    let centered = crate::magnitude::magnitude_from_u64(3).checked_shl(decoded_bitplanes - 2)?;
+    #[cfg(verus_keep_ghost)]
+    proof! { vstd::arithmetic::power2::lemma2_to64(); }
+    Ok(centered.shift_right(1))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_refinement_magnitude_outcome(result) == crate::specs::ht_refinement_delta(decoded_bitplanes),
+))]
 fn ht_refinement_delta(decoded_bitplanes: u16) -> Result<Magnitude, DecodeError> {
     if !(2..=MAX_TIER1_BITPLANES).contains(&decoded_bitplanes) {
         return Err(invalid_code_block());
     }
     if decoded_bitplanes == 2 {
-        Ok(Magnitude::from_u64(1))
+        Ok(crate::magnitude::magnitude_from_u64(1))
     } else {
-        Magnitude::single_bit(decoded_bitplanes - 3)
+        crate::magnitude::magnitude_single_bit(decoded_bitplanes - 3)
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_boolean_vector_view(result) == crate::specs::ht_cleanup_significance(coefficient_raw_views(coefficients@)),
+        result@ == crate::specs::ht_cleanup_significance(coefficient_raw_views(coefficients@)),
+))]
+fn ht_collect_cleanup_significance(coefficients: &[CoefficientState]) -> Vec<bool> {
+    let mut output = Vec::with_capacity(coefficients.len());
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= coefficients.len(), output.len() == index,
+            forall |i: int| 0 <= i < index ==> output@[i] == coefficients@[i].significant,
+        decreases coefficients.len() - index,
+    ))]
+    while index < coefficients.len() {
+        output.push(coefficients[index].significant);
+        index += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(output@ =~= crate::specs::ht_cleanup_significance(coefficient_raw_views(coefficients@))); }
+    output
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    spec fn ht_byte_vector_outcome(result: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(value) => Ok(value@) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_byte_vector_outcome(result) == crate::specs::ht_copy_refinement_bytes(input@),
+))]
 fn copy_ht_refinement_bytes(input: &[u8]) -> Result<Vec<u8>, DecodeError> {
     let mut output = Vec::with_capacity(input.len());
     let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant index <= input.len(),
+            invariant index <= input.len(), output.len() == index,
+                forall |i: int| 0 <= i < index ==> output@[i] == input@[i],
             decreases input.len() - index,
         )
     )]
@@ -3795,6 +3833,8 @@ fn copy_ht_refinement_bytes(input: &[u8]) -> Result<Vec<u8>, DecodeError> {
         output.push(*input.get(index).ok_or_else(invalid_code_block)?);
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(output@ =~= input@); }
     Ok(output)
 }
 
@@ -3830,16 +3870,7 @@ fn prepare_ht_cleanup_symbols(
         maximum_u,
         limits,
     )?;
-    let rounded_passes = maximum_passes
-        .checked_add(2)
-        .ok_or_else(arithmetic_overflow)?;
-    let significant = rounded_passes
-        .checked_div(3)
-        .ok_or_else(arithmetic_overflow)?;
-    if significant > u32::from(u16::MAX) {
-        return Err(arithmetic_overflow());
-    }
-    let significant_bitplanes = significant as u16;
+    let significant_bitplanes = ht_significant_bitplanes(maximum_passes)?;
     let decoded_bitplanes = significant_bitplanes
         .checked_sub(skipped_bitplanes)
         .ok_or_else(arithmetic_overflow)?;
@@ -3855,6 +3886,571 @@ fn prepare_ht_cleanup_symbols(
     Ok((output, duplicate, statistics, decoded_bitplanes))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_significant_bitplanes(maximum_passes),
+))]
+fn ht_significant_bitplanes(maximum_passes: u32) -> Result<u16, DecodeError> {
+    let rounded_passes = maximum_passes
+        .checked_add(2)
+        .ok_or_else(arithmetic_overflow)?;
+    let significant = rounded_passes
+        .checked_div(3)
+        .ok_or_else(arithmetic_overflow)?;
+    if significant > u32::from(u16::MAX) {
+        return Err(arithmetic_overflow());
+    }
+    Ok(significant as u16)
+}
+
+struct HtRefinementPlaneState<'a> {
+    output: CodeBlockPlane,
+    readers: HtRefinementReaders<'a>,
+    cleanup_significant: Vec<bool>,
+    statistics: Tier1PassStatistics,
+}
+
+struct HtSignificancePatchState<'a> {
+    core: HtRefinementPlaneState<'a>,
+    discovery: CodeBlockPlane,
+    pending: Vec<(u16, u16)>,
+}
+
+struct HtSigpropPlaneState<'a> {
+    core: HtRefinementPlaneState<'a>,
+    discovery: CodeBlockPlane,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn ht_refinement_core_view(state: &HtRefinementPlaneState<'_>) -> crate::specs::HtRefinementCoreState {
+        crate::specs::HtRefinementCoreState {
+            output: code_block_plane_view(&state.output), readers: ht_refinement_readers_view(&state.readers),
+            cleanup_significant: state.cleanup_significant@, statistics: state.statistics,
+        }
+    }
+
+    closed spec fn ht_sigprop_patch_view(state: &HtSignificancePatchState<'_>) -> crate::specs::HtSignificancePatchState {
+        crate::specs::HtSignificancePatchState {
+            core: ht_refinement_core_view(&state.core), discovery: code_block_plane_view(&state.discovery), pending: state.pending@,
+        }
+    }
+
+    spec fn ht_refinement_magnitude_view(value: Magnitude) -> (Seq<u64>, nat) {
+        (crate::magnitude::magnitude_limbs(value), crate::magnitude::magnitude_value(value))
+    }
+
+    closed spec fn ht_sigprop_plane_view(state: &HtSigpropPlaneState<'_>) -> crate::specs::HtSigpropPlaneState {
+        crate::specs::HtSigpropPlaneState { core: ht_refinement_core_view(&state.core), discovery: code_block_plane_view(&state.discovery) }
+    }
+
+    spec fn ht_sigprop_plane_outcome(result: (Result<(), DecodeError>, HtSigpropPlaneState<'_>))
+        -> crate::specs::HtSigpropPlaneResult {
+        (result.0, ht_sigprop_plane_view(&result.1))
+    }
+}
+
+impl HtRefinementPlaneState<'_> {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The real magnitude-column loop consumes independent geometry and numeric inputs."
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires rows <= 4,
+        ensures (result, ht_refinement_core_view(final(self))) == crate::specs::ht_magref_rows(
+            ht_refinement_core_view(old(self)), x, stripe_y, rows as nat, 0, crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            final(self).output.width == old(self).output.width, final(self).output.height == old(self).output.height,
+            final(self).cleanup_significant@ == old(self).cleanup_significant@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn magnitude_column(
+        &mut self,
+        x: u16,
+        stripe_y: u16,
+        rows: u16,
+        delta: Magnitude,
+        decoded_bitplanes: u16,
+    ) -> Result<(), DecodeError> {
+        let mut row = 0_u16;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_magref_rows); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant row <= rows <= 4,
+                self.output.width == old(self).output.width, self.output.height == old(self).output.height,
+                self.cleanup_significant@ == old(self).cleanup_significant@,
+                crate::specs::ht_magref_rows(ht_refinement_core_view(old(self)), x, stripe_y, rows as nat, 0,
+                    crate::magnitude::magnitude_value(delta), decoded_bitplanes)
+                    == crate::specs::ht_magref_rows(ht_refinement_core_view(self), x, stripe_y, rows as nat, row as nat,
+                        crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            decreases rows - row,
+        ))]
+        while row < rows {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_magref_rows); }
+            let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
+            self.magnitude_sample(x, y, delta, decoded_bitplanes)?;
+            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_magref_rows); }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires rows <= 4,
+        ensures (result, ht_refinement_core_view(final(self))) == crate::specs::ht_magref_columns(
+            ht_refinement_core_view(old(self)), width, stripe_y, rows as nat, 0, crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            final(self).output.width == old(self).output.width, final(self).output.height == old(self).output.height,
+            final(self).cleanup_significant@ == old(self).cleanup_significant@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn magnitude_stripe(
+        &mut self,
+        width: u16,
+        stripe_y: u16,
+        rows: u16,
+        delta: Magnitude,
+        decoded_bitplanes: u16,
+    ) -> Result<(), DecodeError> {
+        let mut x = 0_u16;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_magref_columns); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant x <= width, rows <= 4,
+                self.output.width == old(self).output.width, self.output.height == old(self).output.height,
+                self.cleanup_significant@ == old(self).cleanup_significant@,
+                crate::specs::ht_magref_columns(ht_refinement_core_view(old(self)), width, stripe_y, rows as nat, 0,
+                    crate::magnitude::magnitude_value(delta), decoded_bitplanes)
+                    == crate::specs::ht_magref_columns(ht_refinement_core_view(self), width, stripe_y, rows as nat, x as nat,
+                        crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            decreases width - x,
+        ))]
+        while x < width {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_magref_columns); }
+            self.magnitude_column(x, stripe_y, rows, delta, decoded_bitplanes)?;
+            x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_magref_columns); }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires width <= 4096, height <= 4096,
+        ensures (result, ht_refinement_core_view(final(self))) == crate::specs::ht_magref_stripes(
+            ht_refinement_core_view(old(self)), width, height, 0, crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            final(self).output.width == old(self).output.width, final(self).output.height == old(self).output.height,
+            final(self).cleanup_significant@ == old(self).cleanup_significant@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn magnitude_pass(
+        &mut self,
+        width: u16,
+        height: u16,
+        delta: Magnitude,
+        decoded_bitplanes: u16,
+    ) -> Result<(), DecodeError> {
+        let mut stripe_y = 0_u16;
+        let stripe_extent = height.checked_add(3).ok_or_else(arithmetic_overflow)?;
+        let mut stripe_passes = stripe_extent
+            .checked_div(4)
+            .ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_magref_stripes); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant stripe_y <= height + 3, height <= 4096, width <= 4096,
+                stripe_passes == if stripe_y >= height { 0int } else { (height - stripe_y + 3) / 4 },
+                self.output.width == old(self).output.width, self.output.height == old(self).output.height,
+                self.cleanup_significant@ == old(self).cleanup_significant@,
+                crate::specs::ht_magref_stripes(ht_refinement_core_view(old(self)), width, height, 0,
+                    crate::magnitude::magnitude_value(delta), decoded_bitplanes)
+                    == crate::specs::ht_magref_stripes(ht_refinement_core_view(self), width, height, stripe_y as nat,
+                        crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            decreases stripe_passes,
+        ))]
+        while stripe_y < height {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_magref_stripes); }
+            let rows = crate::refinement::ht_stripe_rows(height, stripe_y);
+            self.magnitude_stripe(width, stripe_y, rows, delta, decoded_bitplanes)?;
+            stripe_y = stripe_y.checked_add(4).ok_or_else(arithmetic_overflow)?;
+            stripe_passes = stripe_passes
+                .checked_sub(1)
+                .ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_magref_stripes); }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, ht_refinement_core_view(final(self))) == crate::specs::ht_magref_sample(
+            ht_refinement_core_view(old(self)), x, y, crate::magnitude::magnitude_value(delta), decoded_bitplanes),
+            final(self).output.width == old(self).output.width,
+            final(self).output.height == old(self).output.height,
+            final(self).cleanup_significant@ == old(self).cleanup_significant@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn magnitude_sample(
+        &mut self,
+        x: u16,
+        y: u16,
+        delta: Magnitude,
+        decoded_bitplanes: u16,
+    ) -> Result<(), DecodeError> {
+        self.statistics.scanned(1)?;
+        let index = self.output.index(x, y)?;
+        if crate::refinement::ht_magref_eligible(
+            *self
+                .cleanup_significant
+                .get(index)
+                .ok_or_else(invalid_code_block)?,
+        ) {
+            let bit = self.readers.read_reverse()?;
+            // The final upper half-bin truncates to the existing integer magnitude.
+            let adjustment = if decoded_bitplanes == 2 && bit {
+                crate::magnitude::magnitude_zero()
+            } else {
+                delta
+            };
+            self.output
+                .apply_ht_refinement_decision(x, y, adjustment, bit)?;
+            self.statistics.decoded_symbols(1)?;
+            self.statistics.refined()?;
+        }
+        Ok(())
+    }
+}
+
+impl HtSignificancePatchState<'_> {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The actual discovery column uses independent stripe, magnitude and causal inputs."
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires rows <= 4,
+        ensures (result, ht_sigprop_patch_view(final(self))) == crate::specs::ht_discovery_rows(
+            ht_sigprop_patch_view(old(self)), x, stripe_y, rows as nat, 0, ht_refinement_magnitude_view(magnitude), causal),
+            final(self).core.output.width == old(self).core.output.width,
+            final(self).core.output.height == old(self).core.output.height,
+            final(self).discovery.width == old(self).discovery.width,
+            final(self).discovery.height == old(self).discovery.height,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn discover_column(
+        &mut self,
+        x: u16,
+        stripe_y: u16,
+        rows: u16,
+        magnitude: Magnitude,
+        causal: bool,
+    ) -> Result<(), DecodeError> {
+        let mut row = 0_u16;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_discovery_rows); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant row <= rows <= 4,
+                self.core.output.width == old(self).core.output.width, self.core.output.height == old(self).core.output.height,
+                self.discovery.width == old(self).discovery.width, self.discovery.height == old(self).discovery.height,
+                crate::specs::ht_discovery_rows(ht_sigprop_patch_view(old(self)), x, stripe_y, rows as nat, 0,
+                    ht_refinement_magnitude_view(magnitude), causal) == crate::specs::ht_discovery_rows(
+                        ht_sigprop_patch_view(self), x, stripe_y, rows as nat, row as nat, ht_refinement_magnitude_view(magnitude), causal),
+            decreases rows - row,
+        ))]
+        while row < rows {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_discovery_rows); }
+            let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
+            self.discover_sample(x, y, magnitude, causal)?;
+            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_discovery_rows); }
+        Ok(())
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The actual four-column patch preserves its source traversal parameters."
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires start <= end, rows <= 4,
+        ensures (result, ht_sigprop_patch_view(final(self))) == crate::specs::ht_discovery_columns(
+            ht_sigprop_patch_view(old(self)), end, stripe_y, rows as nat, start as nat, ht_refinement_magnitude_view(magnitude), causal),
+            final(self).core.output.width == old(self).core.output.width,
+            final(self).core.output.height == old(self).core.output.height,
+            final(self).discovery.width == old(self).discovery.width,
+            final(self).discovery.height == old(self).discovery.height,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn discover_patch(
+        &mut self,
+        start: u16,
+        end: u16,
+        stripe_y: u16,
+        rows: u16,
+        magnitude: Magnitude,
+        causal: bool,
+    ) -> Result<(), DecodeError> {
+        let mut x = start;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_discovery_columns); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant start <= x <= end, rows <= 4,
+                self.core.output.width == old(self).core.output.width, self.core.output.height == old(self).core.output.height,
+                self.discovery.width == old(self).discovery.width, self.discovery.height == old(self).discovery.height,
+                crate::specs::ht_discovery_columns(ht_sigprop_patch_view(old(self)), end, stripe_y, rows as nat, start as nat,
+                    ht_refinement_magnitude_view(magnitude), causal) == crate::specs::ht_discovery_columns(
+                        ht_sigprop_patch_view(self), end, stripe_y, rows as nat, x as nat, ht_refinement_magnitude_view(magnitude), causal),
+            decreases end - x,
+        ))]
+        while x < end {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_discovery_columns); }
+            self.discover_column(x, stripe_y, rows, magnitude, causal)?;
+            x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_discovery_columns); }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, ht_sigprop_patch_view(final(self))) == crate::specs::ht_pending_signs(
+            ht_sigprop_patch_view(old(self)), 0, ht_refinement_magnitude_view(magnitude)),
+            final(self).core.output.width == old(self).core.output.width,
+            final(self).core.output.height == old(self).core.output.height,
+            final(self).discovery.width == old(self).discovery.width,
+            final(self).discovery.height == old(self).discovery.height,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn signs(&mut self, magnitude: Magnitude) -> Result<(), DecodeError> {
+        let mut index = 0_usize;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_pending_signs); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant index <= self.pending.len(), self.pending@ == old(self).pending@,
+                self.core.output.width == old(self).core.output.width, self.core.output.height == old(self).core.output.height,
+                self.discovery.width == old(self).discovery.width, self.discovery.height == old(self).discovery.height,
+                crate::specs::ht_pending_signs(ht_sigprop_patch_view(old(self)), 0, ht_refinement_magnitude_view(magnitude))
+                    == crate::specs::ht_pending_signs(ht_sigprop_patch_view(self), index as nat, ht_refinement_magnitude_view(magnitude)),
+            decreases self.pending.len() - index,
+        ))]
+        while index < self.pending.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_pending_signs); }
+            self.sign_sample(index, magnitude)?;
+            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_pending_signs); }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, ht_sigprop_patch_view(final(self))) == crate::specs::ht_discover_sample(
+            ht_sigprop_patch_view(old(self)), x, y, ht_refinement_magnitude_view(magnitude), vertical_causal_context),
+            final(self).core.output.width == old(self).core.output.width,
+            final(self).core.output.height == old(self).core.output.height,
+            final(self).discovery.width == old(self).discovery.width,
+            final(self).discovery.height == old(self).discovery.height,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn discover_sample(
+        &mut self,
+        x: u16,
+        y: u16,
+        magnitude: Magnitude,
+        vertical_causal_context: bool,
+    ) -> Result<(), DecodeError> {
+        self.core.statistics.scanned(1)?;
+        if !self.discovery.coefficient(x, y)?.significant {
+            let summary =
+                self.discovery
+                    .neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+            if crate::refinement::ht_sigprop_eligible(false, significant_neighbor_count(summary)) {
+                let significant = self.core.readers.read_forward()?;
+                self.core.statistics.decoded_symbols(1)?;
+                if significant {
+                    self.discovery
+                        .mark_significant_magnitude(x, y, magnitude, false)?;
+                    self.pending.push((x, y));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, ht_sigprop_patch_view(final(self))) == crate::specs::ht_patch_sign_sample(
+            ht_sigprop_patch_view(old(self)), index as nat, ht_refinement_magnitude_view(magnitude)),
+            final(self).core.output.width == old(self).core.output.width,
+            final(self).core.output.height == old(self).core.output.height,
+            final(self).pending@ == old(self).pending@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn sign_sample(&mut self, index: usize, magnitude: Magnitude) -> Result<(), DecodeError> {
+        let (x, y) = *self.pending.get(index).ok_or_else(invalid_code_block)?;
+        let negative = self.core.readers.read_forward()?;
+        self.core
+            .output
+            .mark_significant_magnitude(x, y, magnitude, negative)?;
+        self.core.statistics.decoded_symbols(1)?;
+        self.core.statistics.became_significant()?;
+        Ok(())
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The shared significance stripe keeps every original geometry and causal input."
+)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires width <= 4096, stripe_y <= 4096, rows <= 4,
+    ensures ht_sigprop_plane_outcome(result) == crate::specs::ht_sigprop_patches(
+        ht_sigprop_plane_view(&input), width, stripe_y, rows as nat, 0, ht_refinement_magnitude_view(magnitude), causal),
+        result.1.core.output.width == input.core.output.width, result.1.core.output.height == input.core.output.height,
+        result.1.discovery.width == input.discovery.width, result.1.discovery.height == input.discovery.height,
+        result.0 == Ok(()) || result.0.is_err(),
+))]
+fn run_ht_significance_stripe(
+    input: HtSigpropPlaneState<'_>,
+    width: u16,
+    stripe_y: u16,
+    rows: u16,
+    magnitude: Magnitude,
+    causal: bool,
+) -> (Result<(), DecodeError>, HtSigpropPlaneState<'_>) {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost start = ht_sigprop_plane_view(&input); }
+    let mut phase = input;
+    let mut patch_x = 0_u16;
+    let extent = match width.checked_add(3) {
+        Some(value) => value,
+        None => return (Err(arithmetic_overflow()), phase),
+    };
+    let mut patch_passes = match extent.checked_div(4) {
+        Some(value) => value,
+        None => return (Err(arithmetic_overflow()), phase),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::ht_sigprop_patches); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant width <= 4096, stripe_y <= 4096, rows <= 4, patch_x <= width + 3,
+            start == ht_sigprop_plane_view(&input),
+            patch_passes == if patch_x >= width { 0int } else { (width - patch_x + 3) / 4 },
+            phase.core.output.width == start.core.output.width, phase.core.output.height == start.core.output.height,
+            phase.discovery.width == start.discovery.width, phase.discovery.height == start.discovery.height,
+            crate::specs::ht_sigprop_patches(start, width, stripe_y, rows as nat, 0, ht_refinement_magnitude_view(magnitude), causal)
+                == crate::specs::ht_sigprop_patches(ht_sigprop_plane_view(&phase), width, stripe_y, rows as nat,
+                    patch_x as nat, ht_refinement_magnitude_view(magnitude), causal),
+        decreases patch_passes,
+    ))]
+    while patch_x < width {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_sigprop_patches); }
+        let patch_end = crate::refinement::ht_patch_end(patch_x, width);
+        let mut patch = HtSignificancePatchState {
+            core: phase.core,
+            discovery: phase.discovery,
+            pending: Vec::new(),
+        };
+        let discovered =
+            patch.discover_patch(patch_x, patch_end, stripe_y, rows, magnitude, causal);
+        let result = match discovered {
+            Err(error) => Err(error),
+            Ok(()) => patch.signs(magnitude),
+        };
+        phase = HtSigpropPlaneState {
+            core: patch.core,
+            discovery: patch.discovery,
+        };
+        if let Err(error) = result {
+            return (Err(error), phase);
+        }
+        patch_x = match patch_x.checked_add(4) {
+            Some(value) => value,
+            None => return (Err(arithmetic_overflow()), phase),
+        };
+        patch_passes = match patch_passes.checked_sub(1) {
+            Some(value) => value,
+            None => return (Err(arithmetic_overflow()), phase),
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::ht_sigprop_patches); }
+    (Ok(()), phase)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires width <= 4096, height <= 4096,
+    ensures ht_sigprop_plane_outcome(result) == crate::specs::ht_sigprop_stripes(
+        ht_sigprop_plane_view(&input), width, height, 0, ht_refinement_magnitude_view(magnitude), causal),
+        result.1.core.output.width == input.core.output.width, result.1.core.output.height == input.core.output.height,
+        result.1.discovery.width == input.discovery.width, result.1.discovery.height == input.discovery.height,
+        result.0 == Ok(()) || result.0.is_err(),
+))]
+fn run_ht_significance_pass(
+    input: HtSigpropPlaneState<'_>,
+    width: u16,
+    height: u16,
+    magnitude: Magnitude,
+    causal: bool,
+) -> (Result<(), DecodeError>, HtSigpropPlaneState<'_>) {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost start = ht_sigprop_plane_view(&input); }
+    let mut phase = input;
+    let mut stripe_y = 0_u16;
+    let extent = match height.checked_add(3) {
+        Some(value) => value,
+        None => return (Err(arithmetic_overflow()), phase),
+    };
+    let mut stripe_passes = match extent.checked_div(4) {
+        Some(value) => value,
+        None => return (Err(arithmetic_overflow()), phase),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::ht_sigprop_stripes); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant width <= 4096, height <= 4096, stripe_y <= height + 3,
+            start == ht_sigprop_plane_view(&input),
+            stripe_passes == if stripe_y >= height { 0int } else { (height - stripe_y + 3) / 4 },
+            phase.core.output.width == start.core.output.width, phase.core.output.height == start.core.output.height,
+            phase.discovery.width == start.discovery.width, phase.discovery.height == start.discovery.height,
+            crate::specs::ht_sigprop_stripes(start, width, height, 0, ht_refinement_magnitude_view(magnitude), causal)
+                == crate::specs::ht_sigprop_stripes(ht_sigprop_plane_view(&phase), width, height,
+                    stripe_y as nat, ht_refinement_magnitude_view(magnitude), causal),
+        decreases stripe_passes,
+    ))]
+    while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_sigprop_stripes); }
+        let rows = crate::refinement::ht_stripe_rows(height, stripe_y);
+        let (result, next) =
+            run_ht_significance_stripe(phase, width, stripe_y, rows, magnitude, causal);
+        phase = next;
+        if let Err(error) = result {
+            return (Err(error), phase);
+        }
+        stripe_y = match stripe_y.checked_add(4) {
+            Some(value) => value,
+            None => return (Err(arithmetic_overflow()), phase),
+        };
+        stripe_passes = match stripe_passes.checked_sub(1) {
+            Some(value) => value,
+            None => return (Err(arithmetic_overflow()), phase),
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::ht_sigprop_stripes); }
+    (Ok(()), phase)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_plane_outcome(result) == crate::specs::ht_refinement_plane(
+        code_block_plane_view(cleanup_plane), ht_refinement_segment_view(&segment),
+        refinement_passes, decoded_bitplanes, vertical_causal_context, crate::limits::resource_work_limit(limits)),
+))]
 fn decode_ht_refinement_plane(
     cleanup_plane: &CodeBlockPlane,
     segment: HtRefinementSegment<'_>,
@@ -3866,164 +4462,55 @@ fn decode_ht_refinement_plane(
     if refinement_passes == 0 || refinement_passes > 2 || decoded_bitplanes < 2 {
         return Err(invalid_code_block());
     }
-    let mut output = cleanup_plane.duplicate()?;
-    let mut readers = HtRefinementReaders::new(segment, refinement_passes == 2, limits)?;
-    let cleanup_significant: Vec<bool> = cleanup_plane
-        .coefficients()
-        .iter()
-        .map(|coefficient| coefficient.significant)
-        .collect();
-    let mut statistics = Tier1PassStatistics::default();
+    let output = cleanup_plane.duplicate()?;
+    let readers = ht_refinement_readers_from_inputs(
+        segment.significance_propagation().bytes(),
+        segment.magnitude_refinement().bytes(),
+        segment.encoded().len(),
+        refinement_passes == 2,
+        limits.maximum_work_units(),
+    )?;
+    let cleanup_significant = ht_collect_cleanup_significance(cleanup_plane.coefficients());
+    let mut state = HtRefinementPlaneState {
+        output,
+        readers,
+        cleanup_significant,
+        statistics: ht_statistics_zero(),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(state.output.width > 0 && state.output.height > 0);
+        assert(state.output.width as nat * state.output.height as nat <= 4096);
+        let width = state.output.width as nat;
+        let height = state.output.height as nat;
+        assert(width <= 4096 && height <= 4096) by(nonlinear_arith)
+            requires width > 0, height > 0, width * height <= 4096;
+    }
 
     if refinement_passes == 2 {
         let delta = ht_refinement_delta(decoded_bitplanes)?;
-        let output_height = output.height();
-        let output_width = output.width();
-        let mut stripe_y = 0_u16;
-        let mut stripe_passes = output_height
-            .checked_add(3)
-            .and_then(|value| value.checked_div(4))
-            .ok_or_else(arithmetic_overflow)?;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases stripe_passes,)
-        )]
-        while stripe_y < output_height {
-            let stripe_rows = crate::refinement::ht_stripe_rows(output_height, stripe_y);
-            let mut x = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(decreases output_width - x,)
-            )]
-            while x < output_width {
-                let mut row = 0_u16;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(decreases stripe_rows - row,)
-                )]
-                while row < stripe_rows {
-                    let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                    statistics.scanned(1)?;
-                    let index = output.index(x, y)?;
-                    if crate::refinement::ht_magref_eligible(
-                        *cleanup_significant
-                            .get(index)
-                            .ok_or_else(invalid_code_block)?,
-                    ) {
-                        let bit = readers.read_reverse()?;
-                        // The final upper half-bin truncates to the existing integer magnitude.
-                        let adjustment = if decoded_bitplanes == 2 && bit {
-                            Magnitude::ZERO
-                        } else {
-                            delta
-                        };
-                        output.apply_ht_refinement_decision(x, y, adjustment, bit)?;
-                        statistics.decoded_symbols(1)?;
-                        statistics.refined()?;
-                    }
-                    row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            stripe_y = stripe_y.checked_add(4).ok_or_else(arithmetic_overflow)?;
-            stripe_passes = stripe_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
+        let output_height = state.output.height();
+        let output_width = state.output.width();
+        state.magnitude_pass(output_width, output_height, delta, decoded_bitplanes)?;
     }
 
     let significance_magnitude = ht_significance_magnitude(decoded_bitplanes)?;
-    let mut significance_plane = output.duplicate()?;
-    let output_height = output.height();
-    let output_width = output.width();
-    let mut stripe_y = 0_u16;
-    let mut stripe_passes = output_height
-        .checked_add(3)
-        .and_then(|value| value.checked_div(4))
-        .ok_or_else(arithmetic_overflow)?;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(decreases stripe_passes,)
-    )]
-    while stripe_y < output_height {
-        let stripe_rows = crate::refinement::ht_stripe_rows(output_height, stripe_y);
-        let mut patch_x = 0_u16;
-        let mut patch_passes = output_width
-            .checked_add(3)
-            .and_then(|value| value.checked_div(4))
-            .ok_or_else(arithmetic_overflow)?;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases patch_passes,)
-        )]
-        while patch_x < output_width {
-            let patch_end = crate::refinement::ht_patch_end(patch_x, output_width);
-            let mut newly_significant = Vec::new();
-            let mut x = patch_x;
-            #[cfg_attr(verus_keep_ghost, verus_spec(decreases patch_end - x,))]
-            while x < patch_end {
-                let mut row = 0_u16;
-                #[cfg_attr(verus_keep_ghost, verus_spec(decreases stripe_rows - row,))]
-                while row < stripe_rows {
-                    let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                    statistics.scanned(1)?;
-                    if !significance_plane.coefficient(x, y)?.significant {
-                        let summary = significance_plane.neighbor_summary_with_causality(
-                            x,
-                            y,
-                            vertical_causal_context,
-                        )?;
-                        if crate::refinement::ht_sigprop_eligible(
-                            false,
-                            significant_neighbor_count(summary),
-                        ) {
-                            let significant = readers.read_forward()?;
-                            statistics.decoded_symbols(1)?;
-                            if significant {
-                                significance_plane.mark_significant_magnitude(
-                                    x,
-                                    y,
-                                    significance_magnitude,
-                                    false,
-                                )?;
-                                newly_significant.push((x, y));
-                            }
-                        }
-                    }
-                    row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            let mut index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant index <= newly_significant.len(),
-                    decreases newly_significant.len() - index,
-                )
-            )]
-            while index < newly_significant.len() {
-                let (x, y) = *newly_significant
-                    .get(index)
-                    .ok_or_else(invalid_code_block)?;
-                let negative = readers.read_forward()?;
-                output.mark_significant_magnitude(x, y, significance_magnitude, negative)?;
-                statistics.decoded_symbols(1)?;
-                statistics.became_significant()?;
-                index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            patch_x = patch_x.checked_add(4).ok_or_else(arithmetic_overflow)?;
-            patch_passes = patch_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        stripe_y = stripe_y.checked_add(4).ok_or_else(arithmetic_overflow)?;
-        stripe_passes = stripe_passes
-            .checked_sub(1)
-            .ok_or_else(arithmetic_overflow)?;
-    }
-    readers.finish(segment.encoded())?;
-    Ok((output, statistics))
+    let significance_plane = state.output.duplicate()?;
+    let output_height = state.output.height();
+    let output_width = state.output.width();
+    let (result, phase) = run_ht_significance_pass(
+        HtSigpropPlaneState {
+            core: state,
+            discovery: significance_plane,
+        },
+        output_width,
+        output_height,
+        significance_magnitude,
+        vertical_causal_context,
+    );
+    result?;
+    phase.core.readers.finish(segment.encoded())?;
+    Ok((phase.core.output, phase.core.statistics))
 }
 
 #[derive(Clone, Copy)]
@@ -4474,6 +4961,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 3, 1),
+    ))]
     fn refined(&mut self) -> Result<(), DecodeError> {
         self.refined_coefficients = self
             .refined_coefficients
@@ -4490,6 +4980,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_merge(*old(self), other),
+    ))]
     fn merge(&mut self, other: Self) -> Result<(), DecodeError> {
         self.scanned(other.coefficients_scanned)?;
         self.decoded_symbols(other.coding_symbols)?;
@@ -4891,6 +5384,12 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_segments(
+            tier1_decoder_state(old(self)), cleanup@, cleanup_passes, ht_optional_bytes_view(refinement),
+            refinement_passes, crate::limits::resource_code_block_pass_limit(limits),
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
     pub fn decode_high_throughput_segments(
         &mut self,
         cleanup: &[u8],
@@ -4921,18 +5420,13 @@ impl Tier1CodeBlockDecoder {
             return Err(invalid_code_block());
         }
         if next_pass > limits.maximum_code_block_passes() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlockPasses,
-                u64::from(limits.maximum_code_block_passes()),
-                u64::from(next_pass),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockPasses,
+                limit: u64::from(limits.maximum_code_block_passes()),
+                actual: u64::from(next_pass),
+            });
         }
-        let significant_bitplanes = self
-            .maximum_passes
-            .checked_add(2)
-            .and_then(|passes| passes.checked_div(3))
-            .and_then(|value| u16::try_from(value).ok())
-            .ok_or_else(arithmetic_overflow)?;
+        let significant_bitplanes = ht_significant_bitplanes(self.maximum_passes)?;
         if refinement_passes > 0 && significant_bitplanes < 2 {
             return Err(invalid_code_block());
         }
@@ -4942,11 +5436,11 @@ impl Tier1CodeBlockDecoder {
             .checked_add(u64::from(segments.bytes()))
             .ok_or_else(arithmetic_overflow)?;
         if next_bytes > limits.maximum_code_block_bytes() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlockBytes,
-                limits.maximum_code_block_bytes(),
-                next_bytes,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: limits.maximum_code_block_bytes(),
+                actual: next_bytes,
+            });
         }
         let substantive_passes = u64::from(refinement_passes)
             .checked_add(1)
@@ -4954,19 +5448,24 @@ impl Tier1CodeBlockDecoder {
         let coefficient_work = (self.plane.coefficients().len() as u64)
             .checked_mul(substantive_passes)
             .ok_or_else(arithmetic_overflow)?;
-        let work = coefficient_work
+        let work_base = coefficient_work
             .checked_add(u64::from(segments.bytes()))
-            .and_then(|value| value.checked_add(u64::from(pass_count)))
+            .ok_or_else(arithmetic_overflow)?;
+        let work = work_base
+            .checked_add(u64::from(pass_count))
             .ok_or_else(arithmetic_overflow)?;
         if work > limits.maximum_work_units() {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                limits.maximum_work_units(),
-                work,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: work,
+            });
         }
-        let skipped_bitplanes =
-            u16::try_from(self.next_pass / 3).map_err(|_| arithmetic_overflow())?;
+        let skipped = self.next_pass / 3;
+        if skipped > u32::from(u16::MAX) {
+            return Err(arithmetic_overflow());
+        }
+        let skipped_bitplanes = skipped as u16;
         let missing_msbs = self.zero_bitplanes.unwrap_or(0);
         let maximum_u = crate::refinement::part15_cleanup_u_bound(
             missing_msbs,
@@ -4983,8 +5482,7 @@ impl Tier1CodeBlockDecoder {
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures ht_block_segments_view(&segments).refinement.is_none() ==>
-            (result, tier1_decoder_state(final(self))) == crate::specs::ht_cleanup_symbols_only(
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_coefficient_symbols(
                 tier1_decoder_state(old(self)), ht_block_segments_view(&segments),
                 pass_count, maximum_u, skipped_bitplanes, crate::limits::resource_work_limit(limits)),
     ))]
@@ -5009,8 +5507,11 @@ impl Tier1CodeBlockDecoder {
         self.ht_refinement_data.clear();
         self.ht_refinement_passes = 0;
         if let Some(refinement) = segments.refinement() {
-            let refinement_passes =
-                u8::try_from(pass_count.saturating_sub(1)).map_err(|_| arithmetic_overflow())?;
+            let following_passes = pass_count.saturating_sub(1);
+            if following_passes > u32::from(u8::MAX) {
+                return Err(arithmetic_overflow());
+            }
+            let refinement_passes = following_passes as u8;
             let (refined, refinement_statistics) = decode_ht_refinement_plane(
                 &cleanup_plane,
                 refinement,
@@ -5932,6 +6433,11 @@ impl Tier1SymbolDecoder<'_, '_> {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result as nat == crate::specs::ht_significant_neighbor_count(summary),
+        result as nat == summary.horizontal_significant as nat
+            + summary.vertical_significant as nat + summary.diagonal_significant as nat,
+))]
 fn significant_neighbor_count(summary: NeighborSummary) -> u16 {
     u16::from(summary.horizontal_significant)
         + u16::from(summary.vertical_significant)
@@ -5999,6 +6505,24 @@ enum NeighborKind {
     Horizontal,
     Vertical,
     Diagonal,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    spec fn neighbor_kind_tag(kind: NeighborKind) -> u8 {
+        match kind { NeighborKind::Horizontal => 0, NeighborKind::Vertical => 1, NeighborKind::Diagonal => 2 }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == crate::specs::ht_neighbor_zero(),))]
+fn ht_neighbor_summary_zero() -> NeighborSummary {
+    NeighborSummary {
+        horizontal_significant: 0,
+        vertical_significant: 0,
+        diagonal_significant: 0,
+        horizontal_sign_balance: 0,
+        vertical_sign_balance: 0,
+    }
 }
 
 #[derive(Clone)]
@@ -6293,6 +6817,11 @@ impl CodeBlockPlane {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::ht_apply_refinement(
+            code_block_plane_view(old(self)), x, y, crate::magnitude::magnitude_value(delta), refinement_bit),
+            final(self).width == old(self).width, final(self).height == old(self).height,
+    ))]
     fn apply_ht_refinement_decision(
         &mut self,
         x: u16,
@@ -6300,6 +6829,8 @@ impl CodeBlockPlane {
         delta: Magnitude,
         refinement_bit: bool,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = code_block_plane_view(self); }
         if delta.is_zero() && !refinement_bit {
             return Err(invalid_code_block());
         }
@@ -6314,13 +6845,18 @@ impl CodeBlockPlane {
         let magnitude = if refinement_bit {
             coefficient.wide_magnitude().checked_add(delta)?
         } else {
-            coefficient
-                .wide_magnitude()
-                .checked_sub(delta)
-                .map_err(|_| invalid_code_block())?
+            match coefficient.wide_magnitude().checked_sub(delta) {
+                Ok(value) => value,
+                Err(_) => return Err(invalid_code_block()),
+            }
         };
         if magnitude.is_zero() {
             return Err(invalid_code_block());
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+            crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
         }
         let output = self
             .coefficients
@@ -6328,6 +6864,14 @@ impl CodeBlockPlane {
             .ok_or_else(invalid_code_block)?;
         output.set_magnitude(magnitude)?;
         output.refined = true;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(code_block_plane_view(self).coefficients =~= start.coefficients.update(index as int,
+                crate::specs::Tier1RawCoefficient {
+                    limbs: crate::specs::tier1_value_limbs(crate::magnitude::magnitude_value(magnitude)), refined: true,
+                    ..start.coefficients[index as int]
+                }));
+        }
         Ok(())
     }
 
@@ -6335,6 +6879,9 @@ impl CodeBlockPlane {
         self.neighbor_summary_with_causality(x, y, false)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::ht_neighbors(code_block_plane_view(self), x, y, vertical_causal_context),
+    ))]
     fn neighbor_summary_with_causality(
         &self,
         x: u16,
@@ -6342,7 +6889,7 @@ impl CodeBlockPlane {
         vertical_causal_context: bool,
     ) -> Result<NeighborSummary, DecodeError> {
         self.index(x, y)?;
-        let mut summary = NeighborSummary::default();
+        let mut summary = ht_neighbor_summary_zero();
         self.accumulate_neighbor(x, y, (-1, 0), NeighborKind::Horizontal, &mut summary)?;
         self.accumulate_neighbor(x, y, (1, 0), NeighborKind::Horizontal, &mut summary)?;
         self.accumulate_neighbor(x, y, (0, -1), NeighborKind::Vertical, &mut summary)?;
@@ -6376,6 +6923,11 @@ impl CodeBlockPlane {
 
     // Specialize the fixed offsets and neighbor kinds in the hot context traversal.
     #[inline(always)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(summary)) == crate::specs::ht_accumulate_neighbor(
+            code_block_plane_view(self), x, y, delta.0, delta.1, neighbor_kind_tag(kind), *old(summary)),
+            result == Ok(()) || result.is_err(),
+    ))]
     fn accumulate_neighbor(
         &self,
         x: u16,
@@ -6407,25 +6959,25 @@ impl CodeBlockPlane {
             summary.horizontal_significant = summary
                 .horizontal_significant
                 .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                .ok_or_else(arithmetic_overflow)?;
             summary.horizontal_sign_balance = summary
                 .horizontal_sign_balance
                 .checked_add(sign)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                .ok_or_else(arithmetic_overflow)?;
         } else if matches!(kind, NeighborKind::Vertical) {
             summary.vertical_significant = summary
                 .vertical_significant
                 .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                .ok_or_else(arithmetic_overflow)?;
             summary.vertical_sign_balance = summary
                 .vertical_sign_balance
                 .checked_add(sign)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                .ok_or_else(arithmetic_overflow)?;
         } else {
             summary.diagonal_significant = summary
                 .diagonal_significant
                 .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                .ok_or_else(arithmetic_overflow)?;
         }
         Ok(())
     }
@@ -7206,6 +7758,810 @@ mod tests {
                 kind: MalformedKind::ArithmeticOverflow,
             })
         );
+    }
+
+    fn refinement_segment(bytes: &[u8]) -> HtRefinementSegment<'_> {
+        HtRefinementSegment {
+            encoded: bytes,
+            significance_propagation: HtSubstreamView {
+                bytes,
+                offset: 0,
+                direction: HtStreamDirection::Forward,
+            },
+            magnitude_refinement: HtSubstreamView {
+                bytes,
+                offset: 0,
+                direction: HtStreamDirection::Reverse,
+            },
+        }
+    }
+
+    fn refinement_core<'a>(
+        plane: CodeBlockPlane,
+        bytes: &'a [u8],
+        reverse: bool,
+    ) -> HtRefinementPlaneState<'a> {
+        let mask = plane.coefficients.iter().map(|c| c.significant).collect();
+        HtRefinementPlaneState {
+            output: plane,
+            readers: ht_refinement_readers_from_inputs(bytes, bytes, bytes.len(), reverse, 1000)
+                .unwrap(),
+            cleanup_significant: mask,
+            statistics: Tier1PassStatistics::default(),
+        }
+    }
+
+    fn raw_refinement_coefficient(
+        low: u64,
+        high: [u64; 5],
+        significant: bool,
+        negative: bool,
+        refined: bool,
+    ) -> CoefficientState {
+        CoefficientState {
+            magnitude: low,
+            magnitude_high: high,
+            legacy_bitplane: Some(u16::MAX),
+            significant,
+            negative,
+            refined,
+        }
+    }
+
+    #[test]
+    fn ht_refinement_snapshot_preserves_original_collection_capacity_and_raw_order() {
+        for length in [0, 1, 2, 3, 7, 8, 16, 4096] {
+            let input: Vec<_> = (0..length)
+                .map(|i| CoefficientState {
+                    significant: i % 3 == 1,
+                    negative: i % 2 == 0,
+                    refined: true,
+                    ..CoefficientState::default()
+                })
+                .collect();
+            let original: Vec<bool> = input.iter().map(|c| c.significant).collect();
+            let actual = ht_collect_cleanup_significance(&input);
+            assert_eq!(actual.capacity(), original.capacity());
+            assert_eq!(actual, (0..length).map(|i| i % 3 == 1).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn ht_full_refinement_both_passes_preserve_raw_flags_and_all_six_words() {
+        let limits = ResourceLimits::default();
+        let first = raw_refinement_coefficient(3, [0; 5], true, true, false);
+        let stale = raw_refinement_coefficient(17, [2, 3, 5, 7, 11], false, true, true);
+        let cleanup = CodeBlockPlane {
+            width: 2,
+            height: 1,
+            coefficients: vec![first, stale],
+        };
+        for (bytes, passes, scanned, symbols, refined) in
+            [(&[1][..], 1, 2, 2, 0), (&[1, 1][..], 2, 4, 3, 1)]
+        {
+            let (output, statistics) = decode_ht_refinement_plane(
+                &cleanup,
+                refinement_segment(bytes),
+                passes,
+                2,
+                false,
+                &limits,
+            )
+            .unwrap();
+            let mut expected_first = first;
+            expected_first.refined = passes == 2;
+            assert_eq!(
+                output.coefficients(),
+                &[
+                    expected_first,
+                    CoefficientState {
+                        magnitude: 1,
+                        magnitude_high: [0; 5],
+                        legacy_bitplane: None,
+                        significant: true,
+                        negative: false,
+                        refined: false,
+                    }
+                ]
+            );
+            assert_eq!(
+                statistics,
+                Tier1PassStatistics {
+                    coefficients_scanned: scanned,
+                    coding_symbols: symbols,
+                    newly_significant: 1,
+                    refined_coefficients: refined,
+                    run_mode_columns: 0,
+                }
+            );
+        }
+        assert_eq!(cleanup.coefficients(), &[first, stale]);
+        let (lower, _) =
+            decode_ht_refinement_plane(&cleanup, refinement_segment(&[]), 2, 2, false, &limits)
+                .unwrap();
+        assert_eq!(
+            lower.coefficients()[0],
+            CoefficientState {
+                magnitude: 2,
+                refined: true,
+                ..first
+            }
+        );
+        assert_eq!(lower.coefficients()[1], stale);
+    }
+
+    #[test]
+    fn ht_full_refinement_uses_wide_native_borrow_addition_and_no_midpoint_normalization() {
+        let limits = ResourceLimits::default();
+        for (base, bytes, planes, expected) in [
+            ([0, 1, 0, 0, 0, 0], &[][..], 3, [u64::MAX, 0, 0, 0, 0, 0]),
+            ([0, 1, 0, 0, 0, 0], &[1][..], 3, [1, 1, 0, 0, 0, 0]),
+            (
+                [0, 0, 0, 0, 0, 1],
+                &[][..],
+                292,
+                [0, 0, 0, 0, u64::MAX - (1_u64 << 33) + 1, 0],
+            ),
+        ] {
+            let coefficient = raw_refinement_coefficient(
+                base[0],
+                [base[1], base[2], base[3], base[4], base[5]],
+                true,
+                true,
+                false,
+            );
+            let cleanup = CodeBlockPlane {
+                width: 1,
+                height: 1,
+                coefficients: vec![coefficient],
+            };
+            let (output, statistics) = decode_ht_refinement_plane(
+                &cleanup,
+                refinement_segment(bytes),
+                2,
+                planes,
+                false,
+                &limits,
+            )
+            .unwrap();
+            assert_eq!(
+                output.coefficients()[0],
+                raw_refinement_coefficient(
+                    expected[0],
+                    [
+                        expected[1],
+                        expected[2],
+                        expected[3],
+                        expected[4],
+                        expected[5]
+                    ],
+                    true,
+                    true,
+                    true
+                )
+            );
+            assert_eq!(
+                (
+                    statistics.coefficients_scanned,
+                    statistics.coding_symbols,
+                    statistics.refined_coefficients
+                ),
+                (2, 1, 1)
+            );
+            assert_eq!(cleanup.coefficients()[0], coefficient);
+        }
+    }
+
+    #[test]
+    fn ht_full_refinement_delays_patch_signs_and_keeps_discovery_distinct() {
+        let mut cleanup = CodeBlockPlane::new(3, 1).unwrap();
+        cleanup.coefficients[0] = raw_refinement_coefficient(3, [0; 5], true, false, false);
+        let mut patch = HtSignificancePatchState {
+            core: refinement_core(cleanup.clone(), &[0x0b], false),
+            discovery: cleanup,
+            pending: Vec::new(),
+        };
+        patch
+            .discover_patch(0, 3, 0, 1, Magnitude::from_u64(1), false)
+            .unwrap();
+        assert_eq!(patch.pending, [(1, 0), (2, 0)]);
+        assert!(
+            !patch.core.output.coefficients()[1].significant
+                && !patch.core.output.coefficients()[2].significant
+        );
+        assert!(
+            patch.discovery.coefficients()[1].significant
+                && patch.discovery.coefficients()[2].significant
+        );
+        assert_eq!(
+            (
+                patch.core.readers.forward.physical_bits_read,
+                patch.core.readers.claimed.as_slice()
+            ),
+            (2, &[3][..])
+        );
+        assert_eq!(
+            (
+                patch.core.statistics.coefficients_scanned,
+                patch.core.statistics.coding_symbols,
+                patch.core.statistics.newly_significant
+            ),
+            (3, 2, 0)
+        );
+        patch.signs(Magnitude::from_u64(1)).unwrap();
+        assert!(
+            !patch.core.output.coefficients()[1].negative
+                && patch.core.output.coefficients()[2].negative
+        );
+        assert!(
+            !patch.discovery.coefficients()[1].negative
+                && !patch.discovery.coefficients()[2].negative
+        );
+        assert_eq!(patch.pending, [(1, 0), (2, 0)]);
+        assert_eq!(
+            (
+                patch.core.readers.forward.physical_bits_read,
+                patch.core.readers.claimed.as_slice()
+            ),
+            (4, &[15][..])
+        );
+        assert_eq!(
+            (
+                patch.core.statistics.coding_symbols,
+                patch.core.statistics.newly_significant
+            ),
+            (4, 2)
+        );
+        assert_eq!(patch.core.readers.finish(&[0x0b]), Ok(()));
+
+        let mut cleanup = CodeBlockPlane::new(5, 1).unwrap();
+        cleanup.coefficients[0] = raw_refinement_coefficient(3, [0; 5], true, false, false);
+        let (output, statistics) = decode_ht_refinement_plane(
+            &cleanup,
+            refinement_segment(&[0x77]),
+            1,
+            2,
+            false,
+            &ResourceLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            output
+                .coefficients()
+                .iter()
+                .map(|c| (c.magnitude, c.negative))
+                .collect::<Vec<_>>(),
+            [(3, false), (1, false), (1, true), (1, true), (1, false)]
+        );
+        assert_eq!(
+            (
+                statistics.coefficients_scanned,
+                statistics.coding_symbols,
+                statistics.newly_significant
+            ),
+            (5, 8, 4)
+        );
+    }
+
+    #[test]
+    fn ht_full_refinement_vertical_causality_changes_only_actual_neighbor_admission() {
+        let limits = ResourceLimits::default();
+        let mut cleanup = CodeBlockPlane::new(1, 5).unwrap();
+        cleanup.coefficients[4] = raw_refinement_coefficient(3, [0; 5], true, false, false);
+        let (noncausal, statistics) =
+            decode_ht_refinement_plane(&cleanup, refinement_segment(&[3]), 1, 2, false, &limits)
+                .unwrap();
+        assert_eq!(
+            noncausal.coefficients()[3],
+            CoefficientState {
+                magnitude: 1,
+                magnitude_high: [0; 5],
+                legacy_bitplane: None,
+                significant: true,
+                negative: true,
+                refined: false,
+            }
+        );
+        assert_eq!(
+            (
+                statistics.coefficients_scanned,
+                statistics.coding_symbols,
+                statistics.newly_significant
+            ),
+            (5, 2, 1)
+        );
+        let (causal, statistics) =
+            decode_ht_refinement_plane(&cleanup, refinement_segment(&[0]), 1, 2, true, &limits)
+                .unwrap();
+        assert_eq!(causal, cleanup);
+        assert_eq!(
+            (
+                statistics.coefficients_scanned,
+                statistics.coding_symbols,
+                statistics.newly_significant
+            ),
+            (5, 0, 0)
+        );
+        assert_eq!(
+            decode_ht_refinement_plane(&cleanup, refinement_segment(&[3]), 1, 2, true, &limits),
+            Err(invalid_code_block())
+        );
+    }
+
+    #[test]
+    fn ht_full_refinement_first_errors_keep_real_reader_claim_and_counter_order() {
+        let coefficient = raw_refinement_coefficient(3, [0; 5], true, false, false);
+        for field in 0..3 {
+            let cleanup = CodeBlockPlane {
+                width: 1,
+                height: 1,
+                coefficients: vec![coefficient],
+            };
+            let mut core = refinement_core(cleanup, &[1], true);
+            match field {
+                0 => core.statistics.coefficients_scanned = u32::MAX,
+                1 => core.statistics.coding_symbols = u32::MAX,
+                _ => core.statistics.refined_coefficients = u32::MAX,
+            }
+            assert_eq!(
+                core.magnitude_sample(0, 0, Magnitude::from_u64(1), 3),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(
+                core.output.coefficients()[0].magnitude,
+                if field == 0 { 3 } else { 4 }
+            );
+            assert_eq!(core.output.coefficients()[0].refined, field != 0);
+            assert_eq!(
+                core.statistics.coefficients_scanned,
+                if field == 0 { u32::MAX } else { 1 }
+            );
+            assert_eq!(
+                core.statistics.coding_symbols,
+                if field == 1 {
+                    u32::MAX
+                } else {
+                    u32::from(field == 2)
+                }
+            );
+            assert_eq!(
+                core.statistics.refined_coefficients,
+                if field == 2 { u32::MAX } else { 0 }
+            );
+            assert_eq!(
+                core.readers.reverse.unwrap().physical_bits_read,
+                u64::from(field != 0)
+            );
+            assert_eq!(core.readers.claimed, [u8::from(field != 0)]);
+        }
+        let mut work = refinement_core(
+            CodeBlockPlane {
+                width: 1,
+                height: 1,
+                coefficients: vec![coefficient],
+            },
+            &[1],
+            true,
+        );
+        work.readers.reverse.as_mut().unwrap().maximum_work_units = 0;
+        assert_eq!(
+            work.magnitude_sample(0, 0, Magnitude::from_u64(1), 3),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 1,
+            })
+        );
+        assert_eq!(work.output.coefficients()[0], coefficient);
+        assert_eq!(
+            (
+                work.readers.reverse.unwrap().physical_bits_read,
+                work.readers.claimed.as_slice()
+            ),
+            (1, &[0][..])
+        );
+        assert_eq!(
+            (
+                work.statistics.coefficients_scanned,
+                work.statistics.coding_symbols
+            ),
+            (1, 0)
+        );
+
+        let mut cleanup = CodeBlockPlane::new(2, 1).unwrap();
+        cleanup.coefficients[0] = coefficient;
+        let mut core = refinement_core(cleanup.clone(), &[0xff], true);
+        core.magnitude_pass(2, 1, Magnitude::from_u64(1), 2)
+            .unwrap();
+        let discovery = core.output.clone();
+        let (result, phase) = run_ht_significance_pass(
+            HtSigpropPlaneState { core, discovery },
+            2,
+            1,
+            Magnitude::from_u64(1),
+            false,
+        );
+        assert_eq!(result, Err(invalid_code_block()));
+        assert!(phase.core.output.coefficients()[0].refined);
+        assert!(!phase.core.output.coefficients()[1].significant);
+        assert_eq!(
+            (
+                phase.core.readers.forward.physical_bits_read,
+                phase.core.readers.reverse.unwrap().physical_bits_read
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            (
+                phase.core.readers.claimed.as_slice(),
+                phase.core.readers.stuffed.as_slice()
+            ),
+            (&[1][..], &[0x80][..])
+        );
+        assert_eq!(
+            (
+                phase.core.statistics.coefficients_scanned,
+                phase.core.statistics.coding_symbols,
+                phase.core.statistics.refined_coefficients
+            ),
+            (4, 1, 1)
+        );
+        assert_eq!(
+            decode_ht_refinement_plane(
+                &cleanup,
+                refinement_segment(&[0xff]),
+                2,
+                2,
+                false,
+                &ResourceLimits::default()
+            ),
+            Err(invalid_code_block())
+        );
+        assert_eq!(cleanup.coefficients()[0], coefficient);
+    }
+
+    #[test]
+    fn ht_full_refinement_native_rejections_overflow_underflow_and_zero_are_exact() {
+        let limits = ResourceLimits::default();
+        let empty = CodeBlockPlane::new(1, 1).unwrap();
+        for passes in 0_u8..=u8::MAX {
+            for planes in [0_u16, 1, 2, 292, 293, u16::MAX] {
+                let result = decode_ht_refinement_plane(
+                    &empty,
+                    refinement_segment(&[]),
+                    passes,
+                    planes,
+                    false,
+                    &limits,
+                );
+                if !(1..=2).contains(&passes) || !(2..=292).contains(&planes) {
+                    assert_eq!(result, Err(invalid_code_block()));
+                } else {
+                    let (output, stats) = result.unwrap();
+                    assert_eq!(output, empty);
+                    assert_eq!(
+                        stats,
+                        Tier1PassStatistics {
+                            coefficients_scanned: u32::from(passes),
+                            ..Tier1PassStatistics::default()
+                        }
+                    );
+                }
+            }
+        }
+        for (low, high, bytes, delta, error) in [
+            (u64::MAX, [u64::MAX; 5], &[1][..], 1, arithmetic_overflow()),
+            (1, [0; 5], &[][..], 2, invalid_code_block()),
+            (1, [0; 5], &[][..], 1, invalid_code_block()),
+        ] {
+            let coefficient = raw_refinement_coefficient(low, high, true, true, false);
+            let mut core = refinement_core(
+                CodeBlockPlane {
+                    width: 1,
+                    height: 1,
+                    coefficients: vec![coefficient],
+                },
+                bytes,
+                true,
+            );
+            assert_eq!(
+                core.magnitude_sample(0, 0, Magnitude::from_u64(delta), 3),
+                Err(error)
+            );
+            assert_eq!(core.output.coefficients()[0], coefficient);
+            assert_eq!(
+                (
+                    core.statistics.coefficients_scanned,
+                    core.statistics.coding_symbols,
+                    core.statistics.refined_coefficients
+                ),
+                (1, 0, 0)
+            );
+            assert_eq!(
+                core.readers.reverse.unwrap().physical_bits_read
+                    + core.readers.reverse.unwrap().fill_bits_read,
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn ht_refinement_neighbor_overflows_and_malformed_shapes_have_ordered_effects() {
+        let mut plane = CodeBlockPlane::new(2, 2).unwrap();
+        plane.coefficients[1] = raw_refinement_coefficient(1, [0; 5], true, false, false);
+        let mut summary = NeighborSummary {
+            horizontal_significant: 1,
+            horizontal_sign_balance: i8::MAX,
+            ..NeighborSummary::default()
+        };
+        assert_eq!(
+            plane.accumulate_neighbor(0, 0, (1, 0), NeighborKind::Horizontal, &mut summary),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(
+            (
+                summary.horizontal_significant,
+                summary.horizontal_sign_balance
+            ),
+            (2, i8::MAX)
+        );
+        summary.horizontal_significant = u8::MAX;
+        let before = summary;
+        assert_eq!(
+            plane.accumulate_neighbor(0, 0, (1, 0), NeighborKind::Horizontal, &mut summary),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(summary, before);
+        assert_eq!(
+            plane.accumulate_neighbor(0, 0, (-1, 0), NeighborKind::Horizontal, &mut summary),
+            Ok(())
+        );
+        assert_eq!(summary, before);
+
+        let mut discovery = plane.clone();
+        discovery.coefficients.truncate(2);
+        let mut patch = HtSignificancePatchState {
+            core: refinement_core(plane, &[1], false),
+            discovery,
+            pending: vec![(1, 1)],
+        };
+        let before = patch.discovery.clone();
+        assert_eq!(
+            patch.discover_sample(0, 0, Magnitude::from_u64(1), false),
+            Err(invalid_code_block())
+        );
+        assert_eq!(patch.discovery, before);
+        assert_eq!(patch.pending, [(1, 1)]);
+        assert_eq!(
+            (
+                patch.core.statistics.coefficients_scanned,
+                patch.core.statistics.coding_symbols,
+                patch.core.readers.forward.physical_bits_read
+            ),
+            (1, 0, 0)
+        );
+    }
+
+    #[test]
+    fn ht_full_symbol_caller_distinguishes_none_empty_refinement_and_pre_refinement_plane() {
+        let limits = ResourceLimits::default();
+        for (refinement, passes, magnitude, refined, scanned, symbols, refined_count, retained) in [
+            (None, 1, 3, false, 1, 1, 0, 0),
+            (Some(&[][..]), 2, 3, false, 2, 1, 0, 1),
+            (Some(&[][..]), 3, 2, true, 3, 2, 1, 2),
+            (Some(&[1][..]), 3, 3, true, 3, 2, 1, 2),
+        ] {
+            let segments = parse_ht_block_segments(&[0, 0x63, 0], refinement, &limits).unwrap();
+            let mut decoder = cleanup_caller_decoder();
+            decoder.maximum_passes = 4;
+            let mut expected = decoder.clone();
+            let cleanup_coefficient = CoefficientState {
+                magnitude: 3,
+                magnitude_high: [0; 5],
+                legacy_bitplane: None,
+                significant: true,
+                negative: true,
+                refined: false,
+            };
+            expected.plane = CodeBlockPlane {
+                width: 1,
+                height: 1,
+                coefficients: vec![CoefficientState {
+                    magnitude,
+                    refined,
+                    ..cleanup_coefficient
+                }],
+            };
+            expected.ht_cleanup_plane = Some(CodeBlockPlane {
+                width: 1,
+                height: 1,
+                coefficients: vec![cleanup_coefficient],
+            });
+            expected.ht_refinement_data = refinement.unwrap_or(&[]).to_vec();
+            expected.ht_refinement_passes = retained;
+            expected.ht_decoded_bitplanes = 2;
+            expected.ht_current_set_has_cleanup = true;
+            expected.ht_sets_seen += 1;
+            expected.next_pass += passes;
+            expected.decoded_segments += if refinement.is_some() { 2 } else { 1 };
+            expected.decoded_bytes += if refinement == Some(&[1][..]) { 4 } else { 3 };
+            let result = decoder
+                .decode_ht_coefficient_symbols(segments, passes, 1, 0, &limits)
+                .unwrap();
+            assert_eq!(
+                result,
+                Tier1SegmentDecode {
+                    passes,
+                    bytes: if refinement == Some(&[1][..]) { 4 } else { 3 },
+                    statistics: Tier1PassStatistics {
+                        coefficients_scanned: scanned,
+                        coding_symbols: symbols,
+                        newly_significant: 1,
+                        refined_coefficients: refined_count,
+                        run_mode_columns: 0
+                    }
+                }
+            );
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+        for (maximum_passes, passes, bytes, error) in [
+            (1, 2, &[][..], invalid_code_block()),
+            (4, 0, &[][..], invalid_code_block()),
+            (4, 257, &[][..], arithmetic_overflow()),
+            (4, 3, &[0xff][..], invalid_code_block()),
+        ] {
+            let segments = parse_ht_block_segments(&[0, 0x63, 0], Some(bytes), &limits).unwrap();
+            let mut decoder = cleanup_caller_decoder();
+            decoder.maximum_passes = maximum_passes;
+            let mut expected = decoder.clone();
+            expected.ht_refinement_data.clear();
+            expected.ht_refinement_passes = 0;
+            assert_eq!(
+                decoder.decode_ht_coefficient_symbols(segments, passes, 1, 0, &limits),
+                Err(error)
+            );
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+    }
+
+    #[test]
+    fn ht_public_segment_entry_binds_actual_pass_byte_work_admission_and_error_order() {
+        let default = ResourceLimits::default();
+        let pass_zero = default.with_maximum_code_block_passes(0).unwrap();
+        let byte_two = default.with_maximum_code_block_bytes(2).unwrap();
+        let byte_three = default.with_maximum_code_block_bytes(3).unwrap();
+        let work_four = default.with_maximum_work_units(4).unwrap();
+        for (maximum_passes, cleanup, limits, error) in [
+            (u32::MAX, &[0][..], default, arithmetic_overflow()),
+            (
+                u32::MAX,
+                &[0][..],
+                pass_zero,
+                DecodeError::LimitExceeded {
+                    resource: Resource::CodeBlockPasses,
+                    limit: 0,
+                    actual: 1,
+                },
+            ),
+            (
+                4,
+                &[0, 0, 0][..],
+                byte_two,
+                DecodeError::LimitExceeded {
+                    resource: Resource::CodeBlockBytes,
+                    limit: 2,
+                    actual: 3,
+                },
+            ),
+            (4, &[0, 0, 0][..], byte_three, invalid_code_block()),
+            (
+                4,
+                &[0, 0x63, 0][..],
+                byte_three,
+                DecodeError::LimitExceeded {
+                    resource: Resource::CodeBlockBytes,
+                    limit: 3,
+                    actual: 14,
+                },
+            ),
+            (
+                4,
+                &[0, 0x63, 0][..],
+                work_four,
+                DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: 4,
+                    actual: 5,
+                },
+            ),
+        ] {
+            let mut decoder = cleanup_caller_decoder();
+            decoder.maximum_passes = maximum_passes;
+            decoder.next_pass = 0;
+            decoder.ht_sets_seen = 0;
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_high_throughput_segments(cleanup, 1, None, 0, &limits),
+                Err(error)
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        let mut decoder = cleanup_caller_decoder();
+        decoder.maximum_passes = u32::MAX;
+        decoder.next_pass = u32::MAX;
+        decoder.ht_sets_seen = 1;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_high_throughput_segments(&[], 1, None, 0, &default),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.ht_sets_seen = 0;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_high_throughput_segments(&[], 1, None, 0, &pass_zero),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_public_segment_entry_keeps_none_and_some_empty_distinct_without_assumed_context() {
+        let limits = ResourceLimits::default();
+        for (refinement, refinement_passes, scanned, retained) in [
+            (None, 0, 1, 0),
+            (Some(&[][..]), 1, 2, 1),
+            (Some(&[][..]), 2, 3, 2),
+        ] {
+            let mut decoder = cleanup_caller_decoder();
+            decoder.maximum_passes = 4;
+            decoder.next_pass = 0;
+            decoder.ht_sets_seen = 0;
+            let before_legacy = format!("{:?}", decoder.legacy_segment);
+            let result = decoder
+                .decode_high_throughput_segments(
+                    &[0, 0x63, 0],
+                    1,
+                    refinement,
+                    refinement_passes,
+                    &limits,
+                )
+                .unwrap();
+            assert_eq!(
+                (
+                    result.passes,
+                    result.bytes,
+                    result.statistics.coefficients_scanned
+                ),
+                (u32::from(refinement_passes) + 1, 3, scanned)
+            );
+            assert_eq!(
+                (
+                    decoder.ht_refinement_passes,
+                    decoder.decoded_segments,
+                    decoder.decoded_bytes
+                ),
+                (retained, if refinement.is_none() { 8 } else { 9 }, 14)
+            );
+            assert_eq!(
+                decoder.plane.coefficients()[0].magnitude,
+                if refinement_passes == 2 { 2 } else { 3 }
+            );
+            assert_eq!(
+                decoder.plane.coefficients()[0].refined,
+                refinement_passes == 2
+            );
+            assert_eq!(format!("{:?}", decoder.legacy_segment), before_legacy);
+        }
+        for (refinement, count) in [(None, 1), (Some(&[][..]), 0)] {
+            let mut decoder = cleanup_caller_decoder();
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_high_throughput_segments(&[], 1, refinement, count, &limits),
+                Err(invalid_code_block())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
     }
 
     fn cleanup_caller_decoder() -> Tier1CodeBlockDecoder {
@@ -9960,7 +11316,14 @@ mod tests {
                 direction: HtStreamDirection::Reverse,
             },
         };
-        let mut readers = HtRefinementReaders::new(segment, true, &limits).unwrap();
+        let mut readers = ht_refinement_readers_from_inputs(
+            segment.significance_propagation().bytes(),
+            segment.magnitude_refinement().bytes(),
+            segment.encoded().len(),
+            true,
+            limits.maximum_work_units(),
+        )
+        .unwrap();
         assert!(readers.read_forward().unwrap());
         assert!(readers.read_reverse().is_err());
     }

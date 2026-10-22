@@ -3789,6 +3789,23 @@ pub open spec fn tier1_statistics_increment(
     }
 }
 
+pub open spec fn tier1_statistics_merge_step(
+    prior: (Result<(), crate::DecodeError>, crate::tier1::Tier1PassStatistics), field: u8, count: u32,
+) -> (Result<(), crate::DecodeError>, crate::tier1::Tier1PassStatistics) {
+    match prior.0 { Err(_) => prior, Ok(()) => tier1_statistics_increment(prior.1, field, count) }
+}
+
+pub open spec fn tier1_statistics_merge(state: crate::tier1::Tier1PassStatistics, other: crate::tier1::Tier1PassStatistics)
+    -> (Result<(), crate::DecodeError>, crate::tier1::Tier1PassStatistics) {
+    let result = tier1_statistics_increment(state, 0, other.coefficients_scanned);
+    let result = tier1_statistics_merge_step(result, 1, other.coding_symbols);
+    let result = tier1_statistics_merge_step(result, 2, other.newly_significant);
+    let result = tier1_statistics_merge_step(result, 3, other.refined_coefficients);
+    tier1_statistics_merge_step(result, 4, other.run_mode_columns)
+}
+
+pub open spec fn ht_copy_refinement_bytes(input: Seq<u8>) -> Result<Seq<u8>, crate::DecodeError> { Ok(input) }
+
 pub open spec fn tier1_raw_signed_coefficient(coefficient: Tier1RawCoefficient)
     -> Result<(Seq<u64>, nat, bool), crate::DecodeError>
     recommends coefficient.limbs.len() == 6,
@@ -3845,6 +3862,448 @@ pub struct Tier1LegacyFrame {
     pub decoded_bytes: u64,
     pub input: Seq<u8>,
     pub passes: u32,
+}
+
+pub open spec fn ht_neighbor_zero() -> crate::tier1::NeighborSummary {
+    crate::tier1::NeighborSummary {
+        horizontal_significant: 0, vertical_significant: 0, diagonal_significant: 0,
+        horizontal_sign_balance: 0, vertical_sign_balance: 0,
+    }
+}
+
+pub open spec fn ht_significant_neighbor_count(summary: crate::tier1::NeighborSummary) -> nat {
+    summary.horizontal_significant as nat + summary.vertical_significant as nat + summary.diagonal_significant as nat
+}
+
+pub open spec fn ht_significance_magnitude(decoded: u16) -> Result<(Seq<u64>, nat), crate::DecodeError> {
+    if decoded < 2 || decoded > 292 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else {
+        let scaled = 3nat * pow2((decoded - 2) as nat);
+        if scaled >= part1_magnitude_capacity() { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+        else { Ok((part1_magnitude_shift(part1_magnitude_left(
+            Seq::new(6, |i: int| if i == 0 { 3u64 } else { 0u64 }), (decoded - 2) as u16), 1), (scaled / 2) as nat)) }
+    }
+}
+
+pub open spec fn ht_refinement_delta(decoded: u16) -> Result<(Seq<u64>, nat), crate::DecodeError> {
+    if decoded < 2 || decoded > 292 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else if decoded == 2 { Ok((Seq::new(6, |i: int| if i == 0 { 1u64 } else { 0u64 }), 1)) }
+    else { Ok((part1_magnitude_bit((decoded - 3) as u16), pow2((decoded - 3) as nat))) }
+}
+
+pub open spec fn ht_cleanup_significance(coefficients: Seq<Tier1RawCoefficient>) -> Seq<bool> {
+    Seq::new(coefficients.len(), |i: int| coefficients[i].significant)
+}
+
+pub open spec fn ht_apply_refinement(
+    plane: Tier1RawPlane, x: u16, y: u16, delta: nat, bit: bool,
+) -> (Result<(), crate::DecodeError>, Tier1RawPlane)
+    recommends forall |i: int| 0 <= i < plane.coefficients.len() ==> plane.coefficients[i].limbs.len() == 6,
+{
+    if delta == 0 && !bit { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), plane) }
+    else {
+        match tier1_raw_plane_index(plane, x, y) {
+            Err(error) => (Err(error), plane),
+            Ok(index) => {
+                let coefficient = plane.coefficients[index as int];
+                let value = part1_magnitude_value(coefficient.limbs);
+                let changed = if bit { value + delta } else { (value - delta) as nat };
+                if !coefficient.significant || (!bit && value < delta) || changed == 0 {
+                    (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), plane)
+                } else if changed >= part1_magnitude_capacity() {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), plane)
+                } else {
+                    (Ok(()), Tier1RawPlane { coefficients: plane.coefficients.update(index as int,
+                        Tier1RawCoefficient { limbs: tier1_value_limbs(changed), refined: true, ..coefficient }), ..plane })
+                }
+            },
+        }
+    }
+}
+
+pub struct HtRefinementCoreState {
+    pub output: Tier1RawPlane,
+    pub readers: HtRefinementReadersState,
+    pub cleanup_significant: Seq<bool>,
+    pub statistics: crate::tier1::Tier1PassStatistics,
+}
+
+pub type HtRefinementCoreResult = (Result<(), crate::DecodeError>, HtRefinementCoreState);
+
+pub open spec fn ht_refinement_count(state: HtRefinementCoreState, field: u8) -> HtRefinementCoreResult {
+    let count = tier1_statistics_increment(state.statistics, field, 1);
+    (count.0, HtRefinementCoreState { statistics: count.1, ..state })
+}
+
+pub open spec fn ht_magref_sample(state: HtRefinementCoreState, x: u16, y: u16, delta: nat, bitplanes: u16)
+    -> HtRefinementCoreResult
+    recommends forall |i: int| 0 <= i < state.output.coefficients.len() ==> state.output.coefficients[i].limbs.len() == 6,
+{
+    let scanned = ht_refinement_count(state, 0);
+    match scanned.0 {
+        Err(_) => scanned,
+        Ok(()) => match tier1_raw_plane_index(scanned.1.output, x, y) {
+            Err(error) => (Err(error), scanned.1),
+            Ok(index) => if index >= scanned.1.cleanup_significant.len() {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), scanned.1)
+            } else if !scanned.1.cleanup_significant[index as int] { scanned }
+            else {
+                let read = ht_refinement_read_reverse(scanned.1.readers);
+                let state = HtRefinementCoreState { readers: read.1, ..scanned.1 };
+                match read.0 {
+                    Err(error) => (Err(error), state),
+                    Ok(bit) => {
+                        let store = ht_apply_refinement(state.output, x, y,
+                            if bitplanes == 2 && bit { 0nat } else { delta }, bit);
+                        let state = HtRefinementCoreState { output: store.1, ..state };
+                        match store.0 {
+                            Err(error) => (Err(error), state),
+                            Ok(()) => {
+                                let counted = ht_refinement_count(state, 1);
+                                match counted.0 { Err(_) => counted, Ok(()) => ht_refinement_count(counted.1, 3) }
+                            },
+                        }
+                    },
+                }
+            },
+        },
+    }
+}
+
+pub type HtDiscoveryResult = (Result<(), crate::DecodeError>, HtRefinementCoreState, Tier1RawPlane, Seq<(u16, u16)>);
+
+pub open spec fn ht_discover_sample_fields(
+    state: HtRefinementCoreState, discovery: Tier1RawPlane, pending: Seq<(u16, u16)>,
+    x: u16, y: u16, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtDiscoveryResult {
+    let scanned = ht_refinement_count(state, 0);
+    match scanned.0 {
+        Err(error) => (Err(error), scanned.1, discovery, pending),
+        Ok(()) => match tier1_raw_plane_coefficient(discovery, x, y) {
+            Err(error) => (Err(error), scanned.1, discovery, pending),
+            Ok(coefficient) => if coefficient.significant { (Ok(()), scanned.1, discovery, pending) }
+            else {
+                match ht_neighbors(discovery, x, y, causal) {
+                    Err(error) => (Err(error), scanned.1, discovery, pending),
+                    Ok(summary) => if ht_significant_neighbor_count(summary) == 0 {
+                        (Ok(()), scanned.1, discovery, pending)
+                    } else {
+                        let read = ht_refinement_read_forward(scanned.1.readers);
+                        let state = HtRefinementCoreState { readers: read.1, ..scanned.1 };
+                        match read.0 {
+                            Err(error) => (Err(error), state, discovery, pending),
+                            Ok(bit) => {
+                                let counted = ht_refinement_count(state, 1);
+                                match counted.0 {
+                                    Err(error) => (Err(error), counted.1, discovery, pending),
+                                    Ok(()) => if !bit { (Ok(()), counted.1, discovery, pending) } else {
+                                        let store = tier1_mark_coefficient(discovery, x, y, magnitude.0, magnitude.1, false);
+                                        (store.0, counted.1, store.1, if store.0.is_err() { pending } else { pending.push((x, y)) })
+                                    },
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        },
+    }
+}
+
+pub open spec fn ht_sign_sample(
+    state: HtRefinementCoreState, pending: Seq<(u16, u16)>, index: nat, magnitude: (Seq<u64>, nat),
+) -> HtRefinementCoreResult {
+    if index >= pending.len() { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let read = ht_refinement_read_forward(state.readers);
+        let state = HtRefinementCoreState { readers: read.1, ..state };
+        match read.0 {
+            Err(error) => (Err(error), state),
+            Ok(negative) => {
+                let store = tier1_mark_coefficient(state.output, pending[index as int].0, pending[index as int].1,
+                    magnitude.0, magnitude.1, negative);
+                let state = HtRefinementCoreState { output: store.1, ..state };
+                match store.0 {
+                    Err(error) => (Err(error), state),
+                    Ok(()) => {
+                        let counted = ht_refinement_count(state, 1);
+                        match counted.0 { Err(_) => counted, Ok(()) => ht_refinement_count(counted.1, 2) }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub struct HtSignificancePatchState {
+    pub core: HtRefinementCoreState,
+    pub discovery: Tier1RawPlane,
+    pub pending: Seq<(u16, u16)>,
+}
+
+pub type HtSignificancePatchResult = (Result<(), crate::DecodeError>, HtSignificancePatchState);
+
+pub open spec fn ht_discover_sample(
+    state: HtSignificancePatchState, x: u16, y: u16, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtSignificancePatchResult {
+    let result = ht_discover_sample_fields(state.core, state.discovery, state.pending, x, y, magnitude, causal);
+    (result.0, HtSignificancePatchState { core: result.1, discovery: result.2, pending: result.3 })
+}
+
+pub open spec fn ht_patch_sign_sample(
+    state: HtSignificancePatchState, index: nat, magnitude: (Seq<u64>, nat),
+) -> HtSignificancePatchResult {
+    let result = ht_sign_sample(state.core, state.pending, index, magnitude);
+    (result.0, HtSignificancePatchState { core: result.1, ..state })
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magref_rows(
+    state: HtRefinementCoreState, x: u16, stripe_y: u16, rows: nat, row: nat, delta: nat, bitplanes: u16,
+) -> HtRefinementCoreResult
+    recommends row <= rows <= 4,
+    decreases rows - row,
+{
+    if row >= rows { (Ok(()), state) }
+    else if stripe_y as nat + row > u16::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let step = ht_magref_sample(state, x, (stripe_y as nat + row) as u16, delta, bitplanes);
+        match step.0 { Err(_) => step, Ok(()) => ht_magref_rows(step.1, x, stripe_y, rows, row + 1, delta, bitplanes) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magref_columns(
+    state: HtRefinementCoreState, width: u16, stripe_y: u16, rows: nat, x: nat, delta: nat, bitplanes: u16,
+) -> HtRefinementCoreResult
+    recommends x <= width, rows <= 4,
+    decreases width as nat - x,
+{
+    if x >= width { (Ok(()), state) } else {
+        let step = ht_magref_rows(state, x as u16, stripe_y, rows, 0, delta, bitplanes);
+        match step.0 { Err(_) => step, Ok(()) => ht_magref_columns(step.1, width, stripe_y, rows, x + 1, delta, bitplanes) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magref_stripes(
+    state: HtRefinementCoreState, width: u16, height: u16, stripe_y: nat, delta: nat, bitplanes: u16,
+) -> HtRefinementCoreResult
+    recommends width <= 4096, height <= 4096, stripe_y <= height as nat + 3,
+    decreases (height as nat + 3 - stripe_y) / 4,
+{
+    if stripe_y >= height { (Ok(()), state) } else {
+        let rows = ht_stripe_rows(height as nat, stripe_y);
+        let step = ht_magref_columns(state, width, stripe_y as u16, rows, 0, delta, bitplanes);
+        match step.0 { Err(_) => step, Ok(()) => ht_magref_stripes(step.1, width, height, stripe_y + 4, delta, bitplanes) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_discovery_rows(
+    state: HtSignificancePatchState, x: u16, stripe_y: u16, rows: nat, row: nat, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtSignificancePatchResult
+    recommends row <= rows <= 4,
+    decreases rows - row,
+{
+    if row >= rows { (Ok(()), state) }
+    else if stripe_y as nat + row > u16::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let step = ht_discover_sample(state, x, (stripe_y as nat + row) as u16, magnitude, causal);
+        match step.0 { Err(_) => step, Ok(()) => ht_discovery_rows(step.1, x, stripe_y, rows, row + 1, magnitude, causal) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_discovery_columns(
+    state: HtSignificancePatchState, end: u16, stripe_y: u16, rows: nat, x: nat, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtSignificancePatchResult
+    recommends x <= end, rows <= 4,
+    decreases end as nat - x,
+{
+    if x >= end { (Ok(()), state) } else {
+        let step = ht_discovery_rows(state, x as u16, stripe_y, rows, 0, magnitude, causal);
+        match step.0 { Err(_) => step, Ok(()) => ht_discovery_columns(step.1, end, stripe_y, rows, x + 1, magnitude, causal) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_pending_signs(state: HtSignificancePatchState, index: nat, magnitude: (Seq<u64>, nat))
+    -> HtSignificancePatchResult
+    recommends index <= state.pending.len(),
+    decreases state.pending.len() - index,
+{
+    if index >= state.pending.len() { (Ok(()), state) } else {
+        let step = ht_patch_sign_sample(state, index, magnitude);
+        match step.0 { Err(_) => step, Ok(()) => ht_pending_signs(step.1, index + 1, magnitude) }
+    }
+}
+
+pub struct HtSigpropPlaneState {
+    pub core: HtRefinementCoreState,
+    pub discovery: Tier1RawPlane,
+}
+
+pub type HtSigpropPlaneResult = (Result<(), crate::DecodeError>, HtSigpropPlaneState);
+
+pub open spec fn ht_sigprop_patch(
+    state: HtSigpropPlaneState, start: u16, end: u16, stripe_y: u16, rows: nat, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtSigpropPlaneResult
+    recommends start <= end, rows <= 4,
+{
+    let patch = HtSignificancePatchState { core: state.core, discovery: state.discovery, pending: Seq::empty() };
+    let discovered = ht_discovery_columns(patch, end, stripe_y, rows, start as nat, magnitude, causal);
+    let signed = match discovered.0 { Err(_) => discovered, Ok(()) => ht_pending_signs(discovered.1, 0, magnitude) };
+    (signed.0, HtSigpropPlaneState { core: signed.1.core, discovery: signed.1.discovery })
+}
+
+#[verifier::opaque]
+pub open spec fn ht_sigprop_patches(
+    state: HtSigpropPlaneState, width: u16, stripe_y: u16, rows: nat, patch_x: nat, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtSigpropPlaneResult
+    recommends width <= 4096, patch_x <= width as nat + 3, rows <= 4,
+    decreases (width as nat + 3 - patch_x) / 4,
+{
+    if patch_x >= width { (Ok(()), state) } else {
+        let end = ht_patch_end(patch_x, width as nat) as u16;
+        let step = ht_sigprop_patch(state, patch_x as u16, end, stripe_y, rows, magnitude, causal);
+        match step.0 { Err(_) => step, Ok(()) => ht_sigprop_patches(step.1, width, stripe_y, rows, patch_x + 4, magnitude, causal) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_sigprop_stripes(
+    state: HtSigpropPlaneState, width: u16, height: u16, stripe_y: nat, magnitude: (Seq<u64>, nat), causal: bool,
+) -> HtSigpropPlaneResult
+    recommends width <= 4096, height <= 4096, stripe_y <= height as nat + 3,
+    decreases (height as nat + 3 - stripe_y) / 4,
+{
+    if stripe_y >= height { (Ok(()), state) } else {
+        let step = ht_sigprop_patches(state, width, stripe_y as u16, ht_stripe_rows(height as nat, stripe_y), 0, magnitude, causal);
+        match step.0 { Err(_) => step, Ok(()) => ht_sigprop_stripes(step.1, width, height, stripe_y + 4, magnitude, causal) }
+    }
+}
+
+pub open spec fn ht_refinement_plane_finish(result: HtSigpropPlaneResult, encoded: Seq<u8>)
+    -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError> {
+    match result.0 {
+        Err(error) => Err(error),
+        Ok(()) => match ht_refinement_finish(result.1.core.readers, encoded) {
+            Err(error) => Err(error), Ok(()) => Ok((result.1.core.output, result.1.core.statistics)),
+        },
+    }
+}
+
+pub open spec fn ht_refinement_significance(
+    state: HtRefinementCoreState, encoded: Seq<u8>, bitplanes: u16, causal: bool,
+) -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError> {
+    match ht_significance_magnitude(bitplanes) {
+        Err(error) => Err(error),
+        Ok(magnitude) => match tier1_duplicate_plane(state.output) {
+            Err(error) => Err(error),
+            Ok(discovery) => ht_refinement_plane_finish(ht_sigprop_stripes(
+                HtSigpropPlaneState { core: state, discovery },
+                state.output.width, state.output.height, 0, magnitude, causal), encoded),
+        },
+    }
+}
+
+pub open spec fn ht_refinement_plane(
+    cleanup: Tier1RawPlane, segment: HtRefinementSegmentState, passes: u8, bitplanes: u16, causal: bool, maximum_work: u64,
+) -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError>
+    recommends segment.encoded.len() <= usize::MAX,
+{
+    if passes == 0 || passes > 2 || bitplanes < 2 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else {
+        match tier1_duplicate_plane(cleanup) {
+            Err(error) => Err(error),
+            Ok(output) => match ht_refinement_readers_initial(segment.significance_propagation.bytes,
+                segment.magnitude_refinement.bytes, segment.encoded.len() as usize, passes == 2, maximum_work) {
+                Err(error) => Err(error),
+                Ok(readers) => {
+                    let state = HtRefinementCoreState { output, readers,
+                        cleanup_significant: ht_cleanup_significance(cleanup.coefficients), statistics: tier1_statistics_zero() };
+                    if passes == 2 {
+                        match ht_refinement_delta(bitplanes) {
+                            Err(error) => Err(error),
+                            Ok(delta) => {
+                                let refined = ht_magref_stripes(state, output.width, output.height, 0, delta.1, bitplanes);
+                                match refined.0 { Err(error) => Err(error),
+                                    Ok(()) => ht_refinement_significance(refined.1, segment.encoded, bitplanes, causal) }
+                            },
+                        }
+                    } else { ht_refinement_significance(state, segment.encoded, bitplanes, causal) }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn ht_neighbor_update(
+    state: crate::tier1::NeighborSummary, kind: u8, negative: bool,
+) -> (Result<(), crate::DecodeError>, crate::tier1::NeighborSummary) {
+    let sign = if negative { -1int } else { 1int };
+    if kind == 0 {
+        if state.horizontal_significant == u8::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+        else {
+            let state = crate::tier1::NeighborSummary { horizontal_significant: (state.horizontal_significant + 1) as u8, ..state };
+            let balance = state.horizontal_sign_balance as int + sign;
+            if balance < i8::MIN || balance > i8::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+            else { (Ok(()), crate::tier1::NeighborSummary { horizontal_sign_balance: balance as i8, ..state }) }
+        }
+    } else if kind == 1 {
+        if state.vertical_significant == u8::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+        else {
+            let state = crate::tier1::NeighborSummary { vertical_significant: (state.vertical_significant + 1) as u8, ..state };
+            let balance = state.vertical_sign_balance as int + sign;
+            if balance < i8::MIN || balance > i8::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+            else { (Ok(()), crate::tier1::NeighborSummary { vertical_sign_balance: balance as i8, ..state }) }
+        }
+    } else if state.diagonal_significant == u8::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else { (Ok(()), crate::tier1::NeighborSummary { diagonal_significant: (state.diagonal_significant + 1) as u8, ..state }) }
+}
+
+pub open spec fn ht_accumulate_neighbor(
+    plane: Tier1RawPlane, x: u16, y: u16, dx: i8, dy: i8, kind: u8, summary: crate::tier1::NeighborSummary,
+) -> (Result<(), crate::DecodeError>, crate::tier1::NeighborSummary) {
+    let nx = x as int + dx as int;
+    let ny = y as int + dy as int;
+    if nx < 0 || ny < 0 || nx >= plane.width || ny >= plane.height { (Ok(()), summary) }
+    else {
+        match tier1_raw_plane_coefficient(plane, nx as u16, ny as u16) {
+            Err(error) => (Err(error), summary),
+            Ok(coefficient) => if coefficient.significant { ht_neighbor_update(summary, kind, coefficient.negative) }
+                else { (Ok(()), summary) },
+        }
+    }
+}
+
+pub open spec fn ht_neighbor_then(
+    previous: (Result<(), crate::DecodeError>, crate::tier1::NeighborSummary),
+    plane: Tier1RawPlane, x: u16, y: u16, dx: i8, dy: i8, kind: u8,
+) -> (Result<(), crate::DecodeError>, crate::tier1::NeighborSummary) {
+    match previous.0 { Err(_) => previous, Ok(()) => ht_accumulate_neighbor(plane, x, y, dx, dy, kind, previous.1) }
+}
+
+pub open spec fn ht_neighbors(plane: Tier1RawPlane, x: u16, y: u16, vertical_causal: bool)
+    -> Result<crate::tier1::NeighborSummary, crate::DecodeError> {
+    match tier1_raw_plane_index(plane, x, y) {
+        Err(error) => Err(error),
+        Ok(_) => {
+            let state = ht_accumulate_neighbor(plane, x, y, (-1int) as i8, 0, 0, ht_neighbor_zero());
+            let state = ht_neighbor_then(state, plane, x, y, 1, 0, 0);
+            let state = ht_neighbor_then(state, plane, x, y, 0, (-1int) as i8, 1);
+            let state = ht_neighbor_then(state, plane, x, y, (-1int) as i8, (-1int) as i8, 2);
+            let state = ht_neighbor_then(state, plane, x, y, 1, (-1int) as i8, 2);
+            let state = if vertical_causal && y % 4 == 3 { state } else {
+                let state = ht_neighbor_then(state, plane, x, y, 0, 1, 1);
+                let state = ht_neighbor_then(state, plane, x, y, (-1int) as i8, 1, 2);
+                ht_neighbor_then(state, plane, x, y, 1, 1, 2)
+            };
+            match state.0 { Err(error) => Err(error), Ok(()) => Ok(state.1) }
+        },
+    }
 }
 
 pub struct Tier1DecoderState {
@@ -3949,6 +4408,114 @@ pub open spec fn ht_cleanup_symbols_only(
         Ok((output, cleanup, statistics, bitplanes)) => ht_store_coefficient_symbols(
             Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state },
             output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
+    }
+}
+
+pub open spec fn ht_coefficient_symbols(
+    state: Tier1DecoderState, segments: HtBlockSegmentsState, passes: u32,
+    maximum_u: u8, skipped_bitplanes: u16, maximum_work: u64,
+) -> HtDecoderResult {
+    match ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped_bitplanes, maximum_work) {
+        Err(error) => (Err(error), state),
+        Ok((output, cleanup, statistics, bitplanes)) => {
+            let state = Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state };
+            match segments.refinement {
+                None => ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
+                Some(segment) => {
+                    let refinement_passes = if passes == 0 { 0nat } else { (passes - 1) as nat };
+                    if refinement_passes > u8::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+                    else {
+                        match ht_refinement_plane(cleanup, segment, refinement_passes as u8, bitplanes,
+                            state.style.vertical_causal_context, maximum_work) {
+                            Err(error) => (Err(error), state),
+                            Ok((refined, refinement_statistics)) => {
+                                let merged = tier1_statistics_merge(statistics, refinement_statistics);
+                                match merged.0 {
+                                    Err(error) => (Err(error), state),
+                                    Ok(()) => match ht_copy_refinement_bytes(segment.encoded) {
+                                        Err(error) => (Err(error), state),
+                                        Ok(data) => ht_store_coefficient_symbols(Tier1DecoderState {
+                                            ht_refinement_data: data, ht_refinement_passes: refinement_passes as u8, ..state },
+                                            refined, cleanup, merged.1, bitplanes, passes, segments.bytes, true),
+                                    },
+                                }
+                            },
+                        }
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_significant_bitplanes(maximum_passes: u32) -> Result<u16, crate::DecodeError> {
+    let planes = (maximum_passes as nat + 2) / 3;
+    if maximum_passes as nat + 2 > u32::MAX || planes > u16::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else { Ok(planes as u16) }
+}
+
+pub open spec fn ht_block_coding_enabled(coding: crate::tier1::Tier1BlockCoding) -> bool {
+    !matches!(coding, crate::tier1::Tier1BlockCoding::Legacy)
+}
+
+pub open spec fn ht_segments_after_parse(
+    state: Tier1DecoderState, segments: HtBlockSegmentsState, passes: u32, refinement_passes: u8,
+    maximum_bytes: u64, maximum_work: u64,
+) -> HtDecoderResult {
+    let next_bytes = state.decoded_bytes as nat + segments.bytes as nat;
+    let coefficient_work = (state.plane.coefficients.len() as u64) as nat * (refinement_passes as nat + 1);
+    let work = coefficient_work + segments.bytes as nat + passes as nat;
+    if next_bytes > u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else if next_bytes > maximum_bytes {
+        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlockBytes,
+            limit: maximum_bytes, actual: next_bytes as u64 }), state)
+    } else if work > u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else if work > maximum_work {
+        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits,
+            limit: maximum_work, actual: work as u64 }), state)
+    } else {
+        let skipped = state.next_pass / 3;
+        if skipped > u16::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+        else {
+            let missing = match state.zero_bitplanes { None => 0nat, Some(value) => value as nat };
+            let maximum_u = part15_cleanup_u_bound(missing, skipped as nat, state.ht_magnitude_bound as nat) as u8;
+            ht_coefficient_symbols(state, segments, passes, maximum_u, skipped as u16, maximum_work)
+        }
+    }
+}
+
+pub open spec fn ht_decode_segments(
+    state: Tier1DecoderState, cleanup: Seq<u8>, cleanup_passes: u8, refinement: Option<Seq<u8>>,
+    refinement_passes: u8, maximum_passes: u32, maximum_bytes: u64, maximum_work: u64,
+) -> HtDecoderResult {
+    if !ht_block_coding_enabled(state.style.block_coding) || state.next_pass % 3 != 0
+        || cleanup_passes != 1 || refinement_passes > 2 || (refinement_passes == 0) != refinement.is_none() {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else if state.ht_sets_seen > 0 && !state.allow_multiple_ht_sets {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        let passes = cleanup_passes as nat + refinement_passes as nat;
+        let next = state.next_pass as nat + passes;
+        if next > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+        else if next > state.maximum_passes { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+        else if next > maximum_passes {
+            (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlockPasses,
+                limit: maximum_passes as u64, actual: next as u64 }), state)
+        } else {
+            match ht_significant_bitplanes(state.maximum_passes) {
+                Err(error) => (Err(error), state),
+                Ok(bitplanes) => if refinement_passes > 0 && bitplanes < 2 {
+                    (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+                } else {
+                    match ht_parse_block_segments(cleanup, refinement, maximum_bytes) {
+                        Err(error) => (Err(error), state),
+                        Ok(segments) => ht_segments_after_parse(state, segments, passes as u32,
+                            refinement_passes, maximum_bytes, maximum_work),
+                    }
+                },
+            }
+        }
     }
 }
 

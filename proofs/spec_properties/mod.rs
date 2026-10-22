@@ -78,6 +78,46 @@ pub proof fn decoded_typed_component_preserves_kind_and_complete_length(componen
 }
 
 #[verifier::spinoff_prover]
+pub proof fn ht_full_refinement_rejects_front_parameters_before_any_plane_or_stream(
+    plane: crate::specs::Tier1RawPlane, segment: crate::specs::HtRefinementSegmentState,
+    passes: u8, planes: u16, causal: bool, work: u64,
+)
+    requires segment.encoded.len() <= usize::MAX, passes == 0 || passes > 2 || planes < 2,
+    ensures crate::specs::ht_refinement_plane(plane, segment, passes, planes, causal, work)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_delayed_signs_preserve_discovery_and_pending_on_every_return(
+    state: crate::specs::HtSignificancePatchState, index: nat, magnitude: (Seq<u64>, nat),
+)
+    ensures crate::specs::ht_patch_sign_sample(state, index, magnitude).1.discovery == state.discovery,
+        crate::specs::ht_patch_sign_sample(state, index, magnitude).1.pending == state.pending,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_neighbor_balance_overflow_keeps_the_prior_count_increment(state: crate::tier1::NeighborSummary)
+    requires state.horizontal_significant < u8::MAX, state.horizontal_sign_balance == i8::MAX,
+    ensures crate::specs::ht_neighbor_update(state, 0, false)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::tier1::NeighborSummary { horizontal_significant: (state.horizontal_significant + 1) as u8, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_complete_symbol_model_preserves_the_frozen_cleanup_only_profile(
+    state: crate::specs::Tier1DecoderState, segments: crate::specs::HtBlockSegmentsState,
+    passes: u32, maximum_u: u8, skipped: u16, work: u64,
+)
+    requires segments.refinement.is_none(),
+    ensures crate::specs::ht_coefficient_symbols(state, segments, passes, maximum_u, skipped, work)
+        == crate::specs::ht_cleanup_symbols_only(state, segments, passes, maximum_u, skipped, work),
+{
+}
+
+#[verifier::spinoff_prover]
 pub proof fn ht_cleanup_caller_preparation_error_preserves_complete_decoder(
     state: crate::specs::Tier1DecoderState, segments: crate::specs::HtBlockSegmentsState,
     passes: u32, maximum_u: u8, skipped: u16, work: u64,
