@@ -528,6 +528,54 @@ pub struct CodestreamBox<'a> {
     codestream_header: Option<CodestreamHeaderAssociation<'a>>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn associated_header_view(header: &Jp2Header) -> crate::specs::Part2AssociatedHeader {
+        (output_header_view(header), header.image, color_specification_method(&header.color))
+    }
+
+    pub closed spec fn codestream_header_association_view(stream: &CodestreamBox)
+        -> Option<(u64, Option<crate::specs::Part2AssociatedHeader>)>
+    {
+        match &stream.codestream_header {
+            None => None,
+            Some(association) => Some((association.header.offset,
+                match &association.parsed { None => None, Some(header) => Some(associated_header_view(header)) })),
+        }
+    }
+
+    pub open spec fn associated_header_outcome(result: Result<&Jp2Header, DecodeError>)
+        -> Result<crate::specs::Part2AssociatedHeader, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(header) => Ok(associated_header_view(header)) }
+    }
+
+    pub open spec fn associated_header_option(header: Option<&Jp2Header>) -> Option<crate::specs::Part2AssociatedHeader> {
+        match header { None => None, Some(header) => Some(associated_header_view(header)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures associated_header_outcome(result) == crate::specs::part2_associated_codestream_header(
+        codestream_header_association_view(selected), associated_header_view(fallback),
+    ),
+))]
+pub(crate) fn associated_header_for_codestream<'a>(
+    selected: &'a CodestreamBox<'_>,
+    fallback: &'a Jp2Header,
+) -> Result<&'a Jp2Header, DecodeError> {
+    match &selected.codestream_header {
+        Some(association) => match &association.parsed {
+            Some(header) => Ok(header),
+            None => Err(DecodeError::MalformedInput {
+                offset: association.header.offset,
+                kind: MalformedKind::MissingRequiredStructure,
+            }),
+        },
+        None => Ok(fallback),
+    }
+}
+
 impl<'a> CodestreamBox<'a> {
     pub const fn box_header(&self) -> BoxHeader {
         self.header
@@ -705,6 +753,17 @@ verus! {
     pub closed spec fn palette_view(palette: &Palette) -> crate::specs::Part2PaletteModel {
         (palette.entries, palette.columns@, palette.values@)
     }
+
+    pub open spec fn output_header_view(header: &Jp2Header) -> crate::specs::Part2OutputHeader {
+        (
+            match &header.palette { Some(palette) => Some(palette_view(palette)), None => None },
+            Seq::new(header.component_mappings@.len(), |i: int|
+                (header.component_mappings@[i].component, header.component_mappings@[i].mapping_type)),
+            Seq::new(header.channel_definition_records@.len(), |i: int|
+                (header.channel_definition_records@[i].channel,
+                    crate::image::channel_definition_view(header.channel_definition_records@[i].definition))),
+        )
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -860,6 +919,12 @@ pub fn inspect_jph<'a>(
     Ok(inspected)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_validate_selected_header(
+        header.image, codestream.image_size.width, codestream.image_size.height, codestream.image_size.components,
+        codestream.image_size.uniform_bit_depth, codestream.image_size.uniform_signed, offset,
+    ),
+))]
 fn validate_container_codestream(
     header: &Jp2Header,
     codestream: &CodestreamInfo,
@@ -869,10 +934,10 @@ fn validate_container_codestream(
         || header.image.height != codestream.image_size.height
         || header.image.components != codestream.image_size.components
     {
-        return Err(DecodeError::malformed(
+        return Err(DecodeError::MalformedInput {
             offset,
-            MalformedKind::ContainerCodestreamMismatch,
-        ));
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        });
     }
 
     if let ComponentBitDepth::Uniform { bits, signed } = header.image.bit_depth {
@@ -886,15 +951,21 @@ fn validate_container_codestream(
             _ => false,
         };
         if !matches_depth {
-            return Err(DecodeError::malformed(
+            return Err(DecodeError::MalformedInput {
                 offset,
-                MalformedKind::ContainerCodestreamMismatch,
-            ));
+                kind: MalformedKind::ContainerCodestreamMismatch,
+            });
         }
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_validate_selected_header(
+        header.image, codestream.image_size.width, codestream.image_size.height, codestream.image_size.components,
+        codestream.image_size.uniform_bit_depth, codestream.image_size.uniform_signed, offset,
+    ),
+))]
 pub(crate) fn validate_selected_header(
     header: &Jp2Header,
     codestream: &CodestreamInfo,
@@ -3698,6 +3769,109 @@ mod tests {
                 actual: 65,
             })
         ));
+    }
+
+    #[test]
+    fn complete_native_association_and_selected_header_validation_preserve_raw_choices() {
+        let bytes = minimal_jp2();
+        let parsed = parse(&bytes, &ResourceLimits::default()).unwrap();
+        let fallback = parsed.header().clone();
+        let mut explicit = fallback.clone();
+        explicit.image.width = u32::MAX;
+        explicit.color = ColorSpecification::enumerated(u32::MAX);
+        for offset in [0, 1, u64::MAX] {
+            let box_header = BoxHeader {
+                box_type: BoxType::JP2_BRAND,
+                offset,
+                header_length: 0,
+                total_length: 0,
+            };
+            let stream = CodestreamBox {
+                header: box_header,
+                data: &[],
+                codestream_header: None,
+            };
+            assert_eq!(
+                associated_header_for_codestream(&stream, &fallback),
+                Ok(&fallback)
+            );
+            let stream = CodestreamBox {
+                header: box_header,
+                data: &[],
+                codestream_header: Some(CodestreamHeaderAssociation {
+                    header: box_header,
+                    payload: &[],
+                    parsed: Some(explicit.clone()),
+                }),
+            };
+            assert_eq!(
+                associated_header_for_codestream(&stream, &fallback),
+                Ok(&explicit)
+            );
+            let stream = CodestreamBox {
+                header: box_header,
+                data: &[],
+                codestream_header: Some(CodestreamHeaderAssociation {
+                    header: box_header,
+                    payload: &[255],
+                    parsed: None,
+                }),
+            };
+            assert_eq!(
+                associated_header_for_codestream(&stream, &fallback),
+                Err(DecodeError::MalformedInput {
+                    offset,
+                    kind: MalformedKind::MissingRequiredStructure
+                })
+            );
+        }
+        let data = valid_codestream(64, 32);
+        let mut info = crate::codestream::parse(&data, &ResourceLimits::default()).unwrap();
+        let mut contexts = 0;
+        for header_width in [0, 64] {
+            for source_width in [0, 64] {
+                for bits in [0, 1, 8, u8::MAX] {
+                    for uniform in [None, Some(0), Some(8), Some(u8::MAX)] {
+                        for sign in [false, true] {
+                            for source_sign in [None, Some(false), Some(true)] {
+                                for variable in [false, true] {
+                                    for offset in [0, u64::MAX] {
+                                        let mut header = fallback.clone();
+                                        header.image.width = header_width;
+                                        header.image.bit_depth = if variable {
+                                            ComponentBitDepth::Variable
+                                        } else {
+                                            ComponentBitDepth::Uniform { bits, signed: sign }
+                                        };
+                                        info.image_size.width = source_width;
+                                        info.image_size.uniform_bit_depth = uniform;
+                                        info.image_size.uniform_signed = source_sign;
+                                        let expected = if header_width != source_width
+                                            || (!variable
+                                                && (uniform != Some(bits)
+                                                    || source_sign != Some(sign)))
+                                        {
+                                            Err(DecodeError::MalformedInput {
+                                                offset,
+                                                kind: MalformedKind::ContainerCodestreamMismatch,
+                                            })
+                                        } else {
+                                            Ok(())
+                                        };
+                                        assert_eq!(
+                                            validate_selected_header(&header, &info, offset),
+                                            expected
+                                        );
+                                        contexts += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 1_536);
     }
 
     #[test]

@@ -42,6 +42,16 @@ tile-part/component/resolution/layer cap getters expose only their real
 fields; defaults, limits, API and execution are unchanged. These owner
 facts feed the pending real progression iterator and packet caller, not a
 supplied coordinate or outcome bank.
+The complete actual native header/reader/raw-tree and single-precinct chain is
+now bound by39 finite qualified whole-result/input recipes. Start at
+`part1_packet_header_decode`, then `part1_precinct_headers` and
+`part1_precinct_packet`: raw native metadata and actual bytes flow through
+real style selection, SOP/prefix parsing, every mutable header association,
+alignment/EPH, whole preflight, actual mixed coefficient execution and final
+packed/inline accounting. Only packet state is restored on a header error;
+tree/reader and later coefficient/counter effects retain their exact native
+order. There is no supplied outcome/trace, normalized descriptor/window or
+adequate-budget premise. Full progression/reassembly remain separate.
 
 The actual component-style owner returns its complete native style/error with
 logical-count rejection before physical-array lookup, including contradictory
@@ -410,6 +420,28 @@ real format branch only: it adds no header validity, geometry, normalization,
 success, budget or trace premise. The HT packet branch and whole packet/header
 association remain separate integration obligations, not guessed outcomes.
 
+## Native container and selection output reading path
+
+Start at `part2_validate_selection`: checked native geometry, exact explicit
+tile sequence admission, bounding rectangle and row-major membership, actual
+region and ordered intersection selection. `part2_color_selection_requested`
+then composes the actual validation result with every reduced target value and
+sampling/registration-context update. Targets and regions are whole sequences,
+not opaque array identities. Native malformed counts, zero subsampling,
+overflow, saturated expansion and discard rejection remain results, not
+normalization or adequate-budget premises.
+
+`part2_associated_codestream_header` denotes the actual parsed/fallback/missing
+header choice and offset. `part2_validate_selected_header` preserves native
+uniform/variable depth checks. `part2_apply_associated_output`,
+`part2_convert_associated_selected` and
+`part2_finish_associated_selected_output` connect the real supplied typed
+image/header to complete mapping/admission/color/crop values and ordered errors.
+None identity and missing-header behavior are distinct. These are actual
+runtime producer boundaries on native parsed metadata/typed objects, not an
+uninterpreted or successful decoder/header trace. F8 still must compose the
+earlier compressed parser/entropy/reconstruction chain and frame results.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for
@@ -514,6 +546,28 @@ do not trigger physical-column-count/table/entry failures absent from the
 executed body. The actual full result also contains the output sample tag and
 all metadata. Whole-header cmap selection, CDEF routing, typed-image admission,
 parsing and selected-pixel joins remain outside these component results.
+
+### Complete supplied output header and image admission
+
+`part2_apply_output_header` composes actual ordered component selection and
+palette interpretation, actual ordered CDEF append, and
+`part2_typed_image_from_parts`. `jp2::output_header_view` projects the actual
+palette/mapping/definition vectors consumed by the executable body, not the
+stored count hints or unused image/color metadata. Empty CMAP copies every
+source. No well-formed-header, matching-shape, successful-lookup or
+adequate-budget condition is imposed. The recursive mapping/definition folds
+give sequential first-error semantics; the production proof supplies the
+actual vector states rather than accepting an execution trace as input.
+
+Final admission checks origin addition, u16 component-count conversion,
+actual component cap, and each component's area/sample count and cumulative
+eight-byte charge. `part2_typed_image_admission_prefix` retains the first
+failing admission even when later components have other defects.
+`part2_typed_image_component` distinguishes the real image-index error from
+the header's container-mismatch errors. Output geometry, sample values/tags,
+metadata and all ordered CDEF records are included. Unread native fields are
+deliberately not validated. Parsing, header association and selected target
+composition remain separate obligations.
 
 ## Frozen F5H cleanup-plane reconstruction profile
 
@@ -678,8 +732,9 @@ component counts and decomposition levels are not assumed to fit the physical
 
 The actual public `prepare_tile_component` now has a complete unconditional
 Result relation for its standard **None-kernel** call path. The same private
-`prepare_tile_component_with_kernel` body has the corresponding explicit
-`kernel.is_none()` result guarantee; its Some-kernel behavior is not inferred.
+`prepare_tile_component_with_kernel` body now additionally has the complete
+unconditional `part2_prepare_component` relation for actual None/Some inputs.
+The standard result is an exact None wrapper, not a weaker parallel semantics.
 Every actual raw plan/precinct/decoder/plane/coefficient field, style selector
 and cap is admitted. An Arbitrary transform with no kernel rejects exactly.
 No valid header, normalized coefficient, covered band, successful callee,
@@ -707,12 +762,31 @@ not the production transforms, with nonzero completed one-bit input blocks,
 mixed/multilevel directions, parity, reordered and ignored placements and
 ordered malformed/resource cases.
 
-F6 remains open: the Some-kernel/arbitrary coordinator profiles, general MCT
+The arbitrary reading path starts at `part2_inverse_arbitrary`, then scaling
+and the reverse-step/target folds. All native flags and raw coefficient bytes
+are included, even contradictory descriptors or width hints that the body does
+not validate. `part2_atk_fixed_coefficient` covers integer and raw binary
+32/64/128 formats; binary ties-even conversion and the existing right-shift
+cutoff are distinct from signed lifting bias and native truncating Q32
+division. The target fold preserves all already written samples on error.
+Singleton half and unvisited defects retain their actual bypass behavior.
+
+`part2_kernel_inverse_horizontal`, `part2_kernel_inverse_vertical` and
+`part2_kernel_inverse_level` select the actual supplied kernel or standard
+algorithm. `part2_prepare_resolution` still checks the resulting fraction
+against the style-derived expectation after execution, not as an input
+agreement premise. The generalized fold/reconstruct/component definitions
+share every earlier raw collection/placement/coverage/budget stage. Original
+standard names delegate to precisely the None case. Independent raw-context
+and arithmetic regressions supplement the full production proof; inventory
+and frozen numerical/resource qualification are not presumed from it.
+
+F6 remains open: general MCT
 paths and actual whole-decoder composition from
 coefficients through reconstruction, assembly and typed conversion
 into component-sample
-relations still require their own complete actual-stage theorems. Arbitrary
-Part-2 kernels and unavailable-reference adjudication remain separate, as do
+relations still require their own complete actual-stage theorems. Independent
+unavailable-reference adjudication remains separate, as do
 parsing and entropy decoding.
 
 ### Reconstruction reading path

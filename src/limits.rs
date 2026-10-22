@@ -155,7 +155,9 @@ impl ResourceLimits {
         self.maximum_pixels
     }
 
-    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_component_limit(self),))]
+    #[cfg_attr(verus_keep_ghost, verus_spec(value =>
+        ensures value == resource_component_limit(self),
+    ))]
     pub const fn maximum_components(&self) -> u16 {
         self.maximum_components
     }
