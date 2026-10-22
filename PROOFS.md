@@ -188,6 +188,7 @@ Read each contract according to its inputs and postcondition:
 | HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
 | HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
 | Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
+| Complete actual HT cleanup metadata traversal | Exact public/segment result for all native header values and actual byte/work limits, ordered row/pair/member quads, north/west/east contexts, suppression/UVLC/events, sample bounds/counts, collision, work/counter first errors and every metadata field | Numerical magnitude/sign/exponent or coefficient-plane reconstruction, refinement passes, placeholder/replacement execution, mixed sequencing or full F5H |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -447,6 +448,64 @@ available in this combined branch and are reused as needed. Full magnitude
 reconstruction still requires exact checked-add, checked-left-shift and
 low-limb contracts from that owner; their current executable methods do not
 have those functional postconditions. No magnitude source is modified.
+
+### Complete cleanup metadata boundary
+
+`decode_ht_cleanup_segment_metadata` now refines
+`ht_cleanup_segment_metadata` on **every return**. The public
+`decode_ht_cleanup_metadata` additionally composes the actual segment parser
+with its real code-block byte limit before the metadata header/work stage.
+There are no stream-validity, decode-success, sufficient-budget or selected
+trace preconditions on either entry point.
+
+The semantic reading path includes complete deterministic word/member,
+sample/quad, pair and row folds in `specs/mod.rs`, with full typed first-error
+propagation. Checked step/absorption lemmas justify the actual loops. The
+source is still one executable traversal: the existing bodies are moved to
+word, append, pair and row helpers, not copied into a proof-only decoder.
+Their internal geometry and allocated-length facts are established from
+the actual header and loop bounds; reader/event/work and significant-count
+domains are not restricted to successful states.
+
+The helpers expose complete disjoint mutable frames. A failed word read
+retains prior current-pattern/left-context updates and all actual reader
+effects. An invalid significant edge sample retains earlier sample counts
+but does not store a quad or tick. A counter error precedes the store; a
+work error from the final tick retains the stored quad and updated count.
+The row's previous-pattern vector is replaced only after the entire row
+succeeds. Opaque prefix folds retain their exact first error and state.
+Canonical unit-result postconditions are proved from the actual bodies to
+compose these folds, not assumed from success.
+
+All returned fields are covered: dimensions, every ordered quad field,
+significant-sample count, MEL/VLC bit counts and MEL events, including final
+collision and checked 32-bit counter conversion. Allocation requests and
+tick/read order are preserved. The unused **private** cleanup constructor
+adapter is removed; metadata and its two existing tests use the same proved
+free implementation. Public reader constructors are unchanged. Three local
+`too_many_arguments` style allowances keep immutable codec inputs and
+disjoint mutable frames explicit; no verifier/trust/termination limit is
+relaxed.
+
+The four new HT-only state properties use fresh solver contexts
+(`spinoff_prover`) so their finite mask/geometry queries do not perturb
+unrelated existing incremental solver queries. Their bodies and all limits
+remain checked unchanged; no F6/color proof is edited for solver sensitivity.
+
+Independent literal regressions include nine suppressed quads across odd
+rows/columns/pairs, exact 24-unit success versus 23-unit last-store failure,
+each actual northern/western context input, invalid edge-sample partial
+counts, native counter overflow before/after stores, and public
+parser/header error priority. Existing nonzero, fused-byte, UVLC and
+collision fixtures remain in place.
+
+This complete metadata boundary is independent of numerical magnitude
+reconstruction. The F6 owner has now supplied the requested full-domain
+interfaces separately in `f7807fe3bc6b2d3ccc622e2d3998eb3a39927535`;
+they are not merged or duplicated in this metadata head. A clean joined
+baseline is required before consuming them for the next magnitude/plane
+stage. Neither metadata nor its positive tests complete coefficient blocks
+or mixed sequencing.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit

@@ -32,6 +32,142 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_ht_metadata_pairs_step(
+    state: crate::specs::HtMetadataPairState, previous: Seq<u8>, row: nat,
+    width: u16, height: u16, maximum_u: u8, count: nat,
+)
+    requires 0 < previous.len() <= 32768, state.current.len() == previous.len(), row < 32768,
+        count < (previous.len() + 1) / 2,
+    ensures crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count + 1)
+        == match crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).0 {
+            Err(error) => (Err(error), crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).1),
+            Ok(()) => crate::specs::ht_metadata_pair(
+                crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).1,
+                previous, count * 2, row, width, height, maximum_u, row == 0),
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_pairs, 1);
+}
+
+pub proof fn production_ht_metadata_pairs_error(
+    state: crate::specs::HtMetadataPairState, previous: Seq<u8>, row: nat,
+    width: u16, height: u16, maximum_u: u8, count: nat, end: nat,
+)
+    requires 0 < previous.len() <= 32768, state.current.len() == previous.len(), row < 32768,
+        count <= end <= (previous.len() + 1) / 2,
+        crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).0.is_err(),
+    ensures crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, end)
+        == crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count),
+    decreases end - count,
+{
+    if end > count {
+        production_ht_metadata_pairs_error(state, previous, row, width, height, maximum_u, count, (end - 1) as nat);
+        production_ht_metadata_pairs_step(state, previous, row, width, height, maximum_u, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_ht_metadata_rows_step(
+    state: crate::specs::HtMetadataRowState, width: u16, height: u16, maximum_u: u8, count: nat,
+)
+    requires 0 < state.previous.len() <= 32768, count < 32768,
+    ensures crate::specs::ht_metadata_rows(state, width, height, maximum_u, count + 1)
+        == match crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).0 {
+            Err(error) => (Err(error), crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).1),
+            Ok(()) => crate::specs::ht_metadata_row(
+                crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).1,
+                count, width, height, maximum_u),
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_rows, 1);
+}
+
+pub proof fn production_ht_metadata_rows_error(
+    state: crate::specs::HtMetadataRowState, width: u16, height: u16, maximum_u: u8, count: nat, end: nat,
+)
+    requires 0 < state.previous.len() <= 32768, count <= end <= 32768,
+        crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).0.is_err(),
+    ensures crate::specs::ht_metadata_rows(state, width, height, maximum_u, end)
+        == crate::specs::ht_metadata_rows(state, width, height, maximum_u, count),
+    decreases end - count,
+{
+    if end > count {
+        production_ht_metadata_rows_error(state, width, height, maximum_u, count, (end - 1) as nat);
+        production_ht_metadata_rows_step(state, width, height, maximum_u, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_ht_metadata_emits_unfold(
+    state: crate::specs::HtMetadataPairState, words: Seq<u16>, contexts: Seq<u8>, values: [u8; 2],
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool, member: nat,
+)
+    requires member <= 2, words.len() == 2, contexts.len() == 2, pair < 32768, row < 32768,
+        state.current.len() <= 32768,
+    ensures crate::specs::ht_metadata_emits_run(state, words, contexts, values, pair, row, width, height, maximum_u, initial, member)
+        == if member >= 2 || pair + member >= state.current.len() { (Ok(()), state) } else {
+            let index = pair + member;
+            let emit = crate::specs::ht_metadata_emit(state.readers, state.quads, state.significant, crate::specs::HtMetadataQuadInput {
+                index: index as usize, row: row as usize, width, height, maximum_u,
+                word: words[member as int], context: contexts[member as int],
+                significance: state.current[index as int], u_value: values[member as int], initial,
+            });
+            let changed = crate::specs::HtMetadataPairState {
+                readers: emit.1, quads: emit.2, significant: emit.3, ..state
+            };
+            match emit.0 {
+                Err(error) => (Err(error), changed),
+                Ok(()) => crate::specs::ht_metadata_emits_run(changed, words, contexts, values, pair, row, width, height, maximum_u, initial, member + 1),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_emits_run, 1);
+}
+
+pub proof fn production_ht_metadata_words_unfold(
+    state: crate::specs::HtMetadataWordsState, previous: Seq<u8>, pair: nat, initial: bool, member: nat,
+)
+    requires member <= 2, state.words.len() == 2, state.contexts.len() == 2, state.current.len() == previous.len(),
+    ensures crate::specs::ht_metadata_words_run(state, previous, pair, initial, member)
+        == if member >= 2 || pair + member >= previous.len() { (Ok(()), state) } else {
+            let index = pair + member;
+            let context = crate::specs::ht_metadata_context(previous, state.left, index, initial);
+            let read = crate::specs::ht_cleanup_quad_word(state.readers, crate::tier1::ht_vlc_table_view(initial), context);
+            let consumed = crate::specs::HtMetadataWordsState { readers: read.1, ..state };
+            match read.0 {
+                Err(error) => (Err(error), consumed),
+                Ok(word) => {
+                    let significance = ((word >> 4u16) & 0x0fu16) as u8;
+                    crate::specs::ht_metadata_words_run(crate::specs::HtMetadataWordsState {
+                        current: state.current.update(index as int, significance),
+                        left: crate::specs::ht_metadata_left(significance, initial),
+                        words: state.words.update(member as int, word),
+                        contexts: state.contexts.update(member as int, context), ..consumed
+                    }, previous, pair, initial, member + 1)
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_words_run, 1);
+}
+
+pub proof fn production_ht_metadata_samples_unfold(
+    significant: u16, significance: u8, x: u16, y: u16, width: u16, height: u16, sample: u8,
+)
+    requires sample <= 4, x <= 65534, y <= 65534,
+    ensures crate::specs::ht_metadata_samples(significant, significance, x, y, width, height, sample)
+        == if sample >= 4 { (Ok(()), significant) }
+        else if significance & (1u8 << sample) == 0 {
+            crate::specs::ht_metadata_samples(significant, significance, x, y, width, height, (sample + 1) as u8)
+        } else if x as nat + (sample >> 1u8) as nat >= width || y as nat + (sample & 1u8) as nat >= height {
+            (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), significant)
+        } else if significant == u16::MAX {
+            (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), significant)
+        } else {
+            crate::specs::ht_metadata_samples((significant + 1) as u16, significance, x, y, width, height, (sample + 1) as u8)
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_samples, 1);
+}
+
 pub proof fn production_color_definition_presence_step(
     definitions: Seq<Seq<crate::specs::ColorDefinition>>, count: nat,
 )

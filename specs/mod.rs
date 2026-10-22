@@ -2557,6 +2557,367 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub struct HtMetadataWordsState {
+    pub readers: HtCleanupReaderState,
+    pub current: Seq<u8>,
+    pub left: u8,
+    pub words: Seq<u16>,
+    pub contexts: Seq<u8>,
+}
+
+pub type HtMetadataWordsResult = (
+    Result<(Seq<u16>, Seq<u8>), crate::DecodeError>, HtCleanupReaderState, Seq<u8>, u8,
+);
+
+pub open spec fn ht_metadata_context(previous: Seq<u8>, left: u8, index: nat, initial: bool) -> u8
+    recommends index < previous.len(),
+{
+    if initial { left } else {
+        ht_noninitial_vlc_context(left,
+            if index > 0 { previous[(index - 1) as int] } else { 0 },
+            previous[index as int],
+            if index + 1 < previous.len() { previous[(index + 1) as int] } else { 0 })
+    }
+}
+
+pub open spec fn ht_metadata_left(significance: u8, initial: bool) -> u8 {
+    if initial { (significance & 1u8) | ((significance & 0x0eu8) >> 1u8) }
+    else if significance & 0x0cu8 != 0 { 2 } else { 0 }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_words_run(
+    state: HtMetadataWordsState, previous: Seq<u8>, pair: nat, initial: bool, member: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataWordsState)
+    recommends member <= 2, state.words.len() == 2, state.contexts.len() == 2,
+        state.current.len() == previous.len(),
+    decreases 2nat - member,
+{
+    if member >= 2 || pair + member >= previous.len() { (Ok(()), state) } else {
+        let index = pair + member;
+        let context = ht_metadata_context(previous, state.left, index, initial);
+        let read = ht_cleanup_quad_word(state.readers, crate::tier1::ht_vlc_table_view(initial), context);
+        let consumed = HtMetadataWordsState { readers: read.1, ..state };
+        match read.0 {
+            Err(error) => (Err(error), consumed),
+            Ok(word) => {
+                let significance = ((word >> 4u16) & 0x0fu16) as u8;
+                ht_metadata_words_run(HtMetadataWordsState {
+                    current: state.current.update(index as int, significance),
+                    left: ht_metadata_left(significance, initial),
+                    words: state.words.update(member as int, word),
+                    contexts: state.contexts.update(member as int, context), ..consumed
+                }, previous, pair, initial, member + 1)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_metadata_words_finish(result: (Result<(), crate::DecodeError>, HtMetadataWordsState))
+    -> HtMetadataWordsResult
+{
+    (match result.0 { Err(error) => Err(error), Ok(()) => Ok((result.1.words, result.1.contexts)) },
+        result.1.readers, result.1.current, result.1.left)
+}
+
+pub open spec fn ht_metadata_words(
+    readers: HtCleanupReaderState, current: Seq<u8>, left: u8,
+    previous: Seq<u8>, pair: nat, initial: bool,
+) -> HtMetadataWordsResult
+    recommends current.len() == previous.len(),
+{
+    ht_metadata_words_finish(ht_metadata_words_run(HtMetadataWordsState {
+        readers, current, left, words: Seq::new(2, |i: int| 0u16), contexts: Seq::new(2, |i: int| 0u8),
+    }, previous, pair, initial, 0))
+}
+
+pub struct HtMetadataQuadInput {
+    pub index: usize,
+    pub row: usize,
+    pub width: u16,
+    pub height: u16,
+    pub maximum_u: u8,
+    pub word: u16,
+    pub context: u8,
+    pub significance: u8,
+    pub u_value: u8,
+    pub initial: bool,
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_samples(
+    significant: u16, significance: u8, x: u16, y: u16, width: u16, height: u16, sample: u8,
+) -> (Result<(), crate::DecodeError>, u16)
+    recommends sample <= 4, x <= 65534, y <= 65534,
+    decreases 4nat - sample,
+{
+    if sample >= 4 { (Ok(()), significant) }
+    else if significance & (1u8 << sample) == 0 {
+        ht_metadata_samples(significant, significance, x, y, width, height, (sample + 1) as u8)
+    } else if x as nat + (sample >> 1u8) as nat >= width
+        || y as nat + (sample & 1u8) as nat >= height {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), significant)
+    } else if significant == u16::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), significant)
+    } else {
+        ht_metadata_samples((significant + 1) as u16, significance, x, y, width, height, (sample + 1) as u8)
+    }
+}
+
+pub type HtMetadataEmitResult = (
+    Result<(), crate::DecodeError>, HtCleanupReaderState, Seq<crate::tier1::HtQuadMetadata>, u16,
+);
+
+pub open spec fn ht_metadata_emit_after_samples(
+    result: (Result<(), crate::DecodeError>, u16),
+    readers: HtCleanupReaderState, quads: Seq<crate::tier1::HtQuadMetadata>, input: HtMetadataQuadInput,
+) -> HtMetadataEmitResult {
+    match result.0 {
+        Err(error) => (Err(error), readers, quads, result.1),
+        Ok(()) => {
+            let quad = crate::tier1::HtQuadMetadata {
+                x: (input.index * 2) as u16, y: (input.row * 2) as u16,
+                context: input.context, initial_row: input.initial,
+                significance: input.significance,
+                embedded_magnitude: ((input.word >> 8u16) & 0x0fu16) as u8,
+                embedded_bit_mask: ((input.word >> 12u16) & 0x0fu16) as u8,
+                u_offset: input.word & 8u16 != 0, u_base: input.u_value,
+                codeword_bits: (input.word & 7u16) as u8,
+            };
+            let tick = ht_cleanup_reader_tick(readers);
+            (tick.0, tick.1, quads.push(quad), result.1)
+        },
+    }
+}
+
+pub open spec fn ht_metadata_emit(
+    readers: HtCleanupReaderState, quads: Seq<crate::tier1::HtQuadMetadata>,
+    significant: u16, input: HtMetadataQuadInput,
+) -> HtMetadataEmitResult
+    recommends input.index < 32768, input.row < 32768,
+{
+    let x = (input.index * 2) as u16;
+    let y = (input.row * 2) as u16;
+    if input.u_value > input.maximum_u
+        || !ht_quad_origin_valid(x as nat, y as nat, input.width as nat, input.height as nat) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), readers, quads, significant)
+    } else {
+        ht_metadata_emit_after_samples(ht_metadata_samples(significant, input.significance, x, y,
+            input.width, input.height, 0), readers, quads, input)
+    }
+}
+
+pub struct HtMetadataPairState {
+    pub readers: HtCleanupReaderState,
+    pub quads: Seq<crate::tier1::HtQuadMetadata>,
+    pub current: Seq<u8>,
+    pub significant: u16,
+    pub left: u8,
+}
+
+pub open spec fn ht_metadata_u_values(readers: HtCleanupReaderState, words: Seq<u16>, initial: bool)
+    -> (Result<[u8; 2], crate::DecodeError>, HtCleanupReaderState)
+    recommends words.len() == 2,
+{
+    let mode = (if words[0] & 8u16 != 0 { 1u8 } else { 0u8 })
+        | (if words[1] & 8u16 != 0 { 2u8 } else { 0u8 });
+    let event = if initial && mode == 3 { ht_cleanup_mel_event(readers) } else { (Ok(false), readers) };
+    match event.0 {
+        Err(error) => (Err(error), event.1),
+        Ok(four) => {
+            let selected = if four { 4u8 } else { mode };
+            if initial { ht_uvlc_initial(event.1, selected) } else { ht_uvlc_non_initial(event.1, selected) }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_emits_run(
+    state: HtMetadataPairState, words: Seq<u16>, contexts: Seq<u8>, values: [u8; 2],
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool, member: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends member <= 2, words.len() == 2, contexts.len() == 2, pair < 32768, row < 32768,
+        state.current.len() <= 32768,
+    decreases 2nat - member,
+{
+    if member >= 2 || pair + member >= state.current.len() { (Ok(()), state) } else {
+        let index = pair + member;
+        let emit = ht_metadata_emit(state.readers, state.quads, state.significant, HtMetadataQuadInput {
+            index: index as usize, row: row as usize, width, height, maximum_u,
+            word: words[member as int], context: contexts[member as int],
+            significance: state.current[index as int], u_value: values[member as int], initial,
+        });
+        let changed = HtMetadataPairState {
+            readers: emit.1, quads: emit.2, significant: emit.3, ..state
+        };
+        match emit.0 {
+            Err(error) => (Err(error), changed),
+            Ok(()) => ht_metadata_emits_run(changed, words, contexts, values,
+                pair, row, width, height, maximum_u, initial, member + 1),
+        }
+    }
+}
+
+pub open spec fn ht_metadata_pair_after_words(
+    words: HtMetadataWordsResult, quads: Seq<crate::tier1::HtQuadMetadata>, significant: u16,
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends pair < 32768, row < 32768, words.2.len() <= 32768,
+{
+    let changed = HtMetadataPairState { readers: words.1, quads, significant, current: words.2, left: words.3 };
+    match words.0 {
+        Err(error) => (Err(error), changed),
+        Ok((cache, contexts)) => {
+            let values = ht_metadata_u_values(changed.readers, cache, initial);
+            let consumed = HtMetadataPairState { readers: values.1, ..changed };
+            match values.0 {
+                Err(error) => (Err(error), consumed),
+                Ok(values) => ht_metadata_emits_run(consumed, cache, contexts, values,
+                    pair, row, width, height, maximum_u, initial, 0),
+            }
+        },
+    }
+}
+
+pub open spec fn ht_metadata_pair(
+    state: HtMetadataPairState, previous: Seq<u8>,
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends pair < 32768, row < 32768, state.current.len() == previous.len() <= 32768,
+{
+    ht_metadata_pair_after_words(
+        ht_metadata_words(state.readers, state.current, state.left, previous, pair, initial),
+        state.quads, state.significant, pair, row, width, height, maximum_u, initial)
+}
+
+pub struct HtMetadataRowState {
+    pub readers: HtCleanupReaderState,
+    pub quads: Seq<crate::tier1::HtQuadMetadata>,
+    pub previous: Seq<u8>,
+    pub significant: u16,
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_pairs(
+    state: HtMetadataPairState, previous: Seq<u8>, row: nat,
+    width: u16, height: u16, maximum_u: u8, count: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends 0 < previous.len() <= 32768, state.current.len() == previous.len(),
+        row < 32768, count <= (previous.len() + 1) / 2,
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_metadata_pairs(state, previous, row, width, height, maximum_u, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(()) => ht_metadata_pair(prefix.1, previous, 2 * ((count - 1) as nat), row, width, height, maximum_u, row == 0),
+        }
+    }
+}
+
+pub open spec fn ht_metadata_row_initial(state: HtMetadataRowState) -> HtMetadataPairState {
+    HtMetadataPairState {
+        readers: state.readers, quads: state.quads, significant: state.significant,
+        current: Seq::new(state.previous.len(), |i: int| 0u8), left: 0,
+    }
+}
+
+pub open spec fn ht_metadata_row_finish(
+    result: (Result<(), crate::DecodeError>, HtMetadataPairState), previous: Seq<u8>,
+) -> (Result<(), crate::DecodeError>, HtMetadataRowState) {
+    (result.0, HtMetadataRowState {
+        readers: result.1.readers, quads: result.1.quads, significant: result.1.significant,
+        previous: if result.0.is_ok() { result.1.current } else { previous },
+    })
+}
+
+pub open spec fn ht_metadata_row(
+    state: HtMetadataRowState, row: nat, width: u16, height: u16, maximum_u: u8,
+) -> (Result<(), crate::DecodeError>, HtMetadataRowState)
+    recommends 0 < state.previous.len() <= 32768, row < 32768,
+{
+    ht_metadata_row_finish(ht_metadata_pairs(ht_metadata_row_initial(state), state.previous, row,
+        width, height, maximum_u, (state.previous.len() + 1) / 2), state.previous)
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_rows(
+    state: HtMetadataRowState, width: u16, height: u16, maximum_u: u8, count: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataRowState)
+    recommends 0 < state.previous.len() <= 32768, count <= 32768,
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_metadata_rows(state, width, height, maximum_u, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(()) => ht_metadata_row(prefix.1, (count - 1) as nat, width, height, maximum_u),
+        }
+    }
+}
+
+pub struct HtMetadataOutput {
+    pub width: u16,
+    pub height: u16,
+    pub quads: Seq<crate::tier1::HtQuadMetadata>,
+    pub significant_samples: u16,
+    pub mel_bits: u32,
+    pub vlc_bits: u32,
+    pub mel_events: u32,
+}
+
+pub open spec fn ht_metadata_finish(
+    result: (Result<(), crate::DecodeError>, HtMetadataRowState), width: u16, height: u16,
+) -> Result<HtMetadataOutput, crate::DecodeError> {
+    match result.0 {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let state = result.1;
+            match ht_cleanup_readers_finish(state.readers) {
+                Err(error) => Err(error),
+                Ok(()) => if state.readers.mel.bits_read > u32::MAX || state.readers.vlc.bits_read > u32::MAX {
+                    Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    Ok(HtMetadataOutput {
+                        width, height, quads: state.quads, significant_samples: state.significant,
+                        mel_bits: state.readers.mel.bits_read as u32, vlc_bits: state.readers.vlc.bits_read as u32,
+                        mel_events: state.readers.mel_events,
+                    })
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_segment_metadata(
+    cleanup: HtCleanupSegmentState, width: u16, height: u16, maximum_u: u8, maximum_work: u64,
+) -> Result<HtMetadataOutput, crate::DecodeError> {
+    if width == 0 || height == 0 || maximum_u == 0 || maximum_u > 75 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else if width as nat * height as nat > u32::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else if width as nat * height as nat > 4096 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        match ht_cleanup_readers_initial(cleanup.mel.bytes, cleanup.vlc.bytes, maximum_work) {
+            Err(error) => Err(error),
+            Ok(readers) => ht_metadata_finish(ht_metadata_rows(HtMetadataRowState {
+                readers, quads: Seq::empty(), significant: 0,
+                previous: Seq::new((width as nat + 1) / 2, |i: int| 0u8),
+            }, width, height, maximum_u, (height as nat + 1) / 2), width, height),
+        }
+    }
+}
+
+pub open spec fn ht_decode_cleanup_metadata(
+    cleanup: Seq<u8>, width: u16, height: u16, maximum_u: u8, maximum_bytes: u64, maximum_work: u64,
+) -> Result<HtMetadataOutput, crate::DecodeError> {
+    match ht_parse_block_segments(cleanup, None, maximum_bytes) {
+        Err(error) => Err(error),
+        Ok(segments) => ht_cleanup_segment_metadata(segments.cleanup, width, height, maximum_u, maximum_work),
+    }
+}
+
 pub struct HtSubstreamState {
     pub bytes: Seq<u8>,
     pub offset: u32,
