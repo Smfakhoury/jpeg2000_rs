@@ -3195,7 +3195,350 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub struct Tier1RawCoefficient {
+    pub limbs: Seq<u64>,
+    pub legacy_bitplane: Option<u16>,
+    pub negative: bool,
+    pub significant: bool,
+    pub refined: bool,
+}
+
+pub struct Tier1RawPlane {
+    pub width: u16,
+    pub height: u16,
+    pub coefficients: Seq<Tier1RawCoefficient>,
+}
+
+pub open spec fn tier1_raw_plane_index(plane: Tier1RawPlane, x: u16, y: u16) -> Result<usize, crate::DecodeError> {
+    let index = y as nat * plane.width as nat + x as nat;
+    if x >= plane.width || y >= plane.height {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else if index > usize::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else if index >= plane.coefficients.len() {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else { Ok(index as usize) }
+}
+
+pub open spec fn tier1_raw_plane_coefficient(plane: Tier1RawPlane, x: u16, y: u16)
+    -> Result<Tier1RawCoefficient, crate::DecodeError>
+{
+    match tier1_raw_plane_index(plane, x, y) {
+        Err(error) => Err(error),
+        Ok(index) => Ok(plane.coefficients[index as int]),
+    }
+}
+
+pub open spec fn tier1_value_limbs(value: nat) -> Seq<u64> {
+    Seq::new(6, |i: int| ((value / pow2((64 * i) as nat)) % 18446744073709551616) as u64)
+}
+
+pub open spec fn tier1_empty_coefficient() -> Tier1RawCoefficient {
+    Tier1RawCoefficient {
+        limbs: Seq::new(6, |i: int| 0u64), legacy_bitplane: None,
+        negative: false, significant: false, refined: false,
+    }
+}
+
+pub open spec fn tier1_empty_plane(width: u16, height: u16) -> Result<Tier1RawPlane, crate::DecodeError> {
+    let samples = width as nat * height as nat;
+    if width == 0 || height == 0 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else if samples > usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else if samples > 4096 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else { Ok(Tier1RawPlane {
+        width, height, coefficients: Seq::new(samples, |i: int| tier1_empty_coefficient()),
+    }) }
+}
+
+pub open spec fn tier1_new_coefficient(limbs: Seq<u64>, negative: bool, significant: bool, refined: bool)
+    -> Tier1RawCoefficient {
+    Tier1RawCoefficient { limbs, legacy_bitplane: None, negative, significant, refined }
+}
+
+pub open spec fn tier1_coefficient_new_outcome(
+    limbs: Seq<u64>, negative: bool, significant: bool, refined: bool,
+) -> Result<Tier1RawCoefficient, crate::DecodeError> {
+    Ok(tier1_new_coefficient(limbs, negative, significant, refined))
+}
+
+pub open spec fn tier1_set_magnitude(coefficient: Tier1RawCoefficient, limbs: Seq<u64>)
+    -> (Result<(), crate::DecodeError>, Tier1RawCoefficient)
+{
+    (Ok(()), Tier1RawCoefficient { limbs, ..coefficient })
+}
+
+pub open spec fn tier1_raw_plane_width(plane: Tier1RawPlane) -> u16 { plane.width }
+pub open spec fn tier1_raw_plane_height(plane: Tier1RawPlane) -> u16 { plane.height }
+pub open spec fn tier1_raw_plane_coefficients(plane: Tier1RawPlane) -> Seq<Tier1RawCoefficient> {
+    plane.coefficients
+}
+pub open spec fn tier1_coefficient_limbs(coefficient: Tier1RawCoefficient) -> Seq<u64> {
+    coefficient.limbs
+}
+
+pub open spec fn tier1_mark_coefficient(
+    plane: Tier1RawPlane, x: u16, y: u16, limbs: Seq<u64>, value: nat, negative: bool,
+) -> (Result<(), crate::DecodeError>, Tier1RawPlane) {
+    if value == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), plane) }
+    else {
+        match tier1_raw_plane_index(plane, x, y) {
+            Err(error) => (Err(error), plane),
+            Ok(index) => if plane.coefficients[index as int].significant {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), plane)
+            } else {
+                (Ok(()), Tier1RawPlane { coefficients: plane.coefficients.update(index as int,
+                    tier1_new_coefficient(limbs, negative, true, false)), ..plane })
+            },
+        }
+    }
+}
+
+pub open spec fn tier1_statistics_zero() -> crate::tier1::Tier1PassStatistics {
+    crate::tier1::Tier1PassStatistics {
+        coefficients_scanned: 0, coding_symbols: 0, newly_significant: 0, refined_coefficients: 0, run_mode_columns: 0,
+    }
+}
+
+pub open spec fn tier1_statistics_increment(
+    state: crate::tier1::Tier1PassStatistics, field: u8, count: u32,
+) -> (Result<(), crate::DecodeError>, crate::tier1::Tier1PassStatistics) {
+    let value = if field == 0 { state.coefficients_scanned } else if field == 1 { state.coding_symbols }
+        else if field == 2 { state.newly_significant } else if field == 3 { state.refined_coefficients }
+        else { state.run_mode_columns };
+    if value + count > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let value = (value + count) as u32;
+        (Ok(()), if field == 0 { crate::tier1::Tier1PassStatistics { coefficients_scanned: value, ..state } }
+            else if field == 1 { crate::tier1::Tier1PassStatistics { coding_symbols: value, ..state } }
+            else if field == 2 { crate::tier1::Tier1PassStatistics { newly_significant: value, ..state } }
+            else if field == 3 { crate::tier1::Tier1PassStatistics { refined_coefficients: value, ..state } }
+            else { crate::tier1::Tier1PassStatistics { run_mode_columns: value, ..state } })
+    }
+}
+
+pub open spec fn tier1_raw_signed_coefficient(coefficient: Tier1RawCoefficient)
+    -> Result<(Seq<u64>, nat, bool), crate::DecodeError>
+    recommends coefficient.limbs.len() == 6,
+{
+    if !coefficient.significant {
+        Ok((Seq::new(6, |i: int| 0u64), 0, false))
+    } else {
+        let base = part1_magnitude_value(coefficient.limbs);
+        let delta = match coefficient.legacy_bitplane {
+            None => 0nat,
+            Some(bitplane) => if bitplane <= 64 { part1_tier1_midpoint_delta(bitplane) as nat }
+                else { pow2((bitplane - 1) as nat) },
+        };
+        if (match coefficient.legacy_bitplane { Some(bitplane) => bitplane > 384, None => false })
+            || base + delta >= part1_magnitude_capacity() {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else { Ok((tier1_value_limbs(base + delta), base + delta, coefficient.negative)) }
+    }
+}
+
 pub type HtNumericMagnitudeResult = (Result<(nat, bool, u8), crate::DecodeError>, HtMagSgnState);
+
+pub open spec fn ht_complete_kappa(base: u8, significance: u8, north_west: u8, north_east: u8, maximum: u8)
+    -> Result<u8, crate::DecodeError> {
+    let exponent = if north_west > north_east { north_west } else { north_east };
+    let gamma = significance & significance.wrapping_sub(1) != 0;
+    if base == 0 || significance & 0xf0u8 != 0 || maximum == 0 || maximum > 75 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else if base as nat + exponent as nat > 255 {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let completed = ht_kappa_completion(base as nat, gamma, exponent as nat);
+        if completed > maximum { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+        else { Ok(completed as u8) }
+    }
+}
+
+pub struct HtPlaneState {
+    pub output: Tier1RawPlane,
+    pub reader: HtMagSgnState,
+    pub previous: Seq<u8>,
+    pub current: Seq<u8>,
+    pub statistics: crate::tier1::Tier1PassStatistics,
+}
+
+pub type HtPlaneResult = (Result<(), crate::DecodeError>, HtPlaneState);
+
+pub open spec fn ht_plane_sample_store(
+    state: HtPlaneState, x: u16, y: u16, sample: u8, column: nat,
+    value: nat, negative: bool, exponent: u8,
+) -> HtPlaneResult
+    recommends column + 1 < state.current.len(),
+{
+    let store = tier1_mark_coefficient(state.output, x, y, tier1_value_limbs(value), value, negative);
+    let state = HtPlaneState { output: store.1, ..state };
+    match store.0 {
+        Err(error) => (Err(error), state),
+        Ok(()) => {
+            let count = tier1_statistics_increment(state.statistics, 1, 1);
+            let state = HtPlaneState { statistics: count.1, ..state };
+            match count.0 {
+                Err(error) => (Err(error), state),
+                Ok(()) => {
+                    let count = tier1_statistics_increment(state.statistics, 2, 1);
+                    let state = HtPlaneState { statistics: count.1, ..state };
+                    match count.0 {
+                        Err(error) => (Err(error), state),
+                        Ok(()) => (Ok(()), HtPlaneState {
+                            current: if sample == 1 {
+                                state.current.update(column as int,
+                                    if state.current[column as int] > exponent { state.current[column as int] } else { exponent })
+                            } else if sample == 3 { state.current.update((column + 1) as int, exponent) }
+                            else { state.current }, ..state
+                        }),
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_plane_sample(
+    state: HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+    column: nat, completed_u: u8, bitplanes: u16, sample: u8,
+) -> HtPlaneResult
+    recommends sample < 4, column + 1 < state.current.len(),
+{
+    let x = quad.x as nat + (sample >> 1) as nat;
+    let y = quad.y as nat + (sample & 1u8) as nat;
+    if x > u16::MAX || y > u16::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else if x >= width || y >= height { (Ok(()), state) }
+    else {
+        let scanned = tier1_statistics_increment(state.statistics, 0, 1);
+        let state = HtPlaneState { statistics: scanned.1, ..state };
+        match scanned.0 {
+            Err(error) => (Err(error), state),
+            Ok(()) => if quad.significance & (1u8 << sample) == 0 { (Ok(()), state) } else {
+                let decoded = ht_reconstruct_numeric_magnitude(state.reader, completed_u,
+                    quad.embedded_bit_mask & (1u8 << sample) != 0,
+                    quad.embedded_magnitude & (1u8 << sample) != 0, bitplanes);
+                let state = HtPlaneState { reader: decoded.1, ..state };
+                match decoded.0 {
+                    Err(error) => (Err(error), state),
+                    Ok((value, negative, exponent)) =>
+                        ht_plane_sample_store(state, x as u16, y as u16, sample, column, value, negative, exponent),
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_plane_samples(
+    state: HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+    column: nat, completed_u: u8, bitplanes: u16, count: nat,
+) -> HtPlaneResult
+    recommends count <= 4, column + 1 < state.current.len(),
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, (count - 1) as nat);
+        match prefix.0 { Err(_) => prefix, Ok(()) =>
+            ht_plane_sample(prefix.1, quad, width, height, column, completed_u, bitplanes, (count - 1) as u8) }
+    }
+}
+
+pub open spec fn ht_plane_quad_finish(result: HtPlaneResult, quads_per_row: nat, column: nat) -> HtPlaneResult {
+    match result.0 {
+        Err(_) => result,
+        Ok(()) => (Ok(()), if column + 1 == quads_per_row {
+            HtPlaneState { previous: result.1.current, current: result.1.previous, ..result.1 }
+        } else { result.1 }),
+    }
+}
+
+pub open spec fn ht_plane_quad(
+    state: HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+    maximum_u: u8, bitplanes: u16, quads_per_row: nat, index: nat,
+) -> HtPlaneResult
+    recommends 0 < quads_per_row <= 32768, state.current.len() == quads_per_row + 1,
+        state.previous.len() == quads_per_row + 1,
+{
+    let column = index % quads_per_row;
+    let state = HtPlaneState { current: if column == 0 { Seq::new(state.current.len(), |i: int| 0u8) }
+        else { state.current }, ..state };
+    let completed = if quad.initial_row {
+        if quad.u_base > maximum_u { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) } else { Ok(quad.u_base) }
+    } else { ht_complete_kappa(quad.u_base, quad.significance, state.previous[column as int],
+        state.previous[(column + 1) as int], maximum_u) };
+    match completed {
+        Err(error) => (Err(error), state),
+        Ok(value) => {
+            let result = ht_plane_samples(state, quad, width, height, column, value, bitplanes, 4);
+            ht_plane_quad_finish(result, quads_per_row, column)
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_plane_quads(
+    state: HtPlaneState, quads: Seq<crate::tier1::HtQuadMetadata>, width: u16, height: u16,
+    maximum_u: u8, bitplanes: u16, quads_per_row: nat, count: nat,
+) -> HtPlaneResult
+    recommends count <= quads.len(), 0 < quads_per_row <= 32768,
+        state.current.len() == quads_per_row + 1, state.previous.len() == quads_per_row + 1,
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, (count - 1) as nat);
+        match prefix.0 { Err(_) => prefix, Ok(()) =>
+            ht_plane_quad(prefix.1, quads[(count - 1) as int], width, height, maximum_u, bitplanes, quads_per_row, (count - 1) as nat) }
+    }
+}
+
+pub open spec fn ht_plane_finish(state: HtPlaneState) -> HtPlaneResult {
+    let finished = ht_magsgn_finish(state.reader);
+    (finished.0, HtPlaneState { reader: finished.1, ..state })
+}
+
+pub open spec fn ht_plane_output(decoded: HtPlaneResult)
+    -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError> {
+    match decoded.0 {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let finished = ht_plane_finish(decoded.1);
+            match finished.0 { Err(error) => Err(error),
+                Ok(()) => Ok((finished.1.output, finished.1.statistics)) }
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_plane(
+    plane: Tier1RawPlane, cleanup: HtCleanupSegmentState, metadata: HtMetadataOutput,
+    maximum_u: u8, bitplanes: u16, maximum_work: u64,
+) -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError> {
+    if metadata.width == 0 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else {
+        match tier1_empty_plane(plane.width, plane.height) {
+            Err(error) => Err(error),
+            Ok(output) => match ht_magsgn_initial(cleanup.mag_sgn.bytes, maximum_work) {
+                Err(error) => Err(error),
+                Ok(reader) => {
+                    let quads_per_row = (metadata.width as nat + 1) / 2;
+                    if metadata.width as nat + 1 > usize::MAX || quads_per_row + 1 > usize::MAX {
+                        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+                    } else if quads_per_row == 0 {
+                        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+                    } else {
+                    let state = HtPlaneState { output, reader,
+                        previous: Seq::new(quads_per_row + 1, |i: int| 0u8),
+                        current: Seq::new(quads_per_row + 1, |i: int| 0u8),
+                        statistics: tier1_statistics_zero(),
+                    };
+                    let decoded = ht_plane_quads(state, metadata.quads, metadata.width, metadata.height,
+                        maximum_u, bitplanes, quads_per_row, metadata.quads.len());
+                    ht_plane_output(decoded)
+                    }
+                },
+            },
+        }
+    }
+}
 
 #[verifier::opaque]
 pub open spec fn ht_numeric_payload(

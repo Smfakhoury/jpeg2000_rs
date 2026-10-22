@@ -1,5 +1,34 @@
 # Specification audit guide
 
+## Frozen F5H cleanup-plane reconstruction profile
+
+The next full numerical boundary is the actual `reconstruct_ht_cleanup_plane`,
+not a validated-metadata wrapper. It admits arbitrary stored quads, dimensions,
+initial-row flags, masks, coordinates, U values and native bitplane/work limits.
+Only metadata width is checked before creating the blank output using the input
+plane's dimensions; old input coefficients are ignored. Coordinate addition
+precedes metadata clipping. Scanning precedes MagSgn consumption, which precedes
+placement and both success counters. Duplicate or out-of-output placements can
+therefore fail after consuming a magnitude. All six stored words, flags,
+statistics, both exponent stencils and every reader field are observed by the
+shared production stages, including their first-error partial states.
+
+Column-zero reset, sample-one maximum, sample-three overwrite and end-of-row
+stencil swap follow actual metadata vector order, not assumed geometric order.
+Noninitial kappa retains its conservative base-plus-exponent overflow check.
+No-significance, empty or fully clipped metadata does not impose numeric-domain
+checks absent from the body. Final physical padding, stuffing and work errors
+remain after all placements. This profile does not establish refinement,
+placeholder/replacement/mixed routing or complete entropy conformance.
+
+The raw `Tier1CodeBlockDecoder::plane` postcondition is an existing API bridge
+consumed by `decode::prepare_tile_component_with_kernel`. It remains outside the
+same-file internal-caller index: there is no invented Tier-1 caller or generic
+API-root exemption. Its exact view is listed as a proof reference.
+The raw and signed `Result` projections are open over their public payloads and
+closed owner views, so outside-module consumers can connect actual returned
+fields to the mathematical result without revealing private stored fields.
+
 ## F6 reconstruction profiles (bounded stage contracts)
 
 The first F6 stage starts with supplied signed 384-bit magnitudes (six
@@ -272,6 +301,15 @@ is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
 
+The raw Tier-1 observation substage retains every stored coefficient limb,
+legacy midpoint tag and sign/significance/refinement flag. Plane dimensions
+and the actual coefficient sequence are not normalized to a rectangle:
+coordinate bounds, native checked address arithmetic and actual sequence
+length determine the exact indexed result/error. Signed observation ignores
+stored bits/tags when insignificant, otherwise applies the actual full-native
+legacy midpoint and checked overflow branch without entropy or normalization
+premises. It is a raw producer interface, not coefficient reconstruction.
+
 The frozen numerical MagSgn substage is the actual complete
 `reconstruct_ht_magnitude` operation for every native completed-U,
 embedded-bit/value flag and decoded-bitplane input, with every initial
@@ -424,6 +462,16 @@ the named mathematical quantities to the prior word constants; they do not
 replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
+
+`ht_cleanup_plane` and its sample/quad/finish models describe complete actual
+cleanup coefficient reconstruction from supplied metadata and bytes, not
+merely a scalar magnitude. Read counter/read/store ordering and both exponent
+stencils alongside the actual final reader termination. Raw Tier-1 models
+preserve all six limbs, significance/sign/refinement and legacy midpoint
+behavior without assuming a well-shaped plane or normalized coefficient.
+The small `tier1_raw_plane_*`, `tier1_coefficient_*` and `tier1_set_magnitude`
+denotations are complete field/record projections used by real producer
+contracts; they do not introduce an alternate executable implementation.
 
 `color_crop_image` describes the actual selected-output crop on a supplied
 converted image. Its ordered checks preserve the zero-size, coordinate-

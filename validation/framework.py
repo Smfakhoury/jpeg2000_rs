@@ -333,6 +333,13 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
                 ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_metadata_outcome",
+                ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_plane_outcome",
+                ("src/tier1.rs", "code_block_plane_from_dimensions"): "code_block_plane_outcome",
+                ("src/tier1.rs", "coefficient_from_magnitude"): "coefficient_raw_outcome",
+                ("src/tier1.rs", "coefficient"): "coefficient_raw_outcome",
+                ("src/tier1.rs", "signed_magnitude"): "coefficient_signed_outcome",
+                ("src/tier1.rs", "coefficients"): "coefficient_slice_view",
+                ("src/tier1.rs", "wide_magnitude"): "crate::magnitude::magnitude_limbs",
                 ("src/color.rs", "convert_jp2_color"): "converted_image_result",
                 ("src/color.rs", "convert_color_channel"): "converted_channel_result",
                 ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
@@ -354,6 +361,21 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
                 ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
                 ("src/tier1.rs", "reconstruct_ht_magnitude"): "ht_reconstruct_numeric_magnitude",
+                ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_cleanup_plane",
+                ("src/tier1.rs", "code_block_plane_from_dimensions"): "tier1_empty_plane",
+                ("src/tier1.rs", "coefficient_from_magnitude"): "tier1_coefficient_new_outcome",
+                ("src/tier1.rs", "complete_ht_kappa"): "ht_complete_kappa",
+                ("src/tier1.rs", "ht_statistics_zero"): "tier1_statistics_zero",
+                ("src/tier1.rs", "width"): "tier1_raw_plane_width",
+                ("src/tier1.rs", "height"): "tier1_raw_plane_height",
+                ("src/tier1.rs", "coefficients"): "tier1_raw_plane_coefficients",
+                ("src/tier1.rs", "coefficient"): "tier1_raw_plane_coefficient",
+                ("src/tier1.rs", "index"): "tier1_raw_plane_index",
+                ("src/tier1.rs", "wide_magnitude"): "tier1_coefficient_limbs",
+                ("src/tier1.rs", "signed_magnitude"): "tier1_raw_signed_coefficient",
+                ("src/tier1.rs", "scanned"): "tier1_statistics_increment",
+                ("src/tier1.rs", "decoded_symbols"): "tier1_statistics_increment",
+                ("src/tier1.rs", "became_significant"): "tier1_statistics_increment",
                 ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
@@ -377,6 +399,11 @@ def validate_normative_coverage(
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
             reader_contracts = {
+                "HtCleanupPlaneReconstruction::sample": ("ht_plane_view", "ht_plane_sample"),
+                "HtCleanupPlaneReconstruction::quad": ("ht_plane_view", "ht_plane_quad"),
+                "HtCleanupPlaneReconstruction::finish": ("ht_plane_view", "ht_plane_finish"),
+                "CodeBlockPlane::mark_significant_magnitude": ("code_block_plane_view", "tier1_mark_coefficient"),
+                "CoefficientState::set_magnitude": ("coefficient_state_view", "tier1_set_magnitude"),
                 "RawBitReader::read_bit": ("raw_bit_reader_view", "part1_raw_reader_read"),
                 "RawBitReader::load_byte": ("raw_bit_reader_view", "part1_raw_reader_load"),
                 "HtMelBitReader::load_byte": ("ht_mel_view", "ht_mel_load"),
@@ -483,9 +510,24 @@ def validate_normative_coverage(
                     contract,
                 ) is not None
             )
+            statistic_arguments = {
+                "Tier1PassStatistics::scanned": (0, "count"),
+                "Tier1PassStatistics::decoded_symbols": (1, "count"),
+                "Tier1PassStatistics::became_significant": (2, "1"),
+            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            statistic_arguments_bound = (
+                statistic_arguments is None
+                or re.search(
+                    r"crate::specs::tier1_statistics_increment\s*\(\s*\*\s*old\(\s*self\s*\)\s*,\s*"
+                    + str(statistic_arguments[0]) + r"\s*,\s*"
+                    + re.escape(statistic_arguments[1]) + r"\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
                     or not metadata_arguments_bound
+                    or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))
                     or not ("ensures returns" in contract
