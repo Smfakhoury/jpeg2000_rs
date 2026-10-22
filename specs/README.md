@@ -105,6 +105,28 @@ executed body. The actual full result also contains the output sample tag and
 all metadata. Whole-header cmap selection, CDEF routing, typed-image admission,
 parsing and selected-pixel joins remain outside these component results.
 
+### Complete supplied output header and image admission
+
+`part2_apply_output_header` composes actual ordered component selection and
+palette interpretation, actual ordered CDEF append, and
+`part2_typed_image_from_parts`. `jp2::output_header_view` projects the actual
+palette/mapping/definition vectors consumed by the executable body, not the
+stored count hints or unused image/color metadata. Empty CMAP copies every
+source. No well-formed-header, matching-shape, successful-lookup or
+adequate-budget condition is imposed. The recursive mapping/definition folds
+give sequential first-error semantics; the production proof supplies the
+actual vector states rather than accepting an execution trace as input.
+
+Final admission checks origin addition, u16 component-count conversion,
+actual component cap, and each component's area/sample count and cumulative
+eight-byte charge. `part2_typed_image_admission_prefix` retains the first
+failing admission even when later components have other defects.
+`part2_typed_image_component` distinguishes the real image-index error from
+the header's container-mismatch errors. Output geometry, sample values/tags,
+metadata and all ordered CDEF records are included. Unread native fields are
+deliberately not validated. Parsing, header association and selected target
+composition remain separate obligations.
+
 ## Frozen F5H cleanup-plane reconstruction profile
 
 The next full numerical boundary is the actual `reconstruct_ht_cleanup_plane`,

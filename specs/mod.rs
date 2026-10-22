@@ -414,6 +414,146 @@ pub type Part1DecodedTypedImage = (
 );
 
 pub type Part2TypedComponentOutput = (Part1TypedComponentModel, Seq<ColorDefinition>);
+pub type Part2OutputHeader = (
+    Option<Part2PaletteModel>,
+    Seq<(u16, crate::jp2::MappingType)>,
+    Seq<(u16, ColorDefinition)>,
+);
+
+pub open spec fn part2_typed_image_component(components: Seq<Part2TypedComponentOutput>, index: u16)
+    -> Result<Part2TypedComponentOutput, crate::DecodeError>
+{
+    if index as nat >= components.len() { Err(part1_image_error(false)) }
+    else { Ok(components[index as int]) }
+}
+
+pub open spec fn part2_output_mapped_component(
+    components: Seq<Part2TypedComponentOutput>, palette: Option<Part2PaletteModel>, mapping: (u16, crate::jp2::MappingType),
+) -> Result<Part2TypedComponentOutput, crate::DecodeError> {
+    match part2_typed_image_component(components, mapping.0) {
+        Err(error) => Err(error),
+        Ok(source) => match mapping.1 {
+            crate::jp2::MappingType::Direct => part2_typed_component_copy(source),
+            crate::jp2::MappingType::Palette { column } => match palette {
+                None => Err(part2_color_input_error()),
+                Some(palette) => part2_palette_component(source.0, palette, column),
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_output_mapping_prefix(
+    components: Seq<Part2TypedComponentOutput>, header: Part2OutputHeader, count: nat,
+) -> Result<Seq<Part2TypedComponentOutput>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) }
+    else {
+        match part2_output_mapping_prefix(components, header, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_output_mapped_component(components, header.0, header.1[count - 1]) {
+                Err(error) => Err(error),
+                Ok(component) => Ok(previous.push(component)),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_output_apply_definition(
+    components: Seq<Part2TypedComponentOutput>, record: (u16, ColorDefinition),
+) -> Result<Seq<Part2TypedComponentOutput>, crate::DecodeError> {
+    if record.0 as nat >= components.len() { Err(part2_color_input_error()) }
+    else {
+        let previous = components[record.0 as int];
+        Ok(components.update(record.0 as int, (previous.0, previous.1.push(record.1))))
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_output_definition_prefix(
+    components: Seq<Part2TypedComponentOutput>, definitions: Seq<(u16, ColorDefinition)>, count: nat,
+) -> Result<Seq<Part2TypedComponentOutput>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(components) }
+    else {
+        match part2_output_definition_prefix(components, definitions, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => part2_output_apply_definition(previous, definitions[count - 1]),
+        }
+    }
+}
+
+pub open spec fn part2_apply_output_header(
+    image: Part1DecodedTypedImage, header: Part2OutputHeader, maximum_components: u16, maximum_bytes: u64,
+) -> Result<Part1DecodedTypedImage, crate::DecodeError> {
+    let components = Seq::new(image.1.len(), |i: int| (image.1[i], image.2[i]));
+    let mapped = if header.1.len() == 0 { Ok(components) }
+        else { part2_output_mapping_prefix(components, header, header.1.len()) };
+    match mapped {
+        Err(error) => Err(error),
+        Ok(mapped) => match part2_output_definition_prefix(mapped, header.2, header.2.len()) {
+            Err(error) => Err(error),
+            Ok(defined) => part2_typed_image_from_parts(
+                image.0.0, image.0.1, image.0.2, image.0.3, defined, maximum_components, maximum_bytes,
+            ),
+        },
+    }
+}
+
+pub open spec fn part2_typed_image_admit_component(
+    component: Part2TypedComponentOutput, previous: u64, maximum: u64,
+) -> Result<u64, crate::DecodeError> {
+    match part1_transform_area(component.0.width, component.0.height) {
+        Err(error) => Err(error),
+        Ok(expected) => {
+            let count = part2_typed_sample_count(component.0.samples);
+            if count != expected { Err(part1_image_error(false)) }
+            else {
+                let charged = part1_accumulate_decoded_bytes(count, previous, maximum);
+                match charged.0 { Err(error) => Err(error), Ok(()) => Ok(charged.1) }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_typed_image_admission_prefix(
+    components: Seq<Part2TypedComponentOutput>, maximum: u64, count: nat,
+) -> Result<u64, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(0) }
+    else {
+        match part2_typed_image_admission_prefix(components, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => part2_typed_image_admit_component(components[count - 1], previous, maximum),
+        }
+    }
+}
+
+pub open spec fn part2_typed_image_from_parts(
+    width: u32, height: u32, x_origin: u32, y_origin: u32,
+    components: Seq<Part2TypedComponentOutput>, maximum_components: u16, maximum_bytes: u64,
+) -> Result<Part1DecodedTypedImage, crate::DecodeError> {
+    if x_origin as nat + width as nat > u32::MAX || y_origin as nat + height as nat > u32::MAX {
+        Err(part1_image_error(true))
+    } else if components.len() > u16::MAX {
+        Err(part1_image_error(true))
+    } else if components.len() > maximum_components {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::Components, limit: maximum_components as u64, actual: components.len() as u64,
+        })
+    } else {
+        match part2_typed_image_admission_prefix(components, maximum_bytes, components.len()) {
+            Err(error) => Err(error),
+            Ok(_) => Ok(((width, height, x_origin, y_origin),
+                Seq::new(components.len(), |i: int| components[i].0),
+                Seq::new(components.len(), |i: int| components[i].1))),
+        }
+    }
+}
 
 pub open spec fn part2_typed_sample_count(samples: Part1TypedSampleSequence) -> nat {
     match samples {

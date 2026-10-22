@@ -207,28 +207,32 @@ def _coverage_symbol_present(path: Path, symbol: str) -> bool:
 def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
     """Resolve formatted methods in their actual impl, never another short name."""
     short = symbol.rsplit("::", 1)[-1]
-    start, end = 0, len(text)
-    if "::" in symbol:
-        owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
-        implementation = re.search(
-            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
-            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
-        )
-        if implementation is None:
-            return None
-        closing = re.search(
-            rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
-            text[implementation.end():],
-        )
-        if closing is None:
-            return None
-        start = implementation.end()
-        end = start + closing.start()
     pattern = re.compile(
         rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
         rf"fn[ \t]+{re.escape(short)}\b",
     )
-    return pattern.search(text, start, end)
+    if "::" in symbol:
+        owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        implementations = re.finditer(
+            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
+            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
+        )
+        matches = []
+        for implementation in implementations:
+            closing = re.search(
+                rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
+                text[implementation.end():],
+            )
+            if closing is None:
+                return None
+            start = implementation.end()
+            end = start + closing.start()
+            matches.extend(
+                match for match in pattern.finditer(text, start, end)
+                if match[1] == implementation[1] + "    "
+            )
+        return matches[0] if len(matches) == 1 else None
+    return pattern.search(text)
 
 
 def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
@@ -376,13 +380,17 @@ def validate_normative_coverage(
                 ("src/decode.rs", "as_tile_component"): "crate::image::assembly_tile_view",
                 ("src/decode.rs", "copy_typed_component"): "crate::image::typed_component_output",
                 ("src/decode.rs", "map_palette_component"): "crate::image::typed_component_output",
+                ("src/decode.rs", "apply_jp2_output"): "crate::image::decoded_typed_image_outcome",
                 ("src/image.rs", "typed_component_from_parts"): "typed_component_value_view",
+                ("src/image.rs", "typed_image_from_components_with_origin"): "decoded_typed_image_outcome",
                 ("src/image.rs", "assemble_image"): "decoded_image_outcome",
                 ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
                 ("src/image.rs", "typed_samples"): "decoded_typed_samples_outcome",
                 ("src/image.rs", "typed"): "decoded_typed_image_outcome",
                 ("src/packet.rs", "decoder"): "packet_decoder_outcome",
             }.get((reference["path"], short))
+            if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
+                result_projection = "typed_component_reference_output"
             expected_result_model = {
                 ("src/jp2.rs", "value"): "part2_palette_value",
                 ("src/jp2.rs", "palette_value_error"): "part2_composition_error",
@@ -449,9 +457,11 @@ def validate_normative_coverage(
                 ("src/decode.rs", "as_tile_component"): "part1_prepared_as_tile",
                 ("src/decode.rs", "copy_typed_component"): "part2_typed_component_copy",
                 ("src/decode.rs", "map_palette_component"): "part2_palette_component",
+                ("src/decode.rs", "apply_jp2_output"): "part2_apply_output_header",
                 ("src/decode.rs", "palette_modulus"): "part2_palette_modulus",
                 ("src/decode.rs", "invalid_jp2_output"): "part2_color_input_error",
                 ("src/image.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
+                ("src/image.rs", "typed_image_from_components_with_origin"): "part2_typed_image_from_parts",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
                 ("src/color.rs", "crop_sample"): "color_crop_sample",
@@ -464,6 +474,8 @@ def validate_normative_coverage(
                 ("src/color.rs", "validate_component"): "color_validate_component",
                 ("src/color.rs", "validate_output_size"): "color_validate_output_size",
             }.get((reference["path"], short))
+            if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
+                expected_result_model = "part2_typed_image_component"
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
@@ -806,6 +818,24 @@ def validate_normative_coverage(
                 ("src/image.rs", "typed_component_from_parts"): (
                     "part2_typed_component_from_parts",
                     r"width\s*,\s*height\s*,\s*info\s*,\s*typed_samples_view\s*\(\s*&\s*samples\s*\)",
+                ),
+                ("src/decode.rs", "apply_jp2_output"): (
+                    "part2_apply_output_header",
+                    r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*"
+                    r"jp2::output_header_view\s*\(\s*header\s*\)\s*,\s*"
+                    r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
+                ),
+                ("src/image.rs", "typed_image_from_components_with_origin"): (
+                    "part2_typed_image_from_parts",
+                    r"width\s*,\s*height\s*,\s*x_origin\s*,\s*y_origin\s*,\s*"
+                    r"typed_components_output_view\s*\(\s*components\s*@\s*\)\s*,\s*"
+                    r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
+                ),
+                ("src/image.rs", "TypedImage::component"): (
+                    "part2_typed_image_component",
+                    r"typed_components_output_view\s*\(\s*typed_image_components\s*\(\s*self\s*\)\s*\)\s*,\s*index",
                 ),
             }.get((reference["path"], reference["symbol"]))
             component_arguments_bound = (

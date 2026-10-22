@@ -705,6 +705,17 @@ verus! {
     pub closed spec fn palette_view(palette: &Palette) -> crate::specs::Part2PaletteModel {
         (palette.entries, palette.columns@, palette.values@)
     }
+
+    pub open spec fn output_header_view(header: &Jp2Header) -> crate::specs::Part2OutputHeader {
+        (
+            match &header.palette { Some(palette) => Some(palette_view(palette)), None => None },
+            Seq::new(header.component_mappings@.len(), |i: int|
+                (header.component_mappings@[i].component, header.component_mappings@[i].mapping_type)),
+            Seq::new(header.channel_definition_records@.len(), |i: int|
+                (header.channel_definition_records@[i].channel,
+                    crate::image::channel_definition_view(header.channel_definition_records@[i].definition))),
+        )
+    }
 }
 
 #[derive(Clone, Copy)]

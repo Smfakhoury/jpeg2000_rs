@@ -2494,6 +2494,48 @@
     },
     {
       "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "apply_jp2_output"},
+        {"path": "src/image.rs", "symbol": "typed_image_from_components_with_origin"},
+        {"path": "src/image.rs", "symbol": "TypedImage::component"}
+      ],
+      "id": "part2-complete-native-output-header",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_jp2"},
+        {"path": "src/decode.rs", "symbol": "decode_jp2_selected"},
+        {"path": "src/decode.rs", "symbol": "apply_jp2_output"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_components_output_push"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_mapping_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_mapping_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_mapping_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_definition_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_definition_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_definition_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_image_admission_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_image_admission_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_image_admission_error"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::add_channel_definition"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_apply_output_header"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_mapping_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_mapped_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_definition_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_apply_definition"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_from_parts"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_admission_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_admit_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_component"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "whole_output_header_matches_independent_native_order_and_admission_oracle"},
+        {"path": "src/image.rs", "symbol": "typed_image_admission_preserves_native_count_origin_shape_and_error_priority"}
+      ],
+      "topic": "Complete actual unconditional output-header Result on native typed-image/header/caps: actual CMAP order, direct versus palette CDEF behavior, ordered duplicate CDEF append and first bad channel, final origin/count/area/cardinality/cumulative-byte admission and every output field/error. Unread header metadata/count hints stay unvalidated. No valid/normalized-header, successful mapping, shape or adequate-budget premise. Earlier parsing/association and selected target composition remain separate."
+    },
+    {
+      "contract_refs": [
         {
           "path": "src/refinement.rs",
           "symbol": "signed_to_nominal"
