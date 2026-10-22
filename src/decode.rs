@@ -2255,6 +2255,16 @@ fn color_selection(
     Ok((expanded, target))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::converted_image_result(result) == crate::specs::color_convert_selected(
+            crate::image::typed_image_component_views(image), crate::image::typed_image_definition_views(image),
+            crate::image::typed_image_geometry(image), crate::jp2::color_specification_method(color), target,
+            crate::limits::resource_decoded_bytes_limit(limits), crate::limits::resource_work_limit(limits),
+        ),
+    )
+)]
 fn convert_selected_color(
     image: &TypedImage,
     color: &jp2::ColorSpecification,
@@ -3890,8 +3900,15 @@ fn component_coordinate_bounds(
     ])
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(error => ensures error == crate::specs::color_selection_target_error(),)
+)]
 fn invalid_decode() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidCodeBlock)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidCodeBlock,
+    }
 }
 
 const fn wavelet_transforms_equal(left: WaveletTransform, right: WaveletTransform) -> bool {
@@ -3980,6 +3997,120 @@ mod tests {
         CodeBlockPacketContext, CodeBlockPacketState, PacketBitReader, TagTree,
         decode_code_block_contribution, decode_progression_tile_packets,
     };
+
+    #[test]
+    fn selected_color_bridge_composes_actual_conversion_crop_and_error_order() {
+        use crate::codestream::ComponentInfo;
+        use crate::color::{ConvertedChannelType, ConvertedColorSpace};
+        use crate::image::{TypedComponent, TypedSamples};
+
+        fn image(width: u32, height: u32, samples: Vec<u64>) -> TypedImage {
+            TypedImage::from_components_with_origin(
+                width,
+                height,
+                7,
+                11,
+                vec![TypedComponent::from_parts(
+                    width,
+                    height,
+                    ComponentInfo {
+                        precision: 8,
+                        signed: false,
+                        x_subsampling: 1,
+                        y_subsampling: 1,
+                        x_registration: 0,
+                        y_registration: 0,
+                    },
+                    TypedSamples::Unsigned(samples),
+                )],
+                &ResourceLimits::default(),
+            )
+            .unwrap()
+        }
+        let input = image(4, 2, vec![0, 32, 64, 96, 128, 160, 192, 255]);
+        let gray = jp2::ColorSpecification::enumerated(jp2::ENUMERATED_GRAYSCALE);
+        for (target, dimensions, expected) in [
+            (
+                [7, 11, 11, 13],
+                (4, 2),
+                vec![0, 8224, 16448, 24672, 32896, 41120, 49344, 65535],
+            ),
+            ([8, 11, 10, 13], (2, 2), vec![8224, 16448, 41120, 49344]),
+            ([10, 12, 11, 13], (1, 1), vec![65535]),
+        ] {
+            let actual =
+                convert_selected_color(&input, &gray, target, &ResourceLimits::default()).unwrap();
+            assert_eq!((actual.width(), actual.height()), dimensions);
+            assert_eq!(
+                (actual.color_space(), actual.precision()),
+                (ConvertedColorSpace::Grayscale, 16)
+            );
+            assert_eq!(actual.channels().len(), 1);
+            assert_eq!(
+                actual.channels()[0].channel_type(),
+                ConvertedChannelType::Gray
+            );
+            assert_eq!(actual.channels()[0].samples(), expected);
+        }
+        for target in [
+            [6, 11, 7, 12],
+            [7, 10, 8, 11],
+            [9, 11, 8, 12],
+            [7, 12, 8, 11],
+        ] {
+            assert_eq!(
+                convert_selected_color(&input, &gray, target, &ResourceLimits::default()),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock
+                })
+            );
+        }
+        for target in [[7, 11, 7, 12], [7, 11, 12, 13]] {
+            assert_eq!(
+                convert_selected_color(&input, &gray, target, &ResourceLimits::default()),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ContainerCodestreamMismatch
+                })
+            );
+        }
+        let target = [6, 11, 7, 12];
+        assert_eq!(
+            convert_selected_color(
+                &input,
+                &jp2::ColorSpecification::enumerated(99),
+                target,
+                &ResourceLimits::default()
+            ),
+            Err(DecodeError::UnsupportedColorConversion {
+                reason: crate::UnsupportedColorConversion::EnumeratedColorSpace
+            })
+        );
+        let limits = ResourceLimits::default()
+            .with_maximum_decoded_bytes(1)
+            .unwrap();
+        assert_eq!(
+            convert_selected_color(&input, &gray, target, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 1,
+                actual: 16
+            })
+        );
+        assert_eq!(
+            convert_selected_color(
+                &image(1, 1, vec![256]),
+                &gray,
+                target,
+                &ResourceLimits::default()
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ContainerCodestreamMismatch
+            })
+        );
+    }
 
     fn segment(marker: u16, payload: &[u8]) -> Vec<u8> {
         let length = u16::try_from(payload.len() + 2).unwrap();

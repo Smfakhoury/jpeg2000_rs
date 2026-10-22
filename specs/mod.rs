@@ -649,6 +649,29 @@ pub open spec fn color_crop_image(image: ColorImageModel, x: u32, y: u32, width:
     }
 }
 
+pub open spec fn color_selection_target_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidCodeBlock }
+}
+
+pub open spec fn color_convert_selected(
+    components: Seq<Part1TypedComponentModel>, definitions: Seq<Seq<ColorDefinition>>,
+    geometry: ColorGeometry, method: crate::jp2::ColorMethod, target: [u32; 4],
+    byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    match color_convert_jp2(components, definitions, geometry, method, byte_limit, work_limit) {
+        Err(error) => Err(error),
+        Ok(image) => {
+            if target[0] < geometry.2 || target[1] < geometry.3
+                || target[2] < target[0] || target[3] < target[1] {
+                Err(color_selection_target_error())
+            } else {
+                color_crop_image(image, (target[0] - geometry.2) as u32, (target[1] - geometry.3) as u32,
+                    (target[2] - target[0]) as u32, (target[3] - target[1]) as u32)
+            }
+        },
+    }
+}
+
 #[verifier::opaque]
 pub open spec fn color_normalize_component_prefix(
     component: Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32, count: nat,
