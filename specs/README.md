@@ -1,5 +1,27 @@
 # Specification audit guide
 
+## Frozen remaining actual progression profile
+
+The next actual producers are `PacketGrid` construction/indexing,
+`PacketIterator` construction/candidate decoding/iteration,
+`ProgressionPacketIterator` construction/window/duplicate iteration, and
+`decode_progression_tile_packets_selected`. Their contracts admit every raw
+stored grid count/vector/offset, iterator cursor and nested default iterator;
+stored candidate/packet totals are not assumed consistent with physical arrays.
+Candidate advancement precedes decoding failures. Emission advancement precedes
+late stored-total rejection. POC window advancement and duplicate suppression,
+actual packed-byte reassembly and packet-length iteration, context-layer writes,
+complete precinct-vector effects and late offsets/aggregates retain native order.
+All first errors and partial state are observed without validity, normalization,
+success, adequate-budget or supplied outcome/coordinate traces.
+
+F5H owns only actual packet/grid/iterator/orchestration implementations and their
+specifications/proofs. F5L owns the sole actual raw packed-header and packet-length
+producer chain; Parent owns POC observations and typed limit getter facts.
+Frozen `0da8f58` remains unchanged while this separate progression branch
+continues. Completing a raw lookup/iterator stage alone is not full progression
+or F5H completion.
+
 The actual component-style owner returns its complete native style/error with
 logical-count rejection before physical-array lookup, including contradictory
 counts. The complete native Tier1 byte parser preserves every flag, the exact

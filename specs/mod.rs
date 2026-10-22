@@ -9,6 +9,8 @@ mod packet;
 pub use packet::*;
 mod packet_orchestration;
 pub use packet_orchestration::*;
+mod packet_progression;
+pub use packet_progression::*;
 mod header;
 pub use header::*;
 mod tag_tree;
