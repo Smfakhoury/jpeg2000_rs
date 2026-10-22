@@ -1,6 +1,11 @@
 use vstd::arithmetic::power2::pow2;
 use vstd::prelude::*;
 
+mod mq;
+pub use mq::*;
+mod legacy;
+pub use legacy::*;
+
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
 };

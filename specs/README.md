@@ -1,5 +1,44 @@
 # Specification audit guide
 
+## Actual legacy MQ/bypass three-pass boundary
+
+[mq.rs](mq.rs) supplies a complete declarative MQ state/Result denotation.
+The stored nineteen contexts are pairs of probability-state index and MPS bit.
+The forty-seven probability transitions are an independent ghost sequence joined
+to the production table, not an assumed transition trace. Initialization,
+context mutation/save/restore, byte loading, conditional exchanges,
+renormalization, exact work admission, consumed-byte reporting and the existing
+predictable-termination test retain all native error priorities and mutations.
+In particular, byte advancement can survive addition failure; code/count loading
+can survive padding-counter overflow; a work-limit error retains its increment.
+
+[legacy.rs](legacy.rs) composes those real MQ effects and the complete raw-reader
+effects with actual significance, refinement and cleanup operations. The whole
+bitplane state observes geometry, bitplane, both bool vectors and all three
+completion flags. The plane observes all six words, sign, significance,
+refinement and optional legacy bitplane of every coefficient. Context selection
+uses the real complete ordered-neighborhood producer, including causal
+suppression. Stripe, column and row folds model the actual optimized traversal,
+not a normalized or reordered coefficient list. Cleanup includes run-mode
+eligibility/interruption, the two uniform run bits, sign reads, remaining rows
+and optional segmentation-symbol reads.
+
+Native invalid states are not erased by constructor invariants: the pass
+preflight checks geometry/vector lengths and completion order, while actual
+coefficient operations retain their own different bitplane bounds. For example,
+marking accepts the magnitude owner's native 0..383 domain, whereas refinement
+first rejects bitplanes at or above 292. Both behaviors remain in the models.
+Symbol/visit/plane/statistic changes before a later failure are retained.
+No public pass assumes valid bytes, successful decoding, normalized words,
+valid headers, adequate budgets or a supplied trace.
+
+Opaque model phase boundaries control proof unfolding only. The concrete
+production stages prove each phase against its body; both private reader-adapter
+implementations delegate to proved actual readers. There is no second executable
+decoder or uninterpreted successful entropy outcome. Segment/contribution/
+packet scheduling, retained replay and transactional whole-block composition
+are not established by this complete three-pass producer boundary.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

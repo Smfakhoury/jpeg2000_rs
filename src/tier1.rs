@@ -3986,7 +3986,10 @@ impl HtRefinementPlaneState<'_> {
         while row < rows {
             #[cfg(verus_keep_ghost)]
             proof! { reveal(crate::specs::ht_magref_rows); }
-            let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
+            let y = match stripe_y.checked_add(row) {
+                Some(y) => y,
+                None => return Err(arithmetic_overflow()),
+            };
             self.magnitude_sample(x, y, delta, decoded_bitplanes)?;
             row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
@@ -4742,6 +4745,9 @@ pub struct SignContext {
     pub predicted_negative: bool,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_zero_context(summary, orientation),
+))]
 pub fn zero_coding_context(summary: NeighborSummary, orientation: SubbandOrientation) -> u8 {
     let (horizontal, vertical) = if matches!(orientation, SubbandOrientation::Hl) {
         (summary.vertical_significant, summary.horizontal_significant)
@@ -4757,6 +4763,22 @@ pub fn zero_coding_context(summary: NeighborSummary, orientation: SubbandOrienta
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == if value < 0 { -1i8 } else if value > 0 { 1i8 } else { 0i8 },
+))]
+const fn signum_i8(value: i8) -> i8 {
+    if value < 0 {
+        -1
+    } else if value > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_sign_context(summary),
+))]
 pub fn sign_context(summary: NeighborSummary) -> SignContext {
     let mut horizontal = signum_i8(summary.horizontal_sign_balance);
     let mut vertical = signum_i8(summary.vertical_sign_balance);
@@ -4771,15 +4793,6 @@ pub fn sign_context(summary: NeighborSummary) -> SignContext {
         };
     }
 
-    const fn signum_i8(value: i8) -> i8 {
-        if value < 0 {
-            -1
-        } else if value > 0 {
-            1
-        } else {
-            0
-        }
-    }
     let offset = crate::refinement::tier1_sign_offset(horizontal, vertical);
     let predicted_negative = crate::refinement::tier1_predicted_negative(
         summary.horizontal_sign_balance,
@@ -4791,6 +4804,9 @@ pub fn sign_context(summary: NeighborSummary) -> SignContext {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_refinement_context(coefficient_raw_view(coefficient), summary),
+))]
 pub fn magnitude_refinement_context(coefficient: CoefficientState, summary: NeighborSummary) -> u8 {
     let neighbors = u16::from(summary.horizontal_significant)
         + u16::from(summary.vertical_significant)
@@ -4798,14 +4814,29 @@ pub fn magnitude_refinement_context(coefficient: CoefficientState, summary: Neig
     crate::refinement::tier1_refinement_context(coefficient.refined, neighbors)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::mq::mq_decoder_view(final(decoder))) == (Ok(()),
+        crate::specs::part1_legacy_initialized(crate::mq::mq_decoder_view(old(decoder)))),
+))]
 pub fn initialize_tier1_contexts(decoder: &mut MqDecoder<'_>) -> Result<(), DecodeError> {
     decoder.reset_contexts();
     decoder.set_context(0, 4, false)?;
     decoder.set_context(RUN_LENGTH_CONTEXT, 3, false)?;
     decoder.set_context(UNIFORM_CONTEXT, 46, false)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::mq::mq_decoder_view(decoder).contexts =~=
+            crate::specs::part1_legacy_initialized(crate::mq::mq_decoder_view(old(decoder))).contexts);
+    }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::mq::mq_decoder_view(final(decoder))) == (Ok(()),
+        if style.reset_contexts {
+            crate::specs::part1_legacy_initialized(crate::mq::mq_decoder_view(old(decoder)))
+        } else { crate::mq::mq_decoder_view(old(decoder)) }),
+))]
 pub fn reset_tier1_contexts_after_pass(
     decoder: &mut MqDecoder<'_>,
     style: Tier1CodingStyle,
@@ -4835,6 +4866,25 @@ pub struct Tier1BitplaneState {
     significance_propagation_complete: bool,
     magnitude_refinement_complete: bool,
     cleanup_complete: bool,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn legacy_bitplane_view(state: &Tier1BitplaneState) -> crate::specs::Part1LegacyBitplane {
+        crate::specs::Part1LegacyBitplane {
+            width: state.width, height: state.height, bitplane: state.bitplane,
+            significant_before: state.significant_before@, significance_visited: state.significance_visited@,
+            significance_propagation_complete: state.significance_propagation_complete,
+            magnitude_refinement_complete: state.magnitude_refinement_complete,
+            cleanup_complete: state.cleanup_complete,
+        }
+    }
+
+    pub open spec fn legacy_bitplane_outcome(result: Result<Tier1BitplaneState, DecodeError>)
+        -> Result<crate::specs::Part1LegacyBitplane, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(state) => Ok(legacy_bitplane_view(&state)) }
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -4972,6 +5022,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 4, 1),
+    ))]
     fn used_run_mode(&mut self) -> Result<(), DecodeError> {
         self.run_mode_columns = self
             .run_mode_columns
@@ -5848,32 +5901,7 @@ impl Tier1BitplaneState {
     }
 
     pub fn new_at_bitplane(plane: &CodeBlockPlane, bitplane: u16) -> Result<Self, DecodeError> {
-        if bitplane >= MAX_TIER1_BITPLANES {
-            return Err(invalid_code_block());
-        }
-        let mut significant_before = Vec::with_capacity(plane.coefficients.len());
-        let mut index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= plane.coefficients.len(),
-                decreases plane.coefficients.len() - index,
-            )
-        )]
-        while index < plane.coefficients.len() {
-            significant_before.push(plane.coefficients[index].significant);
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        Ok(Self {
-            width: plane.width,
-            height: plane.height,
-            bitplane,
-            significance_visited: vec![false; significant_before.len()],
-            significant_before,
-            significance_propagation_complete: false,
-            magnitude_refinement_complete: false,
-            cleanup_complete: false,
-        })
+        legacy_bitplane_from_plane(plane, bitplane)
     }
 
     pub const fn bitplane_mask(&self) -> u64 {
@@ -5884,22 +5912,81 @@ impl Tier1BitplaneState {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).bitplane,
+    ))]
     pub const fn bitplane(&self) -> u16 {
         self.bitplane
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).significance_propagation_complete,
+    ))]
     pub const fn significance_propagation_complete(&self) -> bool {
         self.significance_propagation_complete
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).magnitude_refinement_complete,
+    ))]
     pub const fn magnitude_refinement_complete(&self) -> bool {
         self.magnitude_refinement_complete
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).cleanup_complete,
+    ))]
     pub const fn cleanup_complete(&self) -> bool {
         self.cleanup_complete
     }
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_bitplane_outcome(result) == crate::specs::part1_legacy_bitplane_initial(
+            code_block_plane_view(plane), bitplane),
+    ))]
+fn legacy_bitplane_from_plane(
+    plane: &CodeBlockPlane,
+    bitplane: u16,
+) -> Result<Tier1BitplaneState, DecodeError> {
+    if bitplane >= MAX_TIER1_BITPLANES {
+        return Err(invalid_code_block());
+    }
+    let mut significant_before = Vec::with_capacity(plane.coefficients.len());
+    let mut index = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant index <= plane.coefficients.len(), significant_before.len() == index,
+                bitplane < MAX_TIER1_BITPLANES,
+                forall |i: int| 0 <= i < index ==> significant_before@[i] == plane.coefficients@[i].significant,
+            decreases plane.coefficients.len() - index,
+        ))]
+    while index < plane.coefficients.len() {
+        significant_before.push(plane.coefficients[index].significant);
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(significant_before@ =~= code_block_plane_view(plane).coefficients.map_values(
+            |c: crate::specs::Tier1RawCoefficient| c.significant));
+    }
+    let significance_visited = vec![false; significant_before.len()];
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(significance_visited@ =~= Seq::new(code_block_plane_view(plane).coefficients.len(), |i: int| false));
+    }
+    Ok(Tier1BitplaneState {
+        width: plane.width,
+        height: plane.height,
+        bitplane,
+        significance_visited,
+        significant_before,
+        significance_propagation_complete: false,
+        magnitude_refinement_complete: false,
+        cleanup_complete: false,
+    })
+}
+
+impl Tier1BitplaneState {
     pub fn was_visited_by_significance_propagation(
         &self,
         plane: &CodeBlockPlane,
@@ -5914,6 +6001,9 @@ impl Tier1BitplaneState {
         Ok(self.significance_visited[index])
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_legacy_validate(legacy_bitplane_view(self), code_block_plane_view(plane)),
+    ))]
     fn validate_plane(&self, plane: &CodeBlockPlane) -> Result<(), DecodeError> {
         if self.width != plane.width
             || self.height != plane.height
@@ -5926,6 +6016,12 @@ impl Tier1BitplaneState {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation, false, 0),
+))]
 pub fn decode_significance_propagation_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -5937,10 +6033,32 @@ pub fn decode_significance_propagation_pass(
         state,
         decoder,
         orientation,
-        Tier1CodingStyle::default(),
+        legacy_default_style(),
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_default_style(),
+))]
+fn legacy_default_style() -> Tier1CodingStyle {
+    Tier1CodingStyle {
+        block_coding: Tier1BlockCoding::Legacy,
+        force_high_throughput: false,
+        selective_arithmetic_coding_bypass: false,
+        reset_contexts: false,
+        terminate_all_passes: false,
+        vertical_causal_context: false,
+        predictable_termination: false,
+        segmentation_symbols: false,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation, style.vertical_causal_context, 0),
+))]
 pub fn decode_significance_propagation_pass_with_style(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -5948,16 +6066,21 @@ pub fn decode_significance_propagation_pass_with_style(
     orientation: SubbandOrientation,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Mq(decoder);
     decode_significance_propagation(
         plane,
         state,
-        &mut symbol_decoder,
+        decoder,
         orientation,
         style.vertical_causal_context,
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(final(reader))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))), orientation, style.vertical_causal_context, 0),
+))]
 pub fn decode_raw_significance_propagation_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -5965,23 +6088,34 @@ pub fn decode_raw_significance_propagation_pass(
     orientation: SubbandOrientation,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Raw(reader);
     decode_significance_propagation(
         plane,
         state,
-        &mut symbol_decoder,
+        reader,
         orientation,
         style.vertical_causal_context,
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_pass(
+            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+            orientation, vertical_causal_context, 0),
+))]
 fn decode_significance_propagation(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     orientation: SubbandOrientation,
     vertical_causal_context: bool,
 ) -> Result<Tier1PassStatistics, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost goal = crate::specs::part1_legacy_pass(
+            code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder),
+            orientation, vertical_causal_context, 0);
+    }
     state.validate_plane(plane)?;
     if state.significance_propagation_complete
         || state.magnitude_refinement_complete
@@ -5990,7 +6124,7 @@ fn decode_significance_propagation(
         return Err(invalid_code_block());
     }
 
-    let mut statistics = Tier1PassStatistics::default();
+    let mut statistics = ht_statistics_zero();
     let height = plane.height;
     let width = plane.width;
     let mut stripe_y = 0_u16;
@@ -5998,113 +6132,215 @@ fn decode_significance_propagation(
         verus_keep_ghost,
         verus_spec(
             invariant stripe_y <= height,
+                goal == crate::specs::part1_legacy_pass(
+                    code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                    orientation, vertical_causal_context, 0),
+                goal == crate::specs::part1_legacy_finish(crate::specs::part1_legacy_stripes(
+                    legacy_frame_view(plane, state, decoder, statistics), stripe_y as nat, width, height,
+                    orientation, vertical_causal_context, 0), 0),
             decreases height - stripe_y,
         )
     )]
     while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         let stripe_rows = crate::refinement::tier1_stripe_rows(height, stripe_y);
         let mut x = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant x <= width,
+                    stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                    stripe_y as nat + stripe_rows as nat <= height,
+                    goal == crate::specs::part1_legacy_pass(
+                        code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                        orientation, vertical_causal_context, 0),
+                    goal == crate::specs::part1_legacy_column_tail(
+                        legacy_frame_view(plane, state, decoder, statistics), x as nat, stripe_y, stripe_rows as nat,
+                        width, height, orientation, vertical_causal_context, 0),
                 decreases width - x,
             )
         )]
         while x < width {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_columns); }
             let mut row = 0;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant row <= stripe_rows,
+                        x < width, stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                        stripe_y as nat + stripe_rows as nat <= height,
+                        goal == crate::specs::part1_legacy_pass(
+                            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                            orientation, vertical_causal_context, 0),
+                        goal == crate::specs::part1_legacy_row_tail(
+                            legacy_frame_view(plane, state, decoder, statistics), x, stripe_y, row as nat, stripe_rows as nat,
+                            width, height, orientation, vertical_causal_context, 0),
                     decreases stripe_rows - row,
                 )
             )]
             while row < stripe_rows {
-                let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                statistics.scanned(1)?;
-                let index = plane.index(x, y)?;
-                let coefficient = plane.coefficient(x, y)?;
-                if !coefficient.significant {
-                    let summary =
-                        plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
-                    let neighbors = significant_neighbor_count(summary);
-                    if crate::refinement::tier1_sigprop_eligible(coefficient.significant, neighbors)
-                    {
-                        if index >= state.significance_visited.len() {
-                            return Err(invalid_code_block());
-                        }
-                        let zero_context = zero_coding_context(summary, orientation);
-                        let significant = decoder.decode(usize::from(zero_context))?;
-                        state.significance_visited[index] = true;
-                        statistics.decoded_symbols(1)?;
-                        if significant {
-                            decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
-                            statistics.decoded_symbols(1)?;
-                            statistics.became_significant()?;
-                        }
-                    }
-                }
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal(crate::specs::part1_legacy_rows); }
+                let y = match stripe_y.checked_add(row) {
+                    Some(y) => y,
+                    None => return Err(arithmetic_overflow()),
+                };
+                decode_significance_coefficient(
+                    plane,
+                    state,
+                    decoder,
+                    orientation,
+                    vertical_causal_context,
+                    (x, y),
+                    &mut statistics,
+                )?;
                 row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_rows); }
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_columns); }
         let next_stripe = stripe_y
             .checked_add(stripe_rows)
             .ok_or_else(arithmetic_overflow)?;
         if next_stripe <= stripe_y || next_stripe > height {
             return Err(invalid_code_block());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         stripe_y = next_stripe;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_stripes);
+        assert(goal == crate::specs::part1_legacy_finish(
+            (Ok(()), legacy_frame_view(plane, state, decoder, statistics)), 0));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before_finish = legacy_frame_view(plane, state, decoder, statistics); }
     state.significance_propagation_complete = crate::refinement::tier1_pass_complete(0) & 1 != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1u8 & 1u8 != 0) by(bit_vector);
+        assert(state.significance_propagation_complete);
+        assert(legacy_bitplane_view(state) == (crate::specs::Part1LegacyBitplane {
+            significance_propagation_complete: true, ..before_finish.state
+        }));
+        assert(code_block_plane_view(plane) == before_finish.plane);
+        assert(legacy_symbols_view(decoder) == before_finish.symbols);
+        assert((Ok(statistics), code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder)) == goal);
+    }
     Ok(statistics)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), final(state), final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_sig_cell(
+            legacy_frame_view(old(plane), old(state), old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, orientation, vertical_causal_context),
+))]
+fn decode_significance_coefficient(
+    plane: &mut CodeBlockPlane,
+    state: &mut Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    orientation: SubbandOrientation,
+    vertical_causal_context: bool,
+    coordinate: (u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_sig_cell); }
+    let (x, y) = coordinate;
+    statistics.scanned(1)?;
+    let index = plane.index(x, y)?;
+    let coefficient = plane.coefficient(x, y)?;
+    if !coefficient.significant {
+        let summary = plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+        let neighbors = significant_neighbor_count(summary);
+        if crate::refinement::tier1_sigprop_eligible(coefficient.significant, neighbors) {
+            if index >= state.significance_visited.len() {
+                return Err(invalid_code_block());
+            }
+            let zero_context = zero_coding_context(summary, orientation);
+            let significant = decoder.decode(usize::from(zero_context))?;
+            state.significance_visited[index] = true;
+            statistics.decoded_symbols(1)?;
+            if significant {
+                decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
+                statistics.decoded_symbols(1)?;
+                statistics.became_significant()?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), SubbandOrientation::Ll, false, 1),
+))]
 pub fn decode_magnitude_refinement_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     decoder: &mut MqDecoder<'_>,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    decode_magnitude_refinement_pass_with_style(plane, state, decoder, Tier1CodingStyle::default())
+    decode_magnitude_refinement_pass_with_style(plane, state, decoder, legacy_default_style())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), SubbandOrientation::Ll, style.vertical_causal_context, 1),
+))]
 pub fn decode_magnitude_refinement_pass_with_style(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     decoder: &mut MqDecoder<'_>,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Mq(decoder);
-    decode_magnitude_refinement(
-        plane,
-        state,
-        &mut symbol_decoder,
-        style.vertical_causal_context,
-    )
+    decode_magnitude_refinement(plane, state, decoder, style.vertical_causal_context)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(final(reader))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))), SubbandOrientation::Ll, style.vertical_causal_context, 1),
+))]
 pub fn decode_raw_magnitude_refinement_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     reader: &mut RawBitReader<'_>,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Raw(reader);
-    decode_magnitude_refinement(
-        plane,
-        state,
-        &mut symbol_decoder,
-        style.vertical_causal_context,
-    )
+    decode_magnitude_refinement(plane, state, reader, style.vertical_causal_context)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_pass(
+            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+            SubbandOrientation::Ll, vertical_causal_context, 1),
+))]
 fn decode_magnitude_refinement(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     vertical_causal_context: bool,
 ) -> Result<Tier1PassStatistics, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost goal = crate::specs::part1_legacy_pass(
+            code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder),
+            SubbandOrientation::Ll, vertical_causal_context, 1);
+    }
     state.validate_plane(plane)?;
     if !state.significance_propagation_complete
         || state.magnitude_refinement_complete
@@ -6113,7 +6349,7 @@ fn decode_magnitude_refinement(
         return Err(invalid_code_block());
     }
 
-    let mut statistics = Tier1PassStatistics::default();
+    let mut statistics = ht_statistics_zero();
     let height = plane.height;
     let width = plane.width;
     let mut stripe_y = 0_u16;
@@ -6121,76 +6357,163 @@ fn decode_magnitude_refinement(
         verus_keep_ghost,
         verus_spec(
             invariant stripe_y <= height,
+                goal == crate::specs::part1_legacy_pass(
+                    code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                    SubbandOrientation::Ll, vertical_causal_context, 1),
+                goal == crate::specs::part1_legacy_finish(crate::specs::part1_legacy_stripes(
+                    legacy_frame_view(plane, state, decoder, statistics), stripe_y as nat, width, height,
+                    SubbandOrientation::Ll, vertical_causal_context, 1), 1),
             decreases height - stripe_y,
         )
     )]
     while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         let stripe_rows = crate::refinement::tier1_stripe_rows(height, stripe_y);
         let mut x = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant x <= width,
+                    stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                    stripe_y as nat + stripe_rows as nat <= height,
+                    goal == crate::specs::part1_legacy_pass(
+                        code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                        SubbandOrientation::Ll, vertical_causal_context, 1),
+                    goal == crate::specs::part1_legacy_column_tail(
+                        legacy_frame_view(plane, state, decoder, statistics), x as nat, stripe_y, stripe_rows as nat,
+                        width, height, SubbandOrientation::Ll, vertical_causal_context, 1),
                 decreases width - x,
             )
         )]
         while x < width {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_columns); }
             let mut row = 0;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant row <= stripe_rows,
+                        x < width, stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                        stripe_y as nat + stripe_rows as nat <= height,
+                        goal == crate::specs::part1_legacy_pass(
+                            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                            SubbandOrientation::Ll, vertical_causal_context, 1),
+                        goal == crate::specs::part1_legacy_row_tail(
+                            legacy_frame_view(plane, state, decoder, statistics), x, stripe_y, row as nat, stripe_rows as nat,
+                            width, height, SubbandOrientation::Ll, vertical_causal_context, 1),
                     decreases stripe_rows - row,
                 )
             )]
             while row < stripe_rows {
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal(crate::specs::part1_legacy_rows); }
                 let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                statistics.scanned(1)?;
-                let index = plane.index(x, y)?;
-                if index >= state.significant_before.len() {
-                    return Err(invalid_code_block());
-                }
-                if crate::refinement::tier1_magref_eligible(state.significant_before[index]) {
-                    let coefficient = plane.coefficient(x, y)?;
-                    let summary =
-                        plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
-                    let context = magnitude_refinement_context(coefficient, summary);
-                    let refinement_bit = decoder.decode(usize::from(context))?;
-                    statistics.decoded_symbols(1)?;
-                    plane.apply_refinement_bit(x, y, state.bitplane, refinement_bit)?;
-                    statistics.refined()?;
-                }
+                decode_refinement_coefficient(
+                    plane,
+                    state,
+                    decoder,
+                    vertical_causal_context,
+                    (x, y),
+                    &mut statistics,
+                )?;
                 row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_rows); }
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_columns); }
         let next_stripe = stripe_y
             .checked_add(stripe_rows)
             .ok_or_else(arithmetic_overflow)?;
         if next_stripe <= stripe_y || next_stripe > height {
             return Err(invalid_code_block());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         stripe_y = next_stripe;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_stripes);
+        assert(goal == crate::specs::part1_legacy_finish(
+            (Ok(()), legacy_frame_view(plane, state, decoder, statistics)), 1));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before_finish = legacy_frame_view(plane, state, decoder, statistics); }
     state.magnitude_refinement_complete = crate::refinement::tier1_pass_complete(1) & 2 != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(2u8 & 2u8 != 0) by(bit_vector);
+        assert(state.magnitude_refinement_complete);
+        assert(legacy_bitplane_view(state) == (crate::specs::Part1LegacyBitplane {
+            magnitude_refinement_complete: true, ..before_finish.state
+        }));
+        assert(code_block_plane_view(plane) == before_finish.plane);
+        assert(legacy_symbols_view(decoder) == before_finish.symbols);
+        assert((Ok(statistics), code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder)) == goal);
+    }
     Ok(statistics)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_mag_cell(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, vertical_causal_context),
+))]
+fn decode_refinement_coefficient(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    vertical_causal_context: bool,
+    coordinate: (u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_mag_cell); }
+    let (x, y) = coordinate;
+    statistics.scanned(1)?;
+    let index = plane.index(x, y)?;
+    if index >= state.significant_before.len() {
+        return Err(invalid_code_block());
+    }
+    if crate::refinement::tier1_magref_eligible(state.significant_before[index]) {
+        let coefficient = plane.coefficient(x, y)?;
+        let summary = plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+        let context = magnitude_refinement_context(coefficient, summary);
+        let refinement_bit = decoder.decode(usize::from(context))?;
+        statistics.decoded_symbols(1)?;
+        plane.apply_refinement_bit(x, y, state.bitplane, refinement_bit)?;
+        statistics.refined()?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_cleanup_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation, false, false),
+))]
 pub fn decode_cleanup_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     decoder: &mut MqDecoder<'_>,
     orientation: SubbandOrientation,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    decode_cleanup_pass_with_style(
-        plane,
-        state,
-        decoder,
-        orientation,
-        Tier1CodingStyle::default(),
-    )
+    decode_cleanup_pass_with_style(plane, state, decoder, orientation, legacy_default_style())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_cleanup_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation,
+            style.vertical_causal_context, style.segmentation_symbols),
+))]
 pub fn decode_cleanup_pass_with_style(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -6198,25 +6521,36 @@ pub fn decode_cleanup_pass_with_style(
     orientation: SubbandOrientation,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Mq(decoder);
     decode_cleanup(
         plane,
         state,
-        &mut symbol_decoder,
+        decoder,
         orientation,
         style.vertical_causal_context,
         style.segmentation_symbols,
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_cleanup_pass(
+            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+            orientation, vertical_causal_context, segmentation_symbols),
+))]
 fn decode_cleanup(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     orientation: SubbandOrientation,
     vertical_causal_context: bool,
     segmentation_symbols: bool,
 ) -> Result<Tier1PassStatistics, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost goal = crate::specs::part1_legacy_cleanup_pass(
+            code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder),
+            orientation, vertical_causal_context, segmentation_symbols);
+    }
     state.validate_plane(plane)?;
     if state.cleanup_complete
         || state.significance_propagation_complete != state.magnitude_refinement_complete
@@ -6224,7 +6558,7 @@ fn decode_cleanup(
         return Err(invalid_code_block());
     }
 
-    let mut statistics = Tier1PassStatistics::default();
+    let mut statistics = ht_statistics_zero();
     let height = plane.height;
     let width = plane.width;
     let mut stripe_y = 0_u16;
@@ -6232,99 +6566,50 @@ fn decode_cleanup(
         verus_keep_ghost,
         verus_spec(
             invariant stripe_y <= height,
+                goal == crate::specs::part1_legacy_cleanup_pass(
+                    code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                    orientation, vertical_causal_context, segmentation_symbols),
+                goal == crate::specs::part1_legacy_cleanup_finish(crate::specs::part1_legacy_stripes(
+                    legacy_frame_view(plane, state, decoder, statistics), stripe_y as nat, width, height,
+                    orientation, vertical_causal_context, 2), segmentation_symbols),
             decreases height - stripe_y,
         )
     )]
     while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         let stripe_rows = crate::refinement::tier1_stripe_rows(height, stripe_y);
         let mut x = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant x <= width,
+                    stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                    stripe_y as nat + stripe_rows as nat <= height,
+                    goal == crate::specs::part1_legacy_cleanup_pass(
+                        code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                        orientation, vertical_causal_context, segmentation_symbols),
+                    goal == crate::specs::part1_legacy_cleanup_column_tail(
+                        legacy_frame_view(plane, state, decoder, statistics), x as nat, stripe_y, stripe_rows as nat,
+                        width, height, orientation, vertical_causal_context, segmentation_symbols),
                 decreases width - x,
             )
         )]
         while x < width {
-            let stripe_y_1 = stripe_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            let stripe_y_2 = stripe_y.checked_add(2).ok_or_else(arithmetic_overflow)?;
-            let stripe_y_3 = stripe_y.checked_add(3).ok_or_else(arithmetic_overflow)?;
-            if stripe_rows == 4
-                && cleanup_run_candidate(plane, state, x, stripe_y, vertical_causal_context)?
-                && cleanup_run_candidate(plane, state, x, stripe_y_1, vertical_causal_context)?
-                && cleanup_run_candidate(plane, state, x, stripe_y_2, vertical_causal_context)?
-                && cleanup_run_candidate(plane, state, x, stripe_y_3, vertical_causal_context)?
-            {
-                statistics.scanned(4)?;
-                statistics.used_run_mode()?;
-                let interrupted = decoder.decode(RUN_LENGTH_CONTEXT)?;
-                statistics.decoded_symbols(1)?;
-                if interrupted {
-                    let run_high = decoder.decode(UNIFORM_CONTEXT)?;
-                    let run_low = decoder.decode(UNIFORM_CONTEXT)?;
-                    statistics.decoded_symbols(2)?;
-                    let run_length = if run_high {
-                        if run_low { 3 } else { 2 }
-                    } else if run_low {
-                        1
-                    } else {
-                        0
-                    };
-                    let y = stripe_y
-                        .checked_add(run_length)
-                        .ok_or_else(arithmetic_overflow)?;
-                    let summary =
-                        plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
-                    decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
-                    statistics.decoded_symbols(1)?;
-                    statistics.became_significant()?;
-
-                    let mut row = run_length.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(decreases 4int - row as int,)
-                    )]
-                    while row < 4 {
-                        let remaining_y =
-                            stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                        decode_cleanup_coefficient(
-                            plane,
-                            state,
-                            decoder,
-                            orientation,
-                            vertical_causal_context,
-                            (x, remaining_y),
-                            &mut statistics,
-                        )?;
-                        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    }
-                }
-            } else {
-                let mut row = 0;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant row <= stripe_rows,
-                        decreases stripe_rows - row,
-                    )
-                )]
-                while row < stripe_rows {
-                    let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                    statistics.scanned(1)?;
-                    decode_cleanup_coefficient(
-                        plane,
-                        state,
-                        decoder,
-                        orientation,
-                        vertical_causal_context,
-                        (x, y),
-                        &mut statistics,
-                    )?;
-                    row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-            }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_columns); }
+            decode_cleanup_column(
+                plane,
+                state,
+                decoder,
+                (orientation, vertical_causal_context),
+                (x, stripe_y, stripe_rows),
+                &mut statistics,
+            )?;
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_columns); }
         let next_stripe = stripe_y
             .checked_add(stripe_rows)
             .ok_or_else(arithmetic_overflow)?;
@@ -6333,29 +6618,240 @@ fn decode_cleanup(
         }
         stripe_y = next_stripe;
     }
-    if segmentation_symbols {
-        let first = decoder.decode(UNIFORM_CONTEXT)?;
-        let second = decoder.decode(UNIFORM_CONTEXT)?;
-        let third = decoder.decode(UNIFORM_CONTEXT)?;
-        let fourth = decoder.decode(UNIFORM_CONTEXT)?;
-        statistics.decoded_symbols(4)?;
-        if !first || second || !third || fourth {
-            return Err(invalid_code_block());
-        }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_stripes);
     }
+    if segmentation_symbols {
+        decode_cleanup_segsym(plane, state, decoder, &mut statistics)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before_finish = legacy_frame_view(plane, state, decoder, statistics); }
     state.cleanup_complete = crate::refinement::tier1_pass_complete(2) & 4 != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(4u8 & 4u8 != 0) by(bit_vector);
+        assert((Ok(statistics), code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder)) == goal);
+    }
     Ok(statistics)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(_plane, _state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_segsym(
+            legacy_frame_view(_plane, _state, old(decoder), *old(statistics))),
+))]
+fn decode_cleanup_segsym(
+    _plane: &CodeBlockPlane,
+    _state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_segsym); }
+    let first = decoder.decode(UNIFORM_CONTEXT)?;
+    let second = decoder.decode(UNIFORM_CONTEXT)?;
+    let third = decoder.decode(UNIFORM_CONTEXT)?;
+    let fourth = decoder.decode(UNIFORM_CONTEXT)?;
+    statistics.decoded_symbols(4)?;
+    if !first || second || !third || fourth {
+        return Err(invalid_code_block());
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_cleanup_column(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, coordinate.2, context.0, context.1),
+))]
+fn decode_cleanup_column(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    context: (SubbandOrientation, bool),
+    coordinate: (u16, u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_cleanup_column);
+        reveal(crate::specs::part1_legacy_cleanup_run);
+    }
+    let (_orientation, vertical_causal_context) = context;
+    let (x, stripe_y, stripe_rows) = coordinate;
+    let stripe_y_1 = stripe_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    let stripe_y_2 = stripe_y.checked_add(2).ok_or_else(arithmetic_overflow)?;
+    let stripe_y_3 = stripe_y.checked_add(3).ok_or_else(arithmetic_overflow)?;
+    if stripe_rows == 4
+        && cleanup_run_candidate(plane, state, x, stripe_y, vertical_causal_context)?
+        && cleanup_run_candidate(plane, state, x, stripe_y_1, vertical_causal_context)?
+        && cleanup_run_candidate(plane, state, x, stripe_y_2, vertical_causal_context)?
+        && cleanup_run_candidate(plane, state, x, stripe_y_3, vertical_causal_context)?
+    {
+        statistics.scanned(4)?;
+        statistics.used_run_mode()?;
+        let interrupted = decoder.decode(RUN_LENGTH_CONTEXT)?;
+        statistics.decoded_symbols(1)?;
+        if interrupted {
+            decode_cleanup_interrupt(plane, state, decoder, context, (x, stripe_y), statistics)?;
+        }
+    } else {
+        decode_cleanup_rows(
+            plane,
+            state,
+            decoder,
+            context,
+            (x, stripe_y, 0, stripe_rows, true),
+            statistics,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_cleanup_interrupt(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, context.0, context.1),
+))]
+fn decode_cleanup_interrupt(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    context: (SubbandOrientation, bool),
+    coordinate: (u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_cleanup_interrupt); }
+    let (orientation, vertical_causal_context) = context;
+    let (x, stripe_y) = coordinate;
+    let run_high = decoder.decode(UNIFORM_CONTEXT)?;
+    let run_low = decoder.decode(UNIFORM_CONTEXT)?;
+    statistics.decoded_symbols(2)?;
+    let run_length = if run_high {
+        if run_low { 3 } else { 2 }
+    } else if run_low {
+        1
+    } else {
+        0
+    };
+    let y = stripe_y
+        .checked_add(run_length)
+        .ok_or_else(arithmetic_overflow)?;
+    let summary = plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+    decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
+    statistics.decoded_symbols(1)?;
+    statistics.became_significant()?;
+    let row = run_length.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    decode_cleanup_rows(
+        plane,
+        state,
+        decoder,
+        (orientation, vertical_causal_context),
+        (x, stripe_y, row, 4, false),
+        statistics,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == if coordinate.4 {
+            crate::specs::part1_legacy_rows(
+                legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+                coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1, 2)
+        } else {
+            crate::specs::part1_legacy_cleanup_rows(
+                legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+                coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1)
+        },
+))]
+fn decode_cleanup_rows(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    context: (SubbandOrientation, bool),
+    coordinate: (u16, u16, u16, u16, bool),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    let (orientation, vertical_causal_context) = context;
+    let (x, stripe_y, mut row, rows, scan) = coordinate;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = legacy_frame_view(plane, state, decoder, *statistics);
+        let ghost goal = if scan {
+            crate::specs::part1_legacy_rows(initial, x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context, 2)
+        } else {
+            crate::specs::part1_legacy_cleanup_rows(initial, x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context)
+        };
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant initial == legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            goal == if coordinate.4 {
+                crate::specs::part1_legacy_rows(initial, coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1, 2)
+            } else {
+                crate::specs::part1_legacy_cleanup_rows(initial, coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1)
+            },
+            goal == if scan {
+                crate::specs::part1_legacy_rows(legacy_frame_view(plane, state, decoder, *statistics),
+                    x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context, 2)
+            } else {
+                crate::specs::part1_legacy_cleanup_rows(legacy_frame_view(plane, state, decoder, *statistics),
+                    x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context)
+            },
+        decreases rows as int - row as int,
+    ))]
+    while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_legacy_rows);
+            reveal(crate::specs::part1_legacy_cleanup_rows);
+        }
+        let y = match stripe_y.checked_add(row) {
+            Some(y) => y,
+            None => return Err(arithmetic_overflow()),
+        };
+        if scan {
+            statistics.scanned(1)?;
+        }
+        decode_cleanup_coefficient(
+            plane,
+            state,
+            decoder,
+            orientation,
+            vertical_causal_context,
+            (x, y),
+            statistics,
+        )?;
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_rows);
+        reveal(crate::specs::part1_legacy_cleanup_rows);
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_cleanup_cell(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, orientation, vertical_causal_context),
+))]
 fn decode_cleanup_coefficient(
     plane: &mut CodeBlockPlane,
     state: &Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     orientation: SubbandOrientation,
     vertical_causal_context: bool,
     coordinate: (u16, u16),
     statistics: &mut Tier1PassStatistics,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_cleanup_cell); }
     let (x, y) = coordinate;
     let index = plane.index(x, y)?;
     if index >= state.significance_visited.len() {
@@ -6380,16 +6876,23 @@ fn decode_cleanup_coefficient(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_sign_mark(
+            code_block_plane_view(old(plane)), legacy_symbols_view(old(decoder)), x, y, bitplane, summary),
+))]
 fn decode_sign_and_mark(
     plane: &mut CodeBlockPlane,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     x: u16,
     y: u16,
     bitplane: u16,
     summary: NeighborSummary,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_sign_mark); }
     let sign = sign_context(summary);
-    let raw = matches!(decoder, Tier1SymbolDecoder::Raw(_));
+    let raw = decoder.is_raw();
     let decoded_sign = decoder.decode(usize::from(sign.context))?;
     plane.mark_significant_at_bitplane(
         x,
@@ -6399,6 +6902,10 @@ fn decode_sign_and_mark(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_cleanup_candidate(
+        code_block_plane_view(plane), legacy_bitplane_view(state), x, y, vertical_causal_context),
+))]
 fn cleanup_run_candidate(
     plane: &CodeBlockPlane,
     state: &Tier1BitplaneState,
@@ -6406,6 +6913,8 @@ fn cleanup_run_candidate(
     y: u16,
     vertical_causal_context: bool,
 ) -> Result<bool, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_cleanup_candidate); }
     let index = plane.index(x, y)?;
     if index >= state.significance_visited.len() {
         return Err(invalid_code_block());
@@ -6419,17 +6928,74 @@ fn cleanup_run_candidate(
         )?) == 0)
 }
 
-enum Tier1SymbolDecoder<'decoder, 'input> {
-    Mq(&'decoder mut MqDecoder<'input>),
-    Raw(&'decoder mut RawBitReader<'input>),
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn legacy_symbols_view<D: Tier1SymbolDecoder>(decoder: &D) -> crate::specs::Part1LegacySymbols {
+        decoder.symbols_view()
+    }
+
+    closed spec fn legacy_frame_view<D: Tier1SymbolDecoder>(plane: &CodeBlockPlane, state: &Tier1BitplaneState,
+        decoder: &D, statistics: Tier1PassStatistics) -> crate::specs::Part1LegacyFrame {
+        crate::specs::Part1LegacyFrame {
+            plane: code_block_plane_view(plane), state: legacy_bitplane_view(state),
+            symbols: legacy_symbols_view(decoder), statistics,
+        }
+    }
 }
 
-impl Tier1SymbolDecoder<'_, '_> {
-    fn decode(&mut self, context: usize) -> Result<bool, DecodeError> {
-        match self {
-            Self::Mq(decoder) => decoder.decode(context),
-            Self::Raw(reader) => reader.read_bit(),
+trait Tier1SymbolDecoder {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols;
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, final(self).symbols_view()) == crate::specs::part1_legacy_symbol(
+            old(self).symbols_view(), context),
+    ))]
+    fn decode(&mut self, context: usize) -> Result<bool, DecodeError>;
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == (self.symbols_view() is Raw),
+    ))]
+    fn is_raw(&self) -> bool;
+}
+
+impl Tier1SymbolDecoder for MqDecoder<'_> {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(self))
         }
+    }
+
+    fn decode(&mut self, context: usize) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_symbol); }
+        MqDecoder::decode(self, context)
+    }
+
+    fn is_raw(&self) -> bool {
+        false
+    }
+}
+
+impl Tier1SymbolDecoder for RawBitReader<'_> {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(self))
+        }
+    }
+
+    fn decode(&mut self, _context: usize) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_symbol); }
+        self.read_bit()
+    }
+
+    fn is_raw(&self) -> bool {
+        true
     }
 }
 
@@ -6714,6 +7280,11 @@ impl CodeBlockPlane {
         self.mark_significant_magnitude(x, y, Magnitude::from_u64(magnitude), negative)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::part1_legacy_mark(
+            code_block_plane_view(old(self)), x, y, bitplane, negative),
+            final(self).width == old(self).width, final(self).height == old(self).height,
+    ))]
     fn mark_significant_at_bitplane(
         &mut self,
         x: u16,
@@ -6721,12 +7292,22 @@ impl CodeBlockPlane {
         bitplane: u16,
         negative: bool,
     ) -> Result<(), DecodeError> {
-        self.mark_significant_magnitude(x, y, Magnitude::single_bit(bitplane)?, negative)?;
+        self.mark_significant_magnitude(
+            x,
+            y,
+            crate::magnitude::magnitude_single_bit(bitplane)?,
+            negative,
+        )?;
         let index = self.index(x, y)?;
         self.coefficients
             .get_mut(index)
             .ok_or_else(invalid_code_block)?
             .legacy_bitplane = Some(bitplane);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(code_block_plane_view(self).coefficients =~=
+                crate::specs::part1_legacy_mark(code_block_plane_view(old(self)), x, y, bitplane, negative).1.coefficients);
+        }
         Ok(())
     }
 
@@ -6781,6 +7362,11 @@ impl CodeBlockPlane {
         self.apply_refinement_bit(x, y, bitplane, refinement_bit)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::part1_legacy_refine(
+            code_block_plane_view(old(self)), x, y, bitplane, refinement_bit),
+            final(self).width == old(self).width, final(self).height == old(self).height,
+    ))]
     fn apply_refinement_bit(
         &mut self,
         x: u16,
@@ -6788,6 +7374,8 @@ impl CodeBlockPlane {
         bitplane: u16,
         refinement_bit: bool,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = code_block_plane_view(self); }
         if bitplane >= MAX_TIER1_BITPLANES {
             return Err(invalid_code_block());
         }
@@ -6799,20 +7387,72 @@ impl CodeBlockPlane {
         if !coefficient.significant {
             return Err(invalid_code_block());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_magnitude_value_bound(coefficient_raw_view(coefficient).limbs);
+        }
         if refinement_bit {
             let current = coefficient.wide_magnitude();
-            let delta = Magnitude::single_bit(bitplane)?;
+            let delta = crate::magnitude::magnitude_single_bit(bitplane)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::magnitude::representation_proofs::magnitude_limbs_shape(current);
+                crate::magnitude::representation_proofs::magnitude_limbs_shape(delta);
+                crate::proofs::production_impl::production_legacy_magnitude_u64(crate::magnitude::magnitude_limbs(current));
+                crate::proofs::production_impl::production_legacy_magnitude_u64(crate::magnitude::magnitude_limbs(delta));
+            }
             let magnitude = match (current.to_u64(), delta.to_u64()) {
-                (Some(current), Some(delta)) if current <= u64::MAX - delta => Magnitude::from_u64(
-                    crate::refinement::tier1_refined_magnitude(current, delta, true),
-                ),
+                (Some(current), Some(delta)) if current <= u64::MAX - delta => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(current as nat == crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs));
+                        assert(delta as nat == vstd::arithmetic::power2::pow2(bitplane as nat));
+                    }
+                    crate::magnitude::magnitude_from_u64(
+                        crate::refinement::tier1_refined_magnitude(current, delta, true),
+                    )
+                }
                 _ => current.checked_add(delta)?,
             };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::magnitude::magnitude_value(magnitude) ==
+                    crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs)
+                        + vstd::arithmetic::power2::pow2(bitplane as nat));
+                crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+                crate::proofs::production_impl::production_magnitude_value_bound(crate::magnitude::magnitude_limbs(magnitude));
+                crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
+            }
             self.coefficients[index].set_magnitude(magnitude)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(coefficient_raw_view(self.coefficients[index as int]).limbs
+                    == crate::specs::tier1_value_limbs(
+                        crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs)
+                            + vstd::arithmetic::power2::pow2(bitplane as nat)));
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part1_legacy_refine(start, x, y, bitplane, refinement_bit).0 == Ok(()));
+            assert(coefficient_raw_view(self.coefficients[index as int]) == (crate::specs::Tier1RawCoefficient {
+                limbs: if refinement_bit {
+                    crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs)
+                        + vstd::arithmetic::power2::pow2(bitplane as nat))
+                } else { coefficient_raw_view(coefficient).limbs },
+                ..coefficient_raw_view(coefficient)
+            }));
         }
         self.coefficients[index].refined = true;
         if coefficient.legacy_bitplane.is_some() {
             self.coefficients[index].legacy_bitplane = Some(bitplane);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(coefficient_raw_view(self.coefficients[index as int])
+                == crate::specs::part1_legacy_refine(start, x, y, bitplane, refinement_bit).1.coefficients[index as int]);
+            assert(code_block_plane_view(self).coefficients =~=
+                crate::specs::part1_legacy_refine(start, x, y, bitplane, refinement_bit).1.coefficients);
         }
         Ok(())
     }
@@ -7046,6 +7686,367 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_raw_significance_refinement_and_mq_cleanup_have_exact_whole_results() {
+        for width in 1..=4 {
+            for height in 1..=9 {
+                for orientation in [
+                    SubbandOrientation::Ll,
+                    SubbandOrientation::Lh,
+                    SubbandOrientation::Hl,
+                    SubbandOrientation::Hh,
+                ] {
+                    for causal in [false, true] {
+                        let mut plane = CodeBlockPlane::new(width, height).unwrap();
+                        plane.mark_significant(0, 0, 8, false).unwrap();
+                        let mut state = legacy_bitplane_from_plane(&plane, 2).unwrap();
+                        let style = Tier1CodingStyle {
+                            vertical_causal_context: causal,
+                            ..Tier1CodingStyle::default()
+                        };
+                        let mut reader = raw_reader_from_input(&[0xff, 0x90], 2, 1000).unwrap();
+                        let count = u32::from(width) * u32::from(height);
+                        let significance = decode_raw_significance_propagation_pass(
+                            &mut plane,
+                            &mut state,
+                            &mut reader,
+                            orientation,
+                            style,
+                        )
+                        .unwrap();
+                        assert_eq!(
+                            significance,
+                            Tier1PassStatistics {
+                                coefficients_scanned: count,
+                                coding_symbols: 2 * (count - 1),
+                                newly_significant: count - 1,
+                                ..Tier1PassStatistics::default()
+                            }
+                        );
+                        assert!(state.significance_propagation_complete);
+                        assert!(!state.magnitude_refinement_complete && !state.cleanup_complete);
+                        assert_eq!(
+                            state.significant_before,
+                            (0..count).map(|i| i == 0).collect::<Vec<_>>()
+                        );
+                        assert_eq!(
+                            state.significance_visited,
+                            (0..count).map(|i| i != 0).collect::<Vec<_>>()
+                        );
+                        for (index, coefficient) in plane.coefficients.iter().enumerate() {
+                            assert_eq!(
+                                *coefficient,
+                                CoefficientState {
+                                    magnitude: if index == 0 { 8 } else { 4 },
+                                    magnitude_high: [0; 5],
+                                    legacy_bitplane: if index == 0 { None } else { Some(2) },
+                                    negative: index != 0,
+                                    significant: true,
+                                    refined: false,
+                                }
+                            );
+                        }
+                        assert_eq!(
+                            decode_raw_magnitude_refinement_pass(
+                                &mut plane,
+                                &mut state,
+                                &mut reader,
+                                style
+                            ),
+                            Ok(Tier1PassStatistics {
+                                coefficients_scanned: count,
+                                coding_symbols: 1,
+                                refined_coefficients: 1,
+                                ..Tier1PassStatistics::default()
+                            })
+                        );
+                        assert_eq!(plane.coefficients[0].magnitude, 12);
+                        assert!(plane.coefficients[0].refined);
+                        assert!(
+                            state.significance_propagation_complete
+                                && state.magnitude_refinement_complete
+                                && !state.cleanup_complete
+                        );
+                        assert_eq!(reader.work_units, u64::from(2 * (count - 1) + 1));
+                        let before = plane.clone();
+                        let mut mq = MqDecoder::new(&[], &ResourceLimits::default()).unwrap();
+                        let before_mq = format!("{mq:?}");
+                        assert_eq!(
+                            decode_cleanup_pass_with_style(
+                                &mut plane,
+                                &mut state,
+                                &mut mq,
+                                orientation,
+                                style
+                            ),
+                            Ok(Tier1PassStatistics {
+                                coefficients_scanned: count,
+                                ..Tier1PassStatistics::default()
+                            })
+                        );
+                        assert_eq!(plane, before);
+                        assert!(state.cleanup_complete);
+                        assert_eq!(format!("{mq:?}"), before_mq);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_significance_budget_errors_preserve_exact_decoded_prefix_and_flags() {
+        for maximum in 0..=3 {
+            let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+            plane.mark_significant(0, 0, 8, false).unwrap();
+            let mut state = legacy_bitplane_from_plane(&plane, 2).unwrap();
+            let before = plane.clone();
+            let mut reader = raw_reader_from_input(&[0xff], 1, maximum).unwrap();
+            let result = decode_raw_significance_propagation_pass(
+                &mut plane,
+                &mut state,
+                &mut reader,
+                SubbandOrientation::Ll,
+                Tier1CodingStyle::default(),
+            );
+            let mut expected_state = legacy_bitplane_from_plane(&before, 2).unwrap();
+            expected_state.significance_visited[1] = maximum >= 1;
+            expected_state.significance_propagation_complete = maximum >= 2;
+            assert_eq!(state, expected_state);
+            assert_eq!(
+                reader,
+                RawBitReader {
+                    input: &[0xff],
+                    next_index: 1,
+                    current_byte: 0xff,
+                    bits_remaining: if maximum == 0 { 7 } else { 6 },
+                    marker_padding_count: 0,
+                    work_units: if maximum == 0 { 1 } else { 2 },
+                    maximum_work_units: maximum,
+                }
+            );
+            if maximum < 2 {
+                assert_eq!(plane, before);
+                assert_eq!(
+                    result,
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: maximum,
+                        actual: maximum + 1,
+                    })
+                );
+            } else {
+                assert_eq!(
+                    plane.coefficients[1],
+                    CoefficientState {
+                        magnitude: 4,
+                        magnitude_high: [0; 5],
+                        legacy_bitplane: Some(2),
+                        negative: true,
+                        significant: true,
+                        refined: false,
+                    }
+                );
+                assert_eq!(
+                    result,
+                    Ok(Tier1PassStatistics {
+                        coefficients_scanned: 2,
+                        coding_symbols: 2,
+                        newly_significant: 1,
+                        ..Tier1PassStatistics::default()
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_sign_mark_covers_every_native_bitplane_without_constructor_assumptions() {
+        for bitplane in 0..=u16::MAX {
+            let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+            plane.mark_significant(0, 0, 1, false).unwrap();
+            let before = plane.clone();
+            let mut state = legacy_bitplane_from_plane(&plane, 0).unwrap();
+            state.bitplane = bitplane;
+            let mut reader = raw_reader_from_input(&[0xff], 1, 2).unwrap();
+            let result = decode_raw_significance_propagation_pass(
+                &mut plane,
+                &mut state,
+                &mut reader,
+                SubbandOrientation::Hh,
+                Tier1CodingStyle::default(),
+            );
+            assert_eq!(state.significance_visited, [false, true]);
+            assert_eq!(reader.work_units, 2);
+            assert_eq!(reader.bits_remaining, 6);
+            assert_eq!(state.significant_before, [true, false]);
+            assert!(!state.magnitude_refinement_complete && !state.cleanup_complete);
+            if bitplane < 384 {
+                let mut limbs = [0_u64; 6];
+                limbs[usize::from(bitplane / 64)] = 1 << (bitplane % 64);
+                assert_eq!(plane.coefficients[0], before.coefficients[0]);
+                assert_eq!(plane.coefficients[1].magnitude, limbs[0]);
+                assert_eq!(plane.coefficients[1].magnitude_high, limbs[1..]);
+                assert_eq!(plane.coefficients[1].legacy_bitplane, Some(bitplane));
+                assert!(
+                    plane.coefficients[1].significant
+                        && plane.coefficients[1].negative
+                        && !plane.coefficients[1].refined
+                );
+                assert!(state.significance_propagation_complete);
+                assert_eq!(
+                    result,
+                    Ok(Tier1PassStatistics {
+                        coefficients_scanned: 2,
+                        coding_symbols: 2,
+                        newly_significant: 1,
+                        ..Tier1PassStatistics::default()
+                    })
+                );
+            } else {
+                assert_eq!(plane, before);
+                assert!(!state.significance_propagation_complete);
+                assert_eq!(result, Err(arithmetic_overflow()));
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_raw_refinement_keeps_high_words_tags_and_exact_failure_priority() {
+        for bitplane in [0, 63, 64, 127, 191, 255, 291, 292, 383, 384, u16::MAX] {
+            for bit in [false, true] {
+                let mut plane = CodeBlockPlane::new(1, 1).unwrap();
+                plane.coefficients[0] = CoefficientState {
+                    magnitude: u64::MAX,
+                    magnitude_high: [u64::MAX; 5],
+                    legacy_bitplane: Some(u16::MAX),
+                    negative: true,
+                    significant: true,
+                    refined: false,
+                };
+                let before = plane.clone();
+                let mut state = legacy_bitplane_from_plane(&plane, 0).unwrap();
+                state.bitplane = bitplane;
+                state.significance_propagation_complete = true;
+                let mut reader =
+                    raw_reader_from_input(if bit { &[0x80] } else { &[0] }, 1, 1).unwrap();
+                let result = decode_raw_magnitude_refinement_pass(
+                    &mut plane,
+                    &mut state,
+                    &mut reader,
+                    Tier1CodingStyle::default(),
+                );
+                assert_eq!(reader.work_units, 1);
+                assert_eq!(reader.bits_remaining, 7);
+                assert_eq!(state.significant_before, [true]);
+                assert_eq!(state.significance_visited, [false]);
+                assert!(state.significance_propagation_complete && !state.cleanup_complete);
+                if bitplane >= 292 || bit {
+                    assert_eq!(
+                        result,
+                        Err(if bitplane >= 292 {
+                            invalid_code_block()
+                        } else {
+                            arithmetic_overflow()
+                        })
+                    );
+                    assert_eq!(plane, before);
+                    assert!(!state.magnitude_refinement_complete);
+                } else {
+                    assert_eq!(
+                        result,
+                        Ok(Tier1PassStatistics {
+                            coefficients_scanned: 1,
+                            coding_symbols: 1,
+                            refined_coefficients: 1,
+                            ..Tier1PassStatistics::default()
+                        })
+                    );
+                    let mut expected = before;
+                    expected.coefficients[0].refined = true;
+                    expected.coefficients[0].legacy_bitplane = Some(bitplane);
+                    assert_eq!(plane, expected);
+                    assert!(state.magnitude_refinement_complete);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_cleanup_run_and_segsym_errors_keep_exact_real_symbol_prefix() {
+        for maximum in 0..=11 {
+            for valid_segsym in [false, true] {
+                let input = [if valid_segsym { 0xa2 } else { 0xa0 }, 0x80];
+                let mut plane = CodeBlockPlane::new(1, 4).unwrap();
+                let mut state = legacy_bitplane_from_plane(&plane, 2).unwrap();
+                let mut reader = raw_reader_from_input(&input, 2, maximum).unwrap();
+                let result = decode_cleanup(
+                    &mut plane,
+                    &mut state,
+                    &mut reader,
+                    SubbandOrientation::Hl,
+                    true,
+                    true,
+                );
+                let work = if maximum < 10 { maximum + 1 } else { 10 };
+                assert_eq!(
+                    reader,
+                    RawBitReader {
+                        input: &input,
+                        next_index: if work <= 8 { 1 } else { 2 },
+                        current_byte: if work <= 8 { input[0] } else { input[1] },
+                        bits_remaining: if work <= 8 {
+                            (8 - work) as u8
+                        } else {
+                            (16 - work) as u8
+                        },
+                        marker_padding_count: 0,
+                        work_units: work,
+                        maximum_work_units: maximum,
+                    }
+                );
+                let mut expected = CodeBlockPlane::new(1, 4).unwrap();
+                if maximum >= 4 {
+                    expected.coefficients[1] = CoefficientState {
+                        magnitude: 4,
+                        magnitude_high: [0; 5],
+                        legacy_bitplane: Some(2),
+                        negative: false,
+                        significant: true,
+                        refined: false,
+                    };
+                }
+                assert_eq!(plane, expected);
+                assert_eq!(state.significant_before, [false; 4]);
+                assert_eq!(state.significance_visited, [false; 4]);
+                assert!(
+                    !state.significance_propagation_complete
+                        && !state.magnitude_refinement_complete
+                );
+                assert_eq!(state.cleanup_complete, maximum >= 10 && valid_segsym);
+                assert_eq!(
+                    result,
+                    if maximum < 10 {
+                        Err(DecodeError::LimitExceeded {
+                            resource: Resource::WorkUnits,
+                            limit: maximum,
+                            actual: maximum + 1,
+                        })
+                    } else if !valid_segsym {
+                        Err(invalid_code_block())
+                    } else {
+                        Ok(Tier1PassStatistics {
+                            coefficients_scanned: 4,
+                            coding_symbols: 10,
+                            newly_significant: 1,
+                            run_mode_columns: 1,
+                            ..Tier1PassStatistics::default()
+                        })
+                    }
+                );
+            }
+        }
+    }
 
     fn raw_token_oracle(input: &[u8], rank: usize) -> (bool, usize, u8, u8, u64) {
         assert!(input.len() <= 2);

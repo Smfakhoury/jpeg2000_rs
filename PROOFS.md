@@ -82,6 +82,48 @@ Whole-header direct/palette component selection, CDEF record application,
 final typed-image admission, parser associations and selected-pixel composition
 remain separate F7 closure obligations.
 
+## Complete actual MQ and legacy three-pass producers
+
+The actual MQ decoder now refines [a complete state model](specs/mq.rs):
+input bytes, physical position, interval/code/count registers, all nineteen
+probability contexts and MPS bits, work counter/cap and marker-padding counter.
+The independent forty-seven-state probability sequence is joined to the real
+table. Decode includes both conditional exchanges, real context transitions,
+byte stuffing, bounded renormalization and the real first error. Input admission,
+context save/restore/reset, byte consumption and predictable-termination checks
+have their complete relations too. No initialized-register, valid-context,
+valid-stream or sufficient-budget premise restricts the decoder methods.
+
+The actual legacy significance-propagation, magnitude-refinement and cleanup
+passes refine [whole pass/state models](specs/legacy.rs), including both MQ and
+bypass readers where the production entry permits them. All four subband
+orientations, causal-context choices, cleanup run interruption, delayed symbol
+statistics, segmentation symbols, six coefficient words, sign/refinement/
+legacy-bitplane flags and both complete bitplane-state vectors are represented.
+Public with-style entries observe the style fields actually used by each pass;
+they do not silently validate other fields. All errors retain actual reader,
+coefficient and visit-flag mutations. Completing a pass is not transactional.
+
+The stripe/column/row traversal and cleanup run-mode skipping remain intact.
+Their existing coefficient operations have one production implementation;
+private cell/column/row stages expose its state transitions. A private static
+reader adapter delegates directly to the actual MQ or raw reader. Its ghost
+view has concrete implementations for both readers, not a supplied symbol
+trace. Existing static constructor APIs delegate to verified free constructors,
+following the pinned frontend's established static-impl limitation.
+
+Independent tests exhaust all two-byte MQ initializations, native context-state
+bytes and both MPS values; assert complete register/context/error effects;
+exercise all 65,536 native legacy sign bitplanes; and check actual three-pass
+composition and every raw cleanup/run/segmentation-symbol budget prefix.
+Native reference-decoder qualification remains a separate gate.
+
+This completes the entropy and three-pass producer boundary, **not F5L**.
+Segment/pass scheduling and admission, retained contribution replay, packet
+association, whole-decoder staging/cloning and packet-to-coefficient composition
+remain explicit obligations. A pass theorem must not be reported as a complete
+legacy code-block or codestream theorem.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
