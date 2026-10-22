@@ -1,6 +1,6 @@
 use crate::{
     DecodeError, MalformedKind, Resource, ResourceLimits,
-    codestream::{ArbitraryKernel, KernelCoefficient},
+    codestream::{ArbitraryKernel, KernelCoefficient, KernelLiftingStep},
     magnitude::Magnitude,
 };
 
@@ -126,6 +126,14 @@ verus! {
         (wavelet_band_view(level.ll), wavelet_band_view(level.hl),
             wavelet_band_view(level.lh), wavelet_band_view(level.hh),
             level.output_width, level.output_height, level.low_pass_first_x, level.low_pass_first_y)
+    }
+
+    pub open spec fn arbitrary_kernel_option(value: Option<&ArbitraryKernel>) -> Option<crate::specs::Part2RawKernel> {
+        match value { None => None, Some(kernel) => Some(crate::codestream::raw_kernel_view(*kernel)) }
+    }
+
+    pub open spec fn arbitrary_kernel_supplied(value: Option<&ArbitraryKernel>) -> bool {
+        value.is_some()
     }
 }
 
@@ -510,6 +518,10 @@ fn inverse_nine_seven_lifts(samples: &mut [i64], low_first: bool) -> Result<(), 
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures sequence_outcome(result)
+        == crate::specs::part2_inverse_arbitrary(low@, high@, low_pass_first, crate::codestream::raw_kernel_view(*kernel)),
+))]
 pub fn inverse_arbitrary(
     low: &[i64],
     high: &[i64],
@@ -523,6 +535,8 @@ pub fn inverse_arbitrary(
         }
         return Ok(output);
     }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = output@; }
     if !kernel.reversible() {
         let scaling = coefficient_fixed(
             kernel.scaling().ok_or_else(invalid_transform)?,
@@ -531,15 +545,33 @@ pub fn inverse_arbitrary(
         if scaling == 0 {
             return Err(invalid_transform());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_atk_scale_empty(initial, scaling, low_pass_first);
+        }
         let mut index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= output.len(),
+                initial.len() == output.len(),
+                initial.len() != 1,
+                crate::specs::part1_interleaved(low@, high@, low_pass_first) == Ok(initial),
+                !crate::codestream::raw_kernel_view(*kernel).0,
+                crate::codestream::raw_kernel_view(*kernel).5.is_some(),
+                crate::specs::part2_atk_fixed_coefficient(crate::codestream::raw_kernel_view(*kernel).5.unwrap(),
+                    crate::codestream::raw_kernel_view(*kernel).1) == Ok(scaling),
+                scaling != 0,
+                crate::specs::part2_atk_scale_prefix(initial, scaling, low_pass_first, index as nat) == Ok(output@),
                 decreases output.len() - index,
             )
         )]
         while index < output.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_atk_scale_step(initial, scaling, low_pass_first, index as nat);
+                crate::proofs::production_impl::production_atk_scale_error_guard(initial, scaling, low_pass_first, index as nat + 1, initial.len());
+            }
             let even = (index & 1 == 0) == low_pass_first;
             output[index] = if even {
                 fixed_mul_q32(output[index], scaling)?
@@ -549,125 +581,268 @@ pub fn inverse_arbitrary(
             index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
     }
+    apply_arbitrary_steps(&mut output, low_pass_first, kernel)?;
+    Ok(output)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@)
+        == crate::specs::part2_atk_steps(old(output)@, crate::codestream::raw_kernel_view(*kernel), low_pass_first, crate::codestream::raw_kernel_view(*kernel).6.len()),
+))]
+fn apply_arbitrary_steps(
+    output: &mut [i64],
+    low_pass_first: bool,
+    kernel: &ArbitraryKernel,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = output@; }
     let mut update_odd = kernel.initial_odd();
     let mut step_index = kernel.steps().len();
-    #[cfg_attr(verus_keep_ghost, verus_spec(decreases step_index,))]
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost total_steps = step_index as nat; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_atk_steps_empty(original, crate::codestream::raw_kernel_view(*kernel), low_pass_first);
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant step_index <= total_steps,
+        total_steps == crate::codestream::raw_kernel_view(*kernel).6.len(),
+        original == old(output)@,
+        update_odd == if (total_steps - step_index) % 2 == 0 { crate::codestream::raw_kernel_view(*kernel).3 } else { !crate::codestream::raw_kernel_view(*kernel).3 },
+        crate::specs::part2_atk_steps(original, crate::codestream::raw_kernel_view(*kernel), low_pass_first, (total_steps - step_index) as nat) == (Ok(()), output@),
+        decreases step_index,
+    ))]
     while step_index > 0 {
         step_index = crate::refinement::atk_reconstruction_step(step_index);
         let step = kernel
             .steps()
             .get(step_index)
             .ok_or_else(invalid_transform)?;
-        let target_local_odd = if low_pass_first {
-            update_odd
-        } else {
-            !update_odd
-        };
-        let mut target = usize::from(target_local_odd);
-        let mut target_passes = output
-            .len()
-            .checked_sub(target)
-            .and_then(|value| value.checked_add(1))
-            .and_then(|value| value.checked_div(2))
-            .ok_or_else(arithmetic_overflow)?;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases target_passes,)
-        )]
-        while target < output.len() {
-            if kernel.reversible() {
-                let mut sum = coefficient_integer(
-                    step.residue().ok_or_else(invalid_transform)?,
-                    kernel.coefficient_type(),
-                )?;
-                let coefficient_count = step.coefficients().len();
-                let mut coefficient = 0_usize;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(decreases coefficient_count - coefficient,)
-                )]
-                while coefficient < coefficient_count {
-                    let alpha = coefficient_integer(
-                        *step
-                            .coefficients()
-                            .get(coefficient)
-                            .ok_or_else(invalid_transform)?,
-                        kernel.coefficient_type(),
-                    )?;
-                    let contribution = lifting_source_sum(
-                        &output,
-                        target,
-                        coefficient,
-                        step.offset(),
-                        kernel.whole_sample_filter(),
-                        kernel.whole_sample_extension(),
-                    )?;
-                    sum = sum
-                        .checked_add(
-                            alpha
-                                .checked_mul(i128::from(contribution))
-                                .ok_or_else(arithmetic_overflow)?,
-                        )
-                        .ok_or_else(arithmetic_overflow)?;
-                    coefficient = coefficient.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                let exponent = u32::from(step.exponent());
-                if exponent >= 127 {
-                    return Err(invalid_transform());
-                }
-                let adjustment = sum >> exponent;
-                let updated = i128::from(output[target])
-                    .checked_sub(adjustment)
-                    .ok_or_else(arithmetic_overflow)?;
-                output[target] = i64::try_from(updated).map_err(|_| arithmetic_overflow())?;
-            } else {
-                let mut adjustment = 0_i128;
-                let coefficient_count = step.coefficients().len();
-                let mut coefficient = 0_usize;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(decreases coefficient_count - coefficient,)
-                )]
-                while coefficient < coefficient_count {
-                    let alpha = coefficient_fixed(
-                        *step
-                            .coefficients()
-                            .get(coefficient)
-                            .ok_or_else(invalid_transform)?,
-                        kernel.coefficient_type(),
-                    )?;
-                    let contribution = lifting_source_sum(
-                        &output,
-                        target,
-                        coefficient,
-                        step.offset(),
-                        kernel.whole_sample_filter(),
-                        kernel.whole_sample_extension(),
-                    )?;
-                    adjustment = adjustment
-                        .checked_add(
-                            i128::from(alpha)
-                                .checked_mul(i128::from(contribution))
-                                .ok_or_else(arithmetic_overflow)?,
-                        )
-                        .ok_or_else(arithmetic_overflow)?;
-                    coefficient = coefficient.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                let rounded = round_shift_i128(adjustment, 32)?;
-                output[target] = output[target]
-                    .checked_sub(i64::try_from(rounded).map_err(|_| arithmetic_overflow())?)
-                    .ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_atk_steps_step(original, crate::codestream::raw_kernel_view(*kernel), low_pass_first, (total_steps - step_index - 1) as nat);
+            crate::proofs::production_impl::production_atk_steps_error_guard(original, crate::codestream::raw_kernel_view(*kernel), low_pass_first, (total_steps - step_index) as nat, total_steps);
+        }
+        let operation = apply_arbitrary_step(output, low_pass_first, update_odd, step, kernel);
+        match operation {
+            Ok(()) => {
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(operation.is_ok()); assert(operation->Ok_0 == ()); assert(operation == Ok(())); }
             }
-            target = target.checked_add(2).ok_or_else(arithmetic_overflow)?;
-            target_passes = target_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
+            Err(error) => return Err(error),
         }
         update_odd = crate::refinement::atk_next_parity(update_odd);
     }
-    Ok(output)
+    Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@) == crate::specs::part2_atk_step(
+        old(output)@, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), low_pass_first, update_odd,
+    ),
+))]
+fn apply_arbitrary_step(
+    output: &mut [i64],
+    low_pass_first: bool,
+    update_odd: bool,
+    step: &KernelLiftingStep,
+    kernel: &ArbitraryKernel,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = output@; }
+    let target_local_odd = if low_pass_first {
+        update_odd
+    } else {
+        !update_odd
+    };
+    let mut target = if target_local_odd { 1usize } else { 0usize };
+    let remaining = output
+        .len()
+        .checked_sub(target)
+        .ok_or_else(arithmetic_overflow)?;
+    let inclusive = remaining.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    let mut target_passes = inclusive.checked_div(2).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost total_passes = target_passes as nat; let ghost start = target; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_atk_targets_empty(original, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), start);
+    }
+    #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant target_passes <= total_passes,
+                original == old(output)@,
+                output.len() == original.len(),
+                start == if target_local_odd { 1usize } else { 0usize },
+                target_local_odd == if low_pass_first { update_odd } else { !update_odd },
+                total_passes == ((original.len() - start + 1) / 2) as nat,
+                original.len() >= start, original.len() - start + 1 <= usize::MAX,
+                target as nat == start as nat + 2 * (total_passes - target_passes),
+                crate::specs::part2_atk_target_prefix(
+                    original, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), start, (total_passes - target_passes) as nat,
+                ) == (Ok(()), output@),
+                decreases target_passes,
+            )
+        )]
+    while target < output.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_atk_targets_step(original, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), start, (total_passes - target_passes) as nat);
+            crate::proofs::production_impl::production_atk_targets_error_guard(original, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), start, (total_passes - target_passes + 1) as nat, total_passes);
+        }
+        if kernel.reversible() {
+            output[target] = arbitrary_reversible_target(output, target, step, kernel)?;
+        } else {
+            output[target] = arbitrary_irreversible_target(output, target, step, kernel)?;
+        }
+        target = target.checked_add(2).ok_or_else(arithmetic_overflow)?;
+        target_passes = target_passes
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires target < output.len(),
+    ensures result == crate::specs::part2_atk_irreversible_target(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel)),
+))]
+fn arbitrary_irreversible_target(
+    output: &[i64],
+    target: usize,
+    step: &KernelLiftingStep,
+    kernel: &ArbitraryKernel,
+) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_atk_irreversible_sum_empty(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel));
+    }
+    let mut adjustment = 0_i128;
+    let coefficient_count = step.coefficients().len();
+    let mut coefficient = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant coefficient <= coefficient_count,
+        target < output.len(),
+        coefficient_count == crate::codestream::raw_kernel_step_view(*step).3.len(),
+        crate::specs::part2_atk_irreversible_sum(output@, target, crate::codestream::raw_kernel_step_view(*step),
+            crate::codestream::raw_kernel_view(*kernel), coefficient as nat) == Ok(adjustment),
+        decreases coefficient_count - coefficient,
+    ))]
+    while coefficient < coefficient_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_atk_irreversible_sum_step(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), coefficient as nat);
+            crate::proofs::production_impl::production_atk_irreversible_sum_error_guard(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), coefficient as nat + 1, coefficient_count as nat);
+        }
+        let alpha = coefficient_fixed(
+            *step
+                .coefficients()
+                .get(coefficient)
+                .ok_or_else(invalid_transform)?,
+            kernel.coefficient_type(),
+        )?;
+        let contribution = lifting_source_sum(
+            output,
+            target,
+            coefficient,
+            step.offset(),
+            kernel.whole_sample_filter(),
+            kernel.whole_sample_extension(),
+        )?;
+        adjustment = adjustment
+            .checked_add(
+                i128::from(alpha)
+                    .checked_mul(i128::from(contribution))
+                    .ok_or_else(arithmetic_overflow)?,
+            )
+            .ok_or_else(arithmetic_overflow)?;
+        coefficient = coefficient.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    let rounded = round_shift_i128(adjustment, 32)?;
+    let converted = match i64::try_from(rounded) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    output[target]
+        .checked_sub(converted)
+        .ok_or_else(arithmetic_overflow)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires target < output.len(),
+    ensures result == crate::specs::part2_atk_reversible_target(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel)),
+))]
+fn arbitrary_reversible_target(
+    output: &[i64],
+    target: usize,
+    step: &KernelLiftingStep,
+    kernel: &ArbitraryKernel,
+) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_atk_sum_empty(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel));
+        crate::proofs::production_impl::production_atk_sum_error_guard(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), 0, crate::codestream::raw_kernel_step_view(*step).3.len());
+    }
+    let mut sum = coefficient_integer(
+        step.residue().ok_or_else(invalid_transform)?,
+        kernel.coefficient_type(),
+    )?;
+    let count = step.coefficients().len();
+    let mut coefficient = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant coefficient <= count, target < output.len(),
+        count == crate::codestream::raw_kernel_step_view(*step).3.len(),
+        crate::specs::part2_atk_sum(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel).1,
+            crate::codestream::raw_kernel_view(*kernel).2, crate::codestream::raw_kernel_view(*kernel).4, coefficient as nat) == Ok(sum),
+        decreases count - coefficient,
+    ))]
+    while coefficient < count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_atk_sum_step(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), coefficient as nat);
+            crate::proofs::production_impl::production_atk_sum_error_guard(output@, target, crate::codestream::raw_kernel_step_view(*step), crate::codestream::raw_kernel_view(*kernel), coefficient as nat + 1, count as nat);
+        }
+        let alpha = coefficient_integer(
+            *step
+                .coefficients()
+                .get(coefficient)
+                .ok_or_else(invalid_transform)?,
+            kernel.coefficient_type(),
+        )?;
+        let contribution = lifting_source_sum(
+            output,
+            target,
+            coefficient,
+            step.offset(),
+            kernel.whole_sample_filter(),
+            kernel.whole_sample_extension(),
+        )?;
+        sum = sum
+            .checked_add(
+                alpha
+                    .checked_mul(i128::from(contribution))
+                    .ok_or_else(arithmetic_overflow)?,
+            )
+            .ok_or_else(arithmetic_overflow)?;
+        coefficient = coefficient.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    let exponent = u32::from(step.exponent());
+    if exponent >= 127 {
+        return Err(invalid_transform());
+    }
+    let updated = i128::from(output[target])
+        .checked_sub(sum >> exponent)
+        .ok_or_else(arithmetic_overflow)?;
+    match i64::try_from(updated) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_source_sum(samples@, target, coefficient, offset, whole_sample_filter, whole_sample_extension),
+))]
 fn lifting_source_sum(
     samples: &[i64],
     target: usize,
@@ -676,13 +851,17 @@ fn lifting_source_sum(
     whole_sample_filter: bool,
     whole_sample_extension: bool,
 ) -> Result<i64, DecodeError> {
-    let target = isize::try_from(target).map_err(|_| arithmetic_overflow())?;
-    let coefficient = isize::try_from(coefficient).map_err(|_| arithmetic_overflow())?;
+    let target = match isize::try_from(target) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let coefficient = match isize::try_from(coefficient) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
     if whole_sample_filter {
-        let distance = coefficient
-            .checked_mul(2)
-            .and_then(|value| value.checked_add(1))
-            .ok_or_else(arithmetic_overflow)?;
+        let doubled = coefficient.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+        let distance = doubled.checked_add(1).ok_or_else(arithmetic_overflow)?;
         let left = extended_sample(
             samples,
             target
@@ -700,19 +879,22 @@ fn lifting_source_sum(
         left.checked_add(right).ok_or_else(arithmetic_overflow)
     } else {
         let target_parity = target & 1;
-        let delta = 1_isize
-            .checked_sub(
-                2_isize
-                    .checked_mul(target_parity)
-                    .ok_or_else(arithmetic_overflow)?,
-            )
-            .and_then(|value| {
-                coefficient
-                    .checked_add(isize::from(offset))
-                    .and_then(|position| position.checked_mul(2))
-                    .and_then(|position| value.checked_add(position))
-            })
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(0 <= target_parity <= 1) by(bit_vector)
+                requires target_parity == (target & 1isize);
+        }
+        let doubled_parity = 2_isize
+            .checked_mul(target_parity)
             .ok_or_else(arithmetic_overflow)?;
+        let base = 1_isize
+            .checked_sub(doubled_parity)
+            .ok_or_else(arithmetic_overflow)?;
+        let position = coefficient
+            .checked_add(offset as isize)
+            .ok_or_else(arithmetic_overflow)?;
+        let distance = position.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+        let delta = base.checked_add(distance).ok_or_else(arithmetic_overflow)?;
         extended_sample(
             samples,
             target.checked_add(delta).ok_or_else(arithmetic_overflow)?,
@@ -721,18 +903,27 @@ fn lifting_source_sum(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_extended(samples@, original_index, whole_sample_extension),
+))]
 fn extended_sample(
     samples: &[i64],
-    mut index: isize,
+    original_index: isize,
     whole_sample_extension: bool,
 ) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_atk_extended); }
+    let mut index = original_index;
     if samples.len() < 2 {
         return match samples.first() {
             Some(value) => Ok(*value),
             None => Err(invalid_transform()),
         };
     }
-    let length = isize::try_from(samples.len()).map_err(|_| arithmetic_overflow())?;
+    let length = match isize::try_from(samples.len()) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
     if whole_sample_extension {
         if index < 0 {
             index = 0_isize.checked_sub(index).ok_or_else(arithmetic_overflow)?;
@@ -769,12 +960,19 @@ fn extended_sample(
             index
         };
     }
-    match samples.get(usize::try_from(index).map_err(|_| arithmetic_overflow())?) {
+    let final_index = match usize::try_from(index) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    match samples.get(final_index) {
         Some(value) => Ok(*value),
         None => Err(invalid_transform()),
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_integer(crate::codestream::raw_kernel_coefficient_view(coefficient), coefficient_type),
+))]
 fn coefficient_integer(
     coefficient: KernelCoefficient,
     coefficient_type: u8,
@@ -785,6 +983,9 @@ fn coefficient_integer(
     Ok(bytes_to_u128(coefficient.bytes()) as i128)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_fixed_coefficient(crate::codestream::raw_kernel_coefficient_view(coefficient), coefficient_type),
+))]
 fn coefficient_fixed(
     coefficient: KernelCoefficient,
     coefficient_type: u8,
@@ -793,12 +994,17 @@ fn coefficient_fixed(
     match coefficient_type {
         0 | 1 => {
             let value = coefficient_integer(coefficient, coefficient_type)?;
-            i64::try_from(
-                value
-                    .checked_mul(1_i128 << 32)
-                    .ok_or_else(arithmetic_overflow)?,
-            )
-            .map_err(|_| arithmetic_overflow())
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert((1i128 << 32u32) == 0x1_0000_0000i128) by (bit_vector);
+            }
+            let scaled = value
+                .checked_mul(1_i128 << 32)
+                .ok_or_else(arithmetic_overflow)?;
+            match i64::try_from(scaled) {
+                Ok(converted) => Ok(converted),
+                Err(_) => Err(arithmetic_overflow()),
+            }
         }
         2 => binary_to_fixed(bytes_to_u128(bytes), 32, 8, 23, 127),
         3 => binary_to_fixed(bytes_to_u128(bytes), 64, 11, 52, 1023),
@@ -807,6 +1013,9 @@ fn coefficient_fixed(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_bytes_prefix(bytes@, 16),
+))]
 fn bytes_to_u128(bytes: &[u8; 16]) -> u128 {
     let mut value = 0_u128;
     let mut index = 0_usize;
@@ -814,6 +1023,7 @@ fn bytes_to_u128(bytes: &[u8; 16]) -> u128 {
         verus_keep_ghost,
         verus_spec(
             invariant index <= bytes.len(),
+            value == crate::specs::part2_atk_bytes_prefix(bytes@, index as nat),
             decreases bytes.len() - index,
         )
     )]
@@ -824,6 +1034,9 @@ fn bytes_to_u128(bytes: &[u8; 16]) -> u128 {
     value
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_binary_format(bits, total_bits, exponent_bits, fraction_bits, bias),
+))]
 fn binary_to_fixed(
     bits: u128,
     total_bits: u32,
@@ -840,6 +1053,13 @@ fn binary_to_fixed(
         return Err(invalid_transform());
     }
     let negative = bits >> (total_bits - 1) != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((1u128 << exponent_bits) > 0) by (bit_vector)
+            requires exponent_bits < 128;
+        assert((1u128 << fraction_bits) > 0) by (bit_vector)
+            requires fraction_bits < 128;
+    }
     let exponent_mask = (1_u128 << exponent_bits)
         .checked_sub(1)
         .ok_or_else(arithmetic_overflow)?;
@@ -854,39 +1074,31 @@ fn binary_to_fixed(
     if exponent == 0 && fraction == 0 {
         return Ok(0);
     }
-    let (significand, binary_exponent) = if exponent == 0 {
-        (
-            fraction,
-            1_i32
-                .checked_sub(bias)
-                .and_then(|value| {
-                    value.checked_sub(
-                        i32::try_from(fraction_bits)
-                            .map_err(|_| arithmetic_overflow())
-                            .ok()?,
-                    )
-                })
-                .ok_or_else(arithmetic_overflow)?,
-        )
+    let (significand, exponent_base) = if exponent == 0 {
+        (fraction, 1_i32)
     } else {
-        (
-            (1_u128 << fraction_bits) | fraction,
-            i32::try_from(exponent)
-                .map_err(|_| arithmetic_overflow())?
-                .checked_sub(bias)
-                .and_then(|value| {
-                    value.checked_sub(
-                        i32::try_from(fraction_bits)
-                            .map_err(|_| arithmetic_overflow())
-                            .ok()?,
-                    )
-                })
-                .ok_or_else(arithmetic_overflow)?,
-        )
+        let exponent_base = match i32::try_from(exponent) {
+            Ok(value) => value,
+            Err(_) => return Err(arithmetic_overflow()),
+        };
+        ((1_u128 << fraction_bits) | fraction, exponent_base)
     };
+    let fraction_exponent = match i32::try_from(fraction_bits) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let unbiased = exponent_base
+        .checked_sub(bias)
+        .ok_or_else(arithmetic_overflow)?;
+    let binary_exponent = unbiased
+        .checked_sub(fraction_exponent)
+        .ok_or_else(arithmetic_overflow)?;
     fixed_from_binary_q32(negative, significand, binary_exponent)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_binary_q32(negative, significand, binary_exponent),
+))]
 fn fixed_from_binary_q32(
     negative: bool,
     significand: u128,
@@ -911,38 +1123,80 @@ fn fixed_from_binary_q32(
             let mask = if right == 0 {
                 0
             } else {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert((1u128 << right) > 0) by (bit_vector)
+                        requires right < 128;
+                }
                 (1_u128 << right)
                     .checked_sub(1)
                     .ok_or_else(arithmetic_overflow)?
             };
             let remainder = significand & mask;
             let half = if right == 0 { 0 } else { 1_u128 << (right - 1) };
+            let increment = if remainder > half || (remainder == half && truncated & 1 != 0) {
+                1_u128
+            } else {
+                0_u128
+            };
             truncated
-                .checked_add(u128::from(
-                    remainder > half || (remainder == half && truncated & 1 != 0),
-                ))
+                .checked_add(increment)
                 .ok_or_else(arithmetic_overflow)?
         }
     };
-    let signed = i128::try_from(magnitude).map_err(|_| arithmetic_overflow())?;
-    i64::try_from(if negative {
+    let signed = match i128::try_from(magnitude) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let signed = if negative {
         0_i128.checked_sub(signed).ok_or_else(arithmetic_overflow)?
     } else {
         signed
-    })
-    .map_err(|_| arithmetic_overflow())
+    };
+    match i64::try_from(signed) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_fixed_mul(value, factor),
+))]
 fn fixed_mul_q32(value: i64, factor: i64) -> Result<i64, DecodeError> {
     let product = i128::from(value)
         .checked_mul(i128::from(factor))
         .ok_or_else(arithmetic_overflow)?;
-    i64::try_from(round_shift_i128(product, 32)?).map_err(|_| arithmetic_overflow())
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part2_atk_checked_i128(value as int * factor as int) == Ok(product));
+    }
+    let rounded = round_shift_i128(product, 32)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part2_atk_fixed_mul(value, factor) == crate::specs::part1_checked_sample(rounded as int));
+    }
+    let conversion = i64::try_from(rounded);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(conversion.is_ok() == (i64::MIN <= rounded <= i64::MAX));
+        assert(conversion.is_ok() ==> conversion->Ok_0 == rounded as i64);
+    }
+    match conversion {
+        Ok(converted) => Ok(converted),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_fixed_div(value, divisor),
+))]
 fn fixed_div_q32(value: i64, divisor: i64) -> Result<i64, DecodeError> {
     if divisor == 0 {
         return Err(arithmetic_overflow());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((1i128 << 32u32) == 0x1_0000_0000i128) by (bit_vector);
     }
     let numerator = i128::from(value)
         .checked_mul(1_i128 << 32)
@@ -950,9 +1204,30 @@ fn fixed_div_q32(value: i64, divisor: i64) -> Result<i64, DecodeError> {
     if numerator == i128::MIN && divisor == -1 {
         return Err(arithmetic_overflow());
     }
-    i64::try_from(numerator / i128::from(divisor)).map_err(|_| arithmetic_overflow())
+    let quotient = numerator
+        .checked_div(i128::from(divisor))
+        .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part2_atk_checked_i128(value as int * 0x1_0000_0000int) == Ok(numerator));
+        assert(quotient == vstd::arithmetic::div_mod::rust_div(numerator as int, divisor as int) as i128);
+        assert(crate::specs::part2_atk_fixed_div(value, divisor) == crate::specs::part1_checked_sample(quotient as int));
+    }
+    let conversion = i64::try_from(quotient);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(conversion.is_ok() == (i64::MIN <= quotient <= i64::MAX));
+        assert(conversion.is_ok() ==> conversion->Ok_0 == quotient as i64);
+    }
+    match conversion {
+        Ok(converted) => Ok(converted),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_atk_round_shift(value, shift),
+))]
 fn round_shift_i128(value: i128, shift: u32) -> Result<i128, DecodeError> {
     if shift == 0 || shift >= 128 {
         return Err(arithmetic_overflow());
@@ -991,6 +1266,11 @@ pub fn inverse_level_9_7(
     inverse_level(level, limits, true, None)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result)
+        == crate::specs::part2_atk_inverse_level(wavelet_level_view(level), !crate::codestream::raw_kernel_view(*kernel).0,
+            crate::codestream::raw_kernel_view(*kernel), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn inverse_level_arbitrary(
     level: WaveletLevel<'_>,
     kernel: &ArbitraryKernel,
@@ -1031,6 +1311,12 @@ pub fn inverse_horizontal_9_7(
     inverse_horizontal(low, high, output_width, low_pass_first, limits, true, None)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result)
+        == crate::specs::part2_atk_inverse_horizontal(wavelet_band_view(low), wavelet_band_view(high),
+            output_width, low_pass_first, !crate::codestream::raw_kernel_view(*kernel).0, crate::codestream::raw_kernel_view(*kernel),
+            crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn inverse_horizontal_arbitrary(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -1054,6 +1340,10 @@ pub fn inverse_horizontal_arbitrary(
     ensures kernel.is_none() ==> reconstruction_outcome(result) == crate::specs::part1_inverse_horizontal(
         wavelet_band_view(low), wavelet_band_view(high), output_width, low_pass_first, irreversible,
         crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    arbitrary_kernel_supplied(kernel) ==> reconstruction_outcome(result) == crate::specs::part2_atk_inverse_horizontal(
+        wavelet_band_view(low), wavelet_band_view(high), output_width, low_pass_first, irreversible,
+        arbitrary_kernel_option(kernel).unwrap(), crate::limits::resource_decoded_bytes_limit(limits),
     ),
 ))]
 fn inverse_horizontal(
@@ -1090,6 +1380,9 @@ fn inverse_horizontal(
     ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_horizontal_prefix(
         wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible, low.height as nat,
     ),
+    arbitrary_kernel_supplied(kernel) ==> sequence_outcome(result) == crate::specs::part2_atk_horizontal_prefix(
+        wavelet_band_view(low), wavelet_band_view(high), low_pass_first, arbitrary_kernel_option(kernel).unwrap(), low.height as nat,
+    ),
 ))]
 fn inverse_rows(
     low: WaveletBand<'_>,
@@ -1108,6 +1401,9 @@ fn inverse_rows(
             kernel.is_none() ==> crate::specs::part1_horizontal_prefix(
                 wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible, y as nat,
             ) == Ok(samples@),
+            arbitrary_kernel_supplied(kernel) ==> crate::specs::part2_atk_horizontal_prefix(
+                wavelet_band_view(low), wavelet_band_view(high), low_pass_first, arbitrary_kernel_option(kernel).unwrap(), y as nat,
+            ) == Ok(samples@),
             decreases low.height - y,
         )
     )]
@@ -1120,6 +1416,11 @@ fn inverse_rows(
                     if kernel.is_none() {
                         crate::proofs::production_impl::production_horizontal_error_persists(
                             wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible,
+                            y as nat + 1, low.height as nat, error,
+                        );
+                    } else if arbitrary_kernel_supplied(kernel) {
+                        crate::proofs::production_impl::production_atk_horizontal_error_persists(
+                            wavelet_band_view(low), wavelet_band_view(high), low_pass_first, arbitrary_kernel_option(kernel).unwrap(),
                             y as nat + 1, low.height as nat, error,
                         );
                     }
@@ -1135,6 +1436,11 @@ fn inverse_rows(
                 assert(crate::specs::part1_horizontal_prefix(
                     wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible, y as nat + 1,
                 ) == Ok(appended));
+            } else if arbitrary_kernel_supplied(kernel) {
+                assert(crate::specs::part2_atk_horizontal_prefix(
+                    wavelet_band_view(low), wavelet_band_view(high), low_pass_first,
+                    arbitrary_kernel_option(kernel).unwrap(), y as nat + 1,
+                ) == Ok(appended));
             }
         }
         samples.extend_from_slice(&row);
@@ -1148,6 +1454,9 @@ fn inverse_rows(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_horizontal_row(
         wavelet_band_view(low), wavelet_band_view(high), y, low_first, irreversible,
+    ),
+    arbitrary_kernel_supplied(kernel) ==> sequence_outcome(result) == crate::specs::part2_atk_horizontal_row(
+        wavelet_band_view(low), wavelet_band_view(high), y, low_first, arbitrary_kernel_option(kernel).unwrap(),
     ),
 ))]
 fn inverse_row_pair(
@@ -1209,6 +1518,12 @@ pub fn inverse_vertical_9_7(
     inverse_vertical(low, high, output_height, low_pass_first, limits, true, None)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result)
+        == crate::specs::part2_atk_inverse_vertical(wavelet_band_view(low), wavelet_band_view(high),
+            output_height, low_pass_first, !crate::codestream::raw_kernel_view(*kernel).0, crate::codestream::raw_kernel_view(*kernel),
+            crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn inverse_vertical_arbitrary(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -1232,6 +1547,10 @@ pub fn inverse_vertical_arbitrary(
     ensures kernel.is_none() ==> reconstruction_outcome(result) == crate::specs::part1_inverse_vertical(
         wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
         crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    arbitrary_kernel_supplied(kernel) ==> reconstruction_outcome(result) == crate::specs::part2_atk_inverse_vertical(
+        wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
+        arbitrary_kernel_option(kernel).unwrap(), crate::limits::resource_decoded_bytes_limit(limits),
     ),
 ))]
 fn inverse_vertical(
@@ -1277,6 +1596,10 @@ fn inverse_vertical(
         wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
         output_len, low.width as nat,
     ),
+    arbitrary_kernel_supplied(kernel) ==> sequence_outcome(result) == crate::specs::part2_atk_vertical_prefix(
+        wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+        arbitrary_kernel_option(kernel).unwrap(), output_len, low.width as nat,
+    ),
 ))]
 fn inverse_columns(
     low: WaveletBand<'_>,
@@ -1299,6 +1622,10 @@ fn inverse_columns(
                 wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
                 output_len, x as nat,
             ) == Ok(samples@),
+            arbitrary_kernel_supplied(kernel) ==> crate::specs::part2_atk_vertical_prefix(
+                wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+                arbitrary_kernel_option(kernel).unwrap(), output_len, x as nat,
+            ) == Ok(samples@),
             decreases low.width - x,
         )
     )]
@@ -1312,6 +1639,11 @@ fn inverse_columns(
                         crate::proofs::production_impl::production_vertical_error_persists(
                             wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
                             irreversible, output_len, x as nat + 1, low.width as nat, error,
+                        );
+                    } else if arbitrary_kernel_supplied(kernel) {
+                        crate::proofs::production_impl::production_atk_vertical_error_persists(
+                            wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+                            arbitrary_kernel_option(kernel).unwrap(), output_len, x as nat + 1, low.width as nat, error,
                         );
                     }
                 }
@@ -1328,6 +1660,11 @@ fn inverse_columns(
                             wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
                             irreversible, output_len, x as nat + 1, low.width as nat, error,
                         );
+                    } else if arbitrary_kernel_supplied(kernel) {
+                        crate::proofs::production_impl::production_atk_vertical_error_persists(
+                            wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+                            arbitrary_kernel_option(kernel).unwrap(), output_len, x as nat + 1, low.width as nat, error,
+                        );
                     }
                 }
                 return Err(error);
@@ -1340,6 +1677,11 @@ fn inverse_columns(
                     wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
                     output_len, x as nat + 1,
                 ) == Ok(samples@));
+            } else if arbitrary_kernel_supplied(kernel) {
+                assert(crate::specs::part2_atk_vertical_prefix(
+                    wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+                    arbitrary_kernel_option(kernel).unwrap(), output_len, x as nat + 1,
+                ) == Ok(samples@));
             }
         }
         x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -1350,6 +1692,9 @@ fn inverse_columns(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_vertical_column(
         wavelet_band_view(low), wavelet_band_view(high), x, low_pass_first, irreversible,
+    ),
+    arbitrary_kernel_supplied(kernel) ==> sequence_outcome(result) == crate::specs::part2_atk_vertical_column(
+        wavelet_band_view(low), wavelet_band_view(high), x, low_pass_first, arbitrary_kernel_option(kernel).unwrap(),
     ),
 ))]
 fn inverse_column_pair(
@@ -1374,6 +1719,9 @@ fn inverse_column_pair(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures kernel.is_none() ==> reconstruction_outcome(result) == crate::specs::part1_inverse_level(
         wavelet_level_view(level), irreversible, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    arbitrary_kernel_supplied(kernel) ==> reconstruction_outcome(result) == crate::specs::part2_atk_inverse_level(
+        wavelet_level_view(level), irreversible, arbitrary_kernel_option(kernel).unwrap(), crate::limits::resource_decoded_bytes_limit(limits),
     ),
 ))]
 fn inverse_level(
@@ -2085,6 +2433,412 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn arbitrary_q32_arithmetic_preserves_full_signed_edges_and_errors() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let values = [
+            i64::MIN,
+            i64::MIN + 1,
+            -0x1_0000_0001,
+            -0x1_0000_0000,
+            -0x8000_0000,
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3,
+            0x8000_0000,
+            0x1_0000_0000,
+            0x1_0000_0001,
+            i64::MAX - 1,
+            i64::MAX,
+        ];
+        for value in values {
+            for factor in values {
+                let product = i128::from(value) * i128::from(factor);
+                let half = 0x8000_0000_i128;
+                let biased = if product < 0 {
+                    product - half
+                } else {
+                    product + half
+                };
+                let expected = i64::try_from(biased >> 32).map_err(|_| overflow);
+                assert_eq!(fixed_mul_q32(value, factor), expected);
+                let expected = if factor == 0 {
+                    Err(overflow)
+                } else {
+                    i64::try_from((i128::from(value) * 0x1_0000_0000_i128) / i128::from(factor))
+                        .map_err(|_| overflow)
+                };
+                assert_eq!(fixed_div_q32(value, factor), expected);
+            }
+        }
+        assert_eq!(fixed_mul_q32(-1, 0x1_0000_0000), Ok(-2));
+        assert_eq!(fixed_div_q32(-1, 3), Ok(-1_431_655_765));
+        assert_eq!(fixed_div_q32(1, -3), Ok(-1_431_655_765));
+        assert_eq!(round_shift_i128(i128::MIN, 1), Err(overflow));
+        assert_eq!(round_shift_i128(i128::MAX, 1), Err(overflow));
+        for shift in [0, 128, 129, u32::MAX] {
+            assert_eq!(round_shift_i128(0, shift), Err(overflow));
+        }
+        for shift in [1, 2, 31, 32, 63, 64, 127] {
+            assert_eq!(round_shift_i128(0, shift), Ok(0));
+            assert_eq!(round_shift_i128(-1, shift), Ok(-1));
+        }
+    }
+
+    #[test]
+    fn arbitrary_binary_coefficients_match_integer_rational_rounding_and_raw_format_edges() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let reference = |negative: bool, significand: u128, exponent: i32| {
+            let shift = i64::from(exponent) + 32;
+            if shift > i64::from(i32::MAX) {
+                return Err(overflow);
+            }
+            let magnitude = if shift >= 0 {
+                if shift >= 128 {
+                    return Err(overflow);
+                }
+                significand
+                    .checked_mul(2_u128.pow(shift as u32))
+                    .ok_or(overflow)?
+            } else if -shift >= 128 {
+                0
+            } else {
+                let denominator = 2_u128.pow((-shift) as u32);
+                let quotient = significand / denominator;
+                let twice_remainder = 2 * (significand % denominator);
+                quotient
+                    + u128::from(
+                        twice_remainder > denominator
+                            || (twice_remainder == denominator && quotient % 2 == 1),
+                    )
+            };
+            if magnitude > i128::MAX as u128 {
+                return Err(overflow);
+            }
+            let signed = if negative {
+                -(magnitude as i128)
+            } else {
+                magnitude as i128
+            };
+            i64::try_from(signed).map_err(|_| overflow)
+        };
+        let mut contexts = 0;
+        for negative in [false, true] {
+            for significand in [
+                0,
+                1,
+                3,
+                5,
+                7,
+                1_u128 << 63,
+                u128::from(u64::MAX),
+                (1_u128 << 113) - 1,
+                u128::MAX,
+            ] {
+                for exponent in [
+                    i32::MIN,
+                    -200,
+                    -160,
+                    -159,
+                    -128,
+                    -64,
+                    -33,
+                    -32,
+                    -31,
+                    0,
+                    31,
+                    63,
+                    96,
+                    127,
+                    i32::MAX - 32,
+                    i32::MAX,
+                ] {
+                    assert_eq!(
+                        fixed_from_binary_q32(negative, significand, exponent),
+                        reference(negative, significand, exponent),
+                        "negative={negative} significand={significand} exponent={exponent}",
+                    );
+                    contexts += 1;
+                }
+            }
+        }
+        assert_eq!(contexts, 288);
+        assert_eq!(fixed_from_binary_q32(false, 3, -33), Ok(2));
+        assert_eq!(fixed_from_binary_q32(false, 5, -33), Ok(2));
+        assert_eq!(fixed_from_binary_q32(true, 7, -33), Ok(-4));
+        assert_eq!(fixed_from_binary_q32(true, 1_u128 << 63, -32), Ok(i64::MIN));
+        assert_eq!(
+            fixed_from_binary_q32(false, 1_u128 << 63, -32),
+            Err(overflow)
+        );
+        assert_eq!(fixed_from_binary_q32(false, u128::MAX, -160), Ok(0));
+        for (bits, expected) in [
+            (0_f32.to_bits(), Ok(0)),
+            ((-0_f32).to_bits(), Ok(0)),
+            (1_f32.to_bits(), Ok(1_i64 << 32)),
+            ((-1_f32).to_bits(), Ok(-(1_i64 << 32))),
+            (0.5_f32.to_bits(), Ok(1_i64 << 31)),
+            (f32::INFINITY.to_bits(), Err(invalid)),
+            (f32::NAN.to_bits(), Err(invalid)),
+            (1_u32, Ok(0)),
+        ] {
+            assert_eq!(binary_to_fixed(u128::from(bits), 32, 8, 23, 127), expected);
+        }
+        for (bits, expected) in [
+            (0_f64.to_bits(), Ok(0)),
+            ((-0_f64).to_bits(), Ok(0)),
+            (1_f64.to_bits(), Ok(1_i64 << 32)),
+            ((-1_f64).to_bits(), Ok(-(1_i64 << 32))),
+            (0.5_f64.to_bits(), Ok(1_i64 << 31)),
+            (f64::INFINITY.to_bits(), Err(invalid)),
+            (f64::NAN.to_bits(), Err(invalid)),
+            (1_u64, Ok(0)),
+        ] {
+            assert_eq!(
+                binary_to_fixed(u128::from(bits), 64, 11, 52, 1023),
+                expected
+            );
+        }
+        for (bits, expected) in [
+            (0, Ok(0)),
+            (1_u128 << 127, Ok(0)),
+            (16383_u128 << 112, Ok(1_i64 << 32)),
+            ((1_u128 << 127) | (16383_u128 << 112), Ok(-(1_i64 << 32))),
+            (16382_u128 << 112, Ok(1_i64 << 31)),
+            (32767_u128 << 112, Err(invalid)),
+            ((32767_u128 << 112) | 1, Err(invalid)),
+            (1, Ok(0)),
+        ] {
+            assert_eq!(binary_to_fixed(bits, 128, 15, 112, 16383), expected);
+        }
+        for (total, exponent, fraction) in [
+            (0, 8, 23),
+            (129, 8, 23),
+            (32, 0, 23),
+            (32, 128, 23),
+            (32, 8, 128),
+        ] {
+            assert_eq!(
+                binary_to_fixed(0, total, exponent, fraction, 127),
+                Err(invalid)
+            );
+        }
+        assert_eq!(binary_to_fixed(0, 128, 15, 112, i32::MIN), Ok(0));
+        assert_eq!(binary_to_fixed(1, 1, 2, 0, i32::MIN), Err(overflow));
+        assert_eq!(
+            binary_to_fixed((1_u128 << 64) | u128::from(1_f32.to_bits()), 32, 8, 23, 127),
+            Ok(-(1_i64 << 32))
+        );
+    }
+
+    #[test]
+    fn arbitrary_sequences_preserve_all_raw_kinds_width_hints_flags_and_scaling_order() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let mut contexts = 0;
+        for kind in 0..=u8::MAX {
+            for width in [0, 1, 16, u8::MAX] {
+                let bits = match kind {
+                    2 => u128::from(2_f32.to_bits()),
+                    3 => u128::from(2_f64.to_bits()),
+                    4 => 16384_u128 << 112,
+                    _ => 2,
+                };
+                for flags in 0..8 {
+                    for first in [false, true] {
+                        for reversible in [false, true] {
+                            let kernel = ArbitraryKernel::for_test(
+                                reversible,
+                                kind,
+                                flags & 1 != 0,
+                                flags & 2 != 0,
+                                flags & 4 != 0,
+                                Some(KernelCoefficient::for_test(bits, width)),
+                                vec![],
+                            );
+                            let (low, high): (&[i64], &[i64]) = if first {
+                                (&[2, 6], &[4])
+                            } else {
+                                (&[4], &[2, 6])
+                            };
+                            let expected = if reversible {
+                                Ok(vec![2, 4, 6])
+                            } else if kind > 4 {
+                                Err(invalid)
+                            } else if first {
+                                Ok(vec![4, 2, 12])
+                            } else {
+                                Ok(vec![1, 8, 3])
+                            };
+                            assert_eq!(inverse_arbitrary(low, high, first, &kernel), expected);
+                            assert_eq!(inverse_arbitrary(&[7], &[], true, &kernel), Ok(vec![7]));
+                            assert_eq!(inverse_arbitrary(&[], &[-3], false, &kernel), Ok(vec![-1]));
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 32_768);
+        let missing = ArbitraryKernel::for_test(false, 0, false, false, false, None, vec![]);
+        assert_eq!(inverse_arbitrary(&[], &[], true, &missing), Err(invalid));
+        assert_eq!(inverse_arbitrary(&[7], &[], true, &missing), Ok(vec![7]));
+        let zero = ArbitraryKernel::for_test(
+            false,
+            0,
+            false,
+            false,
+            false,
+            Some(KernelCoefficient::for_test(0, 255)),
+            vec![],
+        );
+        assert_eq!(inverse_arbitrary(&[], &[], true, &zero), Err(invalid));
+        let huge = ArbitraryKernel::for_test(
+            false,
+            0,
+            false,
+            false,
+            false,
+            Some(KernelCoefficient::for_test(i128::MAX as u128, 0)),
+            vec![],
+        );
+        assert_eq!(inverse_arbitrary(&[1, 2], &[], true, &huge), Err(invalid));
+        assert_eq!(inverse_arbitrary(&[], &[], true, &huge), Err(overflow));
+        let unit = ArbitraryKernel::for_test(
+            false,
+            0,
+            false,
+            false,
+            false,
+            Some(KernelCoefficient::for_test(1, 0)),
+            vec![],
+        );
+        assert_eq!(
+            inverse_arbitrary(&[-2, -6], &[-4], true, &unit),
+            Ok(vec![-3, -4, -7])
+        );
+    }
+
+    #[test]
+    fn arbitrary_lifting_runs_reverse_step_parity_and_preserves_late_partial_errors() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let residue = |value| Some(KernelCoefficient::for_test(value, u8::MAX));
+        for first in [false, true] {
+            for odd in [false, true] {
+                let kernel = ArbitraryKernel::for_test(
+                    true,
+                    0,
+                    true,
+                    odd,
+                    false,
+                    None,
+                    vec![
+                        KernelLiftingStep::for_test(i8::MIN, 0, residue(1), vec![]),
+                        KernelLiftingStep::for_test(i8::MAX, 0, residue(2), vec![]),
+                    ],
+                );
+                let (low, high): (&[i64], &[i64]) = if first {
+                    (&[2, 6], &[4])
+                } else {
+                    (&[4], &[2, 6])
+                };
+                let expected = if first == odd {
+                    vec![1, 2, 5]
+                } else {
+                    vec![0, 3, 4]
+                };
+                assert_eq!(inverse_arbitrary(low, high, first, &kernel), Ok(expected));
+            }
+        }
+        let missing = ArbitraryKernel::for_test(
+            true,
+            0,
+            false,
+            false,
+            false,
+            None,
+            vec![KernelLiftingStep::for_test(0, 0, None, vec![])],
+        );
+        assert_eq!(
+            inverse_arbitrary(&[2, 6], &[4], true, &missing),
+            Err(invalid)
+        );
+        assert_eq!(inverse_arbitrary(&[], &[], true, &missing), Ok(vec![]));
+        for exponent in [0, 126, 127, 128, u8::MAX] {
+            let kernel = ArbitraryKernel::for_test(
+                true,
+                0,
+                false,
+                false,
+                false,
+                None,
+                vec![KernelLiftingStep::for_test(0, exponent, residue(0), vec![])],
+            );
+            let expected = if exponent >= 127 {
+                Err(invalid)
+            } else {
+                Ok(vec![2, 4, 6])
+            };
+            assert_eq!(inverse_arbitrary(&[2, 6], &[4], true, &kernel), expected);
+        }
+        let late = ArbitraryKernel::for_test(
+            true,
+            0,
+            false,
+            false,
+            false,
+            None,
+            vec![KernelLiftingStep::for_test(0, 0, residue(1), vec![])],
+        );
+        let mut samples = vec![10, 20, i64::MIN];
+        assert_eq!(
+            apply_arbitrary_steps(&mut samples, true, &late),
+            Err(overflow)
+        );
+        assert_eq!(samples, vec![9, 20, i64::MIN]);
+        let ignored = ArbitraryKernel::for_test(
+            false,
+            0,
+            false,
+            true,
+            false,
+            residue(1),
+            vec![KernelLiftingStep::for_test(i8::MIN, u8::MAX, None, vec![])],
+        );
+        assert_eq!(
+            inverse_arbitrary(&[2, 6], &[4], true, &ignored),
+            Ok(vec![2, 4, 6])
+        );
+        assert_eq!(inverse_arbitrary(&[], &[], true, &ignored), Err(overflow));
+    }
 
     pub(crate) fn reference_reconstruction(
         input: &[([u64; 6], bool)],
