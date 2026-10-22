@@ -348,6 +348,13 @@ def validate_normative_coverage(
                 ("src/color.rs", "crop"): "converted_image_result",
                 ("src/color.rs", "crop_plane"): "normalized_plane_result",
                 ("src/decode.rs", "convert_selected_color"): "crate::color::converted_image_result",
+                ("src/decode.rs", "prepare_tile_component"): "prepared_component_outcome",
+                ("src/decode.rs", "initialize_prepare_working"): "prepare_working_outcome",
+                ("src/decode.rs", "collect_prepare_coefficients"): "crate::transform::quantized_coefficients_outcome",
+                ("src/decode.rs", "collect_prepare_cell"): "prepare_cell_outcome",
+                ("src/decode.rs", "copy_prepare_plane"): "prepare_fold_outcome",
+                ("src/decode.rs", "finish_prepared_component"): "prepared_component_outcome",
+                ("src/decode.rs", "as_tile_component"): "crate::image::assembly_tile_view",
                 ("src/image.rs", "assemble_image"): "decoded_image_outcome",
                 ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
                 ("src/image.rs", "typed_samples"): "decoded_typed_samples_outcome",
@@ -384,6 +391,13 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "decoded_symbols"): "tier1_statistics_increment",
                 ("src/tier1.rs", "became_significant"): "tier1_statistics_increment",
                 ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
+                ("src/decode.rs", "prepare_tile_component"): "part1_prepare_standard_component",
+                ("src/decode.rs", "initialize_prepare_working"): "part1_prepare_init_prefix",
+                ("src/decode.rs", "collect_prepare_coefficients"): "part1_prepare_collect_coefficients",
+                ("src/decode.rs", "collect_prepare_cell"): "part1_prepare_signed_cell",
+                ("src/decode.rs", "copy_prepare_plane"): "part1_prepare_copy_plane",
+                ("src/decode.rs", "finish_prepared_component"): "part1_prepare_finish",
+                ("src/decode.rs", "as_tile_component"): "part1_prepared_as_tile",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
                 ("src/color.rs", "crop_sample"): "color_crop_sample",
@@ -555,6 +569,48 @@ def validate_normative_coverage(
                     contract,
                 ) is not None
             )
+            prepare_contract_arguments = {
+                "prepare_tile_component": (
+                    "part1_prepare_standard_component",
+                    r"prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*"
+                    r"prepare_precincts_view\s*\(\s*precincts@\s*\)\s*,\s*"
+                    r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*"
+                    r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
+                ),
+                "initialize_prepare_working": (
+                    "part1_prepare_init_prefix",
+                    r"bands@\s*,\s*fraction\s*,\s*"
+                    r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"selected\s+as\s+nat",
+                ),
+                "collect_prepare_coefficients": (
+                    "part1_prepare_collect_coefficients",
+                    r"crate::tier1::code_block_plane_view\s*\(\s*plane\s*\)",
+                ),
+                "collect_prepare_cell": (
+                    "part1_prepare_signed_cell",
+                    r"crate::tier1::code_block_plane_view\s*\(\s*plane\s*\)\s*,\s*x\s*,\s*y",
+                ),
+                "copy_prepare_plane": (
+                    "part1_prepare_copy_plane",
+                    r"crate::transform::reconstructed_plane_view\s*\(\s*plane\s*\)\s*,\s*first_detail",
+                ),
+                "finish_prepared_component": (
+                    "part1_prepare_finish",
+                    r"prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*fraction\s*,\s*folded@",
+                ),
+                "PreparedTileComponent::as_tile_component": (
+                    "part1_prepared_as_tile", r"prepared_component_view\s*\(\s*\*\s*self\s*\)",
+                ),
+            }.get(reference["symbol"]) if reference["path"] == "src/decode.rs" else None
+            prepare_arguments_bound = (
+                prepare_contract_arguments is None
+                or re.search(
+                    r"crate::specs::" + re.escape(prepare_contract_arguments[0])
+                    + r"\s*\(\s*" + prepare_contract_arguments[1] + r"\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -574,6 +630,7 @@ def validate_normative_coverage(
                     or not metadata_arguments_bound
                     or not palette_arguments_bound
                     or not cleanup_arguments_bound
+                    or not prepare_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

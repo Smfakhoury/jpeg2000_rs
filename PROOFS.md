@@ -272,6 +272,14 @@ The prepared-to-tile getter also has exact full-field/sample semantics.
 Independent full-plan and ordered-error tests use the previous widened
 reference algorithms and completed one-bit input blocks, not subject transforms.
 
+Seven exact inventory recipes bind those complete returned objects to their
+actual plans, precincts, styles, planes, coordinates, fractions, selected counts,
+detail indices and decoded-byte cap. Negative tests reject incorrect listed
+models, unrelated or partial results, constant/reordered native inputs and
+success-only substitutions. The private with-kernel implementation remains a
+context link, not an unconditional Some-kernel contract: a regression explicitly
+rejects that promotion. No generic expression or implication matcher was added.
+
 F6 remains open: Some-kernel/arbitrary profiles, general MCT paths and the actual
 whole-decoder composed
 coefficient-to-component-sample bridge are not

@@ -477,6 +477,93 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(
+            item for item in original_coverage["requirements"]
+            if item["id"] == "part1-complete-standard-plan-coordinator"
+        )
+        conditional = {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"}
+        self.assertNotIn(conditional, entry["contract_refs"])
+        self.assertIn(conditional, entry["implementation_refs"])
+        conditional_coverage = copy.deepcopy(original_coverage)
+        conditional_coverage["requirements"] = [copy.deepcopy(entry)]
+        conditional_coverage["requirements"][0]["contract_refs"] = [conditional]
+        with self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+            framework.validate_normative_coverage(conditional_coverage)
+        read_text = Path.read_text
+        source = framework.ROOT / "src/decode.rs"
+        original = source.read_text()
+        for symbol, projection, model, arguments in (
+            ("prepare_tile_component", "prepared_component_outcome", "part1_prepare_standard_component", (
+                ("prepare_plan_view(plan)", "prepare_plan_view(unrelated)"),
+                ("prepare_precincts_view(precincts@)", "prepare_precincts_view(unrelated@)"),
+                ("prepare_style_view(coding_style)", "prepare_style_view(unrelated)"),
+                ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"),
+            )),
+            ("initialize_prepare_working", "prepare_working_outcome", "part1_prepare_init_prefix", (
+                ("bands@", "unrelated@"),
+                ("fraction", "0"),
+                ("selected as nat", "0"),
+                ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"),
+            )),
+            ("collect_prepare_coefficients", "crate::transform::quantized_coefficients_outcome",
+             "part1_prepare_collect_coefficients", (
+                ("code_block_plane_view(plane)", "code_block_plane_view(unrelated)"),
+            )),
+            ("collect_prepare_cell", "prepare_cell_outcome", "part1_prepare_signed_cell", (
+                ("code_block_plane_view(plane)", "code_block_plane_view(unrelated)"),
+                ("plane), x, y", "plane), y, x"),
+                ("plane), x, y", "plane), x, 0"),
+            )),
+            ("copy_prepare_plane", "prepare_fold_outcome", "part1_prepare_copy_plane", (
+                ("reconstructed_plane_view(plane)", "reconstructed_plane_view(unrelated)"),
+                ("first_detail", "0"),
+            )),
+            ("finish_prepared_component", "prepared_component_outcome", "part1_prepare_finish", (
+                ("prepare_plan_view(plan)", "prepare_plan_view(unrelated)"),
+                ("fraction", "0"),
+                ("folded@", "unrelated@"),
+            )),
+            ("PreparedTileComponent::as_tile_component", "crate::image::assembly_tile_view",
+             "part1_prepared_as_tile", (
+                ("prepared_component_view(*self)", "prepared_component_view(unrelated)"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            reference = {"path": "src/decode.rs", "symbol": symbol}
+            self.assertIn(reference, entry["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            wrong_model = (
+                "part1_prepare_finish" if model == "part1_prepare_standard_component"
+                else "part1_prepare_standard_component"
+            )
+            for before, after in (
+                (f"{projection}(result)", f"{projection}(unrelated)"),
+                (f"{projection}(result)", "unlisted_projection(result)"),
+                (f"{projection}(result)", "result.is_ok()"),
+                (f"ensures {projection}(result)", f"ensures result.is_ok() ==> {projection}(result)"),
+                (f"crate::specs::{model}(", f"crate::specs::{wrong_model}("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ):
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_complete_cleanup_caller_stages_without_implication_fallback(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         selected_entry = next(
