@@ -60,6 +60,14 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`part1_raw_reader_initial`, `part1_raw_reader_load`, `part1_raw_reader_read`
+and `part1_raw_reader_termination` describe the complete selected raw-bypass
+reader state and typed outcomes. Byte/bit order, stuffing, synthetic marker
+padding, consumed-byte position and counter/error ordering belong on the
+semantic reading path. Native fields retain their stated widths; the initial
+sequence is constrained to representable slice lengths. These models do not
+claim that callers choose the correct pass/segment or normative context.
+
 `part2_layer_input` describes selection from supplied converted channels:
 scan all channel kinds first, then check the area and required color planes,
 then validate and combine alpha planes. Required colors are returned in slot

@@ -68,6 +68,96 @@
     {
       "contract_refs": [
         {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_from_input"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::read_bit"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::validate_predictable_termination"
+        }
+      ],
+      "id": "part1-raw-bitstream-state",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1SymbolDecoder::decode"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_legacy_segment"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_raw_significance_propagation_pass"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_raw_magnitude_refinement_pass"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_bit_reader_view"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::load_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_outcome"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_initial"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_load"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_read"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_termination"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_transitions_match_exhaustive_two_byte_token_oracle"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_limits_preserve_post_bit_counter_and_exact_state"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_overflow_and_invalid_state_errors_preserve_complete_state"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_initial_input_limits_match_exact_claims"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_termination_matches_independent_alternating_suffix_arithmetic"
+        }
+      ],
+      "topic": "Complete selected raw-bypass reader initialization, state/error transitions and predictable termination; not complete MQ/packet/pass semantics"
+    },
+    {
+      "contract_refs": [
+        {
           "path": "src/refinement.rs",
           "symbol": "packet_data_bits"
         },

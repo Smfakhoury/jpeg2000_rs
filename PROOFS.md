@@ -134,6 +134,7 @@ Read each contract according to its inputs and postcondition:
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
+| Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -154,6 +155,24 @@ layout. There is still one production implementation and no public API change.
 The existing placed-layer theorem uses a fresh solver context
 (`spinoff_prover`) to avoid accumulated solver-state sensitivity as the model
 grows; its obligations and resource limit are not relaxed.
+
+The raw-bypass reader has unconditional exact typed result/state relations
+for byte loading and bit reads, plus exact termination classification.
+Its state model includes the immutable byte sequence, current byte, remaining
+bits, consumed-byte index, marker-padding count and actual work counter/cap.
+Stuffed data use seven bits; marker-like bytes beyond `0x8f` after `0xff`
+remain unconsumed while synthetic `0xff` bits are supplied. Exhausted input
+uses the same selected bounded-reader policy. These are input-relative
+implementation semantics, not a completed selected-edition audit.
+
+Error states are not transactional: work-limit failure preserves the consumed
+bit and incremented work counter; work overflow preserves the consumed bit
+and old counter. Marker-padding overflow preserves the already installed
+synthetic byte/eight-bit count, without consuming the bit or charging work.
+The constructor's private free helper is shared by the unchanged public
+`RawBitReader::new` wrapper and actual legacy decode path; there is no second
+executable reader. Its contract proves the initial state and exact input-byte
+claim. These stage contracts do not complete the F5L packet/MQ/pass epic.
 
 The production placed-layer compositor uses the complete `source_over_pixel`
 evaluator. Its executable contract equates the entire optional color/alpha

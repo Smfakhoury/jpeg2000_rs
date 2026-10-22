@@ -1811,6 +1811,108 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub struct Part1RawReaderState {
+    pub input: Seq<u8>,
+    pub next_index: usize,
+    pub current_byte: u8,
+    pub bits_remaining: u8,
+    pub marker_padding_count: u64,
+    pub work_units: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn part1_raw_reader_error(offset: usize, kind: crate::MalformedKind) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: offset as u64, kind }
+}
+
+pub open spec fn part1_raw_reader_initial(
+    input: Seq<u8>, maximum_input_bytes: u64, maximum_work_units: u64,
+) -> Result<Part1RawReaderState, crate::DecodeError>
+    recommends input.len() <= usize::MAX,
+{
+    if input.len() as u64 > maximum_input_bytes {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::InputBytes, limit: maximum_input_bytes, actual: input.len() as u64,
+        })
+    } else {
+        Ok(Part1RawReaderState {
+            input, next_index: 0, current_byte: 0, bits_remaining: 0,
+            marker_padding_count: 0, work_units: 0, maximum_work_units,
+        })
+    }
+}
+
+pub open spec fn part1_raw_reader_load(state: Part1RawReaderState)
+    -> (Result<(), crate::DecodeError>, Part1RawReaderState)
+{
+    let next = if state.next_index < state.input.len() { state.input[state.next_index as int] } else { 0xffu8 };
+    let stuffed = state.current_byte == 0xff;
+    if stuffed && next > 0x8f {
+        let changed = Part1RawReaderState { current_byte: 0xff, bits_remaining: 8, ..state };
+        if state.marker_padding_count == u64::MAX {
+            (Err(part1_raw_reader_error(state.next_index, crate::MalformedKind::ArithmeticOverflow)), changed)
+        } else {
+            (Ok(()), Part1RawReaderState { marker_padding_count: (state.marker_padding_count + 1) as u64, ..changed })
+        }
+    } else if state.next_index < state.input.len() && state.next_index == usize::MAX {
+        (Err(part1_raw_reader_error(state.next_index, crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        (Ok(()), Part1RawReaderState {
+            next_index: if state.next_index < state.input.len() { (state.next_index + 1) as usize } else { state.next_index },
+            current_byte: next,
+            bits_remaining: if stuffed { 7 } else { 8 },
+            ..state
+        })
+    }
+}
+
+pub open spec fn part1_raw_reader_read(state: Part1RawReaderState)
+    -> (Result<bool, crate::DecodeError>, Part1RawReaderState)
+{
+    let loaded = if state.bits_remaining == 0 { part1_raw_reader_load(state) } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if ready.bits_remaining == 0 || ready.bits_remaining > 8 {
+                (Err(part1_raw_reader_error(ready.next_index, crate::MalformedKind::InvalidBitStuffing)), ready)
+            } else {
+                let consumed = Part1RawReaderState { bits_remaining: (ready.bits_remaining - 1) as u8, ..ready };
+                if ready.work_units == u64::MAX {
+                    (Err(part1_raw_reader_error(ready.next_index, crate::MalformedKind::ArithmeticOverflow)), consumed)
+                } else {
+                    let charged = Part1RawReaderState { work_units: (ready.work_units + 1) as u64, ..consumed };
+                    if charged.work_units > charged.maximum_work_units {
+                        (Err(crate::DecodeError::LimitExceeded {
+                            resource: crate::Resource::WorkUnits,
+                            limit: charged.maximum_work_units,
+                            actual: charged.work_units,
+                        }), charged)
+                    } else {
+                        (Ok(part1_packet_bit(charged.current_byte, charged.bits_remaining)), charged)
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part1_raw_reader_termination(state: Part1RawReaderState) -> Result<(), crate::DecodeError> {
+    let valid = if state.next_index == 0 {
+        state.input.len() == 1 && state.input[0] == 0x55
+    } else if state.next_index != state.input.len() || state.bits_remaining > 8 {
+        false
+    } else if state.bits_remaining == 0 {
+        true
+    } else {
+        let shift = (8 - state.bits_remaining) as u8;
+        state.current_byte & (0xffu8 >> shift) == 0x55u8 >> shift
+    };
+    if valid { Ok(()) } else {
+        Err(part1_raw_reader_error(0, crate::MalformedKind::InvalidCodeBlock))
+    }
+}
+
 pub open spec fn part1_tag_inherited_low(low: nat, inherited: nat) -> nat {
     if low < inherited { inherited } else { low }
 }
