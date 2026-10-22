@@ -1426,4 +1426,81 @@ pub proof fn converted_samples_preserve_complete_length(
     );
 }
 
+pub proof fn decoded_sample_store_preserves_component_frame(
+    image: crate::specs::Part1DecodedImageModel, component: usize, index: usize, value: i64,
+)
+    requires component < 3,
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_set_decoded_component_sample(image, component, index, value).1,
+    ),
+{
+}
+
+pub proof fn component_transform_frame_is_transitive(
+    before: crate::specs::Part1DecodedImageModel,
+    middle: crate::specs::Part1DecodedImageModel,
+    after: crate::specs::Part1DecodedImageModel,
+)
+    requires
+        crate::specs::part1_component_transform_frame(before, middle),
+        crate::specs::part1_component_transform_frame(middle, after),
+    ensures crate::specs::part1_component_transform_frame(before, after),
+{
+}
+
+pub proof fn component_pixel_preserves_complete_metadata_and_extra_planes(
+    image: crate::specs::Part1DecodedImageModel, index: usize, irreversible: bool,
+)
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_component_pixel_state(image, index, irreversible).1,
+    ),
+{
+    if let Ok(y) = crate::specs::part1_decoded_component_sample(image, 0, index) {
+        if let Ok(cb) = crate::specs::part1_decoded_component_sample(image, 1, index) {
+            if let Ok(cr) = crate::specs::part1_decoded_component_sample(image, 2, index) {
+                if let Ok((red, green, blue)) = crate::specs::part1_component_values(y, cb, cr, irreversible) {
+                    decoded_sample_store_preserves_component_frame(image, 0, index, red);
+                    let red_state = crate::specs::part1_set_decoded_component_sample(image, 0, index, red);
+                    decoded_sample_store_preserves_component_frame(red_state.1, 1, index, green);
+                    let green_state = crate::specs::part1_set_decoded_component_sample(red_state.1, 1, index, green);
+                    component_transform_frame_is_transitive(image, red_state.1, green_state.1);
+                    decoded_sample_store_preserves_component_frame(green_state.1, 2, index, blue);
+                    let blue_state = crate::specs::part1_set_decoded_component_sample(green_state.1, 2, index, blue);
+                    component_transform_frame_is_transitive(image, green_state.1, blue_state.1);
+                }
+            }
+        }
+    }
+}
+
+pub proof fn component_prefix_preserves_complete_metadata_and_extra_planes(
+    image: crate::specs::Part1DecodedImageModel, irreversible: bool, count: nat,
+)
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_component_transform_prefix(image, irreversible, count).1,
+    ),
+    decreases count,
+{
+    if count > 0 {
+        component_prefix_preserves_complete_metadata_and_extra_planes(image, irreversible, (count - 1) as nat);
+        let previous = crate::specs::part1_component_transform_prefix(image, irreversible, (count - 1) as nat);
+        component_pixel_preserves_complete_metadata_and_extra_planes(previous.1, (count - 1) as usize, irreversible);
+        component_transform_frame_is_transitive(
+            image, previous.1, crate::specs::part1_component_pixel_state(previous.1, (count - 1) as usize, irreversible).1,
+        );
+    }
+}
+
+pub proof fn component_transforms_preserve_complete_metadata_and_extra_planes(
+    image: crate::specs::Part1DecodedImageModel, irreversible: bool,
+)
+    ensures crate::specs::part1_component_transform_frame(
+        image, crate::specs::part1_apply_component_transform(image, irreversible).1,
+    ),
+{
+    if image.4.len() >= 3 {
+        component_prefix_preserves_complete_metadata_and_extra_planes(image, irreversible, image.4[0].4.len());
+    }
+}
+
 }

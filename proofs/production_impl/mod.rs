@@ -889,6 +889,22 @@ pub proof fn production_vertical_error_persists(
     }
 }
 
+pub proof fn production_component_transform_error_persists(
+    image: crate::specs::Part1DecodedImageModel, irreversible: bool, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_component_transform_prefix(image, irreversible, completed).0.is_err(),
+    ensures
+        crate::specs::part1_component_transform_prefix(image, irreversible, total)
+            == crate::specs::part1_component_transform_prefix(image, irreversible, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_component_transform_error_persists(image, irreversible, completed, (total - 1) as nat);
+    }
+}
+
 pub proof fn production_conversion_error_persists(
     samples: Seq<i64>, fraction_bits: u8, shift: i64, minimum: i64, maximum: i64,
     completed: nat, total: nat, error: crate::DecodeError,
