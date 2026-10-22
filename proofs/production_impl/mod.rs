@@ -1267,6 +1267,14 @@ pub proof fn production_magnitude_double_telescope(limbs: Seq<u64>, shifted: Seq
     production_magnitude_value_expansion(limbs);
     production_magnitude_value_expansion(shifted);
     production_magnitude_radix_powers();
+    assert(crate::specs::part1_magnitude_capacity()
+        == 39402006196394479212279040100143613805079739270465446667948293404245721771497210611414266254884915640806627990306816);
+    assert((shifted[0] as nat) + (high[0] as nat) * 18446744073709551616 == (limbs[0] as nat) * 2);
+    assert((shifted[1] as nat) + (high[1] as nat) * 18446744073709551616 == (limbs[1] as nat) * 2 + high[0] as nat);
+    assert((shifted[2] as nat) + (high[2] as nat) * 18446744073709551616 == (limbs[2] as nat) * 2 + high[1] as nat);
+    assert((shifted[3] as nat) + (high[3] as nat) * 18446744073709551616 == (limbs[3] as nat) * 2 + high[2] as nat);
+    assert((shifted[4] as nat) + (high[4] as nat) * 18446744073709551616 == (limbs[4] as nat) * 2 + high[3] as nat);
+    assert((shifted[5] as nat) + (high[5] as nat) * 18446744073709551616 == (limbs[5] as nat) * 2 + high[4] as nat);
 }
 
 pub proof fn production_magnitude_left_bit_equation(limbs: Seq<u64>)
