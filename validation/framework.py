@@ -625,6 +625,95 @@ def validate_normative_coverage(
             }.get(reference["symbol"]) if reference["path"] == "src/packet.rs" else None
             if packet_contract:
                 expected_result_model = packet_contract[0]
+            selection_geometry = r"crate::codestream::selection_geometry_view\s*\(\s*size\s*\)"
+            selection_view = r"crate::options::decode_selection_view\s*\(\s*selection\s*\)"
+            selection_decoded_cap = r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)"
+            selection_work_cap = r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)"
+            selection_header = r"jp2::associated_header_option\s*\(\s*header\s*\)"
+            selection_image = r"crate::image::typed_image_value_view\s*\(\s*\*\s*image\s*\)"
+            selected_header_arguments = (
+                r"header\.image\s*,\s*codestream\.image_size\.width\s*,\s*codestream\.image_size\.height\s*,\s*"
+                r"codestream\.image_size\.components\s*,\s*codestream\.image_size\.uniform_bit_depth\s*,\s*"
+                r"codestream\.image_size\.uniform_signed\s*,\s*offset"
+            )
+            selection_contract = {
+                ("src/codestream.rs", "ImageSize::tile_count"): (
+                    None, "part2_selection_tile_count", r"selection_geometry_view\s*\(\s*&\s*self\s*\)",
+                ),
+                ("src/codestream.rs", "ImageSize::tile_bounds"): (
+                    None, "part2_selection_tile_bounds", r"selection_geometry_view\s*\(\s*self\s*\)\s*,\s*tile_index",
+                ),
+                ("src/options.rs", "selection_from_parts"): (
+                    "decode_selection_value_view", "part2_selection_from_parts",
+                    r"tile_selection_view\s*\(\s*&\s*tiles\s*\)\s*,\s*region\s*,\s*discard_levels",
+                ),
+                ("src/decode.rs", "ceil_div_u32"): (None, "part2_selection_ceil", r"value\s*,\s*divisor"),
+                ("src/decode.rs", "tile_list_contains"): (None, "part2_tile_list_contains", r"tiles@\s*,\s*tile"),
+                ("src/decode.rs", "selection_rectangle_area"): (None, "part2_rectangle_area", r"bounds"),
+                ("src/decode.rs", "validate_explicit_tile_indices"): (
+                    None, "part2_explicit_tile_prefix", r"explicit_tiles@\s*,\s*tile_count\s*,\s*explicit_tiles@\.len\s*\(\s*\)",
+                ),
+                ("src/decode.rs", "validate_selection_tile_rectangle"): (
+                    None, "part2_validate_tile_rectangle", r"explicit_tiles@\s*,\s*tiles_across",
+                ),
+                ("src/decode.rs", "validate_selection_rectangle_cells"): (
+                    None, "part2_rectangle_rows",
+                    r"explicit_tiles@\s*,\s*tiles_across\s*,\s*bounds\s*,\s*"
+                    r"\(\s*bounds\.2\s+as\s+nat\s*-\s*bounds\.0\s+as\s+nat\s*\+\s*1\s*\)\s+as\s+nat",
+                ),
+                ("src/decode.rs", "selection_region"): (
+                    "selection_region_outcome", "part2_selection_region",
+                    selection_geometry + r"\s*,\s*explicit_tiles@\s*,\s*requested\s*,\s*image_x1\s*,\s*image_y1",
+                ),
+                ("src/decode.rs", "select_intersecting_tiles"): (
+                    "selected_tiles_outcome", "part2_select_intersecting_tiles",
+                    selection_geometry + r"\s*,\s*explicit_tiles@\s*,\s*region@\s*,\s*tile_count",
+                ),
+                ("src/decode.rs", "explicit_tiles_from_selection"): (
+                    "selected_tiles_outcome", "part2_selection_explicit",
+                    r"crate::options::tile_selection_view\s*\(\s*selection\s*\)",
+                ),
+                ("src/decode.rs", "validate_selection"): (
+                    "validated_selection_outcome", "part2_validate_selection",
+                    selection_geometry + r"\s*,\s*" + selection_view,
+                ),
+                ("src/decode.rs", "color_selection_from_validated"): (
+                    "color_selection_outcome", "part2_color_selection_context",
+                    r"size\.x_origin\s*,\s*size\.y_origin\s*,\s*crate::codestream::image_size_component_infos\s*\(\s*size\s*\)"
+                    r"\s*,\s*size\.components\s*,\s*validated_selection_view\s*\(\s*validated\s*\)",
+                ),
+                ("src/decode.rs", "color_selection_for_size"): (
+                    "color_selection_outcome", "part2_color_selection_requested",
+                    selection_geometry + r"\s*,\s*crate::codestream::image_size_component_infos\s*\(\s*size\s*\)"
+                    r"\s*,\s*size\.components\s*,\s*crate::options::decode_selection_view\s*\(\s*requested\s*\)",
+                ),
+                ("src/decode.rs", "apply_associated_output"): (
+                    "associated_typed_outcome", "part2_apply_associated_output",
+                    r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*" + selection_header
+                    + r"\s*,\s*crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*" + selection_decoded_cap,
+                ),
+                ("src/decode.rs", "convert_associated_color"): (
+                    "crate::color::converted_image_result", "part2_convert_associated",
+                    selection_image + r"\s*,\s*" + selection_header + r"\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
+                ),
+                ("src/decode.rs", "convert_associated_selected_color"): (
+                    "crate::color::converted_image_result", "part2_convert_associated_selected",
+                    selection_image + r"\s*,\s*" + selection_header + r"\s*,\s*target\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
+                ),
+                ("src/decode.rs", "finish_associated_selected_output"): (
+                    "crate::color::converted_image_result", "part2_finish_associated_selected_output",
+                    r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*" + selection_header + r"\s*,\s*target\s*,\s*"
+                    r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
+                ),
+                ("src/jp2.rs", "associated_header_for_codestream"): (
+                    "associated_header_outcome", "part2_associated_codestream_header",
+                    r"codestream_header_association_view\s*\(\s*selected\s*\)\s*,\s*associated_header_view\s*\(\s*fallback\s*\)",
+                ),
+                ("src/jp2.rs", "validate_container_codestream"): (None, "part2_validate_selected_header", selected_header_arguments),
+                ("src/jp2.rs", "validate_selected_header"): (None, "part2_validate_selected_header", selected_header_arguments),
+            }.get((reference["path"], reference["symbol"]))
+            if selection_contract:
+                result_projection, expected_result_model = selection_contract[:2]
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
@@ -1033,6 +1122,10 @@ def validate_normative_coverage(
                 packet_contract is None
                 or _coverage_result_arguments(contract, named_result, packet_contract[0], packet_contract[2])
             )
+            selection_arguments_bound = (
+                selection_contract is None
+                or _coverage_result_arguments(contract, named_result, selection_contract[1], selection_contract[2])
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -1058,6 +1151,7 @@ def validate_normative_coverage(
                     or not component_arguments_bound
                     or not arbitrary_arguments_bound
                     or not packet_arguments_bound
+                    or not selection_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))
