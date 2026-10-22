@@ -5583,11 +5583,14 @@
     {
       "contract_refs": [
         {"path": "src/magnitude.rs", "symbol": "Magnitude::is_zero"},
-        {"path": "src/magnitude.rs", "symbol": "Magnitude::low_u64"}
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::low_u64"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::limb"}
       ],
       "id": "part1-full-native-magnitude-values",
       "implementation_refs": [
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "CoefficientState::set_magnitude"},
+        {"path": "src/magnitude.rs", "symbol": "Magnitude::limb"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_shl"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::shift_right"},
@@ -5596,6 +5599,8 @@
         {"path": "src/magnitude.rs", "symbol": "magnitude_single_bit"}
       ],
       "proof_refs": [
+        {"path": "src/magnitude.rs", "symbol": "magnitude_limbs_shape"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "magnitude_limb_interface_covers_native_indices"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_add"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::checked_shl"},
         {"path": "src/magnitude.rs", "symbol": "Magnitude::shift_right"},
@@ -5609,6 +5614,7 @@
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_value"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_capacity"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_low_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_magnitude_limb"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_zero"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_left"},
         {"path": "specs/mod.rs", "symbol": "part1_magnitude_left_fits"},
@@ -5616,6 +5622,7 @@
         {"path": "specs/mod.rs", "symbol": "magnitude_addition"}
       ],
       "test_refs": [
+        {"path": "src/magnitude.rs", "symbol": "full_native_limb_getter_matches_independent_array_and_extreme_indices"},
         {"path": "src/magnitude.rs", "symbol": "full_native_bit_producers_preserve_all_limbs_and_exact_errors"},
         {"path": "src/magnitude.rs", "symbol": "full_u16_shifts_and_modulo_getters_match_independent_384_bit_reference"},
         {"path": "src/magnitude.rs", "symbol": "exact_full_capacity_addition_matches_bit_carry_reference"}

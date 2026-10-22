@@ -4665,6 +4665,10 @@ pub open spec fn part1_component_output_shape_valid(
     width > 0 && height > 0 && part1_wavelet_sample_count(width, height, samples)
 }
 
+pub open spec fn part1_magnitude_limb(limbs: Seq<u64>, index: usize) -> Option<u64> {
+    if index < limbs.len() { Some(limbs[index as int]) } else { None }
+}
+
 pub open spec fn part1_magnitude_zero(limbs: Seq<u64>) -> bool {
     forall |i: int| 0 <= i < limbs.len() ==> limbs[i] == 0
 }
