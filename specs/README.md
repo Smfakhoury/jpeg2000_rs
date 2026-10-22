@@ -1,5 +1,15 @@
 # Specification audit guide
 
+The actual component-style owner returns its complete native style/error with
+logical-count rejection before physical-array lookup, including contradictory
+counts. The complete native Tier1 byte parser preserves every flag, the exact
+HT/mixed rejection masks and all256 input bytes. Public static APIs and the
+actual codestream caller share one executable parser body. Closed owner
+observations expose actual SOP/EPH fields and packed-header source presence;
+presence is not inferred from byte length or fragment count. These facts feed
+the pending actual tile/precinct/progression composition, not a supplied style
+or header outcome.
+
 ## Frozen actual precinct/progression orchestration contract
 
 The next composition boundary is the actual `decode_precinct_packet` and its

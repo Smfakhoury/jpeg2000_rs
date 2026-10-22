@@ -374,6 +374,30 @@ pub struct CodingStyle {
     pub precinct_exponents: [(u8, u8); 33],
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn component_coding_style_result(styles: &ComponentCodingStyles, component: u16) -> Result<CodingStyle, DecodeError> {
+        if component >= styles.components {
+            Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
+        } else if component as nat >= styles.styles@.len() {
+            Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
+        } else { Ok(styles.styles@[component as int]) }
+    }
+
+    pub closed spec fn coding_style_tier1_result(style: CodingStyle) -> Result<Tier1CodingStyle, DecodeError> {
+        crate::specs::part1_tier1_coding_style_byte(style.code_block_style)
+    }
+
+    pub closed spec fn coding_style_packet_markers(style: &CodingStyle) -> (bool, bool) {
+        (style.sop_markers, style.eph_markers)
+    }
+
+    pub proof fn coding_style_known_packet_markers(style: &CodingStyle)
+        ensures coding_style_packet_markers(style) == (style.sop_markers, style.eph_markers),
+    {
+    }
+}
+
 impl CodingStyle {
     pub const fn resolution_levels(self) -> u16 {
         (self.decomposition_levels as u16) + 1
@@ -605,8 +629,11 @@ impl CodingStyle {
         count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == coding_style_tier1_result(self),
+    ))]
     pub fn tier1_coding_style(self) -> Result<Tier1CodingStyle, DecodeError> {
-        Tier1CodingStyle::from_code_block_style(self.code_block_style)
+        crate::tier1::tier1_coding_style_from_code_block_style(self.code_block_style)
     }
 
     pub fn precinct_exponents(self, resolution: u8) -> Result<(u8, u8), DecodeError> {
@@ -716,13 +743,22 @@ impl ComponentCodingStyles {
         Self::new(components, default)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == component_coding_style_result(self, component),
+    ))]
     pub fn style(&self, component: u16) -> Result<CodingStyle, DecodeError> {
         if component >= self.components {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
         match self.styles.get(usize::from(component)) {
             Some(style) => Ok(*style),
-            None => Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)),
+            None => Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            }),
         }
     }
 
@@ -2118,6 +2154,13 @@ pub struct PackedPacketHeaders<'a> {
     fragments: u16,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn packed_packet_headers_present(headers: &PackedPacketHeaders) -> bool {
+        !matches!(headers.source, PackedPacketHeaderSource::None)
+    }
+}
+
 impl PackedPacketHeaders<'_> {
     pub const fn none() -> Self {
         Self {
@@ -2127,6 +2170,9 @@ impl PackedPacketHeaders<'_> {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == packed_packet_headers_present(self),
+    ))]
     pub const fn is_present(&self) -> bool {
         !matches!(self.source, PackedPacketHeaderSource::None)
     }
@@ -8629,6 +8675,96 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_packet_style_owners_preserve_raw_counts_styles_and_header_presence() {
+        let mut style = CodingStyle {
+            progression_order: ProgressionOrder::Lrcp,
+            layers: 0,
+            multiple_component_transform: true,
+            decomposition_levels: u8::MAX,
+            decomposition_structure: Some(u8::MAX),
+            decomposition_directions: [DecompositionDirection::None; 32],
+            code_block_width: 0,
+            code_block_height: u16::MAX,
+            code_block_style: u8::MAX,
+            transform: WaveletTransform::Arbitrary(u8::MAX),
+            precincts_defined: false,
+            sop_markers: true,
+            eph_markers: true,
+            precinct_exponents: [(u8::MAX, u8::MAX); 33],
+        };
+        let styles = core::array::from_fn(|index| CodingStyle {
+            layers: u16::try_from(index).unwrap() * 999,
+            code_block_style: u8::try_from(index).unwrap(),
+            ..style
+        });
+        let mut table = ComponentCodingStyles {
+            components: 0,
+            styles,
+        };
+        for count in 0..=u16::MAX {
+            table.components = count;
+            for index in [0, 1, 63, 64, 65, u16::MAX - 1, u16::MAX] {
+                let expected = if index < count && usize::from(index) < styles.len() {
+                    Ok(styles[usize::from(index)])
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidCodingStyle,
+                    })
+                };
+                assert_eq!(table.style(index), expected);
+            }
+        }
+        for count in [0, 1, 63, 64, 65, u16::MAX] {
+            table.components = count;
+            for index in 0..=u16::MAX {
+                let expected = if index < count && usize::from(index) < styles.len() {
+                    Ok(styles[usize::from(index)])
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidCodingStyle,
+                    })
+                };
+                assert_eq!(table.style(index), expected);
+            }
+        }
+        for value in 0..=u8::MAX {
+            style.code_block_style = value;
+            assert_eq!(
+                style.tier1_coding_style(),
+                Tier1CodingStyle::from_code_block_style(value)
+            );
+        }
+        for length in [0, 1, usize::MAX] {
+            for fragments in [0, 1, u16::MAX] {
+                let absent = PackedPacketHeaders {
+                    source: PackedPacketHeaderSource::None,
+                    length,
+                    fragments,
+                };
+                assert!(!absent.is_present());
+                for bytes in [&[][..], &[0xff, 0x60][..]] {
+                    for marker in [0, u16::MAX] {
+                        for logical_start in [0, usize::MAX] {
+                            let present = PackedPacketHeaders {
+                                source: PackedPacketHeaderSource::MarkerSegments {
+                                    header: bytes,
+                                    marker,
+                                    logical_start,
+                                },
+                                length,
+                                fragments,
+                            };
+                            assert!(present.is_present());
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn raw_component_getter_covers_entire_u16_index_domain() {
