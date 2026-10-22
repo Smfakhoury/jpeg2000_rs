@@ -90,6 +90,23 @@ verus! {
             Err(error) => Err(error),
         }
     }
+
+    pub open spec fn wavelet_band_view(band: WaveletBand<'_>) -> crate::specs::Part1WaveletBand {
+        (band.width, band.height, band.samples@)
+    }
+
+    pub open spec fn row_outcome(result: Result<&[i64], DecodeError>) -> Result<Seq<i64>, DecodeError> {
+        match result {
+            Ok(samples) => Ok(samples@),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub open spec fn wavelet_level_view(level: WaveletLevel<'_>) -> crate::specs::Part1WaveletLevel {
+        (wavelet_band_view(level.ll), wavelet_band_view(level.hl),
+            wavelet_band_view(level.lh), wavelet_band_view(level.hh),
+            level.output_width, level.output_height, level.low_pass_first_x, level.low_pass_first_y)
+    }
 }
 
 impl ReconstructedPlane {
@@ -410,6 +427,9 @@ pub fn inverse_5_3(
     Ok(output)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures sequence_outcome(result) == crate::specs::part1_inverse_nine_seven(low@, high@, low_pass_first),
+))]
 pub fn inverse_9_7(
     low: &[i64],
     high: &[i64],
@@ -429,27 +449,45 @@ pub fn inverse_9_7(
         !low_pass_first,
         crate::refinement::nine_seven_scale(false),
     )?;
-    inverse_lift(
-        &mut output,
-        low_pass_first,
-        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(0)),
-    )?;
-    inverse_lift(
-        &mut output,
-        !low_pass_first,
-        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(1)),
-    )?;
-    inverse_lift(
-        &mut output,
-        low_pass_first,
-        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(2)),
-    )?;
-    inverse_lift(
-        &mut output,
-        !low_pass_first,
-        InverseLiftingStep::Fixed(crate::refinement::nine_seven_lift(3)),
-    )?;
+    inverse_nine_seven_lifts(&mut output, low_pass_first)?;
     Ok(output)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(samples)@) == crate::specs::part1_nine_seven_lifting_prefix(old(samples)@, low_first, 4),
+))]
+fn inverse_nine_seven_lifts(samples: &mut [i64], low_first: bool) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = samples@; }
+    let mut stage = 0_u8;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant stage <= 4,
+        original == old(samples)@,
+        crate::specs::part1_nine_seven_lifting_prefix(original, low_first, stage as nat) == (Ok(()), samples@),
+        decreases 4 - stage,
+    ))]
+    while stage < 4 {
+        let target_even = if stage == 0 || stage == 2 {
+            low_first
+        } else {
+            !low_first
+        };
+        let factor = crate::refinement::nine_seven_lift(stage);
+        match inverse_lift(samples, target_even, InverseLiftingStep::Fixed(factor)) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_nine_seven_error_persists(
+                        original, low_first, stage as nat + 1, 4,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        stage += 1;
+    }
+    Ok(())
 }
 
 pub fn inverse_arbitrary(
@@ -909,6 +947,11 @@ fn round_shift_i128(value: i128, shift: u32) -> Result<i128, DecodeError> {
     Ok(adjusted >> shift)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_level(
+        wavelet_level_view(level), false, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_level_5_3(
     level: WaveletLevel<'_>,
     limits: &ResourceLimits,
@@ -916,6 +959,11 @@ pub fn inverse_level_5_3(
     inverse_level(level, limits, false, None)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_level(
+        wavelet_level_view(level), true, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_level_9_7(
     level: WaveletLevel<'_>,
     limits: &ResourceLimits,
@@ -931,6 +979,12 @@ pub fn inverse_level_arbitrary(
     inverse_level(level, limits, !kernel.reversible(), Some(kernel))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_horizontal(
+        wavelet_band_view(low), wavelet_band_view(high), output_width, low_pass_first, false,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_horizontal_5_3(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -941,6 +995,12 @@ pub fn inverse_horizontal_5_3(
     inverse_horizontal(low, high, output_width, low_pass_first, limits, false, None)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_horizontal(
+        wavelet_band_view(low), wavelet_band_view(high), output_width, low_pass_first, true,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_horizontal_9_7(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -970,6 +1030,12 @@ pub fn inverse_horizontal_arbitrary(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> reconstruction_outcome(result) == crate::specs::part1_inverse_horizontal(
+        wavelet_band_view(low), wavelet_band_view(high), output_width, low_pass_first, irreversible,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn inverse_horizontal(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -991,28 +1057,7 @@ fn inverse_horizontal(
     }
     let output_len = checked_area(output_width, low.height)?;
     validate_output_size(output_len, limits)?;
-    let mut samples = Vec::with_capacity(output_len);
-    let mut y = 0_u32;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant y <= low.height,
-            decreases low.height - y,
-        )
-    )]
-    while y < low.height {
-        let low_row = band_row(low, y)?;
-        let high_row = band_row(high, y)?;
-        let row = if let Some(kernel) = kernel {
-            inverse_arbitrary(low_row, high_row, low_pass_first, kernel)?
-        } else if irreversible {
-            inverse_9_7(low_row, high_row, low_pass_first)?
-        } else {
-            inverse_5_3(low_row, high_row, low_pass_first)?
-        };
-        samples.extend_from_slice(&row);
-        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+    let samples = inverse_rows(low, high, low_pass_first, irreversible, kernel, output_len)?;
     Ok(ReconstructedPlane {
         width: output_width,
         height: low.height,
@@ -1021,6 +1066,95 @@ fn inverse_horizontal(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_horizontal_prefix(
+        wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible, low.height as nat,
+    ),
+))]
+fn inverse_rows(
+    low: WaveletBand<'_>,
+    high: WaveletBand<'_>,
+    low_pass_first: bool,
+    irreversible: bool,
+    kernel: Option<&ArbitraryKernel>,
+    capacity: usize,
+) -> Result<Vec<i64>, DecodeError> {
+    let mut samples = Vec::with_capacity(capacity);
+    let mut y = 0_u32;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant y <= low.height,
+            kernel.is_none() ==> crate::specs::part1_horizontal_prefix(
+                wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible, y as nat,
+            ) == Ok(samples@),
+            decreases low.height - y,
+        )
+    )]
+    while y < low.height {
+        let row = match inverse_row_pair(low, high, y, low_pass_first, irreversible, kernel) {
+            Ok(row) => row,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    if kernel.is_none() {
+                        crate::proofs::production_impl::production_horizontal_error_persists(
+                            wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible,
+                            y as nat + 1, low.height as nat, error,
+                        );
+                    }
+                }
+                return Err(error);
+            }
+        };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost appended = samples@ + row@; }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if kernel.is_none() {
+                assert(crate::specs::part1_horizontal_prefix(
+                    wavelet_band_view(low), wavelet_band_view(high), low_pass_first, irreversible, y as nat + 1,
+                ) == Ok(appended));
+            }
+        }
+        samples.extend_from_slice(&row);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(samples@ == appended); }
+        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(samples)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_horizontal_row(
+        wavelet_band_view(low), wavelet_band_view(high), y, low_first, irreversible,
+    ),
+))]
+fn inverse_row_pair(
+    low: WaveletBand<'_>,
+    high: WaveletBand<'_>,
+    y: u32,
+    low_first: bool,
+    irreversible: bool,
+    kernel: Option<&ArbitraryKernel>,
+) -> Result<Vec<i64>, DecodeError> {
+    let low_row = band_row(low, y)?;
+    let high_row = band_row(high, y)?;
+    if let Some(kernel) = kernel {
+        inverse_arbitrary(low_row, high_row, low_first, kernel)
+    } else if irreversible {
+        inverse_9_7(low_row, high_row, low_first)
+    } else {
+        inverse_5_3(low_row, high_row, low_first)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_vertical(
+        wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, false,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_vertical_5_3(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -1039,6 +1173,12 @@ pub fn inverse_vertical_5_3(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_vertical(
+        wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, true,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn inverse_vertical_9_7(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -1068,6 +1208,12 @@ pub fn inverse_vertical_arbitrary(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> reconstruction_outcome(result) == crate::specs::part1_inverse_vertical(
+        wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn inverse_vertical(
     low: WaveletBand<'_>,
     high: WaveletBand<'_>,
@@ -1089,47 +1235,15 @@ fn inverse_vertical(
     }
     let output_len = checked_area(low.width, output_height)?;
     validate_output_size(output_len, limits)?;
-    let mut samples = vec![0_i64; output_len];
-    let mut x = 0_u32;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant x <= low.width,
-            decreases low.width - x,
-        )
-    )]
-    while x < low.width {
-        let low_column = collect_column(low.samples, low.width, low.height, x)?;
-        let high_column = collect_column(high.samples, high.width, high.height, x)?;
-        let column = if let Some(kernel) = kernel {
-            inverse_arbitrary(&low_column, &high_column, low_pass_first, kernel)?
-        } else if irreversible {
-            inverse_9_7(&low_column, &high_column, low_pass_first)?
-        } else {
-            inverse_5_3(&low_column, &high_column, low_pass_first)?
-        };
-        let mut y = 0_u32;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant y <= output_height,
-                decreases output_height - y,
-            )
-        )]
-        while y < output_height {
-            let destination = usize::try_from(y)
-                .map_err(|_| arithmetic_overflow())?
-                .checked_mul(usize::try_from(low.width).map_err(|_| arithmetic_overflow())?)
-                .and_then(|row| row.checked_add(usize::try_from(x).ok()?))
-                .ok_or_else(arithmetic_overflow)?;
-            let value = *column
-                .get(usize::try_from(y).map_err(|_| arithmetic_overflow())?)
-                .ok_or_else(invalid_transform)?;
-            *samples.get_mut(destination).ok_or_else(invalid_transform)? = value;
-            y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+    let samples = inverse_columns(
+        low,
+        high,
+        output_height,
+        low_pass_first,
+        irreversible,
+        kernel,
+        output_len,
+    )?;
     Ok(ReconstructedPlane {
         width: low.width,
         height: output_height,
@@ -1138,6 +1252,110 @@ fn inverse_vertical(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_vertical_prefix(
+        wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
+        output_len, low.width as nat,
+    ),
+))]
+fn inverse_columns(
+    low: WaveletBand<'_>,
+    high: WaveletBand<'_>,
+    output_height: u32,
+    low_pass_first: bool,
+    irreversible: bool,
+    kernel: Option<&ArbitraryKernel>,
+    output_len: usize,
+) -> Result<Vec<i64>, DecodeError> {
+    let mut samples = vec![0_i64; output_len];
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(samples@ =~= Seq::new(output_len as nat, |i: int| 0i64)); }
+    let mut x = 0_u32;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant x <= low.width,
+            kernel.is_none() ==> crate::specs::part1_vertical_prefix(
+                wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
+                output_len, x as nat,
+            ) == Ok(samples@),
+            decreases low.width - x,
+        )
+    )]
+    while x < low.width {
+        let column = match inverse_column_pair(low, high, x, low_pass_first, irreversible, kernel) {
+            Ok(column) => column,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    if kernel.is_none() {
+                        crate::proofs::production_impl::production_vertical_error_persists(
+                            wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+                            irreversible, output_len, x as nat + 1, low.width as nat, error,
+                        );
+                    }
+                }
+                return Err(error);
+            }
+        };
+        match store_column(&mut samples, low.width, output_height, x, &column) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    if kernel.is_none() {
+                        crate::proofs::production_impl::production_vertical_error_persists(
+                            wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first,
+                            irreversible, output_len, x as nat + 1, low.width as nat, error,
+                        );
+                    }
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if kernel.is_none() {
+                assert(crate::specs::part1_vertical_prefix(
+                    wavelet_band_view(low), wavelet_band_view(high), output_height, low_pass_first, irreversible,
+                    output_len, x as nat + 1,
+                ) == Ok(samples@));
+            }
+        }
+        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(samples)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> sequence_outcome(result) == crate::specs::part1_vertical_column(
+        wavelet_band_view(low), wavelet_band_view(high), x, low_pass_first, irreversible,
+    ),
+))]
+fn inverse_column_pair(
+    low: WaveletBand<'_>,
+    high: WaveletBand<'_>,
+    x: u32,
+    low_pass_first: bool,
+    irreversible: bool,
+    kernel: Option<&ArbitraryKernel>,
+) -> Result<Vec<i64>, DecodeError> {
+    let low_column = collect_column(low.samples, low.width, low.height, x)?;
+    let high_column = collect_column(high.samples, high.width, high.height, x)?;
+    if let Some(kernel) = kernel {
+        inverse_arbitrary(&low_column, &high_column, low_pass_first, kernel)
+    } else if irreversible {
+        inverse_9_7(&low_column, &high_column, low_pass_first)
+    } else {
+        inverse_5_3(&low_column, &high_column, low_pass_first)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures kernel.is_none() ==> reconstruction_outcome(result) == crate::specs::part1_inverse_level(
+        wavelet_level_view(level), irreversible, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn inverse_level(
     level: WaveletLevel<'_>,
     limits: &ResourceLimits,
@@ -1153,105 +1371,41 @@ fn inverse_level(
     validate_output_size(output_len, limits)?;
     let low_height = level.ll.height;
     let high_height = level.lh.height;
-    let mut low_rows = Vec::with_capacity(
-        usize::try_from(level.output_width)
-            .map_err(|_| arithmetic_overflow())?
-            .checked_mul(usize::try_from(low_height).map_err(|_| arithmetic_overflow())?)
-            .ok_or_else(arithmetic_overflow)?,
-    );
-    let mut y = 0_u32;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant y <= low_height,
-            decreases low_height - y,
-        )
-    )]
-    while y < low_height {
-        let low = band_row(level.ll, y)?;
-        let high = band_row(level.hl, y)?;
-        let row = if let Some(kernel) = kernel {
-            inverse_arbitrary(low, high, level.low_pass_first_x, kernel)?
-        } else if irreversible {
-            inverse_9_7(low, high, level.low_pass_first_x)?
-        } else {
-            inverse_5_3(low, high, level.low_pass_first_x)?
-        };
-        low_rows.extend_from_slice(&row);
-        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    let mut high_rows = Vec::with_capacity(
-        usize::try_from(level.output_width)
-            .map_err(|_| arithmetic_overflow())?
-            .checked_mul(usize::try_from(high_height).map_err(|_| arithmetic_overflow())?)
-            .ok_or_else(arithmetic_overflow)?,
-    );
-    y = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant y <= high_height,
-            decreases high_height - y,
-        )
-    )]
-    while y < high_height {
-        let low = band_row(level.lh, y)?;
-        let high = band_row(level.hh, y)?;
-        let row = if let Some(kernel) = kernel {
-            inverse_arbitrary(low, high, level.low_pass_first_x, kernel)?
-        } else if irreversible {
-            inverse_9_7(low, high, level.low_pass_first_x)?
-        } else {
-            inverse_5_3(low, high, level.low_pass_first_x)?
-        };
-        high_rows.extend_from_slice(&row);
-        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-
-    let mut output = vec![0_i64; output_len];
-    let mut x = 0_u32;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant x <= level.output_width,
-            decreases level.output_width - x,
-        )
-    )]
-    while x < level.output_width {
-        let low_column = collect_column(&low_rows, level.output_width, low_height, x)?;
-        let high_column = collect_column(&high_rows, level.output_width, high_height, x)?;
-        let column = if let Some(kernel) = kernel {
-            inverse_arbitrary(&low_column, &high_column, level.low_pass_first_y, kernel)?
-        } else if irreversible {
-            inverse_9_7(&low_column, &high_column, level.low_pass_first_y)?
-        } else {
-            inverse_5_3(&low_column, &high_column, level.low_pass_first_y)?
-        };
-        let mut output_y = 0_u32;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant output_y <= level.output_height,
-                decreases level.output_height - output_y,
-            )
-        )]
-        while output_y < level.output_height {
-            let output_index = usize::try_from(output_y)
-                .map_err(|_| arithmetic_overflow())?
-                .checked_mul(
-                    usize::try_from(level.output_width).map_err(|_| arithmetic_overflow())?,
-                )
-                .and_then(|row| row.checked_add(usize::try_from(x).ok()?))
-                .ok_or_else(arithmetic_overflow)?;
-            let column_index = usize::try_from(output_y).map_err(|_| arithmetic_overflow())?;
-            if output_index >= output.len() || column_index >= column.len() {
-                return Err(invalid_transform());
-            }
-            output[output_index] = column[column_index];
-            output_y = output_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+    let low_capacity = checked_area(level.output_width, low_height)?;
+    let low_rows = inverse_rows(
+        level.ll,
+        level.hl,
+        level.low_pass_first_x,
+        irreversible,
+        kernel,
+        low_capacity,
+    )?;
+    let high_capacity = checked_area(level.output_width, high_height)?;
+    let high_rows = inverse_rows(
+        level.lh,
+        level.hh,
+        level.low_pass_first_x,
+        irreversible,
+        kernel,
+        high_capacity,
+    )?;
+    let output = inverse_columns(
+        WaveletBand {
+            width: level.output_width,
+            height: low_height,
+            samples: &low_rows,
+        },
+        WaveletBand {
+            width: level.output_width,
+            height: high_height,
+            samples: &high_rows,
+        },
+        level.output_height,
+        level.low_pass_first_y,
+        irreversible,
+        kernel,
+        output_len,
+    )?;
     Ok(ReconstructedPlane {
         width: level.output_width,
         height: level.output_height,
@@ -1260,6 +1414,11 @@ fn inverse_level(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures sequence_outcome(result) == crate::specs::part1_convert_samples(
+        reconstructed_plane_view(*plane), precision, signed, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 pub fn convert_samples(
     plane: &ReconstructedPlane,
     precision: u8,
@@ -1271,18 +1430,19 @@ pub fn convert_samples(
     }
     validate_output_size(plane.samples.len(), limits)?;
     let signed_shift = precision.checked_sub(1).ok_or_else(arithmetic_overflow)?;
-    let maximum = if signed {
-        (1_i64 << u32::from(signed_shift))
-            .checked_sub(1)
-            .ok_or_else(arithmetic_overflow)?
-    } else {
-        (1_i64 << u32::from(precision))
-            .checked_sub(1)
-            .ok_or_else(arithmetic_overflow)?
-    };
+    let maximum_shift = if signed { signed_shift } else { precision };
+    let maximum_power = 1_i64 << (maximum_shift as u32);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(maximum_power > 0) by(bit_vector)
+            requires maximum_shift <= 38, maximum_power == 1i64 << (maximum_shift as u32);
+    }
+    let maximum = maximum_power
+        .checked_sub(1)
+        .ok_or_else(arithmetic_overflow)?;
     let minimum = if signed {
         0_i64
-            .checked_sub(1_i64 << u32::from(signed_shift))
+            .checked_sub(1_i64 << (signed_shift as u32))
             .ok_or_else(arithmetic_overflow)?
     } else {
         0
@@ -1294,20 +1454,64 @@ pub fn convert_samples(
         verus_keep_ghost,
         verus_spec(
             invariant index <= plane.samples.len(),
+            0 < precision <= 38,
+            plane.fraction_bits <= 62,
+            crate::specs::part1_quantization_budget(
+                plane.samples.len() as nat, crate::limits::resource_decoded_bytes_limit(limits),
+            ) == Ok(()),
+            maximum == crate::specs::part1_output_maximum(precision, signed),
+            minimum == crate::specs::part1_output_minimum(precision, signed),
+            level_shift == crate::specs::part1_level_shift(precision, signed),
+            crate::specs::part1_conversion_prefix(
+                plane.samples@, plane.fraction_bits, level_shift, minimum, maximum, index as nat,
+            ) == Ok(converted@),
             decreases plane.samples.len() - index,
         )
     )]
     while index < plane.samples.len() {
-        let rounded = round_fixed(plane.samples[index], plane.fraction_bits)?;
-        let shifted = rounded
-            .checked_add(level_shift)
-            .ok_or_else(arithmetic_overflow)?;
-        converted.push(crate::refinement::clip_sample(shifted, minimum, maximum));
+        let value = match convert_sample(
+            plane.samples[index],
+            plane.fraction_bits,
+            level_shift,
+            minimum,
+            maximum,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_conversion_error_persists(
+                        plane.samples@, plane.fraction_bits, level_shift, minimum, maximum,
+                        index as nat + 1, plane.samples.len() as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        converted.push(value);
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(converted)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_convert_sample(value, fraction_bits, shift, minimum, maximum),
+))]
+fn convert_sample(
+    value: i64,
+    fraction_bits: u8,
+    shift: i64,
+    minimum: i64,
+    maximum: i64,
+) -> Result<i64, DecodeError> {
+    let rounded = round_fixed(value, fraction_bits)?;
+    let shifted = rounded.checked_add(shift).ok_or_else(arithmetic_overflow)?;
+    Ok(crate::refinement::clip_sample(shifted, minimum, maximum))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_validate_level(wavelet_level_view(level)),
+))]
 fn validate_level(level: WaveletLevel<'_>) -> Result<(), DecodeError> {
     if level.output_width == 0 || level.output_height == 0 {
         return Err(invalid_transform());
@@ -1328,6 +1532,9 @@ fn validate_level(level: WaveletLevel<'_>) -> Result<(), DecodeError> {
     validate_band(level.hh, high_width, high_height)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_validate_band(wavelet_band_view(band), width, height),
+))]
 fn validate_band(band: WaveletBand<'_>, width: u32, height: u32) -> Result<(), DecodeError> {
     if band.width != width
         || band.height != height
@@ -1338,6 +1545,9 @@ fn validate_band(band: WaveletBand<'_>, width: u32, height: u32) -> Result<(), D
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_low_count(length, low_pass_first),
+))]
 fn low_count(length: u32, low_pass_first: bool) -> u32 {
     if low_pass_first {
         length / 2 + length % 2
@@ -1346,20 +1556,25 @@ fn low_count(length: u32, low_pass_first: bool) -> u32 {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures row_outcome(result) == crate::specs::part1_band_row(wavelet_band_view(band), y),
+))]
 fn band_row(band: WaveletBand<'_>, y: u32) -> Result<&[i64], DecodeError> {
     if y >= band.height {
         return Err(invalid_transform());
     }
-    let start = usize::try_from(y)
-        .map_err(|_| arithmetic_overflow())?
-        .checked_mul(usize::try_from(band.width).map_err(|_| arithmetic_overflow())?)
+    let start = transform_dimension(y)?
+        .checked_mul(transform_dimension(band.width)?)
         .ok_or_else(arithmetic_overflow)?;
     let end = start
-        .checked_add(usize::try_from(band.width).map_err(|_| arithmetic_overflow())?)
+        .checked_add(transform_dimension(band.width)?)
         .ok_or_else(arithmetic_overflow)?;
     band.samples.get(start..end).ok_or_else(invalid_transform)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures sequence_outcome(result) == crate::specs::part1_collect_column((width, height, samples@), x),
+))]
 fn collect_column(
     samples: &[i64],
     width: u32,
@@ -1369,29 +1584,118 @@ fn collect_column(
     if x >= width {
         return Err(invalid_transform());
     }
-    let mut column =
-        Vec::with_capacity(usize::try_from(height).map_err(|_| arithmetic_overflow())?);
+    let mut column = Vec::with_capacity(transform_dimension(height)?);
     let mut y = 0_u32;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant y <= height,
+            x < width,
+            height <= usize::MAX,
+            crate::specs::part1_column_prefix(samples@, width, x, y as nat) == Ok(column@),
             decreases height - y,
         )
     )]
     while y < height {
-        let index = usize::try_from(y)
-            .map_err(|_| arithmetic_overflow())?
-            .checked_mul(usize::try_from(width).map_err(|_| arithmetic_overflow())?)
-            .and_then(|row| row.checked_add(usize::try_from(x).ok()?))
-            .ok_or_else(arithmetic_overflow)?;
-        if index >= samples.len() {
-            return Err(invalid_transform());
-        }
-        column.push(samples[index]);
+        let value = match column_sample(samples, width, x, y) {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_column_error_persists(
+                        samples@, width, x, y as nat + 1, height as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        column.push(value);
         y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(column)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_offset(y, width, x),
+))]
+fn transform_offset(y: u32, width: u32, x: u32) -> Result<usize, DecodeError> {
+    let row = transform_dimension(y)?
+        .checked_mul(transform_dimension(width)?)
+        .ok_or_else(arithmetic_overflow)?;
+    row.checked_add(transform_dimension(x)?)
+        .ok_or_else(arithmetic_overflow)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_column_sample(samples@, width, x, y),
+))]
+fn column_sample(samples: &[i64], width: u32, x: u32, y: u32) -> Result<i64, DecodeError> {
+    let index = transform_offset(y, width, x)?;
+    if index >= samples.len() {
+        return Err(invalid_transform());
+    }
+    Ok(samples[index])
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@) == crate::specs::part1_store_column_sample(
+        old(output)@, width, x, column@, y,
+    ),
+))]
+fn store_column_sample(
+    output: &mut [i64],
+    width: u32,
+    x: u32,
+    column: &[i64],
+    y: u32,
+) -> Result<(), DecodeError> {
+    let destination = transform_offset(y, width, x)?;
+    let column_index = transform_dimension(y)?;
+    let value = *column.get(column_index).ok_or_else(invalid_transform)?;
+    if destination >= output.len() {
+        return Err(invalid_transform());
+    }
+    output[destination] = value;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@) == crate::specs::part1_store_column_prefix(
+        old(output)@, width, x, column@, height as nat,
+    ),
+))]
+fn store_column(
+    output: &mut [i64],
+    width: u32,
+    height: u32,
+    x: u32,
+    column: &[i64],
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = output@; }
+    let mut y = 0_u32;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant y <= height,
+        original == old(output)@,
+        crate::specs::part1_store_column_prefix(original, width, x, column@, y as nat) == (Ok(()), output@),
+        decreases height - y,
+    ))]
+    while y < height {
+        match store_column_sample(output, width, x, column, y) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_store_column_error_persists(
+                        original, width, x, column@, y as nat + 1, height as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        y += 1;
+    }
+    Ok(())
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -1567,18 +1871,43 @@ fn inverse_lifting_value(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(samples)@) == crate::specs::part1_scaling_prefix(
+        old(samples)@, low_parity, factor, old(samples).len() as nat,
+    ),
+))]
 fn scale_parity(samples: &mut [i64], low_parity: bool, factor: i64) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = samples@; }
     let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= samples.len(),
+            original == old(samples)@,
+            samples.len() == original.len(),
+            forall |i: int| index <= i < samples.len() ==> samples[i] == original[i],
+            crate::specs::part1_scaling_prefix(original, low_parity, factor, index as nat) == (Ok(()), samples@),
             decreases samples.len() - index,
         )
     )]
     while index < samples.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_index_parity(index); }
         if (index & 1 == 0) == low_parity {
-            samples[index] = fixed_mul(samples[index], factor)?;
+            let value = match fixed_mul(samples[index], factor) {
+                Ok(value) => value,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_scaling_error_persists(
+                            original, low_parity, factor, index as nat + 1, original.len(),
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            samples[index] = value;
         }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
@@ -1650,6 +1979,9 @@ fn quantization_step_q16(step: QuantizationStep, dynamic_range: u8) -> Result<i6
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_round_fixed(value, fraction_bits),
+))]
 fn round_fixed(value: i64, fraction_bits: u8) -> Result<i64, DecodeError> {
     if fraction_bits == 0 {
         return Ok(value);
@@ -1660,17 +1992,35 @@ fn round_fixed(value: i64, fraction_bits: u8) -> Result<i64, DecodeError> {
     let half_shift = fraction_bits
         .checked_sub(1)
         .ok_or_else(arithmetic_overflow)?;
-    let half = 1_i64 << u32::from(half_shift);
-    Ok(value.checked_add(half).ok_or_else(arithmetic_overflow)? >> u32::from(fraction_bits))
+    let half = 1_i64 << (half_shift as u32);
+    Ok(value.checked_add(half).ok_or_else(arithmetic_overflow)? >> (fraction_bits as u32))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_dimension(value),
+))]
+fn transform_dimension(value: u32) -> Result<usize, DecodeError> {
+    let index = value as usize;
+    if index as u64 != value as u64 {
+        return Err(arithmetic_overflow());
+    }
+    Ok(index)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_area(width, height),
+))]
 fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
-    usize::try_from(width)
-        .map_err(|_| arithmetic_overflow())?
-        .checked_mul(usize::try_from(height).map_err(|_| arithmetic_overflow())?)
+    transform_dimension(width)?
+        .checked_mul(transform_dimension(height)?)
         .ok_or_else(arithmetic_overflow)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_quantization_budget(
+        samples as nat, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
 fn validate_output_size(samples: usize, limits: &ResourceLimits) -> Result<(), DecodeError> {
     validate_quantization_size(samples, limits.maximum_decoded_bytes())
 }
@@ -1869,6 +2219,787 @@ mod tests {
         let (status, predicted) = reference_lift(&updated, !low_first, 1, 0);
         status?;
         Ok(predicted)
+    }
+
+    fn reference_scale(
+        input: &[i64],
+        even: bool,
+        factor: i64,
+    ) -> (Result<(), DecodeError>, Vec<i64>) {
+        let mut output = input.to_vec();
+        for (index, value) in input.iter().enumerate() {
+            if index.is_multiple_of(2) != even {
+                continue;
+            }
+            let rounded = (|| {
+                let product = i64::try_from(i128::from(*value) * i128::from(factor))?;
+                let biased = i64::try_from(i128::from(product) + 32768)?;
+                i64::try_from(i128::from(biased).div_euclid(65536))
+            })();
+            match rounded {
+                Ok(value) => output[index] = value,
+                Err(_) => return (Err(arithmetic_overflow()), output),
+            }
+        }
+        (Ok(()), output)
+    }
+
+    fn reference_nine_seven_lifts(
+        input: &[i64],
+        low_first: bool,
+    ) -> (Result<(), DecodeError>, Vec<i64>) {
+        let mut output = input.to_vec();
+        for (stage, factor) in [29066, 57862, -3472, -103949].into_iter().enumerate() {
+            let (status, next) = reference_lift(
+                &output,
+                if stage.is_multiple_of(2) {
+                    low_first
+                } else {
+                    !low_first
+                },
+                2,
+                factor,
+            );
+            output = next;
+            if status.is_err() {
+                return (status, output);
+            }
+        }
+        (Ok(()), output)
+    }
+
+    fn reference_sequence(
+        low: &[i64],
+        high: &[i64],
+        low_first: bool,
+        irreversible: bool,
+    ) -> Result<Vec<i64>, DecodeError> {
+        if !irreversible {
+            return reference_five_three(low, high, low_first);
+        }
+        let length = low.len() + high.len();
+        let low_count = length / 2 + usize::from(low_first) * (length % 2);
+        if low.len() != low_count || high.len() != length - low_count {
+            return Err(invalid_transform());
+        }
+        let samples: Vec<_> = (0..length)
+            .map(|index| {
+                if index.is_multiple_of(2) == low_first {
+                    low[index / 2]
+                } else {
+                    high[index / 2]
+                }
+            })
+            .collect();
+        if length <= 1 {
+            return Ok(samples);
+        }
+        let (status, low_scaled) = reference_scale(&samples, low_first, 80621);
+        status?;
+        let (status, high_scaled) = reference_scale(&low_scaled, !low_first, 53274);
+        status?;
+        let (status, lifted) = reference_nine_seven_lifts(&high_scaled, low_first);
+        status?;
+        Ok(lifted)
+    }
+
+    fn reference_area(width: u32, height: u32) -> Result<usize, DecodeError> {
+        let count = u128::from(width) * u128::from(height);
+        if u128::from(width) > usize::MAX as u128
+            || u128::from(height) > usize::MAX as u128
+            || count > usize::MAX as u128
+        {
+            return Err(arithmetic_overflow());
+        }
+        Ok(count as usize)
+    }
+
+    fn reference_plane_budget(width: u32, height: u32, maximum: u64) -> Result<usize, DecodeError> {
+        let count = reference_area(width, height)?;
+        let bytes = (count as u128) * 8;
+        if bytes > u128::from(u64::MAX) {
+            return Err(arithmetic_overflow());
+        }
+        if bytes > u128::from(maximum) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: maximum,
+                actual: bytes as u64,
+            });
+        }
+        Ok(count)
+    }
+
+    fn reference_band_row(band: WaveletBand<'_>, y: u32) -> Result<&[i64], DecodeError> {
+        if y >= band.height {
+            return Err(invalid_transform());
+        }
+        let start = u128::from(y) * u128::from(band.width);
+        let end = start + u128::from(band.width);
+        if u128::from(y) > usize::MAX as u128
+            || u128::from(band.width) > usize::MAX as u128
+            || end > usize::MAX as u128
+        {
+            return Err(arithmetic_overflow());
+        }
+        band.samples
+            .get(start as usize..end as usize)
+            .ok_or_else(invalid_transform)
+    }
+
+    fn reference_column(band: WaveletBand<'_>, x: u32) -> Result<Vec<i64>, DecodeError> {
+        if x >= band.width {
+            return Err(invalid_transform());
+        }
+        if u128::from(band.height) > usize::MAX as u128 {
+            return Err(arithmetic_overflow());
+        }
+        let mut output = Vec::new();
+        for y in 0..band.height {
+            let index = u128::from(y) * u128::from(band.width) + u128::from(x);
+            if u128::from(y) > usize::MAX as u128
+                || u128::from(band.width) > usize::MAX as u128
+                || u128::from(x) > usize::MAX as u128
+                || index > usize::MAX as u128
+            {
+                return Err(arithmetic_overflow());
+            }
+            output.push(
+                *band
+                    .samples
+                    .get(index as usize)
+                    .ok_or_else(invalid_transform)?,
+            );
+        }
+        Ok(output)
+    }
+
+    fn reference_horizontal(
+        low: WaveletBand<'_>,
+        high: WaveletBand<'_>,
+        width: u32,
+        low_first: bool,
+        irreversible: bool,
+        maximum: u64,
+    ) -> Result<(u32, u32, u8, Vec<i64>), DecodeError> {
+        let low_width = ((u64::from(width) + u64::from(low_first)) / 2) as u32;
+        if low.height == 0
+            || low.height != high.height
+            || low.width != low_width
+            || high.width != width - low_width
+        {
+            return Err(invalid_transform());
+        }
+        reference_plane_budget(width, low.height, maximum)?;
+        let mut output = Vec::new();
+        for y in 0..low.height {
+            let low_row = reference_band_row(low, y)?;
+            let high_row = reference_band_row(high, y)?;
+            output.extend(reference_sequence(
+                low_row,
+                high_row,
+                low_first,
+                irreversible,
+            )?);
+        }
+        Ok((width, low.height, if irreversible { 16 } else { 0 }, output))
+    }
+
+    fn reference_vertical(
+        low: WaveletBand<'_>,
+        high: WaveletBand<'_>,
+        height: u32,
+        low_first: bool,
+        irreversible: bool,
+        maximum: u64,
+    ) -> Result<(u32, u32, u8, Vec<i64>), DecodeError> {
+        let low_height = ((u64::from(height) + u64::from(low_first)) / 2) as u32;
+        if low.width == 0
+            || low.width != high.width
+            || low.height != low_height
+            || high.height != height - low_height
+        {
+            return Err(invalid_transform());
+        }
+        let length = reference_plane_budget(low.width, height, maximum)?;
+        let mut output = vec![0; length];
+        for x in 0..low.width {
+            let low_column = reference_column(low, x)?;
+            let high_column = reference_column(high, x)?;
+            let column = reference_sequence(&low_column, &high_column, low_first, irreversible)?;
+            for y in 0..height {
+                let destination = u128::from(y) * u128::from(low.width) + u128::from(x);
+                if destination > usize::MAX as u128 {
+                    return Err(arithmetic_overflow());
+                }
+                *output
+                    .get_mut(destination as usize)
+                    .ok_or_else(invalid_transform)? =
+                    *column.get(y as usize).ok_or_else(invalid_transform)?;
+            }
+        }
+        Ok((low.width, height, if irreversible { 16 } else { 0 }, output))
+    }
+
+    fn reference_level(
+        level: WaveletLevel<'_>,
+        irreversible: bool,
+        maximum: u64,
+    ) -> Result<(u32, u32, u8, Vec<i64>), DecodeError> {
+        if level.output_width == 0 || level.output_height == 0 {
+            return Err(invalid_transform());
+        }
+        let low_width =
+            ((u64::from(level.output_width) + u64::from(level.low_pass_first_x)) / 2) as u32;
+        let low_height =
+            ((u64::from(level.output_height) + u64::from(level.low_pass_first_y)) / 2) as u32;
+        for (band, width, height) in [
+            (level.ll, low_width, low_height),
+            (level.hl, level.output_width - low_width, low_height),
+            (level.lh, low_width, level.output_height - low_height),
+            (
+                level.hh,
+                level.output_width - low_width,
+                level.output_height - low_height,
+            ),
+        ] {
+            if band.width != width || band.height != height {
+                return Err(invalid_transform());
+            }
+            if band.samples.len() != reference_area(width, height)? {
+                return Err(invalid_transform());
+            }
+        }
+        reference_plane_budget(level.output_width, level.output_height, maximum)?;
+        let mut low_rows = Vec::new();
+        let mut high_rows = Vec::new();
+        for (low, high, rows) in [
+            (level.ll, level.hl, &mut low_rows),
+            (level.lh, level.hh, &mut high_rows),
+        ] {
+            reference_area(level.output_width, low.height)?;
+            for y in 0..low.height {
+                let low_row = reference_band_row(low, y)?;
+                let high_row = reference_band_row(high, y)?;
+                rows.extend(reference_sequence(
+                    low_row,
+                    high_row,
+                    level.low_pass_first_x,
+                    irreversible,
+                )?);
+            }
+        }
+        reference_vertical(
+            WaveletBand {
+                width: level.output_width,
+                height: level.ll.height,
+                samples: &low_rows,
+            },
+            WaveletBand {
+                width: level.output_width,
+                height: level.lh.height,
+                samples: &high_rows,
+            },
+            level.output_height,
+            level.low_pass_first_y,
+            irreversible,
+            maximum,
+        )
+    }
+
+    #[test]
+    fn complete_nine_seven_sequences_match_independent_wide_reference() {
+        for length in 0..=6_u32 {
+            for encoding in 0..5_usize.pow(length) {
+                let mut encoding = encoding;
+                let samples: Vec<_> = (0..length)
+                    .map(|_| {
+                        let value = [-65537, -32768, 0, 32768, 65537][encoding % 5];
+                        encoding /= 5;
+                        value
+                    })
+                    .collect();
+                for low_first in [false, true] {
+                    let low: Vec<_> = samples
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, value)| {
+                            (i.is_multiple_of(2) == low_first).then_some(*value)
+                        })
+                        .collect();
+                    let high: Vec<_> = samples
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, value)| {
+                            (i.is_multiple_of(2) != low_first).then_some(*value)
+                        })
+                        .collect();
+                    assert_eq!(
+                        inverse_9_7(&low, &high, low_first),
+                        reference_sequence(&low, &high, low_first, true)
+                    );
+                }
+            }
+        }
+        for low in [
+            vec![],
+            vec![i64::MIN],
+            vec![i64::MAX],
+            vec![0, i64::MAX],
+            vec![1, -1, 2],
+        ] {
+            for high in [
+                vec![],
+                vec![i64::MIN],
+                vec![i64::MAX],
+                vec![i64::MIN, i64::MAX],
+                vec![-2, 0, 2],
+            ] {
+                for low_first in [false, true] {
+                    assert_eq!(
+                        inverse_9_7(&low, &high, low_first),
+                        reference_sequence(&low, &high, low_first, true)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn complete_standard_planes_match_independent_reference_for_all_small_geometries() {
+        for width in 0..=7_u32 {
+            for height in 0..=6_u32 {
+                for low_x in [false, true] {
+                    for low_y in [false, true] {
+                        for irreversible in [false, true] {
+                            let low_width = ((u64::from(width) + u64::from(low_x)) / 2) as u32;
+                            let low_height = ((u64::from(height) + u64::from(low_y)) / 2) as u32;
+                            let generated = |w: u32, h: u32, seed: i64| {
+                                (0..w * h)
+                                    .map(|i| {
+                                        ((i64::from(i) * 7 + seed) % 17 - 8)
+                                            * if irreversible { 65536 } else { 1 }
+                                    })
+                                    .collect::<Vec<_>>()
+                            };
+                            let horizontal_low = generated(low_width, height, 3);
+                            let horizontal_high = generated(width - low_width, height, 5);
+                            let vertical_low = generated(width, low_height, 7);
+                            let vertical_high = generated(width, height - low_height, 11);
+                            let ll = generated(low_width, low_height, 2);
+                            let hl = generated(width - low_width, low_height, 4);
+                            let lh = generated(low_width, height - low_height, 6);
+                            let hh = generated(width - low_width, height - low_height, 8);
+                            let h_low = WaveletBand {
+                                width: low_width,
+                                height,
+                                samples: &horizontal_low,
+                            };
+                            let h_high = WaveletBand {
+                                width: width - low_width,
+                                height,
+                                samples: &horizontal_high,
+                            };
+                            let v_low = WaveletBand {
+                                width,
+                                height: low_height,
+                                samples: &vertical_low,
+                            };
+                            let v_high = WaveletBand {
+                                width,
+                                height: height - low_height,
+                                samples: &vertical_high,
+                            };
+                            let level = WaveletLevel {
+                                ll: WaveletBand {
+                                    width: low_width,
+                                    height: low_height,
+                                    samples: &ll,
+                                },
+                                hl: WaveletBand {
+                                    width: width - low_width,
+                                    height: low_height,
+                                    samples: &hl,
+                                },
+                                lh: WaveletBand {
+                                    width: low_width,
+                                    height: height - low_height,
+                                    samples: &lh,
+                                },
+                                hh: WaveletBand {
+                                    width: width - low_width,
+                                    height: height - low_height,
+                                    samples: &hh,
+                                },
+                                output_width: width,
+                                output_height: height,
+                                low_pass_first_x: low_x,
+                                low_pass_first_y: low_y,
+                            };
+                            for limits in [
+                                ResourceLimits::default(),
+                                ResourceLimits::default()
+                                    .with_maximum_decoded_bytes(8)
+                                    .unwrap(),
+                            ] {
+                                let horizontal = if irreversible {
+                                    inverse_horizontal_9_7(h_low, h_high, width, low_x, &limits)
+                                } else {
+                                    inverse_horizontal_5_3(h_low, h_high, width, low_x, &limits)
+                                };
+                                assert_eq!(
+                                    observed_reconstruction(horizontal),
+                                    reference_horizontal(
+                                        h_low,
+                                        h_high,
+                                        width,
+                                        low_x,
+                                        irreversible,
+                                        limits.maximum_decoded_bytes(),
+                                    )
+                                );
+                                let vertical = if irreversible {
+                                    inverse_vertical_9_7(v_low, v_high, height, low_y, &limits)
+                                } else {
+                                    inverse_vertical_5_3(v_low, v_high, height, low_y, &limits)
+                                };
+                                assert_eq!(
+                                    observed_reconstruction(vertical),
+                                    reference_vertical(
+                                        v_low,
+                                        v_high,
+                                        height,
+                                        low_y,
+                                        irreversible,
+                                        limits.maximum_decoded_bytes(),
+                                    )
+                                );
+                                let reconstructed = if irreversible {
+                                    inverse_level_9_7(level, &limits)
+                                } else {
+                                    inverse_level_5_3(level, &limits)
+                                };
+                                assert_eq!(
+                                    observed_reconstruction(reconstructed),
+                                    reference_level(
+                                        level,
+                                        irreversible,
+                                        limits.maximum_decoded_bytes()
+                                    )
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn complete_plane_rejections_preserve_late_band_checks_and_resource_order() {
+        let low = WaveletBand {
+            width: 2,
+            height: 2,
+            samples: &[65536, -65536, 32768],
+        };
+        let high = WaveletBand {
+            width: 2,
+            height: 2,
+            samples: &[0, 0, 0, 0],
+        };
+        for limits in [
+            ResourceLimits::default(),
+            ResourceLimits::default()
+                .with_maximum_decoded_bytes(8)
+                .unwrap(),
+        ] {
+            for irreversible in [false, true] {
+                let horizontal = if irreversible {
+                    inverse_horizontal_9_7(low, high, 4, true, &limits)
+                } else {
+                    inverse_horizontal_5_3(low, high, 4, true, &limits)
+                };
+                assert_eq!(
+                    observed_reconstruction(horizontal),
+                    reference_horizontal(
+                        low,
+                        high,
+                        4,
+                        true,
+                        irreversible,
+                        limits.maximum_decoded_bytes()
+                    )
+                );
+                let vertical = if irreversible {
+                    inverse_vertical_9_7(low, high, 4, true, &limits)
+                } else {
+                    inverse_vertical_5_3(low, high, 4, true, &limits)
+                };
+                assert_eq!(
+                    observed_reconstruction(vertical),
+                    reference_vertical(
+                        low,
+                        high,
+                        4,
+                        true,
+                        irreversible,
+                        limits.maximum_decoded_bytes()
+                    )
+                );
+            }
+            let band = WaveletBand {
+                width: 1,
+                height: 1,
+                samples: &[0],
+            };
+            let level = WaveletLevel {
+                ll: WaveletBand {
+                    samples: &[0, 1],
+                    ..band
+                },
+                hl: band,
+                lh: band,
+                hh: band,
+                output_width: 2,
+                output_height: 2,
+                low_pass_first_x: true,
+                low_pass_first_y: true,
+            };
+            assert_eq!(
+                observed_reconstruction(inverse_level_5_3(level, &limits)),
+                reference_level(level, false, limits.maximum_decoded_bytes())
+            );
+            assert_eq!(
+                observed_reconstruction(inverse_level_9_7(level, &limits)),
+                reference_level(level, true, limits.maximum_decoded_bytes())
+            );
+        }
+        let trailing_low = WaveletBand {
+            width: 1,
+            height: 1,
+            samples: &[0, 9],
+        };
+        let trailing_high = WaveletBand {
+            width: 1,
+            height: 1,
+            samples: &[0, 8],
+        };
+        let limits = ResourceLimits::default();
+        assert_eq!(
+            observed_reconstruction(inverse_horizontal_5_3(
+                trailing_low,
+                trailing_high,
+                2,
+                true,
+                &limits
+            )),
+            Ok((2, 1, 0, vec![0, 0]))
+        );
+        assert_eq!(
+            observed_reconstruction(inverse_vertical_5_3(
+                trailing_low,
+                trailing_high,
+                2,
+                true,
+                &limits
+            )),
+            Ok((1, 2, 0, vec![0, 0]))
+        );
+        let first_overflow = WaveletBand {
+            width: 2,
+            height: 2,
+            samples: &[0, 0],
+        };
+        let later_missing = WaveletBand {
+            width: 1,
+            height: 2,
+            samples: &[i64::MAX, 0],
+        };
+        assert_eq!(
+            observed_reconstruction(inverse_horizontal_5_3(
+                first_overflow,
+                later_missing,
+                3,
+                true,
+                &limits
+            )),
+            Err(arithmetic_overflow())
+        );
+        let huge_low = WaveletBand {
+            width: u32::MAX / 2 + 1,
+            height: u32::MAX,
+            samples: &[],
+        };
+        let huge_high = WaveletBand {
+            width: u32::MAX / 2,
+            ..huge_low
+        };
+        assert_eq!(
+            observed_reconstruction(inverse_horizontal_5_3(
+                huge_low,
+                huge_high,
+                u32::MAX,
+                true,
+                &limits
+            )),
+            Err(arithmetic_overflow())
+        );
+        let huge_low = WaveletBand {
+            width: u32::MAX,
+            height: u32::MAX / 2 + 1,
+            samples: &[],
+        };
+        let huge_high = WaveletBand {
+            height: u32::MAX / 2,
+            ..huge_low
+        };
+        assert_eq!(
+            observed_reconstruction(inverse_vertical_9_7(
+                huge_low,
+                huge_high,
+                u32::MAX,
+                true,
+                &limits
+            )),
+            Err(arithmetic_overflow())
+        );
+    }
+
+    #[test]
+    fn complete_scaling_lifting_and_column_store_states_match_independent_arithmetic() {
+        for input in [
+            vec![],
+            vec![i64::MIN],
+            vec![65536, 0, i64::MAX],
+            vec![-65537, 32768, 0, -32768, 65537],
+        ] {
+            for low_first in [false, true] {
+                let expected = reference_nine_seven_lifts(&input, low_first);
+                let mut actual = input.clone();
+                let status = inverse_nine_seven_lifts(&mut actual, low_first);
+                assert_eq!((status, actual), expected);
+                for factor in [80621, 53274, -1, i64::MAX] {
+                    let expected = reference_scale(&input, low_first, factor);
+                    let mut actual = input.clone();
+                    let status = scale_parity(&mut actual, low_first, factor);
+                    assert_eq!((status, actual), expected);
+                }
+            }
+        }
+        for (initial, width, height, x, column) in [
+            (vec![9; 6], 2_u32, 3_u32, 1_u32, vec![2, 3]),
+            (vec![9; 3], 2, 3, 1, vec![2, 3, 4]),
+            (vec![], 0, 0, u32::MAX, vec![]),
+            (vec![9], 0, 2, 0, vec![2, 3]),
+            (vec![9], 1, 1, 2, vec![7]),
+        ] {
+            let mut expected = initial.clone();
+            let mut expected_status = Ok(());
+            for y in 0..height {
+                let destination = u128::from(y) * u128::from(width) + u128::from(x);
+                if destination > usize::MAX as u128 {
+                    expected_status = Err(arithmetic_overflow());
+                    break;
+                }
+                if y as usize >= column.len() || destination as usize >= expected.len() {
+                    expected_status = Err(invalid_transform());
+                    break;
+                }
+                expected[destination as usize] = column[y as usize];
+            }
+            let mut actual = initial;
+            let status = store_column(&mut actual, width, height, x, &column);
+            assert_eq!((status, actual), (expected_status, expected));
+        }
+    }
+
+    fn reference_converted_samples(
+        plane: &ReconstructedPlane,
+        precision: u8,
+        signed: bool,
+        maximum_bytes: u64,
+    ) -> Result<Vec<i64>, DecodeError> {
+        if !(1..=38).contains(&precision) || plane.fraction_bits > 62 {
+            return Err(invalid_transform());
+        }
+        let bytes = plane.samples.len() as u128 * 8;
+        if bytes > u128::from(u64::MAX) {
+            return Err(arithmetic_overflow());
+        }
+        if bytes > u128::from(maximum_bytes) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: maximum_bytes,
+                actual: bytes as u64,
+            });
+        }
+        let midpoint = 2_i128.pow(u32::from(precision - 1));
+        let minimum = if signed { -midpoint } else { 0 };
+        let maximum = if signed {
+            midpoint - 1
+        } else {
+            2 * midpoint - 1
+        };
+        let shift = if signed { 0 } else { midpoint };
+        let mut output = Vec::new();
+        for value in &plane.samples {
+            let rounded = if plane.fraction_bits == 0 {
+                i128::from(*value)
+            } else {
+                let biased = i64::try_from(
+                    i128::from(*value) + 2_i128.pow(u32::from(plane.fraction_bits - 1)),
+                )
+                .map_err(|_| arithmetic_overflow())?;
+                i128::from(biased).div_euclid(2_i128.pow(u32::from(plane.fraction_bits)))
+            };
+            let shifted = i64::try_from(rounded + shift).map_err(|_| arithmetic_overflow())?;
+            output.push(i128::from(shifted).clamp(minimum, maximum) as i64);
+        }
+        Ok(output)
+    }
+
+    #[test]
+    fn complete_sample_conversion_matches_wide_reference_and_error_boundaries() {
+        for samples in [
+            vec![],
+            vec![-32769, -32768, -1, 0, 32767, 32768, 32769],
+            vec![i64::MIN],
+            vec![i64::MAX],
+            vec![i64::MAX, i64::MIN],
+            vec![0, 1, -1],
+        ] {
+            for fraction_bits in [0, 1, 16, 62, 63, 255] {
+                for precision in [0, 1, 8, 16, 38, 39, 63, 255] {
+                    for signed in [false, true] {
+                        for (width, height) in [(0, 7), (100, 0)] {
+                            let plane = ReconstructedPlane {
+                                width,
+                                height,
+                                fraction_bits,
+                                samples: samples.clone(),
+                            };
+                            for limits in [
+                                ResourceLimits::default(),
+                                ResourceLimits::default()
+                                    .with_maximum_decoded_bytes(8)
+                                    .unwrap(),
+                            ] {
+                                assert_eq!(
+                                    convert_samples(&plane, precision, signed, &limits),
+                                    reference_converted_samples(
+                                        &plane,
+                                        precision,
+                                        signed,
+                                        limits.maximum_decoded_bytes()
+                                    ),
+                                    "fraction={fraction_bits} precision={precision} signed={signed}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -117,19 +117,29 @@ than assumed absent. The original `inverse_quantize` and
 `inverse_quantize_magnitudes` adapters also have complete Result contracts
 using the closed `ResourceLimits` byte-field projection and its verified getter.
 
-`transform::inverse_5_3` has a whole-sequence contract covering both parities,
-empty/singleton handling, mirrored boundaries, both checked lifting passes
-and typed errors. `inverse_lift` additionally specifies the complete mutable
-buffer after success or first failure, including its untouched frame, for
-reversible and fixed-product steps. Magnitude representation operations,
-interleaving, fixed multiplication and plane getters have supporting contracts.
-Independent tests compare complete outputs and error/mutation boundaries with
-bit-expanded ROI, rational Q16 and widened-integer lifting references.
+`transform::inverse_5_3` and `transform::inverse_9_7` have whole-sequence
+contracts covering both parities, empty/singleton handling, mirrored boundaries,
+all scaling/lifting passes and checked errors. The horizontal, vertical and
+single-level 2D public entry points for both standard kernels additionally
+specify every plane sample, all metadata and the actual configured byte limit.
+The real level implementation reuses the proved production row/column
+coordinators. `inverse_lift`, scaling, the four-stage 9/7 coordinator and column
+storage specify complete mutable states on first failure, with untouched
+positions retained. Supporting model properties establish complete sequence
+lengths and plane sample-count/metadata consistency.
+
+The existing public `convert_samples` API has full Result semantics for its
+actual 1..38 precision policy, rounding, level shifting, clipping and checked
+failures. Its concrete consumer is an independent API test, not the decoder's
+separate image/component conversion path. Independent tests compare complete
+outputs and error/mutation boundaries with bit-expanded ROI, rational Q16 and
+widened-integer sequence/plane/conversion references.
 
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
-whole plane synthesis, remaining inverse-transform profiles, component/tile
-assembly and composed component-sample relations are not established here.
+coefficient placement, actual multilevel/resolution scheduling, arbitrary
+kernels, component transforms, decoder image/component conversion, component/
+tile assembly and composed component-sample relations are not established here.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 
 ### General scope

@@ -21,15 +21,43 @@ arithmetic right shift. Every `i64` input is admitted to the relation; checked
 neighbor-sum, update-bias and sample arithmetic determine typed rejection,
 not an assumed coefficient bound. The shared lifting contract also describes
 the complete partially modified buffer on failure, retaining all untouched
-positions. Its fixed-product branch is an integer implementation model used
-by 9/7, not a whole-9/7 theorem.
+positions. The entire `inverse_9_7` sequence is also contracted: interleaving,
+the two parity scaling passes and all four ordered lifting passes, including
+their actual Q16 constants, checked intermediates and unchanged singletons.
+Scaling and the four-stage coordinator retain complete failure buffers.
+This is an integer implementation model, not real-valued 9/7 conformance.
 
-Later F6 acceptance still requires inverse-transform plane and remaining
-sequence profiles, component transforms, component/tile assembly and their
-composition into component-sample relations. These completed quantization
-and 5/3 sequence profiles do not complete F6. Arbitrary Part-2 kernels and
-unavailable-reference adjudication remain separate, as do parsing and
-entropy decoding.
+The horizontal, vertical and single-level two-dimensional 5/3 and Q16 9/7
+entry points have complete plane Result contracts. Their production row and
+column coordinators are shared with the actual level implementation; there
+is no second executable transform. No successful-result, coefficient-bound or
+budget premise is imposed on these public contracts. Internal conditional
+contracts select the standard-kernel profile (`kernel == None`); arbitrary
+kernel meaning is not inferred from those conditions.
+
+The existing geometry/error distinctions are intentional. Standalone
+horizontal/vertical stages check dimensions and the output budget before
+accessing band samples, and ignore unaccessed trailing samples. Horizontal
+zero-width planes and vertical zero-height planes retain their existing
+behavior. A full level instead rejects either zero output axis and validates
+all four exact band sizes before its output budget. Zero-sized intermediate
+low/high bands remain valid where the selected parity requires them.
+Column storage models preserve every earlier write on a later failure.
+
+The existing public `convert_samples` API also has complete ordered rounding,
+level-shift, clipping and typed-error semantics. Its actual precision domain
+is 1..38 with 0..62 fraction bits; rejected parameters are not preconditions.
+It uses sample length, not plane dimensions, for its budget and deliberately
+does not validate plane geometry. Checked rounding/level-shift overflow occurs
+before clipping. This API is exercised by concrete consumer tests; it is not
+the decoder's separate image/component conversion path.
+
+F6 remains open: coefficient placement into subband buffers, actual multilevel
+and resolution-plan execution, component transforms, decoder image/component
+conversion, component/tile assembly and their composition into component-sample
+relations still require their own complete actual-stage theorems. Arbitrary
+Part-2 kernels and unavailable-reference adjudication remain separate, as do
+parsing and entropy decoding.
 
 ### Reconstruction reading path
 
@@ -46,7 +74,17 @@ entropy decoding.
    integer adapter's earlier `i64::MIN` rejection.
 4. `part1_interleaved`, `part1_lifting_sample`, `part1_lifting_prefix` and
    `part1_inverse_five_three` specify full sequences and mutable lifting states.
-   Prefixes here are algorithm denotations, not invariant-only witnesses.
+   `part1_scaling_prefix`, `part1_nine_seven_lifting_prefix` and
+   `part1_inverse_nine_seven` add the complete fixed-point sequence.
+5. `part1_band_row`, `part1_column_prefix`, `part1_store_column_prefix`,
+   `part1_horizontal_prefix` and `part1_vertical_prefix` fix extraction,
+   concatenation, row-major storage, first-error order and complete buffers.
+   `part1_inverse_horizontal`, `part1_inverse_vertical` and
+   `part1_inverse_level` add actual geometry, budgets and plane metadata.
+6. `part1_round_fixed`, `part1_conversion_prefix` and `part1_convert_samples`
+   describe the existing public final-sample conversion API.
+
+All prefixes here are algorithm denotations, not invariant-only witnesses.
 
 The executable cores `inverse_quantize_values` and `inverse_quantize_plane`
 take an explicit decoded-byte budget. The original `inverse_quantize` and
