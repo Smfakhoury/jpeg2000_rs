@@ -161,8 +161,39 @@ also expose complete Results over their full native `u16`/`u8` domains. Raw
 component counts and decomposition levels are not assumed to fit the physical
 64/32-entry arrays. These interfaces do not establish parser validity.
 
-F6 remains open: the entire coefficient-placement coordinator, actual multilevel
-and resolution-plan execution, general MCT paths and composition from
+The actual public `prepare_tile_component` now has a complete unconditional
+Result relation for its standard **None-kernel** call path. The same private
+`prepare_tile_component_with_kernel` body has the corresponding explicit
+`kernel.is_none()` result guarantee; its Some-kernel behavior is not inferred.
+Every actual raw plan/precinct/decoder/plane/coefficient field, style selector
+and cap is admitted. An Arbitrary transform with no kernel rejects exactly.
+No valid header, normalized coefficient, covered band, successful callee,
+adequate budget or supplied execution trace is an entry premise.
+
+The production coordinator shares its real initialization, collection,
+placement, coverage and resolution stages. It checks the selected band count
+before initializing bands, charges nine bytes per sample cumulatively before
+allocation, checks block geometry before collecting coefficients, reads the
+actual row-major raw coefficients with full 384-bit signed/midpoint semantics,
+then invokes the actual ROI/quantization and checked sample/mask writer.
+Unselected placements remain ignored. Coverage precedes reconstruction.
+The entire fold supports arbitrary native resolution selectors, None/H/V/2D
+directions, per-stage parity, the actual integer 5/3 or fixed-Q16 9/7 algorithms,
+ordered detail indices, output budgets and cursor errors. Final dimension,
+sample-count, component, origin and fraction fields are related exactly.
+The real prepared-to-tile getter also preserves every field/sample.
+
+Only derived private append-loop structure bounds are used to discharge a
+Vec-push precondition; they are proved from initialization and never imposed
+on the public plan input. Complete working-state views include all bands'
+metadata/samples/visited flags and the byte counter on failure. Independent
+whole-plan tests reuse the existing widened integer/rational transform oracles,
+not the production transforms, with nonzero completed one-bit input blocks,
+mixed/multilevel directions, parity, reordered and ignored placements and
+ordered malformed/resource cases.
+
+F6 remains open: the Some-kernel/arbitrary coordinator profiles, general MCT
+paths and actual whole-decoder composition from
 coefficients through reconstruction, assembly and typed conversion
 into component-sample
 relations still require their own complete actual-stage theorems. Arbitrary
@@ -212,6 +243,11 @@ parsing and entropy decoding.
     `part1_decoded_component_typed_samples`, `part1_decoded_typed_components`
     and `part1_decoded_image_typed` give the existing decoder conversion's
     complete sequence, metadata, empty-CDEF and first-error relation.
+11. `part1_prepare_init_prefix`, coefficient row/plane and placement prefixes,
+    `part1_prepare_coverage`, `part1_prepare_resolution` and `part1_prepare_fold`
+    compose the real standard coordinator. `part1_prepare_standard_component`
+    and `part1_prepare_finish` close the actual public Result, not a surrogate
+    coordinator or a theorem assuming the callees succeeded.
 
 All prefixes here are algorithm denotations, not invariant-only witnesses.
 

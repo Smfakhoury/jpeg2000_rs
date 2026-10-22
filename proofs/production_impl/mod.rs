@@ -32,6 +32,170 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_prepare_fold_empty(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64,
+)
+    ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+}
+
+pub proof fn production_prepare_fold_step(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64, count: nat,
+)
+    ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count + 1)
+        == match crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part1_direction_for_resolution(style.1, style.2, (count + 1) as u8) {
+                Err(error) => Err(error),
+                Ok(direction) => {
+                    let transformed = if matches!(direction, crate::codestream::DecompositionDirection::None) { Ok(previous) }
+                        else { crate::specs::part1_prepare_resolution(previous, bands, geometry, direction, reversible, maximum) };
+                    match transformed {
+                        Err(error) => Err(error),
+                        Ok(after) => if count + 1 >= 255 { Err(crate::specs::part1_block_placement_error(true)) } else { Ok(after) },
+                    }
+                },
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+}
+
+pub proof fn production_prepare_fold_error_guard(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle, reversible: bool, maximum: u64, count: nat, end: nat,
+)
+    requires count <= end,
+    ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count).is_err()
+        ==> crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, end)
+            == crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+    if count < end { production_prepare_fold_error_guard(initial, bands, geometry, style, reversible, maximum, count, (end - 1) as nat); }
+}
+
+pub proof fn production_prepare_init_empty(bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64)
+    ensures crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, 0) == Ok((Seq::empty(), 0)),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_init_prefix, 1);
+}
+
+pub proof fn production_prepare_init_step(bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64, count: nat)
+    requires count < usize::MAX,
+    ensures crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, count + 1)
+        == match crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let appended = crate::specs::part1_prepare_append_band(previous, bands, count as usize, fraction, maximum);
+                match appended.0 { Err(error) => Err(error), Ok(()) => Ok(appended.1) }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_init_prefix, 1);
+}
+
+pub proof fn production_prepare_init_error(bands: Seq<crate::decode::SubbandGeometry>, fraction: u8, maximum: u64, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, count) == Err(error),
+    ensures crate::specs::part1_prepare_init_prefix(bands, fraction, maximum, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_init_prefix, 1);
+    if count < end { production_prepare_init_error(bands, fraction, maximum, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_prepare_row_empty(plane: crate::specs::Tier1RawPlane, y: u16, initial: Seq<crate::specs::Part1QuantizedCoefficient>)
+    ensures crate::specs::part1_prepare_coefficient_row(plane, y, initial, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_row, 1);
+}
+
+pub proof fn production_prepare_row_step(plane: crate::specs::Tier1RawPlane, y: u16, initial: Seq<crate::specs::Part1QuantizedCoefficient>, count: nat)
+    ensures crate::specs::part1_prepare_coefficient_row(plane, y, initial, count + 1)
+        == match crate::specs::part1_prepare_coefficient_row(plane, y, initial, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part1_prepare_signed_cell(plane, count as u16, y) {
+                Err(error) => Err(error), Ok(value) => Ok(previous.push(value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_row, 1);
+}
+
+pub proof fn production_prepare_row_error(plane: crate::specs::Tier1RawPlane, y: u16, initial: Seq<crate::specs::Part1QuantizedCoefficient>, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_prepare_coefficient_row(plane, y, initial, count) == Err(error),
+    ensures crate::specs::part1_prepare_coefficient_row(plane, y, initial, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_row, 1);
+    if count < end { production_prepare_row_error(plane, y, initial, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_prepare_rows_empty(plane: crate::specs::Tier1RawPlane)
+    ensures crate::specs::part1_prepare_coefficient_rows(plane, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_rows, 1);
+}
+
+pub proof fn production_prepare_rows_step(plane: crate::specs::Tier1RawPlane, count: nat)
+    ensures crate::specs::part1_prepare_coefficient_rows(plane, count + 1)
+        == match crate::specs::part1_prepare_coefficient_rows(plane, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part1_prepare_coefficient_row(plane, count as u16, previous, plane.width as nat),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_rows, 1);
+}
+
+pub proof fn production_prepare_rows_error(plane: crate::specs::Tier1RawPlane, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_prepare_coefficient_rows(plane, count) == Err(error),
+    ensures crate::specs::part1_prepare_coefficient_rows(plane, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_coefficient_rows, 1);
+    if count < end { production_prepare_rows_error(plane, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_prepare_placements_empty(
+    initial: crate::specs::Part1PrepareWorking, plan: crate::specs::Part1PreparePlan,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, reversible: bool, maximum: u64,
+)
+    ensures crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part1_prepare_placements, 1);
+}
+
+pub proof fn production_prepare_placements_step(
+    initial: crate::specs::Part1PrepareWorking, plan: crate::specs::Part1PreparePlan,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, reversible: bool, maximum: u64, count: nat,
+)
+    ensures crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count + 1)
+        == match crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count).0 {
+            Err(_) => crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count),
+            Ok(()) => crate::specs::part1_prepare_placement(
+                crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count).1,
+                plan.subbands, precincts, plan.placements[count as int], reversible, maximum),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepare_placements, 1);
+}
+
+pub proof fn production_prepare_placements_error(
+    initial: crate::specs::Part1PrepareWorking, plan: crate::specs::Part1PreparePlan,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, reversible: bool, maximum: u64, count: nat, end: nat,
+)
+    requires count <= end, crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count).0.is_err(),
+    ensures crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, end)
+        == crate::specs::part1_prepare_placements(initial, plan, precincts, reversible, maximum, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_prepare_placements, 1);
+    if count < end { production_prepare_placements_error(initial, plan, precincts, reversible, maximum, count, (end - 1) as nat); }
+}
+
 pub proof fn production_decoded_signed_empty(samples: Seq<i64>, fraction: u8, precision: u8)
     ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
 {
