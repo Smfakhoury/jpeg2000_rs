@@ -106,6 +106,47 @@ root and the relevant upstream regression suites.
 
 ## What the proofs establish
 
+### Bounded supplied-coefficient reconstruction
+
+`transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
+are the real production cores shared by the public integer and internal
+signed-magnitude adapters. Their complete-result contracts relate every sample
+and all `ReconstructedPlane` metadata to
+`part1_inverse_integer_quantization` / `part1_inverse_quantization`, including
+parameter, explicit decoded-byte-budget, ROI, arithmetic and final width
+rejections in execution order. The domain includes all six-limb coefficients,
+signs and `u8` ROI shifts; out-of-range restored magnitudes are rejected rather
+than assumed absent. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` adapters also have complete Result contracts
+using the closed `ResourceLimits` byte-field projection and its verified getter.
+
+`transform::inverse_5_3` and `transform::inverse_9_7` have whole-sequence
+contracts covering both parities, empty/singleton handling, mirrored boundaries,
+all scaling/lifting passes and checked errors. The horizontal, vertical and
+single-level 2D public entry points for both standard kernels additionally
+specify every plane sample, all metadata and the actual configured byte limit.
+The real level implementation reuses the proved production row/column
+coordinators. `inverse_lift`, scaling, the four-stage 9/7 coordinator and column
+storage specify complete mutable states on first failure, with untouched
+positions retained. Supporting model properties establish complete sequence
+lengths and plane sample-count/metadata consistency.
+
+The existing public `convert_samples` API has full Result semantics for its
+actual 1..38 precision policy, rounding, level shifting, clipping and checked
+failures. Its concrete consumer is an independent API test, not the decoder's
+separate image/component conversion path. Independent tests compare complete
+outputs and error/mutation boundaries with bit-expanded ROI, rational Q16 and
+widened-integer sequence/plane/conversion references.
+
+These are input-relative integer/fixed-point stage results, not compressed
+parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
+coefficient placement, actual multilevel/resolution scheduling, arbitrary
+kernels, component transforms, decoder image/component conversion, component/
+tile assembly and composed component-sample relations are not established here.
+See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
+
+### General scope
+
 Verification checks the properties expressed by contracts and loop invariants,
 including bounds, arithmetic checks, termination, and selected functional
 relations to specification helpers. The technical inventory

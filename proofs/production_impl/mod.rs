@@ -1133,6 +1133,184 @@ pub proof fn production_ht_refinement_segment_is_bounded(bytes: nat, passes: nat
     reveal(valid_ht_refinement_segment);
 }
 
+pub proof fn production_quantization_error_persists(
+    coefficients: Seq<crate::specs::Part1QuantizedCoefficient>, shift: u8,
+    step: i64, reversible: bool, completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires
+        completed <= total <= coefficients.len(),
+        crate::specs::part1_quantized_prefix(coefficients, shift, step, reversible, completed) == Err(error),
+    ensures
+        crate::specs::part1_quantized_prefix(coefficients, shift, step, reversible, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_quantization_error_persists(
+            coefficients, shift, step, reversible, completed, (total - 1) as nat, error,
+        );
+    }
+}
+
+pub proof fn production_lifting_sample_frame(
+    original: Seq<i64>, current: Seq<i64>, index: nat, target_even: bool, kind: u8, factor: i64,
+)
+    requires
+        original.len() == current.len(),
+        index < original.len(),
+        forall |i: int| 0 <= i < current.len() && (i >= index || (i % 2 == 0) != target_even) ==>
+            current[i] == original[i],
+    ensures
+        crate::specs::part1_lifting_sample(original, index, target_even, kind, factor)
+            == crate::specs::part1_lifting_sample(current, index, target_even, kind, factor),
+{
+    if (index % 2 == 0) == target_even && original.len() > 1 {
+        let left = if index == 0 { 1int } else { index - 1 };
+        let right = if index + 1 < original.len() { index as int + 1 } else { index - 1 };
+        assert((left % 2 == 0) != target_even);
+        assert((right % 2 == 0) != target_even);
+        assert(current[left] == original[left]);
+        assert(current[right] == original[right]);
+    }
+}
+
+pub proof fn production_index_parity(index: usize)
+    ensures (index & 1 == 0) == (index % 2 == 0),
+{
+    assert((index & 1) == index % 2) by(bit_vector);
+}
+
+pub proof fn production_scaling_error_persists(
+    samples: Seq<i64>, target_even: bool, factor: i64, completed: nat, total: nat,
+)
+    requires
+        completed <= total <= samples.len(),
+        crate::specs::part1_scaling_prefix(samples, target_even, factor, completed).0.is_err(),
+    ensures
+        crate::specs::part1_scaling_prefix(samples, target_even, factor, total)
+            == crate::specs::part1_scaling_prefix(samples, target_even, factor, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_scaling_error_persists(samples, target_even, factor, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_horizontal_error_persists(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    low_first: bool, irreversible: bool, completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_horizontal_prefix(low, high, low_first, irreversible, completed) == Err(error),
+    ensures
+        crate::specs::part1_horizontal_prefix(low, high, low_first, irreversible, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_horizontal_error_persists(low, high, low_first, irreversible, completed, (total - 1) as nat, error);
+    }
+}
+
+pub proof fn production_column_error_persists(
+    samples: Seq<i64>, width: u32, x: u32, completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_column_prefix(samples, width, x, completed) == Err(error),
+    ensures
+        crate::specs::part1_column_prefix(samples, width, x, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_column_error_persists(samples, width, x, completed, (total - 1) as nat, error);
+    }
+}
+
+pub proof fn production_vertical_error_persists(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand,
+    height: u32, low_first: bool, irreversible: bool, length: usize,
+    completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_vertical_prefix(low, high, height, low_first, irreversible, length, completed) == Err(error),
+    ensures
+        crate::specs::part1_vertical_prefix(low, high, height, low_first, irreversible, length, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_vertical_error_persists(
+            low, high, height, low_first, irreversible, length, completed, (total - 1) as nat, error,
+        );
+    }
+}
+
+pub proof fn production_conversion_error_persists(
+    samples: Seq<i64>, fraction_bits: u8, shift: i64, minimum: i64, maximum: i64,
+    completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires
+        completed <= total <= samples.len(),
+        crate::specs::part1_conversion_prefix(samples, fraction_bits, shift, minimum, maximum, completed) == Err(error),
+    ensures
+        crate::specs::part1_conversion_prefix(samples, fraction_bits, shift, minimum, maximum, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_conversion_error_persists(
+            samples, fraction_bits, shift, minimum, maximum, completed, (total - 1) as nat, error,
+        );
+    }
+}
+
+pub proof fn production_store_column_error_persists(
+    output: Seq<i64>, width: u32, x: u32, column: Seq<i64>, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_store_column_prefix(output, width, x, column, completed).0.is_err(),
+    ensures
+        crate::specs::part1_store_column_prefix(output, width, x, column, total)
+            == crate::specs::part1_store_column_prefix(output, width, x, column, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_store_column_error_persists(output, width, x, column, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_nine_seven_error_persists(
+    samples: Seq<i64>, low_first: bool, completed: nat, total: nat,
+)
+    requires
+        completed <= total,
+        crate::specs::part1_nine_seven_lifting_prefix(samples, low_first, completed).0.is_err(),
+    ensures
+        crate::specs::part1_nine_seven_lifting_prefix(samples, low_first, total)
+            == crate::specs::part1_nine_seven_lifting_prefix(samples, low_first, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_nine_seven_error_persists(samples, low_first, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_lifting_error_persists(
+    samples: Seq<i64>, target_even: bool, kind: u8, factor: i64, completed: nat, total: nat,
+)
+    requires
+        completed <= total <= samples.len(),
+        crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, completed).0.is_err(),
+    ensures
+        crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, total)
+            == crate::specs::part1_lifting_prefix(samples, target_even, kind, factor, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_lifting_error_persists(samples, target_even, kind, factor, completed, (total - 1) as nat);
+    }
+}
+
 pub proof fn production_magnitude_bit_selects_bounded_limb(bit: nat)
     requires
         valid_magnitude_bit(bit),

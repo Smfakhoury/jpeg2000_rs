@@ -1,5 +1,98 @@
 # Specification audit guide
 
+## F6 reconstruction profiles (bounded stage contracts)
+
+The first F6 stage starts with supplied signed 384-bit magnitudes (six
+little-endian `u64` limbs), not compressed bytes or Tier-1 meaning. It covers
+every ROI shift in `u8`, both quantization modes, the full coefficient sequence,
+and the returned one-row plane's samples, width, height and fraction bits.
+The integer-input adapter must reject `i64::MIN` before validating quantization
+parameters or the decoded-byte budget, as the production call order requires.
+The magnitude path validates parameters, then the eight-byte-per-sample budget,
+then samples in order, and finally the `u32` width. Restored magnitudes must fit
+`i64::MAX`, including for negative inputs; this is not a normalization premise.
+Irreversible results describe the implementation's integer Q16 arithmetic,
+including zero-sized steps after truncation, not real-valued 9/7 conformance.
+
+The second bounded profile is the entire `inverse_5_3` sequence: geometry
+validation and interleaving, symmetric boundary extension, both lifting
+passes, either low-pass parity, empty input, and the high-only singleton's
+arithmetic right shift. Every `i64` input is admitted to the relation; checked
+neighbor-sum, update-bias and sample arithmetic determine typed rejection,
+not an assumed coefficient bound. The shared lifting contract also describes
+the complete partially modified buffer on failure, retaining all untouched
+positions. The entire `inverse_9_7` sequence is also contracted: interleaving,
+the two parity scaling passes and all four ordered lifting passes, including
+their actual Q16 constants, checked intermediates and unchanged singletons.
+Scaling and the four-stage coordinator retain complete failure buffers.
+This is an integer implementation model, not real-valued 9/7 conformance.
+
+The horizontal, vertical and single-level two-dimensional 5/3 and Q16 9/7
+entry points have complete plane Result contracts. Their production row and
+column coordinators are shared with the actual level implementation; there
+is no second executable transform. No successful-result, coefficient-bound or
+budget premise is imposed on these public contracts. Internal conditional
+contracts select the standard-kernel profile (`kernel == None`); arbitrary
+kernel meaning is not inferred from those conditions.
+
+The existing geometry/error distinctions are intentional. Standalone
+horizontal/vertical stages check dimensions and the output budget before
+accessing band samples, and ignore unaccessed trailing samples. Horizontal
+zero-width planes and vertical zero-height planes retain their existing
+behavior. A full level instead rejects either zero output axis and validates
+all four exact band sizes before its output budget. Zero-sized intermediate
+low/high bands remain valid where the selected parity requires them.
+Column storage models preserve every earlier write on a later failure.
+
+The existing public `convert_samples` API also has complete ordered rounding,
+level-shift, clipping and typed-error semantics. Its actual precision domain
+is 1..38 with 0..62 fraction bits; rejected parameters are not preconditions.
+It uses sample length, not plane dimensions, for its budget and deliberately
+does not validate plane geometry. Checked rounding/level-shift overflow occurs
+before clipping. This API is exercised by concrete consumer tests; it is not
+the decoder's separate image/component conversion path.
+
+F6 remains open: coefficient placement into subband buffers, actual multilevel
+and resolution-plan execution, component transforms, decoder image/component
+conversion, component/tile assembly and their composition into component-sample
+relations still require their own complete actual-stage theorems. Arbitrary
+Part-2 kernels and unavailable-reference adjudication remain separate, as do
+parsing and entropy decoding.
+
+### Reconstruction reading path
+
+1. `part1_magnitude_*` defines six little-endian limbs, lexicographic magnitude
+   comparison and cross-limb logical shifting. These are finite bit-vector
+   denotations on all 384 bits, not an assumption that coefficients already fit
+   a machine sample.
+2. `part1_roi_coefficient`, `part1_quantization_step` and
+   `part1_dequantized_sample` specify restoration before narrowing, Q16 step
+   truncation, centered scaling and checked signed output.
+3. `part1_quantized_prefix` fixes sample order and first-error absorption.
+   `part1_inverse_quantization` adds parameter validation, budget checks and
+   complete plane metadata. `part1_inverse_integer_quantization` adds the
+   integer adapter's earlier `i64::MIN` rejection.
+4. `part1_interleaved`, `part1_lifting_sample`, `part1_lifting_prefix` and
+   `part1_inverse_five_three` specify full sequences and mutable lifting states.
+   `part1_scaling_prefix`, `part1_nine_seven_lifting_prefix` and
+   `part1_inverse_nine_seven` add the complete fixed-point sequence.
+5. `part1_band_row`, `part1_column_prefix`, `part1_store_column_prefix`,
+   `part1_horizontal_prefix` and `part1_vertical_prefix` fix extraction,
+   concatenation, row-major storage, first-error order and complete buffers.
+   `part1_inverse_horizontal`, `part1_inverse_vertical` and
+   `part1_inverse_level` add actual geometry, budgets and plane metadata.
+6. `part1_round_fixed`, `part1_conversion_prefix` and `part1_convert_samples`
+   describe the existing public final-sample conversion API.
+
+All prefixes here are algorithm denotations, not invariant-only witnesses.
+
+The executable cores `inverse_quantize_values` and `inverse_quantize_plane`
+take an explicit decoded-byte budget. The original `inverse_quantize` and
+`inverse_quantize_magnitudes` entry points additionally have complete Result
+contracts using `resource_decoded_bytes_limit`: the actual getter is proved
+equal to that closed private-field projection. No width, pixel or work-unit
+policy is silently added to this stage.
+
 This directory contains the semantic models used by production contracts.
 It is an audit entry point, not a claim that every selected standard clause
 has been reconciled or proved.

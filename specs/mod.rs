@@ -3041,4 +3041,790 @@ pub open spec fn part1_component_output_shape_valid(
     width > 0 && height > 0 && part1_wavelet_sample_count(width, height, samples)
 }
 
+pub open spec fn part1_magnitude_zero(limbs: Seq<u64>) -> bool {
+    forall |i: int| 0 <= i < limbs.len() ==> limbs[i] == 0
+}
+
+pub open spec fn part1_magnitude_u64(limbs: Seq<u64>) -> Option<u64> {
+    if forall |i: int| 1 <= i < limbs.len() ==> limbs[i] == 0 {
+        Some(limbs[0])
+    } else {
+        None
+    }
+}
+
+pub open spec fn part1_magnitude_less(left: Seq<u64>, right: Seq<u64>) -> bool {
+    exists |i: int| 0 <= i < left.len() && left[i] < right[i]
+        && forall |j: int| i < j < left.len() ==> left[j] == right[j]
+}
+
+pub open spec fn part1_magnitude_bit(bit: u16) -> Seq<u64> {
+    Seq::new(6, |i: int| if i == bit / 64 { 1u64 << (bit % 64) } else { 0 })
+}
+
+pub open spec fn part1_magnitude_shift_limb(limbs: Seq<u64>, shift: u16, i: int) -> u64 {
+    let source = i + shift / 64;
+    let partial = (shift % 64) as u32;
+    if shift >= 384 || source >= 6 {
+        0
+    } else if partial == 0 || source + 1 >= 6 {
+        limbs[source] >> partial
+    } else {
+        (limbs[source] >> partial) | (limbs[source + 1] << (64 - partial))
+    }
+}
+
+pub open spec fn part1_magnitude_shift(limbs: Seq<u64>, shift: u16) -> Seq<u64> {
+    Seq::new(6, |i: int| part1_magnitude_shift_limb(limbs, shift, i))
+}
+
+pub open spec fn part1_transform_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidTransform },
+    }
+}
+
+pub open spec fn part1_checked_sample(value: int) -> Result<i64, crate::DecodeError> {
+    if i64::MIN <= value <= i64::MAX {
+        Ok(value as i64)
+    } else {
+        Err(part1_transform_error(true))
+    }
+}
+
+pub open spec fn part1_roi_coefficient(
+    limbs: Seq<u64>, negative: bool, shift: u8,
+) -> Result<i64, crate::DecodeError> {
+    if part1_magnitude_zero(limbs) {
+        Ok(0)
+    } else {
+        let restored = if shift == 0 || part1_magnitude_less(limbs, part1_magnitude_bit(shift as u16)) {
+            limbs
+        } else {
+            part1_magnitude_shift(limbs, shift as u16)
+        };
+        match part1_magnitude_u64(restored) {
+            Some(value) => if value <= i64::MAX {
+                Ok((if negative { -(value as int) } else { value as int }) as i64)
+            } else {
+                Err(part1_transform_error(true))
+            },
+            None => Err(part1_transform_error(true)),
+        }
+    }
+}
+
+pub open spec fn part1_quantization_step(
+    exponent: u8, mantissa: u16, dynamic_range: u8,
+) -> Result<i64, crate::DecodeError> {
+    let base = ((2048 + mantissa as int) * 65536 / 2048) as i64;
+    if dynamic_range >= exponent {
+        let shift = (dynamic_range - exponent) as u8;
+        if shift > 38 {
+            Err(part1_transform_error(false))
+        } else {
+            part1_checked_sample((base as int) * ((1i64 << shift) as int))
+        }
+    } else {
+        let shift = (exponent - dynamic_range) as u8;
+        if shift > 62 {
+            Err(part1_transform_error(false))
+        } else {
+            Ok((base / (1i64 << shift)) as i64)
+        }
+    }
+}
+
+pub open spec fn part1_dequantized_sample(
+    coefficient: i64, step: i64, reversible: bool,
+) -> Result<i64, crate::DecodeError> {
+    if reversible || coefficient == 0 {
+        Ok(part1_reversible_inverse_quantize(coefficient as int) as i64)
+    } else {
+        let magnitude = if coefficient < 0 { -(coefficient as int) } else { coefficient as int };
+        let scaled = (2 * magnitude + 1) * (step as int) / 2;
+        if coefficient == i64::MIN || step < 0 || scaled > i64::MAX {
+            Err(part1_transform_error(true))
+        } else {
+            Ok((if coefficient < 0 { -scaled } else { scaled }) as i64)
+        }
+    }
+}
+
+pub type Part1QuantizedCoefficient = (Seq<u64>, bool);
+pub type Part1ReconstructedPlane = (u32, u32, u8, Seq<i64>);
+pub type Part1ReconstructionResult = Result<Part1ReconstructedPlane, crate::DecodeError>;
+
+pub open spec fn part1_quantized_sample(
+    coefficient: Part1QuantizedCoefficient, shift: u8, step: i64, reversible: bool,
+) -> Result<i64, crate::DecodeError> {
+    match part1_roi_coefficient(coefficient.0, coefficient.1, shift) {
+        Err(error) => Err(error),
+        Ok(value) => part1_dequantized_sample(value, step, reversible),
+    }
+}
+
+pub open spec fn part1_quantized_prefix(
+    coefficients: Seq<Part1QuantizedCoefficient>, shift: u8, step: i64, reversible: bool, count: nat,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        Ok(Seq::empty())
+    } else {
+        match part1_quantized_prefix(coefficients, shift, step, reversible, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(prefix) => match part1_quantized_sample(coefficients[count - 1], shift, step, reversible) {
+                Err(error) => Err(error),
+                Ok(sample) => Ok(prefix.push(sample)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_quantization_budget(count: nat, maximum: u64) -> Result<(), crate::DecodeError> {
+    if count * 8 > u64::MAX {
+        Err(part1_transform_error(true))
+    } else if count * 8 > maximum {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::DecodedBytes, limit: maximum, actual: (count * 8) as u64,
+        })
+    } else {
+        Ok(())
+    }
+}
+
+pub open spec fn part1_inverse_quantization(
+    coefficients: Seq<Part1QuantizedCoefficient>, exponent: u8, mantissa: u16,
+    dynamic_range: u8, reversible: bool, shift: u8, maximum: u64,
+) -> Part1ReconstructionResult {
+    if dynamic_range == 0 || dynamic_range > 38 || mantissa > 2047 || exponent > 31 {
+        Err(part1_transform_error(false))
+    } else {
+        match part1_quantization_budget(coefficients.len(), maximum) {
+            Err(error) => Err(error),
+            Ok(()) => match if reversible { Ok(1i64) }
+                else { part1_quantization_step(exponent, mantissa, dynamic_range) } {
+                Err(error) => Err(error),
+                Ok(step) => match part1_quantized_prefix(coefficients, shift, step, reversible, coefficients.len()) {
+                    Err(error) => Err(error),
+                    Ok(samples) => if coefficients.len() > u32::MAX {
+                        Err(part1_transform_error(true))
+                    } else {
+                        Ok((coefficients.len() as u32, 1u32, if reversible { 0u8 } else { 16u8 }, samples))
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_integer_coefficients(coefficients: Seq<i64>) -> Seq<Part1QuantizedCoefficient> {
+    Seq::new(coefficients.len(), |i: int| {
+        let value = coefficients[i];
+        let magnitude = (if value < 0 { -(value as int) } else { value as int }) as u64;
+        (Seq::new(6, |j: int| if j == 0 { magnitude } else { 0u64 }), value < 0)
+    })
+}
+
+pub open spec fn part1_inverse_integer_quantization(
+    coefficients: Seq<i64>, exponent: u8, mantissa: u16,
+    dynamic_range: u8, reversible: bool, shift: u8, maximum: u64,
+) -> Part1ReconstructionResult {
+    if exists |i: int| 0 <= i < coefficients.len() && coefficients[i] == i64::MIN {
+        Err(part1_transform_error(true))
+    } else {
+        part1_inverse_quantization(
+            part1_integer_coefficients(coefficients), exponent, mantissa,
+            dynamic_range, reversible, shift, maximum,
+        )
+    }
+}
+
+pub open spec fn part1_interleaved(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    let length = low.len() + high.len();
+    let expected = if low_first { length / 2 + length % 2 } else { length / 2 };
+    if length > usize::MAX {
+        Err(part1_transform_error(true))
+    } else if low.len() != expected || high.len() != length - expected {
+        Err(part1_transform_error(false))
+    } else {
+        Ok(Seq::new(length, |i: int| if (i % 2 == 0) == low_first { low[i / 2] } else { high[i / 2] }))
+    }
+}
+
+pub open spec fn part1_fixed_product(value: i64, factor: i64) -> Result<i64, crate::DecodeError> {
+    let product = (value as int) * (factor as int);
+    if product < i64::MIN || product > i64::MAX
+        || product + 32768 < i64::MIN || product + 32768 > i64::MAX {
+        Err(part1_transform_error(true))
+    } else {
+        Ok(((product + 32768) as i64) >> 16)
+    }
+}
+
+// Kinds 0/1 are the reversible update/predict; kind 2 is the fixed-point lift.
+pub open spec fn part1_lifting_sample(
+    samples: Seq<i64>, index: nat, target_even: bool, kind: u8, factor: i64,
+) -> Result<i64, crate::DecodeError> {
+    if (index % 2 == 0) != target_even || samples.len() <= 1 {
+        Ok(samples[index as int])
+    } else {
+        let left = samples[if index == 0 { 1 } else { index - 1 }];
+        let right = samples[if index + 1 < samples.len() { index as int + 1 } else { index - 1 }];
+        match part1_checked_sample((left as int) + (right as int)) {
+            Err(error) => Err(error),
+            Ok(sum) => {
+                let adjustment = if kind == 2 {
+                    part1_fixed_product(sum, factor)
+                } else if kind == 0 {
+                    match part1_checked_sample((sum as int) + 2) {
+                        Err(error) => Err(error),
+                        Ok(biased) => Ok(biased >> 2),
+                    }
+                } else {
+                    Ok(sum >> 1)
+                };
+                match adjustment {
+                    Err(error) => Err(error),
+                    Ok(delta) => part1_checked_sample(
+                        (samples[index as int] as int) + if kind == 1 { delta as int } else { -(delta as int) },
+                    ),
+                }
+            },
+        }
+    }
+}
+
+pub type Part1LiftingState = (Result<(), crate::DecodeError>, Seq<i64>);
+
+pub open spec fn part1_lifting_prefix(
+    samples: Seq<i64>, target_even: bool, kind: u8, factor: i64, count: nat,
+) -> Part1LiftingState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), samples)
+    } else {
+        let previous = part1_lifting_prefix(samples, target_even, kind, factor, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => match part1_lifting_sample(samples, (count - 1) as nat, target_even, kind, factor) {
+                Err(error) => (Err(error), previous.1),
+                Ok(value) => (Ok(()), previous.1.update(count - 1, value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_inverse_five_three(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    match part1_interleaved(low, high, low_first) {
+        Err(error) => Err(error),
+        Ok(samples) => if samples.len() == 1 && !low_first {
+            Ok(samples.update(0, samples[0] >> 1))
+        } else {
+            let update = part1_lifting_prefix(samples, low_first, 0, 0, samples.len());
+            match update.0 {
+                Err(error) => Err(error),
+                Ok(()) => {
+                    let predict = part1_lifting_prefix(update.1, !low_first, 1, 0, update.1.len());
+                    match predict.0 {
+                        Err(error) => Err(error),
+                        Ok(()) => Ok(predict.1),
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part1_scaling_prefix(
+    samples: Seq<i64>, target_even: bool, factor: i64, count: nat,
+) -> Part1LiftingState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), samples)
+    } else {
+        let previous = part1_scaling_prefix(samples, target_even, factor, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => {
+                let index = count - 1;
+                if (index % 2 == 0) != target_even {
+                    previous
+                } else {
+                    match part1_fixed_product(samples[index], factor) {
+                        Err(error) => (Err(error), previous.1),
+                        Ok(value) => (Ok(()), previous.1.update(index, value)),
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_nine_seven_lifting_prefix(
+    samples: Seq<i64>, low_first: bool, count: nat,
+) -> Part1LiftingState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), samples)
+    } else {
+        let previous = part1_nine_seven_lifting_prefix(samples, low_first, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_lifting_prefix(
+                previous.1, if count % 2 == 1 { low_first } else { !low_first },
+                2, part1_nine_seven_lift((count - 1) as u8), previous.1.len(),
+            ),
+        }
+    }
+}
+
+pub open spec fn part1_inverse_nine_seven(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    match part1_interleaved(low, high, low_first) {
+        Err(error) => Err(error),
+        Ok(samples) => if samples.len() <= 1 {
+            Ok(samples)
+        } else {
+            let low_scaled = part1_scaling_prefix(samples, low_first, part1_nine_seven_scale(true), samples.len());
+            match low_scaled.0 {
+                Err(error) => Err(error),
+                Ok(()) => {
+                    let high_scaled = part1_scaling_prefix(
+                        low_scaled.1, !low_first, part1_nine_seven_scale(false), low_scaled.1.len(),
+                    );
+                    match high_scaled.0 {
+                        Err(error) => Err(error),
+                        Ok(()) => {
+                            let lifted = part1_nine_seven_lifting_prefix(high_scaled.1, low_first, 4);
+                            match lifted.0 {
+                                Err(error) => Err(error),
+                                Ok(()) => Ok(lifted.1),
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub type Part1WaveletBand = (u32, u32, Seq<i64>);
+
+pub open spec fn part1_transform_dimension(value: u32) -> Result<usize, crate::DecodeError> {
+    if value > usize::MAX {
+        Err(part1_transform_error(true))
+    } else {
+        Ok(value as usize)
+    }
+}
+
+pub open spec fn part1_transform_area(width: u32, height: u32) -> Result<usize, crate::DecodeError> {
+    if width > usize::MAX || height > usize::MAX || (width as int) * (height as int) > usize::MAX {
+        Err(part1_transform_error(true))
+    } else {
+        Ok(((width as int) * (height as int)) as usize)
+    }
+}
+
+pub open spec fn part1_low_count(length: u32, low_first: bool) -> u32 {
+    ((length as int) / 2 + if low_first { (length as int) % 2 } else { 0 }) as u32
+}
+
+pub open spec fn part1_band_row(band: Part1WaveletBand, y: u32) -> Result<Seq<i64>, crate::DecodeError> {
+    let start = (y as int) * (band.0 as int);
+    let end = start + band.0;
+    if y >= band.1 {
+        Err(part1_transform_error(false))
+    } else if y > usize::MAX || band.0 > usize::MAX || start > usize::MAX || end > usize::MAX {
+        Err(part1_transform_error(true))
+    } else if end > band.2.len() {
+        Err(part1_transform_error(false))
+    } else {
+        Ok(band.2.subrange(start, end))
+    }
+}
+
+pub open spec fn part1_inverse_sequence(
+    low: Seq<i64>, high: Seq<i64>, low_first: bool, irreversible: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    if irreversible {
+        part1_inverse_nine_seven(low, high, low_first)
+    } else {
+        part1_inverse_five_three(low, high, low_first)
+    }
+}
+
+pub open spec fn part1_horizontal_row(
+    low: Part1WaveletBand, high: Part1WaveletBand, y: u32, low_first: bool, irreversible: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    match part1_band_row(low, y) {
+        Err(error) => Err(error),
+        Ok(low_row) => match part1_band_row(high, y) {
+            Err(error) => Err(error),
+            Ok(high_row) => part1_inverse_sequence(low_row, high_row, low_first, irreversible),
+        },
+    }
+}
+
+pub open spec fn part1_horizontal_prefix(
+    low: Part1WaveletBand, high: Part1WaveletBand, low_first: bool, irreversible: bool, count: nat,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        Ok(Seq::empty())
+    } else {
+        match part1_horizontal_prefix(low, high, low_first, irreversible, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_horizontal_row(low, high, (count - 1) as u32, low_first, irreversible) {
+                Err(error) => Err(error),
+                Ok(row) => Ok(previous + row),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_horizontal_geometry(
+    low: Part1WaveletBand, high: Part1WaveletBand, width: u32, low_first: bool,
+) -> Result<(), crate::DecodeError> {
+    if low.1 == 0 || low.1 != high.1 || low.0 != part1_low_count(width, low_first) {
+        Err(part1_transform_error(false))
+    } else if low.0 > width {
+        Err(part1_transform_error(true))
+    } else if high.0 != (width - low.0) as u32 {
+        Err(part1_transform_error(false))
+    } else {
+        Ok(())
+    }
+}
+
+pub open spec fn part1_inverse_horizontal(
+    low: Part1WaveletBand, high: Part1WaveletBand, width: u32,
+    low_first: bool, irreversible: bool, maximum: u64,
+) -> Part1ReconstructionResult {
+    match part1_horizontal_geometry(low, high, width, low_first) {
+        Err(error) => Err(error),
+        Ok(()) => match part1_transform_area(width, low.1) {
+            Err(error) => Err(error),
+            Ok(length) => match part1_quantization_budget(length as nat, maximum) {
+                Err(error) => Err(error),
+                Ok(()) => match part1_horizontal_prefix(low, high, low_first, irreversible, low.1 as nat) {
+                    Err(error) => Err(error),
+                    Ok(samples) => Ok((width, low.1, if irreversible { 16u8 } else { 0u8 }, samples)),
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_transform_offset(y: u32, width: u32, x: u32) -> Result<usize, crate::DecodeError> {
+    let row = (y as int) * (width as int);
+    if y > usize::MAX || width > usize::MAX || x > usize::MAX || row > usize::MAX || row + x > usize::MAX {
+        Err(part1_transform_error(true))
+    } else {
+        Ok((row + x) as usize)
+    }
+}
+
+pub open spec fn part1_column_sample(
+    samples: Seq<i64>, width: u32, x: u32, y: u32,
+) -> Result<i64, crate::DecodeError> {
+    match part1_transform_offset(y, width, x) {
+        Err(error) => Err(error),
+        Ok(index) => if index >= samples.len() {
+            Err(part1_transform_error(false))
+        } else {
+            Ok(samples[index as int])
+        },
+    }
+}
+
+pub open spec fn part1_column_prefix(
+    samples: Seq<i64>, width: u32, x: u32, count: nat,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        Ok(Seq::empty())
+    } else {
+        match part1_column_prefix(samples, width, x, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_column_sample(samples, width, x, (count - 1) as u32) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(previous.push(value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_collect_column(band: Part1WaveletBand, x: u32) -> Result<Seq<i64>, crate::DecodeError> {
+    if x >= band.0 {
+        Err(part1_transform_error(false))
+    } else if band.1 > usize::MAX {
+        Err(part1_transform_error(true))
+    } else {
+        part1_column_prefix(band.2, band.0, x, band.1 as nat)
+    }
+}
+
+pub open spec fn part1_store_column_sample(
+    output: Seq<i64>, width: u32, x: u32, column: Seq<i64>, y: u32,
+) -> Part1LiftingState {
+    match part1_transform_offset(y, width, x) {
+        Err(error) => (Err(error), output),
+        Ok(index) => if y >= column.len() || index >= output.len() {
+            (Err(part1_transform_error(false)), output)
+        } else {
+            (Ok(()), output.update(index as int, column[y as int]))
+        },
+    }
+}
+
+pub open spec fn part1_store_column_prefix(
+    output: Seq<i64>, width: u32, x: u32, column: Seq<i64>, count: nat,
+) -> Part1LiftingState
+    decreases count,
+{
+    if count == 0 {
+        (Ok(()), output)
+    } else {
+        let previous = part1_store_column_prefix(output, width, x, column, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_store_column_sample(previous.1, width, x, column, (count - 1) as u32),
+        }
+    }
+}
+
+pub open spec fn part1_vertical_column(
+    low: Part1WaveletBand, high: Part1WaveletBand, x: u32, low_first: bool, irreversible: bool,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    match part1_collect_column(low, x) {
+        Err(error) => Err(error),
+        Ok(low_column) => match part1_collect_column(high, x) {
+            Err(error) => Err(error),
+            Ok(high_column) => part1_inverse_sequence(low_column, high_column, low_first, irreversible),
+        },
+    }
+}
+
+pub open spec fn part1_vertical_prefix(
+    low: Part1WaveletBand, high: Part1WaveletBand, height: u32, low_first: bool,
+    irreversible: bool, length: usize, count: nat,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        Ok(Seq::new(length as nat, |i: int| 0i64))
+    } else {
+        match part1_vertical_prefix(low, high, height, low_first, irreversible, length, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_vertical_column(low, high, (count - 1) as u32, low_first, irreversible) {
+                Err(error) => Err(error),
+                Ok(column) => {
+                    let stored = part1_store_column_prefix(previous, low.0, (count - 1) as u32, column, height as nat);
+                    match stored.0 {
+                        Err(error) => Err(error),
+                        Ok(()) => Ok(stored.1),
+                    }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_vertical_geometry(
+    low: Part1WaveletBand, high: Part1WaveletBand, height: u32, low_first: bool,
+) -> Result<(), crate::DecodeError> {
+    if low.0 == 0 || low.0 != high.0 || low.1 != part1_low_count(height, low_first) {
+        Err(part1_transform_error(false))
+    } else if low.1 > height {
+        Err(part1_transform_error(true))
+    } else if high.1 != (height - low.1) as u32 {
+        Err(part1_transform_error(false))
+    } else {
+        Ok(())
+    }
+}
+
+pub open spec fn part1_inverse_vertical(
+    low: Part1WaveletBand, high: Part1WaveletBand, height: u32,
+    low_first: bool, irreversible: bool, maximum: u64,
+) -> Part1ReconstructionResult {
+    match part1_vertical_geometry(low, high, height, low_first) {
+        Err(error) => Err(error),
+        Ok(()) => match part1_transform_area(low.0, height) {
+            Err(error) => Err(error),
+            Ok(length) => match part1_quantization_budget(length as nat, maximum) {
+                Err(error) => Err(error),
+                Ok(()) => match part1_vertical_prefix(low, high, height, low_first, irreversible, length, low.0 as nat) {
+                    Err(error) => Err(error),
+                    Ok(samples) => Ok((low.0, height, if irreversible { 16u8 } else { 0u8 }, samples)),
+                },
+            },
+        },
+    }
+}
+
+pub type Part1WaveletLevel = (Part1WaveletBand, Part1WaveletBand, Part1WaveletBand, Part1WaveletBand, u32, u32, bool, bool);
+
+pub open spec fn part1_validate_band(band: Part1WaveletBand, width: u32, height: u32) -> Result<(), crate::DecodeError> {
+    if band.0 != width || band.1 != height {
+        Err(part1_transform_error(false))
+    } else {
+        match part1_transform_area(width, height) {
+            Err(error) => Err(error),
+            Ok(length) => if band.2.len() != length {
+                Err(part1_transform_error(false))
+            } else {
+                Ok(())
+            },
+        }
+    }
+}
+
+pub open spec fn part1_validate_level(level: Part1WaveletLevel) -> Result<(), crate::DecodeError> {
+    let low_width = part1_low_count(level.4, level.6);
+    let high_width = (level.4 - low_width) as u32;
+    let low_height = part1_low_count(level.5, level.7);
+    let high_height = (level.5 - low_height) as u32;
+    if level.4 == 0 || level.5 == 0 {
+        Err(part1_transform_error(false))
+    } else {
+        match part1_validate_band(level.0, low_width, low_height) {
+            Err(error) => Err(error),
+            Ok(()) => match part1_validate_band(level.1, high_width, low_height) {
+                Err(error) => Err(error),
+                Ok(()) => match part1_validate_band(level.2, low_width, high_height) {
+                    Err(error) => Err(error),
+                    Ok(()) => part1_validate_band(level.3, high_width, high_height),
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_level_rows_and_columns(
+    level: Part1WaveletLevel, irreversible: bool, length: usize,
+) -> Part1ReconstructionResult {
+    match part1_transform_area(level.4, level.0.1) {
+        Err(error) => Err(error),
+        Ok(_) => match part1_horizontal_prefix(level.0, level.1, level.6, irreversible, level.0.1 as nat) {
+            Err(error) => Err(error),
+            Ok(low_rows) => match part1_transform_area(level.4, level.2.1) {
+                Err(error) => Err(error),
+                Ok(_) => match part1_horizontal_prefix(level.2, level.3, level.6, irreversible, level.2.1 as nat) {
+                    Err(error) => Err(error),
+                    Ok(high_rows) => match part1_vertical_prefix(
+                        (level.4, level.0.1, low_rows), (level.4, level.2.1, high_rows),
+                        level.5, level.7, irreversible, length, level.4 as nat,
+                    ) {
+                        Err(error) => Err(error),
+                        Ok(samples) => Ok((level.4, level.5, if irreversible { 16u8 } else { 0u8 }, samples)),
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_inverse_level(
+    level: Part1WaveletLevel, irreversible: bool, maximum: u64,
+) -> Part1ReconstructionResult {
+    match part1_validate_level(level) {
+        Err(error) => Err(error),
+        Ok(()) => match part1_transform_area(level.4, level.5) {
+            Err(error) => Err(error),
+            Ok(length) => if !part1_wavelet_sample_count(level.4, level.5, length) {
+                Err(part1_transform_error(false))
+            } else {
+                match part1_quantization_budget(length as nat, maximum) {
+                    Err(error) => Err(error),
+                    Ok(()) => part1_level_rows_and_columns(level, irreversible, length),
+                }
+            },
+        },
+    }
+}
+
+pub open spec fn part1_round_fixed(value: i64, fraction_bits: u8) -> Result<i64, crate::DecodeError> {
+    if fraction_bits == 0 {
+        Ok(value)
+    } else if fraction_bits > 62 {
+        Err(part1_transform_error(false))
+    } else {
+        let half = 1i64 << ((fraction_bits - 1) as u8);
+        match part1_checked_sample((value as int) + (half as int)) {
+            Err(error) => Err(error),
+            Ok(biased) => Ok(biased >> fraction_bits),
+        }
+    }
+}
+
+pub open spec fn part1_convert_sample(
+    value: i64, fraction_bits: u8, shift: i64, minimum: i64, maximum: i64,
+) -> Result<i64, crate::DecodeError> {
+    match part1_round_fixed(value, fraction_bits) {
+        Err(error) => Err(error),
+        Ok(rounded) => match part1_checked_sample((rounded as int) + (shift as int)) {
+            Err(error) => Err(error),
+            Ok(shifted) => Ok(part1_clip_sample(shifted, minimum, maximum)),
+        },
+    }
+}
+
+pub open spec fn part1_conversion_prefix(
+    samples: Seq<i64>, fraction_bits: u8, shift: i64, minimum: i64, maximum: i64, count: nat,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        Ok(Seq::empty())
+    } else {
+        match part1_conversion_prefix(samples, fraction_bits, shift, minimum, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_convert_sample(samples[count - 1], fraction_bits, shift, minimum, maximum) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(previous.push(value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_output_maximum(precision: u8, signed: bool) -> i64 {
+    (((if signed { 1i64 << ((precision - 1) as u8) } else { 1i64 << precision }) as int) - 1) as i64
+}
+
+pub open spec fn part1_output_minimum(precision: u8, signed: bool) -> i64 {
+    if signed { (-((1i64 << ((precision - 1) as u8)) as int)) as i64 } else { 0 }
+}
+
+pub open spec fn part1_convert_samples(
+    plane: Part1ReconstructedPlane, precision: u8, signed: bool, maximum_bytes: u64,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    if precision == 0 || precision > 38 || plane.2 > 62 {
+        Err(part1_transform_error(false))
+    } else {
+        match part1_quantization_budget(plane.3.len(), maximum_bytes) {
+            Err(error) => Err(error),
+            Ok(()) => part1_conversion_prefix(
+                plane.3, plane.2, part1_level_shift(precision, signed),
+                part1_output_minimum(precision, signed), part1_output_maximum(precision, signed), plane.3.len(),
+            ),
+        }
+    }
+}
+
 }
