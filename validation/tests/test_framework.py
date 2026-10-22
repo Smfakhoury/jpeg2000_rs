@@ -394,6 +394,89 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_all_complete_cleanup_plane_and_raw_interface_recipes(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        source = framework.ROOT / "src/tier1.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        recipes = (
+            ("reconstruct_ht_cleanup_plane", "ht_cleanup_plane", None),
+            ("HtCleanupPlaneReconstruction::sample", "ht_plane_sample", "ht_plane_view"),
+            ("HtCleanupPlaneReconstruction::quad", "ht_plane_quad", "ht_plane_view"),
+            ("HtCleanupPlaneReconstruction::finish", "ht_plane_finish", "ht_plane_view"),
+            ("complete_ht_kappa", "ht_complete_kappa", None),
+            ("code_block_plane_from_dimensions", "tier1_empty_plane", None),
+            ("coefficient_from_magnitude", "tier1_coefficient_new_outcome", None),
+            ("CoefficientState::set_magnitude", "tier1_set_magnitude", "coefficient_state_view"),
+            ("CodeBlockPlane::mark_significant_magnitude", "tier1_mark_coefficient", "code_block_plane_view"),
+            ("ht_statistics_zero", "tier1_statistics_zero", None),
+            ("Tier1PassStatistics::scanned", "tier1_statistics_increment", "*"),
+            ("Tier1PassStatistics::decoded_symbols", "tier1_statistics_increment", "*"),
+            ("Tier1PassStatistics::became_significant", "tier1_statistics_increment", "*"),
+            ("CodeBlockPlane::width", "tier1_raw_plane_width", None),
+            ("CodeBlockPlane::height", "tier1_raw_plane_height", None),
+            ("CodeBlockPlane::coefficients", "tier1_raw_plane_coefficients", None),
+            ("CodeBlockPlane::coefficient", "tier1_raw_plane_coefficient", None),
+            ("CodeBlockPlane::index", "tier1_raw_plane_index", None),
+            ("CoefficientState::wide_magnitude", "tier1_coefficient_limbs", None),
+            ("CoefficientState::signed_magnitude", "tier1_raw_signed_coefficient", None),
+        )
+        self.assertEqual(len(recipes), 20)
+        for symbol, model, view in recipes:
+            reference = {"path": "src/tier1.rs", "symbol": symbol}
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [
+                item for item in coverage["requirements"] if reference in item["contract_refs"]
+            ]
+            self.assertEqual(len(coverage["requirements"]), 1)
+            entry = coverage["requirements"][0]
+            entry["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            header = framework._coverage_function_header(original, symbol)
+            self.assertIsNotNone(header)
+            signature = original.find("fn", header.start(), header.end())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            prefix, post = contract.split("ensures", 1)
+            unbound, changed = re.subn(r"\bresult\b", "unrelated", post, count=1)
+            self.assertEqual(changed, 1)
+            partial, changed = re.subn(r"\bresult\b", "result.is_ok()", post, count=1)
+            self.assertEqual(changed, 1)
+            mutations = [
+                ("unbound result", prefix + "ensures" + unbound),
+                ("partial result", prefix + "ensures" + partial),
+                ("unknown model", contract.replace(f"crate::specs::{model}(", "crate::specs::unlisted_model(")),
+                ("inequality", contract.replace("== crate::specs::", "<= crate::specs::", 1)),
+            ]
+            wrong_model = next(item["symbol"] for item in entry["spec_refs"] if item["symbol"] != model)
+            mutations.append(("wrong listed model", contract.replace(
+                f"crate::specs::{model}(", f"crate::specs::{wrong_model}(", 1,
+            )))
+            if view is not None:
+                final_pattern = (r"\*\s*final\(\s*self\s*\)" if view == "*"
+                                 else re.escape(view) + r"\(\s*final\(\s*self\s*\)\s*\)")
+                replacement = "*old(self)" if view == "*" else f"{view}(old(self))"
+                altered, changed = re.subn(final_pattern, replacement, contract, count=1)
+                self.assertEqual(changed, 1)
+                mutations.append(("old instead of final state", altered))
+                old_pattern = (r"\*\s*old\(\s*self\s*\)" if view == "*"
+                               else re.escape(view) + r"\(\s*old\(\s*self\s*\)\s*\)")
+                replacement = "*final(self)" if view == "*" else f"{view}(final(self))"
+                altered, changed = re.subn(old_pattern, replacement, contract, count=1)
+                self.assertEqual(changed, 1)
+                mutations.append(("final instead of input state", altered))
+            for label, modified_contract in mutations:
+                self.assertNotEqual(modified_contract, contract)
+                modified = original[:start] + modified_contract + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, mutation=label), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_typed_conversion_and_packet_access_to_exact_results(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         read_text = Path.read_text

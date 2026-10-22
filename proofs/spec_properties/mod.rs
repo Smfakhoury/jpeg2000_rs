@@ -63,6 +63,92 @@ pub proof fn decoded_typed_component_preserves_kind_and_complete_length(componen
     decoded_unsigned_prefix_has_complete_length(component.4, component.3, component.2.precision, component.4.len());
 }
 
+pub(crate) proof fn tier1_raw_result_interfaces_expose_consumed_fields(
+    coefficient: Result<crate::tier1::CoefficientState, crate::DecodeError>,
+    signed: Result<crate::transform::SignedMagnitude, crate::DecodeError>,
+)
+    ensures match coefficient {
+        Ok(value) => crate::tier1::coefficient_raw_outcome(coefficient) == Ok(crate::tier1::coefficient_raw_view(value)),
+        Err(error) => crate::tier1::coefficient_raw_outcome(coefficient) == Err(error),
+    },
+    match signed {
+        Ok(value) => crate::tier1::coefficient_signed_outcome(signed)
+            == Ok((crate::magnitude::magnitude_limbs(value.magnitude),
+                crate::magnitude::magnitude_value(value.magnitude), value.negative)),
+        Err(error) => crate::tier1::coefficient_signed_outcome(signed) == Err(error),
+    },
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_plane_zero_metadata_width_precedes_all_other_rejections(
+    plane: crate::specs::Tier1RawPlane, cleanup: crate::specs::HtCleanupSegmentState,
+    metadata: crate::specs::HtMetadataOutput, maximum_u: u8, bitplanes: u16, work: u64,
+)
+    requires metadata.width == 0,
+    ensures crate::specs::ht_cleanup_plane(plane, cleanup, metadata, maximum_u, bitplanes, work)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_plane_coordinate_overflow_precedes_scanning_and_reader_errors(
+    state: crate::specs::HtPlaneState, quad: crate::tier1::HtQuadMetadata,
+    width: u16, height: u16, column: nat, completed_u: u8, bitplanes: u16, sample: u8,
+)
+    requires sample < 4, column + 1 < state.current.len(),
+        quad.x as nat + (sample >> 1) as nat > u16::MAX
+            || quad.y as nat + (sample & 1u8) as nat > u16::MAX,
+    ensures crate::specs::ht_plane_sample(state, quad, width, height, column, completed_u, bitplanes, sample)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_plane_clipping_does_not_validate_numeric_inputs(
+    state: crate::specs::HtPlaneState, quad: crate::tier1::HtQuadMetadata,
+    width: u16, height: u16, column: nat, completed_u: u8, bitplanes: u16, sample: u8,
+)
+    requires sample < 4, column + 1 < state.current.len(),
+        quad.x as nat + (sample >> 1) as nat <= u16::MAX,
+        quad.y as nat + (sample & 1u8) as nat <= u16::MAX,
+        quad.x as nat + (sample >> 1) as nat >= width
+            || quad.y as nat + (sample & 1u8) as nat >= height,
+    ensures crate::specs::ht_plane_sample(state, quad, width, height, column, completed_u, bitplanes, sample)
+        == (Ok(()), state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_kappa_conservative_overflow_applies_without_gamma(
+    base: u8, significance: u8, north_west: u8, north_east: u8, maximum: u8,
+)
+    requires base > 0, significance & 0xf0u8 == 0, 1 <= maximum <= 75,
+        base as nat + (if north_west > north_east { north_west } else { north_east }) as nat > 255,
+    ensures crate::specs::ht_complete_kappa(base, significance, north_west, north_east, maximum)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn tier1_raw_index_rejects_missing_storage_without_a_rectangular_premise(
+    plane: crate::specs::Tier1RawPlane, x: u16, y: u16,
+)
+    requires x < plane.width, y < plane.height,
+        y as nat * plane.width as nat + x as nat <= usize::MAX,
+        y as nat * plane.width as nat + x as nat >= plane.coefficients.len(),
+    ensures crate::specs::tier1_raw_plane_index(plane, x, y)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn tier1_raw_insignificance_ignores_stale_full_words_and_legacy_tags(coefficient: crate::specs::Tier1RawCoefficient)
+    requires coefficient.limbs.len() == 6, !coefficient.significant,
+    ensures crate::specs::tier1_raw_signed_coefficient(coefficient) == Ok((Seq::new(6, |i: int| 0u64), 0nat, false)),
+{
+}
+
 pub proof fn ht_numeric_invalid_parameters_preserve_complete_reader(
     reader: crate::specs::HtMagSgnState, completed_u: u8,
     embedded_bit: bool, embedded_value: bool, decoded_bitplanes: u16,

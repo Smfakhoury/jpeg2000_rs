@@ -278,6 +278,8 @@ Read each contract according to its inputs and postcondition:
 | Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
 | Complete actual HT cleanup metadata traversal | Exact public/segment result for all native header values and actual byte/work limits, ordered row/pair/member quads, north/west/east contexts, suppression/UVLC/events, sample bounds/counts, collision, work/counter first errors and every metadata field | Numerical magnitude/sign/exponent or coefficient-plane reconstruction, refinement passes, placeholder/replacement execution, mixed sequencing or full F5H |
 | Complete actual HT numeric MagSgn reconstruction | Every native parameter/flag and initial reader state: exact full 384-bit numeric magnitude, sign, exponent, typed first error and all final reader fields; actual full-value arithmetic through F6 contracts | Plane placement, raw high-limb storage, exponent stencils, final plane padding/termination, refinement or mixed sequencing |
+| Complete actual HT cleanup-plane reconstruction | Every raw output coefficient and all six words/flags, actual constructor and metadata rejection, coordinate-overflow-before-clipping, ordered numeric consumption/placement/counters, both full exponent stencils/reset/swap and final physical padding/stuffing/work termination; no valid-metadata, matching-shape or numeric-success premise | Refinement passes, replacement/placeholder/mixed sequencing, a composed metadata-plus-plane decoder theorem or complete F5H |
+| Raw Tier-1 producer interfaces | Actual decoder plane, raw dimensions/sequence/indexed result even for malformed shapes, full stored words/flags, exact legacy-midpoint signed magnitude and native arithmetic rejection; no normalized-coefficient premise | Entropy meaning, coefficient normalization, complete reconstruction coordinator or end-to-end pixel correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -708,6 +710,33 @@ those interfaces; no shifted low-word replacement, assumption or duplicate
 limb algorithm is used. Plane reconstruction, placement,
 stencils and final padding/termination are not claimed by the numeric
 producer theorem.
+
+### Complete cleanup plane and raw producer interfaces
+
+`reconstruct_ht_cleanup_plane` now has a complete typed-result relation over
+the actual supplied plane dimensions, raw cleanup descriptor, arbitrary
+metadata, native maximum-U/bitplane values and actual work cap. Its blank
+allocation does not assume or reuse old coefficients. The ordered quad/sample
+fold includes checked coordinates before clipping, scan/read/placement/count
+ordering, every raw six-word coefficient and flag, both complete exponent
+vectors with reset/max/overwrite/swap behavior, and the final real reader
+padding/stuffing/work check. Failed private transitions retain their exact
+partial plane, reader, statistics and stencil state. This is not refinement,
+replacement/placeholder/mixed execution or a metadata-to-plane caller theorem.
+
+The raw coefficient/plane interfaces retain malformed shapes and full native
+legacy midpoint tags, including insignificant stale words and significant
+negative zero. Six thin ghost denotations express existing field/record
+projections in the already supported complete-model contract form; original
+numeric, shape and field facts remain available. The source index reuses its
+exact known projection/reader recipes and every-mutable-parameter checks,
+rather than adding a generic expression fallback.
+
+The old two-field `SignedMagnitude::new` was crate-private and, after the real
+signed producer's equivalent literal construction, used only in two tests.
+That now-unused constructor is removed and those tests use the same literal
+fields. No public API, decoder result, sign policy, arithmetic behavior,
+dummy runtime call or lint suppression is introduced.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit
