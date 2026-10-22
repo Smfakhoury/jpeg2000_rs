@@ -466,6 +466,65 @@ selection tests and rejects inconsistent frame/component geometry.
 
 ### R1 finite workload declaration (before measurement)
 
+#### R1 bounded accounting-frontier stage (frozen before measurement)
+
+The following separate matrix extends, rather than replaces, the existing
+45-case gate. It declares four small fixture families and five actual harness
+paths, with both `DecodedBytes` and `WorkUnits` admission-budget tasks for each
+path. Each task observes zero rejection, an independently qualified accepted
+ceiling, at most 32 binary-search probes, and an observed accepted frontier
+and adjacent typed rejection, each then repeated three times. Thus the stage
+adds exactly 20 final cases / 60 final observations and at most 320 probes.
+All observations, including the unchanged baseline 45 cases and its probes,
+share the original 30-second aggregate wall gate. No per-case, rejection,
+selection, RSS, child-address-space, file or capture cap is relaxed. New
+rejection probes additionally obey the 1-second / 128-MiB rejection cap.
+If qualification, a ceiling, a frontier or the aggregate gate fails, the stage
+is failed/incomplete; no path is dropped or ceiling/cap tuned after measuring.
+
+This JSON is the canonical matrix: hash its UTF-8 canonical JSON (sorted keys,
+compact separators, followed by one newline). The report retains that hash.
+
+```json
+{
+  "id": "r1-effective-frontiers-v1",
+  "baseline_cases": 45,
+  "paths": [
+    {"id": "selected-raw", "family": "selected", "operation": "select", "format": "raw", "size": 32, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "selected-image"},
+    {"id": "selected-color", "family": "selected-color", "operation": "select-color", "format": "jp2", "size": 32, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image"},
+    {"id": "jpx-compose", "family": "composition", "operation": "render", "format": "jpx", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "composited_layers": 2},
+    {"id": "jpip-reconstruct", "family": "jpip", "operation": "reconstruct", "format": "jpip", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "reconstructed-image"},
+    {"id": "jpip-progressive", "family": "jpip", "operation": "progressive", "format": "auto", "size": 16, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 0, "output_protocol": "progressive", "expected_updates": 7}
+  ],
+  "ceilings": {"DecodedBytes": 1048576, "WorkUnits": 100000},
+  "maximum_search_probes": 32
+}
+```
+
+Selected paths use discard zero / tile zero and exact checked crops of the
+original/reference full decode. Selected color uses authored sRGB JP2 metadata
+and an independently calculated opaque RGBA16 expectation. Composition uses
+two independently losslessly qualified full-canvas opaque RGB16 layers; the
+foreground source plus opaque alpha is the expected canvas. Reconstruction
+uses the existing split/reordered/duplicated main/tile/body databins and must
+reproduce both encoded bytes and decoded samples exactly. Progression uses a
+separate zero-DWT, single-layer lossless grayscale stream with checked PLT
+single-packet signaling and three complete main/tile/precinct databins.
+It must report seven updates, exactly one independently qualified image, and
+final complete layer one; partial error prefixes remain observed, not invented
+from expectations. No multi-quality-layer progression claim is made here.
+
+The harness only tightens one existing hardened default through the existing
+checked limit builder and passes those options into the real selected,
+conversion, composition, cache/reconstruction and progressive APIs. These
+are **effective admission-budget frontiers / maximum prefix claims for these
+exact paths**, not global cumulative work across counter-reset scopes, total
+allocations, process RSS, CPU time, or universal minimum budgets. Expected
+sample storage remains separate. This matrix does not cover arbitrary
+selections, HT accounting, all container/color/opacity combinations, multiple
+progressive quality layers, sustained R2 campaigns or default-maximum stress.
+Passing it is not whole-R1 completion or integration into actual main.
+
 The original 22 cases, 66 final measurements, four finite budget searches,
 and all existing caps remain mandatory. The following additional Linux
 production-default workloads are declared before collecting R1 measurements.
