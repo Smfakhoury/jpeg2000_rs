@@ -444,6 +444,152 @@ def _packet_header_contracts() -> dict[tuple[str, str], tuple[str, str, str | No
 _PACKET_HEADER_CONTRACTS = _packet_header_contracts()
 
 
+def _packet_progression_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
+    def args(*values: str) -> str:
+        return r"\s*,\s*".join(values)
+
+    def old(name: str) -> str:
+        return _coverage_call("old", re.escape(name))
+
+    def final(name: str) -> str:
+        return _coverage_call("final", re.escape(name))
+
+    def view(name: str, *values: str) -> str:
+        return _coverage_call(name, *values)
+
+    def cap(name: str) -> str:
+        return view("crate::limits::resource_" + name + "_limit", "limits")
+
+    grid = view("packet_grid_view", "grid")
+    own_grid = view("packet_grid_view", "self")
+    changes = view("crate::codestream::progression_changes_view", "changes")
+    params = view("progression_tile_parameters_view", "params")
+    progress_old = view("progression_tile_progress_view", old("p"))
+    progress_final = view("progression_tile_progress_view", final("p"))
+    execution_old = view("progression_tile_execution_view", old("precincts"), old("p"))
+    execution_final = view("progression_tile_execution_view", final("precincts"), final("p"))
+    precinct_vector = view("packet_precinct_vector_view", "precincts")
+    precinct_vector_old = view("packet_precinct_vector_view", old("precincts"))
+    precinct_vector_final = view("packet_precinct_vector_view", final("precincts"))
+    selection = view("packet_selection_view", "selection")
+    initial_payload = (
+        r"crate::specs::Part1TilePacketPreparation\s*\{\s*tile_index\s*,\s*index\s*:\s*0\s*,\s*"
+        r"payload_bytes\s*:\s*0\s*,\s*packed_payload_bytes\s*:\s*0\s*,\s*declared_packets\s*:\s*0\s*,\s*"
+        r"all_lengths\s*:\s*true\s*,\s*packed\s*:\s*" + view("Seq::empty") + r"\s*,?\s*\}"
+    )
+    packet_contracts = {
+        "PacketGrid::total_precinct_count": ("part1_packet_grid_total_precincts", r"\1", None, own_grid),
+        "PacketGrid::selected_packet_count": (
+            "part1_packet_grid_selected_count", r"\1", None, args(own_grid, "resolution_counts@")),
+        "PacketGrid::precinct_count": (
+            "part1_packet_grid_precinct_count", r"\1", None, args(own_grid, "component", "resolution")),
+        "PacketGrid::precinct_index": (
+            "part1_packet_grid_precinct_index", r"\1", None, args(own_grid, "component", "resolution", "precinct")),
+        "packet_grid_resolution_summary": (
+            "part1_grid_resolution_summary", r"\1", None, args("values@", "0", "0", "false")),
+        "packet_grid_count_summary": (
+            "part1_grid_count_summary", view("packet_grid_count_outcome", r"\1"), None,
+            args("counts@", "component_resolutions@", "resolutions", "expected")),
+        "packet_grid_selected_precincts": (
+            "part1_grid_selected_precincts", r"\1", None,
+            args(selection, "component_resolutions@", "counts@", "resolutions", "components", "initial_total")),
+        "packet_grid_new_with_component_resolutions": (
+            "part1_packet_grid_new", view("packet_grid_outcome", r"\1"), None,
+            args("layers", "components", "component_resolutions@", "precinct_counts@", "None", "limits")),
+        "packet_grid_new_with_selected_resolutions": (
+            "part1_packet_grid_new", view("packet_grid_outcome", r"\1"), None,
+            args("layers", "components", "component_resolutions@", "precinct_counts@",
+                 view("packet_selection_view", "selected_resolution_counts"), "limits")),
+        "packet_iterator_new": (
+            "part1_packet_iterator_initial", view("packet_iterator_view", r"&\s*\1"), None, args(grid, "order")),
+        "PacketIterator::decode_candidate": (
+            "part1_packet_candidate", r"\1", None, args(view("packet_grid_view", r"self\.grid"), r"self\.order", "candidate")),
+        "PacketIterator::next_packet": (
+            "part1_packet_iterator_next", r"\1", view("packet_iterator_view", final("self")),
+            view("packet_iterator_view", old("self"))),
+        "progression_packet_iterator_new": (
+            "part1_progression_iterator_initial", view("progression_packet_iterator_outcome", r"\1"), None,
+            args(grid, "default_order", changes, cap("work"))),
+        "ProgressionPacketIterator::next_packet": (
+            "part1_progression_iterator_next", r"\1", view("progression_packet_iterator_view", final("self")),
+            view("progression_packet_iterator_view", old("self"))),
+        "ProgressionPacketIterator::candidate_step": (
+            "part1_progression_candidate_step", r"\1", view("progression_packet_iterator_view", final("self")),
+            args(view("progression_packet_iterator_view", old("self")), "record")),
+        "ProgressionPacketIterator::next_window": (
+            "part1_progression_next_window", r"\1", view("progression_packet_iterator_view", final("self")),
+            view("progression_packet_iterator_view", old("self"))),
+        "progression_prior_contains": (
+            "part1_progression_prior_contains", r"\1", None, args(changes, "end", "0", "coordinate")),
+        "window_candidate_count": ("part1_packet_window_count", r"\1", None, args(grid, "record")),
+        "decode_window_candidate": (
+            "part1_packet_window_candidate", r"\1", None, args(grid, "record", "candidate")),
+        "unravel": (
+            "part1_packet_unravel", view("packet_unravel_outcome", r"\1"), None, args("index", "dimensions@")),
+        "progression_resolution_levels": (
+            "part1_progression_resolution_levels", r"\1", None, args("first", "components", "0", "0")),
+        "validate_progression_selection": (
+            "part1_progression_selection_check", r"\1", None, args("counts@", "available@", "0")),
+        "validate_progression_layout": (
+            "part1_progression_layout", r"\1", None, args("tile_parts@", grid, selection, "limits")),
+        "prepare_progression_payloads": (
+            "part1_progression_payloads", view("progression_tile_preparation_outcome", r"\1"), None,
+            args("tile_parts@", initial_payload, cap("packet_header_byte"))),
+        "validate_progression_precinct_layout": (
+            "part1_progression_precinct_layout", r"\1", None, args(grid, precinct_vector)),
+        "prepare_progression_tile_input": (
+            "part1_progression_tile_input", view("progression_tile_preparation_outcome", r"\1"), None,
+            args("tile_parts@", grid, precinct_vector, selection, "limits")),
+        "progression_tile_progress_new": (
+            "part1_tile_progress_initial", view("progression_tile_progress_outcome", r"\1"), None, params),
+        "advance_progression_tile_part": (
+            "part1_tile_boundary", r"\1", progress_final, args(params, progress_old)),
+        "scan_progression_tile_boundary": (
+            "part1_tile_boundary_scan", r"\1", progress_final, args(params, progress_old)),
+        "set_progression_context_layer": (
+            "part1_packet_context_layers", r"\1", final("contexts") + "@", args(old("contexts") + "@", "layer")),
+        "decode_progression_precinct_packet": (
+            "part1_tile_precinct_packet", r"\1", view("packet_precinct_view", final("precinct")),
+            args(params, r"\*\s*part", view("progression_tile_progress_view", "p"), "coordinate", "expected",
+                 view("packet_precinct_view", old("precinct")))),
+        "execute_progression_packet": (
+            "part1_tile_packet", r"\1", execution_final, args(params, execution_old, "coordinate")),
+        "account_progression_packet": (
+            "part1_tile_account", r"\1", progress_final,
+            args(progress_old, "decoded", "tile_bytes", "packed_bytes", "expected", "seen_index")),
+        "run_progression_tile_packets": (
+            "part1_tile_run", r"\1", execution_final, args(params, execution_old)),
+        "finish_progression_tile_packets": (
+            "part1_tile_finish", r"\1", progress_final, args(params, progress_old)),
+        "decode_progression_tile_packets_selected": (
+            "part1_progression_tile_decode", r"\1", precinct_vector_final,
+            args("tile_parts@", grid, precinct_vector_old, view("packet_selection_view", "maximum_resolution_counts"), "limits")),
+        "decode_progression_tile_packets": (
+            "part1_progression_tile_decode", r"\1", precinct_vector_final,
+            args("tile_parts@", grid, precinct_vector_old, "None", "limits")),
+    }
+    input_contracts = {
+        "packet_input_limit": ("part1_packet_input_limit", r"\1", None, args("resource", "limit", "actual")),
+        "PackedPacketHeaders::reassemble": (
+            "part1_packed_header_reassembly", view("packed_header_reassembly_outcome", r"\1"), None,
+            args(view("packed_packet_headers_view", "self"), cap("packet_header_byte"))),
+        "PacketLengths::iter": (
+            "part1_packet_lengths_iter", view("packet_length_iter_view", r"&\s*\1"), None, view("packet_lengths_view", "self")),
+        "PacketLengthIter::next_length": (
+            "part1_packet_length_next", r"\1", view("packet_length_iter_view", final("self")),
+            view("packet_length_iter_view", old("self"))),
+        "decode_packet_length": (
+            "part1_packet_length_decode", r"\1", None, args("encoded@", "start", "end")),
+    }
+    return {
+        **{("src/packet.rs", name): value for name, value in packet_contracts.items()},
+        **{("src/codestream.rs", name): value for name, value in input_contracts.items()},
+    }
+
+
+_PACKET_PROGRESSION_CONTRACTS = _packet_progression_contracts()
+
+
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -887,7 +1033,10 @@ def validate_normative_coverage(
             }.get((reference["path"], reference["symbol"]))
             if selection_contract:
                 result_projection, expected_result_model = selection_contract[:2]
-            header_contract = _PACKET_HEADER_CONTRACTS.get((reference["path"], reference["symbol"]))
+            header_contract = (
+                _PACKET_HEADER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PACKET_PROGRESSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+            )
             if header_contract:
                 expected_result_model = header_contract[0]
             projected_result = re.search(
@@ -1350,7 +1499,8 @@ def validate_normative_coverage(
             if not any(re.search(rf"\b{re.escape(symbol)}\b", contract) for symbol in spec_symbols):
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if not any(
-                (re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
+                ref != reference
+                and (re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
                  if ref["path"] != reference["path"] else
                  _coverage_same_file_call(text, ref["symbol"], short))
                 for ref in entry["implementation_refs"]

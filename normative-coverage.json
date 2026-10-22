@@ -4,6 +4,994 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-packed-header-length-inputs",
+      "topic": "Complete actual raw packed-header reassembly and packet-length iterator/scalar decode: all source enums, raw cursors/end, stored length/fragments/counters, exact returned bytes/lengths and ordered typed errors/caps. PLT cursor commits before late errors; None presence is not length. No supplied bytes/length list, normalized fragment/cursor/shape, successful trace or adequate-budget premise. Static None/owner observations are support, not independent result consumers.",
+      "contract_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_input_limit"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::reassemble"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::iter"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengthIter::next_length"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "decode_packet_length"
+        }
+      ],
+      "implementation_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_input_limit"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::reassemble"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::iter"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengthIter::next_length"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "decode_packet_length"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::total_precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::selected_packet_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_index"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_resolution_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_count_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_selected_precincts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_component_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_selected_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::decode_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::candidate_step"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_window"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_prior_contains"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "window_candidate_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_window_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "unravel"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_resolution_levels"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_selection"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_payloads"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_precinct_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_tile_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_tile_progress_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "advance_progression_tile_part"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "scan_progression_tile_boundary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "set_progression_context_layer"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "account_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "run_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "finish_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets_selected"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::none"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::none"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "Parser::finish_packet_lengths"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "Parser::read_tile_part"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "Parser::validate_packet_lengths"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "sum_packet_lengths"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/packet_input.rs",
+          "symbol": "part1_packet_input_limit"
+        },
+        {
+          "path": "specs/packet_input.rs",
+          "symbol": "part1_packed_header_reassembly"
+        },
+        {
+          "path": "specs/packet_input.rs",
+          "symbol": "part1_packet_lengths_iter"
+        },
+        {
+          "path": "specs/packet_input.rs",
+          "symbol": "part1_packet_length_next"
+        },
+        {
+          "path": "specs/packet_input.rs",
+          "symbol": "part1_packet_length_decode"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_input_error"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_input_limit"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packed_packet_headers_none"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::is_present"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::len"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::is_empty"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::fragment_count"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::reassemble"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_lengths_none"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::is_present"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::packet_count"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::encoded_bytes"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::iter"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengthIter::next_length"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "decode_packet_length"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packed_reassembly_literal_fragments_ranges_and_late_errors_have_exact_bytes"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_length_full_width_noncanonical_and_unterminated_groups_match_wide_words"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packed_raw_source_marker_and_absent_metadata_do_not_invent_shape_invariants"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_lengths_exhaustive_two_byte_windows_and_every_raw_iterator_field"
+        }
+      ]
+    },
+    {
+      "id": "part1-complete-native-grid-progression-composition",
+      "topic": "Complete actual raw nine-field grid factories/lookup, packet and POC/default nested iterators, selected/public multi-tile-part progression from actual native tile/source/grid/precinct inputs. Actual reassembly, raw lengths and coordinates derive real headers and retained legacy/HT coefficients; all offsets/seen/context layers/counters/trailing/partial errors and readonly owner frames retained. No coordinate/length/header/decoder outcome bank, normalized POC/grid/shape, success or budget premise. Separate codeblock/JPIP outer wrappers and whole F5 epics/conformance remain open. Public selected-count/API support remains whole-root-proved proof references, not an invented internal consumer. The public unselected delegation wrapper is likewise proved API support, not a fabricated internal call edge.",
+      "contract_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::total_precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_index"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_resolution_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_count_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_selected_precincts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_component_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_selected_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::decode_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::candidate_step"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_window"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_prior_contains"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "window_candidate_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_window_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "unravel"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_resolution_levels"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_selection"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_payloads"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_precinct_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_tile_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_tile_progress_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "advance_progression_tile_part"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "scan_progression_tile_boundary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "set_progression_context_layer"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "account_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "run_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "finish_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets_selected"
+        }
+      ],
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::total_precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::selected_packet_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_index"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_resolution_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_count_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_selected_precincts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_component_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_selected_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::decode_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::candidate_step"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_window"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_prior_contains"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "window_candidate_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_window_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "unravel"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_resolution_levels"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_selection"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_payloads"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_precinct_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_tile_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_tile_progress_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "advance_progression_tile_part"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "scan_progression_tile_boundary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "set_progression_context_layer"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "account_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "run_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "finish_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets_selected"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "packet_input_limit"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PackedPacketHeaders::reassemble"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengths::iter"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "PacketLengthIter::next_length"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "decode_packet_length"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::new_with_component_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::new_with_selected_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::new"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_grid_total_precincts"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_grid_selected_count"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_grid_precinct_count"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_grid_precinct_index"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_grid_resolution_summary"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_grid_count_summary"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_grid_selected_precincts"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_grid_new"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_iterator_initial"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_candidate"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_iterator_next"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_progression_iterator_initial"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_progression_iterator_next"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_progression_candidate_step"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_progression_next_window"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_progression_prior_contains"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_window_count"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_window_candidate"
+        },
+        {
+          "path": "specs/packet_progression.rs",
+          "symbol": "part1_packet_unravel"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_resolution_levels"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_selection_check"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_layout"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_payloads"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_precinct_layout"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_tile_input"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_progress_initial"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_boundary"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_boundary_scan"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_packet_context_layers"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_precinct_packet"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_packet"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_account"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_run"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_tile_finish"
+        },
+        {
+          "path": "specs/packet_tile.rs",
+          "symbol": "part1_progression_tile_decode"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::total_precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::selected_packet_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketGrid::precinct_index"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_resolution_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_count_summary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_selected_precincts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_component_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_grid_new_with_selected_resolutions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::decode_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_packet_iterator_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::candidate_step"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "ProgressionPacketIterator::next_window"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_prior_contains"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "window_candidate_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_window_candidate"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "unravel"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_resolution_levels"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_selection"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_payloads"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_progression_precinct_layout"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "prepare_progression_tile_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "progression_tile_progress_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "advance_progression_tile_part"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "scan_progression_tile_boundary"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "set_progression_context_layer"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "account_progression_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "run_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "finish_progression_tile_packets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets_selected"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_grid_factory_keeps_full_offsets_and_candidate_work_under_selected_caps"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "raw_grid_lookup_retains_physical_zero_and_offset_error_priority"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "raw_packet_iterator_retains_advanced_candidate_and_late_emitted_errors"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_progression_constructor_charges_duplicate_windows_and_next_suppresses_only_prior_membership"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "raw_progression_default_error_commits_nested_state_without_syncing_outer_emitted"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "raw_progression_window_advance_retains_partial_cursor_before_next_window_rejection"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "full_selected_progression_derives_literal_headers_and_skips_only_higher_resolution_coefficients"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "full_progression_restarts_actual_tile_iterators_and_retains_real_output_on_late_trailing_data"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "full_progression_uses_real_ppt_reassembly_and_plt_iteration_without_tile_body_bytes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_progression_accounting_keeps_every_ordered_overflow_and_new_offset_error"
+        }
+      ]
+    },
+    {
       "id": "part1-complete-native-header-tree-producers",
       "topic": "Complete actual raw packet reader, full TagTree/packet-state/header segment traversal, all-byte Tier1 style parsing and scalar admission producers. Full returned errors/values and every final mutable owner are bound to actual old native inputs and typed caps. Header errors restore only packet state, not reader/trees. No normalized native shape/count, success, adequate-budget or supplied-result premise. Static wrappers/observational helpers are support, not independent result claims; not progression or normative conformance.",
       "contract_refs": [
@@ -674,6 +1662,10 @@
         {
           "path": "src/packet.rs",
           "symbol": "decode_progression_tile_packets_selected"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_precinct_packet"
         }
       ],
       "spec_refs": [

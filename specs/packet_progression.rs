@@ -22,6 +22,12 @@ pub struct Part1PacketIterator {
     pub emitted: u64,
 }
 
+pub open spec fn part1_packet_iterator_initial(
+    grid: Part1PacketGrid, order: crate::codestream::ProgressionOrder,
+) -> Part1PacketIterator {
+    Part1PacketIterator { grid, order, candidate_index: 0, emitted: 0 }
+}
+
 pub struct Part1ProgressionPacketIterator {
     pub grid: Part1PacketGrid,
     pub changes: Seq<crate::codestream::ProgressionChange>,

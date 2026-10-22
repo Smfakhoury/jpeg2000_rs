@@ -729,6 +729,32 @@ outputs. This closes the named actual progression producer scope, not every
 single/multi-code-block or JPIP outer wrapper, normative endorsement, the whole
 F5H epic or project completion.
 
+## Conservative complete progression and raw input acceptance
+
+The exact native progression/input registry admits only42 finite qualified
+result/model/full-state/input shapes: the real packed reassembly/length
+producers, grid factories/lookups, both nested iterators and the actual
+multi-tile-part preparation/boundary/context/precinct/accounting/run/finish
+chain. Forty have genuine internal callers and are curated as functional
+contract links. The public selected-count and unselected delegation APIs
+remain proved API support rather than invented internal consumers.
+
+The real iterator factory and full context-layer update use explicit complete
+semantic functions equivalent to their original literal/map posts; native
+execution bodies are unchanged. Every mutable parameter must occur in the
+complete final relation, and every real old input/selection/cursor/cap binds
+the primary model clause. New premises, guarded or partial state, wrong
+constants/views/inputs/caps and later correct clauses masking a wrong primary
+are rejected. A producer cannot name itself as its own claimed consumer,
+including a same-spelled call to a different receiver type.
+
+The existing header/precinct families remain intact. Full raw source/owner
+observations and static None APIs are supported without claiming separately
+bound constructor results that the pinned frontend cannot express. This
+remains a curated technical inventory, not exhaustive normative coverage.
+Separate public code-block/JPIP wrapper guarantees and whole F5L/F5H remain
+under implementation; no F8 image/parser or general MCT claim follows here.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

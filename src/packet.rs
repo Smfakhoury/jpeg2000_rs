@@ -1071,9 +1071,7 @@ verus! {
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-    ensures packet_iterator_view(&result) == (crate::specs::Part1PacketIterator {
-        grid:packet_grid_view(grid), order, candidate_index:0, emitted:0,
-    }),
+    ensures packet_iterator_view(&result) == crate::specs::part1_packet_iterator_initial(packet_grid_view(grid), order),
 ))]
 pub(crate) const fn packet_iterator_new(
     grid: &PacketGrid,
@@ -2688,7 +2686,8 @@ fn scan_progression_tile_boundary<'a, 'data>(
 }
 
 #[cfg_attr(verus_keep_ghost,verus_spec(result =>
-    ensures result==Ok(()),
+    ensures (result, final(contexts)@) == crate::specs::part1_packet_context_layers(old(contexts)@, layer),
+        result==Ok(()),
         final(contexts)@==old(contexts)@.map_values(|context:CodeBlockPacketContext|
             crate::specs::part1_packet_context_layer(context,layer)),
 ))]

@@ -1,5 +1,15 @@
 # Specification audit guide
 
+Start the complete actual multi-tile-part chain at
+`part1_progression_tile_decode`, then follow actual native grid/iterator
+construction, raw packed/length input, boundary scan, context-layer writes,
+real precinct/header/mixed coefficients, ordered accounting and finish.
+`part1_packet_iterator_initial` and `part1_packet_context_layers` expose the
+complete actual constructor/update values without changing execution.
+The finite registry binds42 exact shapes, with40 real internal-consumer
+contracts and honest standalone public API support. No trace/list/outcome
+bank, normalized POC/grid/cursor or successful-budget premise is introduced.
+
 ## Frozen remaining actual progression profile
 
 The next actual producers are `PacketGrid` construction/indexing,

@@ -549,14 +549,35 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_complete_header_and_precinct_native_results(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
-        entries = [entry for entry in original_coverage["requirements"] if entry["id"] in {
+        self._assert_complete_packet_contract_bindings({
             "part1-complete-native-header-tree-producers", "part1-complete-native-precinct-composition",
-        }]
+        }, framework._PACKET_HEADER_CONTRACTS, 39)
+
+    def test_inventory_binds_actual_packed_inputs_and_full_progression_results(self):
+        support = {
+            ("src/packet.rs", "PacketGrid::selected_packet_count"),
+            ("src/packet.rs", "decode_progression_tile_packets"),
+        }
+        recipes = {key: value for key, value in framework._PACKET_PROGRESSION_CONTRACTS.items() if key not in support}
+        self._assert_complete_packet_contract_bindings({
+            "part1-complete-native-packed-header-length-inputs", "part1-complete-native-grid-progression-composition",
+        }, recipes, 40)
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(item for item in coverage["requirements"]
+                     if item["id"] == "part1-complete-native-grid-progression-composition")
+        for path, symbol in support:
+            reference = {"path": path, "symbol": symbol}
+            self.assertIn(reference, entry["proof_refs"])
+            self.assertNotIn(reference, entry["contract_refs"])
+
+    def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
+        entries = [entry for entry in original_coverage["requirements"] if entry["id"] in entry_ids]
         references = [reference for entry in entries for reference in entry["contract_refs"]]
         self.assertEqual(len(entries), 2)
-        self.assertEqual(len(references), 39)
-        self.assertEqual({(ref["path"], ref["symbol"]) for ref in references}, set(framework._PACKET_HEADER_CONTRACTS))
+        self.assertEqual(len(references), expected_count)
+        self.assertEqual({(ref["path"], ref["symbol"]) for ref in references}, set(recipes))
         read_text = Path.read_text
 
         def closing_parenthesis(text, opening):
@@ -572,14 +593,27 @@ class FrameworkTests(WorkingFiles):
 
         for reference in references:
             key = (reference["path"], reference["symbol"])
-            model = framework._PACKET_HEADER_CONTRACTS[key][0]
+            model = recipes[key][0]
             entry = next(entry for entry in entries if reference in entry["contract_refs"])
             coverage = copy.deepcopy(original_coverage)
             coverage["requirements"] = [copy.deepcopy(entry)]
             coverage["requirements"][0]["contract_refs"] = [reference]
-            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
             source = framework.ROOT / reference["path"]
             original = source.read_text()
+            actual_callers = [caller for caller in entry["implementation_refs"] if caller != reference and (
+                re.search(rf"\b{re.escape(reference['symbol'].rsplit('::', 1)[-1])}\s*\(",
+                          (framework.ROOT / caller["path"]).read_text())
+                if caller["path"] != reference["path"] else framework._coverage_same_file_call(
+                    original, caller["symbol"], reference["symbol"].rsplit("::", 1)[-1],
+                )
+            )]
+            self.assertTrue(actual_callers)
+            isolated = coverage["requirements"][0]
+            isolated["implementation_refs"] = actual_callers[:1]
+            isolated["spec_refs"] = [item for item in entry["spec_refs"] if item["symbol"] == model]
+            isolated["proof_refs"] = [reference]
+            isolated["test_refs"] = entry["test_refs"][:1]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
             header = framework._coverage_function_header(original, reference["symbol"])
             signature = original.find("fn", header.start())
             start = original.rfind("#[cfg_attr", 0, signature)
@@ -619,6 +653,10 @@ class FrameworkTests(WorkingFiles):
                 mutations.append(changed[:changed_closing + 1] + ",\n" + original_expression + changed[changed_closing + 1:])
             for match in re.finditer(r"\bold\s*\(\s*(\w+)\s*\)", primary_arguments):
                 arguments = primary_arguments[:match.start()] + f"final({match[1]})" + primary_arguments[match.end():]
+                mutations.append(contract[:opening + 1] + arguments + contract[closing:])
+            for match in re.finditer(r"\b(?:0|None|true|false)\b", primary_arguments):
+                replacement = {"0": "1", "None": "Some(unrelated)", "true": "false", "false": "true"}[match[0]]
+                arguments = primary_arguments[:match.start()] + replacement + primary_arguments[match.end():]
                 mutations.append(contract[:opening + 1] + arguments + contract[closing:])
             primary_left = contract[expression_start:model_start]
             for view in set(re.findall(r"\b(\w+_view|code_block_header_outcome|header_segments_outcome)\s*\(", primary_left)):

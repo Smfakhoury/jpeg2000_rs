@@ -162,6 +162,11 @@ pub open spec fn part1_packet_context_layer(context:crate::packet::CodeBlockPack
     crate::packet::CodeBlockPacketContext {layer,..context}
 }
 
+pub open spec fn part1_packet_context_layers(contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16)
+    -> (Result<(), crate::DecodeError>, Seq<crate::packet::CodeBlockPacketContext>) {
+    (Ok(()), contexts.map_values(|context: crate::packet::CodeBlockPacketContext| part1_packet_context_layer(context, layer)))
+}
+
 pub open spec fn part1_precinct_context_layer(state:Part1PacketPrecinctState,layer:u16)
     ->Part1PacketPrecinctState {
     Part1PacketPrecinctState {contexts:state.contexts.map_values(|context:crate::packet::CodeBlockPacketContext|
