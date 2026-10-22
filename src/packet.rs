@@ -2641,46 +2641,135 @@ fn decode_code_block_contribution_body_staged(
             bytes: contribution.data_length,
         });
     }
+    decode_legacy_code_block_contribution_body(decoder, contribution, body, limits)
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn legacy_packet_progress_view(
+        decoder: &Tier1CodeBlockDecoder, segment_index: u8, offset: usize, decoded_passes: u32,
+    ) -> crate::specs::Part1LegacyPacketProgress {
+        crate::specs::Part1LegacyPacketProgress {
+            decoder: crate::tier1::tier1_decoder_state(decoder), segment_index, offset, decoded_passes,
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_legacy_code_block_body(
+        crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+        crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+        crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+fn decode_legacy_code_block_contribution_body(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+    limits: &ResourceLimits,
+) -> Result<CodeBlockBodyDecode, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_body); }
     let segment_count = contribution.segment_count();
     let mut segment_index = 0_u8;
     let mut offset = 0_usize;
     let mut decoded_passes = 0_u32;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = legacy_packet_progress_view(decoder, 0, 0, 0);
+        let ghost goal = crate::specs::part1_legacy_code_block_run(initial, code_block_contribution_view(contribution), body@,
+            segment_count as nat, crate::limits::resource_code_block_pass_limit(limits),
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_input_byte_limit(limits),
+            crate::limits::resource_work_limit(limits));
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant segment_index <= segment_count,
+                segment_count == code_block_contribution_view(contribution).segment_count,
+                initial == legacy_packet_progress_view(old(decoder), 0, 0, 0),
+                goal == crate::specs::part1_legacy_code_block_run(initial, code_block_contribution_view(contribution), body@,
+                    segment_count as nat, crate::limits::resource_code_block_pass_limit(limits),
+                    crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_input_byte_limit(limits),
+                    crate::limits::resource_work_limit(limits)),
+                goal == crate::specs::part1_legacy_code_block_run(
+                    legacy_packet_progress_view(decoder, segment_index, offset, decoded_passes),
+                    code_block_contribution_view(contribution), body@, (segment_count - segment_index) as nat,
+                    crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+                    crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
             decreases segment_count - segment_index,
         )
     )]
     while segment_index < segment_count {
-        let segment = contribution.segment(segment_index)?;
-        let segment_length = usize::try_from(segment.data_length)
-            .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        let end = offset
-            .checked_add(segment_length)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if end > body.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_legacy_code_block_body);
+            reveal(crate::specs::part1_legacy_code_block_run);
         }
-        decoder.decode_legacy_contribution(&body[offset..end], segment.passes, limits)?;
-        decoded_passes = decoded_passes
-            .checked_add(u32::from(segment.passes))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        offset = end;
-        segment_index = segment_index
-            .checked_add(1)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        decode_legacy_code_block_segment(
+            decoder,
+            contribution,
+            body,
+            limits,
+            &mut segment_index,
+            &mut offset,
+            &mut decoded_passes,
+        )?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_run); }
     if !crate::refinement::exact_consumption(offset, body.len())
         || decoded_passes != u32::from(contribution.new_passes)
     {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+        return Err(packet_invalid_code_block());
     }
     Ok(CodeBlockBodyDecode {
         segments: contribution.segment_count(),
         passes: decoded_passes,
         bytes: contribution.data_length,
     })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_packet_progress_view(final(decoder), *final(segment_index), *final(offset), *final(decoded_passes)))
+        == crate::specs::part1_legacy_code_block_segment(
+            legacy_packet_progress_view(old(decoder), *old(segment_index), *old(offset), *old(decoded_passes)),
+            code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        result.is_ok() ==> *old(segment_index) < code_block_contribution_view(contribution).segment_count
+            && *final(segment_index) as nat == *old(segment_index) as nat + 1,
+))]
+fn decode_legacy_code_block_segment(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+    limits: &ResourceLimits,
+    segment_index: &mut u8,
+    offset: &mut usize,
+    decoded_passes: &mut u32,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_segment); }
+    let segment = contribution.segment(*segment_index)?;
+    let segment_length = match usize::try_from(segment.data_length) {
+        Ok(length) => length,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    let end = offset
+        .checked_add(segment_length)
+        .ok_or_else(packet_arithmetic_overflow)?;
+    if end > body.len() {
+        return Err(packet_invalid_code_block());
+    }
+    decoder.decode_legacy_contribution(&body[*offset..end], segment.passes, limits)?;
+    *decoded_passes = decoded_passes
+        .checked_add(u32::from(segment.passes))
+        .ok_or_else(packet_arithmetic_overflow)?;
+    *offset = end;
+    *segment_index = segment_index
+        .checked_add(1)
+        .ok_or_else(packet_arithmetic_overflow)?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -3362,6 +3451,231 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    fn one_ff_legacy_contribution() -> CodeBlockContribution {
+        let mut contribution = CodeBlockContribution {
+            first_inclusion: true,
+            zero_bitplanes: 0,
+            new_passes: 1,
+            data_length: 1,
+            high_throughput: false,
+            segment_count: 1,
+            segment_passes: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+        };
+        contribution.segment_passes[0] = 1;
+        contribution.segment_lengths[0] = 1;
+        contribution
+    }
+
+    fn one_bit_legacy_decoder(force_high_throughput: bool) -> Tier1CodeBlockDecoder {
+        Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            crate::tier1::SubbandOrientation::Ll,
+            Tier1CodingStyle {
+                force_high_throughput,
+                ..Tier1CodingStyle::default()
+            },
+        )
+        .unwrap()
+    }
+
+    fn expected_one_ff_decoder(before: &Tier1CodeBlockDecoder, header_prepared: bool) -> String {
+        let mut contexts = crate::mq::MqDecoder::new(&[], &ResourceLimits::default()).unwrap();
+        for index in 0..19 {
+            contexts
+                .set_context(
+                    index,
+                    match index {
+                        0 => 5,
+                        17 => 3,
+                        18 => 46,
+                        _ => 0,
+                    },
+                    false,
+                )
+                .unwrap();
+        }
+        let mut expected = format!("{before:?}")
+            .replacen("next_pass: 0,", "next_pass: 1,", 1)
+            .replacen("decoded_segments: 0,", "decoded_segments: 1,", 1)
+            .replacen("decoded_bytes: 0,", "decoded_bytes: 1,", 1)
+            .replacen("legacy_decode_work: 0,", "legacy_decode_work: 2,", 1)
+            .replacen(
+                "mq_context_state: None,",
+                &format!("mq_context_state: Some({:?}),", contexts.context_state()),
+                1,
+            );
+        if header_prepared {
+            expected = expected.replacen("zero_bitplanes: None,", "zero_bitplanes: Some(0),", 1);
+        }
+        expected
+    }
+
+    #[test]
+    fn legacy_packet_body_routes_real_mq_bytes_and_retains_late_total_error_mutations() {
+        for mismatch in 0..3 {
+            let mut decoder = one_bit_legacy_decoder(false);
+            let expected = expected_one_ff_decoder(&decoder, false);
+            let mut contribution = one_ff_legacy_contribution();
+            let body: &[u8] = if mismatch == 2 { &[0xff, 0] } else { &[0xff] };
+            if mismatch == 1 {
+                contribution.new_passes = 2;
+            }
+            let result = decode_legacy_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                body,
+                &ResourceLimits::default(),
+            );
+            assert_eq!(format!("{decoder:?}"), expected);
+            assert_eq!(
+                result,
+                if mismatch == 0 {
+                    Ok(CodeBlockBodyDecode {
+                        segments: 1,
+                        passes: 1,
+                        bytes: 1,
+                    })
+                } else {
+                    Err(packet_invalid_code_block())
+                }
+            );
+        }
+        let mut decoder = one_bit_legacy_decoder(false);
+        let before = format!("{decoder:?}");
+        let mut contribution = one_ff_legacy_contribution();
+        contribution.segment_count = 0;
+        contribution.new_passes = 0;
+        contribution.data_length = u32::MAX;
+        contribution.high_throughput = true;
+        assert_eq!(
+            decode_legacy_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                &[],
+                &ResourceLimits::default(),
+            ),
+            Ok(CodeBlockBodyDecode {
+                segments: 0,
+                passes: 0,
+                bytes: u32::MAX
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn legacy_packet_segment_checks_real_range_and_counter_priority_without_input_invariants() {
+        let limits = ResourceLimits::default();
+        let mut contribution = one_ff_legacy_contribution();
+        for offset in [0, usize::MAX] {
+            let mut decoder = one_bit_legacy_decoder(false);
+            let before = format!("{decoder:?}");
+            let expected_decoded = expected_one_ff_decoder(&decoder, false);
+            let mut index = 0;
+            let mut current_offset = offset;
+            let mut passes = u32::MAX;
+            assert_eq!(
+                decode_legacy_code_block_segment(
+                    &mut decoder,
+                    &contribution,
+                    &[0xff],
+                    &limits,
+                    &mut index,
+                    &mut current_offset,
+                    &mut passes,
+                ),
+                Err(packet_arithmetic_overflow())
+            );
+            assert_eq!((index, current_offset, passes), (0, offset, u32::MAX));
+            assert_eq!(
+                format!("{decoder:?}"),
+                if offset == 0 {
+                    expected_decoded
+                } else {
+                    before
+                }
+            );
+        }
+        contribution.segment_count = u8::MAX;
+        let mut decoder = one_bit_legacy_decoder(false);
+        let before = format!("{decoder:?}");
+        let (mut index, mut offset, mut passes) = (164, usize::MAX, u32::MAX);
+        assert_eq!(
+            decode_legacy_code_block_segment(
+                &mut decoder,
+                &contribution,
+                &[],
+                &limits,
+                &mut index,
+                &mut offset,
+                &mut passes,
+            ),
+            Err(invalid_packet_header())
+        );
+        assert_eq!((index, offset, passes), (164, usize::MAX, u32::MAX));
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn real_packet_prefix_and_outer_clone_commit_preserve_order_and_full_rollback() {
+        for force in [false, true] {
+            for wrong_length in [false, true] {
+                let mut decoder = one_bit_legacy_decoder(force);
+                let before = format!("{decoder:?}");
+                let contribution = one_ff_legacy_contribution();
+                let body: &[u8] = if wrong_length { &[] } else { &[0xff] };
+                let expected = if !force && !wrong_length {
+                    before.replacen("zero_bitplanes: None,", "zero_bitplanes: Some(0),", 1)
+                } else {
+                    before
+                };
+                assert_eq!(
+                    prepare_code_block_contribution_body(&mut decoder, &contribution, body),
+                    if force || wrong_length {
+                        Err(packet_invalid_code_block())
+                    } else {
+                        Ok(())
+                    }
+                );
+                assert_eq!(format!("{decoder:?}"), expected);
+            }
+        }
+        for wrong_total in [false, true] {
+            let mut decoder = one_bit_legacy_decoder(false);
+            let before = format!("{decoder:?}");
+            let decoded = expected_one_ff_decoder(&decoder, true);
+            let mut contribution = one_ff_legacy_contribution();
+            if wrong_total {
+                contribution.new_passes = 2;
+            }
+            let result = decode_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                &[0xff],
+                &ResourceLimits::default(),
+            );
+            assert_eq!(
+                result,
+                if wrong_total {
+                    Err(packet_invalid_code_block())
+                } else {
+                    Ok(CodeBlockBodyDecode {
+                        segments: 1,
+                        passes: 1,
+                        bytes: 1,
+                    })
+                }
+            );
+            assert_eq!(
+                format!("{decoder:?}"),
+                if wrong_total { before } else { decoded }
+            );
         }
     }
 

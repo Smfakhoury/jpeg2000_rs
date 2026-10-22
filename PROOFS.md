@@ -196,8 +196,8 @@ including stored counts above the physical array size. Count admission precedes
 physical bounds; failures remain `InvalidPacketHeader` at offset zero. No
 header, pass-total, nonzero-pass or normalized-count premise is introduced.
 Independent tests cover all 65,536 count/index pairs and preserve the entire
-supplied record. This owner interface supports both HT and legacy routing;
-it does not itself establish either packet execution loop.
+supplied record. This owner interface alone does not establish packet execution;
+the actual legacy loop is composed below, while HT routing has a separate owner.
 
 ### Shared native contribution preparation
 
@@ -214,6 +214,33 @@ zero-bitplane choice in the selected boundary set while deliberately retaining
 unvalidated 255-count/255-pass descriptor storage. This shared prerequisite
 establishes preparation only; packet execution and outer clone/commit remain
 separate caller obligations.
+
+### Actual legacy contribution-body execution
+
+The actual `decode_legacy_code_block_contribution_body` now refines a complete
+unconditional Result/full-decoder relation. It runs the original stored-count
+loop, performs each real physical descriptor lookup, computes and checks the
+actual body slice, invokes the proved actual legacy contribution producer and
+commits pass/offset/index counters in their original order. The one real
+per-segment operation exposes all four partial outputs: decoder, segment index,
+body offset and decoded-pass count. Native overflow, physical-array and range
+failures retain their actual priority; no header or successful-segment trace is
+supplied to the loop theorem.
+
+The final exact-consumption and pass-total checks follow all decoder effects.
+A late mismatch therefore preserves the already decoded state inside this
+operation. The stored `data_length` is returned, not silently replaced with the
+consumed count. Empty zero-pass storage can succeed here, since shared header
+preparation belongs to its actual caller. Those unvalidated native cases remain
+in the model instead of being excluded by a normalized-contribution premise.
+
+The shared prefix and the original HT branch are not duplicated by this
+extraction. Independent tests cover real MQ bytes through the full legacy call
+chain, late total mismatches, physical lookup before range overflow, pass-counter
+overflow after actual decoding, shared preparation and observed public rollback.
+The mathematical staged/transactional legacy caller models are supplied for the
+next join, but a public clone/commit refinement is not claimed until it is joined
+to the actual faithful whole-decoder Clone producer.
 
 ## Reproduce verification
 
