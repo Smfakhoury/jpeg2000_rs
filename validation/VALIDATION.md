@@ -238,13 +238,13 @@ fixtures are retained under the existing `container-failures/` artifacts.
 
 A finite twenty-candidate generated-profile qualification was declared and
 hashed before native measurements. All original/reference dispositions were
-persisted before subject measurements: fourteen references qualified, thirteen
-subject profiles passed, six candidates remained reference-unqualified or
-explicitly excluded, and one reference-qualified subject path was rejected.
+persisted before subject measurements: fourteen references qualified and
+fourteen subject profiles passed; six candidates remained reference-unqualified
+or explicitly excluded.
 No thresholds were changed to admit a candidate. These are engineering
 observations, not official Part 4 evidence or a normative certificate.
 
-Three additional 47x35, 16x16-tiled, two-decomposition numerical cases retain
+Four additional 47x35, 16x16-tiled, two-decomposition numerical cases retain
 the original 56 legacy/48 HT cases and budgets:
 
 | Profile | Origin | Original/reference and reference/subject budget |
@@ -252,6 +252,7 @@ the original 56 legacy/48 HT cases and budgets:
 | `q2-roi-gray20`, component 0 upshift 1 | (3,3) | exact |
 | `q2-roi-rgb16-independent`, component 2 upshift 2, MCT disabled | (3,5) | exact |
 | `q2-roi-gray16-irreversible`, component 0 upshift 2 | (3,5) | maximum error 8, worst-component RMSE 2.0 |
+| `q2-quality-rgb16-layered`, layers `8,3,1`, coding style 63, MCT enabled | (3,5) | exact |
 
 Both comparisons must meet the irreversible budget, before/after the subject
 respectively. PGX uses equal x/y origin because the pinned PGX encoder's
@@ -261,6 +262,12 @@ must still match. This does not qualify the rejected asymmetric PGX path.
 full, region, single tile, tile-contained region and rectangular tile-set
 selections. Its expected crops come exclusively from independent native
 planes, with absolute-grid ceilings and exact origin checks.
+The layered RGB16 case also covers zero-byte later terminated MQ/RAW passes
+and raw ERTERM tails in a complete independently encoded image. Its earlier
+`InvalidCodeBlock` disagreement is resolved by the corrected shared Tier-1
+reader/pass termination behavior, not by changing the input or expectations.
+Full decoding and every selection at discard 0/1/2 must remain exact; final
+quality-layer success alone does not qualify arbitrary quality-prefix output.
 
 `container_relations.py` uses `fractions.Fraction` for independent sample
 normalization and source-over, not a call into Rust color/composition code.
@@ -298,22 +305,20 @@ retained in qualification evidence, not patched or counted as another pass.
 This is selected mixed-tile evidence, not arbitrary in-code-block HT/MQ
 switching or every mixed-profile capability combination.
 
-The seven nonpassing candidates remain explicit boundaries:
+The six nonpassing candidates remain explicit boundaries:
 
 | Candidate | Disposition |
 |---|---|
 | Signed12 Maxshift `U=2`, layers `8,3,1`, bypass, tiled DWT2 | original/reference maximum error 752 exceeds exactness |
 | RGB8 irreversible layers `8,3,1`, tiled DWT2 | original/reference maximum error 3/RMSE 0.6991 exceeds frozen 2/0.5 |
 | Gray8 and gray16, 32x32, zero-DWT `8,3,1` quality prefixes | first independent prefix is constant; no meaningful three-prefix qualification |
-| RGB16 `8,3,1 -M 63 -mct 1`, 47x35, tiled DWT2, origin (3,5) | exact independent original/reference, but subject `InvalidCodeBlock`; **subject path unqualified**, not a reference failure |
 | Native JPX compositor | neither pinned CLI exposes independent layer/frame rendering; rational generated profiles are a narrower substitute, not native semantic equivalence |
 | ICC execution | deliberately not implemented; pinned reference build has ICC execution disabled |
 
-The reference-qualified RGB16 rejection remains an open qualification
-disagreement. It has not been turned into an expected-rejection “passing
+None of these six has been turned into an expected-rejection “passing
 numerical case” or erased from the denominator. Existing quality-prefix
-regressions remain; this matrix does not add a qualified new three-prefix
-profile.
+regressions remain; the qualified final-layer RGB16 addition does not add a
+qualified new three-prefix profile.
 
 The existing three-platform native regression invocation runs the new
 numerical, selection and container tests without platform-specific thresholds:
@@ -333,7 +338,7 @@ ignored `target/validation/q2-selection/`, `q2-container/` and `q2-mixed/`.
 The numerical command continues to use the existing numerical report schema.
 The supplemental JSON is regression evidence, not a new normative report
 schema. Local execution does not satisfy exact-head three-OS or final-main
-integration gates, and neither case count nor these thirteen profiles closes
+integration gates, and neither case count nor these fourteen profiles closes
 the remaining broader qualification gaps.
 
 ### Component Maxshift and binary-complement NLT

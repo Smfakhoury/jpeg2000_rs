@@ -86,10 +86,11 @@ This is not completion of broader precision/component qualification: those
 reference gaps remain open, and local measurements do not replace exact-candidate
 three-OS evidence or the remaining integration/publication gates.
 
-Broader selected-profile qualification retains thirteen additional qualified
+Broader selected-profile qualification retains fourteen additional qualified
 profiles from a predeclared twenty-candidate matrix: component-wide Maxshift
 on 20-bit grayscale and independently coded RGB16, a fixed-budget irreversible
-gray16 Maxshift case, independent native-resolution sRGB/sYCC expectations,
+gray16 Maxshift case, tiled/layered RGB16 with all legacy coding-style flags,
+independent native-resolution sRGB/sYCC expectations,
 gray/global-alpha straight and premultiplied containers/composition, and
 nonzero mixed legacy/HT tiles in raw/JPH. Full/region/tile/native-resolution
 checks use independently decoded native planes, never subject full-image
@@ -98,12 +99,12 @@ use wide rational arithmetic without calling the decoder's color/composition
 implementation. Exactness and fixed engineering budgets are detailed in
 [validation](validation/VALIDATION.md).
 
-This does **not** qualify every combination of coding styles, quality layers
-and tiles. In particular, the selected 47x35 RGB16, origin (3,5), 16x16-tile,
-three-layer `-r 8,3,1 -M 63 -mct 1` legacy profile has exact independent
-original/reference output but is rejected by this decoder with
-`InvalidCodeBlock`; that subject path remains unqualified. Selected signed12
-Maxshift/layers and RGB8 irreversible layer candidates fail original/reference
+The selected 47x35 RGB16, origin (3,5), 16x16-tile, three-layer
+`-r 8,3,1 -M 63 -mct 1` legacy profile now requires exact independent
+original/reference/subject output and full/region/tile/native-resolution
+selections. This does **not** qualify every combination of coding styles,
+quality layers and tiles. Selected signed12 Maxshift/layers and RGB8
+irreversible layer candidates fail original/reference
 budgets, and two selected three-layer prefixes are degenerate. They are not
 passing or skipped qualification tests. Independent native JPX frame rendering
 and ICC execution remain unavailable/excluded; selected rational composition

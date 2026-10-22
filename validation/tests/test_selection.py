@@ -247,7 +247,7 @@ class SelectionTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("opj_compress") and shutil.which("opj_decompress"),
                          "independent OpenJPEG tools are not installed")
-    def test_q2_prequalified_maxshift_native_grid_expectations(self):
+    def test_q2_prequalified_roi_and_layered_native_grid_expectations(self):
         with self.subTest(scope="independent native planes before selections"):
             directory = framework.RESULTS_DIR / "q2-selection"
             directory.mkdir(parents=True, exist_ok=True)
@@ -263,6 +263,11 @@ class SelectionTests(unittest.TestCase):
                 inputs = directory / case.name
                 inputs.mkdir(exist_ok=True)
                 encoded, frame, references = selection.prepare_reference(case, inputs, encoder, decoder, commands)
+                if case.name == "q2-quality-rgb16-layered":
+                    self.assertEqual(
+                        framework.normalized_hash(references[0]),
+                        "02a1798008c55cf5edaf0a82daea3a703fd9998eaf459bd2d7b4121df9763118",
+                    )
                 prepared.append((case, encoded, frame, references))
             framework.write_json(directory / "references.json", {
                 "matrix_sha256": matrix_hash, "provenance": framework.source_binding(), "commands": commands,
@@ -291,8 +296,8 @@ class SelectionTests(unittest.TestCase):
             framework.write_json(directory / "results.json", {
                 "reference_sha256": reference_hash, "provenance": framework.source_binding(),
                 "subject_sha256": framework.sha256_file(self.subject), "records": results,
-                "summary": {"expected": 45, "observed": len(results),
-                            "status": "passed" if len(results) == 45 else "failed"},
+                "summary": {"expected": 60, "observed": len(results),
+                            "status": "passed" if len(results) == 60 else "failed"},
             })
 
 

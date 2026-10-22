@@ -120,6 +120,8 @@ CASES = (
                   options=("-ROI", "c=0,U=2", "-I", "-r", "1", "-d", "3,5", "-t", "16,16"),
                   lossless=False, maximum_error=8, maximum_rmse=2.0,
                   prequalify_irreversible=True),
+    NumericalCase("q2-quality-rgb16-layered", width=47, height=35, channels=3, precision=16,
+                  options=("-r", "8,3,1", "-M", "63", "-mct", "1", "-d", "3,5", "-t", "16,16")),
 )
 
 def _ht_test_codestream(width: int, packet: bytes, exponent: int = 7) -> bytes:

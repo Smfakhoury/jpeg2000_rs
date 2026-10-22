@@ -681,15 +681,24 @@ class NumericalTests(unittest.TestCase):
         roi = [record for record in result["records"] if record["id"].startswith("roi-")]
         self.assertEqual(len(roi), 9)
         self.assertTrue(all(record["verified_features"] == ["component-maxshift"] for record in roi))
+        layered = next(record for record in result["records"] if record["id"] == "q2-quality-rgb16-layered")
+        self.assertEqual(layered["source_metrics"]["maximum_error"], 0)
+        self.assertEqual(layered["reference_sha256"],
+                         "02a1798008c55cf5edaf0a82daea3a703fd9998eaf459bd2d7b4121df9763118")
+        self.assertEqual(layered["decoded_sha256"], layered["reference_sha256"])
         framework.validate_evidence_schemas(self.work)
 
     def test_q2_additions_keep_fixed_prequalification_budgets(self):
         cases = [case for case in numerical.CASES if case.name.startswith("q2-")]
         self.assertEqual([case.name for case in cases], [
             "q2-roi-gray20", "q2-roi-rgb16-independent", "q2-roi-gray16-irreversible",
+            "q2-quality-rgb16-layered",
         ])
         self.assertEqual([(case.width, case.height, case.decomposition_levels) for case in cases],
-                         [(47, 35, 2)] * 3)
+                         [(47, 35, 2)] * 4)
         self.assertEqual([(case.maximum_error, case.maximum_rmse) for case in cases],
-                         [(0, 0), (0, 0), (8, 2.0)])
-        self.assertTrue(cases[-1].prequalify_irreversible)
+                         [(0, 0), (0, 0), (8, 2.0), (0, 0)])
+        self.assertTrue(cases[2].prequalify_irreversible)
+        self.assertEqual(cases[-1].options, (
+            "-r", "8,3,1", "-M", "63", "-mct", "1", "-d", "3,5", "-t", "16,16",
+        ))
