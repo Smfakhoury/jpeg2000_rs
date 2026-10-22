@@ -1,5 +1,29 @@
 # Specification audit guide
 
+## Frozen actual HT packet contribution-body route
+
+This stage is the actual HT branch of
+`packet::decode_code_block_contribution_body_staged` and its outer transactional
+clone/commit entry. The sole F5L contribution projection/getters supply every
+native header field and both complete physical segment arrays; no competing
+header view or parser is introduced. All native stored counts, malformed header
+combinations, old decoder states and supplied body bytes remain admitted.
+
+The real common prefix checks exact body length and route, then sets zero
+bitplanes before HT segment-count admission. HT traversal checks each actual
+segment Result, pass count, native length/address arithmetic and exact borrowed
+body subrange, then selects cleanup/placeholder/refinement using the current
+decoder phase and cleanup flag. Decoder effects precede decoded-pass accounting;
+offset/index updates follow. Final exact consumption and declared-pass mismatch
+errors retain the staged partial state, while the outer real clone/commit
+wrapper preserves the complete original decoder on every failure.
+
+No supplied decoder/legacy outcome, header/shape normalization, success, trace
+or adequate-budget premise is used. Empty slices route differently according to
+actual state; `None` and retained empty data are not conflated. Legacy branch and
+shared header parser are untouched. Shared contribution/zero-bitplane/route facts
+are owned by F5L and must be consumed from their real implementations.
+
 ## Frozen whole-decoder clone and actual selected HT group profile
 
 The next boundary is the actual staged HT branch of `decode_segment`, selected
