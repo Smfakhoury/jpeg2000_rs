@@ -2325,4 +2325,36 @@ pub proof fn packet_body_skipped_execution_preserves_all_decoders_and_counts(
     }
 }
 
+pub proof fn precinct_finished_raw_header_cursor_preserves_every_owner(
+    state: crate::specs::Part1PrecinctHeaderState,
+    contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16, style: crate::tier1::Tier1CodingStyle,
+)
+    ensures state.subband_index >= state.subbands.len() ==>
+        crate::specs::part1_precinct_headers(state, contexts, layer, style) == (Ok(()), state),
+{
+    reveal(crate::specs::part1_precinct_headers_run);
+}
+
+pub proof fn precinct_header_slot_preserves_all_physical_storage_lengths(
+    state: crate::specs::Part1PrecinctHeaderState,
+    contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16, style: crate::tier1::Tier1CodingStyle,
+)
+    ensures
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.states.len() == state.states.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.subbands.len() == state.subbands.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.contributions.len()
+            == state.contributions.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.subband_index == state.subband_index,
+{
+    reveal(crate::specs::part1_precinct_header_slot);
+}
+
+pub proof fn precinct_style_comparison_retains_native_force_flag_policy(
+    style: crate::tier1::Tier1CodingStyle, required: bool,
+)
+    ensures crate::specs::part1_packet_styles_equal(
+        style, crate::tier1::Tier1CodingStyle { force_high_throughput: required, ..style }),
+{
+}
+
 }

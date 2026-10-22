@@ -421,6 +421,33 @@ still must derive the descriptors and reader/tree/state effects from the real
 header producer. No complete header, precinct, progression or F5H theorem is
 inferred from this intermediate result.
 
+### Actual precinct header association traversal
+
+`decode_precinct_contribution_headers`, its real member loop and its real slot
+operation now compose the complete native header producer directly. Their
+unconditional relations retain all packet-state entries, all subband metadata
+and both complete raw trees per subband, the full optional descriptor sequence,
+reader state and all traversal/count fields. No header outcome is supplied.
+
+Geometry, physical storage, context/layer/style and checked address failures
+precede each actual header operation. Native style comparison deliberately
+ignores the force-selection bit; its exact historical policy is preserved.
+Mutable packet-state and tree borrows are scoped only around the actual header
+call, with explicit nested-vector and selected-subband metadata frames.
+Count overflow occurs after the actual header commits, before descriptor-slot
+lookup/storage; local and subband index advancement follow in order.
+
+Independent literal `c2` and `c3 00` headers exercise normal association,
+overlapping raw subband ranges (two counted contributions overwriting one
+slot), unused second-subband trees, late count overflow and missing descriptor
+storage after real reader/tree/packet-state effects. These cases are not
+excluded by normalized geometry, storage, header or budget premises.
+
+This closes header association and body-loop stages, not the complete
+`TilePartPayload` precinct/progression caller. Actual readonly coding-style,
+packed-header and progression metadata owner interfaces and the remaining
+marker/layout/aggregate composition are still required.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

@@ -106,21 +106,43 @@ pub(crate) fn packet_reader_from_input(
     ))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_reader_outcome(result) == crate::specs::part1_packet_reader_initial(
+        input@, crate::limits::resource_packet_header_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+pub(crate) fn packet_reader_new<'a>(
+    input: &'a [u8],
+    limits: &ResourceLimits,
+) -> Result<PacketBitReader<'a>, DecodeError> {
+    packet_reader_from_input(
+        input,
+        limits.maximum_packet_header_bytes(),
+        limits.maximum_work_units(),
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_bit_reader_view(&result) == crate::specs::part1_packet_reader_prefix(
+        input@, crate::limits::resource_packet_header_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+pub(crate) fn packet_reader_prefix<'a>(
+    input: &'a [u8],
+    limits: &ResourceLimits,
+) -> PacketBitReader<'a> {
+    packet_reader_prefix_from_input(
+        input,
+        limits.maximum_packet_header_bytes(),
+        limits.maximum_work_units(),
+    )
+}
+
 impl<'a> PacketBitReader<'a> {
     pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        packet_reader_from_input(
-            input,
-            limits.maximum_packet_header_bytes(),
-            limits.maximum_work_units(),
-        )
+        packet_reader_new(input, limits)
     }
 
     fn new_prefix(input: &'a [u8], limits: &ResourceLimits) -> Self {
-        packet_reader_prefix_from_input(
-            input,
-            limits.maximum_packet_header_bytes(),
-            limits.maximum_work_units(),
-        )
+        packet_reader_prefix(input, limits)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_bit_reader_view(self).bits_read,))]
@@ -1359,6 +1381,45 @@ struct PacketSubbandState {
     zero_bitplane_tree: TagTree,
 }
 
+#[derive(Clone, Copy)]
+struct PrecinctHeaderParameters {
+    layer: u16,
+    style: Tier1CodingStyle,
+}
+
+#[derive(Clone, Copy)]
+struct PrecinctHeaderProgress {
+    subband_index: usize,
+    local_index: usize,
+    contribution_count: u32,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn packet_subband_view(value: &PacketSubbandState) -> crate::specs::Part1PacketSubbandState {
+        crate::specs::Part1PacketSubbandState {
+            orientation: value.orientation, first_decoder: value.first_decoder, decoder_count: value.decoder_count,
+            code_blocks_across: value.code_blocks_across, code_blocks_down: value.code_blocks_down,
+            inclusion_tree: tag_tree_view(&value.inclusion_tree), zero_bitplane_tree: tag_tree_view(&value.zero_bitplane_tree),
+        }
+    }
+
+    pub closed spec fn precinct_header_view(
+        states: &[CodeBlockPacketState], subbands: &[PacketSubbandState],
+        contributions: &[Option<CodeBlockContribution>], reader: &PacketBitReader<'_>,
+        progress: &PrecinctHeaderProgress,
+    ) -> crate::specs::Part1PrecinctHeaderState {
+        crate::specs::Part1PrecinctHeaderState {
+            states: states@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state)),
+            subbands: subbands@.map_values(|subband: PacketSubbandState| packet_subband_view(&subband)),
+            contributions: packet_body_contributions_view(contributions),
+            reader: packet_bit_reader_view(reader),
+            subband_index: progress.subband_index, local_index: progress.local_index,
+            contribution_count: progress.contribution_count,
+        }
+    }
+}
+
 impl PacketPrecinctDecoder {
     pub fn new(
         geometry: PacketPrecinctGeometry,
@@ -2176,6 +2237,268 @@ fn execute_packet_body_contributions(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, precinct_header_view(final(states), final(subbands), final(contributions), final(reader), final(progress)))
+        == crate::specs::part1_precinct_header_slot(
+            precinct_header_view(old(states), old(subbands), old(contributions), old(reader), old(progress)),
+            contexts@, parameters.layer, parameters.style),
+        result.is_ok() ==> final(progress).local_index as nat == old(progress).local_index as nat + 1,
+        final(progress).subband_index == old(progress).subband_index,
+        final(states)@.len() == old(states)@.len(),
+        final(subbands)@.len() == old(subbands)@.len(),
+        final(contributions)@.len() == old(contributions)@.len(),
+        result == Ok(()) || result.is_err(),
+))]
+fn decode_precinct_header_slot(
+    states: &mut [CodeBlockPacketState],
+    contexts: &[CodeBlockPacketContext],
+    subbands: &mut [PacketSubbandState],
+    contributions: &mut [Option<CodeBlockContribution>],
+    reader: &mut PacketBitReader<'_>,
+    parameters: PrecinctHeaderParameters,
+    progress: &mut PrecinctHeaderProgress,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_precinct_header_slot); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost prior_states = states@;
+        let ghost prior_subbands = subbands@;
+        let ghost prior = precinct_header_view(states, subbands, contributions, reader, progress);
+        let ghost subband_index = progress.subband_index;
+    }
+    let (header_result, block_index) = {
+        let subband = subbands
+            .get(progress.subband_index)
+            .ok_or_else(invalid_packet_header)?;
+        let block_index = subband
+            .first_decoder
+            .checked_add(progress.local_index)
+            .ok_or_else(packet_arithmetic_overflow)?;
+        let context = contexts
+            .get(block_index)
+            .ok_or_else(invalid_packet_header)?;
+        let linear_index = match u32::try_from(progress.local_index) {
+            Ok(value) => value,
+            Err(_) => {
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(progress.local_index > u32::MAX); }
+                return Err(packet_arithmetic_overflow());
+            }
+        };
+        let expected_x = linear_index
+            .checked_rem(subband.code_blocks_across)
+            .ok_or_else(packet_arithmetic_overflow)?;
+        let expected_y = linear_index
+            .checked_div(subband.code_blocks_across)
+            .ok_or_else(packet_arithmetic_overflow)?;
+        if context.layer != parameters.layer
+            || context.leaf_x != expected_x
+            || context.leaf_y != expected_y
+            || !tier1_styles_equal(context.tier1_style, parameters.style)
+        {
+            return Err(invalid_packet_header());
+        }
+        let state = states
+            .get_mut(block_index)
+            .ok_or_else(invalid_packet_header)?;
+        let subband = &mut subbands[progress.subband_index];
+        let result = decode_code_block_contribution(
+            state,
+            &mut subband.inclusion_tree,
+            &mut subband.zero_bitplane_tree,
+            *context,
+            reader,
+        );
+        (result, block_index)
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(states@.len() == prior_states.len());
+        assert(subbands@.len() == prior_subbands.len());
+        assert forall |i: int| 0 <= i < states@.len() && i != block_index as int implies
+            states@[i] == prior_states[i] by {}
+        assert forall |i: int| 0 <= i < subbands@.len() && i != subband_index as int implies
+            subbands@[i] == prior_subbands[i] by {}
+        let after = precinct_header_view(states, subbands, contributions, reader, progress);
+        let expected_header = crate::specs::part1_packet_header_decode(
+            prior.states[block_index as int],
+            prior.subbands[subband_index as int].inclusion_tree,
+            prior.subbands[subband_index as int].zero_bitplane_tree,
+            contexts@[block_index as int], prior.reader);
+        assert(code_block_header_outcome(header_result) == expected_header.0);
+        assert(code_block_packet_state_view(&states@[block_index as int]) == expected_header.1);
+        assert(packet_subband_view(&subbands@[subband_index as int])
+            == crate::specs::Part1PacketSubbandState {
+                inclusion_tree: expected_header.2, zero_bitplane_tree: expected_header.3,
+                ..prior.subbands[subband_index as int]
+            });
+        assert(after.reader == expected_header.4);
+        assert(after.states =~= prior.states.update(block_index as int,
+            code_block_packet_state_view(&states@[block_index as int])));
+        assert(after.subbands =~= prior.subbands.update(subband_index as int,
+            packet_subband_view(&subbands@[subband_index as int])));
+    }
+    let contribution = header_result?;
+    if contribution.is_some() {
+        progress.contribution_count = progress
+            .contribution_count
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
+    }
+    {
+        let slot = contributions
+            .get_mut(block_index)
+            .ok_or_else(invalid_packet_header)?;
+        *slot = contribution;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(packet_body_contributions_view(contributions) =~=
+            prior.contributions.update(block_index as int, code_block_contribution_option_view(contribution)));
+    }
+    progress.local_index = progress
+        .local_index
+        .checked_add(1)
+        .ok_or_else(packet_arithmetic_overflow)?;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, precinct_header_view(final(states), final(subbands), final(contributions), final(reader), final(progress)))
+        == crate::specs::part1_precinct_header_members(
+            precinct_header_view(old(states), old(subbands), old(contributions), old(reader), old(progress)),
+            contexts@, parameters.0.layer, parameters.0.style, parameters.1),
+        final(progress).subband_index == old(progress).subband_index,
+        final(states)@.len() == old(states)@.len(),
+        final(subbands)@.len() == old(subbands)@.len(),
+        final(contributions)@.len() == old(contributions)@.len(),
+        result == Ok(()) || result.is_err(),
+))]
+fn decode_precinct_header_members(
+    states: &mut [CodeBlockPacketState],
+    contexts: &[CodeBlockPacketContext],
+    subbands: &mut [PacketSubbandState],
+    contributions: &mut [Option<CodeBlockContribution>],
+    reader: &mut PacketBitReader<'_>,
+    parameters: (PrecinctHeaderParameters, usize),
+    progress: &mut PrecinctHeaderProgress,
+) -> Result<(), DecodeError> {
+    let decoder_count = parameters.1;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_precinct_header_members_run); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            decoder_count == parameters.1,
+            progress.subband_index == old(progress).subband_index,
+            states@.len() == old(states)@.len(),
+            subbands@.len() == old(subbands)@.len(),
+            contributions@.len() == old(contributions)@.len(),
+            crate::specs::part1_precinct_header_members(
+                precinct_header_view(old(states), old(subbands), old(contributions), old(reader), old(progress)),
+                contexts@, parameters.0.layer, parameters.0.style, decoder_count)
+            == crate::specs::part1_precinct_header_members_run(
+                precinct_header_view(states, subbands, contributions, reader, progress),
+                contexts@, parameters.0.layer, parameters.0.style,
+                if progress.local_index >= decoder_count { 0 }
+                else { (decoder_count - progress.local_index) as nat }),
+        decreases decoder_count as int - progress.local_index as int,
+    ))]
+    while progress.local_index < decoder_count {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_precinct_header_members_run); }
+        decode_precinct_header_slot(
+            states,
+            contexts,
+            subbands,
+            contributions,
+            reader,
+            parameters.0,
+            progress,
+        )?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_precinct_header_members_run); }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, precinct_header_view(final(states), final(subbands), final(contributions), final(reader), final(progress)))
+        == crate::specs::part1_precinct_headers(
+            precinct_header_view(old(states), old(subbands), old(contributions), old(reader), old(progress)),
+            contexts@, parameters.layer, parameters.style),
+))]
+fn decode_precinct_contribution_headers(
+    states: &mut [CodeBlockPacketState],
+    contexts: &[CodeBlockPacketContext],
+    subbands: &mut [PacketSubbandState],
+    contributions: &mut [Option<CodeBlockContribution>],
+    reader: &mut PacketBitReader<'_>,
+    parameters: PrecinctHeaderParameters,
+    progress: &mut PrecinctHeaderProgress,
+) -> Result<(), DecodeError> {
+    let subband_count = subbands.len();
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_precinct_headers_run); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            subband_count == subbands.len(),
+            crate::specs::part1_precinct_headers(
+                precinct_header_view(old(states), old(subbands), old(contributions), old(reader), old(progress)),
+                contexts@, parameters.layer, parameters.style)
+            == crate::specs::part1_precinct_headers_run(
+                precinct_header_view(states, subbands, contributions, reader, progress),
+                contexts@, parameters.layer, parameters.style,
+                if progress.subband_index >= subband_count { 0 }
+                else { (subband_count - progress.subband_index) as nat }),
+        decreases subband_count as int - progress.subband_index as int,
+    ))]
+    while progress.subband_index < subband_count {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_precinct_headers_run); }
+        let decoder_count = {
+            let subband = subbands
+                .get(progress.subband_index)
+                .ok_or_else(invalid_packet_header)?;
+            let count = u64::from(subband.code_blocks_across)
+                .checked_mul(u64::from(subband.code_blocks_down))
+                .ok_or_else(packet_arithmetic_overflow)?;
+            let expected_count = match usize::try_from(count) {
+                Ok(value) => value,
+                Err(_) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! { assert(count > usize::MAX); }
+                    return Err(packet_arithmetic_overflow());
+                }
+            };
+            if expected_count != subband.decoder_count
+                || subband.inclusion_tree.leaf_count()? != expected_count as u64
+                || subband.zero_bitplane_tree.leaf_count()? != expected_count as u64
+            {
+                return Err(invalid_packet_header());
+            }
+            subband.decoder_count
+        };
+        progress.local_index = 0;
+        decode_precinct_header_members(
+            states,
+            contexts,
+            subbands,
+            contributions,
+            reader,
+            (parameters, decoder_count),
+            progress,
+        )?;
+        progress.subband_index = progress
+            .subband_index
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_precinct_headers_run); }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn decode_precinct_packet(
     tile_part: &TilePartPayload<'_>,
@@ -2255,96 +2578,30 @@ fn decode_precinct_packet(
         data.get(tile_offset..)
             .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?
     };
-    let mut reader = PacketBitReader::new_prefix(packet_data, limits);
+    let mut reader = packet_reader_prefix(packet_data, limits);
     let packet_present = reader.read_bit()?;
     let mut contributions = vec![None; states.len()];
     let mut contribution_count = 0_u32;
     if packet_present && !contexts.is_empty() {
         let layer = contexts.first().ok_or_else(invalid_packet_header)?.layer;
-        let subband_count = subbands.len();
-        let mut subband_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant subband_index <= subband_count,
-                decreases subband_count - subband_index,
-            )
-        )]
-        while subband_index < subband_count {
-            let subband = subbands
-                .get_mut(subband_index)
-                .ok_or_else(invalid_packet_header)?;
-            let expected_count = usize::try_from(
-                u64::from(subband.code_blocks_across)
-                    .checked_mul(u64::from(subband.code_blocks_down))
-                    .ok_or_else(packet_arithmetic_overflow)?,
-            )
-            .map_err(|_| packet_arithmetic_overflow())?;
-            if expected_count != subband.decoder_count
-                || subband.inclusion_tree.leaf_count()? != expected_count as u64
-                || subband.zero_bitplane_tree.leaf_count()? != expected_count as u64
-            {
-                return Err(invalid_packet_header());
-            }
-            let decoder_count = subband.decoder_count;
-            let mut local_index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant local_index <= decoder_count,
-                    decreases decoder_count - local_index,
-                )
-            )]
-            while local_index < decoder_count {
-                let block_index = subband
-                    .first_decoder
-                    .checked_add(local_index)
-                    .ok_or_else(packet_arithmetic_overflow)?;
-                let context = contexts
-                    .get(block_index)
-                    .ok_or_else(invalid_packet_header)?;
-                let linear_index =
-                    u32::try_from(local_index).map_err(|_| packet_arithmetic_overflow())?;
-                let expected_x = linear_index
-                    .checked_rem(subband.code_blocks_across)
-                    .ok_or_else(packet_arithmetic_overflow)?;
-                let expected_y = linear_index
-                    .checked_div(subband.code_blocks_across)
-                    .ok_or_else(packet_arithmetic_overflow)?;
-                if context.layer != layer
-                    || context.leaf_x != expected_x
-                    || context.leaf_y != expected_y
-                    || !tier1_styles_equal(context.tier1_style, tier1_style)
-                {
-                    return Err(invalid_packet_header());
-                }
-                let state = states
-                    .get_mut(block_index)
-                    .ok_or_else(invalid_packet_header)?;
-                let contribution = decode_code_block_contribution(
-                    state,
-                    &mut subband.inclusion_tree,
-                    &mut subband.zero_bitplane_tree,
-                    *context,
-                    &mut reader,
-                )?;
-                if contribution.is_some() {
-                    contribution_count = contribution_count
-                        .checked_add(1)
-                        .ok_or_else(packet_arithmetic_overflow)?;
-                }
-                let slot = contributions
-                    .get_mut(block_index)
-                    .ok_or_else(invalid_packet_header)?;
-                *slot = contribution;
-                local_index = local_index
-                    .checked_add(1)
-                    .ok_or_else(packet_arithmetic_overflow)?;
-            }
-            subband_index = subband_index
-                .checked_add(1)
-                .ok_or_else(packet_arithmetic_overflow)?;
-        }
+        let mut progress = PrecinctHeaderProgress {
+            subband_index: 0,
+            local_index: 0,
+            contribution_count,
+        };
+        decode_precinct_contribution_headers(
+            states,
+            contexts,
+            subbands,
+            &mut contributions,
+            &mut reader,
+            PrecinctHeaderParameters {
+                layer,
+                style: tier1_style,
+            },
+            &mut progress,
+        )?;
+        contribution_count = progress.contribution_count;
     }
     reader.align_to_byte();
     let header_bytes = reader.bytes_consumed();
@@ -2767,6 +3024,9 @@ pub fn decode_single_code_block_packet(
     )?))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_packet_styles_equal(left, right),
+))]
 fn tier1_styles_equal(left: Tier1CodingStyle, right: Tier1CodingStyle) -> bool {
     matches!(
         (left.block_coding, right.block_coding),
@@ -3987,7 +4247,7 @@ pub struct TagTreeValue {
 
 impl TagTree {
     pub fn new(width: u32, height: u32, limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        tag_tree_from_dimensions(width, height, limits.maximum_tag_tree_nodes())
+        tag_tree_new(width, height, limits)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4266,6 +4526,18 @@ fn decode_tag_tree_node(
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures tag_tree_outcome(result) == crate::specs::part1_tag_initial(
+        width, height, crate::limits::resource_tag_tree_node_limit(limits)),
+))]
+pub(crate) fn tag_tree_new(
+    width: u32,
+    height: u32,
+    limits: &ResourceLimits,
+) -> Result<TagTree, DecodeError> {
+    tag_tree_from_dimensions(width, height, limits.maximum_tag_tree_nodes())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures tag_tree_outcome(result) == crate::specs::part1_tag_initial(width, height, maximum_nodes),
 ))]
 pub(crate) fn tag_tree_from_dimensions(
@@ -4387,6 +4659,66 @@ mod tests {
             maximum_zero_bitplanes: 2,
             tier1_style: style,
         }
+    }
+
+    #[test]
+    fn typed_header_factories_observe_real_limits_and_preserve_prefix_admission() {
+        let limits = ResourceLimits::default()
+            .with_maximum_packet_header_bytes(1)
+            .unwrap()
+            .with_maximum_work_units(1)
+            .unwrap();
+        assert_eq!(
+            packet_reader_new(&[0, 0], &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::PacketHeaderBytes,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        let expected = PacketBitReader {
+            input: &[0, 0],
+            byte_index: 0,
+            current_byte: 0,
+            bits_remaining: 0,
+            previous_byte_was_ff: false,
+            bits_read: 0,
+            maximum_work_units: 1,
+            maximum_header_bytes: 1,
+        };
+        assert_eq!(packet_reader_prefix(&[0, 0], &limits), expected);
+        assert_eq!(PacketBitReader::new_prefix(&[0, 0], &limits), expected);
+        assert_eq!(
+            tag_tree_new(u32::MAX, u32::MAX, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::TagTreeNodes,
+                limit: limits.maximum_tag_tree_nodes(),
+                actual: u64::from(u32::MAX) * u64::from(u32::MAX),
+            })
+        );
+        let expected = TagTree {
+            levels: vec![
+                TagTreeLevel {
+                    offset: 0,
+                    width: 2,
+                    height: 1,
+                },
+                TagTreeLevel {
+                    offset: 2,
+                    width: 1,
+                    height: 1,
+                },
+            ],
+            nodes: vec![
+                TagTreeNode {
+                    low: 0,
+                    value: u32::MAX
+                };
+                3
+            ],
+        };
+        assert_eq!(tag_tree_new(2, 1, &limits), Ok(expected.clone()));
+        assert_eq!(TagTree::new(2, 1, &limits), Ok(expected));
     }
 
     #[test]
@@ -5562,6 +5894,185 @@ mod tests {
                 );
                 assert_eq!(format!("{decoder:?}"), before);
             }
+        }
+    }
+
+    fn literal_header_subband() -> PacketSubbandState {
+        PacketSubbandState {
+            orientation: SubbandOrientation::Ll,
+            first_decoder: 0,
+            decoder_count: 1,
+            code_blocks_across: 1,
+            code_blocks_down: 1,
+            inclusion_tree: tag_tree_new(1, 1, &ResourceLimits::default()).unwrap(),
+            zero_bitplane_tree: tag_tree_new(1, 1, &ResourceLimits::default()).unwrap(),
+        }
+    }
+
+    fn literal_precinct_header_context() -> CodeBlockPacketContext {
+        CodeBlockPacketContext {
+            leaf_x: 0,
+            leaf_y: 0,
+            layer: 0,
+            maximum_zero_bitplanes: 3,
+            tier1_style: Tier1CodingStyle::default(),
+        }
+    }
+
+    #[test]
+    fn precinct_headers_associate_real_bits_and_preserve_overlapping_raw_subbands() {
+        let limits = ResourceLimits::default();
+        for repeated in [false, true] {
+            let mut states = [code_block_packet_state_new()];
+            let contexts = [literal_precinct_header_context()];
+            let mut subbands = vec![literal_header_subband()];
+            if repeated {
+                subbands.push(literal_header_subband());
+            }
+            let mut contributions = [None];
+            let bytes: &[u8] = if repeated { &[0xc3, 0] } else { &[0xc2] };
+            let mut reader = packet_reader_prefix(bytes, &limits);
+            let mut progress = PrecinctHeaderProgress {
+                subband_index: 0,
+                local_index: 0,
+                contribution_count: 0,
+            };
+            decode_precinct_contribution_headers(
+                &mut states,
+                &contexts,
+                &mut subbands,
+                &mut contributions,
+                &mut reader,
+                PrecinctHeaderParameters {
+                    layer: 0,
+                    style: Tier1CodingStyle::default(),
+                },
+                &mut progress,
+            )
+            .unwrap();
+            let count = if repeated { 2 } else { 1 };
+            assert_eq!(
+                (
+                    progress.subband_index,
+                    progress.local_index,
+                    progress.contribution_count
+                ),
+                (count as usize, 1, count)
+            );
+            assert_eq!(
+                states[0],
+                CodeBlockPacketState {
+                    included: true,
+                    zero_bitplanes: Some(0),
+                    lblock: 3,
+                    total_passes: count,
+                    high_throughput: Some(false),
+                }
+            );
+            let header = contributions[0].unwrap();
+            assert_eq!(
+                (
+                    header.first_inclusion,
+                    header.zero_bitplanes,
+                    header.new_passes,
+                    header.data_length,
+                    header.high_throughput,
+                    header.segment_count
+                ),
+                (!repeated, 0, 1, if repeated { 0 } else { 1 }, false, 1)
+            );
+            assert_eq!(header.segment_passes[0], 1);
+            assert_eq!(header.segment_lengths[0], if repeated { 0 } else { 1 });
+            assert!(header.segment_passes[1..].iter().all(|value| *value == 0));
+            assert!(header.segment_lengths[1..].iter().all(|value| *value == 0));
+            assert_eq!(
+                (reader.byte_index, reader.bits_remaining, reader.bits_read),
+                if repeated { (2, 3, 13) } else { (1, 1, 7) }
+            );
+            assert_eq!(
+                subbands[0].inclusion_tree.nodes[0],
+                TagTreeNode { low: 0, value: 0 }
+            );
+            assert_eq!(
+                subbands[0].zero_bitplane_tree.nodes[0],
+                TagTreeNode { low: 0, value: 0 }
+            );
+            if repeated {
+                assert_eq!(
+                    subbands[1].inclusion_tree.nodes[0],
+                    TagTreeNode {
+                        low: 0,
+                        value: u32::MAX
+                    }
+                );
+                assert_eq!(
+                    subbands[1].zero_bitplane_tree.nodes[0],
+                    TagTreeNode {
+                        low: 0,
+                        value: u32::MAX
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn precinct_headers_keep_committed_header_before_late_count_or_slot_failure() {
+        let limits = ResourceLimits::default();
+        for overflow in [false, true] {
+            let mut states = [code_block_packet_state_new()];
+            let contexts = [literal_precinct_header_context()];
+            let mut subbands = [literal_header_subband()];
+            let mut contributions = vec![None; usize::from(overflow)];
+            let mut reader = packet_reader_prefix(&[0xc2], &limits);
+            let mut progress = PrecinctHeaderProgress {
+                subband_index: 0,
+                local_index: 0,
+                contribution_count: if overflow { u32::MAX } else { 0 },
+            };
+            assert_eq!(
+                decode_precinct_contribution_headers(
+                    &mut states,
+                    &contexts,
+                    &mut subbands,
+                    &mut contributions,
+                    &mut reader,
+                    PrecinctHeaderParameters {
+                        layer: 0,
+                        style: Tier1CodingStyle::default()
+                    },
+                    &mut progress,
+                ),
+                Err(if overflow {
+                    packet_arithmetic_overflow()
+                } else {
+                    invalid_packet_header()
+                })
+            );
+            assert_eq!(
+                (
+                    progress.subband_index,
+                    progress.local_index,
+                    progress.contribution_count
+                ),
+                (0, 0, if overflow { u32::MAX } else { 1 })
+            );
+            assert_eq!(states[0].total_passes, 1);
+            assert!(states[0].included);
+            assert_eq!(states[0].zero_bitplanes, Some(0));
+            assert_eq!(
+                (reader.byte_index, reader.bits_remaining, reader.bits_read),
+                (1, 1, 7)
+            );
+            assert!(contributions.iter().all(Option::is_none));
+            assert_eq!(
+                subbands[0].inclusion_tree.nodes[0],
+                TagTreeNode { low: 0, value: 0 }
+            );
+            assert_eq!(
+                subbands[0].zero_bitplane_tree.nodes[0],
+                TagTreeNode { low: 0, value: 0 }
+            );
         }
     }
 

@@ -43,7 +43,24 @@ not assumed successful traces. Until these caller joins close, neither this
 frozen contract nor its intermediate stages claim complete precinct/progression
 or F5H completion.
 
+The actual precinct header association stages now refine
+`part1_precinct_header_slot`, `part1_precinct_header_members` and
+`part1_precinct_headers`. They invoke the actual `part1_packet_header_decode`
+on each actual selected packet state/context/tree pair and carry every result
+into the real descriptor slot. Raw overlapping subband ranges are retained:
+the contribution count need not equal the number of final occupied slots.
+Readonly admission precedes the scoped mutable header borrow; complete vector
+length, untouched-element and selected-subband metadata frames are explicit.
+Native force-bit omission in style equality is part of the actual policy,
+not replaced by whole-struct equality.
+
 ## Native packet reader and raw tag-tree ownership
+
+The actual typed factories `packet_reader_new`, `packet_reader_prefix` and
+`tag_tree_new` obtain their caps from the sole `ResourceLimits` owner getters.
+Their complete contracts use those closed owner projections, not caller-supplied
+outcomes or assumed numeric caps. Existing associated constructors delegate to
+these production factories; checked and prefix reader admission remain distinct.
 
 [header.rs](header.rs) observes all eight packet-reader fields and its actual
 load/read/word/admission effects, including header-cap-before-truncation,
