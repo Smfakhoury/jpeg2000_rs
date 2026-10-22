@@ -487,23 +487,33 @@ compact separators, followed by one newline). The report retains that hash.
 
 ```json
 {
-  "id": "r1-effective-frontiers-v1",
+  "id": "r1-effective-frontiers-v2",
   "baseline_cases": 45,
   "paths": [
-    {"id": "selected-raw", "family": "selected", "operation": "select", "format": "raw", "size": 32, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "selected-image"},
-    {"id": "selected-color", "family": "selected-color", "operation": "select-color", "format": "jp2", "size": 32, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image"},
-    {"id": "jpx-compose", "family": "composition", "operation": "render", "format": "jpx", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "composited_layers": 2},
-    {"id": "jpip-reconstruct", "family": "jpip", "operation": "reconstruct", "format": "jpip", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "reconstructed-image"},
-    {"id": "jpip-progressive", "family": "jpip", "operation": "progressive", "format": "auto", "size": 16, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 0, "output_protocol": "progressive", "expected_updates": 7}
+    {"id": "selected-raw", "family": "selected", "operation": "select", "format": "raw", "size": 32, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "selected-image", "output_components": 1},
+    {"id": "selected-color", "family": "selected-color", "operation": "select-color", "format": "jp2", "size": 32, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "output_components": 3},
+    {"id": "jpx-compose", "family": "composition", "operation": "render", "format": "jpx", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "image", "composited_layers": 2, "output_components": 4},
+    {"id": "jpip-reconstruct", "family": "jpip", "operation": "reconstruct", "format": "jpip", "size": 16, "components": 3, "precision": 16, "tile_size": 16, "decomposition_levels": 2, "output_protocol": "reconstructed-image", "output_components": 3},
+    {"id": "jpip-progressive", "family": "jpip", "operation": "progressive", "format": "auto", "size": 16, "components": 1, "precision": 8, "tile_size": 16, "decomposition_levels": 0, "output_protocol": "progressive", "expected_updates": 7, "output_components": 1}
   ],
   "ceilings": {"DecodedBytes": 1048576, "WorkUnits": 100000},
   "maximum_search_probes": 32
 }
 ```
 
+Revision v1 (matrix hash
+`f26c3dfe59b6605045a1dd62e12c7863843c9e54a6b7d0c4365c995d8736e993`)
+is retained as a failed/incomplete stage: its selected-color oracle incorrectly
+invented an opaque alpha channel for RGB JP2 conversion. `convert` constructs
+only declared color/alpha channels; composition separately supplies implicit
+opacity. Revision v2 freezes the corrected three-channel RGB source
+expectation and makes all expected output cardinalities explicit before
+remeasurement. No fixture input, path, sample-value budget, search ceiling,
+process cap or baseline case was changed; composition still tests RGBA16.
+
 Selected paths use discard zero / tile zero and exact checked crops of the
 original/reference full decode. Selected color uses authored sRGB JP2 metadata
-and an independently calculated opaque RGBA16 expectation. Composition uses
+and the exact RGB16 source crop (no undeclared alpha channel). Composition uses
 two independently losslessly qualified full-canvas opaque RGB16 layers; the
 foreground source plus opaque alpha is the expected canvas. Reconstruction
 uses the existing split/reordered/duplicated main/tile/body databins and must
