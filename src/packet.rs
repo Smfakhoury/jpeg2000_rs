@@ -1834,6 +1834,107 @@ pub(crate) fn decode_progression_tile_packets_selected(
     })
 }
 
+#[derive(Clone, Copy)]
+struct PacketBodyPreflight {
+    index: usize,
+    end: usize,
+}
+
+#[derive(Clone, Copy)]
+struct PacketBodyExecutionProgress {
+    index: usize,
+    offset: usize,
+    segments: u32,
+    passes: u32,
+}
+
+fn preflight_packet_body_ranges(
+    contributions: &[Option<CodeBlockContribution>],
+    data: &[u8],
+    progress: &mut PacketBodyPreflight,
+    error_offset: usize,
+) -> Result<(), DecodeError> {
+    let slots = contributions.len();
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        decreases slots as int - progress.index as int,
+    ))]
+    while progress.index < slots {
+        if let Some(contribution) = contributions[progress.index] {
+            progress.end = progress
+                .end
+                .checked_add(
+                    usize::try_from(contribution.data_length)
+                        .map_err(|_| packet_arithmetic_overflow())?,
+                )
+                .ok_or_else(packet_arithmetic_overflow)?;
+            if progress.end > data.len() {
+                return Err(DecodeError::MalformedInput {
+                    offset: error_offset as u64,
+                    kind: MalformedKind::Truncated,
+                });
+            }
+        }
+        progress.index = progress
+            .index
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+fn execute_packet_body_contributions(
+    decoders: &mut [Tier1CodeBlockDecoder],
+    contributions: &[Option<CodeBlockContribution>],
+    data: &[u8],
+    progress: &mut PacketBodyExecutionProgress,
+    error_offset: usize,
+    decode_tier1: bool,
+    limits: &ResourceLimits,
+) -> Result<(), DecodeError> {
+    let slots = contributions.len();
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        decreases slots as int - progress.index as int,
+    ))]
+    while progress.index < slots {
+        if let Some(contribution) = contributions[progress.index] {
+            let body_end = progress
+                .offset
+                .checked_add(
+                    usize::try_from(contribution.data_length)
+                        .map_err(|_| packet_arithmetic_overflow())?,
+                )
+                .ok_or_else(packet_arithmetic_overflow)?;
+            let body = data
+                .get(progress.offset..body_end)
+                .ok_or(DecodeError::MalformedInput {
+                    offset: error_offset as u64,
+                    kind: MalformedKind::Truncated,
+                })?;
+            if decode_tier1 {
+                let decoder = decoders
+                    .get_mut(progress.index)
+                    .ok_or_else(invalid_packet_header)?;
+                let decoded =
+                    decode_code_block_contribution_body(decoder, &contribution, body, limits)?;
+                progress.segments = progress
+                    .segments
+                    .checked_add(u32::from(decoded.segments))
+                    .ok_or_else(packet_arithmetic_overflow)?;
+                progress.passes = progress
+                    .passes
+                    .checked_add(decoded.passes)
+                    .ok_or_else(packet_arithmetic_overflow)?;
+            }
+            progress.offset = body_end;
+        }
+        progress.index = progress
+            .index
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn decode_precinct_packet(
     tile_part: &TilePartPayload<'_>,
@@ -2033,77 +2134,27 @@ fn decode_precinct_packet(
         }
     }
     let body_start = tile_offset;
-    let contribution_slots = contributions.len();
-    let mut block_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant block_index <= contribution_slots,
-            contribution_slots == contributions.len(),
-            decreases contribution_slots - block_index,
-        )
-    )]
-    while block_index < contribution_slots {
-        if let Some(contribution) = contributions[block_index] {
-            tile_offset = tile_offset
-                .checked_add(
-                    usize::try_from(contribution.data_length)
-                        .map_err(|_| packet_arithmetic_overflow())?,
-                )
-                .ok_or_else(packet_arithmetic_overflow)?;
-            if tile_offset > data.len() {
-                return Err(DecodeError::malformed(
-                    offset as u64,
-                    MalformedKind::Truncated,
-                ));
-            }
-        }
-        block_index = block_index
-            .checked_add(1)
-            .ok_or_else(packet_arithmetic_overflow)?;
-    }
-    let mut body_offset = body_start;
-    let mut decoded_segments = 0_u32;
-    let mut decoded_passes = 0_u32;
-    block_index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant block_index <= contribution_slots,
-            contribution_slots == contributions.len(),
-            decreases contribution_slots - block_index,
-        )
-    )]
-    while block_index < contribution_slots {
-        if let Some(contribution) = contributions[block_index] {
-            let body_end = body_offset
-                .checked_add(
-                    usize::try_from(contribution.data_length)
-                        .map_err(|_| packet_arithmetic_overflow())?,
-                )
-                .ok_or_else(packet_arithmetic_overflow)?;
-            let body = data
-                .get(body_offset..body_end)
-                .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-            if decode_tier1 {
-                let decoder = decoders
-                    .get_mut(block_index)
-                    .ok_or_else(invalid_packet_header)?;
-                let decoded =
-                    decode_code_block_contribution_body(decoder, &contribution, body, limits)?;
-                decoded_segments = decoded_segments
-                    .checked_add(u32::from(decoded.segments))
-                    .ok_or_else(packet_arithmetic_overflow)?;
-                decoded_passes = decoded_passes
-                    .checked_add(decoded.passes)
-                    .ok_or_else(packet_arithmetic_overflow)?;
-            }
-            body_offset = body_end;
-        }
-        block_index = block_index
-            .checked_add(1)
-            .ok_or_else(packet_arithmetic_overflow)?;
-    }
+    let mut preflight = PacketBodyPreflight {
+        index: 0,
+        end: tile_offset,
+    };
+    preflight_packet_body_ranges(&contributions, data, &mut preflight, offset)?;
+    tile_offset = preflight.end;
+    let mut execution = PacketBodyExecutionProgress {
+        index: 0,
+        offset: body_start,
+        segments: 0,
+        passes: 0,
+    };
+    execute_packet_body_contributions(
+        decoders,
+        &contributions,
+        data,
+        &mut execution,
+        offset,
+        decode_tier1,
+        limits,
+    )?;
     let body_bytes = tile_offset
         .checked_sub(body_start)
         .ok_or_else(packet_arithmetic_overflow)?;
@@ -2129,8 +2180,8 @@ fn decode_precinct_packet(
             present: packet_present,
             code_blocks: u32::try_from(code_blocks).map_err(|_| packet_arithmetic_overflow())?,
             contributions: contribution_count,
-            segments: decoded_segments,
-            passes: decoded_passes,
+            segments: execution.segments,
+            passes: execution.passes,
             header_bytes: u32::try_from(header_bytes).map_err(|_| packet_arithmetic_overflow())?,
             body_bytes: u32::try_from(body_bytes).map_err(|_| packet_arithmetic_overflow())?,
             bytes_consumed: u32::try_from(logical_bytes)
@@ -3911,6 +3962,182 @@ mod tests {
                 );
                 assert_eq!(format!("{decoder:?}"), before);
             }
+        }
+    }
+
+    fn literal_precinct_body_descriptors() -> [Option<CodeBlockContribution>; 3] {
+        let mut ht = one_ff_legacy_contribution();
+        ht.high_throughput = true;
+        ht.data_length = 3;
+        ht.segment_lengths[0] = 3;
+        [Some(ht), None, Some(one_ff_legacy_contribution())]
+    }
+
+    #[test]
+    fn precinct_body_preflight_reports_exact_cursor_before_any_execution() {
+        let contributions = literal_precinct_body_descriptors();
+        for (data, expected_end, expected_index, expected_result) in [
+            (&[0, 0x63, 0, 0xff][..], 4, 3, Ok(())),
+            (
+                &[0, 0x63, 0][..],
+                4,
+                2,
+                Err(DecodeError::MalformedInput {
+                    offset: 71,
+                    kind: MalformedKind::Truncated,
+                }),
+            ),
+        ] {
+            let mut cursor = PacketBodyPreflight { index: 0, end: 0 };
+            assert_eq!(
+                preflight_packet_body_ranges(&contributions, data, &mut cursor, 71),
+                expected_result
+            );
+            assert_eq!((cursor.index, cursor.end), (expected_index, expected_end));
+        }
+        let mut cursor = PacketBodyPreflight {
+            index: 0,
+            end: usize::MAX,
+        };
+        assert_eq!(
+            preflight_packet_body_ranges(&contributions, &[], &mut cursor, 71),
+            Err(packet_arithmetic_overflow())
+        );
+        assert_eq!((cursor.index, cursor.end), (0, usize::MAX));
+        let mut cursor = PacketBodyPreflight {
+            index: usize::MAX,
+            end: 19,
+        };
+        assert_eq!(
+            preflight_packet_body_ranges(&contributions, &[], &mut cursor, 71),
+            Ok(())
+        );
+        assert_eq!((cursor.index, cursor.end), (usize::MAX, 19));
+    }
+
+    #[test]
+    fn precinct_skipped_execution_consumes_ranges_without_decoder_shape_or_counter_changes() {
+        let contributions = literal_precinct_body_descriptors();
+        for (data, expected_offset, expected_index, expected_result) in [
+            (&[0, 0x63, 0, 0xff][..], 4, 3, Ok(())),
+            (
+                &[0, 0x63, 0][..],
+                3,
+                2,
+                Err(DecodeError::MalformedInput {
+                    offset: 71,
+                    kind: MalformedKind::Truncated,
+                }),
+            ),
+        ] {
+            let mut progress = PacketBodyExecutionProgress {
+                index: 0,
+                offset: 0,
+                segments: u32::MAX,
+                passes: u32::MAX,
+            };
+            assert_eq!(
+                execute_packet_body_contributions(
+                    &mut [],
+                    &contributions,
+                    data,
+                    &mut progress,
+                    71,
+                    false,
+                    &ResourceLimits::default(),
+                ),
+                expected_result
+            );
+            assert_eq!(
+                (
+                    progress.index,
+                    progress.offset,
+                    progress.segments,
+                    progress.passes
+                ),
+                (expected_index, expected_offset, u32::MAX, u32::MAX)
+            );
+        }
+    }
+
+    #[test]
+    fn precinct_execution_retains_real_prior_coefficients_and_late_partial_counters() {
+        let contributions = literal_precinct_body_descriptors();
+        let data = [0, 0x63, 0, 0xff];
+        let style = Tier1CodingStyle::from_code_block_style(0xc0).unwrap();
+        let decoder =
+            || Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        let mut decoders = vec![decoder()];
+        let mut progress = PacketBodyExecutionProgress {
+            index: 0,
+            offset: 0,
+            segments: 0,
+            passes: 0,
+        };
+        assert_eq!(
+            execute_packet_body_contributions(
+                &mut decoders,
+                &contributions,
+                &data,
+                &mut progress,
+                71,
+                true,
+                &ResourceLimits::default(),
+            ),
+            Err(invalid_packet_header())
+        );
+        assert_eq!(
+            (
+                progress.index,
+                progress.offset,
+                progress.segments,
+                progress.passes
+            ),
+            (2, 3, 1, 1)
+        );
+        assert_eq!(decoders[0].plane().signed_coefficient(0, 0).unwrap(), -1);
+        assert_eq!(
+            (decoders[0].next_pass(), decoders[0].decoded_bytes()),
+            (1, 3)
+        );
+        for (segments, passes, expected_segments) in [(u32::MAX, 7, u32::MAX), (9, u32::MAX, 10)] {
+            let mut decoders = vec![decoder()];
+            let mut progress = PacketBodyExecutionProgress {
+                index: 0,
+                offset: 0,
+                segments,
+                passes,
+            };
+            assert_eq!(
+                execute_packet_body_contributions(
+                    &mut decoders,
+                    &contributions,
+                    &data,
+                    &mut progress,
+                    71,
+                    true,
+                    &ResourceLimits::default(),
+                ),
+                Err(packet_arithmetic_overflow())
+            );
+            assert_eq!(
+                (
+                    progress.index,
+                    progress.offset,
+                    progress.segments,
+                    progress.passes
+                ),
+                (0, 0, expected_segments, passes)
+            );
+            assert_eq!(decoders[0].plane().signed_coefficient(0, 0).unwrap(), -1);
+            assert_eq!(
+                (
+                    decoders[0].next_pass(),
+                    decoders[0].decoded_segments(),
+                    decoders[0].decoded_bytes()
+                ),
+                (1, 1, 3)
+            );
         }
     }
 

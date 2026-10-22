@@ -1,5 +1,39 @@
 # Specification audit guide
 
+## Frozen actual precinct/progression orchestration contract
+
+The next composition boundary is the actual `decode_precinct_packet` and its
+progression caller, not a supplied header/result bank. F5L owns the sole complete
+packet reader, raw tag-tree and header producer interfaces; this work consumes
+those actual contracts without editing their algorithms or duplicating views.
+F5H owns precinct/progression associations, native local progress and full
+state/error/coefficient effects.
+
+The precinct profile admits arbitrary stored states, contexts, decoder and
+subband vectors; malformed geometry, overlapping raw subband ranges and absent
+storage are not normalized away. It preserves original shape/cap/style and
+SOP/packed-header selection checks, ordered actual per-block header calls,
+alignment/EPH effects, complete body preflight before any coefficient execution,
+and then actual selected mixed body transactions. Skipped Tier-1 execution
+still consumes/checks real body ranges while preserving decoder state. All
+native offsets, segment/pass/contribution counters, first errors and the final
+packet-length check are included. This caller is not globally transactional:
+earlier header/tree/decoder changes may survive a later error.
+
+The first executable substage is the existing precinct body preflight and
+execution loops, moved rather than copied when needed for complete loop
+contracts. Their descriptor vectors are the caller's real native arrays;
+closing the entire precinct contract must additionally derive them through the
+actual F5L header producer, never assume their correctness or supply an outcome.
+
+The progression profile must additionally preserve actual coordinate iteration,
+tile-part/packed-header/packet-length cursors, duplicate suppression, context
+layer writes, resolution selection, earlier packet effects and all late checked
+aggregate/consumption errors. Actual external owner interfaces are prerequisites,
+not assumed successful traces. Until these caller joins close, neither this
+frozen contract nor its intermediate stages claim complete precinct/progression
+or F5H completion.
+
 ## Complete actual mixed native body and segment dispatch
 
 `part1_code_block_body_staged` consumes the sole full native contribution view,
