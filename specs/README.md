@@ -32,6 +32,22 @@ is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
 
+The packet-pass grouping substage has the native `u8` input domain: zero and
+165..=255 reject, while 1..=164 produce the exact cleanup-pass count,
+refinement-pass count, placeholder count and skipped-bitplane count.
+All four actual result fields and the typed rejection are modeled. This is
+the actual `HtPassGroup::from_packet_passes` implementation, not a theorem
+that a block caller executes, replaces or routes those passes correctly.
+
+The next byte-partition contract requires the actual selected code-block
+byte limit, not a chosen or existential budget. Its intended inputs are both
+actual supplied slices (including `Some(empty)` versus `None`), all native
+lengths and the actual `ResourceLimits` object; its output includes every
+encoded/substream slice, offset and direction. The current foreign limits
+getter has no functional spec view. A narrowly scoped owner-provided limit
+view/getter contract is required before claiming that complete public-parser
+relation; no arbitrary-budget parser wrapper is substituted.
+
 The next frozen interpretation substage is the actual cleanup UVLC/quad-word
 caller: prefix, every native `u8` suffix length, combined prefix value,
 initial/non-initial U pairs for every `u8` mode, and quad-word lookup for every

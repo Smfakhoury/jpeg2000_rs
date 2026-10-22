@@ -32,6 +32,13 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn ht_packet_group_rejects_the_complete_invalid_native_domain(passes: u8)
+    requires passes == 0 || passes > 164,
+    ensures crate::specs::ht_packet_pass_group(passes)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
 pub proof fn ht_uvlc_invalid_modes_leave_complete_state(state: crate::specs::HtCleanupReaderState, mode: u8)
     requires mode >= 5,
     ensures crate::specs::ht_uvlc_initial(state, mode)

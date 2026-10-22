@@ -269,23 +269,31 @@ pub struct HtPassGroup {
 
 impl HtPassGroup {
     pub fn from_packet_passes(passes: u8) -> Result<Self, DecodeError> {
-        if passes == 0 || passes > 164 {
-            return Err(invalid_code_block());
-        }
-        let placeholder_passes = crate::refinement::ht_placeholder_passes(passes);
-        let skipped_bitplanes = placeholder_passes / 3;
-        let substantive_passes = crate::refinement::ht_substantive_passes(passes);
-        Ok(Self {
-            cleanup_passes: placeholder_passes
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?,
-            refinement_passes: substantive_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?,
-            placeholder_passes,
-            skipped_bitplanes,
-        })
+        ht_pass_group_from_packet(passes)
     }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_packet_pass_group(passes),)
+)]
+fn ht_pass_group_from_packet(passes: u8) -> Result<HtPassGroup, DecodeError> {
+    if passes == 0 || passes > 164 {
+        return Err(invalid_code_block());
+    }
+    let placeholder_passes = crate::refinement::ht_placeholder_passes(passes);
+    let skipped_bitplanes = placeholder_passes / 3;
+    let substantive_passes = crate::refinement::ht_substantive_passes(passes);
+    Ok(HtPassGroup {
+        cleanup_passes: placeholder_passes
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?,
+        refinement_passes: substantive_passes
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?,
+        placeholder_passes,
+        skipped_bitplanes,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -5932,6 +5940,40 @@ mod tests {
         );
         assert_eq!(metadata.mel_bits, 1);
         assert_eq!(metadata.vlc_bits, 4);
+    }
+
+    #[test]
+    fn ht_packet_pass_group_has_literal_complete_fields_and_native_rejections() {
+        for (passes, cleanup, refinement, placeholders, skipped) in [
+            (1, 1, 0, 0, 0),
+            (2, 1, 1, 0, 0),
+            (3, 1, 2, 0, 0),
+            (4, 4, 0, 3, 1),
+            (5, 4, 1, 3, 1),
+            (6, 4, 2, 3, 1),
+            (162, 160, 2, 159, 53),
+            (163, 163, 0, 162, 54),
+            (164, 163, 1, 162, 54),
+        ] {
+            assert_eq!(
+                HtPassGroup::from_packet_passes(passes),
+                Ok(HtPassGroup {
+                    cleanup_passes: cleanup,
+                    refinement_passes: refinement,
+                    placeholder_passes: placeholders,
+                    skipped_bitplanes: skipped,
+                })
+            );
+        }
+        for passes in [0, 165, 255] {
+            assert_eq!(
+                HtPassGroup::from_packet_passes(passes),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock,
+                })
+            );
+        }
     }
 
     #[test]

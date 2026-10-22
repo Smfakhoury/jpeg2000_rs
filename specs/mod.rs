@@ -1811,6 +1811,20 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub open spec fn ht_packet_pass_group(passes: u8) -> Result<crate::tier1::HtPassGroup, crate::DecodeError> {
+    if passes == 0 || passes > 164 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let placeholders = ht_placeholder_passes(passes as nat);
+        Ok(crate::tier1::HtPassGroup {
+            cleanup_passes: (placeholders + 1) as u8,
+            refinement_passes: (ht_substantive_passes(passes as nat) - 1) as u8,
+            placeholder_passes: placeholders as u8,
+            skipped_bitplanes: (placeholders / 3) as u8,
+        })
+    }
+}
+
 pub struct HtMagSgnState {
     pub input: Seq<u8>,
     pub next_byte: usize,

@@ -3484,6 +3484,10 @@
     {
       "contract_refs": [
         {
+          "path": "src/tier1.rs",
+          "symbol": "ht_pass_group_from_packet"
+        },
+        {
           "path": "src/refinement.rs",
           "symbol": "ht_placeholder_passes"
         },
@@ -3503,6 +3507,10 @@
           "symbol": "HtPassGroup::from_packet_passes"
         },
         {
+          "path": "src/tier1.rs",
+          "symbol": "ht_pass_group_from_packet"
+        },
+        {
           "path": "src/packet.rs",
           "symbol": "decode_code_block_contribution"
         }
@@ -3510,10 +3518,18 @@
       "proof_refs": [
         {
           "path": "proofs/spec_properties/mod.rs",
+          "symbol": "ht_packet_group_rejects_the_complete_invalid_native_domain"
+        },
+        {
+          "path": "proofs/spec_properties/mod.rs",
           "symbol": "ht_group_partition_is_exact"
         }
       ],
       "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "ht_packet_pass_group"
+        },
         {
           "path": "specs/mod.rs",
           "symbol": "ht_placeholder_passes"
@@ -3528,6 +3544,10 @@
         }
       ],
       "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "ht_packet_pass_group_has_literal_complete_fields_and_native_rejections"
+        },
         {
           "path": "src/tier1.rs",
           "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"

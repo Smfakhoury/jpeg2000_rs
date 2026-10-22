@@ -141,6 +141,7 @@ Read each contract according to its inputs and postcondition:
 | HT directional reader/substream state | All five actual readers: exact constructors, bytes/bits/positions, MagSgn words and drain, zero/one fill, stuffing, exhaustion, full cursors/counters, shared cleanup byte claims and refinement physical-bit vectors/padding, exact inner/outer budget and overflow effects | Upstream partition/pass accounting, UVLC/quad interpretation, coefficient/block reconstruction, replacement/placeholders, mixed sequencing or complete F5H acceptance |
 | HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
 | HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
+| Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -271,6 +272,22 @@ their models, true production callers, proofs and fixtures are indexed.
 Neither this source index nor successful local gates close full-block or
 mixed sequencing. The models and a green solver run are not human endorsement
 of T.814.
+
+`HtPassGroup::from_packet_passes` now shares one verified free implementation
+that returns the complete actual four-field group, retaining the static
+public wrapper and all original native bounds/error behavior. This is an
+input-relative grouping theorem, not placeholder/replacement execution.
+
+The next complete public segment-parser relation is blocked on a foreign
+interface: `ResourceLimits::maximum_code_block_bytes` has no functional
+specification or public closed view of its private field. Its exact selected
+value is needed to prove that budget rejection precedes Scup interpretation.
+An arbitrary/existential budget wrapper would not establish that public
+relation, and no trusted shim or partial-success guarantee is substituted.
+The limits owner is asked for the same minimal view/getter pairing already
+provided for `resource_work_limit`. Subsequent magnitude reconstruction also
+needs the F6-owned private magnitude value view and exact operation contracts;
+the current branch exposes only executable, functionally unspecified methods.
 
 For raw bypass, error states are not transactional: work-limit failure preserves
 the consumed bit and incremented work counter; work overflow preserves the consumed bit
