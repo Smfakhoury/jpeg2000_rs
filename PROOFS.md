@@ -199,6 +199,22 @@ Independent tests cover all 65,536 count/index pairs and preserve the entire
 supplied record. This owner interface supports both HT and legacy routing;
 it does not itself establish either packet execution loop.
 
+### Shared native contribution preparation
+
+The actual `prepare_code_block_contribution_body` refines the unconditional
+`part1_code_block_body_prepare` Result/full-decoder-state relation. It preserves
+the original conversion/exact-length, route-admission and zero-bitplane-setting
+order, using the actual proved owner operations. Both offset-zero error producers
+are verified. The existing checks are moved once, without adding validation,
+allocation, resource limits or a second packet decoder.
+
+No parsed-header, normalized segment count, pass-total, success or budget premise
+is supplied. Independent whole-state tests exercise every length/force/route/
+zero-bitplane choice in the selected boundary set while deliberately retaining
+unvalidated 255-count/255-pass descriptor storage. This shared prerequisite
+establishes preparation only; packet execution and outer clone/commit remain
+separate caller obligations.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

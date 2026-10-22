@@ -2488,8 +2488,24 @@ fn invalid_packet_header() -> DecodeError {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_reader_error(MalformedKind::ArithmeticOverflow),
+))]
 fn packet_arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_reader_error(MalformedKind::InvalidCodeBlock),
+))]
+fn packet_invalid_code_block() -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidCodeBlock,
+    }
 }
 
 impl CodeBlockContribution {
@@ -2531,23 +2547,36 @@ pub fn decode_code_block_contribution_body(
     Ok(decoded)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_code_block_body_prepare(
+        crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@),
+))]
+fn prepare_code_block_contribution_body(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+) -> Result<(), DecodeError> {
+    let declared_length = match usize::try_from(contribution.data_length) {
+        Ok(length) => length,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    if !crate::refinement::exact_consumption(body.len(), declared_length) {
+        return Err(packet_invalid_code_block());
+    }
+    if !decoder.accepts_high_throughput_route(contribution.high_throughput) {
+        return Err(packet_invalid_code_block());
+    }
+    decoder.set_zero_bitplanes(contribution.zero_bitplanes)?;
+    Ok(())
+}
+
 fn decode_code_block_contribution_body_staged(
     decoder: &mut Tier1CodeBlockDecoder,
     contribution: &CodeBlockContribution,
     body: &[u8],
     limits: &ResourceLimits,
 ) -> Result<CodeBlockBodyDecode, DecodeError> {
-    if !crate::refinement::exact_consumption(
-        body.len(),
-        usize::try_from(contribution.data_length)
-            .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-    ) {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-    }
-    if !decoder.accepts_high_throughput_route(contribution.high_throughput) {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-    }
-    decoder.set_zero_bitplanes(contribution.zero_bitplanes)?;
+    prepare_code_block_contribution_body(decoder, contribution, body)?;
     if contribution.high_throughput {
         let segment_count = contribution.segment_count();
         if segment_count == 0 {
@@ -3278,6 +3307,63 @@ const fn ceil_div_two(value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_code_block_body_prepare_has_exact_native_admission_and_frame() {
+        for force in [false, true] {
+            for high_throughput in [false, true] {
+                for zero_bitplanes in [0, u16::MAX] {
+                    for wrong_length in [false, true] {
+                        let mut decoder = Tier1CodeBlockDecoder::new(
+                            1,
+                            1,
+                            1,
+                            crate::tier1::SubbandOrientation::Ll,
+                            Tier1CodingStyle {
+                                force_high_throughput: force,
+                                ..Tier1CodingStyle::default()
+                            },
+                        )
+                        .unwrap();
+                        let before = format!("{decoder:?}");
+                        let contribution = CodeBlockContribution {
+                            first_inclusion: false,
+                            zero_bitplanes,
+                            new_passes: u8::MAX,
+                            data_length: 1,
+                            high_throughput,
+                            segment_count: u8::MAX,
+                            segment_passes: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+                            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+                        };
+                        let body: &[u8] = if wrong_length { &[] } else { &[0xff] };
+                        let accepted =
+                            !wrong_length && (!force || high_throughput) && zero_bitplanes == 0;
+                        assert_eq!(
+                            prepare_code_block_contribution_body(&mut decoder, &contribution, body),
+                            if accepted {
+                                Ok(())
+                            } else {
+                                Err(packet_invalid_code_block())
+                            }
+                        );
+                        assert_eq!(
+                            format!("{decoder:?}"),
+                            if accepted {
+                                before.replacen(
+                                    "zero_bitplanes: None,",
+                                    "zero_bitplanes: Some(0),",
+                                    1,
+                                )
+                            } else {
+                                before
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn native_contribution_segment_lookup_covers_all_counts_indices_and_full_stored_arrays() {
