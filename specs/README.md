@@ -21,7 +21,7 @@ has been reconciled or proved.
 |---|---|---|
 | T.800 (2024-07), core coding/JP2 | `part1_*`, marker/packet, geometry, MQ and transform models | Check encoded field widths, sample precision, signedness, coordinate grids and arithmetic domains against the selected reference. |
 | T.801 (2023-08), extensions/JPX | `part2_*`, ADS/ATK/NLT/CBD and composition models | Some syntax interpretation used acquired T.801 (2021). The selected 2023 reconciliation still requires authorized text; no missing clause numbers are invented here. |
-| Selected normalized composition profile | `part2_source_over_pixel`, `part2_composition_geometry`, `part2_composition_layer_transition` | Normalization to 16 bits, floor-scaled sampling, checked addresses, typed errors and work limits are explicit selected implementation policies, not blanket claims about all JPEG 2000 profiles. |
+| Selected normalized composition profile | `part2_layer_input`, `part2_owned_layer_input`, `part2_source_over_pixel`, `part2_composition_geometry`, `part2_composition_layer_transition` | Normalization to 16 bits, channel/alpha construction, floor-scaled sampling, checked addresses, typed errors and work limits are explicit selected implementation policies, not blanket claims about all JPEG 2000 profiles. |
 | T.808 (2026-06), JPIP | `part9_*` and databin/range models | The cited catalog record is not an acquired normative text or a completed edition audit. |
 | T.814 (2019-06), HTJ2K | `part15_*`, `valid_ht_*` and HT cleanup/refinement models | Separate coding semantics from implementation capacity bounds and generated-image qualification. |
 
@@ -59,6 +59,28 @@ the named mathematical quantities to the prior word constants; they do not
 replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
+
+`part1_raw_reader_initial`, `part1_raw_reader_load`, `part1_raw_reader_read`
+and `part1_raw_reader_termination` describe the complete selected raw-bypass
+reader state and typed outcomes. Byte/bit order, stuffing, synthetic marker
+padding, consumed-byte position and counter/error ordering belong on the
+semantic reading path. Native fields retain their stated widths; the initial
+sequence is constrained to representable slice lengths. These models do not
+claim that callers choose the correct pass/segment or normative context.
+The termination model distinguishes an empty, zero-work raw pass from
+synthetic bits consumed from missing input, and recognizes the unconsumed
+`0xff`/`0x2a` full-byte/stuffed-padding boundary.
+
+`part2_layer_input` describes selection from supplied converted channels:
+scan all channel kinds first, then check the area and required color planes,
+then validate and combine alpha planes. Required colors are returned in slot
+order, regardless of input order; red and gray share slot zero. Missing,
+duplicate, out-of-range or incorrectly sized planes have explicit typed
+rejections. Optional alpha is an **ordered fold** of
+`floor((a*b + h)/M)` with a rounding step after each plane. It is not a single
+product rounded once. One plane preserves its representation flag; two or
+more produce straight alpha. Association validation and earlier normalization
+are outside this stage's input-relative theorem.
 
 The actual raster and first-failure definitions remain here. In particular,
 `part2_composition_budgeted_prefix` determines execution order and error/state

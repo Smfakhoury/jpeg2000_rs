@@ -269,14 +269,30 @@ def validate_normative_coverage(
             mutable_parameters = set(re.findall(
                 r"\b(\w+)\s*:\s*&\s*(?:'\w+\s+)?mut\b", text[signature:body_start],
             ))
+            if re.search(r"&\s*(?:'\w+\s+)?mut\s+self\b", text[signature:body_start]):
+                mutable_parameters.add("self")
             named_prefix = r"\bverus_spec\(\s*(\w+)\s*=>\s*(?:requires\b[\s\S]*?)?ensures\s+"
             model_suffix = r"\s*==\s*crate::specs::(?P<model>\w+)\s*\("
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
+            result_projection = {
+                ("src/jpx.rs", "layer_channels"): "layer_channels_outcome",
+                ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
+                ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
+            }.get((reference["path"], short))
+            projected_result = re.search(
+                named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
+                contract,
+            ) if result_projection else None
             state_term = (
                 r"(?:final\(\s*\w+\s*\)@|"
                 r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
+            if reference["path"] == "src/tier1.rs" and short in ("read_bit", "load_byte"):
+                state_term = (
+                    r"(?:" + state_term
+                    + r"|raw_bit_reader_view\(\s*final\(\s*self\s*\)\s*\))"
+                )
             state_tail = r"\s*,\s*" + state_term + r"(?:\s*,\s*" + state_term + r")*\s*\))"
             state_result = re.search(
                 named_prefix + r"(?P<state>\(\s*\1" + state_tail + model_suffix, contract,
@@ -290,7 +306,7 @@ def validate_normative_coverage(
                 r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
             )) if state_result is not None else set()
             complete_state = bool(mutable_parameters) and final_parameters == mutable_parameters
-            named_result = state_result if mutating else scalar_result or state_result
+            named_result = state_result if mutating else scalar_result or projected_result or state_result
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
                     or not ("ensures returns" in contract

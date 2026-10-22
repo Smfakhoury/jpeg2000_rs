@@ -1244,6 +1244,149 @@ pub open spec fn part2_inverse_alpha(source_alpha: u16) -> u16 {
     ((PART2_NORMALIZED_SAMPLE_MAX as int) - source_alpha as int) as u16
 }
 
+pub type Part2LayerChannel = (crate::color::ConvertedChannelType, Seq<u16>);
+pub type Part2LayerAlpha = (Seq<u16>, bool);
+pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
+pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
+pub type Part2LayerScanResult = Result<(Seq<Option<Seq<u16>>>, Seq<Part2LayerAlpha>), crate::DecodeError>;
+
+#[verifier::opaque]
+pub open spec fn part2_layer_area(width: u32, height: u32) -> Result<usize, crate::DecodeError> {
+    if (width as nat) * (height as nat) <= usize::MAX as nat {
+        Ok(((width as nat) * (height as nat)) as usize)
+    } else {
+        Err(part2_composition_error(true))
+    }
+}
+
+pub open spec fn part2_layer_color_count(space: crate::color::ConvertedColorSpace) -> nat {
+    match space {
+        crate::color::ConvertedColorSpace::Srgb => 3,
+        crate::color::ConvertedColorSpace::Grayscale => 1,
+    }
+}
+
+pub open spec fn part2_layer_channel_index(kind: crate::color::ConvertedChannelType) -> Option<nat> {
+    match kind {
+        crate::color::ConvertedChannelType::Red | crate::color::ConvertedChannelType::Gray => Some(0),
+        crate::color::ConvertedChannelType::Green => Some(1),
+        crate::color::ConvertedChannelType::Blue => Some(2),
+        crate::color::ConvertedChannelType::Alpha { .. } => None,
+    }
+}
+
+pub open spec fn part2_layer_channel_scan_step(
+    colors: Seq<Option<Seq<u16>>>, alphas: Seq<Part2LayerAlpha>, channel: Part2LayerChannel,
+) -> Part2LayerScanResult {
+    match channel.0 {
+        crate::color::ConvertedChannelType::Alpha { premultiplied, .. } =>
+            Ok((colors, alphas.push((channel.1, premultiplied)))),
+        _ => {
+            let slot = part2_layer_channel_index(channel.0).unwrap();
+            if slot >= colors.len() || colors[slot as int].is_some() {
+                Err(part2_composition_error(false))
+            } else {
+                Ok((colors.update(slot as int, Some(channel.1)), alphas))
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_layer_channel_scan(
+    channels: Seq<Part2LayerChannel>, color_count: nat, count: nat,
+) -> Part2LayerScanResult
+    recommends count <= channels.len(),
+    decreases count,
+{
+    if count == 0 {
+        Ok((Seq::new(color_count, |i: int| None), Seq::empty()))
+    } else {
+        match part2_layer_channel_scan(channels, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok((colors, alphas)) => part2_layer_channel_scan_step(colors, alphas, channels[(count - 1) as int]),
+        }
+    }
+}
+
+pub open spec fn part2_layer_resolve_colors(colors: Seq<Option<Seq<u16>>>, area: nat)
+    -> Result<Seq<Seq<u16>>, crate::DecodeError>
+{
+    if exists |i: int| #![trigger colors[i]] 0 <= i < colors.len() && (colors[i].is_none() || colors[i].unwrap().len() != area) {
+        Err(part2_composition_error(false))
+    } else {
+        Ok(Seq::new(colors.len(), |i: int| colors[i].unwrap()))
+    }
+}
+
+pub open spec fn part2_normalized_sample_product(first: u16, second: u16) -> nat {
+    ((first as nat) * (second as nat) + PART2_NORMALIZED_SAMPLE_HALF as nat)
+        / PART2_NORMALIZED_SAMPLE_MAX as nat
+}
+
+pub open spec fn part2_layer_alpha_merge(
+    previous: Option<Part2LayerAlpha>, next: Part2LayerAlpha, area: nat,
+) -> Result<Option<Part2LayerAlpha>, crate::DecodeError> {
+    if next.0.len() != area {
+        Err(part2_composition_error(false))
+    } else {
+        match previous {
+            None => Ok(Some(next)),
+            Some((samples, _)) => Ok(Some((
+                Seq::new(area, |i: int| part2_normalized_sample_product(samples[i], next.0[i]) as u16),
+                false,
+            ))),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_layer_alpha_fold(alphas: Seq<Part2LayerAlpha>, area: nat, count: nat)
+    -> Result<Option<Part2LayerAlpha>, crate::DecodeError>
+    recommends count <= alphas.len(),
+    decreases count,
+{
+    if count == 0 {
+        Ok(None)
+    } else {
+        match part2_layer_alpha_fold(alphas, area, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => part2_layer_alpha_merge(previous, alphas[(count - 1) as int], area),
+        }
+    }
+}
+
+pub open spec fn part2_layer_input(
+    width: u32, height: u32, space: crate::color::ConvertedColorSpace, channels: Seq<Part2LayerChannel>,
+) -> Part2LayerInputResult {
+    match part2_layer_channel_scan(channels, part2_layer_color_count(space), channels.len()) {
+        Err(error) => Err(error),
+        Ok((colors, alphas)) => {
+            let area = (width as nat) * (height as nat);
+            if area > usize::MAX as nat {
+                Err(part2_composition_error(true))
+            } else {
+                match part2_layer_resolve_colors(colors, area) {
+                    Err(error) => Err(error),
+                    Ok(resolved) => match part2_layer_alpha_fold(alphas, area, alphas.len()) {
+                        Err(error) => Err(error),
+                        Ok(alpha) => Ok((width, height, resolved, alpha)),
+                    },
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part2_owned_layer_input(
+    width: u32, height: u32, space: crate::color::ConvertedColorSpace, channels: Seq<Part2LayerChannel>,
+) -> Part2OwnedLayerResult {
+    match part2_layer_input(width, height, space, channels) {
+        Err(error) => Err(error),
+        Ok((width, height, colors, alpha)) => Ok((width, height, space, colors, alpha)),
+    }
+}
+
 pub open spec fn part2_source_over_alpha_numerator(source_alpha: u16, destination_alpha: u16) -> nat {
     let maximum = PART2_NORMALIZED_SAMPLE_MAX as nat;
     let inverse = ((maximum as int) - source_alpha as int) as nat;
@@ -1666,6 +1809,114 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     recommends remaining < 8,
 {
     ((byte >> remaining) & 1) != 0
+}
+
+pub struct Part1RawReaderState {
+    pub input: Seq<u8>,
+    pub next_index: usize,
+    pub current_byte: u8,
+    pub bits_remaining: u8,
+    pub marker_padding_count: u64,
+    pub work_units: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn part1_raw_reader_error(offset: usize, kind: crate::MalformedKind) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: offset as u64, kind }
+}
+
+pub open spec fn part1_raw_reader_initial(
+    input: Seq<u8>, maximum_input_bytes: u64, maximum_work_units: u64,
+) -> Result<Part1RawReaderState, crate::DecodeError>
+    recommends input.len() <= usize::MAX,
+{
+    if input.len() as u64 > maximum_input_bytes {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::InputBytes, limit: maximum_input_bytes, actual: input.len() as u64,
+        })
+    } else {
+        Ok(Part1RawReaderState {
+            input, next_index: 0, current_byte: 0, bits_remaining: 0,
+            marker_padding_count: 0, work_units: 0, maximum_work_units,
+        })
+    }
+}
+
+pub open spec fn part1_raw_reader_load(state: Part1RawReaderState)
+    -> (Result<(), crate::DecodeError>, Part1RawReaderState)
+{
+    let next = if state.next_index < state.input.len() { state.input[state.next_index as int] } else { 0xffu8 };
+    let stuffed = state.current_byte == 0xff;
+    if stuffed && next > 0x8f {
+        let changed = Part1RawReaderState { current_byte: 0xff, bits_remaining: 8, ..state };
+        if state.marker_padding_count == u64::MAX {
+            (Err(part1_raw_reader_error(state.next_index, crate::MalformedKind::ArithmeticOverflow)), changed)
+        } else {
+            (Ok(()), Part1RawReaderState { marker_padding_count: (state.marker_padding_count + 1) as u64, ..changed })
+        }
+    } else if state.next_index < state.input.len() && state.next_index == usize::MAX {
+        (Err(part1_raw_reader_error(state.next_index, crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        (Ok(()), Part1RawReaderState {
+            next_index: if state.next_index < state.input.len() { (state.next_index + 1) as usize } else { state.next_index },
+            current_byte: next,
+            bits_remaining: if stuffed { 7 } else { 8 },
+            ..state
+        })
+    }
+}
+
+pub open spec fn part1_raw_reader_read(state: Part1RawReaderState)
+    -> (Result<bool, crate::DecodeError>, Part1RawReaderState)
+{
+    let loaded = if state.bits_remaining == 0 { part1_raw_reader_load(state) } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if ready.bits_remaining == 0 || ready.bits_remaining > 8 {
+                (Err(part1_raw_reader_error(ready.next_index, crate::MalformedKind::InvalidBitStuffing)), ready)
+            } else {
+                let consumed = Part1RawReaderState { bits_remaining: (ready.bits_remaining - 1) as u8, ..ready };
+                if ready.work_units == u64::MAX {
+                    (Err(part1_raw_reader_error(ready.next_index, crate::MalformedKind::ArithmeticOverflow)), consumed)
+                } else {
+                    let charged = Part1RawReaderState { work_units: (ready.work_units + 1) as u64, ..consumed };
+                    if charged.work_units > charged.maximum_work_units {
+                        (Err(crate::DecodeError::LimitExceeded {
+                            resource: crate::Resource::WorkUnits,
+                            limit: charged.maximum_work_units,
+                            actual: charged.work_units,
+                        }), charged)
+                    } else {
+                        (Ok(part1_packet_bit(charged.current_byte, charged.bits_remaining)), charged)
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part1_raw_reader_termination(state: Part1RawReaderState) -> Result<(), crate::DecodeError> {
+    let valid = if state.next_index == 0 {
+        (state.input.len() == 0 && state.work_units == 0)
+            || (state.input.len() == 1 && state.input[0] == 0x55)
+    } else if state.bits_remaining == 0 && state.current_byte == 0xff
+        && state.next_index < state.input.len()
+        && state.next_index + 1 == state.input.len()
+        && state.input[state.next_index as int] == 0x2a {
+        true
+    } else if state.next_index != state.input.len() || state.bits_remaining > 8 {
+        false
+    } else if state.bits_remaining == 0 {
+        true
+    } else {
+        let shift = (8 - state.bits_remaining) as u8;
+        state.current_byte & (0xffu8 >> shift) == 0x55u8 >> shift
+    };
+    if valid { Ok(()) } else {
+        Err(part1_raw_reader_error(0, crate::MalformedKind::InvalidCodeBlock))
+    }
 }
 
 pub open spec fn part1_tag_inherited_low(low: nat, inherited: nat) -> nat {

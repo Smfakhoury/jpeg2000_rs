@@ -68,6 +68,112 @@
     {
       "contract_refs": [
         {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_from_input"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::read_bit"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::validate_predictable_termination"
+        }
+      ],
+      "id": "part1-raw-bitstream-state",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1SymbolDecoder::decode"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_legacy_segment"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_raw_significance_propagation_pass"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "decode_raw_magnitude_refinement_pass"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_bit_reader_view"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "RawBitReader::load_byte"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_outcome"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_initial"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_load"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_read"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_raw_reader_termination"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_transitions_match_exhaustive_two_byte_token_oracle"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_limits_preserve_post_bit_counter_and_exact_state"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_overflow_and_invalid_state_errors_preserve_complete_state"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_initial_input_limits_match_exact_claims"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_reader_termination_matches_independent_alternating_suffix_arithmetic"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "later_empty_terminated_mq_pass_preserves_real_pass_accounting"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "empty_initial_and_unterminated_legacy_segments_remain_invalid"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "empty_raw_predictable_termination_requires_no_consumed_symbols"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "raw_predictable_termination_checks_the_exact_stuffed_ff_tail"
+        }
+      ],
+      "topic": "Complete selected raw-bypass reader initialization, state/error transitions and predictable termination; not complete MQ/packet/pass semantics"
+    },
+    {
+      "contract_refs": [
+        {
           "path": "src/refinement.rs",
           "symbol": "packet_data_bits"
         },
@@ -1840,6 +1946,116 @@
         }
       ],
       "topic": "JPX multiple codestreams, ordinal jpch association, partial header inheritance, and implicit layers"
+    },
+    {
+      "contract_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_channels"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "owned_layer_from_image"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "checked_area"
+        }
+      ],
+      "id": "part2-jpx-layer-input-construction",
+      "implementation_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "decode_general_compositing_layer"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "owned_layer_from_image"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_channels"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_scan_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_scan_error"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_alpha_product_step"
+        },
+        {
+          "path": "proofs/production_impl/mod.rs",
+          "symbol": "production_layer_alpha_error"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_channels_outcome"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "owned_layer_outcome"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_input"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_owned_layer_input"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_area"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_channel_scan"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_resolve_colors"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_layer_alpha_fold"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part2_normalized_sample_product"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_permutations_preserve_complete_planes_and_metadata"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_absent_and_single_alpha_preserve_representation_and_color_aliases"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_alpha_combination_rounds_each_ordered_step"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "layer_input_rejects_missing_duplicate_out_of_range_and_malformed_planes"
+        },
+        {
+          "path": "src/jpx.rs",
+          "symbol": "normalized_alpha_products_match_wide_integer_reference_at_boundaries"
+        }
+      ],
+      "topic": "Complete converted-channel selection, ordered alpha combination, metadata and typed layer-input rejection"
     },
     {
       "contract_refs": [

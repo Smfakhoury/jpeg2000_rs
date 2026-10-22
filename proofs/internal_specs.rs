@@ -4,6 +4,16 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn part2_layer_alpha_product_prefix(
+    first: Seq<u16>, second: Seq<u16>, count: nat,
+) -> Seq<u16> {
+    Seq::new(first.len(), |i: int| if 0 <= i < count {
+        crate::specs::part2_normalized_sample_product(first[i], second[i]) as u16
+    } else {
+        first[i]
+    })
+}
+
 pub open spec fn part2_composition_layer_prefix_matches(
     source: Seq<Seq<u16>>, source_alpha: Option<(Seq<u16>, bool)>,
     destination: Seq<Seq<u16>>, destination_alpha: Seq<u16>,
