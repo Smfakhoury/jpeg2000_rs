@@ -106,21 +106,43 @@ pub(crate) fn packet_reader_from_input(
     ))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_reader_outcome(result) == crate::specs::part1_packet_reader_initial(
+        input@, crate::limits::resource_packet_header_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+pub(crate) fn packet_reader_new<'a>(
+    input: &'a [u8],
+    limits: &ResourceLimits,
+) -> Result<PacketBitReader<'a>, DecodeError> {
+    packet_reader_from_input(
+        input,
+        limits.maximum_packet_header_bytes(),
+        limits.maximum_work_units(),
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_bit_reader_view(&result) == crate::specs::part1_packet_reader_prefix(
+        input@, crate::limits::resource_packet_header_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+pub(crate) fn packet_reader_prefix<'a>(
+    input: &'a [u8],
+    limits: &ResourceLimits,
+) -> PacketBitReader<'a> {
+    packet_reader_prefix_from_input(
+        input,
+        limits.maximum_packet_header_bytes(),
+        limits.maximum_work_units(),
+    )
+}
+
 impl<'a> PacketBitReader<'a> {
     pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        packet_reader_from_input(
-            input,
-            limits.maximum_packet_header_bytes(),
-            limits.maximum_work_units(),
-        )
+        packet_reader_new(input, limits)
     }
 
     fn new_prefix(input: &'a [u8], limits: &ResourceLimits) -> Self {
-        packet_reader_prefix_from_input(
-            input,
-            limits.maximum_packet_header_bytes(),
-            limits.maximum_work_units(),
-        )
+        packet_reader_prefix(input, limits)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_bit_reader_view(self).bits_read,))]
@@ -3856,7 +3878,7 @@ pub struct TagTreeValue {
 
 impl TagTree {
     pub fn new(width: u32, height: u32, limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        tag_tree_from_dimensions(width, height, limits.maximum_tag_tree_nodes())
+        tag_tree_new(width, height, limits)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4135,6 +4157,18 @@ fn decode_tag_tree_node(
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures tag_tree_outcome(result) == crate::specs::part1_tag_initial(
+        width, height, crate::limits::resource_tag_tree_node_limit(limits)),
+))]
+pub(crate) fn tag_tree_new(
+    width: u32,
+    height: u32,
+    limits: &ResourceLimits,
+) -> Result<TagTree, DecodeError> {
+    tag_tree_from_dimensions(width, height, limits.maximum_tag_tree_nodes())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures tag_tree_outcome(result) == crate::specs::part1_tag_initial(width, height, maximum_nodes),
 ))]
 pub(crate) fn tag_tree_from_dimensions(
@@ -4256,6 +4290,66 @@ mod tests {
             maximum_zero_bitplanes: 2,
             tier1_style: style,
         }
+    }
+
+    #[test]
+    fn typed_header_factories_observe_real_limits_and_preserve_prefix_admission() {
+        let limits = ResourceLimits::default()
+            .with_maximum_packet_header_bytes(1)
+            .unwrap()
+            .with_maximum_work_units(1)
+            .unwrap();
+        assert_eq!(
+            packet_reader_new(&[0, 0], &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::PacketHeaderBytes,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        let expected = PacketBitReader {
+            input: &[0, 0],
+            byte_index: 0,
+            current_byte: 0,
+            bits_remaining: 0,
+            previous_byte_was_ff: false,
+            bits_read: 0,
+            maximum_work_units: 1,
+            maximum_header_bytes: 1,
+        };
+        assert_eq!(packet_reader_prefix(&[0, 0], &limits), expected);
+        assert_eq!(PacketBitReader::new_prefix(&[0, 0], &limits), expected);
+        assert_eq!(
+            tag_tree_new(u32::MAX, u32::MAX, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::TagTreeNodes,
+                limit: limits.maximum_tag_tree_nodes(),
+                actual: u64::from(u32::MAX) * u64::from(u32::MAX),
+            })
+        );
+        let expected = TagTree {
+            levels: vec![
+                TagTreeLevel {
+                    offset: 0,
+                    width: 2,
+                    height: 1,
+                },
+                TagTreeLevel {
+                    offset: 2,
+                    width: 1,
+                    height: 1,
+                },
+            ],
+            nodes: vec![
+                TagTreeNode {
+                    low: 0,
+                    value: u32::MAX
+                };
+                3
+            ],
+        };
+        assert_eq!(tag_tree_new(2, 1, &limits), Ok(expected.clone()));
+        assert_eq!(TagTree::new(2, 1, &limits), Ok(expected));
     }
 
     #[test]

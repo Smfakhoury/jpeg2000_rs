@@ -2,6 +2,12 @@
 
 ## Native packet reader and raw tag-tree ownership
 
+The actual typed factories `packet_reader_new`, `packet_reader_prefix` and
+`tag_tree_new` obtain their caps from the sole `ResourceLimits` owner getters.
+Their complete contracts use those closed owner projections, not caller-supplied
+outcomes or assumed numeric caps. Existing associated constructors delegate to
+these production factories; checked and prefix reader admission remain distinct.
+
 [header.rs](header.rs) observes all eight packet-reader fields and its actual
 load/read/word/admission effects, including header-cap-before-truncation,
 stuffing checks before advancement and consumed-bit-before-work-limit failure.
