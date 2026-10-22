@@ -354,6 +354,28 @@ real format branch only: it adds no header validity, geometry, normalization,
 success, budget or trace premise. The HT packet branch and whole packet/header
 association remain separate integration obligations, not guessed outcomes.
 
+## Native container and selection output reading path
+
+Start at `part2_validate_selection`: checked native geometry, exact explicit
+tile sequence admission, bounding rectangle and row-major membership, actual
+region and ordered intersection selection. `part2_color_selection_requested`
+then composes the actual validation result with every reduced target value and
+sampling/registration-context update. Targets and regions are whole sequences,
+not opaque array identities. Native malformed counts, zero subsampling,
+overflow, saturated expansion and discard rejection remain results, not
+normalization or adequate-budget premises.
+
+`part2_associated_codestream_header` denotes the actual parsed/fallback/missing
+header choice and offset. `part2_validate_selected_header` preserves native
+uniform/variable depth checks. `part2_apply_associated_output`,
+`part2_convert_associated_selected` and
+`part2_finish_associated_selected_output` connect the real supplied typed
+image/header to complete mapping/admission/color/crop values and ordered errors.
+None identity and missing-header behavior are distinct. These are actual
+runtime producer boundaries on native parsed metadata/typed objects, not an
+uninterpreted or successful decoder/header trace. F8 still must compose the
+earlier compressed parser/entropy/reconstruction chain and frame results.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

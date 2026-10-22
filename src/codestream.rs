@@ -83,6 +83,19 @@ verus! {
         size.components
     }
 
+    pub closed spec fn selection_geometry_view(size: &ImageSize) -> crate::specs::Part2SelectionGeometry {
+        (size.width, size.height, size.x_origin, size.y_origin, size.tile_width, size.tile_height,
+            size.tile_x_origin, size.tile_y_origin, size.tiles_across, size.tiles_down)
+    }
+
+    pub(crate) proof fn selection_geometry_known_fields(size: &ImageSize)
+        ensures selection_geometry_view(size)
+            == (size.width, size.height, size.x_origin, size.y_origin, size.tile_width, size.tile_height,
+                size.tile_x_origin, size.tile_y_origin, size.tiles_across, size.tiles_down),
+    {
+        reveal(selection_geometry_view);
+    }
+
     pub closed spec fn decomposition_selector_view(style: CodingStyle) -> (u8, Seq<DecompositionDirection>) {
         (style.decomposition_levels, style.decomposition_directions@)
     }
@@ -136,11 +149,34 @@ pub struct TileComponentBounds {
     pub image_y: u32,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_error(true),
+))]
+fn selection_geometry_arithmetic() -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_error(false),
+))]
+fn selection_geometry_invalid() -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidImageGeometry,
+    }
+}
+
 impl ImageSize {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_selection_tile_count(selection_geometry_view(&self)),
+    ))]
     pub fn tile_count(self) -> Result<u64, DecodeError> {
         u64::from(self.tiles_across)
             .checked_mul(u64::from(self.tiles_down))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))
+            .ok_or_else(selection_geometry_arithmetic)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -152,46 +188,49 @@ impl ImageSize {
         image_component_info(self, index)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_selection_tile_bounds(selection_geometry_view(self), tile_index),
+    ))]
     pub fn tile_bounds(&self, tile_index: u16) -> Result<TileBounds, DecodeError> {
         if u64::from(tile_index) >= self.tile_count()? || self.tiles_across == 0 {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
+            return Err(selection_geometry_invalid());
         }
         let column = u32::from(tile_index) % self.tiles_across;
         let row = u32::from(tile_index) / self.tiles_across;
-        let nominal_x0 = column
+        let offset_x = column
             .checked_mul(self.tile_width)
-            .and_then(|offset| self.tile_x_origin.checked_add(offset))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        let nominal_y0 = row
+            .ok_or_else(selection_geometry_arithmetic)?;
+        let nominal_x0 = self
+            .tile_x_origin
+            .checked_add(offset_x)
+            .ok_or_else(selection_geometry_arithmetic)?;
+        let offset_y = row
             .checked_mul(self.tile_height)
-            .and_then(|offset| self.tile_y_origin.checked_add(offset))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
+        let nominal_y0 = self
+            .tile_y_origin
+            .checked_add(offset_y)
+            .ok_or_else(selection_geometry_arithmetic)?;
         let image_x1 = self
             .x_origin
             .checked_add(self.width)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let image_y1 = self
             .y_origin
             .checked_add(self.height)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let x0 = crate::refinement::tile_clip_start(nominal_x0, self.x_origin);
         let y0 = crate::refinement::tile_clip_start(nominal_y0, self.y_origin);
         let nominal_x1 = nominal_x0
             .checked_add(self.tile_width)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let nominal_y1 = nominal_y0
             .checked_add(self.tile_height)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let x1 = crate::refinement::tile_clip_end(nominal_x1, image_x1);
         let y1 = crate::refinement::tile_clip_end(nominal_y1, image_y1);
         if x0 >= x1 || y0 >= y1 {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
+            return Err(selection_geometry_invalid());
         }
         Ok(TileBounds {
             tile_index,

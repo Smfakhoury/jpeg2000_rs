@@ -2602,10 +2602,9 @@ pub fn decode_jp2_color_selected(
     let codestream = inspected.file().codestream(0)?.data();
     let (expanded, target) = color_selection(codestream, selection, options.limits())?;
     let decoded = decode_codestream_selected(codestream, options, &expanded)?;
-    let mapped = apply_jp2_output(decoded, inspected.file().header(), options.limits())?;
-    convert_selected_color(
-        &mapped,
-        &inspected.file().header().color,
+    finish_associated_selected_output(
+        decoded,
+        Some(inspected.file().header()),
         target,
         options.limits(),
     )
@@ -2659,10 +2658,9 @@ pub fn decode_jph_color_selected(
     let codestream = inspected.file().codestream(0)?.data();
     let (expanded, target) = color_selection(codestream, selection, options.limits())?;
     let decoded = decode_codestream_selected(codestream, options, &expanded)?;
-    let mapped = apply_jp2_output(decoded, inspected.file().header(), options.limits())?;
-    convert_selected_color(
-        &mapped,
-        &inspected.file().header().color,
+    finish_associated_selected_output(
+        decoded,
+        Some(inspected.file().header()),
         target,
         options.limits(),
     )
@@ -2696,9 +2694,7 @@ pub fn decode_jpx_codestream_color(
 ) -> Result<crate::color::ConvertedImage, DecodeError> {
     let file = jp2::parse(input, options.limits())?;
     let (decoded, header) = decode_jpx_file(&file, codestream_index, options)?;
-    let header =
-        header.ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
-    crate::color::convert_jp2_color(&decoded, &header.color, options.limits())
+    convert_associated_color(&decoded, header, options.limits())
 }
 
 pub fn decode_jpx_codestream_color_selected(
@@ -2717,9 +2713,7 @@ pub fn decode_jpx_codestream_color_selected(
         options.limits(),
     )?;
     let (decoded, header) = decode_jpx_file_selected(&file, codestream_index, options, &expanded)?;
-    let header =
-        header.ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
-    convert_selected_color(&decoded, &header.color, target, options.limits())
+    convert_associated_selected_color(&decoded, header, target, options.limits())
 }
 
 fn color_selection(
@@ -2729,7 +2723,37 @@ fn color_selection(
 ) -> Result<(DecodeSelection, [u32; 4]), DecodeError> {
     let layout = codestream::parse_layout(input, limits)?;
     let size = &layout.info.image_size;
+    color_selection_for_size(size, requested)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures color_selection_outcome(result) == crate::specs::part2_color_selection_requested(
+        crate::codestream::selection_geometry_view(size), crate::codestream::image_size_component_infos(size),
+        size.components, crate::options::decode_selection_view(requested),
+    ),
+))]
+fn color_selection_for_size(
+    size: &ImageSize,
+    requested: &DecodeSelection,
+) -> Result<(DecodeSelection, [u32; 4]), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::selection_geometry_known_fields(size); }
     let validated = validate_selection(size, requested)?;
+    color_selection_from_validated(size, validated)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures color_selection_outcome(result) == crate::specs::part2_color_selection_context(
+        size.x_origin, size.y_origin, crate::codestream::image_size_component_infos(size), size.components,
+        validated_selection_view(validated),
+    ),
+))]
+fn color_selection_from_validated(
+    size: &ImageSize,
+    validated: ValidatedSelection,
+) -> Result<(DecodeSelection, [u32; 4]), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_color_target); }
     let discard_levels = validated.discard_levels;
     if discard_levels >= 32 {
         return Err(DecodeError::InvalidSelection {
@@ -2746,12 +2770,41 @@ fn color_selection(
     let mut horizontal = 0_u32;
     let mut vertical = 0_u32;
     let mut component = 0_u16;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(scale == 1u32 << (discard_levels as u32));
+        assert(crate::specs::part2_selection_ceil(validated.region[0], scale) == Ok(target[0]));
+        assert(crate::specs::part2_selection_ceil(validated.region[1], scale) == Ok(target[1]));
+        assert(crate::specs::part2_selection_ceil(validated.region[2], scale) == Ok(target[2]));
+        assert(crate::specs::part2_selection_ceil(validated.region[3], scale) == Ok(target[3]));
+        assert(target@ =~= seq![target[0], target[1], target[2], target[3]]);
+        assert(crate::specs::part2_color_target(validated.region@, discard_levels) == Ok(target@));
+        crate::proofs::production_impl::production_color_sampling_empty(
+            crate::codestream::image_size_component_infos(size), size.components, target@);
+    }
     #[cfg_attr(
         verus_keep_ghost,
-        verus_spec(decreases size.components - component,)
+        verus_spec(
+            invariant component <= size.components,
+            validated.discard_levels < 32,
+            discard_levels == validated.discard_levels,
+            scale == 1u32 << (discard_levels as u32),
+            crate::specs::part2_color_target(validated.region@, discard_levels) == Ok(target@),
+            crate::specs::part2_color_sampling_prefix(
+                crate::codestream::image_size_component_infos(size), size.components, target@, component as nat,
+            ) == Ok((horizontal, vertical)),
+            decreases size.components - component,
+        )
     )]
     while component < size.components {
-        let info = size.component(component)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_color_sampling_step(
+                crate::codestream::image_size_component_infos(size), size.components, target@, component as nat);
+            crate::proofs::production_impl::production_color_sampling_error_guard(
+                crate::codestream::image_size_component_infos(size), size.components, target@, component as nat + 1, size.components as nat);
+        }
+        let info = codestream::image_component_info(size, component)?;
         let x_step = u64::from(info.x_subsampling)
             .checked_mul(65_536)
             .ok_or_else(arithmetic_overflow)?;
@@ -2781,18 +2834,20 @@ fn color_selection(
         .saturating_sub(vertical.saturating_mul(scale))
         .max(size.y_origin);
     // Retain resampling context across ROI/tile boundaries; validate the original selection first.
-    let expanded = DecodeSelection::full_image()
-        .with_region(crate::ImageRegion::new(
-            x0,
-            y0,
-            validated.region[2]
+    let expanded = crate::options::selection_from_parts(
+        TileSelection::All,
+        Some(crate::ImageRegion {
+            x: x0,
+            y: y0,
+            width: validated.region[2]
                 .checked_sub(x0)
                 .ok_or_else(arithmetic_overflow)?,
-            validated.region[3]
+            height: validated.region[3]
                 .checked_sub(y0)
                 .ok_or_else(arithmetic_overflow)?,
-        ))
-        .with_discard_levels(discard_levels);
+        }),
+        discard_levels,
+    );
     Ok((expanded, target))
 }
 
@@ -2829,6 +2884,88 @@ fn convert_selected_color(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures associated_typed_outcome(result) == crate::specs::part2_apply_associated_output(
+        crate::image::typed_image_value_view(decoded), jp2::associated_header_option(header),
+        crate::limits::resource_component_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn apply_associated_output<'a>(
+    decoded: TypedImage,
+    header: Option<&'a jp2::Jp2Header>,
+    limits: &ResourceLimits,
+) -> Result<(TypedImage, Option<&'a jp2::Jp2Header>), DecodeError> {
+    let image = match header {
+        Some(header) => apply_jp2_output(decoded, header, limits)?,
+        None => decoded,
+    };
+    Ok((image, header))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::color::converted_image_result(result) == crate::specs::part2_convert_associated_selected(
+        crate::image::typed_image_value_view(*image), jp2::associated_header_option(header), target,
+        crate::limits::resource_decoded_bytes_limit(limits), crate::limits::resource_work_limit(limits),
+    ),
+))]
+fn convert_associated_selected_color(
+    image: &TypedImage,
+    header: Option<&jp2::Jp2Header>,
+    target: [u32; 4],
+    limits: &ResourceLimits,
+) -> Result<crate::color::ConvertedImage, DecodeError> {
+    let header = match header {
+        Some(header) => header,
+        None => {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::MissingRequiredStructure,
+            });
+        }
+    };
+    convert_selected_color(image, &header.color, target, limits)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::color::converted_image_result(result) == crate::specs::part2_convert_associated(
+        crate::image::typed_image_value_view(*image), jp2::associated_header_option(header),
+        crate::limits::resource_decoded_bytes_limit(limits), crate::limits::resource_work_limit(limits),
+    ),
+))]
+fn convert_associated_color(
+    image: &TypedImage,
+    header: Option<&jp2::Jp2Header>,
+    limits: &ResourceLimits,
+) -> Result<crate::color::ConvertedImage, DecodeError> {
+    let header = match header {
+        Some(header) => header,
+        None => {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::MissingRequiredStructure,
+            });
+        }
+    };
+    crate::color::convert_jp2_color(image, &header.color, limits)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::color::converted_image_result(result) == crate::specs::part2_finish_associated_selected_output(
+        crate::image::typed_image_value_view(decoded), jp2::associated_header_option(header), target,
+        crate::limits::resource_component_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+        crate::limits::resource_work_limit(limits),
+    ),
+))]
+fn finish_associated_selected_output(
+    decoded: TypedImage,
+    header: Option<&jp2::Jp2Header>,
+    target: [u32; 4],
+    limits: &ResourceLimits,
+) -> Result<crate::color::ConvertedImage, DecodeError> {
+    let (mapped, header) = apply_associated_output(decoded, header, limits)?;
+    convert_associated_selected_color(&mapped, header, target, limits)
+}
+
 pub(crate) fn decode_jpx_file<'a>(
     file: &'a jp2::Jp2File<'_>,
     codestream_index: usize,
@@ -2849,18 +2986,10 @@ pub(crate) fn decode_jpx_file<'a>(
             return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
         }
         let selected = file.codestream(codestream_index)?;
-        let associated_header = match selected.codestream_header() {
-            Some(association) => match association.parsed_header() {
-                Some(header) => Some(header),
-                None => {
-                    return Err(DecodeError::malformed(
-                        association.box_header().offset(),
-                        MalformedKind::MissingRequiredStructure,
-                    ));
-                }
-            },
-            None => Some(file.header()),
-        };
+        let associated_header = Some(jp2::associated_header_for_codestream(
+            selected,
+            file.header(),
+        )?);
         let layout = codestream::parse_layout(selected.data(), options.limits())?;
         if let Some(header) = associated_header {
             jp2::validate_selected_header(header, &layout.info, selected.box_header().offset())?;
@@ -2870,35 +2999,19 @@ pub(crate) fn decode_jpx_file<'a>(
             decode_layout_selected(&layout, selection, options.limits())?,
             options.limits(),
         )?;
-        let image = match associated_header {
-            Some(header) => apply_jp2_output(decoded, header, options.limits())?,
-            None => decoded,
-        };
-        Ok((image, associated_header))
+        apply_associated_output(decoded, associated_header, options.limits())
     }
     let selected = file.codestream(codestream_index)?;
-    let associated_header = match selected.codestream_header() {
-        Some(association) => match association.parsed_header() {
-            Some(header) => Some(header),
-            None => {
-                return Err(DecodeError::malformed(
-                    association.box_header().offset(),
-                    MalformedKind::MissingRequiredStructure,
-                ));
-            }
-        },
-        None => Some(file.header()),
-    };
+    let associated_header = Some(jp2::associated_header_for_codestream(
+        selected,
+        file.header(),
+    )?);
     let info = codestream::parse(selected.data(), options.limits())?;
     if let Some(header) = associated_header {
         jp2::validate_selected_header(header, &info, selected.box_header().offset())?;
     }
     let decoded = decode_codestream(selected.data(), options)?;
-    let image = match associated_header {
-        Some(header) => apply_jp2_output(decoded, header, options.limits())?,
-        None => decoded,
-    };
-    Ok((image, associated_header))
+    apply_associated_output(decoded, associated_header, options.limits())
 }
 
 fn decode_jpx_file_selected<'a>(
@@ -3454,12 +3567,55 @@ struct ValidatedSelection {
     discard_levels: u8,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn validated_selection_view(selection: ValidatedSelection) -> crate::specs::Part2ValidatedSelection {
+        (selection.tiles@, selection.region@, selection.discard_levels)
+    }
+
+    closed spec fn color_selection_outcome(result: Result<(DecodeSelection, [u32; 4]), DecodeError>)
+        -> Result<(crate::specs::Part2DecodeSelection, Seq<u32>), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(output) => Ok((crate::options::decode_selection_value_view(output.0), output.1@)),
+        }
+    }
+
+    closed spec fn selection_region_outcome(result: Result<[u32; 4], DecodeError>) -> Result<Seq<u32>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(region) => Ok(region@) }
+    }
+
+    closed spec fn associated_typed_outcome(result: Result<(TypedImage, Option<&jp2::Jp2Header>), DecodeError>)
+        -> Result<(crate::specs::Part1DecodedTypedImage, Option<crate::specs::Part2AssociatedHeader>), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(output) => Ok((crate::image::typed_image_value_view(output.0), jp2::associated_header_option(output.1))),
+        }
+    }
+
+    closed spec fn selected_tiles_outcome(result: Result<Vec<u16>, DecodeError>) -> Result<Seq<u16>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(tiles) => Ok(tiles@) }
+    }
+
+    closed spec fn validated_selection_outcome(result: Result<ValidatedSelection, DecodeError>)
+        -> Result<crate::specs::Part2ValidatedSelection, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(selection) => Ok(validated_selection_view(selection)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_tile_list_contains(tiles@, tile),
+))]
 fn tile_list_contains(tiles: &[u16], tile: u16) -> Result<bool, DecodeError> {
     let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= tiles.len(),
+            forall |i: int| 0 <= i < index ==> tiles@[i] != tile,
             decreases tiles.len() - index,
         )
     )]
@@ -3472,54 +3628,27 @@ fn tile_list_contains(tiles: &[u16], tile: u16) -> Result<bool, DecodeError> {
     Ok(false)
 }
 
-fn validate_selection(
-    size: &ImageSize,
-    selection: &DecodeSelection,
-) -> Result<ValidatedSelection, DecodeError> {
-    let image_x1 = size
-        .x_origin
-        .checked_add(size.width)
-        .ok_or_else(arithmetic_overflow)?;
-    let image_y1 = size
-        .y_origin
-        .checked_add(size.height)
-        .ok_or_else(arithmetic_overflow)?;
-    let tile_count = size.tile_count()?;
-    let tiles_across = size.tiles_across;
-    if tiles_across == 0 {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::InvalidImageGeometry,
-        ));
-    }
-    if tile_count > u64::from(u16::MAX) + 1 {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::InvalidImageGeometry,
-        ));
-    }
-
-    let explicit_tiles = match selection.tile_selection() {
-        TileSelection::All => Vec::new(),
-        TileSelection::Index(index) => vec![*index],
-        TileSelection::Set(indices) => {
-            if indices.is_empty() {
-                return Err(DecodeError::InvalidSelection {
-                    reason: SelectionError::EmptyTileSet,
-                });
-            }
-            indices.clone()
-        }
-    };
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_explicit_tile_prefix(explicit_tiles@, tile_count, explicit_tiles@.len()),
+))]
+fn validate_explicit_tile_indices(
+    explicit_tiles: &[u16],
+    tile_count: u64,
+) -> Result<(), DecodeError> {
     let mut index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= explicit_tiles.len(),
-            decreases explicit_tiles.len() - index,
-        )
-    )]
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_explicit_tiles_empty(explicit_tiles@, tile_count); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= explicit_tiles.len(),
+        crate::specs::part2_explicit_tile_prefix(explicit_tiles@, tile_count, index as nat) == Ok(()),
+        decreases explicit_tiles.len() - index,
+    ))]
     while index < explicit_tiles.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_explicit_tiles_step(explicit_tiles@, tile_count, index as nat);
+            crate::proofs::production_impl::production_explicit_tiles_error_guard(explicit_tiles@, tile_count, index as nat + 1, explicit_tiles@.len());
+        }
         let tile = *explicit_tiles.get(index).ok_or_else(arithmetic_overflow)?;
         if u64::from(tile) >= tile_count {
             return Err(DecodeError::InvalidSelection {
@@ -3527,142 +3656,250 @@ fn validate_selection(
             });
         }
         let mut earlier = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant earlier <= index,
-                decreases index - earlier,
-            )
-        )]
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant earlier <= index, index < explicit_tiles.len(),
+            explicit_tiles@[index as int] == tile, (tile as u64) < tile_count,
+            crate::specs::part2_explicit_tile_prefix(explicit_tiles@, tile_count, index as nat) == Ok(()),
+            forall |i: int| 0 <= i < earlier ==> explicit_tiles@[i] != tile,
+            decreases index - earlier,
+        ))]
         while earlier < index {
-            if explicit_tiles.get(earlier) == Some(&tile) {
+            if explicit_tiles[earlier] == tile {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(explicit_tiles@.take(index as int)[earlier as int] == tile);
+                    assert(explicit_tiles@.take(index as int).contains(tile));
+                    crate::proofs::production_impl::production_explicit_tiles_step(explicit_tiles@, tile_count, index as nat);
+                    crate::proofs::production_impl::production_explicit_tiles_error_guard(explicit_tiles@, tile_count, index as nat + 1, explicit_tiles@.len());
+                }
                 return Err(DecodeError::InvalidSelection {
                     reason: SelectionError::DuplicateTile,
                 });
             }
             earlier = earlier.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(!explicit_tiles@.take(index as int).contains(tile));
+            crate::proofs::production_impl::production_explicit_tiles_step(explicit_tiles@, tile_count, index as nat);
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if explicit_tiles.len() > 1 {
-        let first = u32::from(*explicit_tiles.first().ok_or_else(arithmetic_overflow)?);
-        let mut first_row = first / tiles_across;
-        let mut first_column = first % tiles_across;
-        let mut last_row = first_row;
-        let mut last_column = first_column;
-        let mut bound_index = 1_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases explicit_tiles.len() - bound_index,)
-        )]
-        while bound_index < explicit_tiles.len() {
-            let current = u32::from(
-                *explicit_tiles
-                    .get(bound_index)
-                    .ok_or_else(arithmetic_overflow)?,
-            );
-            let row = floor_div_u32(current, tiles_across)?;
-            let column = current
-                .checked_rem(tiles_across)
-                .ok_or_else(arithmetic_overflow)?;
-            first_row = first_row.min(row);
-            first_column = first_column.min(column);
-            last_row = last_row.max(row);
-            last_column = last_column.max(column);
-            bound_index = bound_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        let expected = last_row
-            .checked_sub(first_row)
-            .and_then(|value| value.checked_add(1))
-            .and_then(|rows| {
-                last_column
-                    .checked_sub(first_column)?
-                    .checked_add(1)?
-                    .checked_mul(rows)
-            })
-            .ok_or(DecodeError::InvalidSelection {
-                reason: SelectionError::NonRectangularTileSet,
-            })?;
-        if usize::try_from(expected).map_err(|_| arithmetic_overflow())? != explicit_tiles.len() {
-            return Err(DecodeError::InvalidSelection {
-                reason: SelectionError::NonRectangularTileSet,
-            });
-        }
-        let mut row = first_row;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases last_row as int + 1 - row as int,)
-        )]
-        while row <= last_row {
-            let mut column = first_column;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(decreases last_column as int + 1 - column as int,)
-            )]
-            while column <= last_column {
-                let expected_index = row
-                    .checked_mul(tiles_across)
-                    .and_then(|value| value.checked_add(column))
-                    .ok_or_else(arithmetic_overflow)?;
-                if !tile_list_contains(
-                    &explicit_tiles,
-                    u16::try_from(expected_index).map_err(|_| arithmetic_overflow())?,
-                )? {
-                    return Err(DecodeError::InvalidSelection {
-                        reason: SelectionError::NonRectangularTileSet,
-                    });
-                }
-                column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-    }
+    Ok(())
+}
 
-    let region = match selection.region() {
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_rectangle_area(bounds),
+))]
+fn selection_rectangle_area(bounds: (u32, u32, u32, u32)) -> Result<u32, DecodeError> {
+    let error = DecodeError::InvalidSelection {
+        reason: SelectionError::NonRectangularTileSet,
+    };
+    let rows = bounds
+        .2
+        .checked_sub(bounds.0)
+        .ok_or(error)?
+        .checked_add(1)
+        .ok_or(error)?;
+    let columns = bounds
+        .3
+        .checked_sub(bounds.1)
+        .ok_or(error)?
+        .checked_add(1)
+        .ok_or(error)?;
+    rows.checked_mul(columns).ok_or(error)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires bounds.0 <= bounds.2, bounds.1 <= bounds.3,
+        bounds.2 < u32::MAX, bounds.3 < u32::MAX,
+    ensures result == crate::specs::part2_rectangle_rows(explicit_tiles@, tiles_across, bounds,
+        (bounds.2 as nat - bounds.0 as nat + 1) as nat),
+))]
+fn validate_selection_rectangle_cells(
+    explicit_tiles: &[u16],
+    tiles_across: u32,
+    bounds: (u32, u32, u32, u32),
+) -> Result<(), DecodeError> {
+    let mut row = bounds.0;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_rectangle_rows_empty(explicit_tiles@, tiles_across, bounds); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant bounds.0 <= bounds.2, bounds.1 <= bounds.3, bounds.2 < u32::MAX, bounds.3 < u32::MAX,
+        bounds.0 <= row as int <= bounds.2 as int + 1,
+        crate::specs::part2_rectangle_rows(explicit_tiles@, tiles_across, bounds, (row - bounds.0) as nat) == Ok(()),
+        decreases bounds.2 as int + 1 - row as int,
+    ))]
+    while row <= bounds.2 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_rectangle_rows_step(explicit_tiles@, tiles_across, bounds, (row - bounds.0) as nat);
+            crate::proofs::production_impl::production_rectangle_rows_error(explicit_tiles@, tiles_across, bounds,
+                (row as nat - bounds.0 as nat + 1) as nat, (bounds.2 as nat - bounds.0 as nat + 1) as nat);
+        }
+        let mut column = bounds.1;
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_rectangle_columns_empty(explicit_tiles@, tiles_across, bounds, row); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant bounds.0 <= row <= bounds.2, bounds.1 <= bounds.3,
+            bounds.2 < u32::MAX, bounds.3 < u32::MAX,
+            bounds.1 <= column as int <= bounds.3 as int + 1,
+            crate::specs::part2_rectangle_rows(explicit_tiles@, tiles_across, bounds, (row - bounds.0) as nat) == Ok(()),
+            crate::specs::part2_rectangle_columns(explicit_tiles@, tiles_across, bounds, row, (column - bounds.1) as nat) == Ok(()),
+            decreases bounds.3 as int + 1 - column as int,
+        ))]
+        while column <= bounds.3 {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_rectangle_columns_step(explicit_tiles@, tiles_across, bounds, row, (column - bounds.1) as nat);
+                crate::proofs::production_impl::production_rectangle_columns_error(explicit_tiles@, tiles_across, bounds, row,
+                    (column as nat - bounds.1 as nat + 1) as nat, (bounds.3 as nat - bounds.1 as nat + 1) as nat);
+                crate::proofs::production_impl::production_rectangle_rows_step(explicit_tiles@, tiles_across, bounds, (row - bounds.0) as nat);
+                crate::proofs::production_impl::production_rectangle_rows_error(explicit_tiles@, tiles_across, bounds,
+                    (row as nat - bounds.0 as nat + 1) as nat, (bounds.2 as nat - bounds.0 as nat + 1) as nat);
+            }
+            let offset = row
+                .checked_mul(tiles_across)
+                .ok_or_else(arithmetic_overflow)?;
+            let expected_index = offset.checked_add(column).ok_or_else(arithmetic_overflow)?;
+            let expected_index = match u16::try_from(expected_index) {
+                Ok(index) => index,
+                Err(_) => return Err(arithmetic_overflow()),
+            };
+            if !tile_list_contains(explicit_tiles, expected_index)? {
+                return Err(DecodeError::InvalidSelection {
+                    reason: SelectionError::NonRectangularTileSet,
+                });
+            }
+            column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_rectangle_rows_step(explicit_tiles@, tiles_across, bounds, (row - bounds.0) as nat); }
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    requires explicit_tiles.len() > 1, tiles_across > 0,
+    ensures result == crate::specs::part2_validate_tile_rectangle(explicit_tiles@, tiles_across),
+))]
+fn validate_selection_tile_rectangle(
+    explicit_tiles: &[u16],
+    tiles_across: u32,
+) -> Result<(), DecodeError> {
+    let first = u32::from(*explicit_tiles.first().ok_or_else(arithmetic_overflow)?);
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_unsigned_remainder_bound(first, tiles_across); }
+    let mut first_row = first / tiles_across;
+    let mut first_column = first % tiles_across;
+    let mut last_row = first_row;
+    let mut last_column = first_column;
+    let mut bound_index = 1_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_tile_box_first(explicit_tiles@, tiles_across); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant 1 <= bound_index <= explicit_tiles.len(), explicit_tiles.len() > 1, tiles_across > 0,
+        first_row <= last_row, first_column <= last_column, last_row <= u16::MAX, last_column <= u16::MAX,
+        crate::specs::part2_tile_rectangle_prefix(explicit_tiles@, tiles_across, bound_index as nat)
+            == (first_row, first_column, last_row, last_column),
+        decreases explicit_tiles.len() - bound_index,
+    ))]
+    while bound_index < explicit_tiles.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_tile_box_step(explicit_tiles@, tiles_across, bound_index as nat); }
+        let current = u32::from(
+            *explicit_tiles
+                .get(bound_index)
+                .ok_or_else(arithmetic_overflow)?,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_unsigned_remainder_bound(current, tiles_across); }
+        let row = current / tiles_across;
+        let column = current
+            .checked_rem(tiles_across)
+            .ok_or_else(arithmetic_overflow)?;
+        first_row = first_row.min(row);
+        first_column = first_column.min(column);
+        last_row = last_row.max(row);
+        last_column = last_column.max(column);
+        bound_index = bound_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    let bounds = (first_row, first_column, last_row, last_column);
+    let expected = selection_rectangle_area(bounds)?;
+    let expected = match usize::try_from(expected) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    if expected != explicit_tiles.len() {
+        return Err(DecodeError::InvalidSelection {
+            reason: SelectionError::NonRectangularTileSet,
+        });
+    }
+    validate_selection_rectangle_cells(explicit_tiles, tiles_across, bounds)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures selection_region_outcome(result) == crate::specs::part2_selection_region(
+        crate::codestream::selection_geometry_view(size), explicit_tiles@, requested, image_x1, image_y1,
+    ),
+))]
+fn selection_region(
+    size: &ImageSize,
+    explicit_tiles: &[u16],
+    requested: Option<crate::ImageRegion>,
+    image_x1: u32,
+    image_y1: u32,
+) -> Result<[u32; 4], DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::selection_geometry_known_fields(size); }
+    match requested {
         Some(region) => {
             if region.width == 0 || region.height == 0 {
                 return Err(DecodeError::InvalidSelection {
                     reason: SelectionError::EmptyRegion,
                 });
             }
-            let x1 = region
-                .x
-                .checked_add(region.width)
-                .ok_or(DecodeError::InvalidSelection {
-                    reason: SelectionError::RegionOutOfBounds,
-                })?;
-            let y1 = region
-                .y
-                .checked_add(region.height)
-                .ok_or(DecodeError::InvalidSelection {
-                    reason: SelectionError::RegionOutOfBounds,
-                })?;
+            let error = DecodeError::InvalidSelection {
+                reason: SelectionError::RegionOutOfBounds,
+            };
+            let x1 = region.x.checked_add(region.width).ok_or(error)?;
+            let y1 = region.y.checked_add(region.height).ok_or(error)?;
             if region.x < size.x_origin
                 || region.y < size.y_origin
                 || x1 > image_x1
                 || y1 > image_y1
             {
-                return Err(DecodeError::InvalidSelection {
-                    reason: SelectionError::RegionOutOfBounds,
-                });
+                return Err(error);
             }
-            [region.x, region.y, x1, y1]
+            Ok([region.x, region.y, x1, y1])
         }
-        None if explicit_tiles.is_empty() => [size.x_origin, size.y_origin, image_x1, image_y1],
+        None if explicit_tiles.is_empty() => Ok([size.x_origin, size.y_origin, image_x1, image_y1]),
         None => {
             let mut x0 = image_x1;
             let mut y0 = image_y1;
             let mut x1 = size.x_origin;
             let mut y1 = size.y_origin;
             let mut tile_index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant tile_index <= explicit_tiles.len(),
-                    decreases explicit_tiles.len() - tile_index,
-                )
-            )]
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_selected_region_empty(
+                    crate::codestream::selection_geometry_view(size), explicit_tiles@, image_x1, image_y1);
+            }
+            #[cfg_attr(verus_keep_ghost, verus_spec(
+                invariant tile_index <= explicit_tiles.len(), explicit_tiles.len() > 0, requested.is_none(),
+                crate::specs::part2_selected_region_prefix(crate::codestream::selection_geometry_view(size),
+                    explicit_tiles@, image_x1, image_y1, tile_index as nat) == Ok((x0, y0, x1, y1)),
+                decreases explicit_tiles.len() - tile_index,
+            ))]
             while tile_index < explicit_tiles.len() {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_selected_region_step(crate::codestream::selection_geometry_view(size),
+                        explicit_tiles@, image_x1, image_y1, tile_index as nat);
+                    crate::proofs::production_impl::production_selected_region_error(crate::codestream::selection_geometry_view(size),
+                        explicit_tiles@, image_x1, image_y1, tile_index as nat + 1, explicit_tiles@.len());
+                }
                 let bounds = size.tile_bounds(
                     *explicit_tiles
                         .get(tile_index)
@@ -3674,28 +3911,51 @@ fn validate_selection(
                 y1 = y1.max(bounds.y1);
                 tile_index = tile_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
-            [x0, y0, x1, y1]
+            Ok([x0, y0, x1, y1])
         }
-    };
+    }
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures selected_tiles_outcome(result) == crate::specs::part2_select_intersecting_tiles(
+        crate::codestream::selection_geometry_view(size), explicit_tiles@, region@, tile_count,
+    ),
+))]
+fn select_intersecting_tiles(
+    size: &ImageSize,
+    explicit_tiles: &[u16],
+    region: [u32; 4],
+    tile_count: u64,
+) -> Result<Vec<u16>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::selection_geometry_known_fields(size); }
     let mut tiles = Vec::new();
     let mut tile = 0_u64;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant tile <= tile_count,
-            decreases tile_count - tile,
-        )
-    )]
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_selected_tiles_empty(crate::codestream::selection_geometry_view(size), explicit_tiles@, region@); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant tile <= tile_count,
+        crate::specs::part2_selected_tiles_prefix(crate::codestream::selection_geometry_view(size),
+            explicit_tiles@, region@, tile as nat) == Ok(tiles@),
+        decreases tile_count - tile,
+    ))]
     while tile < tile_count {
-        let tile_index = u16::try_from(tile).map_err(|_| arithmetic_overflow())?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_selected_tiles_step(crate::codestream::selection_geometry_view(size), explicit_tiles@, region@, tile as nat);
+            crate::proofs::production_impl::production_selected_tiles_error(crate::codestream::selection_geometry_view(size), explicit_tiles@, region@, tile as nat + 1, tile_count as nat);
+        }
+        let tile_index = match u16::try_from(tile) {
+            Ok(index) => index,
+            Err(_) => return Err(arithmetic_overflow()),
+        };
         let bounds = size.tile_bounds(tile_index)?;
         let intersects = bounds.x0 < region[2]
             && bounds.x1 > region[0]
             && bounds.y0 < region[3]
             && bounds.y1 > region[1];
         if intersects {
-            if !explicit_tiles.is_empty() && !tile_list_contains(&explicit_tiles, tile_index)? {
+            if !explicit_tiles.is_empty() && !tile_list_contains(explicit_tiles, tile_index)? {
                 return Err(DecodeError::InvalidSelection {
                     reason: SelectionError::RegionOutsideSelectedTiles,
                 });
@@ -3709,6 +3969,109 @@ fn validate_selection(
             reason: SelectionError::RegionOutsideSelectedTiles,
         });
     }
+    Ok(tiles)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures selected_tiles_outcome(result) == crate::specs::part2_selection_explicit(crate::options::tile_selection_view(selection)),
+))]
+fn explicit_tiles_from_selection(selection: &TileSelection) -> Result<Vec<u16>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part2_selection_explicit);
+        reveal(crate::options::tile_selection_view);
+    }
+    match selection {
+        TileSelection::All => {
+            let tiles = Vec::new();
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(tiles@ =~= Seq::<u16>::empty());
+                assert(crate::specs::part2_selection_explicit(crate::options::tile_selection_view(selection)) == Ok(tiles@));
+            }
+            Ok(tiles)
+        }
+        TileSelection::Index(index) => {
+            let tiles = vec![*index];
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(tiles@ =~= seq![*index]);
+                assert(crate::specs::part2_selection_explicit(crate::options::tile_selection_view(selection)) == Ok(tiles@));
+            }
+            Ok(tiles)
+        }
+        TileSelection::Set(indices) => {
+            if indices.is_empty() {
+                return Err(DecodeError::InvalidSelection {
+                    reason: SelectionError::EmptyTileSet,
+                });
+            }
+            let copied = indices.clone();
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(copied@ == indices@);
+                assert(crate::specs::part2_selection_explicit(crate::options::tile_selection_view(selection)) == Ok(copied@));
+            }
+            Ok(copied)
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures validated_selection_outcome(result) == crate::specs::part2_validate_selection(
+        crate::codestream::selection_geometry_view(size), crate::options::decode_selection_view(selection),
+    ),
+))]
+fn validate_selection(
+    size: &ImageSize,
+    selection: &DecodeSelection,
+) -> Result<ValidatedSelection, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::codestream::selection_geometry_known_fields(size);
+        reveal(crate::specs::part2_validate_selection);
+    }
+    let image_x1 = size
+        .x_origin
+        .checked_add(size.width)
+        .ok_or_else(arithmetic_overflow)?;
+    let image_y1 = size
+        .y_origin
+        .checked_add(size.height)
+        .ok_or_else(arithmetic_overflow)?;
+    let tile_count = size.tile_count()?;
+    let tiles_across = size.tiles_across;
+    if tiles_across == 0 {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        });
+    }
+    if tile_count > u64::from(u16::MAX) + 1 {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        });
+    }
+
+    let explicit_tiles = explicit_tiles_from_selection(selection.tile_selection())?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part2_selection_explicit(crate::options::decode_selection_view(selection).0) == Ok(explicit_tiles@));
+    }
+    validate_explicit_tile_indices(&explicit_tiles, tile_count)?;
+    if explicit_tiles.len() > 1 {
+        validate_selection_tile_rectangle(&explicit_tiles, tiles_across)?;
+    }
+
+    let region = selection_region(
+        size,
+        &explicit_tiles,
+        selection.region(),
+        image_x1,
+        image_y1,
+    )?;
+    let tiles = select_intersecting_tiles(size, &explicit_tiles, region, tile_count)?;
     Ok(ValidatedSelection {
         tiles,
         region,
@@ -4741,6 +5104,9 @@ fn checked_area_u32(width: u32, height: u32) -> Result<usize, DecodeError> {
     crate::transform::checked_area(width, height)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_selection_ceil(value, divisor),
+))]
 fn ceil_div_u32(value: u32, divisor: u32) -> Result<u32, DecodeError> {
     if divisor == 0 {
         return Err(invalid_decode());
@@ -4748,7 +5114,7 @@ fn ceil_div_u32(value: u32, divisor: u32) -> Result<u32, DecodeError> {
 
     let remainder = value.checked_rem(divisor).ok_or_else(arithmetic_overflow)?;
     (value / divisor)
-        .checked_add(u32::from(remainder != 0))
+        .checked_add(if remainder != 0 { 1 } else { 0 })
         .ok_or_else(arithmetic_overflow)
 }
 
@@ -7471,6 +7837,450 @@ mod tests {
         assert_eq!(
             selected.component(0).unwrap().samples(),
             &crate::image::TypedSamples::Unsigned(vec![128; 3])
+        );
+    }
+
+    #[test]
+    fn complete_native_selection_and_color_context_match_independent_spatial_reference() {
+        fn malformed(kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput { offset: 0, kind }
+        }
+        fn selection_error(reason: SelectionError) -> DecodeError {
+            DecodeError::InvalidSelection { reason }
+        }
+        fn bounded(value: u128) -> Result<u32, DecodeError> {
+            if value > u128::from(u32::MAX) {
+                Err(malformed(MalformedKind::ArithmeticOverflow))
+            } else {
+                Ok(value as u32)
+            }
+        }
+        fn tile(size: &ImageSize, index: u16) -> Result<[u32; 4], DecodeError> {
+            if size.tiles_across == 0
+                || u64::from(index) >= u64::from(size.tiles_across) * u64::from(size.tiles_down)
+            {
+                return Err(malformed(MalformedKind::InvalidImageGeometry));
+            }
+            let col = u32::from(index) % size.tiles_across;
+            let row = u32::from(index) / size.tiles_across;
+            let nx = bounded(u128::from(col) * u128::from(size.tile_width))?;
+            let nx = bounded(u128::from(nx) + u128::from(size.tile_x_origin))?;
+            let ny = bounded(u128::from(row) * u128::from(size.tile_height))?;
+            let ny = bounded(u128::from(ny) + u128::from(size.tile_y_origin))?;
+            let ix = bounded(u128::from(size.x_origin) + u128::from(size.width))?;
+            let iy = bounded(u128::from(size.y_origin) + u128::from(size.height))?;
+            let ex = bounded(u128::from(nx) + u128::from(size.tile_width))?;
+            let ey = bounded(u128::from(ny) + u128::from(size.tile_height))?;
+            let bounds = [
+                nx.max(size.x_origin),
+                ny.max(size.y_origin),
+                ex.min(ix),
+                ey.min(iy),
+            ];
+            if bounds[0] >= bounds[2] || bounds[1] >= bounds[3] {
+                Err(malformed(MalformedKind::InvalidImageGeometry))
+            } else {
+                Ok(bounds)
+            }
+        }
+        fn validate(
+            size: &ImageSize,
+            request: &DecodeSelection,
+        ) -> Result<(Vec<u16>, [u32; 4]), DecodeError> {
+            let ix = bounded(u128::from(size.x_origin) + u128::from(size.width))?;
+            let iy = bounded(u128::from(size.y_origin) + u128::from(size.height))?;
+            let count = u64::from(size.tiles_across) * u64::from(size.tiles_down);
+            if size.tiles_across == 0 || count > 65_536 {
+                return Err(malformed(MalformedKind::InvalidImageGeometry));
+            }
+            let explicit = match request.tile_selection() {
+                TileSelection::All => vec![],
+                TileSelection::Index(index) => vec![*index],
+                TileSelection::Set(indices) => {
+                    if indices.is_empty() {
+                        return Err(selection_error(SelectionError::EmptyTileSet));
+                    }
+                    indices.clone()
+                }
+            };
+            let mut seen = std::collections::BTreeSet::new();
+            for index in &explicit {
+                if u64::from(*index) >= count {
+                    return Err(selection_error(SelectionError::TileOutOfRange));
+                }
+                if !seen.insert(*index) {
+                    return Err(selection_error(SelectionError::DuplicateTile));
+                }
+            }
+            if explicit.len() > 1 {
+                let rows = explicit
+                    .iter()
+                    .map(|value| u32::from(*value) / size.tiles_across)
+                    .collect::<Vec<_>>();
+                let columns = explicit
+                    .iter()
+                    .map(|value| u32::from(*value) % size.tiles_across)
+                    .collect::<Vec<_>>();
+                let (r0, r1) = (*rows.iter().min().unwrap(), *rows.iter().max().unwrap());
+                let (c0, c1) = (
+                    *columns.iter().min().unwrap(),
+                    *columns.iter().max().unwrap(),
+                );
+                let area = u64::from(r1 - r0 + 1) * u64::from(c1 - c0 + 1);
+                if area > u64::from(u32::MAX) || area as usize != explicit.len() {
+                    return Err(selection_error(SelectionError::NonRectangularTileSet));
+                }
+                for row in r0..=r1 {
+                    for col in c0..=c1 {
+                        let offset = bounded(u128::from(row) * u128::from(size.tiles_across))?;
+                        let index = bounded(u128::from(offset) + u128::from(col))?;
+                        if index > u32::from(u16::MAX) {
+                            return Err(malformed(MalformedKind::ArithmeticOverflow));
+                        }
+                        if !seen.contains(&(index as u16)) {
+                            return Err(selection_error(SelectionError::NonRectangularTileSet));
+                        }
+                    }
+                }
+            }
+            let region = if let Some(region) = request.region() {
+                if region.width == 0 || region.height == 0 {
+                    return Err(selection_error(SelectionError::EmptyRegion));
+                }
+                let x1 = u64::from(region.x) + u64::from(region.width);
+                let y1 = u64::from(region.y) + u64::from(region.height);
+                if x1 > u64::from(u32::MAX)
+                    || y1 > u64::from(u32::MAX)
+                    || region.x < size.x_origin
+                    || region.y < size.y_origin
+                    || x1 > u64::from(ix)
+                    || y1 > u64::from(iy)
+                {
+                    return Err(selection_error(SelectionError::RegionOutOfBounds));
+                }
+                [region.x, region.y, x1 as u32, y1 as u32]
+            } else if explicit.is_empty() {
+                [size.x_origin, size.y_origin, ix, iy]
+            } else {
+                let mut region = [ix, iy, size.x_origin, size.y_origin];
+                for index in &explicit {
+                    let bounds = tile(size, *index)?;
+                    region[0] = region[0].min(bounds[0]);
+                    region[1] = region[1].min(bounds[1]);
+                    region[2] = region[2].max(bounds[2]);
+                    region[3] = region[3].max(bounds[3]);
+                }
+                region
+            };
+            let mut selected = vec![];
+            for index in 0..count {
+                let bounds = tile(size, index as u16)?;
+                if bounds[0] < region[2]
+                    && bounds[2] > region[0]
+                    && bounds[1] < region[3]
+                    && bounds[3] > region[1]
+                {
+                    if !explicit.is_empty() && !seen.contains(&(index as u16)) {
+                        return Err(selection_error(SelectionError::RegionOutsideSelectedTiles));
+                    }
+                    selected.push(index as u16);
+                }
+            }
+            if selected.is_empty() {
+                return Err(selection_error(SelectionError::RegionOutsideSelectedTiles));
+            }
+            Ok((selected, region))
+        }
+        fn color(
+            size: &ImageSize,
+            request: &DecodeSelection,
+        ) -> Result<(crate::ImageRegion, [u32; 4], u8), DecodeError> {
+            let (_, region) = validate(size, request)?;
+            let discard = request.discard_levels();
+            if discard >= 32 {
+                return Err(selection_error(SelectionError::ReductionTooLarge));
+            }
+            let scale = 2_u64.pow(u32::from(discard));
+            let target = region.map(|value| u64::from(value).div_ceil(scale) as u32);
+            let mut horizontal = 0;
+            let mut vertical = 0;
+            for index in 0..size.components {
+                let info = size
+                    .component_info
+                    .get(usize::from(index))
+                    .ok_or(malformed(MalformedKind::InvalidImageGeometry))?;
+                if info.x_subsampling == 0 || info.y_subsampling == 0 {
+                    return Err(malformed(MalformedKind::InvalidCodeBlock));
+                }
+                let x = (i128::from(target[0]) * 65_536 - i128::from(info.x_registration)).max(0);
+                let y = (i128::from(target[1]) * 65_536 - i128::from(info.y_registration)).max(0);
+                if x % (i128::from(info.x_subsampling) * 65_536) != 0 {
+                    horizontal = horizontal.max(u32::from(info.x_subsampling));
+                }
+                if y % (i128::from(info.y_subsampling) * 65_536) != 0 {
+                    vertical = vertical.max(u32::from(info.y_subsampling));
+                }
+            }
+            let hx = (u64::from(horizontal) * scale).min(u64::from(u32::MAX));
+            let hy = (u64::from(vertical) * scale).min(u64::from(u32::MAX));
+            let x0 = (i128::from(region[0]) - i128::from(hx))
+                .max(0)
+                .max(i128::from(size.x_origin)) as u32;
+            let y0 = (i128::from(region[1]) - i128::from(hy))
+                .max(0)
+                .max(i128::from(size.y_origin)) as u32;
+            if region[2] < x0 || region[3] < y0 {
+                return Err(malformed(MalformedKind::ArithmeticOverflow));
+            }
+            Ok((
+                crate::ImageRegion::new(x0, y0, region[2] - x0, region[3] - y0),
+                target,
+                discard,
+            ))
+        }
+        let tiles = [
+            TileSelection::All,
+            TileSelection::Index(0),
+            TileSelection::Index(8),
+            TileSelection::Index(9),
+            TileSelection::Set(vec![]),
+            TileSelection::Set(vec![0, 0]),
+            TileSelection::Set(vec![0, 4]),
+            TileSelection::Set(vec![4, 0, 3, 1]),
+            TileSelection::Set(vec![0, 1]),
+        ];
+        let regions = [
+            None,
+            Some(crate::ImageRegion::new(3, 5, 1, 1)),
+            Some(crate::ImageRegion::new(3, 5, 13, 9)),
+            Some(crate::ImageRegion::new(3, 5, 10, 8)),
+            Some(crate::ImageRegion::new(3, 5, 0, 1)),
+            Some(crate::ImageRegion::new(2, 5, 1, 1)),
+            Some(crate::ImageRegion::new(15, 5, 2, 1)),
+            Some(crate::ImageRegion::new(u32::MAX, 5, 2, 1)),
+        ];
+        let mut contexts = 0;
+        for variant in 0..8 {
+            for tile_selection in &tiles {
+                for region in regions {
+                    for discard in [0, 1, 31, 32] {
+                        for count in [0, 1, 64, 65] {
+                            for sampling in 0..3 {
+                                let info = crate::codestream::ComponentInfo {
+                                    precision: 0,
+                                    signed: true,
+                                    x_subsampling: if sampling == 2 { 0 } else { 2 },
+                                    y_subsampling: 3,
+                                    x_registration: u16::MAX,
+                                    y_registration: 1,
+                                };
+                                let mut size = ImageSize {
+                                    width: 13,
+                                    height: 9,
+                                    x_origin: 3,
+                                    y_origin: 5,
+                                    components: count,
+                                    uniform_bit_depth: None,
+                                    uniform_signed: None,
+                                    tile_width: 5,
+                                    tile_height: 4,
+                                    tile_x_origin: 3,
+                                    tile_y_origin: 5,
+                                    tiles_across: 3,
+                                    tiles_down: 3,
+                                    component_info: [info; 64],
+                                };
+                                match variant {
+                                    1 => size.width = 0,
+                                    2 => size.x_origin = u32::MAX,
+                                    3 => size.tiles_across = 0,
+                                    4 => {
+                                        size.tiles_across = 65_537;
+                                        size.tiles_down = 1;
+                                    }
+                                    5 => size.tile_width = 0,
+                                    6 => size.tile_x_origin = u32::MAX,
+                                    7 => size.tiles_down = 0,
+                                    _ => {}
+                                }
+                                if sampling == 1 {
+                                    size.component_info[0].x_subsampling = 1;
+                                    size.component_info[0].y_subsampling = 1;
+                                }
+                                let request = crate::options::selection_from_parts(
+                                    tile_selection.clone(),
+                                    region,
+                                    discard,
+                                );
+                                let expected = validate(&size, &request);
+                                let actual = validate_selection(&size, &request)
+                                    .map(|value| (value.tiles, value.region));
+                                assert_eq!(
+                                    actual, expected,
+                                    "variant={variant} tiles={tile_selection:?} region={region:?}"
+                                );
+                                let expected = color(&size, &request);
+                                let actual = color_selection_for_size(&size, &request).map(
+                                    |(selection, target)| {
+                                        assert!(matches!(
+                                            selection.tile_selection(),
+                                            TileSelection::All
+                                        ));
+                                        (
+                                            selection.region().unwrap(),
+                                            target,
+                                            selection.discard_levels(),
+                                        )
+                                    },
+                                );
+                                assert_eq!(
+                                    actual, expected,
+                                    "variant={variant} discard={discard} count={count} sampling={sampling}"
+                                );
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 27_648);
+    }
+
+    #[test]
+    fn associated_native_output_composes_actual_metadata_color_crop_and_none_bypass() {
+        let header = jp2::Jp2Header {
+            image: jp2::ImageHeader {
+                width: u32::MAX,
+                height: 0,
+                components: 0,
+                bit_depth: jp2::ComponentBitDepth::Variable,
+                unknown_color_space: true,
+                intellectual_property: false,
+            },
+            color: jp2::ColorSpecification::enumerated(17),
+            nested_box_count: u32::MAX,
+            palette_entries: u16::MAX,
+            palette_columns: u8::MAX,
+            component_mapping_entries: u16::MAX,
+            channel_definitions: u16::MAX,
+            palette: None,
+            component_mappings: vec![],
+            channel_definition_records: vec![],
+            capture_resolution: None,
+            display_resolution: None,
+        };
+        let info = crate::codestream::ComponentInfo {
+            precision: 8,
+            signed: false,
+            x_subsampling: 1,
+            y_subsampling: 1,
+            x_registration: 0,
+            y_registration: 0,
+        };
+        let image = || {
+            TypedImage::for_test(
+                2,
+                1,
+                7,
+                11,
+                vec![TypedComponent::from_parts(
+                    2,
+                    1,
+                    info,
+                    TypedSamples::Unsigned(vec![0, 255]),
+                )],
+            )
+        };
+        let limits = ResourceLimits::default();
+        let (mapped, selected_header) =
+            apply_associated_output(image(), Some(&header), &limits).unwrap();
+        assert_eq!(selected_header, Some(&header));
+        assert_eq!(
+            (
+                mapped.width(),
+                mapped.height(),
+                mapped.x_origin(),
+                mapped.y_origin()
+            ),
+            (2, 1, 7, 11)
+        );
+        assert_eq!(
+            mapped.components()[0].samples(),
+            &TypedSamples::Unsigned(vec![0, 255])
+        );
+        let converted = convert_associated_color(&mapped, selected_header, &limits).unwrap();
+        assert_eq!((converted.width(), converted.height()), (2, 1));
+        assert_eq!(converted.channels()[0].samples(), &[0, u16::MAX]);
+        let cropped =
+            convert_associated_selected_color(&mapped, selected_header, [8, 11, 9, 12], &limits)
+                .unwrap();
+        assert_eq!((cropped.width(), cropped.height()), (1, 1));
+        assert_eq!(cropped.channels()[0].samples(), &[u16::MAX]);
+        assert_eq!(
+            finish_associated_selected_output(image(), Some(&header), [8, 11, 9, 12], &limits),
+            Ok(cropped),
+        );
+        let missing = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::MissingRequiredStructure,
+        };
+        assert_eq!(
+            convert_associated_color(&mapped, None, &limits),
+            Err(missing)
+        );
+        assert_eq!(
+            convert_associated_selected_color(&mapped, None, [u32::MAX; 4], &limits),
+            Err(missing)
+        );
+        assert_eq!(
+            finish_associated_selected_output(image(), None, [u32::MAX; 4], &limits),
+            Err(missing)
+        );
+        let malformed = || {
+            TypedImage::for_test(
+                2,
+                1,
+                u32::MAX,
+                u32::MAX,
+                vec![TypedComponent::from_parts(
+                    3,
+                    0,
+                    crate::codestream::ComponentInfo {
+                        precision: 0,
+                        ..info
+                    },
+                    TypedSamples::Signed(vec![i64::MIN]),
+                )],
+            )
+        };
+        let (unchanged, selected_header) =
+            apply_associated_output(malformed(), None, &limits).unwrap();
+        assert_eq!(unchanged, malformed());
+        assert_eq!(selected_header, None);
+        assert_eq!(
+            apply_associated_output(malformed(), Some(&header), &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        let tiny = limits.with_maximum_decoded_bytes(1).unwrap();
+        assert_eq!(
+            apply_associated_output(image(), Some(&header), &tiny),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 1,
+                actual: 16
+            })
+        );
+        assert_eq!(
+            finish_associated_selected_output(image(), Some(&header), [u32::MAX; 4], &tiny),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::DecodedBytes,
+                limit: 1,
+                actual: 16
+            }),
         );
     }
 

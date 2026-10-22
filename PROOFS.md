@@ -563,6 +563,44 @@ for the curated inventory. No generic expression/implication matching or
 mutable-completeness policy is weakened. Actual header/TagTree and precinct
 composition remain separate F5L/F5H obligations.
 
+## Complete native container, selection and typed-output composition
+
+The actual native `ImageSize` tile count/bounds, selection construction and
+`validate_selection` now refine full value/error models. The production path
+checks origin overflow, physical grid/count admission, explicit empty/range/
+duplicate/rectangle rules, region bounds and every intersecting tile in its
+original order. Raw geometry and request contradictions are not normalized.
+Private rectangle bounds are derived from the executed public checks and
+native u16 coordinates, not public shape premises.
+
+The actual requested-selection coordinator composes this result with reduced
+target coordinates and sampling/registration context. All four targets are
+modeled by their complete sequence values, not opaque array identity. Logical
+component counts need not fit the physical64 entries; zero subsampling,
+discard>=32, saturated context and unaccessed malformed fields retain actual
+behavior. The original public selection APIs share one real constructor body.
+
+The actual selected-codestream header producer chooses the parsed association
+or real fallback and reports a missing association at its real box offset.
+Actual container/codestream metadata validation includes native uniform/
+variable bit-depth behavior without invented precision/sign checks. The real
+associated-output stages compose CMAP/palette/CDEF/image admission with full
+and selected color conversion. The selected finishing body composes mapping,
+color and crop, including None bypass/missing-header ordering and actual byte/
+work admission before later crop errors.
+
+Twenty-two finite exact producer/model/result/input recipes bind these actual
+stages and genuine callers. Independent tests compare27,648 raw geometry/
+request/context cases,1,536 uniform-header cases, actual header choices and
+offsets, known full/selected grayscale samples, None identity, malformed typed
+state and first budget errors. Earlier component/color/crop oracles remain.
+This closes the selected F7 computational boundary relative to native parsed
+metadata and typed components. Compressed parser-to-pixel/frame composition is
+F8, not a supplied decoded outcome assumed by these producers. Independent
+normative endorsement, official vectors and full publication remain separate.
+Conservative tests, both whole roots and all frozen/hosted gates must still
+qualify the exact delivery before it is counted integrated.
+
 ## Conservative complete header and precinct acceptance
 
 Thirty-nine finite owner-qualified producer/model/result/input recipes bind

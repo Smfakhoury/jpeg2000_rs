@@ -281,6 +281,226 @@ pub proof fn production_atk_steps_error_guard(original: Seq<i64>, kernel: crate:
     if count < end { production_atk_steps_error_guard(original, kernel, low_first, count, (end - 1) as nat); }
 }
 
+pub proof fn production_selected_region_empty(size: crate::specs::Part2SelectionGeometry, tiles: Seq<u16>, x1: u32, y1: u32)
+    ensures crate::specs::part2_selected_region_prefix(size, tiles, x1, y1, 0) == Ok((x1, y1, size.2, size.3)),
+{
+    reveal_with_fuel(crate::specs::part2_selected_region_prefix, 1);
+}
+
+pub proof fn production_selected_region_step(size: crate::specs::Part2SelectionGeometry, tiles: Seq<u16>, x1: u32, y1: u32, count: nat)
+    ensures crate::specs::part2_selected_region_prefix(size, tiles, x1, y1, count + 1)
+        == match crate::specs::part2_selected_region_prefix(size, tiles, x1, y1, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_selection_tile_bounds(size, tiles[count as int]) {
+                Err(error) => Err(error),
+                Ok(bounds) => Ok((if previous.0 < bounds.x0 { previous.0 } else { bounds.x0 },
+                    if previous.1 < bounds.y0 { previous.1 } else { bounds.y0 },
+                    if previous.2 > bounds.x1 { previous.2 } else { bounds.x1 },
+                    if previous.3 > bounds.y1 { previous.3 } else { bounds.y1 })),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_selected_region_prefix, 1);
+}
+
+pub proof fn production_selected_region_error(size: crate::specs::Part2SelectionGeometry, tiles: Seq<u16>, x1: u32, y1: u32, start: nat, end: nat)
+    requires start <= end,
+    ensures crate::specs::part2_selected_region_prefix(size, tiles, x1, y1, start).is_err()
+        ==> crate::specs::part2_selected_region_prefix(size, tiles, x1, y1, end)
+            == crate::specs::part2_selected_region_prefix(size, tiles, x1, y1, start),
+    decreases end - start,
+{
+    reveal_with_fuel(crate::specs::part2_selected_region_prefix, 1);
+    if start < end { production_selected_region_error(size, tiles, x1, y1, start, (end - 1) as nat); }
+}
+
+pub proof fn production_selected_tiles_empty(size: crate::specs::Part2SelectionGeometry, explicit: Seq<u16>, region: Seq<u32>)
+    ensures crate::specs::part2_selected_tiles_prefix(size, explicit, region, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part2_selected_tiles_prefix, 1);
+}
+
+pub proof fn production_selected_tiles_step(size: crate::specs::Part2SelectionGeometry, explicit: Seq<u16>, region: Seq<u32>, count: nat)
+    ensures crate::specs::part2_selected_tiles_prefix(size, explicit, region, count + 1)
+        == match crate::specs::part2_selected_tiles_prefix(size, explicit, region, count) {
+            Err(error) => Err(error),
+            Ok(previous) => if count > u16::MAX { Err(crate::specs::part1_block_placement_error(true)) } else {
+                let index = count as u16;
+                match crate::specs::part2_selection_tile_bounds(size, index) {
+                    Err(error) => Err(error),
+                    Ok(bounds) => if bounds.x0 < region[2] && bounds.x1 > region[0] && bounds.y0 < region[3] && bounds.y1 > region[1] {
+                        if explicit.len() > 0 && !explicit.contains(index) {
+                            Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutsideSelectedTiles })
+                        } else { Ok(previous.push(index)) }
+                    } else { Ok(previous) },
+                }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_selected_tiles_prefix, 1);
+}
+
+pub proof fn production_selected_tiles_error(size: crate::specs::Part2SelectionGeometry, explicit: Seq<u16>, region: Seq<u32>, start: nat, end: nat)
+    requires start <= end,
+    ensures crate::specs::part2_selected_tiles_prefix(size, explicit, region, start).is_err()
+        ==> crate::specs::part2_selected_tiles_prefix(size, explicit, region, end)
+            == crate::specs::part2_selected_tiles_prefix(size, explicit, region, start),
+    decreases end - start,
+{
+    reveal_with_fuel(crate::specs::part2_selected_tiles_prefix, 1);
+    if start < end { production_selected_tiles_error(size, explicit, region, start, (end - 1) as nat); }
+}
+
+pub proof fn production_unsigned_remainder_bound(value: u32, divisor: u32)
+    requires divisor > 0,
+    ensures ((value % divisor) as u32) <= value,
+{
+    if value < divisor {
+        vstd::arithmetic::div_mod::lemma_small_mod(value as nat, divisor as nat);
+    } else {
+        vstd::arithmetic::div_mod::lemma_mod_pos_bound(value as int, divisor as int);
+    }
+}
+
+pub proof fn production_tile_box_first(tiles: Seq<u16>, across: u32)
+    ensures crate::specs::part2_tile_rectangle_prefix(tiles, across, 1)
+        == (((tiles[0] as u32) / across) as u32, ((tiles[0] as u32) % across) as u32,
+            ((tiles[0] as u32) / across) as u32, ((tiles[0] as u32) % across) as u32),
+{
+    reveal_with_fuel(crate::specs::part2_tile_rectangle_prefix, 1);
+}
+
+pub proof fn production_tile_box_step(tiles: Seq<u16>, across: u32, count: nat)
+    requires count >= 1,
+    ensures crate::specs::part2_tile_rectangle_prefix(tiles, across, count + 1) == {
+        let previous = crate::specs::part2_tile_rectangle_prefix(tiles, across, count);
+        let row = ((tiles[count as int] as u32) / across) as u32;
+        let column = ((tiles[count as int] as u32) % across) as u32;
+        (if row < previous.0 { row } else { previous.0 }, if column < previous.1 { column } else { previous.1 },
+            if row > previous.2 { row } else { previous.2 }, if column > previous.3 { column } else { previous.3 })
+    },
+{
+    reveal_with_fuel(crate::specs::part2_tile_rectangle_prefix, 1);
+}
+
+pub proof fn production_rectangle_columns_empty(tiles: Seq<u16>, across: u32, bounds: crate::specs::Part2TileRectangle, row: u32)
+    ensures crate::specs::part2_rectangle_columns(tiles, across, bounds, row, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::part2_rectangle_columns, 1);
+}
+
+pub proof fn production_rectangle_columns_step(tiles: Seq<u16>, across: u32, bounds: crate::specs::Part2TileRectangle, row: u32, count: nat)
+    ensures crate::specs::part2_rectangle_columns(tiles, across, bounds, row, count + 1)
+        == match crate::specs::part2_rectangle_columns(tiles, across, bounds, row, count) {
+            Err(error) => Err(error),
+            Ok(()) => crate::specs::part2_rectangle_cell(tiles, across, row, (bounds.1 as nat + count) as u32),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_rectangle_columns, 1);
+}
+
+pub proof fn production_rectangle_columns_error(tiles: Seq<u16>, across: u32, bounds: crate::specs::Part2TileRectangle, row: u32, start: nat, end: nat)
+    requires start <= end,
+    ensures crate::specs::part2_rectangle_columns(tiles, across, bounds, row, start).is_err()
+        ==> crate::specs::part2_rectangle_columns(tiles, across, bounds, row, end)
+            == crate::specs::part2_rectangle_columns(tiles, across, bounds, row, start),
+    decreases end - start,
+{
+    reveal_with_fuel(crate::specs::part2_rectangle_columns, 1);
+    if start < end { production_rectangle_columns_error(tiles, across, bounds, row, start, (end - 1) as nat); }
+}
+
+pub proof fn production_rectangle_rows_empty(tiles: Seq<u16>, across: u32, bounds: crate::specs::Part2TileRectangle)
+    ensures crate::specs::part2_rectangle_rows(tiles, across, bounds, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::part2_rectangle_rows, 1);
+}
+
+pub proof fn production_rectangle_rows_step(tiles: Seq<u16>, across: u32, bounds: crate::specs::Part2TileRectangle, count: nat)
+    ensures crate::specs::part2_rectangle_rows(tiles, across, bounds, count + 1)
+        == match crate::specs::part2_rectangle_rows(tiles, across, bounds, count) {
+            Err(error) => Err(error),
+            Ok(()) => crate::specs::part2_rectangle_columns(tiles, across, bounds, (bounds.0 as nat + count) as u32,
+                (bounds.3 as nat - bounds.1 as nat + 1) as nat),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_rectangle_rows, 1);
+}
+
+pub proof fn production_rectangle_rows_error(tiles: Seq<u16>, across: u32, bounds: crate::specs::Part2TileRectangle, start: nat, end: nat)
+    requires start <= end,
+    ensures crate::specs::part2_rectangle_rows(tiles, across, bounds, start).is_err()
+        ==> crate::specs::part2_rectangle_rows(tiles, across, bounds, end)
+            == crate::specs::part2_rectangle_rows(tiles, across, bounds, start),
+    decreases end - start,
+{
+    reveal_with_fuel(crate::specs::part2_rectangle_rows, 1);
+    if start < end { production_rectangle_rows_error(tiles, across, bounds, start, (end - 1) as nat); }
+}
+
+pub proof fn production_explicit_tiles_empty(tiles: Seq<u16>, count: u64)
+    ensures crate::specs::part2_explicit_tile_prefix(tiles, count, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::part2_explicit_tile_prefix, 1);
+}
+
+pub proof fn production_explicit_tiles_step(tiles: Seq<u16>, count: u64, prefix: nat)
+    ensures crate::specs::part2_explicit_tile_prefix(tiles, count, prefix + 1)
+        == match crate::specs::part2_explicit_tile_prefix(tiles, count, prefix) {
+            Err(error) => Err(error),
+            Ok(()) => if tiles[prefix as int] as u64 >= count {
+                Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::TileOutOfRange })
+            } else if tiles.take(prefix as int).contains(tiles[prefix as int]) {
+                Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::DuplicateTile })
+            } else { Ok(()) },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_explicit_tile_prefix, 1);
+}
+
+pub proof fn production_explicit_tiles_error_guard(tiles: Seq<u16>, count: u64, start: nat, end: nat)
+    requires start <= end,
+    ensures crate::specs::part2_explicit_tile_prefix(tiles, count, start).is_err()
+        ==> crate::specs::part2_explicit_tile_prefix(tiles, count, end)
+            == crate::specs::part2_explicit_tile_prefix(tiles, count, start),
+    decreases end - start,
+{
+    reveal_with_fuel(crate::specs::part2_explicit_tile_prefix, 1);
+    if start < end { production_explicit_tiles_error_guard(tiles, count, start, (end - 1) as nat); }
+}
+
+pub proof fn production_color_sampling_empty(components: Seq<crate::codestream::ComponentInfo>, count: u16, target: Seq<u32>)
+    ensures crate::specs::part2_color_sampling_prefix(components, count, target, 0) == Ok((0, 0)),
+{
+    reveal_with_fuel(crate::specs::part2_color_sampling_prefix, 1);
+}
+
+pub proof fn production_color_sampling_step(components: Seq<crate::codestream::ComponentInfo>, count: u16, target: Seq<u32>, prefix: nat)
+    ensures crate::specs::part2_color_sampling_prefix(components, count, target, prefix + 1)
+        == match crate::specs::part2_color_sampling_prefix(components, count, target, prefix) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part1_image_size_component(count, components, prefix as u16) {
+                Err(error) => Err(error),
+                Ok(info) => crate::specs::part2_color_sampling_step(previous, info, target),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_color_sampling_prefix, 1);
+}
+
+pub proof fn production_color_sampling_error_guard(
+    components: Seq<crate::codestream::ComponentInfo>, count: u16, target: Seq<u32>, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_color_sampling_prefix(components, count, target, start).is_err()
+        ==> crate::specs::part2_color_sampling_prefix(components, count, target, end)
+            == crate::specs::part2_color_sampling_prefix(components, count, target, start),
+    decreases end - start,
+{
+    reveal_with_fuel(crate::specs::part2_color_sampling_prefix, 1);
+    if start < end { production_color_sampling_error_guard(components, count, target, start, (end - 1) as nat); }
+}
+
 pub proof fn production_typed_components_output_push(
     components: Seq<crate::TypedComponent>, component: crate::TypedComponent,
 )
