@@ -344,6 +344,12 @@ def validate_normative_coverage(
                 "HtRefinementReaders::read_reverse": ("ht_refinement_readers_view", "ht_refinement_read_reverse"),
                 "HtCleanupReaders::advance_vlc": ("ht_cleanup_readers_view", "ht_cleanup_advance_vlc"),
                 "HtCleanupReaders::mel_event": ("ht_cleanup_readers_view", "ht_cleanup_mel_event"),
+                "HtCleanupReaders::read_prefix": ("ht_cleanup_readers_view", "ht_uvlc_prefix"),
+                "HtCleanupReaders::read_suffix": ("ht_cleanup_readers_view", "ht_uvlc_suffix"),
+                "HtCleanupReaders::prefix_value": ("ht_cleanup_readers_view", "ht_uvlc_prefix_value"),
+                "HtCleanupReaders::decode_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_initial"),
+                "HtCleanupReaders::decode_non_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_non_initial"),
+                "HtCleanupReaders::decode_quad_word": ("ht_cleanup_readers_view", "ht_cleanup_quad_word"),
             }
             reader_contract = reader_contracts.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
             if reader_contract:

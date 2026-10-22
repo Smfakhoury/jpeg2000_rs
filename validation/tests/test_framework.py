@@ -305,6 +305,7 @@ impl HtReverseVlcReader {
             item for item in original["requirements"]
             if item["id"] in (
                 "part15-cleanup-reader-single-bit-state", "part15-directional-word-event-state",
+                "part15-uvlc-quad-word-state",
             )
         ]
         self.assertEqual(framework.validate_normative_coverage(original)["status"], "passed")
@@ -341,13 +342,19 @@ impl HtReverseVlcReader {
             ("HtRefinementReaders::read_reverse", "ht_refinement_readers_view", "ht_refinement_read_reverse", True),
             ("HtCleanupReaders::advance_vlc", "ht_cleanup_readers_view", "ht_cleanup_advance_vlc", True),
             ("HtCleanupReaders::mel_event", "ht_cleanup_readers_view", "ht_cleanup_mel_event", True),
+            ("HtCleanupReaders::read_prefix", "ht_cleanup_readers_view", "ht_uvlc_prefix", True),
+            ("HtCleanupReaders::read_suffix", "ht_cleanup_readers_view", "ht_uvlc_suffix", True),
+            ("HtCleanupReaders::prefix_value", "ht_cleanup_readers_view", "ht_uvlc_prefix_value", True),
+            ("HtCleanupReaders::decode_initial_u", "ht_cleanup_readers_view", "ht_uvlc_initial", True),
+            ("HtCleanupReaders::decode_non_initial_u", "ht_cleanup_readers_view", "ht_uvlc_non_initial", True),
+            ("HtCleanupReaders::decode_quad_word", "ht_cleanup_readers_view", "ht_cleanup_quad_word", True),
         ]
         for symbol, projection, model, stateful in entries:
             coverage = copy.deepcopy(original)
             coverage["requirements"] = [
                 item for item in coverage["requirements"]
                 if any(ref["symbol"] == model for ref in item["spec_refs"])
-            ]
+            ][:1]
             coverage["requirements"][0]["contract_refs"] = [{"path": "src/tier1.rs", "symbol": symbol}]
             if symbol in (
                 "HtForwardRefinementReader::read_bit", "HtReverseRefinementReader::read_bit",

@@ -264,10 +264,10 @@ and exact array equality use the existing pinned `vstd::array` equality fact,
 not a new codec axiom or trusted escape. Prefix opacity only keeps caller
 composition modular; actual producer bodies explicitly unfold their models.
 
-The authorized nineteen directional registry recipes are complete. The six
-new interpretation state contracts use the same exact whole-state shape but
-await separately authorized function/model recipes; their actual models,
-callers, proofs, fixtures and already supported leaf contracts are indexed.
+The authorized nineteen directional and six interpretation registry recipes
+are complete. The six interpretation contracts use the same exact whole-state
+shape, preserving actual extra arguments and native tuple/array/word results;
+their models, true production callers, proofs and fixtures are indexed.
 Neither this source index nor successful local gates close full-block or
 mixed sequencing. The models and a green solver run are not human endorsement
 of T.814.

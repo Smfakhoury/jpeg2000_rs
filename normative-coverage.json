@@ -3890,6 +3890,12 @@
     {
       "contract_refs": [
         {"path": "src/tier1.rs", "symbol": "ht_uvlc_byte"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_prefix"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_suffix"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::prefix_value"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_non_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_quad_word"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_vlc_bit"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::advance_vlc"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::mel_event"}
@@ -3931,7 +3937,7 @@
         {"path": "src/tier1.rs", "symbol": "ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked"},
         {"path": "src/tier1.rs", "symbol": "ht_quad_word_context_suppression_and_charge_order_are_exact"}
       ],
-      "topic": "Complete selected actual UVLC/quad-word interpretation result and entire final stream/event/claim/work state; actual table views and context-zero MEL/advance/tick ordering; six interpretation receiver recipes await separate authorization, no full metadata/coefficient block or mixed-sequencing claim"
+      "topic": "Complete selected actual UVLC/quad-word interpretation result and entire final stream/event/claim/work state; six exact receiver contracts with actual table views and context-zero MEL/advance/tick ordering indexed through real production callers; no full metadata/coefficient block or mixed-sequencing claim"
     },
     {
       "contract_refs": [
