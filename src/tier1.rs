@@ -1596,7 +1596,7 @@ verus! {
         }
     }
 
-    pub closed spec fn ht_optional_bytes_view(bytes: Option<&[u8]>) -> Option<Seq<u8>> {
+    pub open spec fn ht_optional_bytes_view(bytes: Option<&[u8]>) -> Option<Seq<u8>> {
         match bytes { None => None, Some(bytes) => Some(bytes@) }
     }
 
@@ -1683,12 +1683,18 @@ impl Tier1CodingStyle {
         self.force_high_throughput = required;
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_legacy_uses_raw(self, pass_index),
+    ))]
     pub fn uses_raw_bypass(self, pass_index: u32) -> bool {
         self.selective_arithmetic_coding_bypass
             && pass_index >= 10
             && !matches!(pass_kind(pass_index), Tier1PassKind::Cleanup)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_legacy_plan(self, pass_index),
+    ))]
     pub fn pass_plan(self, pass_index: u32) -> Tier1PassPlan {
         let kind = pass_kind(pass_index);
         let coding_mode = if self.uses_raw_bypass(pass_index) {
@@ -1713,6 +1719,9 @@ impl Tier1CodingStyle {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_legacy_segment_passes(self, first_pass, available_passes),
+    ))]
     pub fn segment_passes(self, first_pass: u32, available_passes: u32) -> u32 {
         if available_passes == 0 {
             return 0;
@@ -1761,6 +1770,9 @@ impl Tier1BlockCoding {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_pass_kind(pass_index),
+))]
 pub const fn pass_kind(pass_index: u32) -> Tier1PassKind {
     match crate::refinement::tier1_pass_code(pass_index) {
         0 => Tier1PassKind::SignificancePropagation,
@@ -4742,6 +4754,9 @@ pub struct SignContext {
     pub predicted_negative: bool,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_zero_context(summary, orientation),
+))]
 pub fn zero_coding_context(summary: NeighborSummary, orientation: SubbandOrientation) -> u8 {
     let (horizontal, vertical) = if matches!(orientation, SubbandOrientation::Hl) {
         (summary.vertical_significant, summary.horizontal_significant)
@@ -4757,6 +4772,22 @@ pub fn zero_coding_context(summary: NeighborSummary, orientation: SubbandOrienta
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == if value < 0 { -1i8 } else if value > 0 { 1i8 } else { 0i8 },
+))]
+const fn signum_i8(value: i8) -> i8 {
+    if value < 0 {
+        -1
+    } else if value > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_sign_context(summary),
+))]
 pub fn sign_context(summary: NeighborSummary) -> SignContext {
     let mut horizontal = signum_i8(summary.horizontal_sign_balance);
     let mut vertical = signum_i8(summary.vertical_sign_balance);
@@ -4771,15 +4802,6 @@ pub fn sign_context(summary: NeighborSummary) -> SignContext {
         };
     }
 
-    const fn signum_i8(value: i8) -> i8 {
-        if value < 0 {
-            -1
-        } else if value > 0 {
-            1
-        } else {
-            0
-        }
-    }
     let offset = crate::refinement::tier1_sign_offset(horizontal, vertical);
     let predicted_negative = crate::refinement::tier1_predicted_negative(
         summary.horizontal_sign_balance,
@@ -4791,6 +4813,9 @@ pub fn sign_context(summary: NeighborSummary) -> SignContext {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_refinement_context(coefficient_raw_view(coefficient), summary),
+))]
 pub fn magnitude_refinement_context(coefficient: CoefficientState, summary: NeighborSummary) -> u8 {
     let neighbors = u16::from(summary.horizontal_significant)
         + u16::from(summary.vertical_significant)
@@ -4798,14 +4823,29 @@ pub fn magnitude_refinement_context(coefficient: CoefficientState, summary: Neig
     crate::refinement::tier1_refinement_context(coefficient.refined, neighbors)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::mq::mq_decoder_view(final(decoder))) == (Ok(()),
+        crate::specs::part1_legacy_initialized(crate::mq::mq_decoder_view(old(decoder)))),
+))]
 pub fn initialize_tier1_contexts(decoder: &mut MqDecoder<'_>) -> Result<(), DecodeError> {
     decoder.reset_contexts();
     decoder.set_context(0, 4, false)?;
     decoder.set_context(RUN_LENGTH_CONTEXT, 3, false)?;
     decoder.set_context(UNIFORM_CONTEXT, 46, false)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::mq::mq_decoder_view(decoder).contexts =~=
+            crate::specs::part1_legacy_initialized(crate::mq::mq_decoder_view(old(decoder))).contexts);
+    }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::mq::mq_decoder_view(final(decoder))) == (Ok(()),
+        if style.reset_contexts {
+            crate::specs::part1_legacy_initialized(crate::mq::mq_decoder_view(old(decoder)))
+        } else { crate::mq::mq_decoder_view(old(decoder)) }),
+))]
 pub fn reset_tier1_contexts_after_pass(
     decoder: &mut MqDecoder<'_>,
     style: Tier1CodingStyle,
@@ -4824,7 +4864,6 @@ pub struct SignificanceStep {
     pub became_significant: bool,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct Tier1BitplaneState {
     width: u16,
@@ -4835,6 +4874,43 @@ pub struct Tier1BitplaneState {
     significance_propagation_complete: bool,
     magnitude_refinement_complete: bool,
     cleanup_complete: bool,
+}
+
+impl Clone for Tier1BitplaneState {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_bitplane_view(&result) == legacy_bitplane_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            bitplane: self.bitplane,
+            significant_before: self.significant_before.clone(),
+            significance_visited: self.significance_visited.clone(),
+            significance_propagation_complete: self.significance_propagation_complete,
+            magnitude_refinement_complete: self.magnitude_refinement_complete,
+            cleanup_complete: self.cleanup_complete,
+        }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn legacy_bitplane_view(state: &Tier1BitplaneState) -> crate::specs::Part1LegacyBitplane {
+        crate::specs::Part1LegacyBitplane {
+            width: state.width, height: state.height, bitplane: state.bitplane,
+            significant_before: state.significant_before@, significance_visited: state.significance_visited@,
+            significance_propagation_complete: state.significance_propagation_complete,
+            magnitude_refinement_complete: state.magnitude_refinement_complete,
+            cleanup_complete: state.cleanup_complete,
+        }
+    }
+
+    pub open spec fn legacy_bitplane_outcome(result: Result<Tier1BitplaneState, DecodeError>)
+        -> Result<crate::specs::Part1LegacyBitplane, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(state) => Ok(legacy_bitplane_view(&state)) }
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -4855,7 +4931,6 @@ pub struct Tier1SegmentDecode {
     pub statistics: Tier1PassStatistics,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 struct LegacySegmentState {
     plane: CodeBlockPlane,
@@ -4870,7 +4945,41 @@ struct LegacySegmentState {
     passes: u32,
 }
 
-#[derive(Clone)]
+impl Clone for LegacySegmentState {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_segment_view(&result) == legacy_segment_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            plane: self.plane.clone(),
+            next_pass: self.next_pass,
+            bitplane: self.bitplane,
+            bitplane_state: self.bitplane_state.clone(),
+            mq_context_state: self.mq_context_state,
+            reset_contexts_before_mq: self.reset_contexts_before_mq,
+            decoded_segments: self.decoded_segments,
+            decoded_bytes: self.decoded_bytes,
+            input: self.input.clone(),
+            passes: self.passes,
+        }
+    }
+}
+
+impl LegacySegmentState {
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        ensures legacy_segment_view(final(self)) == crate::specs::part1_legacy_append(
+            legacy_segment_view(old(self)), input@, passes),
+    ))]
+    fn append(&mut self, input: &[u8], passes: u32) {
+        self.input.extend_from_slice(input);
+        self.passes = passes;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(self.input@ =~= legacy_segment_view(old(self)).input + input@);
+        }
+    }
+}
+
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct Tier1CodeBlockDecoder {
     plane: CodeBlockPlane,
@@ -4897,25 +5006,72 @@ pub struct Tier1CodeBlockDecoder {
     ht_magnitude_bound: u8,
 }
 
+impl Clone for Tier1CodeBlockDecoder {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures tier1_decoder_state(&result) == tier1_decoder_state(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            plane: self.plane.clone(),
+            orientation: self.orientation,
+            style: self.style,
+            maximum_passes: self.maximum_passes,
+            next_pass: self.next_pass,
+            bitplane: self.bitplane,
+            zero_bitplanes: self.zero_bitplanes,
+            bitplane_state: self.bitplane_state.clone(),
+            mq_context_state: self.mq_context_state,
+            reset_contexts_before_mq: self.reset_contexts_before_mq,
+            decoded_segments: self.decoded_segments,
+            decoded_bytes: self.decoded_bytes,
+            legacy_segment: self.legacy_segment.clone(),
+            legacy_decode_work: self.legacy_decode_work,
+            ht_cleanup_plane: self.ht_cleanup_plane.clone(),
+            ht_refinement_data: self.ht_refinement_data.clone(),
+            ht_refinement_passes: self.ht_refinement_passes,
+            ht_decoded_bitplanes: self.ht_decoded_bitplanes,
+            ht_current_set_has_cleanup: self.ht_current_set_has_cleanup,
+            ht_sets_seen: self.ht_sets_seen,
+            allow_multiple_ht_sets: self.allow_multiple_ht_sets,
+            ht_magnitude_bound: self.ht_magnitude_bound,
+        }
+    }
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn legacy_segment_view(legacy: &LegacySegmentState) -> crate::specs::Tier1LegacyFrame {
+        crate::specs::Tier1LegacyFrame {
+            plane: code_block_plane_view(&legacy.plane), next_pass: legacy.next_pass, bitplane: legacy.bitplane,
+            bitplane_state: match legacy.bitplane_state {
+                None => None, Some(state) => Some(legacy_bitplane_view(&state)),
+            },
+            mq_context_state: match legacy.mq_context_state {
+                None => None, Some(state) => Some(crate::mq::mq_context_state_view(state)),
+            },
+            reset_contexts_before_mq: legacy.reset_contexts_before_mq,
+            decoded_segments: legacy.decoded_segments, decoded_bytes: legacy.decoded_bytes,
+            input: legacy.input@, passes: legacy.passes,
+        }
+    }
+
     pub closed spec fn tier1_decoder_state(decoder: &Tier1CodeBlockDecoder) -> crate::specs::Tier1DecoderState {
         crate::specs::Tier1DecoderState {
             plane: code_block_plane_view(&decoder.plane), orientation: decoder.orientation,
             style: decoder.style, maximum_passes: decoder.maximum_passes, next_pass: decoder.next_pass,
             bitplane: decoder.bitplane, zero_bitplanes: decoder.zero_bitplanes,
-            bitplane_state: decoder.bitplane_state, mq_context_state: decoder.mq_context_state,
+            bitplane_state: match decoder.bitplane_state {
+                None => None, Some(state) => Some(legacy_bitplane_view(&state)),
+            },
+            mq_context_state: match decoder.mq_context_state {
+                None => None, Some(state) => Some(crate::mq::mq_context_state_view(state)),
+            },
             reset_contexts_before_mq: decoder.reset_contexts_before_mq,
             decoded_segments: decoder.decoded_segments, decoded_bytes: decoder.decoded_bytes,
             legacy_segment: match decoder.legacy_segment {
                 None => None,
-                Some(legacy) => Some(crate::specs::Tier1LegacyFrame {
-                    plane: code_block_plane_view(&legacy.plane), next_pass: legacy.next_pass, bitplane: legacy.bitplane,
-                    bitplane_state: legacy.bitplane_state, mq_context_state: legacy.mq_context_state,
-                    reset_contexts_before_mq: legacy.reset_contexts_before_mq,
-                    decoded_segments: legacy.decoded_segments, decoded_bytes: legacy.decoded_bytes,
-                    input: legacy.input@, passes: legacy.passes,
-                }),
+                Some(legacy) => Some(legacy_segment_view(&legacy)),
             },
             legacy_decode_work: decoder.legacy_decode_work,
             ht_cleanup_plane: match decoder.ht_cleanup_plane { None => None, Some(plane) => Some(code_block_plane_view(&plane)) },
@@ -4972,6 +5128,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 4, 1),
+    ))]
     fn used_run_mode(&mut self) -> Result<(), DecodeError> {
         self.run_mode_columns = self
             .run_mode_columns
@@ -5053,30 +5212,44 @@ impl Tier1CodeBlockDecoder {
         &self.plane
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == tier1_decoder_state(self).style.block_coding,
+    ))]
     pub const fn block_coding(&self) -> Tier1BlockCoding {
         self.style.block_coding
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == (!tier1_decoder_state(self).style.force_high_throughput || high_throughput),
+    ))]
     pub const fn accepts_high_throughput_route(&self, high_throughput: bool) -> bool {
         !self.style.force_high_throughput || high_throughput
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == tier1_decoder_state(self).next_pass,))]
     pub const fn next_pass(&self) -> u32 {
         self.next_pass
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == tier1_decoder_state(self).maximum_passes,))]
     pub const fn maximum_passes(&self) -> u32 {
         self.maximum_passes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == tier1_decoder_state(self).decoded_segments,))]
     pub const fn decoded_segments(&self) -> u32 {
         self.decoded_segments
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == tier1_decoder_state(self).decoded_bytes,))]
     pub const fn decoded_bytes(&self) -> u64 {
         self.decoded_bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_zero_bitplanes(
+            tier1_decoder_state(old(self)), zero_bitplanes),
+    ))]
     pub(crate) fn set_zero_bitplanes(&mut self, zero_bitplanes: u16) -> Result<(), DecodeError> {
         if let Some(previous) = self.zero_bitplanes {
             return if previous == zero_bitplanes {
@@ -5092,10 +5265,7 @@ impl Tier1CodeBlockDecoder {
             .bitplane
             .checked_sub(zero_bitplanes)
             .ok_or_else(invalid_code_block)?;
-        let maximum_passes = u32::from(bitplane)
-            .checked_mul(3)
-            .and_then(|passes| passes.checked_add(1))
-            .ok_or_else(arithmetic_overflow)?;
+        let maximum_passes = legacy_maximum_passes(bitplane)?;
         self.bitplane = bitplane;
         self.maximum_passes = maximum_passes;
         self.zero_bitplanes = Some(zero_bitplanes);
@@ -5128,12 +5298,21 @@ impl Tier1CodeBlockDecoder {
                 && self.ht_cleanup_plane.is_some())
     }
 
-    pub(crate) fn decode_legacy_contribution(
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_contribution_admission(
+            tier1_decoder_state(old(self)), input@, passes,
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
+    fn admit_legacy_contribution(
         &mut self,
         input: &[u8],
         passes: u8,
         limits: &ResourceLimits,
-    ) -> Result<(), DecodeError> {
+    ) -> Result<(u32, u32, u32), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_contribution_admission); }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = tier1_decoder_state(self); }
         if passes == 0 {
             return Err(invalid_code_block());
         }
@@ -5142,7 +5321,7 @@ impl Tier1CodeBlockDecoder {
             .checked_add(input.len() as u64)
             .ok_or_else(arithmetic_overflow)?;
         if next_bytes > limits.maximum_code_block_bytes() {
-            return Err(DecodeError::limit(
+            return Err(crate::mq::mq_limit(
                 Resource::CodeBlockBytes,
                 limits.maximum_code_block_bytes(),
                 next_bytes,
@@ -5154,24 +5333,44 @@ impl Tier1CodeBlockDecoder {
         }
         .checked_add(u32::from(passes))
         .ok_or_else(arithmetic_overflow)?;
-        let work = (self.plane.coefficients().len() as u64)
-            .checked_mul(u64::from(replay_passes))
-            .and_then(|value| value.checked_add(next_bytes))
-            .and_then(|value| value.checked_add(self.legacy_decode_work))
-            .ok_or_else(arithmetic_overflow)?;
-        if work > limits.maximum_work_units() {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                limits.maximum_work_units(),
-                work,
-            ));
-        }
+        let work = legacy_contribution_work(
+            self.plane.coefficients().len(),
+            replay_passes,
+            next_bytes,
+            self.legacy_decode_work,
+            limits.maximum_work_units(),
+        )?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(tier1_decoder_state(self) == before); }
         self.legacy_decode_work = work;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(tier1_decoder_state(self) == (crate::specs::Tier1DecoderState { legacy_decode_work: work, ..before }));
+        }
         let next_pass = self
             .next_pass
             .checked_add(u32::from(passes))
             .ok_or_else(arithmetic_overflow)?;
         let last_pass = next_pass.checked_sub(1).ok_or_else(invalid_code_block)?;
+        Ok((replay_passes, next_pass, last_pass))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_contribution(
+            tier1_decoder_state(old(self)), input@, passes,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
+    pub(crate) fn decode_legacy_contribution(
+        &mut self,
+        input: &[u8],
+        passes: u8,
+        limits: &ResourceLimits,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_contribution); }
+        let (replay_passes, next_pass, last_pass) =
+            self.admit_legacy_contribution(input, passes, limits)?;
         if self.legacy_segment.is_none()
             && (next_pass == self.maximum_passes
                 || self.style.pass_plan(last_pass).terminates_segment)
@@ -5179,34 +5378,61 @@ impl Tier1CodeBlockDecoder {
             self.decode_legacy_segment(input, u32::from(passes), limits)?;
             return Ok(());
         }
+        self.decode_legacy_replay(input, replay_passes, limits)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_replay(
+            tier1_decoder_state(old(self)), input@, replay_passes,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
+    fn decode_legacy_replay(
+        &mut self,
+        input: &[u8],
+        replay_passes: u32,
+        limits: &ResourceLimits,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_replay); }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost before_replay = tier1_decoder_state(self);
+            let ghost replay_model = match before_replay.legacy_segment {
+                Some(segment) => segment,
+                None => crate::specs::part1_legacy_snapshot(crate::specs::Tier1DecoderState { legacy_segment: None, ..before_replay }),
+            };
+        }
         let mut segment = match self.legacy_segment.take() {
             Some(segment) => segment,
-            None => LegacySegmentState {
-                plane: self.plane.clone(),
-                next_pass: self.next_pass,
-                bitplane: self.bitplane,
-                bitplane_state: self.bitplane_state.clone(),
-                mq_context_state: self.mq_context_state,
-                reset_contexts_before_mq: self.reset_contexts_before_mq,
-                decoded_segments: self.decoded_segments,
-                decoded_bytes: self.decoded_bytes,
-                input: Vec::new(),
-                passes: 0,
-            },
+            None => self.legacy_segment_snapshot(),
         };
-        segment.input.extend_from_slice(input);
-        segment.passes = replay_passes;
-        self.plane = segment.plane.clone();
-        self.next_pass = segment.next_pass;
-        self.bitplane = segment.bitplane;
-        self.bitplane_state = segment.bitplane_state.clone();
-        self.mq_context_state = segment.mq_context_state;
-        self.reset_contexts_before_mq = segment.reset_contexts_before_mq;
-        self.decoded_segments = segment.decoded_segments;
-        self.decoded_bytes = segment.decoded_bytes;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(tier1_decoder_state(self) == (crate::specs::Tier1DecoderState { legacy_segment: None, ..before_replay }));
+            assert(legacy_segment_view(&segment) == replay_model);
+        }
+        segment.append(input, replay_passes);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(legacy_segment_view(&segment) == (crate::specs::Tier1LegacyFrame {
+                input: replay_model.input + input@, passes: replay_passes, ..replay_model
+            }));
+        }
+        self.restore_legacy_segment(&segment);
         // Layer boundaries can truncate an unterminated arithmetic segment.
         // Replay its bounded prefix so virtual end-fill is never resumed as real input.
         self.decode_legacy_segment(&segment.input, segment.passes, limits)?;
+        self.commit_legacy_replay(segment)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_replay_commit(
+            tier1_decoder_state(old(self)), legacy_segment_view(&segment)),
+    ))]
+    fn commit_legacy_replay(&mut self, segment: LegacySegmentState) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_replay_commit); }
         let last_pass = self
             .next_pass
             .checked_sub(1)
@@ -5219,6 +5445,49 @@ impl Tier1CodeBlockDecoder {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_segment_view(&result) == crate::specs::part1_legacy_snapshot(tier1_decoder_state(self)),
+    ))]
+    fn legacy_segment_snapshot(&self) -> LegacySegmentState {
+        LegacySegmentState {
+            plane: self.plane.clone(),
+            next_pass: self.next_pass,
+            bitplane: self.bitplane,
+            bitplane_state: self.bitplane_state.clone(),
+            mq_context_state: self.mq_context_state,
+            reset_contexts_before_mq: self.reset_contexts_before_mq,
+            decoded_segments: self.decoded_segments,
+            decoded_bytes: self.decoded_bytes,
+            input: Vec::new(),
+            passes: 0,
+        }
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        ensures tier1_decoder_state(final(self)) == crate::specs::part1_legacy_restore(
+            tier1_decoder_state(old(self)), legacy_segment_view(segment)),
+    ))]
+    fn restore_legacy_segment(&mut self, segment: &LegacySegmentState) {
+        self.plane = segment.plane.clone();
+        self.next_pass = segment.next_pass;
+        self.bitplane = segment.bitplane;
+        self.bitplane_state = segment.bitplane_state.clone();
+        self.mq_context_state = segment.mq_context_state;
+        self.reset_contexts_before_mq = segment.reset_contexts_before_mq;
+        self.decoded_segments = segment.decoded_segments;
+        self.decoded_bytes = segment.decoded_bytes;
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_tier1_segment(
+                tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
+                crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_input_byte_limit(limits),
+                crate::limits::resource_work_limit(limits)),
+            (passes == 0 || crate::specs::ht_group_route(tier1_decoder_state(old(self)))) ==>
+            (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_staged_group(
+                tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
+                crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
     pub fn decode_segment(
         &mut self,
         input: &[u8],
@@ -5232,42 +5501,87 @@ impl Tier1CodeBlockDecoder {
             || (matches!(self.style.block_coding, Tier1BlockCoding::Mixed)
                 && self.ht_cleanup_plane.is_some())
         {
-            if input.is_empty() {
-                return Err(invalid_code_block());
-            }
-            let grouping = HtPassGroup::from_packet_passes(passes)?;
-            if grouping.refinement_passes != 0 {
-                return Err(invalid_code_block());
-            }
-            let mut staged = self.clone();
-            let mut placeholder_passes = grouping.placeholder_passes;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(decreases placeholder_passes,)
-            )]
-            while placeholder_passes > 0 {
-                staged.skip_high_throughput_segment(1, limits)?;
-                staged.skip_high_throughput_segment(2, limits)?;
-                placeholder_passes = placeholder_passes
-                    .checked_sub(3)
-                    .ok_or_else(arithmetic_overflow)?;
-            }
-            let decoded = staged.decode_high_throughput_segments(input, 1, None, 0, limits)?;
-            *self = staged;
-            return Ok(Tier1SegmentDecode {
-                passes: u32::from(passes),
-                ..decoded
-            });
+            return self.decode_ht_staged_group(input, passes, limits);
         }
         self.decode_legacy_segment(input, u32::from(passes), limits)
     }
 
-    fn decode_legacy_segment(
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_placeholder_group_run(
+            tier1_decoder_state(old(self)), placeholder_passes as nat, crate::limits::resource_code_block_pass_limit(limits)),
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn run_ht_placeholder_groups(
         &mut self,
+        placeholder_passes: u8,
+        limits: &ResourceLimits,
+    ) -> Result<(), DecodeError> {
+        let mut remaining = placeholder_passes;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_placeholder_group_run); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant remaining <= placeholder_passes,
+                crate::specs::ht_placeholder_group_run(tier1_decoder_state(old(self)), placeholder_passes as nat,
+                    crate::limits::resource_code_block_pass_limit(limits))
+                    == crate::specs::ht_placeholder_group_run(tier1_decoder_state(self), remaining as nat,
+                        crate::limits::resource_code_block_pass_limit(limits)),
+            decreases remaining,
+        ))]
+        while remaining > 0 {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_placeholder_group_run); }
+            self.skip_high_throughput_segment(1, limits)?;
+            self.skip_high_throughput_segment(2, limits)?;
+            remaining = remaining.checked_sub(3).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_placeholder_group_run); }
+        Ok(())
+    }
+
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_staged_group(
+            tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
+    fn decode_ht_staged_group(
+        &mut self,
+        input: &[u8],
+        passes: u8,
+        limits: &ResourceLimits,
+    ) -> Result<Tier1SegmentDecode, DecodeError> {
+        if passes == 0 || input.is_empty() {
+            return Err(invalid_code_block());
+        }
+        let grouping = ht_pass_group_from_packet(passes)?;
+        if grouping.refinement_passes != 0 {
+            return Err(invalid_code_block());
+        }
+        let mut staged = self.clone();
+        staged.run_ht_placeholder_groups(grouping.placeholder_passes, limits)?;
+        let decoded = staged.decode_high_throughput_segments(input, 1, None, 0, limits)?;
+        *self = staged;
+        Ok(Tier1SegmentDecode {
+            passes: u32::from(passes),
+            ..decoded
+        })
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_legacy_segment_admission(
+            tier1_decoder_state(self), input@, pass_count,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits)),
+    ))]
+    fn validate_legacy_segment(
+        &self,
         input: &[u8],
         pass_count: u32,
         limits: &ResourceLimits,
-    ) -> Result<Tier1SegmentDecode, DecodeError> {
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_segment_admission); }
         // Later terminated passes can carry no bytes; an initial empty block cannot.
         if pass_count == 0 || (input.is_empty() && self.next_pass == 0) {
             return Err(invalid_code_block());
@@ -5277,7 +5591,7 @@ impl Tier1CodeBlockDecoder {
             .checked_add(pass_count)
             .ok_or_else(arithmetic_overflow)?;
         if next_pass > limits.maximum_code_block_passes() {
-            return Err(DecodeError::limit(
+            return Err(crate::mq::mq_limit(
                 Resource::CodeBlockPasses,
                 u64::from(limits.maximum_code_block_passes()),
                 u64::from(next_pass),
@@ -5288,7 +5602,7 @@ impl Tier1CodeBlockDecoder {
             .checked_add(input.len() as u64)
             .ok_or_else(arithmetic_overflow)?;
         if next_bytes > limits.maximum_code_block_bytes() {
-            return Err(DecodeError::limit(
+            return Err(crate::mq::mq_limit(
                 Resource::CodeBlockBytes,
                 limits.maximum_code_block_bytes(),
                 next_bytes,
@@ -5305,35 +5619,39 @@ impl Tier1CodeBlockDecoder {
         {
             return Err(invalid_code_block());
         }
+        Ok(())
+    }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_segment(
+            tier1_decoder_state(old(self)), input@, pass_count,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
+    fn decode_legacy_segment(
+        &mut self,
+        input: &[u8],
+        pass_count: u32,
+        limits: &ResourceLimits,
+    ) -> Result<Tier1SegmentDecode, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_segment); }
+        self.validate_legacy_segment(input, pass_count, limits)?;
         let coding_mode = self.style.pass_plan(self.next_pass).coding_mode;
-        let mut statistics = Tier1PassStatistics::default();
+        let statistics;
         if matches!(coding_mode, Tier1CodingMode::Mq) {
-            let mut decoder = MqDecoder::new(input, limits)?;
+            let mut decoder = crate::mq::mq_from_input(
+                input,
+                limits.maximum_input_bytes(),
+                limits.maximum_work_units(),
+            )?;
             if self.reset_contexts_before_mq || self.mq_context_state.is_none() {
                 initialize_tier1_contexts(&mut decoder)?;
                 self.reset_contexts_before_mq = false;
             } else if let Some(context_state) = self.mq_context_state {
                 decoder.restore_context_state(context_state);
             }
-            let mut decoded = 0_u32;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant decoded <= pass_count,
-                    decreases pass_count - decoded,
-                )
-            )]
-            while decoded < pass_count {
-                let plan = self.style.pass_plan(self.next_pass);
-                if !matches!(plan.coding_mode, Tier1CodingMode::Mq) {
-                    return Err(invalid_code_block());
-                }
-                statistics.merge(self.decode_mq_pass(&mut decoder, plan.kind)?)?;
-                self.advance_pass(plan.kind)?;
-                reset_tier1_contexts_after_pass(&mut decoder, self.style)?;
-                decoded = decoded.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
+            statistics = self.decode_mq_segment_passes(&mut decoder, pass_count)?;
             if self.style.predictable_termination {
                 decoder.validate_predictable_termination()?;
             }
@@ -5344,44 +5662,155 @@ impl Tier1CodeBlockDecoder {
                 limits.maximum_input_bytes(),
                 limits.maximum_work_units(),
             )?;
-            let mut decoded = 0_u32;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant decoded <= pass_count,
-                    decreases pass_count - decoded,
-                )
-            )]
-            while decoded < pass_count {
-                let plan = self.style.pass_plan(self.next_pass);
-                if !matches!(plan.coding_mode, Tier1CodingMode::Raw) {
-                    return Err(invalid_code_block());
-                }
-                statistics.merge(self.decode_raw_pass(&mut reader, plan.kind)?)?;
-                self.advance_pass(plan.kind)?;
-                if self.style.reset_contexts {
-                    self.reset_contexts_before_mq = true;
-                }
-                decoded = decoded.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
+            statistics = self.decode_raw_segment_passes(&mut reader, pass_count)?;
             if self.style.predictable_termination {
                 reader.validate_predictable_termination()?;
             }
         }
 
+        self.commit_legacy_segment(input.len(), pass_count, statistics)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_segment_account(
+            tier1_decoder_state(old(self)), bytes as nat, pass_count, statistics),
+    ))]
+    fn commit_legacy_segment(
+        &mut self,
+        bytes: usize,
+        pass_count: u32,
+        statistics: Tier1PassStatistics,
+    ) -> Result<Tier1SegmentDecode, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_segment_account); }
         self.decoded_segments = self
             .decoded_segments
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         self.decoded_bytes = self
             .decoded_bytes
-            .checked_add(input.len() as u64)
+            .checked_add(bytes as u64)
             .ok_or_else(arithmetic_overflow)?;
         Ok(Tier1SegmentDecode {
             passes: pass_count,
-            bytes: u32::try_from(input.len()).map_err(|_| arithmetic_overflow())?,
+            bytes: match u32::try_from(bytes) {
+                Ok(bytes) => bytes,
+                Err(_) => return Err(arithmetic_overflow()),
+            },
             statistics,
         })
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+            == crate::specs::part1_legacy_segment_finish(crate::specs::part1_legacy_segment_run(
+                crate::specs::Part1LegacySegmentRun {
+                    decoder: tier1_decoder_state(old(self)), symbols: crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))),
+                    statistics: crate::specs::tier1_statistics_zero(),
+                }, pass_count as nat)),
+    ))]
+    fn decode_mq_segment_passes(
+        &mut self,
+        decoder: &mut MqDecoder<'_>,
+        pass_count: u32,
+    ) -> Result<Tier1PassStatistics, DecodeError> {
+        let mut statistics = ht_statistics_zero();
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = crate::specs::Part1LegacySegmentRun {
+                decoder: tier1_decoder_state(self), symbols: crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(decoder)), statistics,
+            };
+            let ghost goal = crate::specs::part1_legacy_segment_run(initial, pass_count as nat);
+        }
+        let mut decoded = 0_u32;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant decoded <= pass_count,
+                initial == (crate::specs::Part1LegacySegmentRun {
+                    decoder: tier1_decoder_state(old(self)), symbols: crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))),
+                    statistics: crate::specs::tier1_statistics_zero(),
+                }),
+                goal == crate::specs::part1_legacy_segment_run(initial, pass_count as nat),
+                goal == crate::specs::part1_legacy_segment_run(crate::specs::Part1LegacySegmentRun {
+                    decoder: tier1_decoder_state(self), symbols: crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(decoder)), statistics,
+                }, (pass_count - decoded) as nat),
+            decreases pass_count - decoded,
+        ))]
+        while decoded < pass_count {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part1_legacy_segment_run);
+                reveal(crate::specs::part1_legacy_segment_step);
+            }
+            let plan = self.style.pass_plan(self.next_pass);
+            if !matches!(plan.coding_mode, Tier1CodingMode::Mq) {
+                return Err(invalid_code_block());
+            }
+            statistics.merge(self.decode_mq_pass(decoder, plan.kind)?)?;
+            self.advance_pass(plan.kind)?;
+            reset_tier1_contexts_after_pass(decoder, self.style)?;
+            decoded = decoded.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_segment_run); }
+        Ok(statistics)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self)),
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(final(reader))))
+            == crate::specs::part1_legacy_segment_finish(crate::specs::part1_legacy_segment_run(
+                crate::specs::Part1LegacySegmentRun {
+                    decoder: tier1_decoder_state(old(self)), symbols: crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))),
+                    statistics: crate::specs::tier1_statistics_zero(),
+                }, pass_count as nat)),
+    ))]
+    fn decode_raw_segment_passes(
+        &mut self,
+        reader: &mut RawBitReader<'_>,
+        pass_count: u32,
+    ) -> Result<Tier1PassStatistics, DecodeError> {
+        let mut statistics = ht_statistics_zero();
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = crate::specs::Part1LegacySegmentRun {
+                decoder: tier1_decoder_state(self), symbols: crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(reader)), statistics,
+            };
+            let ghost goal = crate::specs::part1_legacy_segment_run(initial, pass_count as nat);
+        }
+        let mut decoded = 0_u32;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant decoded <= pass_count,
+                initial == (crate::specs::Part1LegacySegmentRun {
+                    decoder: tier1_decoder_state(old(self)), symbols: crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))),
+                    statistics: crate::specs::tier1_statistics_zero(),
+                }),
+                goal == crate::specs::part1_legacy_segment_run(initial, pass_count as nat),
+                goal == crate::specs::part1_legacy_segment_run(crate::specs::Part1LegacySegmentRun {
+                    decoder: tier1_decoder_state(self), symbols: crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(reader)), statistics,
+                }, (pass_count - decoded) as nat),
+            decreases pass_count - decoded,
+        ))]
+        while decoded < pass_count {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part1_legacy_segment_run);
+                reveal(crate::specs::part1_legacy_segment_step);
+            }
+            let plan = self.style.pass_plan(self.next_pass);
+            if !matches!(plan.coding_mode, Tier1CodingMode::Raw) {
+                return Err(invalid_code_block());
+            }
+            statistics.merge(self.decode_raw_pass(reader, plan.kind)?)?;
+            self.advance_pass(plan.kind)?;
+            if self.style.reset_contexts {
+                self.reset_contexts_before_mq = true;
+            }
+            decoded = decoded.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_segment_run); }
+        Ok(statistics)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -5504,8 +5933,7 @@ impl Tier1CodeBlockDecoder {
         )?;
         let mut output = plane;
         let mut statistics = statistics;
-        self.ht_refinement_data.clear();
-        self.ht_refinement_passes = 0;
+        self.clear_ht_refinement_state();
         if let Some(refinement) = segments.refinement() {
             let following_passes = pass_count.saturating_sub(1);
             if following_passes > u32::from(u8::MAX) {
@@ -5534,6 +5962,15 @@ impl Tier1CodeBlockDecoder {
             segments.bytes(),
             segments.refinement().is_some(),
         )
+    }
+
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        ensures tier1_decoder_state(final(self)) == crate::specs::ht_clear_refinement_state(tier1_decoder_state(old(self))),
+    ))]
+    fn clear_ht_refinement_state(&mut self) {
+        self.ht_refinement_data.clear();
+        self.ht_refinement_passes = 0;
     }
 
     #[allow(
@@ -5582,6 +6019,10 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_skip_segment(
+            tier1_decoder_state(old(self)), passes, crate::limits::resource_code_block_pass_limit(limits)),
+    ))]
     pub fn skip_high_throughput_segment(
         &mut self,
         passes: u8,
@@ -5604,11 +6045,11 @@ impl Tier1CodeBlockDecoder {
             return Err(invalid_code_block());
         }
         if next_pass > limits.maximum_code_block_passes() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlockPasses,
-                u64::from(limits.maximum_code_block_passes()),
-                u64::from(next_pass),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockPasses,
+                limit: u64::from(limits.maximum_code_block_passes()),
+                actual: u64::from(next_pass),
+            });
         }
         if phase == 0 {
             if !crate::refinement::ht_replacement_allowed(
@@ -5631,8 +6072,7 @@ impl Tier1CodeBlockDecoder {
                     .ok_or_else(arithmetic_overflow)?;
             }
             self.ht_current_set_has_cleanup = false;
-            self.ht_refinement_data.clear();
-            self.ht_refinement_passes = 0;
+            self.clear_ht_refinement_state();
         } else if self.ht_current_set_has_cleanup {
             return Err(invalid_code_block());
         }
@@ -5644,20 +6084,30 @@ impl Tier1CodeBlockDecoder {
         Ok(Tier1SegmentDecode {
             passes: u32::from(passes),
             bytes: 0,
-            statistics: Tier1PassStatistics::default(),
+            statistics: ht_statistics_zero(),
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::ht_has_current_cleanup(tier1_decoder_state(self)),
+    ))]
     pub const fn ht_current_set_has_cleanup(&self) -> bool {
         self.ht_current_set_has_cleanup
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_refinement_contribution(
+            tier1_decoder_state(old(self)), input@, passes,
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
     pub fn decode_high_throughput_refinement(
         &mut self,
         input: &[u8],
         passes: u8,
         limits: &ResourceLimits,
     ) -> Result<Tier1SegmentDecode, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = tier1_decoder_state(self); }
         if !self.style.block_coding.uses_high_throughput()
             || self.next_pass == 0
             || !self.ht_current_set_has_cleanup
@@ -5679,14 +6129,18 @@ impl Tier1CodeBlockDecoder {
             .checked_add(input.len() as u64)
             .ok_or_else(arithmetic_overflow)?;
         if next_bytes > limits.maximum_code_block_bytes() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlockBytes,
-                limits.maximum_code_block_bytes(),
-                next_bytes,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: limits.maximum_code_block_bytes(),
+                actual: next_bytes,
+            });
         }
         let mut refinement_data = self.ht_refinement_data.clone();
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(refinement_data@ == start.ht_refinement_data); }
         refinement_data.extend_from_slice(input);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(refinement_data@ == start.ht_refinement_data + input@); }
         if refinement_data.len() > MAX_HT_REFINEMENT_BYTES {
             return Err(invalid_code_block());
         }
@@ -5705,7 +6159,7 @@ impl Tier1CodeBlockDecoder {
             return Ok(Tier1SegmentDecode {
                 passes: u32::from(passes),
                 bytes: 0,
-                statistics: Tier1PassStatistics::default(),
+                statistics: ht_statistics_zero(),
             });
         }
         let segment = HtRefinementSegment {
@@ -5721,6 +6175,16 @@ impl Tier1CodeBlockDecoder {
                 direction: HtStreamDirection::Reverse,
             },
         };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(code_block_plane_view(cleanup_plane) == start.ht_cleanup_plane.get_Some_0());
+            assert(refinement_passes as nat == start.ht_refinement_passes as nat + passes as nat);
+            assert(ht_refinement_segment_view(&segment) == crate::specs::HtRefinementSegmentState {
+                encoded: refinement_data@,
+                significance_propagation: crate::specs::HtSubstreamState { bytes: refinement_data@, offset: 0, forward: true },
+                magnitude_refinement: crate::specs::HtSubstreamState { bytes: refinement_data@, offset: 0, forward: false },
+            });
+        }
         let (plane, statistics) = decode_ht_refinement_plane(
             cleanup_plane,
             segment,
@@ -5748,11 +6212,19 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+            == crate::specs::part1_legacy_decode_pass(tier1_decoder_state(old(self)),
+                crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), kind),
+    ))]
     fn decode_mq_pass(
         &mut self,
         decoder: &mut MqDecoder<'_>,
         kind: Tier1PassKind,
     ) -> Result<Tier1PassStatistics, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_decode_pass); }
         self.ensure_bitplane_state()?;
         let state = self
             .bitplane_state
@@ -5784,11 +6256,19 @@ impl Tier1CodeBlockDecoder {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self)),
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(final(reader))))
+            == crate::specs::part1_legacy_decode_pass(tier1_decoder_state(old(self)),
+                crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))), kind),
+    ))]
     fn decode_raw_pass(
         &mut self,
         reader: &mut RawBitReader<'_>,
         kind: Tier1PassKind,
     ) -> Result<Tier1PassStatistics, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_decode_pass); }
         self.ensure_bitplane_state()?;
         let state = self
             .bitplane_state
@@ -5809,16 +6289,19 @@ impl Tier1CodeBlockDecoder {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_ensure_bitplane(tier1_decoder_state(old(self))),
+    ))]
     fn ensure_bitplane_state(&mut self) -> Result<(), DecodeError> {
         if self.bitplane_state.is_none() {
-            self.bitplane_state = Some(Tier1BitplaneState::new_at_bitplane(
-                &self.plane,
-                self.bitplane,
-            )?);
+            self.bitplane_state = Some(legacy_bitplane_from_plane(&self.plane, self.bitplane)?);
         }
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_legacy_advance(tier1_decoder_state(old(self)), kind),
+    ))]
     fn advance_pass(&mut self, kind: Tier1PassKind) -> Result<(), DecodeError> {
         self.next_pass = self
             .next_pass
@@ -5837,6 +6320,36 @@ impl Tier1CodeBlockDecoder {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_contribution_work(samples as nat, replay, bytes, previous, maximum),
+))]
+fn legacy_contribution_work(
+    samples: usize,
+    replay: u32,
+    bytes: u64,
+    previous: u64,
+    maximum: u64,
+) -> Result<u64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_contribution_work); }
+    let base_work = match (samples as u64).checked_mul(u64::from(replay)) {
+        Some(work) => work,
+        None => return Err(arithmetic_overflow()),
+    };
+    let input_work = match base_work.checked_add(bytes) {
+        Some(work) => work,
+        None => return Err(arithmetic_overflow()),
+    };
+    let work = match input_work.checked_add(previous) {
+        Some(work) => work,
+        None => return Err(arithmetic_overflow()),
+    };
+    if work > maximum {
+        return Err(crate::mq::mq_limit(Resource::WorkUnits, maximum, work));
+    }
+    Ok(work)
+}
+
 impl Tier1BitplaneState {
     pub fn new(plane: &CodeBlockPlane, bitplane_mask: u64) -> Result<Self, DecodeError> {
         if !is_bitplane_mask(bitplane_mask) {
@@ -5848,32 +6361,7 @@ impl Tier1BitplaneState {
     }
 
     pub fn new_at_bitplane(plane: &CodeBlockPlane, bitplane: u16) -> Result<Self, DecodeError> {
-        if bitplane >= MAX_TIER1_BITPLANES {
-            return Err(invalid_code_block());
-        }
-        let mut significant_before = Vec::with_capacity(plane.coefficients.len());
-        let mut index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= plane.coefficients.len(),
-                decreases plane.coefficients.len() - index,
-            )
-        )]
-        while index < plane.coefficients.len() {
-            significant_before.push(plane.coefficients[index].significant);
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        Ok(Self {
-            width: plane.width,
-            height: plane.height,
-            bitplane,
-            significance_visited: vec![false; significant_before.len()],
-            significant_before,
-            significance_propagation_complete: false,
-            magnitude_refinement_complete: false,
-            cleanup_complete: false,
-        })
+        legacy_bitplane_from_plane(plane, bitplane)
     }
 
     pub const fn bitplane_mask(&self) -> u64 {
@@ -5884,22 +6372,81 @@ impl Tier1BitplaneState {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).bitplane,
+    ))]
     pub const fn bitplane(&self) -> u16 {
         self.bitplane
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).significance_propagation_complete,
+    ))]
     pub const fn significance_propagation_complete(&self) -> bool {
         self.significance_propagation_complete
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).magnitude_refinement_complete,
+    ))]
     pub const fn magnitude_refinement_complete(&self) -> bool {
         self.magnitude_refinement_complete
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == legacy_bitplane_view(self).cleanup_complete,
+    ))]
     pub const fn cleanup_complete(&self) -> bool {
         self.cleanup_complete
     }
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures legacy_bitplane_outcome(result) == crate::specs::part1_legacy_bitplane_initial(
+            code_block_plane_view(plane), bitplane),
+    ))]
+fn legacy_bitplane_from_plane(
+    plane: &CodeBlockPlane,
+    bitplane: u16,
+) -> Result<Tier1BitplaneState, DecodeError> {
+    if bitplane >= MAX_TIER1_BITPLANES {
+        return Err(invalid_code_block());
+    }
+    let mut significant_before = Vec::with_capacity(plane.coefficients.len());
+    let mut index = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant index <= plane.coefficients.len(), significant_before.len() == index,
+                bitplane < MAX_TIER1_BITPLANES,
+                forall |i: int| 0 <= i < index ==> significant_before@[i] == plane.coefficients@[i].significant,
+            decreases plane.coefficients.len() - index,
+        ))]
+    while index < plane.coefficients.len() {
+        significant_before.push(plane.coefficients[index].significant);
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(significant_before@ =~= code_block_plane_view(plane).coefficients.map_values(
+            |c: crate::specs::Tier1RawCoefficient| c.significant));
+    }
+    let significance_visited = vec![false; significant_before.len()];
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(significance_visited@ =~= Seq::new(code_block_plane_view(plane).coefficients.len(), |i: int| false));
+    }
+    Ok(Tier1BitplaneState {
+        width: plane.width,
+        height: plane.height,
+        bitplane,
+        significance_visited,
+        significant_before,
+        significance_propagation_complete: false,
+        magnitude_refinement_complete: false,
+        cleanup_complete: false,
+    })
+}
+
+impl Tier1BitplaneState {
     pub fn was_visited_by_significance_propagation(
         &self,
         plane: &CodeBlockPlane,
@@ -5914,6 +6461,9 @@ impl Tier1BitplaneState {
         Ok(self.significance_visited[index])
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_legacy_validate(legacy_bitplane_view(self), code_block_plane_view(plane)),
+    ))]
     fn validate_plane(&self, plane: &CodeBlockPlane) -> Result<(), DecodeError> {
         if self.width != plane.width
             || self.height != plane.height
@@ -5926,6 +6476,12 @@ impl Tier1BitplaneState {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation, false, 0),
+))]
 pub fn decode_significance_propagation_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -5937,10 +6493,42 @@ pub fn decode_significance_propagation_pass(
         state,
         decoder,
         orientation,
-        Tier1CodingStyle::default(),
+        legacy_default_style(),
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_default_style(),
+))]
+fn legacy_default_style() -> Tier1CodingStyle {
+    Tier1CodingStyle {
+        block_coding: Tier1BlockCoding::Legacy,
+        force_high_throughput: false,
+        selective_arithmetic_coding_bypass: false,
+        reset_contexts: false,
+        terminate_all_passes: false,
+        vertical_causal_context: false,
+        predictable_termination: false,
+        segmentation_symbols: false,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == Ok((bitplane as u32 * 3 + 1) as u32),
+))]
+fn legacy_maximum_passes(bitplane: u16) -> Result<u32, DecodeError> {
+    let passes = u32::from(bitplane)
+        .checked_mul(3)
+        .ok_or_else(arithmetic_overflow)?;
+    passes.checked_add(1).ok_or_else(arithmetic_overflow)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation, style.vertical_causal_context, 0),
+))]
 pub fn decode_significance_propagation_pass_with_style(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -5948,16 +6536,21 @@ pub fn decode_significance_propagation_pass_with_style(
     orientation: SubbandOrientation,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Mq(decoder);
     decode_significance_propagation(
         plane,
         state,
-        &mut symbol_decoder,
+        decoder,
         orientation,
         style.vertical_causal_context,
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(final(reader))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))), orientation, style.vertical_causal_context, 0),
+))]
 pub fn decode_raw_significance_propagation_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -5965,23 +6558,34 @@ pub fn decode_raw_significance_propagation_pass(
     orientation: SubbandOrientation,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Raw(reader);
     decode_significance_propagation(
         plane,
         state,
-        &mut symbol_decoder,
+        reader,
         orientation,
         style.vertical_causal_context,
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_pass(
+            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+            orientation, vertical_causal_context, 0),
+))]
 fn decode_significance_propagation(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     orientation: SubbandOrientation,
     vertical_causal_context: bool,
 ) -> Result<Tier1PassStatistics, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost goal = crate::specs::part1_legacy_pass(
+            code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder),
+            orientation, vertical_causal_context, 0);
+    }
     state.validate_plane(plane)?;
     if state.significance_propagation_complete
         || state.magnitude_refinement_complete
@@ -5990,7 +6594,7 @@ fn decode_significance_propagation(
         return Err(invalid_code_block());
     }
 
-    let mut statistics = Tier1PassStatistics::default();
+    let mut statistics = ht_statistics_zero();
     let height = plane.height;
     let width = plane.width;
     let mut stripe_y = 0_u16;
@@ -5998,113 +6602,215 @@ fn decode_significance_propagation(
         verus_keep_ghost,
         verus_spec(
             invariant stripe_y <= height,
+                goal == crate::specs::part1_legacy_pass(
+                    code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                    orientation, vertical_causal_context, 0),
+                goal == crate::specs::part1_legacy_finish(crate::specs::part1_legacy_stripes(
+                    legacy_frame_view(plane, state, decoder, statistics), stripe_y as nat, width, height,
+                    orientation, vertical_causal_context, 0), 0),
             decreases height - stripe_y,
         )
     )]
     while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         let stripe_rows = crate::refinement::tier1_stripe_rows(height, stripe_y);
         let mut x = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant x <= width,
+                    stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                    stripe_y as nat + stripe_rows as nat <= height,
+                    goal == crate::specs::part1_legacy_pass(
+                        code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                        orientation, vertical_causal_context, 0),
+                    goal == crate::specs::part1_legacy_column_tail(
+                        legacy_frame_view(plane, state, decoder, statistics), x as nat, stripe_y, stripe_rows as nat,
+                        width, height, orientation, vertical_causal_context, 0),
                 decreases width - x,
             )
         )]
         while x < width {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_columns); }
             let mut row = 0;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant row <= stripe_rows,
+                        x < width, stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                        stripe_y as nat + stripe_rows as nat <= height,
+                        goal == crate::specs::part1_legacy_pass(
+                            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                            orientation, vertical_causal_context, 0),
+                        goal == crate::specs::part1_legacy_row_tail(
+                            legacy_frame_view(plane, state, decoder, statistics), x, stripe_y, row as nat, stripe_rows as nat,
+                            width, height, orientation, vertical_causal_context, 0),
                     decreases stripe_rows - row,
                 )
             )]
             while row < stripe_rows {
-                let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                statistics.scanned(1)?;
-                let index = plane.index(x, y)?;
-                let coefficient = plane.coefficient(x, y)?;
-                if !coefficient.significant {
-                    let summary =
-                        plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
-                    let neighbors = significant_neighbor_count(summary);
-                    if crate::refinement::tier1_sigprop_eligible(coefficient.significant, neighbors)
-                    {
-                        if index >= state.significance_visited.len() {
-                            return Err(invalid_code_block());
-                        }
-                        let zero_context = zero_coding_context(summary, orientation);
-                        let significant = decoder.decode(usize::from(zero_context))?;
-                        state.significance_visited[index] = true;
-                        statistics.decoded_symbols(1)?;
-                        if significant {
-                            decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
-                            statistics.decoded_symbols(1)?;
-                            statistics.became_significant()?;
-                        }
-                    }
-                }
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal(crate::specs::part1_legacy_rows); }
+                let y = match stripe_y.checked_add(row) {
+                    Some(y) => y,
+                    None => return Err(arithmetic_overflow()),
+                };
+                decode_significance_coefficient(
+                    plane,
+                    state,
+                    decoder,
+                    orientation,
+                    vertical_causal_context,
+                    (x, y),
+                    &mut statistics,
+                )?;
                 row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_rows); }
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_columns); }
         let next_stripe = stripe_y
             .checked_add(stripe_rows)
             .ok_or_else(arithmetic_overflow)?;
         if next_stripe <= stripe_y || next_stripe > height {
             return Err(invalid_code_block());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         stripe_y = next_stripe;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_stripes);
+        assert(goal == crate::specs::part1_legacy_finish(
+            (Ok(()), legacy_frame_view(plane, state, decoder, statistics)), 0));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before_finish = legacy_frame_view(plane, state, decoder, statistics); }
     state.significance_propagation_complete = crate::refinement::tier1_pass_complete(0) & 1 != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1u8 & 1u8 != 0) by(bit_vector);
+        assert(state.significance_propagation_complete);
+        assert(legacy_bitplane_view(state) == (crate::specs::Part1LegacyBitplane {
+            significance_propagation_complete: true, ..before_finish.state
+        }));
+        assert(code_block_plane_view(plane) == before_finish.plane);
+        assert(legacy_symbols_view(decoder) == before_finish.symbols);
+        assert((Ok(statistics), code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder)) == goal);
+    }
     Ok(statistics)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), final(state), final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_sig_cell(
+            legacy_frame_view(old(plane), old(state), old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, orientation, vertical_causal_context),
+))]
+fn decode_significance_coefficient(
+    plane: &mut CodeBlockPlane,
+    state: &mut Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    orientation: SubbandOrientation,
+    vertical_causal_context: bool,
+    coordinate: (u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_sig_cell); }
+    let (x, y) = coordinate;
+    statistics.scanned(1)?;
+    let index = plane.index(x, y)?;
+    let coefficient = plane.coefficient(x, y)?;
+    if !coefficient.significant {
+        let summary = plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+        let neighbors = significant_neighbor_count(summary);
+        if crate::refinement::tier1_sigprop_eligible(coefficient.significant, neighbors) {
+            if index >= state.significance_visited.len() {
+                return Err(invalid_code_block());
+            }
+            let zero_context = zero_coding_context(summary, orientation);
+            let significant = decoder.decode(usize::from(zero_context))?;
+            state.significance_visited[index] = true;
+            statistics.decoded_symbols(1)?;
+            if significant {
+                decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
+                statistics.decoded_symbols(1)?;
+                statistics.became_significant()?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), SubbandOrientation::Ll, false, 1),
+))]
 pub fn decode_magnitude_refinement_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     decoder: &mut MqDecoder<'_>,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    decode_magnitude_refinement_pass_with_style(plane, state, decoder, Tier1CodingStyle::default())
+    decode_magnitude_refinement_pass_with_style(plane, state, decoder, legacy_default_style())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), SubbandOrientation::Ll, style.vertical_causal_context, 1),
+))]
 pub fn decode_magnitude_refinement_pass_with_style(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     decoder: &mut MqDecoder<'_>,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Mq(decoder);
-    decode_magnitude_refinement(
-        plane,
-        state,
-        &mut symbol_decoder,
-        style.vertical_causal_context,
-    )
+    decode_magnitude_refinement(plane, state, decoder, style.vertical_causal_context)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(final(reader))))
+        == crate::specs::part1_legacy_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(old(reader))), SubbandOrientation::Ll, style.vertical_causal_context, 1),
+))]
 pub fn decode_raw_magnitude_refinement_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     reader: &mut RawBitReader<'_>,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Raw(reader);
-    decode_magnitude_refinement(
-        plane,
-        state,
-        &mut symbol_decoder,
-        style.vertical_causal_context,
-    )
+    decode_magnitude_refinement(plane, state, reader, style.vertical_causal_context)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_pass(
+            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+            SubbandOrientation::Ll, vertical_causal_context, 1),
+))]
 fn decode_magnitude_refinement(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     vertical_causal_context: bool,
 ) -> Result<Tier1PassStatistics, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost goal = crate::specs::part1_legacy_pass(
+            code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder),
+            SubbandOrientation::Ll, vertical_causal_context, 1);
+    }
     state.validate_plane(plane)?;
     if !state.significance_propagation_complete
         || state.magnitude_refinement_complete
@@ -6113,7 +6819,7 @@ fn decode_magnitude_refinement(
         return Err(invalid_code_block());
     }
 
-    let mut statistics = Tier1PassStatistics::default();
+    let mut statistics = ht_statistics_zero();
     let height = plane.height;
     let width = plane.width;
     let mut stripe_y = 0_u16;
@@ -6121,76 +6827,163 @@ fn decode_magnitude_refinement(
         verus_keep_ghost,
         verus_spec(
             invariant stripe_y <= height,
+                goal == crate::specs::part1_legacy_pass(
+                    code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                    SubbandOrientation::Ll, vertical_causal_context, 1),
+                goal == crate::specs::part1_legacy_finish(crate::specs::part1_legacy_stripes(
+                    legacy_frame_view(plane, state, decoder, statistics), stripe_y as nat, width, height,
+                    SubbandOrientation::Ll, vertical_causal_context, 1), 1),
             decreases height - stripe_y,
         )
     )]
     while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         let stripe_rows = crate::refinement::tier1_stripe_rows(height, stripe_y);
         let mut x = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant x <= width,
+                    stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                    stripe_y as nat + stripe_rows as nat <= height,
+                    goal == crate::specs::part1_legacy_pass(
+                        code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                        SubbandOrientation::Ll, vertical_causal_context, 1),
+                    goal == crate::specs::part1_legacy_column_tail(
+                        legacy_frame_view(plane, state, decoder, statistics), x as nat, stripe_y, stripe_rows as nat,
+                        width, height, SubbandOrientation::Ll, vertical_causal_context, 1),
                 decreases width - x,
             )
         )]
         while x < width {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_columns); }
             let mut row = 0;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant row <= stripe_rows,
+                        x < width, stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                        stripe_y as nat + stripe_rows as nat <= height,
+                        goal == crate::specs::part1_legacy_pass(
+                            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                            SubbandOrientation::Ll, vertical_causal_context, 1),
+                        goal == crate::specs::part1_legacy_row_tail(
+                            legacy_frame_view(plane, state, decoder, statistics), x, stripe_y, row as nat, stripe_rows as nat,
+                            width, height, SubbandOrientation::Ll, vertical_causal_context, 1),
                     decreases stripe_rows - row,
                 )
             )]
             while row < stripe_rows {
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal(crate::specs::part1_legacy_rows); }
                 let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                statistics.scanned(1)?;
-                let index = plane.index(x, y)?;
-                if index >= state.significant_before.len() {
-                    return Err(invalid_code_block());
-                }
-                if crate::refinement::tier1_magref_eligible(state.significant_before[index]) {
-                    let coefficient = plane.coefficient(x, y)?;
-                    let summary =
-                        plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
-                    let context = magnitude_refinement_context(coefficient, summary);
-                    let refinement_bit = decoder.decode(usize::from(context))?;
-                    statistics.decoded_symbols(1)?;
-                    plane.apply_refinement_bit(x, y, state.bitplane, refinement_bit)?;
-                    statistics.refined()?;
-                }
+                decode_refinement_coefficient(
+                    plane,
+                    state,
+                    decoder,
+                    vertical_causal_context,
+                    (x, y),
+                    &mut statistics,
+                )?;
                 row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_rows); }
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_columns); }
         let next_stripe = stripe_y
             .checked_add(stripe_rows)
             .ok_or_else(arithmetic_overflow)?;
         if next_stripe <= stripe_y || next_stripe > height {
             return Err(invalid_code_block());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         stripe_y = next_stripe;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_stripes);
+        assert(goal == crate::specs::part1_legacy_finish(
+            (Ok(()), legacy_frame_view(plane, state, decoder, statistics)), 1));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before_finish = legacy_frame_view(plane, state, decoder, statistics); }
     state.magnitude_refinement_complete = crate::refinement::tier1_pass_complete(1) & 2 != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(2u8 & 2u8 != 0) by(bit_vector);
+        assert(state.magnitude_refinement_complete);
+        assert(legacy_bitplane_view(state) == (crate::specs::Part1LegacyBitplane {
+            magnitude_refinement_complete: true, ..before_finish.state
+        }));
+        assert(code_block_plane_view(plane) == before_finish.plane);
+        assert(legacy_symbols_view(decoder) == before_finish.symbols);
+        assert((Ok(statistics), code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder)) == goal);
+    }
     Ok(statistics)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_mag_cell(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, vertical_causal_context),
+))]
+fn decode_refinement_coefficient(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    vertical_causal_context: bool,
+    coordinate: (u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_mag_cell); }
+    let (x, y) = coordinate;
+    statistics.scanned(1)?;
+    let index = plane.index(x, y)?;
+    if index >= state.significant_before.len() {
+        return Err(invalid_code_block());
+    }
+    if crate::refinement::tier1_magref_eligible(state.significant_before[index]) {
+        let coefficient = plane.coefficient(x, y)?;
+        let summary = plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+        let context = magnitude_refinement_context(coefficient, summary);
+        let refinement_bit = decoder.decode(usize::from(context))?;
+        statistics.decoded_symbols(1)?;
+        plane.apply_refinement_bit(x, y, state.bitplane, refinement_bit)?;
+        statistics.refined()?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_cleanup_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation, false, false),
+))]
 pub fn decode_cleanup_pass(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
     decoder: &mut MqDecoder<'_>,
     orientation: SubbandOrientation,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    decode_cleanup_pass_with_style(
-        plane,
-        state,
-        decoder,
-        orientation,
-        Tier1CodingStyle::default(),
-    )
+    decode_cleanup_pass_with_style(plane, state, decoder, orientation, legacy_default_style())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)),
+        crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(final(decoder))))
+        == crate::specs::part1_legacy_cleanup_pass(code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)),
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(old(decoder))), orientation,
+            style.vertical_causal_context, style.segmentation_symbols),
+))]
 pub fn decode_cleanup_pass_with_style(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
@@ -6198,25 +6991,36 @@ pub fn decode_cleanup_pass_with_style(
     orientation: SubbandOrientation,
     style: Tier1CodingStyle,
 ) -> Result<Tier1PassStatistics, DecodeError> {
-    let mut symbol_decoder = Tier1SymbolDecoder::Mq(decoder);
     decode_cleanup(
         plane,
         state,
-        &mut symbol_decoder,
+        decoder,
         orientation,
         style.vertical_causal_context,
         style.segmentation_symbols,
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_bitplane_view(final(state)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_cleanup_pass(
+            code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+            orientation, vertical_causal_context, segmentation_symbols),
+))]
 fn decode_cleanup(
     plane: &mut CodeBlockPlane,
     state: &mut Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     orientation: SubbandOrientation,
     vertical_causal_context: bool,
     segmentation_symbols: bool,
 ) -> Result<Tier1PassStatistics, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost goal = crate::specs::part1_legacy_cleanup_pass(
+            code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder),
+            orientation, vertical_causal_context, segmentation_symbols);
+    }
     state.validate_plane(plane)?;
     if state.cleanup_complete
         || state.significance_propagation_complete != state.magnitude_refinement_complete
@@ -6224,7 +7028,7 @@ fn decode_cleanup(
         return Err(invalid_code_block());
     }
 
-    let mut statistics = Tier1PassStatistics::default();
+    let mut statistics = ht_statistics_zero();
     let height = plane.height;
     let width = plane.width;
     let mut stripe_y = 0_u16;
@@ -6232,99 +7036,50 @@ fn decode_cleanup(
         verus_keep_ghost,
         verus_spec(
             invariant stripe_y <= height,
+                goal == crate::specs::part1_legacy_cleanup_pass(
+                    code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                    orientation, vertical_causal_context, segmentation_symbols),
+                goal == crate::specs::part1_legacy_cleanup_finish(crate::specs::part1_legacy_stripes(
+                    legacy_frame_view(plane, state, decoder, statistics), stripe_y as nat, width, height,
+                    orientation, vertical_causal_context, 2), segmentation_symbols),
             decreases height - stripe_y,
         )
     )]
     while stripe_y < height {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_stripes); }
         let stripe_rows = crate::refinement::tier1_stripe_rows(height, stripe_y);
         let mut x = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant x <= width,
+                    stripe_y < height, stripe_rows > 0, stripe_rows <= 4,
+                    stripe_y as nat + stripe_rows as nat <= height,
+                    goal == crate::specs::part1_legacy_cleanup_pass(
+                        code_block_plane_view(old(plane)), legacy_bitplane_view(old(state)), legacy_symbols_view(old(decoder)),
+                        orientation, vertical_causal_context, segmentation_symbols),
+                    goal == crate::specs::part1_legacy_cleanup_column_tail(
+                        legacy_frame_view(plane, state, decoder, statistics), x as nat, stripe_y, stripe_rows as nat,
+                        width, height, orientation, vertical_causal_context, segmentation_symbols),
                 decreases width - x,
             )
         )]
         while x < width {
-            let stripe_y_1 = stripe_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            let stripe_y_2 = stripe_y.checked_add(2).ok_or_else(arithmetic_overflow)?;
-            let stripe_y_3 = stripe_y.checked_add(3).ok_or_else(arithmetic_overflow)?;
-            if stripe_rows == 4
-                && cleanup_run_candidate(plane, state, x, stripe_y, vertical_causal_context)?
-                && cleanup_run_candidate(plane, state, x, stripe_y_1, vertical_causal_context)?
-                && cleanup_run_candidate(plane, state, x, stripe_y_2, vertical_causal_context)?
-                && cleanup_run_candidate(plane, state, x, stripe_y_3, vertical_causal_context)?
-            {
-                statistics.scanned(4)?;
-                statistics.used_run_mode()?;
-                let interrupted = decoder.decode(RUN_LENGTH_CONTEXT)?;
-                statistics.decoded_symbols(1)?;
-                if interrupted {
-                    let run_high = decoder.decode(UNIFORM_CONTEXT)?;
-                    let run_low = decoder.decode(UNIFORM_CONTEXT)?;
-                    statistics.decoded_symbols(2)?;
-                    let run_length = if run_high {
-                        if run_low { 3 } else { 2 }
-                    } else if run_low {
-                        1
-                    } else {
-                        0
-                    };
-                    let y = stripe_y
-                        .checked_add(run_length)
-                        .ok_or_else(arithmetic_overflow)?;
-                    let summary =
-                        plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
-                    decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
-                    statistics.decoded_symbols(1)?;
-                    statistics.became_significant()?;
-
-                    let mut row = run_length.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(decreases 4int - row as int,)
-                    )]
-                    while row < 4 {
-                        let remaining_y =
-                            stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                        decode_cleanup_coefficient(
-                            plane,
-                            state,
-                            decoder,
-                            orientation,
-                            vertical_causal_context,
-                            (x, remaining_y),
-                            &mut statistics,
-                        )?;
-                        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    }
-                }
-            } else {
-                let mut row = 0;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant row <= stripe_rows,
-                        decreases stripe_rows - row,
-                    )
-                )]
-                while row < stripe_rows {
-                    let y = stripe_y.checked_add(row).ok_or_else(arithmetic_overflow)?;
-                    statistics.scanned(1)?;
-                    decode_cleanup_coefficient(
-                        plane,
-                        state,
-                        decoder,
-                        orientation,
-                        vertical_causal_context,
-                        (x, y),
-                        &mut statistics,
-                    )?;
-                    row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-            }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_legacy_columns); }
+            decode_cleanup_column(
+                plane,
+                state,
+                decoder,
+                (orientation, vertical_causal_context),
+                (x, stripe_y, stripe_rows),
+                &mut statistics,
+            )?;
             x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_columns); }
         let next_stripe = stripe_y
             .checked_add(stripe_rows)
             .ok_or_else(arithmetic_overflow)?;
@@ -6333,29 +7088,240 @@ fn decode_cleanup(
         }
         stripe_y = next_stripe;
     }
-    if segmentation_symbols {
-        let first = decoder.decode(UNIFORM_CONTEXT)?;
-        let second = decoder.decode(UNIFORM_CONTEXT)?;
-        let third = decoder.decode(UNIFORM_CONTEXT)?;
-        let fourth = decoder.decode(UNIFORM_CONTEXT)?;
-        statistics.decoded_symbols(4)?;
-        if !first || second || !third || fourth {
-            return Err(invalid_code_block());
-        }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_stripes);
     }
+    if segmentation_symbols {
+        decode_cleanup_segsym(plane, state, decoder, &mut statistics)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before_finish = legacy_frame_view(plane, state, decoder, statistics); }
     state.cleanup_complete = crate::refinement::tier1_pass_complete(2) & 4 != 0;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(4u8 & 4u8 != 0) by(bit_vector);
+        assert((Ok(statistics), code_block_plane_view(plane), legacy_bitplane_view(state), legacy_symbols_view(decoder)) == goal);
+    }
     Ok(statistics)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(_plane, _state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_segsym(
+            legacy_frame_view(_plane, _state, old(decoder), *old(statistics))),
+))]
+fn decode_cleanup_segsym(
+    _plane: &CodeBlockPlane,
+    _state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_segsym); }
+    let first = decoder.decode(UNIFORM_CONTEXT)?;
+    let second = decoder.decode(UNIFORM_CONTEXT)?;
+    let third = decoder.decode(UNIFORM_CONTEXT)?;
+    let fourth = decoder.decode(UNIFORM_CONTEXT)?;
+    statistics.decoded_symbols(4)?;
+    if !first || second || !third || fourth {
+        return Err(invalid_code_block());
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_cleanup_column(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, coordinate.2, context.0, context.1),
+))]
+fn decode_cleanup_column(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    context: (SubbandOrientation, bool),
+    coordinate: (u16, u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_cleanup_column);
+        reveal(crate::specs::part1_legacy_cleanup_run);
+    }
+    let (_orientation, vertical_causal_context) = context;
+    let (x, stripe_y, stripe_rows) = coordinate;
+    let stripe_y_1 = stripe_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    let stripe_y_2 = stripe_y.checked_add(2).ok_or_else(arithmetic_overflow)?;
+    let stripe_y_3 = stripe_y.checked_add(3).ok_or_else(arithmetic_overflow)?;
+    if stripe_rows == 4
+        && cleanup_run_candidate(plane, state, x, stripe_y, vertical_causal_context)?
+        && cleanup_run_candidate(plane, state, x, stripe_y_1, vertical_causal_context)?
+        && cleanup_run_candidate(plane, state, x, stripe_y_2, vertical_causal_context)?
+        && cleanup_run_candidate(plane, state, x, stripe_y_3, vertical_causal_context)?
+    {
+        statistics.scanned(4)?;
+        statistics.used_run_mode()?;
+        let interrupted = decoder.decode(RUN_LENGTH_CONTEXT)?;
+        statistics.decoded_symbols(1)?;
+        if interrupted {
+            decode_cleanup_interrupt(plane, state, decoder, context, (x, stripe_y), statistics)?;
+        }
+    } else {
+        decode_cleanup_rows(
+            plane,
+            state,
+            decoder,
+            context,
+            (x, stripe_y, 0, stripe_rows, true),
+            statistics,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_cleanup_interrupt(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, context.0, context.1),
+))]
+fn decode_cleanup_interrupt(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    context: (SubbandOrientation, bool),
+    coordinate: (u16, u16),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_cleanup_interrupt); }
+    let (orientation, vertical_causal_context) = context;
+    let (x, stripe_y) = coordinate;
+    let run_high = decoder.decode(UNIFORM_CONTEXT)?;
+    let run_low = decoder.decode(UNIFORM_CONTEXT)?;
+    statistics.decoded_symbols(2)?;
+    let run_length = if run_high {
+        if run_low { 3 } else { 2 }
+    } else if run_low {
+        1
+    } else {
+        0
+    };
+    let y = stripe_y
+        .checked_add(run_length)
+        .ok_or_else(arithmetic_overflow)?;
+    let summary = plane.neighbor_summary_with_causality(x, y, vertical_causal_context)?;
+    decode_sign_and_mark(plane, decoder, x, y, state.bitplane, summary)?;
+    statistics.decoded_symbols(1)?;
+    statistics.became_significant()?;
+    let row = run_length.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    decode_cleanup_rows(
+        plane,
+        state,
+        decoder,
+        (orientation, vertical_causal_context),
+        (x, stripe_y, row, 4, false),
+        statistics,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == if coordinate.4 {
+            crate::specs::part1_legacy_rows(
+                legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+                coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1, 2)
+        } else {
+            crate::specs::part1_legacy_cleanup_rows(
+                legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+                coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1)
+        },
+))]
+fn decode_cleanup_rows(
+    plane: &mut CodeBlockPlane,
+    state: &Tier1BitplaneState,
+    decoder: &mut impl Tier1SymbolDecoder,
+    context: (SubbandOrientation, bool),
+    coordinate: (u16, u16, u16, u16, bool),
+    statistics: &mut Tier1PassStatistics,
+) -> Result<(), DecodeError> {
+    let (orientation, vertical_causal_context) = context;
+    let (x, stripe_y, mut row, rows, scan) = coordinate;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = legacy_frame_view(plane, state, decoder, *statistics);
+        let ghost goal = if scan {
+            crate::specs::part1_legacy_rows(initial, x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context, 2)
+        } else {
+            crate::specs::part1_legacy_cleanup_rows(initial, x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context)
+        };
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant initial == legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            goal == if coordinate.4 {
+                crate::specs::part1_legacy_rows(initial, coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1, 2)
+            } else {
+                crate::specs::part1_legacy_cleanup_rows(initial, coordinate.0, coordinate.1, coordinate.2 as nat, coordinate.3 as nat, context.0, context.1)
+            },
+            goal == if scan {
+                crate::specs::part1_legacy_rows(legacy_frame_view(plane, state, decoder, *statistics),
+                    x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context, 2)
+            } else {
+                crate::specs::part1_legacy_cleanup_rows(legacy_frame_view(plane, state, decoder, *statistics),
+                    x, stripe_y, row as nat, rows as nat, orientation, vertical_causal_context)
+            },
+        decreases rows as int - row as int,
+    ))]
+    while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_legacy_rows);
+            reveal(crate::specs::part1_legacy_cleanup_rows);
+        }
+        let y = match stripe_y.checked_add(row) {
+            Some(y) => y,
+            None => return Err(arithmetic_overflow()),
+        };
+        if scan {
+            statistics.scanned(1)?;
+        }
+        decode_cleanup_coefficient(
+            plane,
+            state,
+            decoder,
+            orientation,
+            vertical_causal_context,
+            (x, y),
+            statistics,
+        )?;
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_legacy_rows);
+        reveal(crate::specs::part1_legacy_cleanup_rows);
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_frame_view(final(plane), state, final(decoder), *final(statistics)))
+        == crate::specs::part1_legacy_cleanup_cell(
+            legacy_frame_view(old(plane), state, old(decoder), *old(statistics)),
+            coordinate.0, coordinate.1, orientation, vertical_causal_context),
+))]
 fn decode_cleanup_coefficient(
     plane: &mut CodeBlockPlane,
     state: &Tier1BitplaneState,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     orientation: SubbandOrientation,
     vertical_causal_context: bool,
     coordinate: (u16, u16),
     statistics: &mut Tier1PassStatistics,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_cleanup_cell); }
     let (x, y) = coordinate;
     let index = plane.index(x, y)?;
     if index >= state.significance_visited.len() {
@@ -6380,16 +7346,23 @@ fn decode_cleanup_coefficient(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, code_block_plane_view(final(plane)), legacy_symbols_view(final(decoder)))
+        == crate::specs::part1_legacy_sign_mark(
+            code_block_plane_view(old(plane)), legacy_symbols_view(old(decoder)), x, y, bitplane, summary),
+))]
 fn decode_sign_and_mark(
     plane: &mut CodeBlockPlane,
-    decoder: &mut Tier1SymbolDecoder<'_, '_>,
+    decoder: &mut impl Tier1SymbolDecoder,
     x: u16,
     y: u16,
     bitplane: u16,
     summary: NeighborSummary,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_sign_mark); }
     let sign = sign_context(summary);
-    let raw = matches!(decoder, Tier1SymbolDecoder::Raw(_));
+    let raw = decoder.is_raw();
     let decoded_sign = decoder.decode(usize::from(sign.context))?;
     plane.mark_significant_at_bitplane(
         x,
@@ -6399,6 +7372,10 @@ fn decode_sign_and_mark(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_legacy_cleanup_candidate(
+        code_block_plane_view(plane), legacy_bitplane_view(state), x, y, vertical_causal_context),
+))]
 fn cleanup_run_candidate(
     plane: &CodeBlockPlane,
     state: &Tier1BitplaneState,
@@ -6406,6 +7383,8 @@ fn cleanup_run_candidate(
     y: u16,
     vertical_causal_context: bool,
 ) -> Result<bool, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_cleanup_candidate); }
     let index = plane.index(x, y)?;
     if index >= state.significance_visited.len() {
         return Err(invalid_code_block());
@@ -6419,17 +7398,74 @@ fn cleanup_run_candidate(
         )?) == 0)
 }
 
-enum Tier1SymbolDecoder<'decoder, 'input> {
-    Mq(&'decoder mut MqDecoder<'input>),
-    Raw(&'decoder mut RawBitReader<'input>),
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn legacy_symbols_view<D: Tier1SymbolDecoder>(decoder: &D) -> crate::specs::Part1LegacySymbols {
+        decoder.symbols_view()
+    }
+
+    closed spec fn legacy_frame_view<D: Tier1SymbolDecoder>(plane: &CodeBlockPlane, state: &Tier1BitplaneState,
+        decoder: &D, statistics: Tier1PassStatistics) -> crate::specs::Part1LegacyFrame {
+        crate::specs::Part1LegacyFrame {
+            plane: code_block_plane_view(plane), state: legacy_bitplane_view(state),
+            symbols: legacy_symbols_view(decoder), statistics,
+        }
+    }
 }
 
-impl Tier1SymbolDecoder<'_, '_> {
-    fn decode(&mut self, context: usize) -> Result<bool, DecodeError> {
-        match self {
-            Self::Mq(decoder) => decoder.decode(context),
-            Self::Raw(reader) => reader.read_bit(),
+trait Tier1SymbolDecoder {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols;
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, final(self).symbols_view()) == crate::specs::part1_legacy_symbol(
+            old(self).symbols_view(), context),
+    ))]
+    fn decode(&mut self, context: usize) -> Result<bool, DecodeError>;
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == (self.symbols_view() is Raw),
+    ))]
+    fn is_raw(&self) -> bool;
+}
+
+impl Tier1SymbolDecoder for MqDecoder<'_> {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(self))
         }
+    }
+
+    fn decode(&mut self, context: usize) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_symbol); }
+        MqDecoder::decode(self, context)
+    }
+
+    fn is_raw(&self) -> bool {
+        false
+    }
+}
+
+impl Tier1SymbolDecoder for RawBitReader<'_> {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(self))
+        }
+    }
+
+    fn decode(&mut self, _context: usize) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_symbol); }
+        self.read_bit()
+    }
+
+    fn is_raw(&self) -> bool {
+        true
     }
 }
 
@@ -6525,12 +7561,24 @@ fn ht_neighbor_summary_zero() -> NeighborSummary {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct CodeBlockPlane {
     width: u16,
     height: u16,
     coefficients: Vec<CoefficientState>,
+}
+
+impl Clone for CodeBlockPlane {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures code_block_plane_view(&result) == code_block_plane_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            coefficients: self.coefficients.clone(),
+        }
+    }
 }
 
 #[cfg(verus_keep_ghost)]
@@ -6714,6 +7762,11 @@ impl CodeBlockPlane {
         self.mark_significant_magnitude(x, y, Magnitude::from_u64(magnitude), negative)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::part1_legacy_mark(
+            code_block_plane_view(old(self)), x, y, bitplane, negative),
+            final(self).width == old(self).width, final(self).height == old(self).height,
+    ))]
     fn mark_significant_at_bitplane(
         &mut self,
         x: u16,
@@ -6721,12 +7774,22 @@ impl CodeBlockPlane {
         bitplane: u16,
         negative: bool,
     ) -> Result<(), DecodeError> {
-        self.mark_significant_magnitude(x, y, Magnitude::single_bit(bitplane)?, negative)?;
+        self.mark_significant_magnitude(
+            x,
+            y,
+            crate::magnitude::magnitude_single_bit(bitplane)?,
+            negative,
+        )?;
         let index = self.index(x, y)?;
         self.coefficients
             .get_mut(index)
             .ok_or_else(invalid_code_block)?
             .legacy_bitplane = Some(bitplane);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(code_block_plane_view(self).coefficients =~=
+                crate::specs::part1_legacy_mark(code_block_plane_view(old(self)), x, y, bitplane, negative).1.coefficients);
+        }
         Ok(())
     }
 
@@ -6781,6 +7844,11 @@ impl CodeBlockPlane {
         self.apply_refinement_bit(x, y, bitplane, refinement_bit)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::part1_legacy_refine(
+            code_block_plane_view(old(self)), x, y, bitplane, refinement_bit),
+            final(self).width == old(self).width, final(self).height == old(self).height,
+    ))]
     fn apply_refinement_bit(
         &mut self,
         x: u16,
@@ -6788,6 +7856,8 @@ impl CodeBlockPlane {
         bitplane: u16,
         refinement_bit: bool,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = code_block_plane_view(self); }
         if bitplane >= MAX_TIER1_BITPLANES {
             return Err(invalid_code_block());
         }
@@ -6799,20 +7869,72 @@ impl CodeBlockPlane {
         if !coefficient.significant {
             return Err(invalid_code_block());
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_magnitude_value_bound(coefficient_raw_view(coefficient).limbs);
+        }
         if refinement_bit {
             let current = coefficient.wide_magnitude();
-            let delta = Magnitude::single_bit(bitplane)?;
+            let delta = crate::magnitude::magnitude_single_bit(bitplane)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::magnitude::representation_proofs::magnitude_limbs_shape(current);
+                crate::magnitude::representation_proofs::magnitude_limbs_shape(delta);
+                crate::proofs::production_impl::production_legacy_magnitude_u64(crate::magnitude::magnitude_limbs(current));
+                crate::proofs::production_impl::production_legacy_magnitude_u64(crate::magnitude::magnitude_limbs(delta));
+            }
             let magnitude = match (current.to_u64(), delta.to_u64()) {
-                (Some(current), Some(delta)) if current <= u64::MAX - delta => Magnitude::from_u64(
-                    crate::refinement::tier1_refined_magnitude(current, delta, true),
-                ),
+                (Some(current), Some(delta)) if current <= u64::MAX - delta => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(current as nat == crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs));
+                        assert(delta as nat == vstd::arithmetic::power2::pow2(bitplane as nat));
+                    }
+                    crate::magnitude::magnitude_from_u64(
+                        crate::refinement::tier1_refined_magnitude(current, delta, true),
+                    )
+                }
                 _ => current.checked_add(delta)?,
             };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::magnitude::magnitude_value(magnitude) ==
+                    crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs)
+                        + vstd::arithmetic::power2::pow2(bitplane as nat));
+                crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+                crate::proofs::production_impl::production_magnitude_value_bound(crate::magnitude::magnitude_limbs(magnitude));
+                crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
+            }
             self.coefficients[index].set_magnitude(magnitude)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(coefficient_raw_view(self.coefficients[index as int]).limbs
+                    == crate::specs::tier1_value_limbs(
+                        crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs)
+                            + vstd::arithmetic::power2::pow2(bitplane as nat)));
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part1_legacy_refine(start, x, y, bitplane, refinement_bit).0 == Ok(()));
+            assert(coefficient_raw_view(self.coefficients[index as int]) == (crate::specs::Tier1RawCoefficient {
+                limbs: if refinement_bit {
+                    crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(coefficient_raw_view(coefficient).limbs)
+                        + vstd::arithmetic::power2::pow2(bitplane as nat))
+                } else { coefficient_raw_view(coefficient).limbs },
+                ..coefficient_raw_view(coefficient)
+            }));
         }
         self.coefficients[index].refined = true;
         if coefficient.legacy_bitplane.is_some() {
             self.coefficients[index].legacy_bitplane = Some(bitplane);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(coefficient_raw_view(self.coefficients[index as int])
+                == crate::specs::part1_legacy_refine(start, x, y, bitplane, refinement_bit).1.coefficients[index as int]);
+            assert(code_block_plane_view(self).coefficients =~=
+                crate::specs::part1_legacy_refine(start, x, y, bitplane, refinement_bit).1.coefficients);
         }
         Ok(())
     }
@@ -7046,6 +8168,874 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn legacy_raw_pair_decoder(width: u16) -> Tier1CodeBlockDecoder {
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            width,
+            1,
+            7,
+            SubbandOrientation::Hh,
+            Tier1CodingStyle {
+                selective_arithmetic_coding_bypass: true,
+                ..Tier1CodingStyle::default()
+            },
+        )
+        .unwrap();
+        decoder.next_pass = 10;
+        decoder.bitplane = 2;
+        for x in 0..width {
+            decoder
+                .plane
+                .mark_significant_at_bitplane(x, 0, 3, x % 2 != 0)
+                .unwrap();
+        }
+        let mut mq = MqDecoder::new(&[], &ResourceLimits::default()).unwrap();
+        for index in 0..19 {
+            mq.set_context(index, (index * 2) as u8, index % 2 == 0)
+                .unwrap();
+        }
+        decoder.mq_context_state = Some(mq.context_state());
+        decoder.zero_bitplanes = Some(u16::MAX);
+        decoder.ht_refinement_data = vec![0xff, 0x90, 0x27];
+        decoder.ht_refinement_passes = u8::MAX;
+        decoder.ht_decoded_bitplanes = u16::MAX;
+        decoder.ht_current_set_has_cleanup = true;
+        decoder.ht_sets_seen = u16::MAX;
+        decoder.allow_multiple_ht_sets = true;
+        decoder.ht_magnitude_bound = u8::MAX;
+        decoder
+    }
+
+    fn expected_legacy_raw_pair(
+        decoder: &Tier1CodeBlockDecoder,
+        reset: bool,
+    ) -> Tier1CodeBlockDecoder {
+        let mut expected = decoder.clone();
+        expected.plane.coefficients[0].magnitude = 12;
+        expected.plane.coefficients[0].legacy_bitplane = Some(2);
+        expected.plane.coefficients[0].refined = true;
+        let mut state = legacy_bitplane_from_plane(&decoder.plane, 2).unwrap();
+        state.significance_propagation_complete = true;
+        state.magnitude_refinement_complete = true;
+        expected.bitplane_state = Some(state);
+        expected.next_pass = 12;
+        expected.decoded_segments = 1;
+        expected.decoded_bytes = 1;
+        expected.reset_contexts_before_mq = reset;
+        expected
+    }
+
+    #[test]
+    fn legacy_contribution_work_phase_matches_wide_native_extrema_and_error_priority() {
+        let words = [0, 1, 255, 65_535, u64::MAX - 1, u64::MAX];
+        for samples in [0, 1, 2, 3, usize::MAX] {
+            for replay in [0, 1, 2, 3, u32::MAX] {
+                for bytes in words {
+                    for previous in words {
+                        for maximum in words {
+                            let wide = samples as u128 * u128::from(replay)
+                                + u128::from(bytes)
+                                + u128::from(previous);
+                            let expected = if wide > u128::from(u64::MAX) {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                })
+                            } else if wide > u128::from(maximum) {
+                                Err(DecodeError::LimitExceeded {
+                                    resource: Resource::WorkUnits,
+                                    limit: maximum,
+                                    actual: wide as u64,
+                                })
+                            } else {
+                                Ok(wide as u64)
+                            };
+                            assert_eq!(
+                                legacy_contribution_work(samples, replay, bytes, previous, maximum),
+                                expected
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_segment_pair_has_independent_complete_state_and_predictable_error_effects() {
+        for reset in [false, true] {
+            for predictable in [false, true] {
+                for input in [0x80, 0xaa] {
+                    let mut decoder = legacy_raw_pair_decoder(1);
+                    decoder.style.reset_contexts = reset;
+                    decoder.style.predictable_termination = predictable;
+                    let before = decoder.clone();
+                    let result =
+                        decoder.decode_legacy_segment(&[input], 2, &ResourceLimits::default());
+                    let mut expected = expected_legacy_raw_pair(&before, reset);
+                    if predictable && input == 0x80 {
+                        expected.decoded_segments = 0;
+                        expected.decoded_bytes = 0;
+                        assert_eq!(result, Err(invalid_code_block()));
+                    } else {
+                        assert_eq!(
+                            result,
+                            Ok(Tier1SegmentDecode {
+                                passes: 2,
+                                bytes: 1,
+                                statistics: Tier1PassStatistics {
+                                    coefficients_scanned: 2,
+                                    coding_symbols: 1,
+                                    refined_coefficients: 1,
+                                    ..Tier1PassStatistics::default()
+                                },
+                            })
+                        );
+                    }
+                    assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_segment_low_work_failure_keeps_only_the_real_pass_and_coefficient_prefix() {
+        let mut decoder = legacy_raw_pair_decoder(2);
+        let before = decoder.clone();
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(1)
+            .unwrap();
+        assert_eq!(
+            decoder.decode_legacy_segment(&[0xaa], 2, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        let mut expected = before.clone();
+        expected.plane.coefficients[0].magnitude = 12;
+        expected.plane.coefficients[0].legacy_bitplane = Some(2);
+        expected.plane.coefficients[0].refined = true;
+        let mut state = legacy_bitplane_from_plane(&before.plane, 2).unwrap();
+        state.significance_propagation_complete = true;
+        expected.bitplane_state = Some(state);
+        expected.next_pass = 11;
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn actual_legacy_contribution_replays_retained_bytes_and_accounts_extra_work_exactly() {
+        for reset in [false, true] {
+            let mut decoder = legacy_raw_pair_decoder(1);
+            decoder.style.reset_contexts = reset;
+            let before = decoder.clone();
+            decoder
+                .decode_legacy_contribution(&[0xaa], 1, &ResourceLimits::default())
+                .unwrap();
+            let mut expected_prefix = before.clone();
+            expected_prefix.next_pass = 11;
+            expected_prefix.decoded_segments = 1;
+            expected_prefix.decoded_bytes = 1;
+            expected_prefix.legacy_decode_work = 2;
+            expected_prefix.reset_contexts_before_mq = reset;
+            let mut state = legacy_bitplane_from_plane(&before.plane, 2).unwrap();
+            state.significance_propagation_complete = true;
+            expected_prefix.bitplane_state = Some(state);
+            let mut retained = before.legacy_segment_snapshot();
+            retained.input = vec![0xaa];
+            retained.passes = 1;
+            expected_prefix.legacy_segment = Some(retained);
+            assert_eq!(format!("{decoder:?}"), format!("{expected_prefix:?}"));
+            decoder
+                .decode_legacy_contribution(&[], 1, &ResourceLimits::default())
+                .unwrap();
+            let mut expected = expected_legacy_raw_pair(&before, reset);
+            expected.legacy_decode_work = 5;
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+
+            let mut whole = before;
+            whole
+                .decode_legacy_contribution(&[0xaa], 2, &ResourceLimits::default())
+                .unwrap();
+            expected.legacy_decode_work = 3;
+            assert_eq!(format!("{whole:?}"), format!("{expected:?}"));
+        }
+    }
+
+    #[test]
+    fn retained_contribution_late_input_limit_failure_consumes_snapshot_but_not_payload_state() {
+        let mut decoder = legacy_raw_pair_decoder(1);
+        let before = decoder.clone();
+        decoder
+            .decode_legacy_contribution(&[0xaa], 1, &ResourceLimits::default())
+            .unwrap();
+        let limits = ResourceLimits::default()
+            .with_maximum_input_bytes(1)
+            .unwrap();
+        assert_eq!(
+            decoder.decode_legacy_contribution(&[0], 1, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::InputBytes,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        let mut expected = before;
+        expected.legacy_decode_work = 6;
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn contribution_and_segment_first_errors_and_late_accounting_preserve_every_other_field() {
+        let mut decoder = legacy_raw_pair_decoder(1);
+        decoder.next_pass = u32::MAX;
+        let mut expected = decoder.clone();
+        expected.legacy_decode_work = 2;
+        assert_eq!(
+            decoder.decode_legacy_contribution(&[0], 1, &ResourceLimits::default()),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+
+        let mut decoder = legacy_raw_pair_decoder(1);
+        let before = format!("{decoder:?}");
+        let limits = ResourceLimits::default()
+            .with_maximum_code_block_passes(11)
+            .unwrap();
+        assert_eq!(
+            decoder.decode_legacy_segment(&[0], 2, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockPasses,
+                limit: 11,
+                actual: 12,
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+
+        let mut decoder = legacy_raw_pair_decoder(1);
+        let mut expected = decoder.clone();
+        if let Ok(bytes) = usize::try_from(u64::from(u32::MAX) + 1) {
+            expected.decoded_segments = 1;
+            expected.decoded_bytes = bytes as u64;
+            assert_eq!(
+                decoder.commit_legacy_segment(bytes, 2, Tier1PassStatistics::default()),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+    }
+
+    #[test]
+    fn actual_mq_cleanup_contribution_completes_a_block_with_exact_probability_contexts() {
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        let mut expected = decoder.clone();
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(2)
+            .unwrap();
+        assert_eq!(
+            decoder.decode_legacy_contribution(&[0xff], 1, &limits),
+            Ok(())
+        );
+        let mut contexts = MqDecoder::new(&[], &ResourceLimits::default()).unwrap();
+        for index in 0..19 {
+            contexts
+                .set_context(
+                    index,
+                    match index {
+                        0 => 5,
+                        17 => 3,
+                        18 => 46,
+                        _ => 0,
+                    },
+                    false,
+                )
+                .unwrap();
+        }
+        expected.next_pass = 1;
+        expected.decoded_segments = 1;
+        expected.decoded_bytes = 1;
+        expected.legacy_decode_work = 2;
+        expected.mq_context_state = Some(contexts.context_state());
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        assert!(decoder.is_complete());
+
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        let mut expected = decoder.clone();
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(1)
+            .unwrap();
+        expected.bitplane_state = Some(Tier1BitplaneState {
+            width: 1,
+            height: 1,
+            bitplane: 0,
+            significant_before: vec![false],
+            significance_visited: vec![false],
+            significance_propagation_complete: false,
+            magnitude_refinement_complete: false,
+            cleanup_complete: false,
+        });
+        assert_eq!(
+            decoder.decode_legacy_segment(&[0xff], 1, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn legacy_plans_cover_all_style_flags_and_full_native_pass_index_boundaries() {
+        for bits in 0..=u8::MAX {
+            for block_coding in [
+                Tier1BlockCoding::Legacy,
+                Tier1BlockCoding::HighThroughput,
+                Tier1BlockCoding::Mixed,
+            ] {
+                let style = Tier1CodingStyle {
+                    block_coding,
+                    force_high_throughput: bits & 128 != 0,
+                    selective_arithmetic_coding_bypass: bits & 1 != 0,
+                    reset_contexts: bits & 2 != 0,
+                    terminate_all_passes: bits & 4 != 0,
+                    vertical_causal_context: bits & 8 != 0,
+                    predictable_termination: bits & 16 != 0,
+                    segmentation_symbols: bits & 32 != 0,
+                };
+                for index in (0..=17).chain([u32::MAX - 2, u32::MAX - 1, u32::MAX]) {
+                    let phase = index % 3;
+                    let kind = match phase {
+                        0 => Tier1PassKind::Cleanup,
+                        1 => Tier1PassKind::SignificancePropagation,
+                        _ => Tier1PassKind::MagnitudeRefinement,
+                    };
+                    let raw = bits & 1 != 0 && index >= 10 && phase != 0;
+                    let terminated = bits & 4 != 0
+                        || (bits & 1 != 0 && (index == 9 || (index >= 10 && phase != 1)));
+                    assert_eq!(pass_kind(index), kind);
+                    assert_eq!(
+                        style.pass_plan(index),
+                        Tier1PassPlan {
+                            kind,
+                            coding_mode: if raw {
+                                Tier1CodingMode::Raw
+                            } else {
+                                Tier1CodingMode::Mq
+                            },
+                            terminates_segment: terminated,
+                            reset_contexts_after_pass: bits & 2 != 0,
+                            validate_predictable_termination: bits & 16 != 0 && terminated && !raw,
+                            expect_segmentation_symbol: bits & 32 != 0 && phase == 0,
+                        }
+                    );
+                    let boundary = if bits & 4 != 0 {
+                        1
+                    } else if bits & 1 == 0 {
+                        u32::MAX
+                    } else if index < 10 {
+                        10 - index
+                    } else if phase == 1 {
+                        2
+                    } else {
+                        1
+                    };
+                    for available in [0, 1, 2, 3, 9, 10, u32::MAX] {
+                        assert_eq!(
+                            style.segment_passes(index, available),
+                            available.min(boundary)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_zero_bitplanes_preserves_native_range_and_prior_value_error_priority() {
+        for bitplane in 0..=u16::MAX {
+            assert_eq!(
+                legacy_maximum_passes(bitplane),
+                Ok(u32::from(bitplane) * 3 + 1)
+            );
+        }
+        for bitplane in [0, 2, 291, 292, u16::MAX] {
+            for zero in [0, 1, 2, 291, 292, u16::MAX] {
+                for previous in [None, Some(zero), Some(zero ^ 1)] {
+                    for next_pass in [0, u32::MAX] {
+                        for decoded_segments in [0, u32::MAX] {
+                            let mut decoder = legacy_raw_pair_decoder(1);
+                            decoder.bitplane = bitplane;
+                            decoder.zero_bitplanes = previous;
+                            decoder.next_pass = next_pass;
+                            decoder.decoded_segments = decoded_segments;
+                            let mut expected = decoder.clone();
+                            let result = if previous == Some(zero) {
+                                Ok(())
+                            } else if previous.is_some()
+                                || next_pass != 0
+                                || decoded_segments != 0
+                                || zero > bitplane
+                            {
+                                Err(invalid_code_block())
+                            } else {
+                                expected.bitplane = bitplane - zero;
+                                expected.maximum_passes = u32::from(bitplane - zero) * 3 + 1;
+                                expected.zero_bitplanes = Some(zero);
+                                Ok(())
+                            };
+                            assert_eq!(decoder.set_zero_bitplanes(zero), result);
+                            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_raw_data_clones_preserve_malformed_shapes_words_and_independent_vectors() {
+        let mut mq = MqDecoder::new(&[0xff, 0x90], &ResourceLimits::default()).unwrap();
+        for index in 0..19 {
+            mq.set_context(index, (index * 2) as u8, index % 2 == 0)
+                .unwrap();
+        }
+        for (width, height) in [(0, 0), (1, 1), (u16::MAX, 0), (u16::MAX, u16::MAX)] {
+            for before_len in 0..=4 {
+                for visited_len in 0..=4 {
+                    for flags in 0..8 {
+                        let plane = CodeBlockPlane {
+                            width,
+                            height,
+                            coefficients: (0..3)
+                                .map(|i| CoefficientState {
+                                    magnitude: u64::MAX - i,
+                                    magnitude_high: [i, u64::MAX, 1 << 63, i + 1, 37],
+                                    legacy_bitplane: Some(u16::MAX),
+                                    negative: i != 1,
+                                    significant: i == 1,
+                                    refined: i == 2,
+                                })
+                                .collect(),
+                        };
+                        let bitplane_state = Tier1BitplaneState {
+                            width: height,
+                            height: width,
+                            bitplane: u16::MAX,
+                            significant_before: (0..before_len).map(|i| i % 2 == 0).collect(),
+                            significance_visited: (0..visited_len).map(|i| i % 2 != 0).collect(),
+                            significance_propagation_complete: flags & 1 != 0,
+                            magnitude_refinement_complete: flags & 2 != 0,
+                            cleanup_complete: flags & 4 != 0,
+                        };
+                        for retained in [None, Some(bitplane_state.clone())] {
+                            let original = LegacySegmentState {
+                                plane: plane.clone(),
+                                next_pass: u32::MAX,
+                                bitplane: u16::MAX,
+                                bitplane_state: retained,
+                                mq_context_state: Some(mq.context_state()),
+                                reset_contexts_before_mq: flags & 1 != 0,
+                                decoded_segments: u32::MAX,
+                                decoded_bytes: u64::MAX,
+                                input: vec![0xff, 0x90, 0, 0xff],
+                                passes: u32::MAX,
+                            };
+                            let before = format!("{original:?}");
+                            let mut cloned = original.clone();
+                            assert_eq!(format!("{cloned:?}"), before);
+                            cloned.input[0] = 0;
+                            cloned.plane.coefficients[0].magnitude_high[4] = 0;
+                            if let Some(state) = &mut cloned.bitplane_state {
+                                state.significant_before.push(false);
+                                state.significance_visited.push(true);
+                                state.bitplane = 0;
+                            }
+                            assert_eq!(format!("{original:?}"), before);
+                            assert_eq!(original.plane, plane);
+                            assert_eq!(bitplane_state.clone(), bitplane_state);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_raw_significance_refinement_and_mq_cleanup_have_exact_whole_results() {
+        for width in 1..=4 {
+            for height in 1..=9 {
+                for orientation in [
+                    SubbandOrientation::Ll,
+                    SubbandOrientation::Lh,
+                    SubbandOrientation::Hl,
+                    SubbandOrientation::Hh,
+                ] {
+                    for causal in [false, true] {
+                        let mut plane = CodeBlockPlane::new(width, height).unwrap();
+                        plane.mark_significant(0, 0, 8, false).unwrap();
+                        let mut state = legacy_bitplane_from_plane(&plane, 2).unwrap();
+                        let style = Tier1CodingStyle {
+                            vertical_causal_context: causal,
+                            ..Tier1CodingStyle::default()
+                        };
+                        let mut reader = raw_reader_from_input(&[0xff, 0x90], 2, 1000).unwrap();
+                        let count = u32::from(width) * u32::from(height);
+                        let significance = decode_raw_significance_propagation_pass(
+                            &mut plane,
+                            &mut state,
+                            &mut reader,
+                            orientation,
+                            style,
+                        )
+                        .unwrap();
+                        assert_eq!(
+                            significance,
+                            Tier1PassStatistics {
+                                coefficients_scanned: count,
+                                coding_symbols: 2 * (count - 1),
+                                newly_significant: count - 1,
+                                ..Tier1PassStatistics::default()
+                            }
+                        );
+                        assert!(state.significance_propagation_complete);
+                        assert!(!state.magnitude_refinement_complete && !state.cleanup_complete);
+                        assert_eq!(
+                            state.significant_before,
+                            (0..count).map(|i| i == 0).collect::<Vec<_>>()
+                        );
+                        assert_eq!(
+                            state.significance_visited,
+                            (0..count).map(|i| i != 0).collect::<Vec<_>>()
+                        );
+                        for (index, coefficient) in plane.coefficients.iter().enumerate() {
+                            assert_eq!(
+                                *coefficient,
+                                CoefficientState {
+                                    magnitude: if index == 0 { 8 } else { 4 },
+                                    magnitude_high: [0; 5],
+                                    legacy_bitplane: if index == 0 { None } else { Some(2) },
+                                    negative: index != 0,
+                                    significant: true,
+                                    refined: false,
+                                }
+                            );
+                        }
+                        assert_eq!(
+                            decode_raw_magnitude_refinement_pass(
+                                &mut plane,
+                                &mut state,
+                                &mut reader,
+                                style
+                            ),
+                            Ok(Tier1PassStatistics {
+                                coefficients_scanned: count,
+                                coding_symbols: 1,
+                                refined_coefficients: 1,
+                                ..Tier1PassStatistics::default()
+                            })
+                        );
+                        assert_eq!(plane.coefficients[0].magnitude, 12);
+                        assert!(plane.coefficients[0].refined);
+                        assert!(
+                            state.significance_propagation_complete
+                                && state.magnitude_refinement_complete
+                                && !state.cleanup_complete
+                        );
+                        assert_eq!(reader.work_units, u64::from(2 * (count - 1) + 1));
+                        let before = plane.clone();
+                        let mut mq = MqDecoder::new(&[], &ResourceLimits::default()).unwrap();
+                        let before_mq = format!("{mq:?}");
+                        assert_eq!(
+                            decode_cleanup_pass_with_style(
+                                &mut plane,
+                                &mut state,
+                                &mut mq,
+                                orientation,
+                                style
+                            ),
+                            Ok(Tier1PassStatistics {
+                                coefficients_scanned: count,
+                                ..Tier1PassStatistics::default()
+                            })
+                        );
+                        assert_eq!(plane, before);
+                        assert!(state.cleanup_complete);
+                        assert_eq!(format!("{mq:?}"), before_mq);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_significance_budget_errors_preserve_exact_decoded_prefix_and_flags() {
+        for maximum in 0..=3 {
+            let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+            plane.mark_significant(0, 0, 8, false).unwrap();
+            let mut state = legacy_bitplane_from_plane(&plane, 2).unwrap();
+            let before = plane.clone();
+            let mut reader = raw_reader_from_input(&[0xff], 1, maximum).unwrap();
+            let result = decode_raw_significance_propagation_pass(
+                &mut plane,
+                &mut state,
+                &mut reader,
+                SubbandOrientation::Ll,
+                Tier1CodingStyle::default(),
+            );
+            let mut expected_state = legacy_bitplane_from_plane(&before, 2).unwrap();
+            expected_state.significance_visited[1] = maximum >= 1;
+            expected_state.significance_propagation_complete = maximum >= 2;
+            assert_eq!(state, expected_state);
+            assert_eq!(
+                reader,
+                RawBitReader {
+                    input: &[0xff],
+                    next_index: 1,
+                    current_byte: 0xff,
+                    bits_remaining: if maximum == 0 { 7 } else { 6 },
+                    marker_padding_count: 0,
+                    work_units: if maximum == 0 { 1 } else { 2 },
+                    maximum_work_units: maximum,
+                }
+            );
+            if maximum < 2 {
+                assert_eq!(plane, before);
+                assert_eq!(
+                    result,
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: maximum,
+                        actual: maximum + 1,
+                    })
+                );
+            } else {
+                assert_eq!(
+                    plane.coefficients[1],
+                    CoefficientState {
+                        magnitude: 4,
+                        magnitude_high: [0; 5],
+                        legacy_bitplane: Some(2),
+                        negative: true,
+                        significant: true,
+                        refined: false,
+                    }
+                );
+                assert_eq!(
+                    result,
+                    Ok(Tier1PassStatistics {
+                        coefficients_scanned: 2,
+                        coding_symbols: 2,
+                        newly_significant: 1,
+                        ..Tier1PassStatistics::default()
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_sign_mark_covers_every_native_bitplane_without_constructor_assumptions() {
+        for bitplane in 0..=u16::MAX {
+            let mut plane = CodeBlockPlane::new(2, 1).unwrap();
+            plane.mark_significant(0, 0, 1, false).unwrap();
+            let before = plane.clone();
+            let mut state = legacy_bitplane_from_plane(&plane, 0).unwrap();
+            state.bitplane = bitplane;
+            let mut reader = raw_reader_from_input(&[0xff], 1, 2).unwrap();
+            let result = decode_raw_significance_propagation_pass(
+                &mut plane,
+                &mut state,
+                &mut reader,
+                SubbandOrientation::Hh,
+                Tier1CodingStyle::default(),
+            );
+            assert_eq!(state.significance_visited, [false, true]);
+            assert_eq!(reader.work_units, 2);
+            assert_eq!(reader.bits_remaining, 6);
+            assert_eq!(state.significant_before, [true, false]);
+            assert!(!state.magnitude_refinement_complete && !state.cleanup_complete);
+            if bitplane < 384 {
+                let mut limbs = [0_u64; 6];
+                limbs[usize::from(bitplane / 64)] = 1 << (bitplane % 64);
+                assert_eq!(plane.coefficients[0], before.coefficients[0]);
+                assert_eq!(plane.coefficients[1].magnitude, limbs[0]);
+                assert_eq!(plane.coefficients[1].magnitude_high, limbs[1..]);
+                assert_eq!(plane.coefficients[1].legacy_bitplane, Some(bitplane));
+                assert!(
+                    plane.coefficients[1].significant
+                        && plane.coefficients[1].negative
+                        && !plane.coefficients[1].refined
+                );
+                assert!(state.significance_propagation_complete);
+                assert_eq!(
+                    result,
+                    Ok(Tier1PassStatistics {
+                        coefficients_scanned: 2,
+                        coding_symbols: 2,
+                        newly_significant: 1,
+                        ..Tier1PassStatistics::default()
+                    })
+                );
+            } else {
+                assert_eq!(plane, before);
+                assert!(!state.significance_propagation_complete);
+                assert_eq!(result, Err(arithmetic_overflow()));
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_raw_refinement_keeps_high_words_tags_and_exact_failure_priority() {
+        for bitplane in [0, 63, 64, 127, 191, 255, 291, 292, 383, 384, u16::MAX] {
+            for bit in [false, true] {
+                let mut plane = CodeBlockPlane::new(1, 1).unwrap();
+                plane.coefficients[0] = CoefficientState {
+                    magnitude: u64::MAX,
+                    magnitude_high: [u64::MAX; 5],
+                    legacy_bitplane: Some(u16::MAX),
+                    negative: true,
+                    significant: true,
+                    refined: false,
+                };
+                let before = plane.clone();
+                let mut state = legacy_bitplane_from_plane(&plane, 0).unwrap();
+                state.bitplane = bitplane;
+                state.significance_propagation_complete = true;
+                let mut reader =
+                    raw_reader_from_input(if bit { &[0x80] } else { &[0] }, 1, 1).unwrap();
+                let result = decode_raw_magnitude_refinement_pass(
+                    &mut plane,
+                    &mut state,
+                    &mut reader,
+                    Tier1CodingStyle::default(),
+                );
+                assert_eq!(reader.work_units, 1);
+                assert_eq!(reader.bits_remaining, 7);
+                assert_eq!(state.significant_before, [true]);
+                assert_eq!(state.significance_visited, [false]);
+                assert!(state.significance_propagation_complete && !state.cleanup_complete);
+                if bitplane >= 292 || bit {
+                    assert_eq!(
+                        result,
+                        Err(if bitplane >= 292 {
+                            invalid_code_block()
+                        } else {
+                            arithmetic_overflow()
+                        })
+                    );
+                    assert_eq!(plane, before);
+                    assert!(!state.magnitude_refinement_complete);
+                } else {
+                    assert_eq!(
+                        result,
+                        Ok(Tier1PassStatistics {
+                            coefficients_scanned: 1,
+                            coding_symbols: 1,
+                            refined_coefficients: 1,
+                            ..Tier1PassStatistics::default()
+                        })
+                    );
+                    let mut expected = before;
+                    expected.coefficients[0].refined = true;
+                    expected.coefficients[0].legacy_bitplane = Some(bitplane);
+                    assert_eq!(plane, expected);
+                    assert!(state.magnitude_refinement_complete);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_cleanup_run_and_segsym_errors_keep_exact_real_symbol_prefix() {
+        for maximum in 0..=11 {
+            for valid_segsym in [false, true] {
+                let input = [if valid_segsym { 0xa2 } else { 0xa0 }, 0x80];
+                let mut plane = CodeBlockPlane::new(1, 4).unwrap();
+                let mut state = legacy_bitplane_from_plane(&plane, 2).unwrap();
+                let mut reader = raw_reader_from_input(&input, 2, maximum).unwrap();
+                let result = decode_cleanup(
+                    &mut plane,
+                    &mut state,
+                    &mut reader,
+                    SubbandOrientation::Hl,
+                    true,
+                    true,
+                );
+                let work = if maximum < 10 { maximum + 1 } else { 10 };
+                assert_eq!(
+                    reader,
+                    RawBitReader {
+                        input: &input,
+                        next_index: if work <= 8 { 1 } else { 2 },
+                        current_byte: if work <= 8 { input[0] } else { input[1] },
+                        bits_remaining: if work <= 8 {
+                            (8 - work) as u8
+                        } else {
+                            (16 - work) as u8
+                        },
+                        marker_padding_count: 0,
+                        work_units: work,
+                        maximum_work_units: maximum,
+                    }
+                );
+                let mut expected = CodeBlockPlane::new(1, 4).unwrap();
+                if maximum >= 4 {
+                    expected.coefficients[1] = CoefficientState {
+                        magnitude: 4,
+                        magnitude_high: [0; 5],
+                        legacy_bitplane: Some(2),
+                        negative: false,
+                        significant: true,
+                        refined: false,
+                    };
+                }
+                assert_eq!(plane, expected);
+                assert_eq!(state.significant_before, [false; 4]);
+                assert_eq!(state.significance_visited, [false; 4]);
+                assert!(
+                    !state.significance_propagation_complete
+                        && !state.magnitude_refinement_complete
+                );
+                assert_eq!(state.cleanup_complete, maximum >= 10 && valid_segsym);
+                assert_eq!(
+                    result,
+                    if maximum < 10 {
+                        Err(DecodeError::LimitExceeded {
+                            resource: Resource::WorkUnits,
+                            limit: maximum,
+                            actual: maximum + 1,
+                        })
+                    } else if !valid_segsym {
+                        Err(invalid_code_block())
+                    } else {
+                        Ok(Tier1PassStatistics {
+                            coefficients_scanned: 4,
+                            coding_symbols: 10,
+                            newly_significant: 1,
+                            run_mode_columns: 1,
+                            ..Tier1PassStatistics::default()
+                        })
+                    }
+                );
+            }
+        }
+    }
 
     fn raw_token_oracle(input: &[u8], rank: usize) -> (bool, usize, u8, u8, u64) {
         assert!(input.len() <= 2);
@@ -8560,6 +10550,894 @@ mod tests {
                 decoder.decode_high_throughput_segments(&[], 1, refinement, count, &limits),
                 Err(invalid_code_block())
             );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+    }
+
+    fn retained_refinement_decoder() -> Tier1CodeBlockDecoder {
+        let mut decoder = cleanup_caller_decoder();
+        let mut cleanup = CodeBlockPlane::new(2, 1).unwrap();
+        cleanup.coefficients[0] = CoefficientState {
+            magnitude: 3,
+            significant: true,
+            ..CoefficientState::default()
+        };
+        decoder.ht_cleanup_plane = Some(cleanup);
+        decoder.plane = CodeBlockPlane {
+            width: 1,
+            height: 1,
+            coefficients: vec![raw_refinement_coefficient(
+                29,
+                [1, 2, 3, 4, 5],
+                false,
+                true,
+                true,
+            )],
+        };
+        decoder.ht_refinement_data.clear();
+        decoder.ht_refinement_passes = 0;
+        decoder.ht_decoded_bitplanes = 2;
+        decoder.ht_current_set_has_cleanup = true;
+        decoder.next_pass = 1;
+        decoder.maximum_passes = 0;
+        decoder
+    }
+
+    fn literal_replayed_plane(magnitude: u64, refined: bool) -> CodeBlockPlane {
+        CodeBlockPlane {
+            width: 2,
+            height: 1,
+            coefficients: vec![
+                CoefficientState {
+                    magnitude,
+                    significant: true,
+                    refined,
+                    ..CoefficientState::default()
+                },
+                CoefficientState {
+                    magnitude: 1,
+                    significant: true,
+                    ..CoefficientState::default()
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn ht_continuation_replays_real_concatenation_from_cleanup_not_current_output() {
+        let limits = ResourceLimits::default()
+            .with_maximum_code_block_passes(0)
+            .unwrap();
+        let mut decoder = retained_refinement_decoder();
+        decoder.next_pass = 2;
+        decoder.ht_refinement_passes = 1;
+        decoder.ht_refinement_data = vec![1];
+        let mut expected = decoder.clone();
+        expected.plane = literal_replayed_plane(3, true);
+        expected.ht_refinement_data = vec![1, 1];
+        expected.ht_refinement_passes = 2;
+        expected.next_pass = 3;
+        expected.decoded_segments += 1;
+        expected.decoded_bytes += 1;
+        let result = decoder
+            .decode_high_throughput_refinement(&[1], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            result,
+            Tier1SegmentDecode {
+                passes: 1,
+                bytes: 1,
+                statistics: Tier1PassStatistics {
+                    coefficients_scanned: 4,
+                    coding_symbols: 3,
+                    newly_significant: 1,
+                    refined_coefficients: 1,
+                    run_mode_columns: 0,
+                }
+            }
+        );
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        assert!(decoder.next_pass > decoder.maximum_passes);
+
+        let mut decoder = retained_refinement_decoder();
+        decoder.ht_refinement_data = Vec::with_capacity(64);
+        decoder.ht_refinement_data.push(1);
+        let clone_capacity = decoder.ht_refinement_data.clone().capacity();
+        let mut expected = decoder.clone();
+        expected.plane = literal_replayed_plane(3, false);
+        expected.ht_refinement_passes = 1;
+        expected.next_pass = 2;
+        expected.decoded_segments += 1;
+        let result = decoder
+            .decode_high_throughput_refinement(&[], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                result.bytes,
+                result.statistics.coefficients_scanned,
+                result.statistics.coding_symbols
+            ),
+            (0, 2, 2)
+        );
+        assert_eq!(decoder.ht_refinement_data.capacity(), clone_capacity);
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn ht_continuation_empty_concatenation_preserves_output_and_skips_replay_only() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap()
+            .with_maximum_code_block_passes(0)
+            .unwrap();
+        let mut decoder = retained_refinement_decoder();
+        decoder.ht_cleanup_plane = Some(CodeBlockPlane {
+            width: 0,
+            height: 7,
+            coefficients: vec![],
+        });
+        decoder.ht_decoded_bitplanes = 0;
+        decoder.ht_refinement_data = Vec::with_capacity(64);
+        let mut expected = decoder.clone();
+        expected.ht_refinement_passes = 1;
+        expected.next_pass = 2;
+        expected.decoded_segments += 1;
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[], 1, &limits),
+            Ok(Tier1SegmentDecode {
+                passes: 1,
+                bytes: 0,
+                statistics: Tier1PassStatistics::default()
+            })
+        );
+        assert_eq!(decoder.ht_refinement_data.capacity(), 64);
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+
+        let before = format!("{decoder:?}");
+        let byte_limit = limits.with_maximum_code_block_bytes(10).unwrap();
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[], 1, &byte_limit),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: 10,
+                actual: 11
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.ht_cleanup_plane = None;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[], 1, &byte_limit),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_continuation_rejects_before_commit_but_keeps_exact_late_accounting_writes() {
+        let limits = ResourceLimits::default();
+        for (nonempty, segment_overflow) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let mut decoder = retained_refinement_decoder();
+            let (input, passes): (&[u8], u8) = if nonempty && !segment_overflow {
+                (&[1, 1], 2)
+            } else if nonempty {
+                (&[1], 1)
+            } else if segment_overflow {
+                (&[], 1)
+            } else {
+                (&[], 2)
+            };
+            if segment_overflow {
+                decoder.decoded_segments = u32::MAX;
+            } else {
+                decoder.next_pass = u32::MAX - 1;
+            }
+            let mut expected = decoder.clone();
+            if nonempty {
+                expected.plane = literal_replayed_plane(3, passes == 2);
+                expected.ht_refinement_data = input.to_vec();
+            }
+            expected.ht_refinement_passes = passes;
+            if segment_overflow {
+                expected.next_pass += u32::from(passes);
+            }
+            assert_eq!(
+                decoder.decode_high_throughput_refinement(input, passes, &limits),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+        for input in [&[0xff][..], &[0x80][..]] {
+            let mut decoder = retained_refinement_decoder();
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_high_throughput_refinement(input, 1, &limits),
+                Err(invalid_code_block())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        let mut decoder = retained_refinement_decoder();
+        decoder.decoded_bytes = u64::MAX;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.decode_high_throughput_refinement(&[1], 1, &limits),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_continuation_native_pass_domain_and_retained_size_boundaries_are_exact() {
+        let limits = ResourceLimits::default();
+        let template = retained_refinement_decoder();
+        for existing in 0_u8..=u8::MAX {
+            for additional in 0_u8..=u8::MAX {
+                let mut decoder = template.clone();
+                decoder.ht_refinement_passes = existing;
+                decoder.ht_cleanup_plane = Some(CodeBlockPlane {
+                    width: 0,
+                    height: 0,
+                    coefficients: vec![],
+                });
+                let result = decoder.decode_high_throughput_refinement(&[], additional, &limits);
+                if additional > 0 && u16::from(existing) + u16::from(additional) <= 2 {
+                    assert!(result.is_ok());
+                    assert_eq!(decoder.ht_refinement_passes, existing + additional);
+                    assert_eq!(decoder.next_pass, 1 + u32::from(additional));
+                } else {
+                    assert_eq!(result, Err(invalid_code_block()));
+                    assert_eq!(
+                        (
+                            decoder.ht_refinement_passes,
+                            decoder.next_pass,
+                            decoder.decoded_segments
+                        ),
+                        (existing, 1, template.decoded_segments)
+                    );
+                }
+            }
+        }
+        for (retained, incoming, accepted) in [(2046, 0, true), (2046, 1, false), (2047, 0, false)]
+        {
+            let mut decoder = retained_refinement_decoder();
+            decoder.ht_refinement_data = vec![0; retained];
+            let before = format!("{decoder:?}");
+            let result = decoder.decode_high_throughput_refinement(&vec![0; incoming], 1, &limits);
+            if accepted {
+                let result = result.unwrap();
+                assert_eq!((result.bytes, result.statistics.coding_symbols), (0, 1));
+                assert_eq!(decoder.ht_refinement_data.len(), 2046);
+            } else {
+                assert_eq!(result, Err(invalid_code_block()));
+                assert_eq!(format!("{decoder:?}"), before);
+            }
+        }
+    }
+
+    #[test]
+    fn ht_placeholder_all_native_passes_and_phases_preserve_actual_admission() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap()
+            .with_maximum_code_block_bytes(0)
+            .unwrap();
+        let mut template = retained_refinement_decoder();
+        template.maximum_passes = u32::MAX;
+        template.ht_sets_seen = 0;
+        template.ht_refinement_data = vec![7, 9];
+        template.ht_refinement_passes = u8::MAX;
+        template.decoded_bytes = u64::MAX;
+        for phase in 0_u32..3 {
+            for has_cleanup in [false, true] {
+                for passes in 0_u8..=u8::MAX {
+                    let mut decoder = template.clone();
+                    decoder.next_pass = phase;
+                    decoder.ht_current_set_has_cleanup = has_cleanup;
+                    let before = format!("{decoder:?}");
+                    let admitted = (1..=2).contains(&passes)
+                        && if phase == 0 {
+                            passes == 1
+                        } else {
+                            u32::from(passes) <= 3 - phase && !has_cleanup
+                        };
+                    let result = decoder.skip_high_throughput_segment(passes, &limits);
+                    if !admitted {
+                        assert_eq!(result, Err(invalid_code_block()));
+                        assert_eq!(format!("{decoder:?}"), before);
+                    } else {
+                        let mut expected = template.clone();
+                        expected.next_pass = phase + u32::from(passes);
+                        expected.decoded_segments += 1;
+                        expected.ht_current_set_has_cleanup = has_cleanup;
+                        if phase == 0 {
+                            expected.ht_current_set_has_cleanup = false;
+                            expected.ht_refinement_data.clear();
+                            expected.ht_refinement_passes = 0;
+                        }
+                        assert_eq!(
+                            result,
+                            Ok(Tier1SegmentDecode {
+                                passes: u32::from(passes),
+                                bytes: 0,
+                                statistics: Tier1PassStatistics::default()
+                            })
+                        );
+                        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ht_placeholder_replacement_and_late_errors_retain_cleanup_option_and_prior_writes() {
+        let limits = ResourceLimits::default();
+        for failure in 0..4 {
+            let mut decoder = retained_refinement_decoder();
+            decoder.next_pass = 3;
+            decoder.maximum_passes = 10;
+            decoder.ht_refinement_data = vec![5, 6];
+            decoder.ht_refinement_passes = 2;
+            decoder.ht_sets_seen = if failure == 1 { u16::MAX } else { 1 };
+            decoder.allow_multiple_ht_sets = failure != 0;
+            if failure == 2 {
+                decoder.decoded_segments = u32::MAX;
+            }
+            let mut expected = decoder.clone();
+            let result = decoder.skip_high_throughput_segment(1, &limits);
+            if failure < 2 {
+                assert_eq!(
+                    result,
+                    Err(if failure == 0 {
+                        invalid_code_block()
+                    } else {
+                        arithmetic_overflow()
+                    })
+                );
+            } else {
+                expected.ht_sets_seen = 2;
+                expected.ht_current_set_has_cleanup = false;
+                expected.ht_refinement_data.clear();
+                expected.ht_refinement_passes = 0;
+                expected.next_pass = 4;
+                if failure == 2 {
+                    assert_eq!(result, Err(arithmetic_overflow()));
+                } else {
+                    expected.decoded_segments += 1;
+                    assert!(result.is_ok());
+                }
+            }
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+        }
+        let mut decoder = retained_refinement_decoder();
+        decoder.next_pass = 3;
+        decoder.maximum_passes = 3;
+        let before = format!("{decoder:?}");
+        let pass_zero = limits.with_maximum_code_block_passes(0).unwrap();
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &pass_zero),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.maximum_passes = 10;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &pass_zero),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockPasses,
+                limit: 0,
+                actual: 4,
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.next_pass = u32::MAX;
+        decoder.maximum_passes = u32::MAX;
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &pass_zero),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        for (passes, planes, groups, magnitude) in [(4, 3, 1, 3), (7, 4, 2, 3), (163, 55, 54, 1)] {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, planes, SubbandOrientation::Ll, style).unwrap();
+            let result = decoder
+                .decode_segment(&[0, 0x63, 0], passes, &limits)
+                .unwrap();
+            assert_eq!((result.passes, result.bytes), (u32::from(passes), 3));
+            assert_eq!(
+                decoder.plane.coefficients()[0],
+                CoefficientState {
+                    magnitude,
+                    significant: true,
+                    negative: true,
+                    ..CoefficientState::default()
+                }
+            );
+            assert_eq!(
+                (
+                    decoder.next_pass,
+                    decoder.decoded_segments,
+                    decoder.decoded_bytes,
+                    decoder.ht_sets_seen
+                ),
+                (u32::from(passes), groups * 2 + 1, 3, 1)
+            );
+            assert_eq!(
+                result.statistics,
+                Tier1PassStatistics {
+                    coefficients_scanned: 1,
+                    coding_symbols: 1,
+                    newly_significant: 1,
+                    ..Tier1PassStatistics::default()
+                }
+            );
+        }
+        for (input, work, error) in [
+            (&[2, 0][..], 1000, invalid_code_block()),
+            (
+                &[0, 0x63, 0][..],
+                4,
+                DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: 4,
+                    actual: 5,
+                },
+            ),
+            (&[][..], 1000, invalid_code_block()),
+        ] {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 3, SubbandOrientation::Hh, style).unwrap();
+            decoder.legacy_segment = cleanup_caller_decoder().legacy_segment;
+            decoder.ht_refinement_data = vec![6, 7];
+            let before = format!("{decoder:?}");
+            let limits = limits.with_maximum_work_units(work).unwrap();
+            assert_eq!(decoder.decode_segment(input, 4, &limits), Err(error));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+    }
+
+    #[test]
+    fn ht_actual_groups_continue_and_replace_using_real_retained_state() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        let mut decoder =
+            Tier1CodeBlockDecoder::new(1, 1, 5, SubbandOrientation::Ll, style).unwrap();
+        decoder.decode_segment(&[0, 0x63, 0], 4, &limits).unwrap();
+        assert_eq!(
+            (
+                decoder.plane.coefficients()[0].magnitude,
+                decoder.ht_decoded_bitplanes,
+                decoder.next_pass
+            ),
+            (12, 4, 4)
+        );
+        let first = decoder
+            .decode_high_throughput_refinement(&[0], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                first.bytes,
+                first.statistics.coefficients_scanned,
+                first.statistics.coding_symbols
+            ),
+            (1, 1, 0)
+        );
+        let second = decoder
+            .decode_high_throughput_refinement(&[1], 1, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                second.bytes,
+                second.statistics.coefficients_scanned,
+                second.statistics.refined_coefficients
+            ),
+            (1, 2, 1)
+        );
+        assert_eq!(decoder.ht_refinement_data, [0, 1]);
+        assert_eq!(
+            (
+                decoder.plane.coefficients()[0].magnitude,
+                decoder.next_pass,
+                decoder.decoded_bytes
+            ),
+            (14, 6, 5)
+        );
+        let before = format!("{decoder:?}");
+        assert_eq!(
+            decoder.skip_high_throughput_segment(1, &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+        decoder.allow_multiple_ht_sets = true;
+        decoder.skip_high_throughput_segment(1, &limits).unwrap();
+        assert_eq!(
+            decoder.ht_cleanup_plane.as_ref().unwrap().coefficients()[0].magnitude,
+            12
+        );
+        assert!(!decoder.ht_current_set_has_cleanup);
+        assert!(decoder.ht_refinement_data.is_empty());
+        assert_eq!(decoder.ht_refinement_passes, 0);
+        decoder.skip_high_throughput_segment(2, &limits).unwrap();
+        decoder
+            .decode_high_throughput_segments(&[0, 0x63, 0], 1, None, 0, &limits)
+            .unwrap();
+        assert_eq!(
+            (
+                decoder.plane.coefficients()[0].magnitude,
+                decoder.ht_decoded_bitplanes
+            ),
+            (3, 2)
+        );
+        assert_eq!(
+            (
+                decoder.next_pass,
+                decoder.decoded_segments,
+                decoder.decoded_bytes,
+                decoder.ht_sets_seen
+            ),
+            (10, 8, 8, 3)
+        );
+    }
+
+    #[test]
+    fn ht_whole_decoder_clone_preserves_all_raw_malformed_fields_and_independent_storage() {
+        let limits = ResourceLimits::default();
+        let mut mq = MqDecoder::new(&[0xff, 0x90], &limits).unwrap();
+        for context in 0..19 {
+            mq.set_context(context, (context * 2) as u8, context % 2 == 0)
+                .unwrap();
+        }
+        for value in 0_u16..1600 {
+            let mut decoder = cleanup_caller_decoder();
+            decoder.plane = CodeBlockPlane {
+                width: if value % 2 == 0 { 0 } else { u16::MAX },
+                height: value,
+                coefficients: vec![
+                    raw_refinement_coefficient(
+                        u64::from(value),
+                        [u64::MAX; 5],
+                        value % 2 == 0,
+                        true,
+                        value % 3 == 0
+                    );
+                    usize::from(value % 4)
+                ],
+            };
+            decoder.bitplane_state = Some(Tier1BitplaneState {
+                width: value,
+                height: u16::MAX,
+                bitplane: u16::MAX,
+                significant_before: vec![true; usize::from(value % 5)],
+                significance_visited: vec![false; usize::from(value % 3)],
+                significance_propagation_complete: value & 1 != 0,
+                magnitude_refinement_complete: value & 2 != 0,
+                cleanup_complete: value & 4 != 0,
+            });
+            decoder.mq_context_state = Some(mq.context_state());
+            if value % 2 == 0 {
+                let legacy = decoder.legacy_segment.as_mut().unwrap();
+                legacy.bitplane_state = decoder.bitplane_state.clone();
+                legacy.mq_context_state = decoder.mq_context_state;
+                legacy.input = vec![value as u8; usize::from(value % 7)];
+                legacy.plane = decoder.plane.clone();
+            } else {
+                decoder.legacy_segment = None;
+            }
+            decoder.ht_cleanup_plane = if value % 3 == 0 {
+                None
+            } else {
+                Some(decoder.plane.clone())
+            };
+            decoder.ht_refinement_data = vec![value as u8; usize::from(value % 9)];
+            decoder.ht_refinement_passes = value as u8;
+            decoder.next_pass = u32::MAX - u32::from(value);
+            decoder.decoded_bytes = u64::MAX - u64::from(value);
+            let original = format!("{decoder:?}");
+            let mut cloned = decoder.clone();
+            assert_eq!(format!("{cloned:?}"), original);
+            assert_eq!(
+                cloned.plane.coefficients.capacity(),
+                decoder.plane.coefficients.clone().capacity()
+            );
+            assert_eq!(
+                cloned.ht_refinement_data.capacity(),
+                decoder.ht_refinement_data.clone().capacity()
+            );
+            cloned.ht_refinement_data.push(7);
+            cloned
+                .bitplane_state
+                .as_mut()
+                .unwrap()
+                .significant_before
+                .push(false);
+            if let Some(legacy) = cloned.legacy_segment.as_mut() {
+                legacy.input.push(9);
+            }
+            if let Some(coefficient) = cloned.plane.coefficients.first_mut() {
+                coefficient.magnitude = 99;
+            }
+            if let Some(plane) = cloned.ht_cleanup_plane.as_mut() {
+                plane.coefficients.push(CoefficientState::default());
+            }
+            assert_eq!(format!("{decoder:?}"), original);
+        }
+    }
+
+    #[test]
+    fn ht_staged_group_complete_native_pass_domain_uses_real_grouping_and_rollback() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        for passes in 0_u8..=u8::MAX {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 55, SubbandOrientation::Ll, style).unwrap();
+            let before = format!("{decoder:?}");
+            let result = decoder.decode_segment(&[0, 0x63, 0], passes, &limits);
+            if passes > 0 && passes <= 164 && (passes - 1) % 3 == 0 {
+                let result = result.unwrap();
+                let groups = u32::from((passes - 1) / 3);
+                let planes = 55 - u16::try_from(groups).unwrap();
+                let expected_magnitude = if planes == 1 {
+                    1
+                } else {
+                    3_u64 << (planes - 2)
+                };
+                assert_eq!((result.passes, result.bytes), (u32::from(passes), 3));
+                assert_eq!(
+                    (
+                        decoder.plane.coefficients()[0].magnitude,
+                        decoder.plane.coefficients()[0].negative
+                    ),
+                    (expected_magnitude, true)
+                );
+                assert_eq!(
+                    (
+                        decoder.next_pass,
+                        decoder.decoded_segments,
+                        decoder.decoded_bytes,
+                        decoder.ht_sets_seen
+                    ),
+                    (u32::from(passes), groups * 2 + 1, 3, 1)
+                );
+            } else {
+                assert_eq!(result, Err(invalid_code_block()));
+                assert_eq!(format!("{decoder:?}"), before);
+            }
+        }
+        for remaining in 1_u8..=8 {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 55, SubbandOrientation::Ll, style).unwrap();
+            let result = decoder.run_ht_placeholder_groups(remaining, &limits);
+            let groups = u32::from(remaining / 3) + u32::from(remaining % 3 != 0);
+            assert_eq!(decoder.next_pass, groups * 3);
+            assert_eq!(decoder.decoded_segments, groups * 2);
+            if remaining % 3 == 0 {
+                assert_eq!(result, Ok(()));
+            } else {
+                assert_eq!(result, Err(arithmetic_overflow()));
+            }
+        }
+    }
+
+    #[test]
+    fn ht_staged_group_every_late_failure_keeps_original_state_not_staged_partial_writes() {
+        let defaults = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        for failure in 0..5 {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 3, SubbandOrientation::Hh, style).unwrap();
+            decoder.legacy_segment = cleanup_caller_decoder().legacy_segment;
+            decoder.ht_refinement_data = vec![17, 19];
+            decoder.ht_refinement_passes = 2;
+            decoder.ht_cleanup_plane = Some(CodeBlockPlane {
+                width: 0,
+                height: 0,
+                coefficients: vec![],
+            });
+            let (input, limits, expected) = match failure {
+                0 => (
+                    &[0, 0x63, 0][..],
+                    defaults.with_maximum_code_block_passes(1).unwrap(),
+                    DecodeError::LimitExceeded {
+                        resource: Resource::CodeBlockPasses,
+                        limit: 1,
+                        actual: 3,
+                    },
+                ),
+                1 => (
+                    &[0, 0x63, 0][..],
+                    defaults.with_maximum_work_units(4).unwrap(),
+                    DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: 4,
+                        actual: 5,
+                    },
+                ),
+                2 => (&[2, 0][..], defaults, invalid_code_block()),
+                3 => {
+                    decoder.decoded_segments = u32::MAX;
+                    (&[0, 0x63, 0][..], defaults, arithmetic_overflow())
+                }
+                _ => {
+                    decoder.ht_sets_seen = u16::MAX;
+                    decoder.allow_multiple_ht_sets = true;
+                    (&[0, 0x63, 0][..], defaults, arithmetic_overflow())
+                }
+            };
+            let before = format!("{decoder:?}");
+            assert_eq!(decoder.decode_segment(input, 4, &limits), Err(expected));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        let mut mixed = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            3,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle {
+                block_coding: Tier1BlockCoding::Mixed,
+                ..Tier1CodingStyle::default()
+            },
+        )
+        .unwrap();
+        mixed.ht_cleanup_plane = Some(CodeBlockPlane {
+            width: 0,
+            height: 0,
+            coefficients: vec![],
+        });
+        mixed.ht_current_set_has_cleanup = false;
+        assert!(mixed.decode_segment(&[0, 0x63, 0], 4, &defaults).is_ok());
+        assert_eq!(
+            (mixed.next_pass, mixed.plane.coefficients()[0].magnitude),
+            (4, 3)
+        );
+    }
+
+    #[test]
+    fn mixed_segment_dispatch_uses_actual_cleanup_option_not_current_flag() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0xc0).unwrap();
+        let mut legacy =
+            Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        legacy.decode_segment(&[0xff], 1, &limits).unwrap();
+        assert_eq!(legacy.plane.signed_coefficient(0, 0).unwrap(), 0);
+        assert_eq!(
+            (
+                legacy.next_pass,
+                legacy.decoded_segments,
+                legacy.decoded_bytes
+            ),
+            (1, 1, 1)
+        );
+        let mut ht = Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        ht.ht_cleanup_plane = Some(ht.plane.clone());
+        assert!(!ht.ht_current_set_has_cleanup);
+        ht.decode_segment(&[0, 0x63, 0], 1, &limits).unwrap();
+        assert_eq!(ht.plane.signed_coefficient(0, 0).unwrap(), -1);
+        assert_eq!(
+            (ht.next_pass, ht.decoded_segments, ht.decoded_bytes),
+            (1, 1, 3)
+        );
+        for mut decoder in [legacy, ht] {
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_segment(&[], 0, &limits),
+                Err(invalid_code_block())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+    }
+
+    #[test]
+    fn ht_packet_segment_routes_real_slices_and_keeps_progress_after_decoder_effects() {
+        let limits = ResourceLimits::default();
+        let mut decoder = cleanup_caller_decoder();
+        decoder.next_pass = 0;
+        decoder.ht_sets_seen = 0;
+        let mut expected = decoder.clone();
+        expected.plane = literal_cleanup_coefficient();
+        expected.ht_cleanup_plane = Some(literal_cleanup_coefficient());
+        expected.ht_refinement_data.clear();
+        expected.ht_refinement_passes = 0;
+        expected.ht_decoded_bitplanes = 1;
+        expected.ht_current_set_has_cleanup = true;
+        expected.ht_sets_seen = 1;
+        expected.next_pass = 1;
+        expected.decoded_segments += 1;
+        expected.decoded_bytes += 3;
+        let mut offset = 1;
+        let mut decoded_passes = 17;
+        crate::packet::ht_route_test_support::segment_body(
+            &mut decoder,
+            1,
+            3,
+            &[0xaa, 0, 0x63, 0, 0x90],
+            &mut offset,
+            &mut decoded_passes,
+            &limits,
+        )
+        .unwrap();
+        assert_eq!((offset, decoded_passes), (4, 18));
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+
+        let mut decoder = retained_refinement_decoder();
+        let mut expected = decoder.clone();
+        expected.ht_refinement_passes = 1;
+        expected.next_pass += 1;
+        expected.decoded_segments += 1;
+        let mut offset = 0;
+        let mut decoded_passes = u32::MAX;
+        assert_eq!(
+            crate::packet::ht_route_test_support::segment_body(
+                &mut decoder,
+                1,
+                0,
+                &[],
+                &mut offset,
+                &mut decoded_passes,
+                &limits,
+            ),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!((offset, decoded_passes), (0, u32::MAX));
+        assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+    }
+
+    #[test]
+    fn ht_packet_segment_pass_length_range_and_route_errors_keep_exact_first_state() {
+        let limits = ResourceLimits::default();
+        for (passes, length, start, body, expected_error) in [
+            (0, 1, usize::MAX, &[][..], invalid_code_block()),
+            (1, 1, usize::MAX, &[][..], arithmetic_overflow()),
+            (1, 0, 1, &[][..], invalid_code_block()),
+            (2, 2, 0, &[1][..], invalid_code_block()),
+        ] {
+            let mut decoder = retained_refinement_decoder();
+            let before = format!("{decoder:?}");
+            let mut offset = start;
+            let mut decoded_passes = 11;
+            assert_eq!(
+                crate::packet::ht_route_test_support::segment_body(
+                    &mut decoder,
+                    passes,
+                    length,
+                    body,
+                    &mut offset,
+                    &mut decoded_passes,
+                    &limits,
+                ),
+                Err(expected_error)
+            );
+            assert_eq!((offset, decoded_passes), (start, 11));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        for (phase, has_cleanup, passes, body) in [(0, true, 2, &[][..]), (1, false, 1, &[1][..])] {
+            let mut decoder = retained_refinement_decoder();
+            decoder.next_pass = phase;
+            decoder.ht_current_set_has_cleanup = has_cleanup;
+            let before = format!("{decoder:?}");
+            let mut offset = 0;
+            let mut decoded_passes = 0;
+            assert_eq!(
+                crate::packet::ht_route_test_support::segment_body(
+                    &mut decoder,
+                    passes,
+                    body.len() as u32,
+                    body,
+                    &mut offset,
+                    &mut decoded_passes,
+                    &limits,
+                ),
+                Err(invalid_code_block())
+            );
+            assert_eq!((offset, decoded_passes), (0, 0));
             assert_eq!(format!("{decoder:?}"), before);
         }
     }

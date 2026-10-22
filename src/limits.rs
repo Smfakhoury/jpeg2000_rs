@@ -34,6 +34,10 @@ pub struct ResourceLimits {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn resource_input_byte_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_input_bytes
+    }
+
     pub closed spec fn resource_work_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_work_units
     }
@@ -83,6 +87,10 @@ impl ResourceLimits {
         maximum_work_units: 1_000_000_000,
     };
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == resource_input_byte_limit(self),)
+    )]
     pub const fn maximum_input_bytes(&self) -> u64 {
         self.maximum_input_bytes
     }

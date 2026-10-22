@@ -1075,6 +1075,22 @@ pub struct CodeBlockContribution {
     segment_lengths: [u32; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn code_block_contribution_view(contribution: &CodeBlockContribution) -> crate::specs::Part1CodeBlockContribution {
+        crate::specs::Part1CodeBlockContribution {
+            first_inclusion: contribution.first_inclusion,
+            zero_bitplanes: contribution.zero_bitplanes,
+            new_passes: contribution.new_passes,
+            data_length: contribution.data_length,
+            high_throughput: contribution.high_throughput,
+            segment_count: contribution.segment_count,
+            segment_passes: contribution.segment_passes@,
+            segment_lengths: contribution.segment_lengths@,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct CodeBlockSegmentContribution {
@@ -1088,6 +1104,24 @@ pub struct CodeBlockBodyDecode {
     pub segments: u8,
     pub passes: u32,
     pub bytes: u32,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct HtBodyProgress {
+    pub segment_index: u8,
+    pub offset: usize,
+    pub decoded_passes: u32,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_body_progress_view(progress: &HtBodyProgress) -> crate::specs::HtPacketBodyProgress {
+        crate::specs::HtPacketBodyProgress {
+            segment_index: progress.segment_index,
+            offset: progress.offset,
+            decoded_passes: progress.decoded_passes,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -2472,28 +2506,44 @@ fn invalid_packet_header() -> DecodeError {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_reader_error(MalformedKind::ArithmeticOverflow),
+))]
 fn packet_arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_reader_error(MalformedKind::InvalidCodeBlock),
+))]
+fn packet_invalid_code_block() -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidCodeBlock,
+    }
 }
 
 impl CodeBlockContribution {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == code_block_contribution_view(self).segment_count,
+    ))]
     pub const fn segment_count(&self) -> u8 {
         self.segment_count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_code_block_segment(code_block_contribution_view(self), index),
+    ))]
     pub fn segment(&self, index: u8) -> Result<CodeBlockSegmentContribution, DecodeError> {
         if index >= self.segment_count {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidPacketHeader,
-            ));
+            return Err(invalid_packet_header());
         }
         let index = usize::from(index);
         if index >= self.segment_passes.len() || index >= self.segment_lengths.len() {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidPacketHeader,
-            ));
+            return Err(invalid_packet_header());
         }
         Ok(CodeBlockSegmentContribution {
             passes: self.segment_passes[index],
@@ -2502,6 +2552,22 @@ impl CodeBlockContribution {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_code_block_body_transaction(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        code_block_contribution_view(contribution).high_throughput ==>
+        (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::ht_packet_body(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_work_limit(limits)),
+        !code_block_contribution_view(contribution).high_throughput ==>
+        (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_legacy_code_block_transaction(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
 pub fn decode_code_block_contribution_body(
     decoder: &mut Tier1CodeBlockDecoder,
     contribution: &CodeBlockContribution,
@@ -2515,127 +2581,373 @@ pub fn decode_code_block_contribution_body(
     Ok(decoded)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_code_block_body_prepare(
+        crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@),
+))]
+fn prepare_code_block_contribution_body(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+) -> Result<(), DecodeError> {
+    let declared_length = match usize::try_from(contribution.data_length) {
+        Ok(length) => length,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    if !crate::refinement::exact_consumption(body.len(), declared_length) {
+        return Err(packet_invalid_code_block());
+    }
+    if !decoder.accepts_high_throughput_route(contribution.high_throughput) {
+        return Err(packet_invalid_code_block());
+    }
+    decoder.set_zero_bitplanes(contribution.zero_bitplanes)?;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_code_block_body_staged(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        code_block_contribution_view(contribution).high_throughput ==>
+        (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::ht_packet_body_staged(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_work_limit(limits)),
+        !code_block_contribution_view(contribution).high_throughput ==>
+        (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_legacy_code_block_staged(
+            crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
 fn decode_code_block_contribution_body_staged(
     decoder: &mut Tier1CodeBlockDecoder,
     contribution: &CodeBlockContribution,
     body: &[u8],
     limits: &ResourceLimits,
 ) -> Result<CodeBlockBodyDecode, DecodeError> {
-    if !crate::refinement::exact_consumption(
-        body.len(),
-        usize::try_from(contribution.data_length)
-            .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-    ) {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-    }
-    if !decoder.accepts_high_throughput_route(contribution.high_throughput) {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-    }
-    decoder.set_zero_bitplanes(contribution.zero_bitplanes)?;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_staged); }
+    prepare_code_block_contribution_body(decoder, contribution, body)?;
     if contribution.high_throughput {
-        let segment_count = contribution.segment_count();
-        if segment_count == 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-        }
-        let mut segment_index = 0_u8;
-        let mut offset = 0_usize;
-        let mut decoded_passes = 0_u32;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant segment_index <= segment_count,
-                decreases segment_count - segment_index,
-            )
-        )]
-        while segment_index < segment_count {
-            let segment = contribution.segment(segment_index)?;
-            if segment.passes == 0 || segment.passes > 2 {
-                return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-            }
-            let segment_length = usize::try_from(segment.data_length)
-                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            let end = offset
-                .checked_add(segment_length)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            let segment_body = body
-                .get(offset..end)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidCodeBlock))?;
-            if decoder.next_pass().is_multiple_of(3) {
-                if segment.passes != 1 {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-                }
-                if segment_body.is_empty() {
-                    decoder.skip_high_throughput_segment(1, limits)?;
-                } else {
-                    decoder.decode_high_throughput_segments(segment_body, 1, None, 0, limits)?;
-                }
-            } else if decoder.ht_current_set_has_cleanup() {
-                decoder.decode_high_throughput_refinement(segment_body, segment.passes, limits)?;
-            } else {
-                if !segment_body.is_empty() {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-                }
-                decoder.skip_high_throughput_segment(segment.passes, limits)?;
-            }
-            decoded_passes = decoded_passes
-                .checked_add(u32::from(segment.passes))
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            offset = end;
-            segment_index = segment_index
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        }
-        if !crate::refinement::exact_consumption(offset, body.len())
-            || decoded_passes != u32::from(contribution.new_passes)
-        {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-        }
-        return Ok(CodeBlockBodyDecode {
-            segments: segment_count,
-            passes: decoded_passes,
-            bytes: contribution.data_length,
-        });
+        return decode_ht_contribution_segments(decoder, contribution, body, limits);
     }
+    decode_legacy_code_block_contribution_body(decoder, contribution, body, limits)
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn legacy_packet_progress_view(
+        decoder: &Tier1CodeBlockDecoder, segment_index: u8, offset: usize, decoded_passes: u32,
+    ) -> crate::specs::Part1LegacyPacketProgress {
+        crate::specs::Part1LegacyPacketProgress {
+            decoder: crate::tier1::tier1_decoder_state(decoder), segment_index, offset, decoded_passes,
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::part1_legacy_code_block_body(
+        crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+        crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+        crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+fn decode_legacy_code_block_contribution_body(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+    limits: &ResourceLimits,
+) -> Result<CodeBlockBodyDecode, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_body); }
     let segment_count = contribution.segment_count();
     let mut segment_index = 0_u8;
     let mut offset = 0_usize;
     let mut decoded_passes = 0_u32;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = legacy_packet_progress_view(decoder, 0, 0, 0);
+        let ghost goal = crate::specs::part1_legacy_code_block_run(initial, code_block_contribution_view(contribution), body@,
+            segment_count as nat, crate::limits::resource_code_block_pass_limit(limits),
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_input_byte_limit(limits),
+            crate::limits::resource_work_limit(limits));
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant segment_index <= segment_count,
+                segment_count == code_block_contribution_view(contribution).segment_count,
+                initial == legacy_packet_progress_view(old(decoder), 0, 0, 0),
+                goal == crate::specs::part1_legacy_code_block_run(initial, code_block_contribution_view(contribution), body@,
+                    segment_count as nat, crate::limits::resource_code_block_pass_limit(limits),
+                    crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_input_byte_limit(limits),
+                    crate::limits::resource_work_limit(limits)),
+                goal == crate::specs::part1_legacy_code_block_run(
+                    legacy_packet_progress_view(decoder, segment_index, offset, decoded_passes),
+                    code_block_contribution_view(contribution), body@, (segment_count - segment_index) as nat,
+                    crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+                    crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
             decreases segment_count - segment_index,
         )
     )]
     while segment_index < segment_count {
-        let segment = contribution.segment(segment_index)?;
-        let segment_length = usize::try_from(segment.data_length)
-            .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        let end = offset
-            .checked_add(segment_length)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if end > body.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_legacy_code_block_body);
+            reveal(crate::specs::part1_legacy_code_block_run);
         }
-        decoder.decode_legacy_contribution(&body[offset..end], segment.passes, limits)?;
-        decoded_passes = decoded_passes
-            .checked_add(u32::from(segment.passes))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        offset = end;
-        segment_index = segment_index
-            .checked_add(1)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        decode_legacy_code_block_segment(
+            decoder,
+            contribution,
+            body,
+            limits,
+            &mut segment_index,
+            &mut offset,
+            &mut decoded_passes,
+        )?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_run); }
     if !crate::refinement::exact_consumption(offset, body.len())
         || decoded_passes != u32::from(contribution.new_passes)
     {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+        return Err(packet_invalid_code_block());
     }
     Ok(CodeBlockBodyDecode {
         segments: contribution.segment_count(),
         passes: decoded_passes,
         bytes: contribution.data_length,
     })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::ht_packet_body_segments(
+        crate::tier1::tier1_decoder_state(old(decoder)), code_block_contribution_view(contribution), body@,
+        crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+        crate::limits::resource_work_limit(limits)),
+))]
+fn decode_ht_contribution_segments(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+    limits: &ResourceLimits,
+) -> Result<CodeBlockBodyDecode, DecodeError> {
+    let segment_count = contribution.segment_count();
+    if segment_count == 0 {
+        return Err(packet_invalid_code_block());
+    }
+    let mut progress = HtBodyProgress {
+        segment_index: 0,
+        offset: 0,
+        decoded_passes: 0,
+    };
+    run_ht_contribution_segments(decoder, contribution, body, &mut progress, limits)?;
+    if !crate::refinement::exact_consumption(progress.offset, body.len())
+        || progress.decoded_passes != u32::from(contribution.new_passes)
+    {
+        return Err(packet_invalid_code_block());
+    }
+    Ok(CodeBlockBodyDecode {
+        segments: segment_count,
+        passes: progress.decoded_passes,
+        bytes: contribution.data_length,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder)), ht_body_progress_view(final(progress)))
+        == crate::specs::ht_packet_body_run(crate::tier1::tier1_decoder_state(old(decoder)),
+            code_block_contribution_view(contribution), body@, ht_body_progress_view(old(progress)),
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_work_limit(limits)),
+))]
+fn run_ht_contribution_segments(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+    progress: &mut HtBodyProgress,
+    limits: &ResourceLimits,
+) -> Result<(), DecodeError> {
+    let segment_count = contribution.segment_count();
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::ht_packet_body_run); }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant
+                segment_count == code_block_contribution_view(contribution).segment_count,
+                crate::specs::ht_packet_body_run(crate::tier1::tier1_decoder_state(old(decoder)),
+                    code_block_contribution_view(contribution), body@, ht_body_progress_view(old(progress)),
+                    crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+                    crate::limits::resource_work_limit(limits))
+                    == crate::specs::ht_packet_body_run(crate::tier1::tier1_decoder_state(decoder),
+                        code_block_contribution_view(contribution), body@, ht_body_progress_view(progress),
+                        crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+                        crate::limits::resource_work_limit(limits)),
+            decreases segment_count as int - progress.segment_index as int,
+        )
+    )]
+    while progress.segment_index < segment_count {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_packet_body_run); }
+        let segment = contribution.segment(progress.segment_index)?;
+        decode_ht_segment_body(
+            decoder,
+            segment,
+            body,
+            &mut progress.offset,
+            &mut progress.decoded_passes,
+            limits,
+        )?;
+        progress.segment_index = progress
+            .segment_index
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::ht_packet_body_run); }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder)), *final(offset), *final(decoded_passes))
+        == crate::specs::ht_packet_segment_body(crate::tier1::tier1_decoder_state(old(decoder)), segment, body@,
+            *old(offset), *old(decoded_passes), crate::limits::resource_code_block_pass_limit(limits),
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+))]
+fn decode_ht_segment_body(
+    decoder: &mut Tier1CodeBlockDecoder,
+    segment: CodeBlockSegmentContribution,
+    body: &[u8],
+    offset: &mut usize,
+    decoded_passes: &mut u32,
+    limits: &ResourceLimits,
+) -> Result<(), DecodeError> {
+    if segment.passes == 0 || segment.passes > 2 {
+        return Err(packet_invalid_code_block());
+    }
+    let segment_length =
+        usize::try_from(segment.data_length).map_err(|_| packet_arithmetic_overflow())?;
+    let end = offset
+        .checked_add(segment_length)
+        .ok_or_else(packet_arithmetic_overflow)?;
+    let segment_body = body
+        .get(*offset..end)
+        .ok_or_else(packet_invalid_code_block)?;
+    decode_ht_segment_route(decoder, segment_body, segment.passes, limits)?;
+    *decoded_passes = decoded_passes
+        .checked_add(u32::from(segment.passes))
+        .ok_or_else(packet_arithmetic_overflow)?;
+    *offset = end;
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) mod ht_route_test_support {
+    use super::*;
+
+    pub(crate) fn segment_body(
+        decoder: &mut Tier1CodeBlockDecoder,
+        passes: u8,
+        data_length: u32,
+        body: &[u8],
+        offset: &mut usize,
+        decoded_passes: &mut u32,
+        limits: &ResourceLimits,
+    ) -> Result<(), DecodeError> {
+        decode_ht_segment_body(
+            decoder,
+            CodeBlockSegmentContribution {
+                passes,
+                data_length,
+            },
+            body,
+            offset,
+            decoded_passes,
+            limits,
+        )
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, crate::tier1::tier1_decoder_state(final(decoder))) == crate::specs::ht_packet_segment_route(
+        crate::tier1::tier1_decoder_state(old(decoder)), body@, passes,
+        crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+        crate::limits::resource_work_limit(limits)),
+))]
+fn decode_ht_segment_route(
+    decoder: &mut Tier1CodeBlockDecoder,
+    body: &[u8],
+    passes: u8,
+    limits: &ResourceLimits,
+) -> Result<(), DecodeError> {
+    if decoder.next_pass().is_multiple_of(3) {
+        if passes != 1 {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            });
+        }
+        if body.is_empty() {
+            decoder.skip_high_throughput_segment(1, limits)?;
+        } else {
+            decoder.decode_high_throughput_segments(body, 1, None, 0, limits)?;
+        }
+    } else if decoder.ht_current_set_has_cleanup() {
+        decoder.decode_high_throughput_refinement(body, passes, limits)?;
+    } else {
+        if !body.is_empty() {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            });
+        }
+        decoder.skip_high_throughput_segment(passes, limits)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, legacy_packet_progress_view(final(decoder), *final(segment_index), *final(offset), *final(decoded_passes)))
+        == crate::specs::part1_legacy_code_block_segment(
+            legacy_packet_progress_view(old(decoder), *old(segment_index), *old(offset), *old(decoded_passes)),
+            code_block_contribution_view(contribution), body@,
+            crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        result.is_ok() ==> *old(segment_index) < code_block_contribution_view(contribution).segment_count
+            && *final(segment_index) as nat == *old(segment_index) as nat + 1,
+))]
+fn decode_legacy_code_block_segment(
+    decoder: &mut Tier1CodeBlockDecoder,
+    contribution: &CodeBlockContribution,
+    body: &[u8],
+    limits: &ResourceLimits,
+    segment_index: &mut u8,
+    offset: &mut usize,
+    decoded_passes: &mut u32,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_legacy_code_block_segment); }
+    let segment = contribution.segment(*segment_index)?;
+    let segment_length = match usize::try_from(segment.data_length) {
+        Ok(length) => length,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    let end = offset
+        .checked_add(segment_length)
+        .ok_or_else(packet_arithmetic_overflow)?;
+    if end > body.len() {
+        return Err(packet_invalid_code_block());
+    }
+    decoder.decode_legacy_contribution(&body[*offset..end], segment.passes, limits)?;
+    *decoded_passes = decoded_passes
+        .checked_add(u32::from(segment.passes))
+        .ok_or_else(packet_arithmetic_overflow)?;
+    *offset = end;
+    *segment_index = segment_index
+        .checked_add(1)
+        .ok_or_else(packet_arithmetic_overflow)?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -3262,6 +3574,607 @@ const fn ceil_div_two(value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn literal_empty_ht_contribution(count: u8, passes: u8) -> CodeBlockContribution {
+        CodeBlockContribution {
+            first_inclusion: true,
+            zero_bitplanes: 0,
+            new_passes: passes,
+            data_length: 0,
+            high_throughput: true,
+            segment_count: count,
+            segment_passes: [1; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+        }
+    }
+
+    fn literal_ht_decoder(bitplanes: u16) -> Tier1CodeBlockDecoder {
+        Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            bitplanes,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::from_code_block_style(0x40).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn ht_body_zero_setting_precedes_count_error_but_outer_rolls_back_every_field() {
+        let limits = ResourceLimits::default();
+        let mut header = literal_empty_ht_contribution(0, 0);
+        header.zero_bitplanes = 1;
+        let mut staged = literal_ht_decoder(3);
+        assert_eq!(staged.maximum_passes(), 7);
+        assert_eq!(
+            decode_code_block_contribution_body_staged(&mut staged, &header, &[], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            }),
+        );
+        assert_eq!(staged.maximum_passes(), 4);
+        assert_eq!(
+            (
+                staged.next_pass(),
+                staged.decoded_segments(),
+                staged.decoded_bytes()
+            ),
+            (0, 0, 0)
+        );
+        let mut transactional = literal_ht_decoder(3);
+        let before = format!("{transactional:?}");
+        assert_eq!(
+            decode_code_block_contribution_body(&mut transactional, &header, &[], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            }),
+        );
+        assert_eq!(format!("{transactional:?}"), before);
+    }
+
+    #[test]
+    fn ht_body_final_pass_mismatch_keeps_staged_progress_and_rolls_back_outer_decoder() {
+        let limits = ResourceLimits::default();
+        let mut header = literal_empty_ht_contribution(2, 2);
+        header.segment_passes[1] = 2;
+        let mut staged = literal_ht_decoder(3);
+        assert_eq!(
+            decode_code_block_contribution_body_staged(&mut staged, &header, &[], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            }),
+        );
+        assert_eq!(
+            (
+                staged.next_pass(),
+                staged.decoded_segments(),
+                staged.decoded_bytes()
+            ),
+            (3, 2, 0)
+        );
+        let mut transactional = literal_ht_decoder(3);
+        let before = format!("{transactional:?}");
+        assert!(
+            decode_code_block_contribution_body(&mut transactional, &header, &[], &limits).is_err()
+        );
+        assert_eq!(format!("{transactional:?}"), before);
+        header.new_passes = 3;
+        assert_eq!(
+            decode_code_block_contribution_body(&mut transactional, &header, &[], &limits),
+            Ok(CodeBlockBodyDecode {
+                segments: 2,
+                passes: 3,
+                bytes: 0
+            }),
+        );
+        assert_eq!(
+            (
+                transactional.next_pass(),
+                transactional.decoded_segments(),
+                transactional.decoded_bytes()
+            ),
+            (3, 2, 0)
+        );
+        assert_eq!(transactional.plane().signed_coefficient(0, 0).unwrap(), 0);
+    }
+
+    #[test]
+    fn ht_body_native_count_reaches_physical_header_boundary_without_count_normalization() {
+        let limits = ResourceLimits::default();
+        let header = literal_empty_ht_contribution(165, 0);
+        let mut staged = literal_ht_decoder(56);
+        assert_eq!(
+            decode_code_block_contribution_body_staged(&mut staged, &header, &[], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidPacketHeader
+            }),
+        );
+        assert_eq!(
+            (
+                staged.next_pass(),
+                staged.decoded_segments(),
+                staged.decoded_bytes()
+            ),
+            (164, 164, 0)
+        );
+        let mut transactional = literal_ht_decoder(56);
+        let before = format!("{transactional:?}");
+        assert_eq!(
+            decode_code_block_contribution_body(&mut transactional, &header, &[], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidPacketHeader
+            }),
+        );
+        assert_eq!(format!("{transactional:?}"), before);
+    }
+
+    #[test]
+    fn shared_code_block_body_prepare_has_exact_native_admission_and_frame() {
+        for force in [false, true] {
+            for high_throughput in [false, true] {
+                for zero_bitplanes in [0, u16::MAX] {
+                    for wrong_length in [false, true] {
+                        let mut decoder = Tier1CodeBlockDecoder::new(
+                            1,
+                            1,
+                            1,
+                            crate::tier1::SubbandOrientation::Ll,
+                            Tier1CodingStyle {
+                                force_high_throughput: force,
+                                ..Tier1CodingStyle::default()
+                            },
+                        )
+                        .unwrap();
+                        let before = format!("{decoder:?}");
+                        let contribution = CodeBlockContribution {
+                            first_inclusion: false,
+                            zero_bitplanes,
+                            new_passes: u8::MAX,
+                            data_length: 1,
+                            high_throughput,
+                            segment_count: u8::MAX,
+                            segment_passes: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+                            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+                        };
+                        let body: &[u8] = if wrong_length { &[] } else { &[0xff] };
+                        let accepted =
+                            !wrong_length && (!force || high_throughput) && zero_bitplanes == 0;
+                        assert_eq!(
+                            prepare_code_block_contribution_body(&mut decoder, &contribution, body),
+                            if accepted {
+                                Ok(())
+                            } else {
+                                Err(packet_invalid_code_block())
+                            }
+                        );
+                        assert_eq!(
+                            format!("{decoder:?}"),
+                            if accepted {
+                                before.replacen(
+                                    "zero_bitplanes: None,",
+                                    "zero_bitplanes: Some(0),",
+                                    1,
+                                )
+                            } else {
+                                before
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_packet_union_routes_literal_bytes_and_keeps_empty_count_distinctions() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0xc0).unwrap();
+        for high in [false, true] {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+            let mut header = one_ff_legacy_contribution();
+            header.high_throughput = high;
+            let body: &[u8] = if high { &[0, 0x63, 0] } else { &[0xff] };
+            header.data_length = body.len() as u32;
+            header.segment_lengths[0] = header.data_length;
+            assert_eq!(
+                decode_code_block_contribution_body(&mut decoder, &header, body, &limits),
+                Ok(CodeBlockBodyDecode {
+                    segments: 1,
+                    passes: 1,
+                    bytes: header.data_length
+                }),
+            );
+            assert_eq!(
+                (
+                    decoder.next_pass(),
+                    decoder.decoded_segments(),
+                    decoder.decoded_bytes()
+                ),
+                (1, 1, body.len() as u64)
+            );
+            assert_eq!(
+                decoder.plane().signed_coefficient(0, 0).unwrap(),
+                if high { -1 } else { 0 }
+            );
+
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+            let before = format!("{decoder:?}");
+            header.segment_count = 0;
+            header.new_passes = 0;
+            header.data_length = 0;
+            let result = decode_code_block_contribution_body(&mut decoder, &header, &[], &limits);
+            if high {
+                assert_eq!(result, Err(packet_invalid_code_block()));
+                assert_eq!(format!("{decoder:?}"), before);
+            } else {
+                assert_eq!(
+                    result,
+                    Ok(CodeBlockBodyDecode {
+                        segments: 0,
+                        passes: 0,
+                        bytes: 0
+                    })
+                );
+                assert_eq!(
+                    (
+                        decoder.next_pass(),
+                        decoder.decoded_segments(),
+                        decoder.decoded_bytes()
+                    ),
+                    (0, 0, 0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_packet_union_preserves_each_route_late_error_and_full_outer_rollback() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0xc0).unwrap();
+        for high in [false, true] {
+            let mut header = one_ff_legacy_contribution();
+            header.high_throughput = high;
+            header.new_passes = 2;
+            let body: &[u8] = if high { &[0, 0x63, 0] } else { &[0xff] };
+            header.data_length = body.len() as u32;
+            header.segment_lengths[0] = header.data_length;
+            let mut staged =
+                Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+            assert_eq!(
+                decode_code_block_contribution_body_staged(&mut staged, &header, body, &limits),
+                Err(packet_invalid_code_block())
+            );
+            assert_eq!(
+                (
+                    staged.next_pass(),
+                    staged.decoded_segments(),
+                    staged.decoded_bytes()
+                ),
+                (1, 1, body.len() as u64)
+            );
+            assert_eq!(
+                staged.plane().signed_coefficient(0, 0).unwrap(),
+                if high { -1 } else { 0 }
+            );
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decode_code_block_contribution_body(&mut decoder, &header, body, &limits),
+                Err(packet_invalid_code_block())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+    }
+
+    #[test]
+    fn mixed_packet_union_uses_actual_route_specific_input_budget() {
+        let limits = ResourceLimits::default()
+            .with_maximum_input_bytes(1)
+            .unwrap();
+        let style = Tier1CodingStyle::from_code_block_style(0xc0).unwrap();
+        for high in [false, true] {
+            let mut header = one_ff_legacy_contribution();
+            header.high_throughput = high;
+            let body: &[u8] = if high { &[0, 0x63, 0] } else { &[0xff, 0] };
+            header.data_length = body.len() as u32;
+            header.segment_lengths[0] = header.data_length;
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+            let before = format!("{decoder:?}");
+            let result = decode_code_block_contribution_body(&mut decoder, &header, body, &limits);
+            if high {
+                assert_eq!(
+                    result,
+                    Ok(CodeBlockBodyDecode {
+                        segments: 1,
+                        passes: 1,
+                        bytes: 3
+                    })
+                );
+                assert_eq!(decoder.plane().signed_coefficient(0, 0).unwrap(), -1);
+            } else {
+                assert_eq!(
+                    result,
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::InputBytes,
+                        limit: 1,
+                        actual: 2,
+                    })
+                );
+                assert_eq!(format!("{decoder:?}"), before);
+            }
+        }
+    }
+
+    fn one_ff_legacy_contribution() -> CodeBlockContribution {
+        let mut contribution = CodeBlockContribution {
+            first_inclusion: true,
+            zero_bitplanes: 0,
+            new_passes: 1,
+            data_length: 1,
+            high_throughput: false,
+            segment_count: 1,
+            segment_passes: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+        };
+        contribution.segment_passes[0] = 1;
+        contribution.segment_lengths[0] = 1;
+        contribution
+    }
+
+    fn one_bit_legacy_decoder(force_high_throughput: bool) -> Tier1CodeBlockDecoder {
+        Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            crate::tier1::SubbandOrientation::Ll,
+            Tier1CodingStyle {
+                force_high_throughput,
+                ..Tier1CodingStyle::default()
+            },
+        )
+        .unwrap()
+    }
+
+    fn expected_one_ff_decoder(before: &Tier1CodeBlockDecoder, header_prepared: bool) -> String {
+        let mut contexts = crate::mq::MqDecoder::new(&[], &ResourceLimits::default()).unwrap();
+        for index in 0..19 {
+            contexts
+                .set_context(
+                    index,
+                    match index {
+                        0 => 5,
+                        17 => 3,
+                        18 => 46,
+                        _ => 0,
+                    },
+                    false,
+                )
+                .unwrap();
+        }
+        let mut expected = format!("{before:?}")
+            .replacen("next_pass: 0,", "next_pass: 1,", 1)
+            .replacen("decoded_segments: 0,", "decoded_segments: 1,", 1)
+            .replacen("decoded_bytes: 0,", "decoded_bytes: 1,", 1)
+            .replacen("legacy_decode_work: 0,", "legacy_decode_work: 2,", 1)
+            .replacen(
+                "mq_context_state: None,",
+                &format!("mq_context_state: Some({:?}),", contexts.context_state()),
+                1,
+            );
+        if header_prepared {
+            expected = expected.replacen("zero_bitplanes: None,", "zero_bitplanes: Some(0),", 1);
+        }
+        expected
+    }
+
+    #[test]
+    fn legacy_packet_body_routes_real_mq_bytes_and_retains_late_total_error_mutations() {
+        for mismatch in 0..3 {
+            let mut decoder = one_bit_legacy_decoder(false);
+            let expected = expected_one_ff_decoder(&decoder, false);
+            let mut contribution = one_ff_legacy_contribution();
+            let body: &[u8] = if mismatch == 2 { &[0xff, 0] } else { &[0xff] };
+            if mismatch == 1 {
+                contribution.new_passes = 2;
+            }
+            let result = decode_legacy_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                body,
+                &ResourceLimits::default(),
+            );
+            assert_eq!(format!("{decoder:?}"), expected);
+            assert_eq!(
+                result,
+                if mismatch == 0 {
+                    Ok(CodeBlockBodyDecode {
+                        segments: 1,
+                        passes: 1,
+                        bytes: 1,
+                    })
+                } else {
+                    Err(packet_invalid_code_block())
+                }
+            );
+        }
+        let mut decoder = one_bit_legacy_decoder(false);
+        let before = format!("{decoder:?}");
+        let mut contribution = one_ff_legacy_contribution();
+        contribution.segment_count = 0;
+        contribution.new_passes = 0;
+        contribution.data_length = u32::MAX;
+        contribution.high_throughput = true;
+        assert_eq!(
+            decode_legacy_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                &[],
+                &ResourceLimits::default(),
+            ),
+            Ok(CodeBlockBodyDecode {
+                segments: 0,
+                passes: 0,
+                bytes: u32::MAX
+            })
+        );
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn legacy_packet_segment_checks_real_range_and_counter_priority_without_input_invariants() {
+        let limits = ResourceLimits::default();
+        let mut contribution = one_ff_legacy_contribution();
+        for offset in [0, usize::MAX] {
+            let mut decoder = one_bit_legacy_decoder(false);
+            let before = format!("{decoder:?}");
+            let expected_decoded = expected_one_ff_decoder(&decoder, false);
+            let mut index = 0;
+            let mut current_offset = offset;
+            let mut passes = u32::MAX;
+            assert_eq!(
+                decode_legacy_code_block_segment(
+                    &mut decoder,
+                    &contribution,
+                    &[0xff],
+                    &limits,
+                    &mut index,
+                    &mut current_offset,
+                    &mut passes,
+                ),
+                Err(packet_arithmetic_overflow())
+            );
+            assert_eq!((index, current_offset, passes), (0, offset, u32::MAX));
+            assert_eq!(
+                format!("{decoder:?}"),
+                if offset == 0 {
+                    expected_decoded
+                } else {
+                    before
+                }
+            );
+        }
+        contribution.segment_count = u8::MAX;
+        let mut decoder = one_bit_legacy_decoder(false);
+        let before = format!("{decoder:?}");
+        let (mut index, mut offset, mut passes) = (164, usize::MAX, u32::MAX);
+        assert_eq!(
+            decode_legacy_code_block_segment(
+                &mut decoder,
+                &contribution,
+                &[],
+                &limits,
+                &mut index,
+                &mut offset,
+                &mut passes,
+            ),
+            Err(invalid_packet_header())
+        );
+        assert_eq!((index, offset, passes), (164, usize::MAX, u32::MAX));
+        assert_eq!(format!("{decoder:?}"), before);
+    }
+
+    #[test]
+    fn real_packet_prefix_and_outer_clone_commit_preserve_order_and_full_rollback() {
+        for force in [false, true] {
+            for wrong_length in [false, true] {
+                let mut decoder = one_bit_legacy_decoder(force);
+                let before = format!("{decoder:?}");
+                let contribution = one_ff_legacy_contribution();
+                let body: &[u8] = if wrong_length { &[] } else { &[0xff] };
+                let expected = if !force && !wrong_length {
+                    before.replacen("zero_bitplanes: None,", "zero_bitplanes: Some(0),", 1)
+                } else {
+                    before
+                };
+                assert_eq!(
+                    prepare_code_block_contribution_body(&mut decoder, &contribution, body),
+                    if force || wrong_length {
+                        Err(packet_invalid_code_block())
+                    } else {
+                        Ok(())
+                    }
+                );
+                assert_eq!(format!("{decoder:?}"), expected);
+            }
+        }
+        for wrong_total in [false, true] {
+            let mut decoder = one_bit_legacy_decoder(false);
+            let before = format!("{decoder:?}");
+            let decoded = expected_one_ff_decoder(&decoder, true);
+            let mut contribution = one_ff_legacy_contribution();
+            if wrong_total {
+                contribution.new_passes = 2;
+            }
+            let result = decode_code_block_contribution_body(
+                &mut decoder,
+                &contribution,
+                &[0xff],
+                &ResourceLimits::default(),
+            );
+            assert_eq!(
+                result,
+                if wrong_total {
+                    Err(packet_invalid_code_block())
+                } else {
+                    Ok(CodeBlockBodyDecode {
+                        segments: 1,
+                        passes: 1,
+                        bytes: 1,
+                    })
+                }
+            );
+            assert_eq!(
+                format!("{decoder:?}"),
+                if wrong_total { before } else { decoded }
+            );
+        }
+    }
+
+    #[test]
+    fn native_contribution_segment_lookup_covers_all_counts_indices_and_full_stored_arrays() {
+        let mut contribution = CodeBlockContribution {
+            first_inclusion: true,
+            zero_bitplanes: u16::MAX,
+            new_passes: u8::MAX,
+            data_length: u32::MAX,
+            high_throughput: true,
+            segment_count: 0,
+            segment_passes: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+            segment_lengths: [0; MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION],
+        };
+        for index in 0..MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION {
+            contribution.segment_passes[index] = u8::MAX - index as u8;
+            contribution.segment_lengths[index] = u32::MAX - index as u32;
+        }
+        for count in 0..=u8::MAX {
+            contribution.segment_count = count;
+            let before = contribution;
+            assert_eq!(contribution.segment_count(), count);
+            for index in 0..=u8::MAX {
+                let expected = if index < count
+                    && usize::from(index) < MAX_CODE_BLOCK_SEGMENTS_PER_CONTRIBUTION
+                {
+                    Ok(CodeBlockSegmentContribution {
+                        passes: u8::MAX - index,
+                        data_length: u32::MAX - u32::from(index),
+                    })
+                } else {
+                    Err(invalid_packet_header())
+                };
+                assert_eq!(contribution.segment(index), expected);
+                assert_eq!(contribution, before);
+            }
+        }
+    }
 
     #[test]
     fn readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices() {
