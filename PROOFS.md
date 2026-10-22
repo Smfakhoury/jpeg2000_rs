@@ -174,6 +174,14 @@ establish the shared whole-decoder clone or dispatcher.
 
 ### Actual legacy segment and retained-contribution composition
 
+Contribution admission isolates its existing checked numeric work charge in
+`legacy_contribution_work`, then explicitly frames the sole work-counter commit.
+The complete caller contract and native error/commit order are unchanged.
+This real phase decomposition avoids exposing whole coefficient/context frames
+inside scalar multiplication queries; it does not increase verifier limits.
+Independent wide-integer fixtures cover native extrema and arithmetic-before-cap
+error priority.
+
 The actual `decode_legacy_segment` now has an unconditional complete Result and
 whole-decoder-state relation, using actual MQ/raw construction, all three pass
 producers, pass scheduling, advancement, context initialization/restoration/reset,
