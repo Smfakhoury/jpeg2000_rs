@@ -4130,6 +4130,10 @@
       "implementation_refs": [
         {
           "path": "src/transform.rs",
+          "symbol": "inverse_horizontal"
+        },
+        {
+          "path": "src/transform.rs",
           "symbol": "inverse_5_3"
         },
         {

@@ -212,6 +212,40 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_checks_complete_reconstruction_and_sequence_projections(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        names = {"inverse_quantize_values", "inverse_quantize_plane", "inverse_5_3", "interleave"}
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if any(ref["path"] == "src/transform.rs"
+                   and ref["symbol"].rsplit("::", 1)[-1] in names
+                   for ref in item["contract_refs"])
+        ]
+        self.assertTrue(coverage["requirements"])
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        mutations = []
+        for projection in ("reconstruction_outcome", "sequence_outcome"):
+            mutations.extend((
+                (f"ensures {projection}(result)", f"ensures {projection}(unrelated)"),
+                (f"ensures {projection}(result)", "ensures unlisted_projection(result)"),
+                (f"ensures {projection}(result)", "ensures owned_layer_outcome(result)"),
+            ))
+        for model in ("part1_inverse_integer_quantization", "part1_inverse_quantization",
+                      "part1_inverse_five_three", "part1_interleaved"):
+            mutations.append((f"== crate::specs::{model}(", "== crate::specs::unlisted_model("))
+        original = read_text(framework.ROOT / "src/transform.rs")
+        for before, after in mutations:
+            self.assertIn(before, original)
+
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/transform.rs" else text
+
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

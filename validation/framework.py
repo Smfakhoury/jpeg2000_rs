@@ -275,6 +275,12 @@ def validate_normative_coverage(
             result_projection = {
                 ("src/jpx.rs", "layer_channels"): "layer_channels_outcome",
                 ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
+                ("src/transform.rs", "inverse_quantize_values"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_quantize"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_quantize_plane"): "reconstruction_outcome",
+                ("src/transform.rs", "inverse_5_3"): "sequence_outcome",
+                ("src/transform.rs", "interleave"): "sequence_outcome",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
