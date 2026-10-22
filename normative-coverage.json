@@ -4,6 +4,92 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-container-selection-output",
+      "topic": "Complete actual native tile geometry, ordered selection range/duplicate/rectangle/region/intersection validation, requested target and resampling context, real parsed-codestream header choice/validation, associated CMAP/CDEF/image admission and full/selected color output. All malformed native descriptors/requests/typed components, None/empty/identity and actual errors/caps included; only private loop bounds derive from actual guards. Relative to actual parsed metadata and typed inputs, not compressed parser-to-pixel/F8 or normative conformance.",
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "ImageSize::tile_count"},
+        {"path": "src/codestream.rs", "symbol": "ImageSize::tile_bounds"},
+        {"path": "src/options.rs", "symbol": "selection_from_parts"},
+        {"path": "src/decode.rs", "symbol": "ceil_div_u32"},
+        {"path": "src/decode.rs", "symbol": "tile_list_contains"},
+        {"path": "src/decode.rs", "symbol": "selection_rectangle_area"},
+        {"path": "src/decode.rs", "symbol": "validate_explicit_tile_indices"},
+        {"path": "src/decode.rs", "symbol": "validate_selection_tile_rectangle"},
+        {"path": "src/decode.rs", "symbol": "validate_selection_rectangle_cells"},
+        {"path": "src/decode.rs", "symbol": "selection_region"},
+        {"path": "src/decode.rs", "symbol": "select_intersecting_tiles"},
+        {"path": "src/decode.rs", "symbol": "explicit_tiles_from_selection"},
+        {"path": "src/decode.rs", "symbol": "validate_selection"},
+        {"path": "src/decode.rs", "symbol": "color_selection_from_validated"},
+        {"path": "src/decode.rs", "symbol": "color_selection_for_size"},
+        {"path": "src/decode.rs", "symbol": "apply_associated_output"},
+        {"path": "src/decode.rs", "symbol": "convert_associated_color"},
+        {"path": "src/decode.rs", "symbol": "convert_associated_selected_color"},
+        {"path": "src/decode.rs", "symbol": "finish_associated_selected_output"},
+        {"path": "src/jp2.rs", "symbol": "associated_header_for_codestream"},
+        {"path": "src/jp2.rs", "symbol": "validate_container_codestream"},
+        {"path": "src/jp2.rs", "symbol": "validate_selected_header"}
+      ],
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "color_selection"},
+        {"path": "src/decode.rs", "symbol": "color_selection_for_size"},
+        {"path": "src/decode.rs", "symbol": "color_selection_from_validated"},
+        {"path": "src/decode.rs", "symbol": "validate_selection"},
+        {"path": "src/decode.rs", "symbol": "validate_selection_tile_rectangle"},
+        {"path": "src/decode.rs", "symbol": "validate_selection_rectangle_cells"},
+        {"path": "src/decode.rs", "symbol": "selection_region"},
+        {"path": "src/decode.rs", "symbol": "select_intersecting_tiles"},
+        {"path": "src/decode.rs", "symbol": "decode_jpx_file"},
+        {"path": "src/decode.rs", "symbol": "decode_jpx_file_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_jpx_codestream_color"},
+        {"path": "src/decode.rs", "symbol": "decode_jpx_codestream_color_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_jp2_color_selected"},
+        {"path": "src/decode.rs", "symbol": "finish_associated_selected_output"},
+        {"path": "src/codestream.rs", "symbol": "ImageSize::tile_bounds"},
+        {"path": "src/jp2.rs", "symbol": "validate_selected_header"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_selection_tile_count"},
+        {"path": "specs/mod.rs", "symbol": "part2_selection_tile_bounds"},
+        {"path": "specs/mod.rs", "symbol": "part2_selection_from_parts"},
+        {"path": "specs/mod.rs", "symbol": "part2_selection_ceil"},
+        {"path": "specs/mod.rs", "symbol": "part2_tile_list_contains"},
+        {"path": "specs/mod.rs", "symbol": "part2_rectangle_area"},
+        {"path": "specs/mod.rs", "symbol": "part2_explicit_tile_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_tile_rectangle"},
+        {"path": "specs/mod.rs", "symbol": "part2_rectangle_rows"},
+        {"path": "specs/mod.rs", "symbol": "part2_selection_region"},
+        {"path": "specs/mod.rs", "symbol": "part2_select_intersecting_tiles"},
+        {"path": "specs/mod.rs", "symbol": "part2_selection_explicit"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_selection"},
+        {"path": "specs/mod.rs", "symbol": "part2_color_selection_context"},
+        {"path": "specs/mod.rs", "symbol": "part2_color_selection_requested"},
+        {"path": "specs/mod.rs", "symbol": "part2_apply_associated_output"},
+        {"path": "specs/mod.rs", "symbol": "part2_convert_associated"},
+        {"path": "specs/mod.rs", "symbol": "part2_convert_associated_selected"},
+        {"path": "specs/mod.rs", "symbol": "part2_finish_associated_selected_output"},
+        {"path": "specs/mod.rs", "symbol": "part2_associated_codestream_header"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_selected_header"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"},
+        {"path": "src/options.rs", "symbol": "decode_selection_view"},
+        {"path": "src/jp2.rs", "symbol": "codestream_header_association_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_unsigned_remainder_bound"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_explicit_tiles_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_rectangle_rows_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_selected_region_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_selected_tiles_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_sampling_error_guard"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "complete_native_selection_and_color_context_match_independent_spatial_reference"},
+        {"path": "src/decode.rs", "symbol": "associated_native_output_composes_actual_metadata_color_crop_and_none_bypass"},
+        {"path": "src/jp2.rs", "symbol": "complete_native_association_and_selected_header_validation_preserve_raw_choices"},
+        {"path": "src/decode.rs", "symbol": "selected_tiles_and_regions_match_full_decode_crops"}
+      ]
+    },
+    {
       "id": "part15-complete-actual-refinement-plane",
       "topic": "Complete actual one/two-pass refinement with six-word magnitudes/raw flags, reverse magnitude before forward discovery, real stripe/patch/neighbor/causal order, delayed signs, full physical claim/stuffing state, exact first errors and final padding; not continuation/replay or mixed F5H closure",
       "contract_refs": [
@@ -353,7 +439,8 @@
       ],
       "id": "part1-connected-typed-color-selection",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_jp2_color_selected"}
+        {"path": "src/decode.rs", "symbol": "decode_jp2_color_selected"},
+        {"path": "src/decode.rs", "symbol": "convert_associated_selected_color"}
       ],
       "proof_refs": [
         {"path": "src/color.rs", "symbol": "converted_image_model"},

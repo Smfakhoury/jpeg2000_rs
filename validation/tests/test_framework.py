@@ -548,6 +548,93 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_actual_selection_association_and_output_native_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(item for item in original_coverage["requirements"]
+                     if item["id"] == "part2-complete-native-container-selection-output")
+        read_text = Path.read_text
+        cases = (
+            ("src/codestream.rs", "ImageSize::tile_count", None, "part2_selection_tile_count", ("selection_geometry_view(&self)", "selection_geometry_view(unrelated)")),
+            ("src/codestream.rs", "ImageSize::tile_bounds", None, "part2_selection_tile_bounds", ("self), tile_index", "self), 0")),
+            ("src/options.rs", "selection_from_parts", "decode_selection_value_view", "part2_selection_from_parts", ("region, discard_levels", "region, 0")),
+            ("src/decode.rs", "ceil_div_u32", None, "part2_selection_ceil", ("value, divisor", "divisor, value")),
+            ("src/decode.rs", "tile_list_contains", None, "part2_tile_list_contains", ("tiles@, tile", "unrelated@, tile")),
+            ("src/decode.rs", "selection_rectangle_area", None, "part2_rectangle_area", ("part2_rectangle_area(bounds)", "part2_rectangle_area(unrelated)")),
+            ("src/decode.rs", "validate_explicit_tile_indices", None, "part2_explicit_tile_prefix", ("explicit_tiles@.len()", "0")),
+            ("src/decode.rs", "validate_selection_tile_rectangle", None, "part2_validate_tile_rectangle", ("explicit_tiles@, tiles_across", "explicit_tiles@, 0")),
+            ("src/decode.rs", "validate_selection_rectangle_cells", None, "part2_rectangle_rows", ("bounds.2 as nat - bounds.0 as nat + 1", "bounds.3 as nat - bounds.1 as nat + 1")),
+            ("src/decode.rs", "selection_region", "selection_region_outcome", "part2_selection_region", ("requested, image_x1, image_y1", "requested, image_y1, image_x1")),
+            ("src/decode.rs", "select_intersecting_tiles", "selected_tiles_outcome", "part2_select_intersecting_tiles", ("region@, tile_count", "unrelated@, tile_count")),
+            ("src/decode.rs", "explicit_tiles_from_selection", "selected_tiles_outcome", "part2_selection_explicit", ("tile_selection_view(selection)", "tile_selection_view(unrelated)")),
+            ("src/decode.rs", "validate_selection", "validated_selection_outcome", "part2_validate_selection", ("decode_selection_view(selection)", "decode_selection_view(unrelated)")),
+            ("src/decode.rs", "color_selection_from_validated", "color_selection_outcome", "part2_color_selection_context", ("size.x_origin, size.y_origin", "size.y_origin, size.x_origin")),
+            ("src/decode.rs", "color_selection_for_size", "color_selection_outcome", "part2_color_selection_requested", ("decode_selection_view(requested)", "decode_selection_view(unrelated)")),
+            ("src/decode.rs", "apply_associated_output", "associated_typed_outcome", "part2_apply_associated_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
+            ("src/decode.rs", "convert_associated_color", "crate::color::converted_image_result", "part2_convert_associated", ("typed_image_value_view(*image)", "typed_image_value_view(*unrelated)")),
+            ("src/decode.rs", "convert_associated_selected_color", "crate::color::converted_image_result", "part2_convert_associated_selected", ("header), target", "header), unrelated")),
+            ("src/decode.rs", "finish_associated_selected_output", "crate::color::converted_image_result", "part2_finish_associated_selected_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
+            ("src/jp2.rs", "associated_header_for_codestream", "associated_header_outcome", "part2_associated_codestream_header", ("associated_header_view(fallback)", "associated_header_view(unrelated)")),
+            ("src/jp2.rs", "validate_container_codestream", None, "part2_validate_selected_header", ("header.image, codestream.image_size.width", "header.image, 0")),
+            ("src/jp2.rs", "validate_selected_header", None, "part2_validate_selected_header", ("codestream.image_size.uniform_signed, offset", "codestream.image_size.uniform_signed, 0")),
+        )
+        self.assertEqual(len(cases), 22)
+        for relative, symbol, projection, model, argument in cases:
+            reference = {"path": relative, "symbol": symbol}
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / relative
+            original = source.read_text()
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            expression = f"{projection}(result)" if projection else "result"
+            inputs = [argument]
+            for parameter in ("size", "header", "limits"):
+                pattern = rf"\(\s*{parameter}\s*\)"
+                if re.search(pattern, contract):
+                    matched = re.search(pattern, contract)[0]
+                    pair = (matched, "(unrelated)")
+                    if pair not in inputs:
+                        inputs.append(pair)
+            mutations = [
+                (f"ensures {expression}", "ensures unrelated"),
+                (f"ensures {expression}", "ensures result.is_ok()"),
+                (f"ensures {expression}", f"ensures result.is_ok() ==> {expression}"),
+                (f"crate::specs::{model}(", "crate::specs::part2_typed_component_copy("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *inputs,
+            ]
+            if projection:
+                mutations.extend(((expression, f"{projection}(unrelated)"), (expression, "unlisted_projection(result)")))
+            for before, after in mutations:
+                self.assertIn(before, contract)
+                changed = contract.replace(before, after, 1)
+                variants = [changed]
+                if (before, after) in inputs:
+                    closing = re.search(r"\)\s*,?\s*\)\s*\]", changed)
+                    original_closing = re.search(r"\)\s*,?\s*\)\s*\]", contract)
+                    assert closing is not None and original_closing is not None
+                    variants.append(changed[:closing.start()] + "\n"
+                        + contract[contract.index("ensures") + len("ensures"):original_closing.start()]
+                        + changed[closing.start():])
+                for variant in variants:
+                    modified = original[:start] + variant + original[signature:]
+
+                    def altered(path, *args, **kwargs):
+                        return modified if path == source else read_text(path, *args, **kwargs)
+
+                    with self.subTest(symbol=symbol, after=after, duplicate=variant != changed), \
+                            mock.patch.object(Path, "read_text", altered), \
+                            self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                        framework.validate_normative_coverage(coverage)
+            no_caller = copy.deepcopy(coverage)
+            no_caller["requirements"][0]["implementation_refs"] = [reference]
+            with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(no_caller)
+
     def test_inventory_binds_complete_header_to_actual_native_results_inputs_and_owner(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         entry = next(
