@@ -124,6 +124,87 @@ units and ranges beside the corresponding model and evidence. The unresolved
 edition boundaries above must remain unresolved until the authorized source
 is available; a successful solver run does not fill them in.
 
+## Frozen F5H directional-reader stages
+
+The next frozen interpretation substage is the actual cleanup UVLC/quad-word
+caller: prefix, every native `u8` suffix length, combined prefix value,
+initial/non-initial U pairs for every `u8` mode, and quad-word lookup for every
+`u8` context. It composes the actual reader/event/advance/tick states on every
+return. Invalid modes/contexts reject without consuming; a set suffix bit
+above bit seven rejects **after** that bit is consumed, while zero bits above
+the result width may continue. Initial mode three preserves its special
+long-prefix route and read order; bias one/three and checked byte conversion
+retain their actual rejection points. Quad lookup uses closed views of the
+unchanged production tables, then context-zero MEL suppression, length
+validation, actual advance and final tick in that order. This stage does not
+assume valid codewords, available bits, adequate budget or valid counters.
+It is not a quad traversal or coefficient-reconstruction theorem.
+
+The next frozen substage is the complete actual MagSgn reader API: construction
+from 0..=65534 bytes; LSB-first words of 0..=39 bits and unchanged-state rejection
+of larger counts; physical and synthetic `0xff` bits with forward stuffing;
+all physical/fill/work counters and cursor fields; and `finish`'s exact
+bounded drain, padding-one rejection and first typed failure. All native
+counter values remain admitted. Cursor advancement precedes selected-counter
+charging, which precedes work charging and the work-limit check. The finish
+fuel is the checked native-width product `input.len() * 8`, including its
+overflow error before testing whether physical bits remain. Neither a valid
+stream nor enough budget is assumed. The word and drain recurrences belong
+to the semantic reading path, not to invariant-only support.
+
+The following frozen substage is both actual refinement directional readers
+and their shared claim/padding wrapper. Each input accepts 0..=2046 bytes.
+Forward reads supply zero fill after physical data; reverse reads begin with
+unstuffing enabled and supply zero fill after exhaustion. Positioned reads
+report the actual native-width byte/bit position, then advance the cursor,
+charge the selected physical/fill counter, check their sum for overflow and
+check the work cap. Counter errors and budget errors preserve those ordered
+partial mutations. The wrapper records successful physical claims, rejects
+repeat claims, records reverse stuffed-bit masks at the actual loaded byte,
+and checks all unclaimed/unstuffed padding bits at finish. Models include both
+complete readers, optional reverse-reader absence and both complete vectors.
+No successful decoding, sufficient budget, disjoint claims or valid padding
+is assumed.
+
+The next frozen cleanup-caller substage includes the complete actual VLC
+`peek_vlc` and `advance_vlc` APIs for every `u8` count, and `mel_event` for every
+native cache/state/counter value. Peek is non-mutating and returns the word
+accumulated before copied-reader exhaustion, collision, budget/overflow
+failure or a set bit above its 16-bit result capacity. Advance stops at the
+first actual read failure with its full nested state retained. MEL cache
+priority, 0..=12 state validation, head/suffix consumption, state adaptation,
+termination caching and event-counter overflow are explicit, including
+partial suffix-reader mutations on failure. Event suffixes are MSB-first.
+
+The first finite subprofile is the actual cleanup MEL/reverse-VLC reader pair:
+MEL accepts 1..=4078 bytes, reverse VLC 2..=4079. Contracts cover constructor
+rejection, exact loaded bytes and returned bits, terminal-nibble handling,
+directional stuffing, exhaustion, positions, all final fields, counter overflow,
+and the first work-limit failure. Counter domains retain the full `u64` range;
+failure is not assumed absent. Reverse VLC eagerly loads the previous byte only
+after charging a successful bit; budget rejection therefore preserves its old
+loaded byte with an advanced bit cursor. MEL exhaustion sets its cursor to -1.
+The pair's actual `read_mel_bit`/`read_vlc_bit` wrapper includes shared-byte
+claim/collision rejection and both inner and outer work counters. All nested
+reader fields and MEL event fields are framed, including failed reads after
+loading and failures after recording a successful byte claim. Constructor
+order is MEL, then VLC, then terminal-byte setup. The model accepts the actual
+supplied slices; it does not assume they were partitioned correctly upstream.
+These are selected implementation-state relations, not a human normative
+endorsement of T.814.
+
+The directional substage now includes all five actual readers, MagSgn words
+and finish, refinement physical-bit claims/padding, VLC peek/advance and MEL
+events. The cleanup pair's final shared-byte collision check is included.
+The subsequent UVLC/quad-word interpretation stage above is also complete.
+The remaining stages are upstream partitioning and pass sequencing, quad
+traversal/metadata construction, cleanup block reconstruction, significance/refinement
+block transitions, replacement/placeholder sequencing and mixed HT/legacy
+routing. Completing directional stages does not close F5H or full-block
+acceptance. In particular, matching the byte-reader state machine does not
+prove that the block caller requests the right symbols or reconstructs the
+right coefficients.
+
 ## Normalized source-over vocabulary
 
 These symbols describe the selected composition stage, not the original
