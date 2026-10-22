@@ -4336,7 +4336,7 @@
       "implementation_refs": [
         {"path": "src/tier1.rs", "symbol": "HtMelBitReader::new"},
         {"path": "src/tier1.rs", "symbol": "HtReverseVlcReader::new"},
-        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::new"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_segment_metadata"},
         {"path": "src/tier1.rs", "symbol": "HtMelBitReader::read_bit"},
         {"path": "src/tier1.rs", "symbol": "HtReverseVlcReader::read_bit"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_mel_bit"},
@@ -4499,6 +4499,8 @@
       ],
       "id": "part15-uvlc-quad-word-state",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "decode_ht_metadata_pair"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_metadata_words"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_prefix"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::read_suffix"},
         {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::prefix_value"},
@@ -4573,6 +4575,9 @@
       ],
       "id": "part15-mel-vlc-uvlc-quads",
       "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "decode_ht_metadata_words"},
+        {"path": "src/tier1.rs", "symbol": "append_ht_metadata_quad"},
+        {"path": "src/tier1.rs", "symbol": "ht_uvlc_byte"},
         {
           "path": "src/tier1.rs",
           "symbol": "HtCleanupReaders::mel_event"
@@ -4649,6 +4654,71 @@
         }
       ],
       "topic": "MEL run state, VLC table words, UVLC completion, and bounded quad metadata"
+    },
+    {
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_segment_metadata"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_quad_word"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::decode_non_initial_u"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::mel_event"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::tick"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupReaders::finish"}
+      ],
+      "id": "part15-complete-cleanup-metadata",
+      "implementation_refs": [
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"
+        },
+        {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_metadata"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_segment_metadata"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_metadata_row"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_metadata_pair"},
+        {"path": "src/tier1.rs", "symbol": "decode_ht_metadata_words"},
+        {"path": "src/tier1.rs", "symbol": "append_ht_metadata_quad"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_words_unfold"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_samples_unfold"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_emits_unfold"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_pairs_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_pairs_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_rows_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_metadata_rows_error"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_metadata_invalid_header_precedes_stream_construction"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_public_metadata_byte_limit_precedes_invalid_dimensions"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_metadata_quad_tick_overflow_preserves_the_store"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_context"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_words"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_samples"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_emit"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_pair"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_row"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_rows"},
+        {"path": "specs/mod.rs", "symbol": "ht_metadata_finish"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_segment_metadata"},
+        {"path": "specs/mod.rs", "symbol": "ht_decode_cleanup_metadata"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_metadata_outcome"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_quad_word"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_initial"},
+        {"path": "specs/mod.rs", "symbol": "ht_uvlc_non_initial"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_mel_event"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_reader_tick"},
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_readers_finish"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_complete_metadata_odd_rows_pairs_and_members_have_literal_outputs"},
+        {"path": "src/tier1.rs", "symbol": "ht_metadata_last_row_budget_failure_retains_stored_quad_and_all_counters"},
+        {"path": "src/tier1.rs", "symbol": "ht_metadata_actual_word_phase_chooses_each_neighbor_and_west_context"},
+        {"path": "src/tier1.rs", "symbol": "ht_metadata_sample_error_and_counter_overflow_have_exact_mutation_frames"},
+        {"path": "src/tier1.rs", "symbol": "ht_metadata_public_header_order_and_empty_private_streams_are_typed"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_context_preserves_both_northern_columns"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_accepts_fused_mel_vlc_final_byte"}
+      ],
+      "topic": "Complete actual public/segment cleanup metadata result and typed first error over ordered rows/pairs/members, real contexts/events/UVLC, full lower mutation frames and every metadata field; exact internal producer/outcome/model/argument recipe and true block caller indexed, no magnitude/coefficient or mixed-sequencer completion"
     },
     {
       "contract_refs": [

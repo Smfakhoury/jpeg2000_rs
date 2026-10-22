@@ -394,6 +394,63 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_ht_metadata_to_actual_inputs_limit_and_caller(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part15-complete-cleanup-metadata"
+        ]
+        self.assertEqual(len(coverage["requirements"]), 1)
+        producer = {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_segment_metadata"}
+        self.assertIn(producer, coverage["requirements"][0]["contract_refs"])
+        coverage["requirements"][0]["contract_refs"] = [producer]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        source = framework.ROOT / "src/tier1.rs"
+        read_text = Path.read_text
+        original = source.read_text()
+        end = re.search(r"\bfn\s+decode_ht_cleanup_segment_metadata\b", original).start()
+        start = original.rfind("#[cfg_attr", 0, end)
+        contract = original[start:end]
+        for before, after in (
+            ("ensures ht_cleanup_metadata_outcome(result)", "ensures ht_cleanup_metadata_outcome(unrelated)"),
+            ("ensures ht_cleanup_metadata_outcome(result)", "ensures unlisted_projection(result)"),
+            ("ensures ht_cleanup_metadata_outcome(result)", "ensures ht_block_segments_outcome(result)"),
+            ("ensures ht_cleanup_metadata_outcome(result)", "ensures result.is_ok()"),
+            ("== crate::specs::ht_cleanup_segment_metadata(", "== crate::specs::ht_decode_cleanup_metadata("),
+            ("== crate::specs::ht_cleanup_segment_metadata(", "== crate::specs::ht_cleanup_quad_word("),
+            ("== crate::specs::ht_cleanup_segment_metadata(", "<= crate::specs::ht_cleanup_segment_metadata("),
+        ):
+            self.assertIn(before, contract)
+            modified = original[:start] + contract.replace(before, after) + original[end:]
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+        for pattern, replacement in (
+            (r"ht_cleanup_segment_view\(\s*&\s*cleanup\s*\)", "ht_cleanup_segment_view(&unrelated)"),
+            (r"crate::limits::resource_work_limit\(\s*limits\s*\)", "crate::limits::resource_work_limit(default_limits)"),
+            (r"crate::limits::resource_work_limit\(\s*limits\s*\)", "crate::limits::resource_work_limit(old(limits))"),
+            (r"\bwidth\s*,\s*height\s*,\s*maximum_u\b", "height, width, maximum_u"),
+        ):
+            modified_contract, changed = re.subn(pattern, replacement, contract, count=1)
+            self.assertEqual(changed, 1)
+            modified = original[:start] + modified_contract + original[end:]
+            with self.subTest(replacement=replacement), \
+                    mock.patch.object(Path, "read_text",
+                                      lambda path, *args, **kwargs:
+                                      modified if path == source else read_text(path, *args, **kwargs)), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+        for caller in ("HtForwardRefinementReader::read_bit", "UnknownDecoder::decode_ht_coefficient_symbols"):
+            wrong = copy.deepcopy(coverage)
+            wrong["requirements"][0]["implementation_refs"] = [{"path": "src/tier1.rs", "symbol": caller}]
+            with self.subTest(caller=caller), \
+                    self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(wrong)
+
     def test_inventory_binds_complete_ht_parser_to_its_exact_outcome_and_model(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [

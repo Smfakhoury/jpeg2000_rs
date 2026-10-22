@@ -332,6 +332,7 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
                 ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
+                ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_metadata_outcome",
                 ("src/color.rs", "convert_jp2_color"): "converted_image_result",
                 ("src/color.rs", "convert_color_channel"): "converted_channel_result",
                 ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
@@ -341,6 +342,7 @@ def validate_normative_coverage(
             }.get((reference["path"], short))
             expected_result_model = {
                 ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
+                ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
                 ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
@@ -450,8 +452,19 @@ def validate_normative_coverage(
                         f"linked function lacks executable Verus contract: {reference['symbol']}; "
                         "incomplete exact reader state relation"
                     )
+            metadata_arguments_bound = (
+                (reference["path"], short) != ("src/tier1.rs", "decode_ht_cleanup_segment_metadata")
+                or re.search(
+                    r"\bht_cleanup_segment_metadata\s*\(\s*"
+                    r"ht_cleanup_segment_view\s*\(\s*&\s*cleanup\s*\)\s*,\s*"
+                    r"width\s*,\s*height\s*,\s*maximum_u\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
+                    or not metadata_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))
                     or not ("ensures returns" in contract

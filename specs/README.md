@@ -202,6 +202,19 @@ is available; a successful solver run does not fill them in.
 
 ## Frozen F5H directional-reader stages
 
+The frozen cleanup-metadata stage is the complete actual segment traversal,
+not coefficient reconstruction. Inputs retain all native width, height and
+maximum-U values, the actual supplied segment views and actual work limit.
+Header checks, reader construction, ordered rows/pairs/members, north/west/
+east context selection, context-zero suppression, UVLC/event decisions,
+sample bounds, significant-sample counting, quad stores, ticks, final collision
+check and counter conversion are part of one deterministic result model.
+Every output metadata field and typed first error is included. Internal
+geometry/allocated-length facts are proved from the real header checks;
+neither valid streams, successful reads nor sufficient budgets are assumed.
+Helper extraction moves the existing traversal bodies, without another
+executable decoder, changed allocation capacities or reordered stream reads.
+
 The packet-pass grouping substage has the native `u8` input domain: zero and
 165..=255 reject, while 1..=164 produce the exact cleanup-pass count,
 refinement-pass count, placeholder count and skipped-bitplane count.
@@ -292,8 +305,9 @@ The directional substage now includes all five actual readers, MagSgn words
 and finish, refinement physical-bit claims/padding, VLC peek/advance and MEL
 events. The cleanup pair's final shared-byte collision check is included.
 The subsequent UVLC/quad-word interpretation stage above is also complete.
-The remaining stages are upstream partitioning and pass sequencing, quad
-traversal/metadata construction, cleanup block reconstruction, significance/refinement
+Actual upstream partitioning and the complete metadata traversal above are
+now proved. The remaining stages are pass execution/sequencing, numerical
+cleanup magnitude/coefficient reconstruction, significance/refinement
 block transitions, replacement/placeholder sequencing and mixed HT/legacy
 routing. Completing directional stages does not close F5H or full-block
 acceptance. In particular, matching the byte-reader state machine does not

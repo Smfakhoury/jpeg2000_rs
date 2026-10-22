@@ -1966,14 +1966,6 @@ fn ht_cleanup_readers_from_inputs<'a>(
 }
 
 impl<'a> HtCleanupReaders<'a> {
-    fn new(segment: HtCleanupSegment<'a>, limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        ht_cleanup_readers_from_inputs(
-            segment.mel().bytes(),
-            segment.vlc().bytes(),
-            limits.maximum_work_units(),
-        )
-    }
-
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(result =>
@@ -2544,6 +2536,547 @@ fn ht_uvlc_byte(base: u8, suffix: u8, bias: u8) -> Result<u8, DecodeError> {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn ht_metadata_words_outcome(result: Result<([u16; 2], [u8; 2]), DecodeError>)
+        -> Result<(Seq<u16>, Seq<u8>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((words, contexts)) => Ok((words@, contexts@)) }
+    }
+
+    #[verifier::inline]
+    spec fn ht_metadata_quad_input(
+        index: usize, row: usize, width: u16, height: u16, maximum_u: u8,
+        word: u16, context: u8, significance: u8, u_value: u8, initial: bool,
+    ) -> crate::specs::HtMetadataQuadInput {
+        crate::specs::HtMetadataQuadInput {
+            index, row, width, height, maximum_u, word, context, significance, u_value, initial,
+        }
+    }
+
+    #[verifier::inline]
+    spec fn ht_metadata_pair_view(
+        readers: &HtCleanupReaders<'_>, quads: &Vec<HtQuadMetadata>,                 current: Seq<u8>, significant: u16, left: u8,
+    ) -> crate::specs::HtMetadataPairState {
+        crate::specs::HtMetadataPairState {
+            readers: ht_cleanup_readers_view(readers), quads: quads@, current, significant, left,
+        }
+    }
+
+    #[verifier::inline]
+    spec fn ht_metadata_row_view(
+        readers: &HtCleanupReaders<'_>, quads: &Vec<HtQuadMetadata>, previous: &Vec<u8>, significant: u16,
+    ) -> crate::specs::HtMetadataRowState {
+        crate::specs::HtMetadataRowState {
+            readers: ht_cleanup_readers_view(readers), quads: quads@, previous: previous@, significant,
+        }
+    }
+
+    pub closed spec fn ht_cleanup_metadata_view(metadata: &HtCleanupMetadata) -> crate::specs::HtMetadataOutput {
+        crate::specs::HtMetadataOutput {
+            width: metadata.width, height: metadata.height, quads: metadata.quads@,
+            significant_samples: metadata.significant_samples, mel_bits: metadata.mel_bits,
+            vlc_bits: metadata.vlc_bits, mel_events: metadata.mel_events,
+        }
+    }
+
+    pub closed spec fn ht_cleanup_metadata_outcome(result: Result<HtCleanupMetadata, DecodeError>)
+        -> Result<crate::specs::HtMetadataOutput, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(metadata) => Ok(ht_cleanup_metadata_view(&metadata)) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires 0 < quads_per_row <= 32768, pair < quads_per_row,
+            previous_patterns.len() == quads_per_row, old(current_patterns).len() == quads_per_row,
+        ensures (ht_metadata_words_outcome(result), ht_cleanup_readers_view(final(readers)),
+            final(current_patterns)@, *final(left_context))
+            == crate::specs::ht_metadata_words(ht_cleanup_readers_view(old(readers)),
+                old(current_patterns)@, *old(left_context), previous_patterns@, pair as nat, initial),
+            final(current_patterns).len() == old(current_patterns).len(),
+    )
+)]
+fn decode_ht_metadata_words(
+    readers: &mut HtCleanupReaders<'_>,
+    current_patterns: &mut [u8],
+    left_context: &mut u8,
+    previous_patterns: &[u8],
+    quads_per_row: usize,
+    pair: usize,
+    initial: bool,
+) -> Result<([u16; 2], [u8; 2]), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start_readers = ht_cleanup_readers_view(readers);
+        let ghost start_current = current_patterns@;
+        let ghost start_left = *left_context;
+    }
+    let mut words = [0_u16; 2];
+    let mut contexts = [0_u8; 2];
+    let mut member = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(words@ =~= Seq::new(2, |i: int| 0u16));
+        assert(contexts@ =~= Seq::new(2, |i: int| 0u8));
+    }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant member <= 2, 0 < quads_per_row <= 32768, pair < quads_per_row,
+                previous_patterns.len() == quads_per_row, current_patterns.len() == quads_per_row,
+                old(current_patterns).len() == quads_per_row, start_current.len() == quads_per_row,
+                start_readers == ht_cleanup_readers_view(old(readers)),
+                start_current == old(current_patterns)@, start_left == *old(left_context),
+                crate::specs::ht_metadata_words(start_readers, start_current, start_left, previous_patterns@, pair as nat, initial)
+                    == crate::specs::ht_metadata_words_finish(crate::specs::ht_metadata_words_run(
+                        crate::specs::HtMetadataWordsState {
+                            readers: ht_cleanup_readers_view(readers), current: current_patterns@,
+                            left: *left_context, words: words@, contexts: contexts@,
+                        }, previous_patterns@, pair as nat, initial, member as nat)),
+            ensures member == 2 || pair + member >= quads_per_row,
+            decreases 2 - member,
+        )
+    )]
+    while member < 2 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_words_unfold(
+                crate::specs::HtMetadataWordsState {
+                    readers: ht_cleanup_readers_view(readers), current: current_patterns@,
+                    left: *left_context, words: words@, contexts: contexts@,
+                }, previous_patterns@, pair as nat, initial, member as nat,
+            );
+        }
+        let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
+        if quad_index >= quads_per_row {
+            break;
+        }
+        let context = if initial {
+            *left_context
+        } else {
+            let north_pattern = *previous_patterns
+                .get(quad_index)
+                .ok_or_else(invalid_code_block)?;
+            let north_west_pattern = match quad_index.checked_sub(1) {
+                Some(index) => *previous_patterns
+                    .get(index)
+                    .ok_or_else(invalid_code_block)?,
+                None => 0,
+            };
+            let north_east_index = quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            let north_east_pattern = match previous_patterns.get(north_east_index) {
+                Some(pattern) => *pattern,
+                None => 0,
+            };
+            crate::refinement::ht_noninitial_vlc_context(
+                *left_context,
+                north_west_pattern,
+                north_pattern,
+                north_east_pattern,
+            )
+        };
+        let word = readers.decode_quad_word(initial, context)?;
+        let significance = ((word >> 4) & 0x0f) as u8;
+        *words.get_mut(member).ok_or_else(invalid_code_block)? = word;
+        *contexts.get_mut(member).ok_or_else(invalid_code_block)? = context;
+        *current_patterns
+            .get_mut(quad_index)
+            .ok_or_else(invalid_code_block)? = significance;
+        *left_context = if initial {
+            (significance & 0x01) | ((significance & 0x0e) >> 1)
+        } else if significance & 0x0c != 0 {
+            2
+        } else {
+            0
+        };
+        member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_metadata_words_unfold(
+            crate::specs::HtMetadataWordsState {
+                readers: ht_cleanup_readers_view(readers), current: current_patterns@,
+                left: *left_context, words: words@, contexts: contexts@,
+            }, previous_patterns@, pair as nat, initial, member as nat,
+        );
+    }
+    Ok((words, contexts))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires quad_index < 32768, quad_row < 32768,
+        ensures (result, ht_cleanup_readers_view(final(readers)), final(quads)@, *final(significant_samples))
+            == crate::specs::ht_metadata_emit(ht_cleanup_readers_view(old(readers)), old(quads)@,
+                *old(significant_samples), ht_metadata_quad_input(quad_index, quad_row, width, height,
+                    maximum_u, word, context, significance, u_value, initial)),
+            result.is_ok() ==> final(quads).len() == old(quads).len() + 1,
+    )
+)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit codec inputs and disjoint mutable outputs keep state frames auditable."
+)]
+fn append_ht_metadata_quad(
+    readers: &mut HtCleanupReaders<'_>,
+    quads: &mut Vec<HtQuadMetadata>,
+    significant_samples: &mut u16,
+    quad_index: usize,
+    quad_row: usize,
+    width: u16,
+    height: u16,
+    maximum_u: u8,
+    word: u16,
+    context: u8,
+    significance: u8,
+    u_value: u8,
+    initial: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start_readers = ht_cleanup_readers_view(readers);
+        let ghost start_quads = quads@;
+        let ghost start_significant = *significant_samples;
+        let ghost input = ht_metadata_quad_input(quad_index, quad_row, width, height, maximum_u, word, context, significance, u_value, initial);
+    }
+    if u_value > maximum_u {
+        return Err(invalid_code_block());
+    }
+    let x = u16::try_from(quad_index.checked_mul(2).ok_or_else(arithmetic_overflow)?)
+        .map_err(|_| arithmetic_overflow())?;
+    let y = u16::try_from(quad_row.checked_mul(2).ok_or_else(arithmetic_overflow)?)
+        .map_err(|_| arithmetic_overflow())?;
+    if !crate::refinement::ht_quad_origin_valid(x, y, width, height) {
+        return Err(invalid_code_block());
+    }
+    let mut sample = 0_u8;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant sample <= 4, x == quad_index * 2, y == quad_row * 2,
+                quad_index < 32768, quad_row < 32768, x <= 65534, y <= 65534,
+                start_readers == ht_cleanup_readers_view(old(readers)),
+                start_readers == ht_cleanup_readers_view(readers),
+                start_quads == old(quads)@, start_quads == quads@,
+                start_significant == *old(significant_samples),
+                input == ht_metadata_quad_input(quad_index, quad_row, width, height, maximum_u, word, context, significance, u_value, initial),
+                crate::specs::ht_quad_origin_valid(x as nat, y as nat, width as nat, height as nat),
+                u_value <= maximum_u,
+                crate::specs::ht_metadata_emit(start_readers, start_quads, start_significant, input)
+                    == crate::specs::ht_metadata_emit_after_samples(
+                        crate::specs::ht_metadata_samples(*significant_samples, significance, x, y, width, height, sample),
+                        start_readers, start_quads, input),
+            decreases 4 - sample,
+        )
+    )]
+    while sample < 4 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_samples_unfold(*significant_samples, significance, x, y, width, height, sample);
+            assert(sample >> 1u8 <= 1) by(bit_vector) requires sample < 4;
+            assert(sample & 1u8 <= 1) by(bit_vector);
+            assert(sample >> 1u8 == sample / 2u8) by(bit_vector);
+            assert(sample & 1u8 == sample % 2u8) by(bit_vector);
+        }
+        if significance & (1_u8 << sample) != 0 {
+            let sample_x = x
+                .checked_add(u16::from(sample >> 1))
+                .ok_or_else(arithmetic_overflow)?;
+            let sample_y = y
+                .checked_add(u16::from(sample & 1))
+                .ok_or_else(arithmetic_overflow)?;
+            if !crate::refinement::ht_quad_sample_in_bounds(x, y, sample, width, height)
+                || sample_x >= width
+                || sample_y >= height
+            {
+                return Err(invalid_code_block());
+            }
+            *significant_samples = significant_samples
+                .checked_add(1)
+                .ok_or_else(arithmetic_overflow)?;
+        }
+        sample = sample.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_metadata_samples_unfold(*significant_samples, significance, x, y, width, height, sample);
+    }
+    quads.push(HtQuadMetadata {
+        x,
+        y,
+        context,
+        initial_row: initial,
+        significance,
+        embedded_magnitude: ((word >> 8) & 0x0f) as u8,
+        embedded_bit_mask: ((word >> 12) & 0x0f) as u8,
+        u_offset: word & 0x08 != 0,
+        u_base: u_value,
+        codeword_bits: (word & 0x07) as u8,
+    });
+    readers.tick()?;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires 0 < quads_per_row <= 32768, pair < quads_per_row, quad_row < 32768,
+            previous_patterns.len() == quads_per_row, old(current_patterns).len() == quads_per_row,
+        ensures (result, ht_metadata_pair_view(final(readers), final(quads), final(current_patterns)@,
+                *final(significant_samples), *final(left_context)))
+            == crate::specs::ht_metadata_pair(
+                ht_metadata_pair_view(old(readers), old(quads), old(current_patterns)@,
+                    *old(significant_samples), *old(left_context)),
+                previous_patterns@, pair as nat, quad_row as nat, width, height, maximum_u, initial),
+            final(current_patterns).len() == old(current_patterns).len(),
+            result.is_ok() ==> final(quads).len() == old(quads).len() + if pair + 1 < quads_per_row { 2int } else { 1int },
+            result == Ok(()) || result.is_err(),
+    )
+)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit codec inputs and disjoint mutable outputs keep state frames auditable."
+)]
+fn decode_ht_metadata_pair(
+    readers: &mut HtCleanupReaders<'_>,
+    quads: &mut Vec<HtQuadMetadata>,
+    current_patterns: &mut [u8],
+    significant_samples: &mut u16,
+    left_context: &mut u8,
+    previous_patterns: &[u8],
+    quads_per_row: usize,
+    pair: usize,
+    quad_row: usize,
+    width: u16,
+    height: u16,
+    maximum_u: u8,
+    initial: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context);
+    }
+    let (words, contexts) = decode_ht_metadata_words(
+        readers,
+        current_patterns,
+        left_context,
+        previous_patterns,
+        quads_per_row,
+        pair,
+        initial,
+    )?;
+    let mut mode = if words[0] & 0x08 != 0 { 1_u8 } else { 0_u8 };
+    mode |= if words[1] & 0x08 != 0 { 2_u8 } else { 0_u8 };
+    if initial && mode == 3 && readers.mel_event()? {
+        mode = 4;
+    }
+    let u_values = if initial {
+        readers.decode_initial_u(mode)?
+    } else {
+        readers.decode_non_initial_u(mode)?
+    };
+    let mut member = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant member <= 2, pair + member <= quads_per_row,
+                0 < quads_per_row <= 32768, pair < quads_per_row, quad_row < 32768,
+                previous_patterns.len() == quads_per_row, current_patterns.len() == quads_per_row,
+                old(current_patterns).len() == quads_per_row,
+                start == ht_metadata_pair_view(old(readers), old(quads), old(current_patterns)@, *old(significant_samples), *old(left_context)),
+                quads.len() == start.quads.len() + member,
+                crate::specs::ht_metadata_pair(start, previous_patterns@, pair as nat, quad_row as nat, width, height, maximum_u, initial)
+                    == crate::specs::ht_metadata_emits_run(
+                        ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context),
+                        words@, contexts@, u_values, pair as nat, quad_row as nat, width, height, maximum_u, initial, member as nat),
+            ensures member == 2 || pair + member == quads_per_row,
+            decreases 2 - member,
+        )
+    )]
+    while member < 2 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_emits_unfold(
+                ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context),
+                words@, contexts@, u_values, pair as nat, quad_row as nat, width, height, maximum_u, initial, member as nat,
+            );
+        }
+        let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
+        if quad_index >= quads_per_row {
+            break;
+        }
+        let word = *words.get(member).ok_or_else(invalid_code_block)?;
+        let significance = *current_patterns
+            .get(quad_index)
+            .ok_or_else(invalid_code_block)?;
+        let u_value = *u_values.get(member).ok_or_else(invalid_code_block)?;
+        append_ht_metadata_quad(
+            readers,
+            quads,
+            significant_samples,
+            quad_index,
+            quad_row,
+            width,
+            height,
+            maximum_u,
+            word,
+            *contexts.get(member).ok_or_else(invalid_code_block)?,
+            significance,
+            u_value,
+            initial,
+        )?;
+        member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_metadata_emits_unfold(
+            ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context),
+            words@, contexts@, u_values, pair as nat, quad_row as nat, width, height, maximum_u, initial, member as nat,
+        );
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires 0 < quads_per_row <= 32768, quad_row < 32768,
+            old(previous_patterns).len() == quads_per_row,
+        ensures (result, ht_metadata_row_view(final(readers), final(quads), final(previous_patterns), *final(significant_samples)))
+            == crate::specs::ht_metadata_row(
+                ht_metadata_row_view(old(readers), old(quads), old(previous_patterns), *old(significant_samples)),
+                quad_row as nat, width, height, maximum_u),
+            final(previous_patterns).len() == old(previous_patterns).len(),
+            result.is_ok() ==> final(quads).len() == old(quads).len() + quads_per_row,
+            result == Ok(()) || result.is_err(),
+    )
+)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit geometry and disjoint mutable outputs keep state frames auditable."
+)]
+fn decode_ht_metadata_row(
+    readers: &mut HtCleanupReaders<'_>,
+    quads: &mut Vec<HtQuadMetadata>,
+    previous_patterns: &mut Vec<u8>,
+    significant_samples: &mut u16,
+    quads_per_row: usize,
+    quad_row: usize,
+    width: u16,
+    height: u16,
+    maximum_u: u8,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = ht_metadata_row_view(readers, quads, previous_patterns, *significant_samples);
+        let ghost start_pair = crate::specs::ht_metadata_row_initial(start);
+    }
+    let initial = quad_row == 0;
+    let mut current_patterns = vec![0_u8; quads_per_row];
+    let mut left_context = 0_u8;
+    let mut pair = 0_usize;
+    let mut pair_passes = quads_per_row
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?
+        / 2;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(current_patterns@ =~= Seq::new(quads_per_row as nat, |i: int| 0u8));
+        reveal_with_fuel(crate::specs::ht_metadata_pairs, 1);
+    }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant 0 < quads_per_row <= 32768, quad_row < 32768,
+                pair <= quads_per_row + 1, pair % 2 == 0,
+                pair + pair_passes * 2 >= quads_per_row,
+                pair + pair_passes * 2 <= quads_per_row + 1,
+                pair / 2 <= (quads_per_row + 1) / 2,
+                current_patterns.len() == quads_per_row,
+                previous_patterns.len() == quads_per_row,
+                old(previous_patterns).len() == quads_per_row,
+                start == ht_metadata_row_view(old(readers), old(quads), old(previous_patterns), *old(significant_samples)),
+                start.previous == previous_patterns@, start.previous.len() == quads_per_row,
+                start_pair == crate::specs::ht_metadata_row_initial(start),
+                initial == (quad_row == 0),
+                quads.len() == start.quads.len() + if pair <= quads_per_row { pair as int } else { quads_per_row as int },
+                crate::specs::ht_metadata_pairs(start_pair, start.previous, quad_row as nat,
+                    width, height, maximum_u, (pair / 2) as nat)
+                    == (Ok(()), ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context)),
+            decreases pair_passes,
+        )
+    )]
+    while pair < quads_per_row {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost before = ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert((pair / 2) * 2 == pair);
+            crate::proofs::production_impl::production_ht_metadata_pairs_step(start_pair, start.previous, quad_row as nat,
+                width, height, maximum_u, (pair / 2) as nat);
+        }
+        let result = decode_ht_metadata_pair(
+            readers,
+            quads,
+            &mut current_patterns,
+            significant_samples,
+            &mut left_context,
+            previous_patterns,
+            quads_per_row,
+            pair,
+            quad_row,
+            width,
+            height,
+            maximum_u,
+            initial,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::ht_metadata_pair(before, start.previous, pair as nat, quad_row as nat,
+                width, height, maximum_u, initial)
+                == (result, ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context)));
+        }
+        match result {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_ht_metadata_pairs_error(start_pair, start.previous,
+                        quad_row as nat, width, height, maximum_u, (pair / 2 + 1) as nat, ((quads_per_row + 1) / 2) as nat);
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(result == Ok(()));
+            assert(crate::specs::ht_metadata_pairs(start_pair, start.previous, quad_row as nat,
+                width, height, maximum_u, (pair / 2 + 1) as nat)
+                == (Ok(()), ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context)));
+        }
+        pair = pair.checked_add(2).ok_or_else(arithmetic_overflow)?;
+        pair_passes = pair_passes.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+    }
+    *previous_patterns = current_patterns;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_cleanup_metadata_outcome(result) == crate::specs::ht_decode_cleanup_metadata(
+            cleanup@, width, height, maximum_u, crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_work_limit(limits),
+        ),
+    )
+)]
 pub fn decode_ht_cleanup_metadata(
     cleanup: &[u8],
     width: u16,
@@ -2555,6 +3088,14 @@ pub fn decode_ht_cleanup_metadata(
     decode_ht_cleanup_segment_metadata(segments.cleanup(), width, height, maximum_u, limits)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_cleanup_metadata_outcome(result) == crate::specs::ht_cleanup_segment_metadata(
+            ht_cleanup_segment_view(&cleanup), width, height, maximum_u, crate::limits::resource_work_limit(limits),
+        ),
+    )
+)]
 fn decode_ht_cleanup_segment_metadata(
     cleanup: HtCleanupSegment<'_>,
     width: u16,
@@ -2573,184 +3114,99 @@ fn decode_ht_cleanup_segment_metadata(
     }
     let quads_per_row = usize::from(width)
         .checked_add(1)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
+        .ok_or_else(arithmetic_overflow)?
+        / 2;
     let quad_rows = usize::from(height)
         .checked_add(1)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
+        .ok_or_else(arithmetic_overflow)?
+        / 2;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::ht_quad_count_is_bounded_by_samples(width as nat, height as nat);
+        assert(quads_per_row as nat * quad_rows as nat <= 4096);
+    }
     let quad_count = quads_per_row
         .checked_mul(quad_rows)
         .ok_or_else(arithmetic_overflow)?;
-    let mut readers = HtCleanupReaders::new(cleanup, limits)?;
+    let mut readers = ht_cleanup_readers_from_inputs(
+        cleanup.mel().bytes(),
+        cleanup.vlc().bytes(),
+        limits.maximum_work_units(),
+    )?;
     let mut quads = Vec::with_capacity(quad_count);
     let mut previous_patterns = vec![0_u8; quads_per_row];
     let mut significant_samples = 0_u16;
     let mut quad_row = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples);
+        let ghost segment = ht_cleanup_segment_view(&cleanup);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(previous_patterns@ =~= Seq::new(quads_per_row as nat, |i: int| 0u8));
+        assert(quads@ =~= Seq::<HtQuadMetadata>::empty());
+        reveal_with_fuel(crate::specs::ht_metadata_rows, 1);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant quad_row <= quad_rows,
+            invariant quad_row <= quad_rows, 0 < quads_per_row <= 32768, 0 < quad_rows <= 32768,
+                width > 0, height > 0, 0 < maximum_u <= 75,
+                width as nat * height as nat <= 4096,
+                previous_patterns.len() == quads_per_row,
+                quads_per_row as nat == (width as nat + 1) / 2,
+                quad_rows as nat == (height as nat + 1) / 2,
+                segment == ht_cleanup_segment_view(&cleanup),
+                crate::specs::ht_cleanup_readers_initial(segment.mel.bytes,
+                    segment.vlc.bytes, crate::limits::resource_work_limit(limits)) == Ok(start.readers),
+                start.quads == Seq::<HtQuadMetadata>::empty(), start.significant == 0,
+                start.previous == Seq::new(quads_per_row as nat, |i: int| 0u8),
+                crate::specs::ht_metadata_rows(start, width, height, maximum_u, quad_row as nat)
+                    == (Ok(()), ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples)),
             decreases quad_rows - quad_row,
         )
     )]
     while quad_row < quad_rows {
-        let initial = quad_row == 0;
-        let mut current_patterns = vec![0_u8; quads_per_row];
-        let mut left_context = 0_u8;
-        let mut pair = 0_usize;
-        let mut pair_passes = quads_per_row
-            .checked_add(1)
-            .and_then(|value| value.checked_div(2))
-            .ok_or_else(arithmetic_overflow)?;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases pair_passes,)
-        )]
-        while pair < quads_per_row {
-            let mut words = [0_u16; 2];
-            let mut contexts = [0_u8; 2];
-            let mut member = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant member <= 2,
-                    decreases 2 - member,
-                )
-            )]
-            while member < 2 {
-                let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
-                if quad_index >= quads_per_row {
-                    break;
-                }
-                let context = if initial {
-                    left_context
-                } else {
-                    let north_pattern = *previous_patterns
-                        .get(quad_index)
-                        .ok_or_else(invalid_code_block)?;
-                    let north_west_pattern = match quad_index.checked_sub(1) {
-                        Some(index) => *previous_patterns
-                            .get(index)
-                            .ok_or_else(invalid_code_block)?,
-                        None => 0,
-                    };
-                    let north_east_index =
-                        quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    let north_east_pattern = match previous_patterns.get(north_east_index) {
-                        Some(pattern) => *pattern,
-                        None => 0,
-                    };
-                    crate::refinement::ht_noninitial_vlc_context(
-                        left_context,
-                        north_west_pattern,
-                        north_pattern,
-                        north_east_pattern,
-                    )
-                };
-                let word = readers.decode_quad_word(initial, context)?;
-                let significance = ((word >> 4) & 0x0f) as u8;
-                *words.get_mut(member).ok_or_else(invalid_code_block)? = word;
-                *contexts.get_mut(member).ok_or_else(invalid_code_block)? = context;
-                *current_patterns
-                    .get_mut(quad_index)
-                    .ok_or_else(invalid_code_block)? = significance;
-                left_context = if initial {
-                    (significance & 0x01) | ((significance & 0x0e) >> 1)
-                } else if significance & 0x0c != 0 {
-                    2
-                } else {
-                    0
-                };
-                member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-
-            let mut mode = u8::from(words[0] & 0x08 != 0);
-            mode |= u8::from(words[1] & 0x08 != 0) << 1;
-            if initial && mode == 3 && readers.mel_event()? {
-                mode = 4;
-            }
-            let u_values = if initial {
-                readers.decode_initial_u(mode)?
-            } else {
-                readers.decode_non_initial_u(mode)?
-            };
-
-            member = 0;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant member <= 2,
-                    decreases 2 - member,
-                )
-            )]
-            while member < 2 {
-                let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
-                if quad_index >= quads_per_row {
-                    break;
-                }
-                let word = *words.get(member).ok_or_else(invalid_code_block)?;
-                let significance = *current_patterns
-                    .get(quad_index)
-                    .ok_or_else(invalid_code_block)?;
-                let u_value = *u_values.get(member).ok_or_else(invalid_code_block)?;
-                if u_value > maximum_u {
-                    return Err(invalid_code_block());
-                }
-                let x = u16::try_from(quad_index.checked_mul(2).ok_or_else(arithmetic_overflow)?)
-                    .map_err(|_| arithmetic_overflow())?;
-                let y = u16::try_from(quad_row.checked_mul(2).ok_or_else(arithmetic_overflow)?)
-                    .map_err(|_| arithmetic_overflow())?;
-                if !crate::refinement::ht_quad_origin_valid(x, y, width, height) {
-                    return Err(invalid_code_block());
-                }
-                let mut sample = 0_u8;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant sample <= 4,
-                        decreases 4 - sample,
-                    )
-                )]
-                while sample < 4 {
-                    if significance & (1_u8 << sample) != 0 {
-                        let sample_x = x
-                            .checked_add(u16::from(sample >> 1))
-                            .ok_or_else(arithmetic_overflow)?;
-                        let sample_y = y
-                            .checked_add(u16::from(sample & 1))
-                            .ok_or_else(arithmetic_overflow)?;
-                        if !crate::refinement::ht_quad_sample_in_bounds(x, y, sample, width, height)
-                            || sample_x >= width
-                            || sample_y >= height
-                        {
-                            return Err(invalid_code_block());
-                        }
-                        significant_samples = significant_samples
-                            .checked_add(1)
-                            .ok_or_else(arithmetic_overflow)?;
-                    }
-                    sample = sample.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                quads.push(HtQuadMetadata {
-                    x,
-                    y,
-                    context: *contexts.get(member).ok_or_else(invalid_code_block)?,
-                    initial_row: initial,
-                    significance,
-                    embedded_magnitude: ((word >> 8) & 0x0f) as u8,
-                    embedded_bit_mask: ((word >> 12) & 0x0f) as u8,
-                    u_offset: word & 0x08 != 0,
-                    u_base: u_value,
-                    codeword_bits: (word & 0x07) as u8,
-                });
-                readers.tick()?;
-                member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            pair = pair.checked_add(2).ok_or_else(arithmetic_overflow)?;
-            pair_passes = pair_passes.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples); }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_rows_step(start, width, height, maximum_u, quad_row as nat);
         }
-        previous_patterns = current_patterns;
+        let result = decode_ht_metadata_row(
+            &mut readers,
+            &mut quads,
+            &mut previous_patterns,
+            &mut significant_samples,
+            quads_per_row,
+            quad_row,
+            width,
+            height,
+            maximum_u,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::ht_metadata_row(before, quad_row as nat, width, height, maximum_u)
+                == (result, ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples)));
+        }
+        match result {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_ht_metadata_rows_error(start, width, height, maximum_u,
+                        (quad_row + 1) as nat, quad_rows as nat);
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(result == Ok(()));
+            assert(crate::specs::ht_metadata_rows(start, width, height, maximum_u, (quad_row + 1) as nat)
+                == (Ok(()), ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples)));
+        }
         quad_row = quad_row.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     readers.finish()?;
@@ -2759,8 +3215,14 @@ fn decode_ht_cleanup_segment_metadata(
         height,
         quads,
         significant_samples,
-        mel_bits: u32::try_from(readers.mel.bits_read()).map_err(|_| arithmetic_overflow())?,
-        vlc_bits: u32::try_from(readers.vlc.bits_read()).map_err(|_| arithmetic_overflow())?,
+        mel_bits: match u32::try_from(readers.mel.bits_read()) {
+            Ok(value) => value,
+            Err(_) => return Err(arithmetic_overflow()),
+        },
+        vlc_bits: match u32::try_from(readers.vlc.bits_read()) {
+            Ok(value) => value,
+            Err(_) => return Err(arithmetic_overflow()),
+        },
         mel_events: readers.mel_events,
     })
 }
@@ -5986,6 +6448,389 @@ mod tests {
     }
 
     #[test]
+    fn ht_complete_metadata_odd_rows_pairs_and_members_have_literal_outputs() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(24)
+            .unwrap();
+        let metadata = decode_ht_cleanup_metadata(&[0xff, 3, 0], 5, 5, 1, &limits).unwrap();
+        let expected_quads: Vec<_> = [
+            (0, 0),
+            (2, 0),
+            (4, 0),
+            (0, 2),
+            (2, 2),
+            (4, 2),
+            (0, 4),
+            (2, 4),
+            (4, 4),
+        ]
+        .into_iter()
+        .map(|(x, y)| HtQuadMetadata {
+            x,
+            y,
+            context: 0,
+            initial_row: y == 0,
+            significance: 0,
+            embedded_magnitude: 0,
+            embedded_bit_mask: 0,
+            u_offset: false,
+            u_base: 1,
+            codeword_bits: 0,
+        })
+        .collect();
+        assert_eq!(
+            metadata,
+            HtCleanupMetadata {
+                width: 5,
+                height: 5,
+                quads: expected_quads,
+                significant_samples: 0,
+                mel_bits: 6,
+                vlc_bits: 0,
+                mel_events: 9,
+            }
+        );
+        let one_short = ResourceLimits::default()
+            .with_maximum_work_units(23)
+            .unwrap();
+        assert_eq!(
+            decode_ht_cleanup_metadata(&[0xff, 3, 0], 5, 5, 1, &one_short),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 23,
+                actual: 24
+            })
+        );
+    }
+
+    #[test]
+    fn ht_metadata_last_row_budget_failure_retains_stored_quad_and_all_counters() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0xff, 3], &[0xff, 3, 0], 23).unwrap();
+        let mut quads = Vec::with_capacity(9);
+        let mut previous = vec![0; 3];
+        let mut significant = 0;
+        assert_eq!(
+            decode_ht_metadata_row(
+                &mut readers,
+                &mut quads,
+                &mut previous,
+                &mut significant,
+                3,
+                0,
+                5,
+                5,
+                1
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            (
+                quads.len(),
+                readers.work_units,
+                readers.mel.bits_read,
+                readers.mel_events
+            ),
+            (3, 9, 3, 3)
+        );
+        assert_eq!(
+            decode_ht_metadata_row(
+                &mut readers,
+                &mut quads,
+                &mut previous,
+                &mut significant,
+                3,
+                1,
+                5,
+                5,
+                1
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            (
+                quads.len(),
+                readers.work_units,
+                readers.mel.bits_read,
+                readers.mel_events
+            ),
+            (6, 17, 5, 6)
+        );
+        assert_eq!(
+            decode_ht_metadata_row(
+                &mut readers,
+                &mut quads,
+                &mut previous,
+                &mut significant,
+                3,
+                2,
+                5,
+                5,
+                1
+            ),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 23,
+                actual: 24
+            })
+        );
+        assert_eq!(quads.len(), 9);
+        assert_eq!(
+            quads[8],
+            HtQuadMetadata {
+                x: 4,
+                y: 4,
+                context: 0,
+                initial_row: false,
+                significance: 0,
+                embedded_magnitude: 0,
+                embedded_bit_mask: 0,
+                u_offset: false,
+                u_base: 1,
+                codeword_bits: 0,
+            }
+        );
+        assert_eq!(previous, [0, 0, 0]);
+        assert_eq!(
+            (
+                significant,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events,
+                readers.mel_last_byte,
+                readers.vlc_last_byte
+            ),
+            (0, 24, 23, 6, 0, false, 9, Some(0), None)
+        );
+        assert_eq!(
+            (
+                readers.mel.next_byte,
+                readers.mel.current_byte,
+                readers.mel.value,
+                readers.mel.next_bit,
+                readers.mel.previous_was_ff,
+                readers.mel.bits_read,
+                readers.mel.maximum_work_units
+            ),
+            (1, 0, 0xff, 1, true, 6, 23)
+        );
+        assert_eq!(
+            (
+                readers.vlc.current_byte,
+                readers.vlc.value,
+                readers.vlc.next_bit,
+                readers.vlc.last_bit,
+                readers.vlc.has_byte,
+                readers.vlc.later_byte_requires_unstuffing,
+                readers.vlc.bits_read,
+                readers.vlc.maximum_work_units
+            ),
+            (1, 3, 4, 7, true, false, 0, 23)
+        );
+    }
+
+    #[test]
+    fn ht_metadata_actual_word_phase_chooses_each_neighbor_and_west_context() {
+        for (previous, left, expected) in [
+            ([0, 0, 0], 2, 2),
+            ([0, 8, 0], 0, 1),
+            ([0, 0, 2], 0, 1),
+            ([0, 0, 8], 0, 4),
+            ([0, 8, 8], 2, 7),
+        ] {
+            let mut readers =
+                ht_cleanup_readers_from_inputs(&[0, 0, 4], &[0, 0, 4, 0], 100).unwrap();
+            let mut current = [0; 3];
+            let mut west = left;
+            let (words, contexts) = decode_ht_metadata_words(
+                &mut readers,
+                &mut current,
+                &mut west,
+                &previous,
+                3,
+                2,
+                false,
+            )
+            .unwrap();
+            assert_eq!(contexts, [expected, 0]);
+            assert_eq!(words[1], 0);
+            assert_eq!(&current[..2], &[0, 0]);
+            assert_eq!(readers.mel.bits_read, 0);
+        }
+        let mut readers = ht_cleanup_readers_from_inputs(&[0, 0, 4], &[0, 0, 4, 0], 100).unwrap();
+        let mut current = [0; 3];
+        let mut west = 0;
+        let (_, contexts) = decode_ht_metadata_words(
+            &mut readers,
+            &mut current,
+            &mut west,
+            &[0, 2, 0],
+            3,
+            0,
+            false,
+        )
+        .unwrap();
+        assert_eq!(contexts[0], 4);
+    }
+
+    #[test]
+    fn ht_metadata_sample_error_and_counter_overflow_have_exact_mutation_frames() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0], &[0, 0], 100).unwrap();
+        let original_mel = readers.mel;
+        let original_vlc = readers.vlc;
+        let mut quads = Vec::new();
+        let mut significant = 0;
+        assert_eq!(
+            append_ht_metadata_quad(
+                &mut readers,
+                &mut quads,
+                &mut significant,
+                0,
+                0,
+                1,
+                1,
+                1,
+                0x0055,
+                0,
+                5,
+                1,
+                true
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+        assert_eq!(significant, 1);
+        assert!(quads.is_empty());
+        assert_eq!(readers.mel, original_mel);
+        assert_eq!(readers.vlc, original_vlc);
+        assert_eq!((readers.work_units, readers.mel_events), (0, 0));
+        significant = u16::MAX;
+        assert_eq!(
+            append_ht_metadata_quad(
+                &mut readers,
+                &mut quads,
+                &mut significant,
+                0,
+                0,
+                1,
+                1,
+                1,
+                0x0014,
+                0,
+                1,
+                1,
+                true
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(significant, u16::MAX);
+        assert!(quads.is_empty());
+        assert_eq!(readers.mel, original_mel);
+        assert_eq!(readers.vlc, original_vlc);
+        assert_eq!(readers.work_units, 0);
+        readers.work_units = u64::MAX;
+        significant = 0;
+        assert_eq!(
+            append_ht_metadata_quad(
+                &mut readers,
+                &mut quads,
+                &mut significant,
+                0,
+                0,
+                2,
+                2,
+                1,
+                0x00f7,
+                0,
+                15,
+                1,
+                true
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(
+            (significant, quads.len(), readers.work_units),
+            (4, 1, u64::MAX)
+        );
+        assert_eq!(
+            quads[0],
+            HtQuadMetadata {
+                x: 0,
+                y: 0,
+                context: 0,
+                initial_row: true,
+                significance: 15,
+                embedded_magnitude: 0,
+                embedded_bit_mask: 0,
+                u_offset: false,
+                u_base: 1,
+                codeword_bits: 7,
+            }
+        );
+        assert_eq!(readers.mel, original_mel);
+        assert_eq!(readers.vlc, original_vlc);
+    }
+
+    #[test]
+    fn ht_metadata_public_header_order_and_empty_private_streams_are_typed() {
+        let limits = ResourceLimits::default();
+        let too_small = limits.with_maximum_code_block_bytes(2).unwrap();
+        assert_eq!(
+            decode_ht_cleanup_metadata(&[0xff, 3, 0], 0, 0, 0, &too_small),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: 2,
+                actual: 3
+            })
+        );
+        for (width, height, maximum) in [
+            (0, 1, 1),
+            (1, 0, 1),
+            (65535, 65535, 1),
+            (1, 1, 0),
+            (1, 1, 76),
+            (1, 1, 255),
+        ] {
+            assert_eq!(
+                decode_ht_cleanup_metadata(&[0xff, 3, 0], width, height, maximum, &limits),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock
+                })
+            );
+        }
+        let segments = parse_ht_block_segments(&[0xff, 3, 0], None, &limits).unwrap();
+        let mut cleanup = segments.cleanup();
+        cleanup.mel.bytes = &[];
+        assert_eq!(
+            decode_ht_cleanup_segment_metadata(cleanup, 1, 1, 1, &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+        cleanup = segments.cleanup();
+        cleanup.vlc.bytes = &[0];
+        assert_eq!(
+            decode_ht_cleanup_segment_metadata(cleanup, 1, 1, 1, &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+    }
+
+    #[test]
     fn decodes_bounded_ht_cleanup_quad_metadata() {
         let limits = ResourceLimits::default();
         let metadata = decode_ht_cleanup_metadata(&[0x00, 0x63, 0x00], 1, 1, 1, &limits).unwrap();
@@ -7682,7 +8527,12 @@ mod tests {
     fn ht_cleanup_fusion_does_not_cross_bytes() {
         let limits = ResourceLimits::default();
         let segments = parse_ht_block_segments(&[0x00, 0x00, 0x04, 0x00], None, &limits).unwrap();
-        let mut readers = HtCleanupReaders::new(segments.cleanup(), &limits).unwrap();
+        let mut readers = ht_cleanup_readers_from_inputs(
+            segments.cleanup().mel().bytes(),
+            segments.cleanup().vlc().bytes(),
+            limits.maximum_work_units(),
+        )
+        .unwrap();
         for _ in 0..4 {
             readers.read_vlc_bit().unwrap();
         }
@@ -7704,7 +8554,12 @@ mod tests {
     fn ht_cleanup_fusion_excludes_ff() {
         let limits = ResourceLimits::default();
         let segments = parse_ht_block_segments(&[0x00, 0xff, 0x04, 0x00], None, &limits).unwrap();
-        let mut readers = HtCleanupReaders::new(segments.cleanup(), &limits).unwrap();
+        let mut readers = ht_cleanup_readers_from_inputs(
+            segments.cleanup().mel().bytes(),
+            segments.cleanup().vlc().bytes(),
+            limits.maximum_work_units(),
+        )
+        .unwrap();
         for _ in 0..4 {
             readers.read_vlc_bit().unwrap();
         }

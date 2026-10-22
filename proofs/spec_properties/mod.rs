@@ -32,6 +32,65 @@ use crate::specs::{
 
 verus! {
 
+#[verifier::spinoff_prover]
+pub proof fn ht_metadata_invalid_header_precedes_stream_construction(
+    cleanup: crate::specs::HtCleanupSegmentState, width: u16, height: u16, maximum_u: u8, maximum_work: u64,
+)
+    requires width == 0 || height == 0 || maximum_u == 0 || maximum_u > 75,
+    ensures crate::specs::ht_cleanup_segment_metadata(cleanup, width, height, maximum_u, maximum_work)
+        == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_public_metadata_byte_limit_precedes_invalid_dimensions(
+    cleanup: Seq<u8>, width: u16, height: u16, maximum_u: u8, maximum_bytes: u64, maximum_work: u64,
+)
+    requires 2 <= cleanup.len() <= 65534, cleanup.len() > maximum_bytes,
+    ensures crate::specs::ht_decode_cleanup_metadata(cleanup, width, height, maximum_u, maximum_bytes, maximum_work)
+        == Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::CodeBlockBytes, limit: maximum_bytes, actual: cleanup.len() as u64,
+        }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_metadata_zero_samples_preserve_counter(
+    significant: u16, x: u16, y: u16, width: u16, height: u16, sample: u8,
+)
+    requires sample <= 4, x <= 65534, y <= 65534,
+    ensures crate::specs::ht_metadata_samples(significant, 0, x, y, width, height, sample) == (Ok(()), significant),
+    decreases 4 - sample,
+{
+    crate::proofs::production_impl::production_ht_metadata_samples_unfold(significant, 0, x, y, width, height, sample);
+    if sample < 4 {
+        assert(0u8 & (1u8 << sample) == 0) by(bit_vector) requires sample < 4;
+        ht_metadata_zero_samples_preserve_counter(significant, x, y, width, height, (sample + 1) as u8);
+    }
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_metadata_quad_tick_overflow_preserves_the_store(
+    readers: crate::specs::HtCleanupReaderState, quads: Seq<crate::tier1::HtQuadMetadata>,
+    significant: u16, input: crate::specs::HtMetadataQuadInput,
+)
+    requires input.index < 32768, input.row < 32768, input.significance == 0,
+        input.u_value <= input.maximum_u,
+        crate::specs::ht_quad_origin_valid(input.index as nat * 2, input.row as nat * 2, input.width as nat, input.height as nat),
+        readers.work_units == u64::MAX,
+    ensures crate::specs::ht_metadata_emit(readers, quads, significant, input).0
+            == Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+        crate::specs::ht_metadata_emit(readers, quads, significant, input).1 == readers,
+        crate::specs::ht_metadata_emit(readers, quads, significant, input).2.len() == quads.len() + 1,
+        crate::specs::ht_metadata_emit(readers, quads, significant, input).3 == significant,
+{
+    let x = (input.index * 2) as u16;
+    let y = (input.row * 2) as u16;
+    assert(x as nat == input.index as nat * 2);
+    assert(y as nat == input.row as nat * 2);
+    ht_metadata_zero_samples_preserve_counter(significant, x, y, input.width, input.height, 0);
+}
+
 pub proof fn ht_partition_budget_failure_precedes_any_scup_validation(
     cleanup: Seq<u8>, refinement: Option<Seq<u8>>, maximum: u64,
 )
