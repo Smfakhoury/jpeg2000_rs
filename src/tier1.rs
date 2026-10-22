@@ -4956,7 +4956,6 @@ impl Clone for LegacySegmentState {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct Tier1CodeBlockDecoder {
     plane: CodeBlockPlane,
@@ -4981,6 +4980,39 @@ pub struct Tier1CodeBlockDecoder {
     ht_sets_seen: u16,
     allow_multiple_ht_sets: bool,
     ht_magnitude_bound: u8,
+}
+
+impl Clone for Tier1CodeBlockDecoder {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures tier1_decoder_state(&result) == tier1_decoder_state(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            plane: self.plane.clone(),
+            orientation: self.orientation,
+            style: self.style,
+            maximum_passes: self.maximum_passes,
+            next_pass: self.next_pass,
+            bitplane: self.bitplane,
+            zero_bitplanes: self.zero_bitplanes,
+            bitplane_state: self.bitplane_state.clone(),
+            mq_context_state: self.mq_context_state,
+            reset_contexts_before_mq: self.reset_contexts_before_mq,
+            decoded_segments: self.decoded_segments,
+            decoded_bytes: self.decoded_bytes,
+            legacy_segment: self.legacy_segment.clone(),
+            legacy_decode_work: self.legacy_decode_work,
+            ht_cleanup_plane: self.ht_cleanup_plane.clone(),
+            ht_refinement_data: self.ht_refinement_data.clone(),
+            ht_refinement_passes: self.ht_refinement_passes,
+            ht_decoded_bitplanes: self.ht_decoded_bitplanes,
+            ht_current_set_has_cleanup: self.ht_current_set_has_cleanup,
+            ht_sets_seen: self.ht_sets_seen,
+            allow_multiple_ht_sets: self.allow_multiple_ht_sets,
+            ht_magnitude_bound: self.ht_magnitude_bound,
+        }
+    }
 }
 
 #[cfg(verus_keep_ghost)]
@@ -5322,6 +5354,12 @@ impl Tier1CodeBlockDecoder {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (passes == 0 || crate::specs::ht_group_route(tier1_decoder_state(old(self)))) ==>
+            (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_staged_group(
+                tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
+                crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
     pub fn decode_segment(
         &mut self,
         input: &[u8],
@@ -5335,34 +5373,72 @@ impl Tier1CodeBlockDecoder {
             || (matches!(self.style.block_coding, Tier1BlockCoding::Mixed)
                 && self.ht_cleanup_plane.is_some())
         {
-            if input.is_empty() {
-                return Err(invalid_code_block());
-            }
-            let grouping = HtPassGroup::from_packet_passes(passes)?;
-            if grouping.refinement_passes != 0 {
-                return Err(invalid_code_block());
-            }
-            let mut staged = self.clone();
-            let mut placeholder_passes = grouping.placeholder_passes;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(decreases placeholder_passes,)
-            )]
-            while placeholder_passes > 0 {
-                staged.skip_high_throughput_segment(1, limits)?;
-                staged.skip_high_throughput_segment(2, limits)?;
-                placeholder_passes = placeholder_passes
-                    .checked_sub(3)
-                    .ok_or_else(arithmetic_overflow)?;
-            }
-            let decoded = staged.decode_high_throughput_segments(input, 1, None, 0, limits)?;
-            *self = staged;
-            return Ok(Tier1SegmentDecode {
-                passes: u32::from(passes),
-                ..decoded
-            });
+            return self.decode_ht_staged_group(input, passes, limits);
         }
         self.decode_legacy_segment(input, u32::from(passes), limits)
+    }
+
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_placeholder_group_run(
+            tier1_decoder_state(old(self)), placeholder_passes as nat, crate::limits::resource_code_block_pass_limit(limits)),
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn run_ht_placeholder_groups(
+        &mut self,
+        placeholder_passes: u8,
+        limits: &ResourceLimits,
+    ) -> Result<(), DecodeError> {
+        let mut remaining = placeholder_passes;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_placeholder_group_run); }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant remaining <= placeholder_passes,
+                crate::specs::ht_placeholder_group_run(tier1_decoder_state(old(self)), placeholder_passes as nat,
+                    crate::limits::resource_code_block_pass_limit(limits))
+                    == crate::specs::ht_placeholder_group_run(tier1_decoder_state(self), remaining as nat,
+                        crate::limits::resource_code_block_pass_limit(limits)),
+            decreases remaining,
+        ))]
+        while remaining > 0 {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::ht_placeholder_group_run); }
+            self.skip_high_throughput_segment(1, limits)?;
+            self.skip_high_throughput_segment(2, limits)?;
+            remaining = remaining.checked_sub(3).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_placeholder_group_run); }
+        Ok(())
+    }
+
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_staged_group(
+            tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
+            crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+    ))]
+    fn decode_ht_staged_group(
+        &mut self,
+        input: &[u8],
+        passes: u8,
+        limits: &ResourceLimits,
+    ) -> Result<Tier1SegmentDecode, DecodeError> {
+        if passes == 0 || input.is_empty() {
+            return Err(invalid_code_block());
+        }
+        let grouping = ht_pass_group_from_packet(passes)?;
+        if grouping.refinement_passes != 0 {
+            return Err(invalid_code_block());
+        }
+        let mut staged = self.clone();
+        staged.run_ht_placeholder_groups(grouping.placeholder_passes, limits)?;
+        let decoded = staged.decode_high_throughput_segments(input, 1, None, 0, limits)?;
+        *self = staged;
+        Ok(Tier1SegmentDecode {
+            passes: u32::from(passes),
+            ..decoded
+        })
     }
 
     fn decode_legacy_segment(
@@ -10258,6 +10334,218 @@ mod tests {
                 decoder.ht_sets_seen
             ),
             (10, 8, 8, 3)
+        );
+    }
+
+    #[test]
+    fn ht_whole_decoder_clone_preserves_all_raw_malformed_fields_and_independent_storage() {
+        let limits = ResourceLimits::default();
+        let mut mq = MqDecoder::new(&[0xff, 0x90], &limits).unwrap();
+        for context in 0..19 {
+            mq.set_context(context, (context * 2) as u8, context % 2 == 0)
+                .unwrap();
+        }
+        for value in 0_u16..1600 {
+            let mut decoder = cleanup_caller_decoder();
+            decoder.plane = CodeBlockPlane {
+                width: if value % 2 == 0 { 0 } else { u16::MAX },
+                height: value,
+                coefficients: vec![
+                    raw_refinement_coefficient(
+                        u64::from(value),
+                        [u64::MAX; 5],
+                        value % 2 == 0,
+                        true,
+                        value % 3 == 0
+                    );
+                    usize::from(value % 4)
+                ],
+            };
+            decoder.bitplane_state = Some(Tier1BitplaneState {
+                width: value,
+                height: u16::MAX,
+                bitplane: u16::MAX,
+                significant_before: vec![true; usize::from(value % 5)],
+                significance_visited: vec![false; usize::from(value % 3)],
+                significance_propagation_complete: value & 1 != 0,
+                magnitude_refinement_complete: value & 2 != 0,
+                cleanup_complete: value & 4 != 0,
+            });
+            decoder.mq_context_state = Some(mq.context_state());
+            if value % 2 == 0 {
+                let legacy = decoder.legacy_segment.as_mut().unwrap();
+                legacy.bitplane_state = decoder.bitplane_state.clone();
+                legacy.mq_context_state = decoder.mq_context_state;
+                legacy.input = vec![value as u8; usize::from(value % 7)];
+                legacy.plane = decoder.plane.clone();
+            } else {
+                decoder.legacy_segment = None;
+            }
+            decoder.ht_cleanup_plane = if value % 3 == 0 {
+                None
+            } else {
+                Some(decoder.plane.clone())
+            };
+            decoder.ht_refinement_data = vec![value as u8; usize::from(value % 9)];
+            decoder.ht_refinement_passes = value as u8;
+            decoder.next_pass = u32::MAX - u32::from(value);
+            decoder.decoded_bytes = u64::MAX - u64::from(value);
+            let original = format!("{decoder:?}");
+            let mut cloned = decoder.clone();
+            assert_eq!(format!("{cloned:?}"), original);
+            assert_eq!(
+                cloned.plane.coefficients.capacity(),
+                decoder.plane.coefficients.clone().capacity()
+            );
+            assert_eq!(
+                cloned.ht_refinement_data.capacity(),
+                decoder.ht_refinement_data.clone().capacity()
+            );
+            cloned.ht_refinement_data.push(7);
+            cloned
+                .bitplane_state
+                .as_mut()
+                .unwrap()
+                .significant_before
+                .push(false);
+            if let Some(legacy) = cloned.legacy_segment.as_mut() {
+                legacy.input.push(9);
+            }
+            if let Some(coefficient) = cloned.plane.coefficients.first_mut() {
+                coefficient.magnitude = 99;
+            }
+            if let Some(plane) = cloned.ht_cleanup_plane.as_mut() {
+                plane.coefficients.push(CoefficientState::default());
+            }
+            assert_eq!(format!("{decoder:?}"), original);
+        }
+    }
+
+    #[test]
+    fn ht_staged_group_complete_native_pass_domain_uses_real_grouping_and_rollback() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        for passes in 0_u8..=u8::MAX {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 55, SubbandOrientation::Ll, style).unwrap();
+            let before = format!("{decoder:?}");
+            let result = decoder.decode_segment(&[0, 0x63, 0], passes, &limits);
+            if passes > 0 && passes <= 164 && (passes - 1) % 3 == 0 {
+                let result = result.unwrap();
+                let groups = u32::from((passes - 1) / 3);
+                let planes = 55 - u16::try_from(groups).unwrap();
+                let expected_magnitude = if planes == 1 {
+                    1
+                } else {
+                    3_u64 << (planes - 2)
+                };
+                assert_eq!((result.passes, result.bytes), (u32::from(passes), 3));
+                assert_eq!(
+                    (
+                        decoder.plane.coefficients()[0].magnitude,
+                        decoder.plane.coefficients()[0].negative
+                    ),
+                    (expected_magnitude, true)
+                );
+                assert_eq!(
+                    (
+                        decoder.next_pass,
+                        decoder.decoded_segments,
+                        decoder.decoded_bytes,
+                        decoder.ht_sets_seen
+                    ),
+                    (u32::from(passes), groups * 2 + 1, 3, 1)
+                );
+            } else {
+                assert_eq!(result, Err(invalid_code_block()));
+                assert_eq!(format!("{decoder:?}"), before);
+            }
+        }
+        for remaining in 1_u8..=8 {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 55, SubbandOrientation::Ll, style).unwrap();
+            let result = decoder.run_ht_placeholder_groups(remaining, &limits);
+            let groups = u32::from(remaining / 3) + u32::from(remaining % 3 != 0);
+            assert_eq!(decoder.next_pass, groups * 3);
+            assert_eq!(decoder.decoded_segments, groups * 2);
+            if remaining % 3 == 0 {
+                assert_eq!(result, Ok(()));
+            } else {
+                assert_eq!(result, Err(arithmetic_overflow()));
+            }
+        }
+    }
+
+    #[test]
+    fn ht_staged_group_every_late_failure_keeps_original_state_not_staged_partial_writes() {
+        let defaults = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        for failure in 0..5 {
+            let mut decoder =
+                Tier1CodeBlockDecoder::new(1, 1, 3, SubbandOrientation::Hh, style).unwrap();
+            decoder.legacy_segment = cleanup_caller_decoder().legacy_segment;
+            decoder.ht_refinement_data = vec![17, 19];
+            decoder.ht_refinement_passes = 2;
+            decoder.ht_cleanup_plane = Some(CodeBlockPlane {
+                width: 0,
+                height: 0,
+                coefficients: vec![],
+            });
+            let (input, limits, expected) = match failure {
+                0 => (
+                    &[0, 0x63, 0][..],
+                    defaults.with_maximum_code_block_passes(1).unwrap(),
+                    DecodeError::LimitExceeded {
+                        resource: Resource::CodeBlockPasses,
+                        limit: 1,
+                        actual: 3,
+                    },
+                ),
+                1 => (
+                    &[0, 0x63, 0][..],
+                    defaults.with_maximum_work_units(4).unwrap(),
+                    DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: 4,
+                        actual: 5,
+                    },
+                ),
+                2 => (&[2, 0][..], defaults, invalid_code_block()),
+                3 => {
+                    decoder.decoded_segments = u32::MAX;
+                    (&[0, 0x63, 0][..], defaults, arithmetic_overflow())
+                }
+                _ => {
+                    decoder.ht_sets_seen = u16::MAX;
+                    decoder.allow_multiple_ht_sets = true;
+                    (&[0, 0x63, 0][..], defaults, arithmetic_overflow())
+                }
+            };
+            let before = format!("{decoder:?}");
+            assert_eq!(decoder.decode_segment(input, 4, &limits), Err(expected));
+            assert_eq!(format!("{decoder:?}"), before);
+        }
+        let mut mixed = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            3,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle {
+                block_coding: Tier1BlockCoding::Mixed,
+                ..Tier1CodingStyle::default()
+            },
+        )
+        .unwrap();
+        mixed.ht_cleanup_plane = Some(CodeBlockPlane {
+            width: 0,
+            height: 0,
+            coefficients: vec![],
+        });
+        mixed.ht_current_set_has_cleanup = false;
+        assert!(mixed.decode_segment(&[0, 0x63, 0], 4, &defaults).is_ok());
+        assert_eq!(
+            (mixed.next_pass, mixed.plane.coefficients()[0].magnitude),
+            (4, 3)
         );
     }
 

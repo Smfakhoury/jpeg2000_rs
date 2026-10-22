@@ -4632,6 +4632,66 @@ pub open spec fn ht_skip_segment(state: Tier1DecoderState, passes: u8, maximum_p
     }
 }
 
+pub type HtPlaceholderRunResult = (Result<(), crate::DecodeError>, Tier1DecoderState);
+
+#[verifier::opaque]
+pub open spec fn ht_placeholder_group_run(
+    state: Tier1DecoderState, remaining: nat, maximum_passes: u32,
+) -> HtPlaceholderRunResult
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(()), state) } else {
+        let cleanup = ht_skip_segment(state, 1, maximum_passes);
+        match cleanup.0 {
+            Err(error) => (Err(error), cleanup.1),
+            Ok(_) => {
+                let refinement = ht_skip_segment(cleanup.1, 2, maximum_passes);
+                match refinement.0 {
+                    Err(error) => (Err(error), refinement.1),
+                    Ok(_) => if remaining < 3 {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), refinement.1)
+                    } else { ht_placeholder_group_run(refinement.1, (remaining - 3) as nat, maximum_passes) },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn ht_group_route(state: Tier1DecoderState) -> bool {
+    matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::HighThroughput)
+        || (matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::Mixed)
+            && state.ht_cleanup_plane.is_some())
+}
+
+pub open spec fn ht_decode_staged_group(
+    state: Tier1DecoderState, input: Seq<u8>, passes: u8,
+    maximum_passes: u32, maximum_bytes: u64, maximum_work: u64,
+) -> HtDecoderResult {
+    if passes == 0 || input.len() == 0 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        match ht_packet_pass_group(passes) {
+            Err(error) => (Err(error), state),
+            Ok(group) => if group.refinement_passes != 0 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+            } else {
+                let skipped = ht_placeholder_group_run(state, group.placeholder_passes as nat, maximum_passes);
+                match skipped.0 {
+                    Err(error) => (Err(error), state),
+                    Ok(()) => {
+                        let decoded = ht_decode_segments(skipped.1, input, 1, None, 0,
+                            maximum_passes, maximum_bytes, maximum_work);
+                        match decoded.0 {
+                            Err(error) => (Err(error), state),
+                            Ok(result) => (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, ..result }), decoded.1),
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
 pub type HtPlaneResult = (Result<(), crate::DecodeError>, HtPlaneState);
 
 pub open spec fn ht_plane_sample_store(

@@ -33,6 +33,34 @@ use crate::specs::{
 verus! {
 
 #[verifier::spinoff_prover]
+pub proof fn ht_staged_group_every_failure_preserves_complete_original_decoder(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_success_reports_original_packet_pass_count(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true, Ok(result) => result.passes == passes as u32,
+    },
+{
+}
+
+pub proof fn ht_group_route_uses_retained_option_not_current_cleanup_flag(state: crate::specs::Tier1DecoderState)
+    requires matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::Mixed),
+        state.ht_cleanup_plane.is_some(),
+    ensures crate::specs::ht_group_route(state),
+{
+}
+
+#[verifier::spinoff_prover]
 pub proof fn ht_continuation_first_accounting_overflow_preserves_already_prepared_state(
     state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
     statistics: crate::tier1::Tier1PassStatistics, replayed: bool,

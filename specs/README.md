@@ -1,5 +1,23 @@
 # Specification audit guide
 
+## Frozen whole-decoder clone and actual selected HT group profile
+
+The next boundary is the actual staged HT branch of `decode_segment`, selected
+by HighThroughput coding or Mixed coding with a retained cleanup-plane option.
+The selector is not normalized to the current-cleanup flag. Its whole-decoder
+raw clone preserves every field, vector, malformed shape and retained state
+through the existing sole F5L logical bitplane/MQ/legacy projections and three
+actual data clone contracts. Original field/vector allocation order is retained.
+
+The real packet-pass grouping, repeated skip-one/skip-two placeholder loop,
+substantive byte entry and final clone/commit are modeled directly. Any failure
+after staging preserves the entire original decoder, even if the staged copy
+has partial counter/reset effects. Success commits the entire actual staged
+state and reports the original packet pass count. No supplied clone/replay/
+legacy outcome, normalized old state, valid stream/shape or sufficient budget
+premise is introduced. The legacy dispatcher else remains untouched and outside
+this selected-branch theorem until actual legacy composition is available.
+
 ## Frozen retained-refinement and placeholder orchestration profile
 
 The next native boundary is the complete actual
