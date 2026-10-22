@@ -1664,19 +1664,42 @@ pub struct Tier1PassPlan {
     pub expect_segmentation_symbol: bool,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_tier1_coding_style_byte(value),
+))]
+pub(crate) fn tier1_coding_style_from_code_block_style(
+    value: u8,
+) -> Result<Tier1CodingStyle, DecodeError> {
+    let block_coding = tier1_block_coding_from_code_block_style(value)?;
+    Ok(Tier1CodingStyle {
+        block_coding,
+        force_high_throughput: matches!(block_coding, Tier1BlockCoding::HighThroughput),
+        selective_arithmetic_coding_bypass: value & 0x01 != 0,
+        reset_contexts: value & 0x02 != 0,
+        terminate_all_passes: value & 0x04 != 0,
+        vertical_causal_context: value & 0x08 != 0,
+        predictable_termination: value & 0x10 != 0,
+        segmentation_symbols: value & 0x20 != 0,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_tier1_block_coding_byte(value),
+))]
+fn tier1_block_coding_from_code_block_style(value: u8) -> Result<Tier1BlockCoding, DecodeError> {
+    match value >> 6 {
+        0 => Ok(Tier1BlockCoding::Legacy),
+        1 if value & 0x37 == 0 => Ok(Tier1BlockCoding::HighThroughput),
+        1 | 2 => Err(invalid_code_block()),
+        3 if value & 0x05 == 0 => Ok(Tier1BlockCoding::Mixed),
+        3 => Err(invalid_code_block()),
+        _ => Err(invalid_code_block()),
+    }
+}
+
 impl Tier1CodingStyle {
     pub fn from_code_block_style(value: u8) -> Result<Self, DecodeError> {
-        let block_coding = Tier1BlockCoding::from_code_block_style(value)?;
-        Ok(Self {
-            block_coding,
-            force_high_throughput: matches!(block_coding, Tier1BlockCoding::HighThroughput),
-            selective_arithmetic_coding_bypass: value & 0x01 != 0,
-            reset_contexts: value & 0x02 != 0,
-            terminate_all_passes: value & 0x04 != 0,
-            vertical_causal_context: value & 0x08 != 0,
-            predictable_termination: value & 0x10 != 0,
-            segmentation_symbols: value & 0x20 != 0,
-        })
+        tier1_coding_style_from_code_block_style(value)
     }
 
     pub fn set_force_high_throughput(&mut self, required: bool) {
@@ -1744,14 +1767,7 @@ impl Tier1CodingStyle {
 
 impl Tier1BlockCoding {
     pub fn from_code_block_style(value: u8) -> Result<Self, DecodeError> {
-        match value >> 6 {
-            0 => Ok(Self::Legacy),
-            1 if value & 0x37 == 0 => Ok(Self::HighThroughput),
-            1 | 2 => Err(invalid_code_block()),
-            3 if value & 0x05 == 0 => Ok(Self::Mixed),
-            3 => Err(invalid_code_block()),
-            _ => Err(invalid_code_block()),
-        }
+        tier1_block_coding_from_code_block_style(value)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -8168,6 +8184,43 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_style_byte_parser_matches_all_native_bytes_and_flags() {
+        let mut admitted = 0;
+        for value in 0..=u8::MAX {
+            let family = value / 64;
+            let invalid = family == 2
+                || (family == 1 && (value % 8 != 0 || (value / 16) % 4 != 0))
+                || (family == 3 && (value % 2 != 0 || (value / 4) % 2 != 0));
+            let expected = if invalid {
+                Err(invalid_code_block())
+            } else {
+                admitted += 1;
+                Ok(Tier1CodingStyle {
+                    block_coding: match family {
+                        0 => Tier1BlockCoding::Legacy,
+                        1 => Tier1BlockCoding::HighThroughput,
+                        _ => Tier1BlockCoding::Mixed,
+                    },
+                    force_high_throughput: family == 1,
+                    selective_arithmetic_coding_bypass: value % 2 != 0,
+                    reset_contexts: (value / 2) % 2 != 0,
+                    terminate_all_passes: (value / 4) % 2 != 0,
+                    vertical_causal_context: (value / 8) % 2 != 0,
+                    predictable_termination: (value / 16) % 2 != 0,
+                    segmentation_symbols: (value / 32) % 2 != 0,
+                })
+            };
+            assert_eq!(Tier1CodingStyle::from_code_block_style(value), expected);
+            assert_eq!(tier1_coding_style_from_code_block_style(value), expected);
+            assert_eq!(
+                Tier1BlockCoding::from_code_block_style(value),
+                expected.map(|style| style.block_coding),
+            );
+        }
+        assert_eq!(admitted, 82);
+    }
 
     fn legacy_raw_pair_decoder(width: u16) -> Tier1CodeBlockDecoder {
         let mut decoder = Tier1CodeBlockDecoder::new(
