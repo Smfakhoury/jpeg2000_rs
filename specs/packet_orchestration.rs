@@ -1,4 +1,7 @@
-use super::{Part1CodeBlockContribution, Tier1DecoderState, ht_reader_error, part1_code_block_body_transaction};
+use super::{
+    Part1CodeBlockContribution, Tier1DecoderState, ht_reader_error,
+    part1_code_block_body_transaction,
+};
 use vstd::prelude::*;
 
 verus! {

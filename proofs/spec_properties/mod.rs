@@ -2263,4 +2263,66 @@ pub proof fn mixed_tier1_dispatch_retains_actual_native_route_order(
 {
 }
 
+pub proof fn packet_body_finished_preflight_preserves_raw_cursor(
+    state: crate::specs::Part1PacketBodyPreflight,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+)
+    ensures state.index >= contributions.len() ==>
+        crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset) == (Ok(()), state),
+{
+    reveal(crate::specs::part1_packet_body_preflight);
+}
+
+pub proof fn packet_body_preflight_truncation_retains_advanced_end_before_index(
+    state: crate::specs::Part1PacketBodyPreflight,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+)
+    ensures if state.index < contributions.len() {
+        match contributions[state.index as int] {
+            None => true,
+            Some(contribution) => contribution.data_length as nat <= usize::MAX
+                && state.end as nat + contribution.data_length as nat <= usize::MAX
+                && state.end as nat + contribution.data_length as nat > data.len()
+                ==> crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset)
+                    == (Err(crate::DecodeError::MalformedInput {
+                        offset: error_offset as u64, kind: crate::MalformedKind::Truncated,
+                    }), crate::specs::Part1PacketBodyPreflight {
+                        end: (state.end + contribution.data_length) as usize, ..state
+                    }),
+        }
+    } else { true },
+{
+    reveal(crate::specs::part1_packet_body_preflight);
+}
+
+pub proof fn packet_body_skipped_execution_preserves_all_decoders_and_counts(
+    state: crate::specs::Part1PacketBodyExecution,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.decoders == state.decoders,
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.segments == state.segments,
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.passes == state.passes,
+    decreases contributions.len() - state.index as nat,
+{
+    reveal(crate::specs::part1_packet_body_execute);
+    if state.index < contributions.len() {
+        let step = match contributions[state.index as int] {
+            None => (Ok(()), state),
+            Some(contribution) => crate::specs::part1_packet_body_execute_slot(
+                state, contribution, data, error_offset, false, pass_limit, byte_limit, input_limit, work_limit),
+        };
+        if step.0.is_ok() && step.1.index != usize::MAX {
+            packet_body_skipped_execution_preserves_all_decoders_and_counts(
+                crate::specs::Part1PacketBodyExecution { index: (step.1.index + 1) as usize, ..step.1 },
+                contributions, data, error_offset, pass_limit, byte_limit, input_limit, work_limit,
+            );
+        }
+    }
+}
+
 }

@@ -26,6 +26,15 @@ contracts. Their descriptor vectors are the caller's real native arrays;
 closing the entire precinct contract must additionally derive them through the
 actual F5L header producer, never assume their correctness or supply an outcome.
 
+This body-loop substage now has unconditional executable relations to
+`packet_orchestration.rs`: `part1_packet_body_preflight` and
+`part1_packet_body_execute`, with complete raw local progress and the entire
+decoder-state sequence. Its descriptor-slice view delegates the sole
+`code_block_contribution_option_view`. A scoped actual mutable decoder borrow
+and explicit nested-vector frame preserve all untouched elements and exact
+late-error coefficient/counter effects. Its properties retain raw finished
+cursors, advanced-end truncation and all skipped-execution decoders/counters.
+
 The progression profile must additionally preserve actual coordinate iteration,
 tile-part/packed-header/packet-length cursors, duplicate suppression, context
 layer writes, resolution selection, earlier packet effects and all late checked
@@ -33,6 +42,30 @@ aggregate/consumption errors. Actual external owner interfaces are prerequisites
 not assumed successful traces. Until these caller joins close, neither this
 frozen contract nor its intermediate stages claim complete precinct/progression
 or F5H completion.
+
+## Native packet reader and raw tag-tree ownership
+
+[header.rs](header.rs) observes all eight packet-reader fields and its actual
+load/read/word/admission effects, including header-cap-before-truncation,
+stuffing checks before advancement and consumed-bit-before-work-limit failure.
+Validated construction rejects an oversized input; actual prefix construction
+does not. Alignment retains stuffing history. No initialized-reader or adequate
+budget condition is a premise of any actual read operation.
+
+[tag_tree.rs](tag_tree.rs) observes every raw level and node. The real public
+decode uses its actual guarded path builder, node loop and reverse traversal;
+the path is not an input to its public theorem. Empty storage, mismatched level
+rectangles, duplicate/overlapping offsets, 64/65-level boundaries and arbitrary
+low/value order remain native cases. Inherited-low stores precede a failing
+read, and arithmetic address errors retain offset zero while path/node errors
+use the actual reader cursor. Constructor limits and faithful raw cloning have
+their own complete relations, without a validated-tree premise.
+
+The packet-state projection preserves all five fields. The sole public Option
+and Result contribution projections retain `None` versus `Some(empty)` and all
+164 descriptor slots. These actual primitive producers are prerequisites for
+the continuing full header/probe/rollback relation, not a supplied header or
+successful decoder outcome.
 
 ## Complete actual mixed native body and segment dispatch
 

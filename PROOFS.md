@@ -321,6 +321,64 @@ header parsing, retained packet associations and complete precinct/packet
 orchestration still require their own complete producer contracts. It is not
 normative endorsement or whole-epic completion.
 
+## Complete native header primitive boundaries
+
+The continuing native header thread supplies complete packet-reader and raw
+TagTree producer relations before closing header parsing. `packet_bit_reader_view`
+observes all eight fields, including both actual caps and stuffing history.
+The real validated constructor and unchecked-prefix constructor remain distinct:
+the latter admits the entire packet storage but checks the header-byte cap at
+each actual load. Reads preserve exact error priority and partial consumption.
+Zero-width words still succeed on otherwise invalid native reader states.
+
+`tag_tree_view` observes every raw level and node without topology, offset,
+monotonicity or normalized-value premises. Actual path construction retains its
+64-level/address guards; node and reverse traversal use the actual reader and
+preserve inherited-low writes on later read failure. Duplicate node addresses,
+empty/malformed levels and `low > value` remain admitted by the full native
+Result models. The actual constructor preserves ordered level/node admission.
+A faithful raw Clone supplies the real higher JPIP rollback copy, not a validated
+tree replacement. Reader/tree/packet-state constructor APIs delegate to one actual free
+producer body under the pinned static-impl-contract frontend limitation.
+
+Packet-state owner/getter contracts preserve all five native fields. One public
+Option/Result projection maps actual contribution storage while keeping `None`
+and `Some(empty)` distinct. Independent tests cover all two-byte inputs and
+complete final reader fields, raw threshold/budget states, duplicate 64/65-level
+paths, address-error priority, constructor rectangle/cap boundaries and every
+native Lblock byte. These are complete actual primitive boundaries, not a claim
+that the still-continuing full header/probe/rollback production is complete.
+
+### Actual precinct body preflight and coefficient execution
+
+The actual `decode_precinct_packet` body-range and coefficient-execution loops
+now run through `preflight_packet_body_ranges` and
+`execute_packet_body_contributions`. They are moved production loops, not
+duplicate executors. Both have unconditional complete Result/state relations
+over the caller's actual optional descriptor slice, raw progress, body bytes,
+decoder slice, execution flag, error offset and real owner caps.
+
+`part1_packet_body_preflight` retains the checked end before a truncation error
+and does not advance its index on that error. `part1_packet_body_execute` includes
+every decoder and all local counters. The actual per-block mixed transaction
+commits before segment accounting, which precedes pass accounting and offset/
+index advancement. Late failures preserve exactly those earlier effects.
+Skipped execution still validates and consumes byte ranges; it need not have
+matching decoder storage and preserves every decoder and decoded counter.
+
+The logical descriptor sequence delegates F5L's sole optional contribution view.
+The actual mutable slice borrow is closed before proving the complete nested
+decoder-vector frame. There are no header-validity, shape, success, adequate
+budget, supplied decoder outcome or supplied expected trace premises.
+Independent literal-byte tests exercise skipped malformed storage, full native
+cursor domains, truncation/address priority, prior coefficients and both late
+counter-overflow positions.
+
+These close the actual body-loop substage only. The enclosing precinct caller
+still must derive the descriptors and reader/tree/state effects from the real
+header producer. No complete header, precinct, progression or F5H theorem is
+inferred from this intermediate result.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

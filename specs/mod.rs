@@ -9,6 +9,10 @@ mod packet;
 pub use packet::*;
 mod packet_orchestration;
 pub use packet_orchestration::*;
+mod header;
+pub use header::*;
+mod tag_tree;
+pub use tag_tree::*;
 
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
