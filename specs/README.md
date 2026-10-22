@@ -43,6 +43,14 @@ new allocation or execution-order changes and is called by the real collection.
 This establishes its actual result from full raw component/index values,
 not a supplied validation outcome.
 
+The actual decorrelation work/scratch admission refines a complete result
+and work-counter model. Checked product/total overflow precedes charging;
+counter overflow retains the old value, while work-limit and subsequent
+scratch arithmetic/byte-limit errors retain the actual charged value. Original
+usize scratch arithmetic and evaluation order remain. Independent wide
+references and exact limit-minus-one/limit/limit-plus-one cases check these
+real thresholds; no adequate-budget assumption replaces admission.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

@@ -2372,6 +2372,46 @@ fn validate_mct_components_layout(
     Ok(sample_count)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_decorrelation_admission(
+        sample_count, rows, columns, *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn admit_mct_decorrelation(
+    sample_count: usize,
+    rows: usize,
+    columns: usize,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    let sample_rows = (sample_count as u64)
+        .checked_mul(rows as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let products = sample_rows
+        .checked_mul(columns as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let repeated_sample_rows = (sample_count as u64)
+        .checked_mul(rows as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let operations = products
+        .checked_add(repeated_sample_rows)
+        .ok_or_else(arithmetic_overflow)?;
+    charge_mct_work(work, operations, limits)?;
+    let values = rows.checked_add(columns).ok_or_else(arithmetic_overflow)?;
+    let scratch_bytes = values
+        .checked_mul(core::mem::size_of::<i64>())
+        .ok_or_else(arithmetic_overflow)? as u64;
+    if scratch_bytes > limits.maximum_decoded_bytes() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: limits.maximum_decoded_bytes(),
+            actual: scratch_bytes,
+        });
+    }
+    Ok(())
+}
+
 fn apply_mct_decorrelation(
     components: &mut [TransformComponentMut<'_>],
     collection: &MctCollection,
@@ -2441,32 +2481,7 @@ fn apply_mct_decorrelation(
         &destination_indexes,
         collection.reversible(),
     )?;
-    let operations = (sample_count as u64)
-        .checked_mul(rows as u64)
-        .and_then(|value| value.checked_mul(columns as u64))
-        .and_then(|value| value.checked_add((sample_count as u64).checked_mul(rows as u64)?))
-        .ok_or_else(arithmetic_overflow)?;
-    *work = work
-        .checked_add(operations)
-        .ok_or_else(arithmetic_overflow)?;
-    if *work > limits.maximum_work_units() {
-        return Err(DecodeError::limit(
-            Resource::WorkUnits,
-            limits.maximum_work_units(),
-            *work,
-        ));
-    }
-    let scratch_bytes = rows
-        .checked_add(columns)
-        .and_then(|value| value.checked_mul(core::mem::size_of::<i64>()))
-        .ok_or_else(arithmetic_overflow)? as u64;
-    if scratch_bytes > limits.maximum_decoded_bytes() {
-        return Err(DecodeError::limit(
-            Resource::DecodedBytes,
-            limits.maximum_decoded_bytes(),
-            scratch_bytes,
-        ));
-    }
+    admit_mct_decorrelation(sample_count, rows, columns, limits, work)?;
     let mut source_fraction_bits = Vec::with_capacity(source_indexes.len());
     let mut index_index = 0_usize;
     #[cfg_attr(
@@ -4508,6 +4523,121 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_decorrelation_admission_keeps_every_overflow_limit_and_counter_frontier() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for maximum_work in [1, 37, 1000] {
+            for maximum_bytes in [1, 56, 1000] {
+                let limits = ResourceLimits::default()
+                    .with_maximum_work_units(maximum_work)
+                    .unwrap()
+                    .with_maximum_decoded_bytes(maximum_bytes)
+                    .unwrap();
+                for samples in [0, 1, 2, 3, 17, usize::MAX] {
+                    for rows in [0, 1, 2, 3, 17, usize::MAX] {
+                        for columns in [0, 1, 2, 3, 17, usize::MAX] {
+                            for before in [0, 1, 7, u64::MAX - 1, u64::MAX] {
+                                let sample_rows = samples as u128 * rows as u128;
+                                let operations = if sample_rows > u128::from(u64::MAX) {
+                                    None
+                                } else {
+                                    let products = sample_rows * columns as u128;
+                                    if products > u128::from(u64::MAX)
+                                        || products + sample_rows > u128::from(u64::MAX)
+                                    {
+                                        None
+                                    } else {
+                                        Some(products + sample_rows)
+                                    }
+                                };
+                                let expected = match operations {
+                                    None => (Err(overflow), before),
+                                    Some(operations)
+                                        if operations + u128::from(before)
+                                            > u128::from(u64::MAX) =>
+                                    {
+                                        (Err(overflow), before)
+                                    }
+                                    Some(operations) => {
+                                        let charged =
+                                            u64::try_from(operations + u128::from(before)).unwrap();
+                                        if charged > maximum_work {
+                                            (
+                                                Err(DecodeError::LimitExceeded {
+                                                    resource: Resource::WorkUnits,
+                                                    limit: maximum_work,
+                                                    actual: charged,
+                                                }),
+                                                charged,
+                                            )
+                                        } else {
+                                            let values = rows as u128 + columns as u128;
+                                            let bytes = values * 8;
+                                            if values > usize::MAX as u128
+                                                || bytes > usize::MAX as u128
+                                            {
+                                                (Err(overflow), charged)
+                                            } else if bytes > u128::from(maximum_bytes) {
+                                                (
+                                                    Err(DecodeError::LimitExceeded {
+                                                        resource: Resource::DecodedBytes,
+                                                        limit: maximum_bytes,
+                                                        actual: u64::try_from(bytes).unwrap(),
+                                                    }),
+                                                    charged,
+                                                )
+                                            } else {
+                                                (Ok(()), charged)
+                                            }
+                                        }
+                                    }
+                                };
+                                let mut work = before;
+                                let result = admit_mct_decorrelation(
+                                    samples, rows, columns, &limits, &mut work,
+                                );
+                                assert_eq!((result, work), expected);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for maximum_work in [36, 37, 38] {
+            for maximum_bytes in [55, 56, 57] {
+                let limits = ResourceLimits::default()
+                    .with_maximum_work_units(maximum_work)
+                    .unwrap()
+                    .with_maximum_decoded_bytes(maximum_bytes)
+                    .unwrap();
+                let mut work = 7;
+                let expected = if maximum_work < 37 {
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: maximum_work,
+                        actual: 37,
+                    })
+                } else if maximum_bytes < 56 {
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::DecodedBytes,
+                        limit: maximum_bytes,
+                        actual: 56,
+                    })
+                } else {
+                    Ok(())
+                };
+                assert_eq!(
+                    admit_mct_decorrelation(2, 3, 4, &limits, &mut work),
+                    expected
+                );
+                assert_eq!(work, 37);
+            }
+        }
+    }
 
     #[test]
     fn native_mct_layout_matches_raw_geometry_precision_and_index_reference() {

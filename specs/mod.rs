@@ -16,6 +16,30 @@ pub type Part2MctCollection = (
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
 
+pub open spec fn part2_mct_decorrelation_admission(
+    samples: usize, rows: usize, columns: usize, before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, u64) {
+    let sample_rows = (samples as u64) as nat * (rows as u64) as nat;
+    let products = sample_rows * (columns as u64) as nat;
+    if sample_rows > u64::MAX || products > u64::MAX || products + sample_rows > u64::MAX {
+        (Err(part1_transform_error(true)), before)
+    } else {
+        let charged = part2_mct_charge_work(before, (products + sample_rows) as u64, maximum_work);
+        match charged.0 {
+            Err(error) => (Err(error), charged.1),
+            Ok(()) => if rows as nat + columns as nat > usize::MAX
+                || (rows as nat + columns as nat) * 8 > usize::MAX {
+                (Err(part1_transform_error(true)), charged.1)
+            } else {
+                let bytes = ((rows as nat + columns as nat) * 8) as u64;
+                (if bytes > maximum_bytes { Err(crate::DecodeError::LimitExceeded {
+                    resource: crate::Resource::DecodedBytes, limit: maximum_bytes, actual: bytes,
+                }) } else { Ok(()) }, charged.1)
+            },
+        }
+    }
+}
+
 pub open spec fn part2_mct_layout_index_valid(
     components: Seq<Part2MctComponent>, first: usize, index: usize,
 ) -> bool {
