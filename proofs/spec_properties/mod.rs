@@ -44,6 +44,7 @@ pub proof fn standard_prepare_preserves_complete_plan_metadata(
     },
 {
     reveal(crate::specs::part1_prepare_standard_component);
+    reveal(crate::specs::part2_prepare_component);
 }
 
 pub proof fn decoded_signed_prefix_has_complete_length(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)

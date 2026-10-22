@@ -1853,7 +1853,11 @@ fn validate_prepare_coverage(bands: &[WorkingSubband]) -> Result<(), DecodeError
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-    ensures kernel.is_none() ==> prepared_component_outcome(result) == crate::specs::part1_prepare_standard_component(
+    ensures prepared_component_outcome(result) == crate::specs::part2_prepare_component(
+        prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
+        crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    kernel.is_none() ==> prepared_component_outcome(result) == crate::specs::part1_prepare_standard_component(
         prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
         crate::limits::resource_decoded_bytes_limit(limits),
     ),
@@ -1866,7 +1870,10 @@ fn prepare_tile_component_with_kernel(
     limits: &ResourceLimits,
 ) -> Result<PreparedTileComponent, DecodeError> {
     #[cfg(verus_keep_ghost)]
-    proof! { reveal(crate::specs::part1_prepare_standard_component); }
+    proof! {
+        reveal(crate::specs::part1_prepare_standard_component);
+        reveal(crate::specs::part2_prepare_component);
+    }
     if plan.subbands.is_empty() {
         return Err(invalid_decode());
     }
@@ -1912,6 +1919,7 @@ fn prepare_tile_component_with_kernel(
             crate::specs::part1_prepare_init_prefix(plan.subbands@, expected_fraction_bits, crate::limits::resource_decoded_bytes_limit(limits), selected_subbands as nat) == Ok(initial_working),
             kernel.is_none() ==> !matches!(coding_style.transform, WaveletTransform::Arbitrary(_)),
             kernel.is_none() ==> reversible == matches!(coding_style.transform, WaveletTransform::Reversible5x3),
+            crate::specs::part2_prepare_reversible(prepare_style_view(coding_style), crate::transform::arbitrary_kernel_option(kernel)) == Ok(reversible),
             crate::specs::part1_prepare_placements(
                 initial_working, prepare_plan_view(plan), prepare_precincts_view(precincts@), reversible,
                 crate::limits::resource_decoded_bytes_limit(limits), placement_index as nat,
@@ -1960,6 +1968,11 @@ fn prepare_tile_component_with_kernel(
                         crate::limits::resource_decoded_bytes_limit(limits), plan.placements.len() as nat,
                     ).0 == Err(error));
                     reveal(crate::specs::part1_prepare_standard_component);
+                    reveal(crate::specs::part2_prepare_component);
+                    assert(crate::specs::part2_prepare_component(
+                        prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
+                        crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits),
+                    ) == Err(error));
                     assert(kernel.is_none() ==> crate::specs::part1_prepare_standard_component(
                         prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
                         crate::limits::resource_decoded_bytes_limit(limits),
@@ -1986,9 +1999,9 @@ fn prepare_tile_component_with_kernel(
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-    ensures kernel.is_none() ==> prepare_fold_outcome(result) == crate::specs::part1_prepare_reconstruct(
+    ensures prepare_fold_outcome(result) == crate::specs::part2_prepare_reconstruct(
         working_bands_view(working@), prepare_plan_view(plan), prepare_style_view(coding_style), reversible,
-        crate::limits::resource_decoded_bytes_limit(limits),
+        crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits),
     ),
 ))]
 fn reconstruct_prepare_working(
@@ -2010,22 +2023,22 @@ fn reconstruct_prepare_working(
     proof_decl! { let ghost initial = folded@; }
     let mut resolution = 1_u8;
     #[cfg(verus_keep_ghost)]
-    proof! { crate::proofs::production_impl::production_prepare_fold_empty(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::limits::resource_decoded_bytes_limit(limits)); }
+    proof! { crate::proofs::production_impl::production_prepare_kernel_fold_empty(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits)); }
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant 1 <= resolution as int <= plan.output_resolution as int + 1,
         working.len() > 0, ll == &working@[0],
         initial == (ll.width, ll.height, ll.samples@, 1usize),
-        kernel.is_none() ==> crate::specs::part1_prepare_fold(
+        crate::specs::part2_prepare_fold(
             initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible,
-            crate::limits::resource_decoded_bytes_limit(limits), (resolution - 1) as nat,
+            crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits), (resolution - 1) as nat,
         ) == Ok(folded@),
         decreases plan.output_resolution as int + 1 - resolution as int,
     ))]
     while resolution <= plan.output_resolution {
         #[cfg(verus_keep_ghost)]
         proof! {
-            crate::proofs::production_impl::production_prepare_fold_step(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::limits::resource_decoded_bytes_limit(limits), (resolution - 1) as nat);
-            crate::proofs::production_impl::production_prepare_fold_error_guard(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::limits::resource_decoded_bytes_limit(limits), resolution as nat, plan.output_resolution as nat);
+            crate::proofs::production_impl::production_prepare_kernel_fold_step(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits), (resolution - 1) as nat);
+            crate::proofs::production_impl::production_prepare_kernel_fold_error_guard(initial, working_bands_view(working@), plan.subbands@, prepare_style_view(coding_style), reversible, crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits), resolution as nat, plan.output_resolution as nat);
         }
         let direction = coding_style.direction_for_resolution(resolution)?;
         if matches!(direction, crate::codestream::DecompositionDirection::None) {
@@ -2048,8 +2061,9 @@ fn reconstruct_prepare_working(
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-    ensures kernel.is_none() ==> prepare_fold_outcome(result) == crate::specs::part1_prepare_resolution(
-        before@, working_bands_view(working@), plan.subbands@, direction, reversible, crate::limits::resource_decoded_bytes_limit(limits),
+    ensures prepare_fold_outcome(result) == crate::specs::part2_prepare_resolution(
+        before@, working_bands_view(working@), plan.subbands@, direction, reversible,
+        crate::transform::arbitrary_kernel_option(kernel), crate::limits::resource_decoded_bytes_limit(limits),
     ),
 ))]
 fn reconstruct_prepare_resolution(
@@ -2062,7 +2076,12 @@ fn reconstruct_prepare_resolution(
     limits: &ResourceLimits,
 ) -> Result<PrepareFold, DecodeError> {
     #[cfg(verus_keep_ghost)]
-    proof! { reveal(crate::specs::part1_prepare_resolution); }
+    proof! {
+        reveal(crate::specs::part2_prepare_resolution);
+        reveal(crate::specs::part2_kernel_inverse_horizontal);
+        reveal(crate::specs::part2_kernel_inverse_vertical);
+        reveal(crate::specs::part2_kernel_inverse_level);
+    }
     let mut first_detail = before.first_detail;
     let reconstructed_width = before.width;
     let reconstructed_height = before.height;
@@ -5087,6 +5106,149 @@ mod tests {
             vec![precinct],
             style,
         )
+    }
+
+    #[test]
+    fn full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation() {
+        use crate::codestream::{DecompositionDirection, KernelCoefficient};
+        let limits = ResourceLimits::default();
+        let invalid_block = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let invalid_transform = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for pattern in [
+            vec![],
+            vec![DecompositionDirection::Horizontal],
+            vec![DecompositionDirection::Vertical],
+            vec![DecompositionDirection::TwoDimensional],
+            vec![
+                DecompositionDirection::Horizontal,
+                DecompositionDirection::Vertical,
+            ],
+        ] {
+            for parity in [false, true] {
+                let (plan, _, mut style) = standard_prepare_fixture(&pattern, true, parity, 0);
+                let decoders = plan
+                    .subbands
+                    .iter()
+                    .map(|band| {
+                        Tier1CodeBlockDecoder::new(
+                            u16::try_from(band.width).unwrap(),
+                            u16::try_from(band.height).unwrap(),
+                            1,
+                            band.orientation,
+                            Tier1CodingStyle::default(),
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                let precincts = vec![
+                    PacketPrecinctDecoder::new(
+                        crate::packet::PacketPrecinctGeometry {
+                            component: u16::MAX,
+                            resolution: 0,
+                            precinct: 0,
+                            code_blocks_across: u32::try_from(decoders.len()).unwrap(),
+                            code_blocks_down: 1,
+                            maximum_zero_bitplanes: 1,
+                        },
+                        Tier1CodingStyle::default(),
+                        decoders,
+                        &limits,
+                    )
+                    .unwrap(),
+                ];
+                for reversible in [false, true] {
+                    style.transform = WaveletTransform::Arbitrary(0);
+                    let kernel = ArbitraryKernel::for_test(
+                        reversible,
+                        0,
+                        false,
+                        false,
+                        false,
+                        Some(KernelCoefficient::for_test(1, u8::MAX)),
+                        vec![],
+                    );
+                    let expected = PreparedTileComponent {
+                        component: plan.component,
+                        x: plan.x,
+                        y: plan.y,
+                        width: plan.width,
+                        height: plan.height,
+                        fraction_bits: if reversible { 0 } else { 16 },
+                        samples: vec![0; (plan.width * plan.height) as usize],
+                    };
+                    assert_eq!(
+                        prepare_tile_component_with_kernel(
+                            &plan,
+                            &precincts,
+                            style,
+                            Some(&kernel),
+                            &limits
+                        ),
+                        Ok(expected)
+                    );
+                    assert_eq!(
+                        prepare_tile_component_with_kernel(&plan, &precincts, style, None, &limits),
+                        Err(invalid_block)
+                    );
+                    let opposite = if reversible {
+                        WaveletTransform::Irreversible9x7
+                    } else {
+                        WaveletTransform::Reversible5x3
+                    };
+                    style.transform = opposite;
+                    if !pattern.is_empty() {
+                        assert_eq!(
+                            prepare_tile_component_with_kernel(
+                                &plan,
+                                &precincts,
+                                style,
+                                Some(&kernel),
+                                &limits
+                            ),
+                            Err(invalid_block),
+                        );
+                    }
+                }
+                style.transform = WaveletTransform::Arbitrary(0);
+                let missing =
+                    ArbitraryKernel::for_test(false, u8::MAX, false, false, false, None, vec![]);
+                let result = prepare_tile_component_with_kernel(
+                    &plan,
+                    &precincts,
+                    style,
+                    Some(&missing),
+                    &limits,
+                );
+                if pattern.is_empty() {
+                    let prepared = result.unwrap();
+                    assert_eq!(prepared.fraction_bits, 16);
+                    assert_eq!(prepared.samples, vec![0]);
+                } else {
+                    assert_eq!(result, Err(invalid_transform));
+                }
+                let tiny = limits.with_maximum_decoded_bytes(1).unwrap();
+                assert_eq!(
+                    prepare_tile_component_with_kernel(
+                        &plan,
+                        &precincts,
+                        style,
+                        Some(&missing),
+                        &tiny
+                    ),
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::DecodedBytes,
+                        limit: 1,
+                        actual: 9
+                    }),
+                );
+            }
+        }
     }
 
     #[test]
