@@ -207,28 +207,36 @@ def _coverage_symbol_present(path: Path, symbol: str) -> bool:
 def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
     """Resolve formatted methods in their actual impl, never another short name."""
     short = symbol.rsplit("::", 1)[-1]
-    start, end = 0, len(text)
-    if "::" in symbol:
-        owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
-        implementation = re.search(
-            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
-            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
-        )
-        if implementation is None:
-            return None
-        closing = re.search(
-            rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
-            text[implementation.end():],
-        )
-        if closing is None:
-            return None
-        start = implementation.end()
-        end = start + closing.start()
     pattern = re.compile(
         rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
         rf"fn[ \t]+{re.escape(short)}\b",
     )
-    return pattern.search(text, start, end)
+    if "::" in symbol:
+        owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        trait_scope = (
+            r"(?:Tier1SymbolDecoder[ \t]+for[ \t]+)?"
+            if symbol == "RawBitReader::decode" else ""
+        )
+        implementations = re.finditer(
+            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
+            rf"{trait_scope}{re.escape(owner)}\b(?![^{{}}\n]*\bfor\b)[^{{}}\n]*\{{", text,
+        )
+        matches = []
+        for implementation in implementations:
+            closing = re.search(
+                rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
+                text[implementation.end():],
+            )
+            if closing is None:
+                return None
+            start = implementation.end()
+            end = start + closing.start()
+            matches.extend(
+                match for match in pattern.finditer(text, start, end)
+                if match[1] == implementation[1] + "    "
+            )
+        return matches[0] if len(matches) == 1 else None
+    return pattern.search(text)
 
 
 def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
@@ -376,13 +384,17 @@ def validate_normative_coverage(
                 ("src/decode.rs", "as_tile_component"): "crate::image::assembly_tile_view",
                 ("src/decode.rs", "copy_typed_component"): "crate::image::typed_component_output",
                 ("src/decode.rs", "map_palette_component"): "crate::image::typed_component_output",
+                ("src/decode.rs", "apply_jp2_output"): "crate::image::decoded_typed_image_outcome",
                 ("src/image.rs", "typed_component_from_parts"): "typed_component_value_view",
+                ("src/image.rs", "typed_image_from_components_with_origin"): "decoded_typed_image_outcome",
                 ("src/image.rs", "assemble_image"): "decoded_image_outcome",
                 ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
                 ("src/image.rs", "typed_samples"): "decoded_typed_samples_outcome",
                 ("src/image.rs", "typed"): "decoded_typed_image_outcome",
                 ("src/packet.rs", "decoder"): "packet_decoder_outcome",
             }.get((reference["path"], short))
+            if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
+                result_projection = "typed_component_reference_output"
             expected_result_model = {
                 ("src/jp2.rs", "value"): "part2_palette_value",
                 ("src/jp2.rs", "palette_value_error"): "part2_composition_error",
@@ -449,9 +461,11 @@ def validate_normative_coverage(
                 ("src/decode.rs", "as_tile_component"): "part1_prepared_as_tile",
                 ("src/decode.rs", "copy_typed_component"): "part2_typed_component_copy",
                 ("src/decode.rs", "map_palette_component"): "part2_palette_component",
+                ("src/decode.rs", "apply_jp2_output"): "part2_apply_output_header",
                 ("src/decode.rs", "palette_modulus"): "part2_palette_modulus",
                 ("src/decode.rs", "invalid_jp2_output"): "part2_color_input_error",
                 ("src/image.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
+                ("src/image.rs", "typed_image_from_components_with_origin"): "part2_typed_image_from_parts",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
                 ("src/color.rs", "crop_sample"): "color_crop_sample",
@@ -464,6 +478,153 @@ def validate_normative_coverage(
                 ("src/color.rs", "validate_component"): "color_validate_component",
                 ("src/color.rs", "validate_output_size"): "color_validate_output_size",
             }.get((reference["path"], short))
+            if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
+                expected_result_model = "part2_typed_image_component"
+            kernel_view = r"crate::codestream::raw_kernel_view\s*\(\s*\*\s*kernel\s*\)"
+            kernel_step_view = r"crate::codestream::raw_kernel_step_view\s*\(\s*\*\s*step\s*\)"
+            kernel_coefficient_view = r"crate::codestream::raw_kernel_coefficient_view\s*\(\s*coefficient\s*\)"
+            kernel_option = r"crate::transform::arbitrary_kernel_option\s*\(\s*kernel\s*\)"
+            decoded_cap = r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)"
+            arbitrary_contract = {
+                ("src/transform.rs", "inverse_arbitrary"): (
+                    "sequence_outcome", "part2_inverse_arbitrary",
+                    r"low@\s*,\s*high@\s*,\s*low_pass_first\s*,\s*" + kernel_view,
+                ),
+                ("src/transform.rs", "inverse_horizontal_arbitrary"): (
+                    "reconstruction_outcome", "part2_atk_inverse_horizontal",
+                    r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
+                    r"output_width\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/transform.rs", "inverse_vertical_arbitrary"): (
+                    "reconstruction_outcome", "part2_atk_inverse_vertical",
+                    r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
+                    r"output_height\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/transform.rs", "inverse_level_arbitrary"): (
+                    "reconstruction_outcome", "part2_atk_inverse_level",
+                    r"wavelet_level_view\s*\(\s*level\s*\)\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/transform.rs", "apply_arbitrary_steps"): (
+                    None, "part2_atk_steps",
+                    r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*" + kernel_view + r"\.6\.len\s*\(\s*\)",
+                ),
+                ("src/transform.rs", "apply_arbitrary_step"): (
+                    None, "part2_atk_step",
+                    r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*update_odd",
+                ),
+                ("src/transform.rs", "arbitrary_reversible_target"): (
+                    None, "part2_atk_reversible_target",
+                    r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
+                ),
+                ("src/transform.rs", "arbitrary_irreversible_target"): (
+                    None, "part2_atk_irreversible_target",
+                    r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
+                ),
+                ("src/transform.rs", "lifting_source_sum"): (
+                    None, "part2_atk_source_sum",
+                    r"samples@\s*,\s*target\s*,\s*coefficient\s*,\s*offset\s*,\s*whole_sample_filter\s*,\s*whole_sample_extension",
+                ),
+                ("src/transform.rs", "extended_sample"): (
+                    None, "part2_atk_extended", r"samples@\s*,\s*original_index\s*,\s*whole_sample_extension",
+                ),
+                ("src/transform.rs", "coefficient_integer"): (
+                    None, "part2_atk_integer", kernel_coefficient_view + r"\s*,\s*coefficient_type",
+                ),
+                ("src/transform.rs", "coefficient_fixed"): (
+                    None, "part2_atk_fixed_coefficient", kernel_coefficient_view + r"\s*,\s*coefficient_type",
+                ),
+                ("src/transform.rs", "bytes_to_u128"): (
+                    None, "part2_atk_bytes_prefix", r"bytes@\s*,\s*16",
+                ),
+                ("src/transform.rs", "binary_to_fixed"): (
+                    None, "part2_atk_binary_format", r"bits\s*,\s*total_bits\s*,\s*exponent_bits\s*,\s*fraction_bits\s*,\s*bias",
+                ),
+                ("src/transform.rs", "fixed_from_binary_q32"): (
+                    None, "part2_atk_binary_q32", r"negative\s*,\s*significand\s*,\s*binary_exponent",
+                ),
+                ("src/transform.rs", "fixed_mul_q32"): (
+                    None, "part2_atk_fixed_mul", r"value\s*,\s*factor",
+                ),
+                ("src/transform.rs", "fixed_div_q32"): (
+                    None, "part2_atk_fixed_div", r"value\s*,\s*divisor",
+                ),
+                ("src/transform.rs", "round_shift_i128"): (
+                    None, "part2_atk_round_shift", r"value\s*,\s*shift",
+                ),
+                ("src/decode.rs", "prepare_tile_component_with_kernel"): (
+                    "prepared_component_outcome", "part2_prepare_component",
+                    r"prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*prepare_precincts_view\s*\(\s*precincts@\s*\)\s*,\s*"
+                    r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/decode.rs", "reconstruct_prepare_working"): (
+                    "prepare_fold_outcome", "part2_prepare_reconstruct",
+                    r"working_bands_view\s*\(\s*working@\s*\)\s*,\s*prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*"
+                    r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*reversible\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
+                ),
+                ("src/decode.rs", "reconstruct_prepare_resolution"): (
+                    "prepare_fold_outcome", "part2_prepare_resolution",
+                    r"before@\s*,\s*working_bands_view\s*\(\s*working@\s*\)\s*,\s*plan\.subbands@\s*,\s*"
+                    r"direction\s*,\s*reversible\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
+                ),
+            }.get((reference["path"], reference["symbol"]))
+            if arbitrary_contract:
+                result_projection, expected_result_model = arbitrary_contract[:2]
+            packet_decoder_old = r"crate::tier1::tier1_decoder_state\s*\(\s*old\(\s*decoder\s*\)\s*\)"
+            packet_decoder_final = r"crate::tier1::tier1_decoder_state\s*\(\s*final\(\s*decoder\s*\)\s*\)"
+            packet_contribution = r"code_block_contribution_view\s*\(\s*contribution\s*\)"
+            packet_cap = r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)"
+            packet_byte_cap = r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)"
+            packet_input_cap = r"crate::limits::resource_input_byte_limit\s*\(\s*limits\s*\)"
+            packet_work_cap = r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)"
+            packet_all_caps = packet_cap + r"\s*,\s*" + packet_byte_cap + r"\s*,\s*" + packet_input_cap + r"\s*,\s*" + packet_work_cap
+            packet_ht_caps = packet_cap + r"\s*,\s*" + packet_byte_cap + r"\s*,\s*" + packet_work_cap
+            packet_body_arguments = packet_decoder_old + r"\s*,\s*" + packet_contribution + r"\s*,\s*body@\s*,\s*"
+            packet_contract = {
+                "CodeBlockContribution::segment": (
+                    "part1_code_block_segment", None,
+                    r"code_block_contribution_view\s*\(\s*self\s*\)\s*,\s*index",
+                ),
+                "prepare_code_block_contribution_body": (
+                    "part1_code_block_body_prepare", packet_decoder_final,
+                    packet_decoder_old + r"\s*,\s*" + packet_contribution + r"\s*,\s*body@",
+                ),
+                "decode_legacy_code_block_segment": (
+                    "part1_legacy_code_block_segment",
+                    r"legacy_packet_progress_view\s*\(\s*final\(\s*decoder\s*\)\s*,\s*\*\s*final\(\s*segment_index\s*\)\s*,\s*"
+                    r"\*\s*final\(\s*offset\s*\)\s*,\s*\*\s*final\(\s*decoded_passes\s*\)\s*\)",
+                    r"legacy_packet_progress_view\s*\(\s*old\(\s*decoder\s*\)\s*,\s*\*\s*old\(\s*segment_index\s*\)\s*,\s*"
+                    r"\*\s*old\(\s*offset\s*\)\s*,\s*\*\s*old\(\s*decoded_passes\s*\)\s*\)\s*,\s*"
+                    + packet_contribution + r"\s*,\s*body@\s*,\s*" + packet_all_caps,
+                ),
+                "decode_legacy_code_block_contribution_body": (
+                    "part1_legacy_code_block_body", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+                "decode_ht_segment_route": (
+                    "ht_packet_segment_route", packet_decoder_final,
+                    packet_decoder_old + r"\s*,\s*body@\s*,\s*passes\s*,\s*" + packet_ht_caps,
+                ),
+                "decode_ht_segment_body": (
+                    "ht_packet_segment_body",
+                    packet_decoder_final + r"\s*,\s*\*\s*final\(\s*offset\s*\)\s*,\s*\*\s*final\(\s*decoded_passes\s*\)",
+                    packet_decoder_old + r"\s*,\s*segment\s*,\s*body@\s*,\s*\*\s*old\(\s*offset\s*\)\s*,\s*"
+                    r"\*\s*old\(\s*decoded_passes\s*\)\s*,\s*" + packet_ht_caps,
+                ),
+                "run_ht_contribution_segments": (
+                    "ht_packet_body_run", packet_decoder_final + r"\s*,\s*ht_body_progress_view\s*\(\s*final\(\s*progress\s*\)\s*\)",
+                    packet_body_arguments + r"ht_body_progress_view\s*\(\s*old\(\s*progress\s*\)\s*\)\s*,\s*" + packet_ht_caps,
+                ),
+                "decode_ht_contribution_segments": (
+                    "ht_packet_body_segments", packet_decoder_final, packet_body_arguments + packet_ht_caps,
+                ),
+                "decode_code_block_contribution_body_staged": (
+                    "part1_code_block_body_staged", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+                "decode_code_block_contribution_body": (
+                    "part1_code_block_body_transaction", packet_decoder_final, packet_body_arguments + packet_all_caps,
+                ),
+            }.get(reference["symbol"]) if reference["path"] == "src/packet.rs" else None
+            if packet_contract:
+                expected_result_model = packet_contract[0]
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,
@@ -486,6 +647,10 @@ def validate_normative_coverage(
                 "CodeBlockPlane::apply_ht_refinement_decision": ("code_block_plane_view", "ht_apply_refinement"),
                 "Tier1CodeBlockDecoder::decode_high_throughput_segments": ("tier1_decoder_state", "ht_decode_segments"),
                 "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols": ("tier1_decoder_state", "ht_coefficient_symbols"),
+                "Tier1CodeBlockDecoder::decode_high_throughput_refinement": ("tier1_decoder_state", "ht_decode_refinement_contribution"),
+                "Tier1CodeBlockDecoder::skip_high_throughput_segment": ("tier1_decoder_state", "ht_skip_segment"),
+                "Tier1CodeBlockDecoder::run_ht_placeholder_groups": ("tier1_decoder_state", "ht_placeholder_group_run"),
+                "Tier1CodeBlockDecoder::decode_ht_staged_group": ("tier1_decoder_state", "ht_decode_staged_group"),
                 "Tier1CodeBlockDecoder::store_ht_coefficient_symbols": (
                     "tier1_decoder_state", "ht_store_coefficient_symbols",
                 ),
@@ -548,6 +713,11 @@ def validate_normative_coverage(
                     + model_suffix
                     + r"\s*ht_magsgn_view\(\s*old\(\s*reader\s*\)\s*\)\s*,\s*"
                     r"completed_u\s*,\s*embedded_bit\s*,\s*embedded_value\s*,\s*decoded_bitplanes\s*,?\s*\)",
+                    contract,
+                )
+            if packet_contract and packet_contract[1] is not None:
+                state_result = re.search(
+                    named_prefix + r"(?P<state>\(\s*\1\s*,\s*" + packet_contract[1] + r"\s*\))" + model_suffix,
                     contract,
                 )
             final_parameters = set(re.findall(
@@ -738,6 +908,29 @@ def validate_normative_coverage(
                     r"pass_count\s*,\s*maximum_u\s*,\s*skipped_bitplanes\s*,\s*"
                     r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
                 ),
+                "Tier1CodeBlockDecoder::decode_high_throughput_refinement": (
+                    "ht_decode_refinement_contribution",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*input@\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::skip_high_throughput_segment": (
+                    "ht_skip_segment",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::run_ht_placeholder_groups": (
+                    "ht_placeholder_group_run",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*placeholder_passes\s+as\s+nat\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)",
+                ),
+                "Tier1CodeBlockDecoder::decode_ht_staged_group": (
+                    "ht_decode_staged_group",
+                    r"tier1_decoder_state\s*\(\s*old\s*\(\s*self\s*\)\s*\)\s*,\s*input@\s*,\s*passes\s*,\s*"
+                    r"crate::limits::resource_code_block_pass_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_code_block_byte_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)",
+                ),
                 "ht_significant_bitplanes": ("ht_significant_bitplanes", r"maximum_passes"),
                 "Tier1BlockCoding::uses_high_throughput": ("ht_block_coding_enabled", r"self"),
                 "copy_ht_refinement_bytes": ("ht_copy_refinement_bytes", r"input@"),
@@ -807,12 +1000,38 @@ def validate_normative_coverage(
                     "part2_typed_component_from_parts",
                     r"width\s*,\s*height\s*,\s*info\s*,\s*typed_samples_view\s*\(\s*&\s*samples\s*\)",
                 ),
+                ("src/decode.rs", "apply_jp2_output"): (
+                    "part2_apply_output_header",
+                    r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*"
+                    r"jp2::output_header_view\s*\(\s*header\s*\)\s*,\s*"
+                    r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
+                ),
+                ("src/image.rs", "typed_image_from_components_with_origin"): (
+                    "part2_typed_image_from_parts",
+                    r"width\s*,\s*height\s*,\s*x_origin\s*,\s*y_origin\s*,\s*"
+                    r"typed_components_output_view\s*\(\s*components\s*@\s*\)\s*,\s*"
+                    r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*"
+                    r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
+                ),
+                ("src/image.rs", "TypedImage::component"): (
+                    "part2_typed_image_component",
+                    r"typed_components_output_view\s*\(\s*typed_image_components\s*\(\s*self\s*\)\s*\)\s*,\s*index",
+                ),
             }.get((reference["path"], reference["symbol"]))
             component_arguments_bound = (
                 component_contract_arguments is None
                 or _coverage_result_arguments(
                     contract, named_result, component_contract_arguments[0], component_contract_arguments[1],
                 )
+            )
+            arbitrary_arguments_bound = (
+                arbitrary_contract is None
+                or _coverage_result_arguments(contract, named_result, arbitrary_contract[1], arbitrary_contract[2])
+            )
+            packet_arguments_bound = (
+                packet_contract is None
+                or _coverage_result_arguments(contract, named_result, packet_contract[0], packet_contract[2])
             )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
@@ -837,6 +1056,8 @@ def validate_normative_coverage(
                     or not refinement_arguments_bound
                     or not prepare_arguments_bound
                     or not component_arguments_bound
+                    or not arbitrary_arguments_bound
+                    or not packet_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

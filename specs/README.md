@@ -448,6 +448,28 @@ executed body. The actual full result also contains the output sample tag and
 all metadata. Whole-header cmap selection, CDEF routing, typed-image admission,
 parsing and selected-pixel joins remain outside these component results.
 
+### Complete supplied output header and image admission
+
+`part2_apply_output_header` composes actual ordered component selection and
+palette interpretation, actual ordered CDEF append, and
+`part2_typed_image_from_parts`. `jp2::output_header_view` projects the actual
+palette/mapping/definition vectors consumed by the executable body, not the
+stored count hints or unused image/color metadata. Empty CMAP copies every
+source. No well-formed-header, matching-shape, successful-lookup or
+adequate-budget condition is imposed. The recursive mapping/definition folds
+give sequential first-error semantics; the production proof supplies the
+actual vector states rather than accepting an execution trace as input.
+
+Final admission checks origin addition, u16 component-count conversion,
+actual component cap, and each component's area/sample count and cumulative
+eight-byte charge. `part2_typed_image_admission_prefix` retains the first
+failing admission even when later components have other defects.
+`part2_typed_image_component` distinguishes the real image-index error from
+the header's container-mismatch errors. Output geometry, sample values/tags,
+metadata and all ordered CDEF records are included. Unread native fields are
+deliberately not validated. Parsing, header association and selected target
+composition remain separate obligations.
+
 ## Frozen F5H cleanup-plane reconstruction profile
 
 The next full numerical boundary is the actual `reconstruct_ht_cleanup_plane`,
@@ -611,8 +633,9 @@ component counts and decomposition levels are not assumed to fit the physical
 
 The actual public `prepare_tile_component` now has a complete unconditional
 Result relation for its standard **None-kernel** call path. The same private
-`prepare_tile_component_with_kernel` body has the corresponding explicit
-`kernel.is_none()` result guarantee; its Some-kernel behavior is not inferred.
+`prepare_tile_component_with_kernel` body now additionally has the complete
+unconditional `part2_prepare_component` relation for actual None/Some inputs.
+The standard result is an exact None wrapper, not a weaker parallel semantics.
 Every actual raw plan/precinct/decoder/plane/coefficient field, style selector
 and cap is admitted. An Arbitrary transform with no kernel rejects exactly.
 No valid header, normalized coefficient, covered band, successful callee,
@@ -640,12 +663,31 @@ not the production transforms, with nonzero completed one-bit input blocks,
 mixed/multilevel directions, parity, reordered and ignored placements and
 ordered malformed/resource cases.
 
-F6 remains open: the Some-kernel/arbitrary coordinator profiles, general MCT
+The arbitrary reading path starts at `part2_inverse_arbitrary`, then scaling
+and the reverse-step/target folds. All native flags and raw coefficient bytes
+are included, even contradictory descriptors or width hints that the body does
+not validate. `part2_atk_fixed_coefficient` covers integer and raw binary
+32/64/128 formats; binary ties-even conversion and the existing right-shift
+cutoff are distinct from signed lifting bias and native truncating Q32
+division. The target fold preserves all already written samples on error.
+Singleton half and unvisited defects retain their actual bypass behavior.
+
+`part2_kernel_inverse_horizontal`, `part2_kernel_inverse_vertical` and
+`part2_kernel_inverse_level` select the actual supplied kernel or standard
+algorithm. `part2_prepare_resolution` still checks the resulting fraction
+against the style-derived expectation after execution, not as an input
+agreement premise. The generalized fold/reconstruct/component definitions
+share every earlier raw collection/placement/coverage/budget stage. Original
+standard names delegate to precisely the None case. Independent raw-context
+and arithmetic regressions supplement the full production proof; inventory
+and frozen numerical/resource qualification are not presumed from it.
+
+F6 remains open: general MCT
 paths and actual whole-decoder composition from
 coefficients through reconstruction, assembly and typed conversion
 into component-sample
-relations still require their own complete actual-stage theorems. Arbitrary
-Part-2 kernels and unavailable-reference adjudication remain separate, as do
+relations still require their own complete actual-stage theorems. Independent
+unavailable-reference adjudication remains separate, as do
 parsing and entropy decoding.
 
 ### Reconstruction reading path

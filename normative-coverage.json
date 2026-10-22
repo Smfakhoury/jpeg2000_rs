@@ -4,6 +4,157 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-arbitrary-kernel-preparation",
+      "topic": "Complete actual native reversible/irreversible arbitrary inverse, all integer/binary32/64/128 coefficients and Q32 rounding, every target/step partial buffer, H/V/2D levels and None/Some component preparation. Native contradictory styles/flags/shapes/width hints, singleton/unvisited bypass and first errors remain modeled; private target bounds derive from actual loop guards. No normalized/success/budget/trace premise; general MCT/whole decoder and external normative adjudication remain separate.",
+      "contract_refs": [
+        {"path": "src/transform.rs", "symbol": "inverse_arbitrary"},
+        {"path": "src/transform.rs", "symbol": "inverse_horizontal_arbitrary"},
+        {"path": "src/transform.rs", "symbol": "inverse_vertical_arbitrary"},
+        {"path": "src/transform.rs", "symbol": "inverse_level_arbitrary"},
+        {"path": "src/transform.rs", "symbol": "apply_arbitrary_steps"},
+        {"path": "src/transform.rs", "symbol": "apply_arbitrary_step"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_reversible_target"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_irreversible_target"},
+        {"path": "src/transform.rs", "symbol": "lifting_source_sum"},
+        {"path": "src/transform.rs", "symbol": "extended_sample"},
+        {"path": "src/transform.rs", "symbol": "coefficient_integer"},
+        {"path": "src/transform.rs", "symbol": "coefficient_fixed"},
+        {"path": "src/transform.rs", "symbol": "bytes_to_u128"},
+        {"path": "src/transform.rs", "symbol": "binary_to_fixed"},
+        {"path": "src/transform.rs", "symbol": "fixed_from_binary_q32"},
+        {"path": "src/transform.rs", "symbol": "fixed_mul_q32"},
+        {"path": "src/transform.rs", "symbol": "fixed_div_q32"},
+        {"path": "src/transform.rs", "symbol": "round_shift_i128"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"}
+      ],
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"},
+        {"path": "src/transform.rs", "symbol": "inverse_row_pair"},
+        {"path": "src/transform.rs", "symbol": "inverse_column_pair"},
+        {"path": "src/transform.rs", "symbol": "inverse_arbitrary"},
+        {"path": "src/transform.rs", "symbol": "apply_arbitrary_steps"},
+        {"path": "src/transform.rs", "symbol": "apply_arbitrary_step"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_reversible_target"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_irreversible_target"},
+        {"path": "src/transform.rs", "symbol": "lifting_source_sum"},
+        {"path": "src/transform.rs", "symbol": "coefficient_integer"},
+        {"path": "src/transform.rs", "symbol": "coefficient_fixed"},
+        {"path": "src/transform.rs", "symbol": "binary_to_fixed"},
+        {"path": "src/transform.rs", "symbol": "fixed_mul_q32"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_inverse_arbitrary"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_inverse_horizontal"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_inverse_vertical"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_inverse_level"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_steps"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_step"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_reversible_target"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_irreversible_target"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_source_sum"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_extended"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_integer"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_fixed_coefficient"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_bytes_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_binary_format"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_binary_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_fixed_mul"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_fixed_div"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_round_shift"},
+        {"path": "specs/mod.rs", "symbol": "part2_prepare_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_prepare_reconstruct"},
+        {"path": "specs/mod.rs", "symbol": "part2_prepare_resolution"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_scale_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_scale_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_scale_error_guard"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_irreversible_sum_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_irreversible_sum_error_guard"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_targets_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_steps_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_atk_steps_error_guard"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_kernel_fold_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_kernel_fold_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_kernel_fold_error_guard"}
+      ],
+      "test_refs": [
+        {"path": "src/transform.rs", "symbol": "arbitrary_q32_arithmetic_preserves_full_signed_edges_and_errors"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_binary_coefficients_match_integer_rational_rounding_and_raw_format_edges"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_sequences_preserve_all_raw_kinds_width_hints_flags_and_scaling_order"},
+        {"path": "src/transform.rs", "symbol": "arbitrary_lifting_runs_reverse_step_parity_and_preserves_late_partial_errors"},
+        {"path": "src/decode.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
+        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
+        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"}
+      ]
+    },
+    {
+      "id": "part1-complete-native-mixed-code-block-body",
+      "topic": "Unconditional actual mixed packet-body prepare, actual HT/legacy segment loops and complete staged/public clone-commit Result/state on every native contribution/body/decoder/cap. Includes all164 physical header entries, malformed stored counts, exact partial counters and whole outer rollback. Actual standalone public Tier1 dispatch is proved support, not an invented internal caller. Header/TagTree/precinct and full F5L/F5H remain separate.",
+      "contract_refs": [
+        {"path": "src/packet.rs", "symbol": "CodeBlockContribution::segment"},
+        {"path": "src/packet.rs", "symbol": "prepare_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_segment"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_segment_route"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_segment_body"},
+        {"path": "src/packet.rs", "symbol": "run_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body_staged"},
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body"}
+      ],
+      "implementation_refs": [
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_code_block_contribution_body_staged"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_contribution_body"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "run_ht_contribution_segments"},
+        {"path": "src/packet.rs", "symbol": "decode_ht_segment_body"},
+        {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_segment"},
+        {"path": "src/packet.rs", "symbol": "decode_precinct_packet"},
+        {"path": "src/packet.rs", "symbol": "decode_multi_code_block_packet"}
+      ],
+      "spec_refs": [
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_segment"},
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_body_prepare"},
+        {"path": "specs/packet.rs", "symbol": "part1_legacy_code_block_segment"},
+        {"path": "specs/packet.rs", "symbol": "part1_legacy_code_block_body"},
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_body_staged"},
+        {"path": "specs/packet.rs", "symbol": "part1_code_block_body_transaction"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_segment_route"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_segment_body"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_body_run"},
+        {"path": "specs/mod.rs", "symbol": "ht_packet_body_segments"},
+        {"path": "specs/mod.rs", "symbol": "part1_tier1_segment"}
+      ],
+      "proof_refs": [
+        {"path": "src/packet.rs", "symbol": "code_block_contribution_view"},
+        {"path": "src/packet.rs", "symbol": "legacy_packet_progress_view"},
+        {"path": "src/packet.rs", "symbol": "ht_body_progress_view"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockContribution::segment_count"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::clone"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_segment"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_packet_dispatch_preserves_both_selected_profiles"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_packet_transaction_restores_every_decoder_field_on_error"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_packet_preparation_failure_precedes_both_actual_routes"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "mixed_tier1_dispatch_retains_actual_native_route_order"}
+      ],
+      "test_refs": [
+        {"path": "src/packet.rs", "symbol": "mixed_packet_union_routes_literal_bytes_and_keeps_empty_count_distinctions"},
+        {"path": "src/packet.rs", "symbol": "mixed_packet_union_preserves_each_route_late_error_and_full_outer_rollback"},
+        {"path": "src/packet.rs", "symbol": "mixed_packet_union_uses_actual_route_specific_input_budget"},
+        {"path": "src/packet.rs", "symbol": "ht_body_native_count_reaches_physical_header_boundary_without_count_normalization"},
+        {"path": "src/packet.rs", "symbol": "shared_code_block_body_prepare_has_exact_native_admission_and_frame"},
+        {"path": "src/packet.rs", "symbol": "legacy_packet_body_routes_real_mq_bytes_and_retains_late_total_error_mutations"},
+        {"path": "src/packet.rs", "symbol": "legacy_packet_segment_checks_real_range_and_counter_priority_without_input_invariants"}
+      ]
+    },
+    {
       "id": "part15-actual-selected-staged-ht-packet-group",
       "topic": "Actual selected HT decode_segment branch with faithful whole raw clone, complete placeholder-group loop, substantive decode, rollback/commit and native state/errors; legacy else/full mixed/packet composition remain open",
       "contract_refs": [
@@ -717,7 +868,7 @@
       "implementation_refs": [
         {
           "path": "src/tier1.rs",
-          "symbol": "Tier1SymbolDecoder::decode"
+          "symbol": "RawBitReader::decode"
         },
         {
           "path": "src/tier1.rs",
@@ -2561,6 +2712,48 @@
         {"path": "src/decode.rs", "symbol": "palette_component_modulus_matches_all_native_precisions"}
       ],
       "topic": "Complete actual typed component copy and palette component Result over every stored palette/source shape and native column: exact all sample values/tags/metadata, ordered native index and table errors, descriptor precision/range, empty-source bypass of unaccessed table defects, copy-preserved versus palette-cleared CDEF. No parsed/normalized/rectangular/success premise. Whole header cmap/CDEF application, final image admission and selected pixels remain separate."
+    },
+    {
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "apply_jp2_output"},
+        {"path": "src/image.rs", "symbol": "typed_image_from_components_with_origin"},
+        {"path": "src/image.rs", "symbol": "TypedImage::component"}
+      ],
+      "id": "part2-complete-native-output-header",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_jp2"},
+        {"path": "src/decode.rs", "symbol": "decode_jp2_selected"},
+        {"path": "src/decode.rs", "symbol": "apply_jp2_output"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_components_output_push"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_mapping_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_mapping_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_mapping_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_definition_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_definition_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_output_definition_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_image_admission_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_image_admission_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_image_admission_error"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::add_channel_definition"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_apply_output_header"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_mapping_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_mapped_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_definition_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_output_apply_definition"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_from_parts"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_admission_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_admit_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_image_component"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "whole_output_header_matches_independent_native_order_and_admission_oracle"},
+        {"path": "src/image.rs", "symbol": "typed_image_admission_preserves_native_count_origin_shape_and_error_priority"}
+      ],
+      "topic": "Complete actual unconditional output-header Result on native typed-image/header/caps: actual CMAP order, direct versus palette CDEF behavior, ordered duplicate CDEF append and first bad channel, final origin/count/area/cardinality/cumulative-byte admission and every output field/error. Unread header metadata/count hints stay unvalidated. No valid/normalized-header, successful mapping, shape or adequate-budget premise. Earlier parsing/association and selected target composition remain separate."
     },
     {
       "contract_refs": [

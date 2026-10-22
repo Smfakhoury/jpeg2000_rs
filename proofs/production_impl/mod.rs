@@ -32,6 +32,372 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_prepare_kernel_fold_empty(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle,
+    reversible: bool, kernel: Option<crate::specs::Part2RawKernel>, maximum: u64,
+)
+    ensures crate::specs::part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::part2_prepare_fold, 1);
+}
+
+pub proof fn production_prepare_kernel_fold_step(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle,
+    reversible: bool, kernel: Option<crate::specs::Part2RawKernel>, maximum: u64, count: nat,
+)
+    ensures crate::specs::part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, count + 1)
+        == match crate::specs::part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part1_direction_for_resolution(style.1, style.2, (count + 1) as u8) {
+                Err(error) => Err(error),
+                Ok(direction) => {
+                    let transformed = if matches!(direction, crate::codestream::DecompositionDirection::None) { Ok(previous) }
+                        else { crate::specs::part2_prepare_resolution(previous, bands, geometry, direction, reversible, kernel, maximum) };
+                    match transformed {
+                        Err(error) => Err(error),
+                        Ok(after) => if count + 1 >= 255 { Err(crate::specs::part1_block_placement_error(true)) } else { Ok(after) },
+                    }
+                },
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_prepare_fold, 1);
+}
+
+pub proof fn production_prepare_kernel_fold_error_guard(
+    initial: crate::specs::Part1PrepareFold, bands: Seq<crate::specs::Part1WorkingSubbandModel>,
+    geometry: Seq<crate::decode::SubbandGeometry>, style: crate::specs::Part1PrepareStyle,
+    reversible: bool, kernel: Option<crate::specs::Part2RawKernel>, maximum: u64, count: nat, end: nat,
+)
+    requires count <= end,
+    ensures crate::specs::part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, count).is_err()
+        ==> crate::specs::part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, end)
+            == crate::specs::part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_prepare_fold, 1);
+    if count < end { production_prepare_kernel_fold_error_guard(initial, bands, geometry, style, reversible, kernel, maximum, count, (end - 1) as nat); }
+}
+
+pub proof fn production_atk_scale_empty(original: Seq<i64>, factor: i64, low_first: bool)
+    ensures crate::specs::part2_atk_scale_prefix(original, factor, low_first, 0) == Ok(original),
+{
+    reveal_with_fuel(crate::specs::part2_atk_scale_prefix, 1);
+}
+
+pub proof fn production_atk_scale_step(original: Seq<i64>, factor: i64, low_first: bool, count: nat)
+    ensures crate::specs::part2_atk_scale_prefix(original, factor, low_first, count + 1)
+        == match crate::specs::part2_atk_scale_prefix(original, factor, low_first, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_atk_scale_sample(previous[count as int], factor, low_first, count as usize) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(previous.update(count as int, value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_atk_scale_prefix, 1);
+}
+
+pub proof fn production_atk_scale_error_guard(original: Seq<i64>, factor: i64, low_first: bool, count: nat, end: nat)
+    requires count <= end,
+    ensures crate::specs::part2_atk_scale_prefix(original, factor, low_first, count).is_err()
+        ==> crate::specs::part2_atk_scale_prefix(original, factor, low_first, end)
+            == crate::specs::part2_atk_scale_prefix(original, factor, low_first, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_atk_scale_prefix, 1);
+    if count < end { production_atk_scale_error_guard(original, factor, low_first, count, (end - 1) as nat); }
+}
+
+pub proof fn production_atk_irreversible_sum_empty(
+    samples: Seq<i64>, target: usize, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel,
+)
+    ensures crate::specs::part2_atk_irreversible_sum(samples, target, step, kernel, 0) == Ok(0),
+{
+    reveal_with_fuel(crate::specs::part2_atk_irreversible_sum, 1);
+}
+
+pub proof fn production_atk_irreversible_sum_step(
+    samples: Seq<i64>, target: usize, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, count: nat,
+)
+    ensures crate::specs::part2_atk_irreversible_sum(samples, target, step, kernel, count + 1)
+        == match crate::specs::part2_atk_irreversible_sum(samples, target, step, kernel, count) {
+            Err(error) => Err(error),
+            Ok(previous) => if count >= step.3.len() { Err(crate::specs::part1_transform_error(false)) } else {
+                match crate::specs::part2_atk_fixed_coefficient(step.3[count as int], kernel.1) {
+                    Err(error) => Err(error),
+                    Ok(alpha) => match crate::specs::part2_atk_source_sum(samples, target, count as usize, step.0, kernel.2, kernel.4) {
+                        Err(error) => Err(error),
+                        Ok(contribution) => match crate::specs::part2_atk_checked_i128(alpha as int * contribution as int) {
+                            Err(error) => Err(error), Ok(product) => crate::specs::part2_atk_checked_i128(previous as int + product as int),
+                        },
+                    },
+                }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_atk_irreversible_sum, 1);
+}
+
+pub proof fn production_atk_irreversible_sum_error_guard(
+    samples: Seq<i64>, target: usize, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, count: nat, end: nat,
+)
+    requires count <= end,
+    ensures crate::specs::part2_atk_irreversible_sum(samples, target, step, kernel, count).is_err()
+        ==> crate::specs::part2_atk_irreversible_sum(samples, target, step, kernel, end)
+            == crate::specs::part2_atk_irreversible_sum(samples, target, step, kernel, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_atk_irreversible_sum, 1);
+    if count < end { production_atk_irreversible_sum_error_guard(samples, target, step, kernel, count, (end - 1) as nat); }
+}
+
+pub proof fn production_atk_horizontal_error_persists(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand, low_first: bool,
+    kernel: crate::specs::Part2RawKernel, start: nat, end: nat, error: crate::DecodeError,
+)
+    requires start <= end,
+        crate::specs::part2_atk_horizontal_prefix(low, high, low_first, kernel, start) == Err(error),
+    ensures crate::specs::part2_atk_horizontal_prefix(low, high, low_first, kernel, end) == Err(error),
+    decreases end - start,
+{
+    if end > start {
+        production_atk_horizontal_error_persists(low, high, low_first, kernel, start, (end - 1) as nat, error);
+    }
+}
+
+pub proof fn production_atk_vertical_error_persists(
+    low: crate::specs::Part1WaveletBand, high: crate::specs::Part1WaveletBand, height: u32, low_first: bool,
+    kernel: crate::specs::Part2RawKernel, length: usize, start: nat, end: nat, error: crate::DecodeError,
+)
+    requires start <= end,
+        crate::specs::part2_atk_vertical_prefix(low, high, height, low_first, kernel, length, start) == Err(error),
+    ensures crate::specs::part2_atk_vertical_prefix(low, high, height, low_first, kernel, length, end) == Err(error),
+    decreases end - start,
+{
+    if end > start {
+        production_atk_vertical_error_persists(low, high, height, low_first, kernel, length, start, (end - 1) as nat, error);
+    }
+}
+
+pub proof fn production_atk_sum_empty(samples: Seq<i64>, target: usize, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel)
+    ensures crate::specs::part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, 0)
+        == match step.2 { None => Err(crate::specs::part1_transform_error(false)), Some(value) => crate::specs::part2_atk_integer(value, kernel.1) },
+{
+    reveal_with_fuel(crate::specs::part2_atk_sum, 1);
+}
+
+pub proof fn production_atk_sum_step(samples: Seq<i64>, target: usize, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, count: nat)
+    ensures crate::specs::part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, count + 1)
+        == match crate::specs::part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, count) {
+            Err(error) => Err(error),
+            Ok(previous) => if count >= step.3.len() { Err(crate::specs::part1_transform_error(false)) } else {
+                match crate::specs::part2_atk_integer(step.3[count as int], kernel.1) {
+                    Err(error) => Err(error),
+                    Ok(alpha) => match crate::specs::part2_atk_source_sum(samples, target, count as usize, step.0, kernel.2, kernel.4) {
+                        Err(error) => Err(error),
+                        Ok(contribution) => match crate::specs::part2_atk_checked_i128(alpha as int * contribution as int) {
+                            Err(error) => Err(error), Ok(product) => crate::specs::part2_atk_checked_i128(previous as int + product as int),
+                        },
+                    },
+                }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_atk_sum, 1);
+}
+
+pub proof fn production_atk_sum_error_guard(samples: Seq<i64>, target: usize, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, count: nat, end: nat)
+    requires count <= end,
+    ensures crate::specs::part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, count).is_err()
+        ==> crate::specs::part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, end)
+            == crate::specs::part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_atk_sum, 1);
+    if count < end { production_atk_sum_error_guard(samples, target, step, kernel, count, (end - 1) as nat); }
+}
+
+pub proof fn production_atk_targets_empty(original: Seq<i64>, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, start: usize)
+    ensures crate::specs::part2_atk_target_prefix(original, step, kernel, start, 0) == (Ok(()), original),
+{
+    reveal_with_fuel(crate::specs::part2_atk_target_prefix, 1);
+}
+
+pub proof fn production_atk_targets_step(original: Seq<i64>, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, start: usize, count: nat)
+    ensures crate::specs::part2_atk_target_prefix(original, step, kernel, start, count + 1)
+        == match crate::specs::part2_atk_target_prefix(original, step, kernel, start, count).0 {
+            Err(_) => crate::specs::part2_atk_target_prefix(original, step, kernel, start, count),
+            Ok(()) => {
+                let previous = crate::specs::part2_atk_target_prefix(original, step, kernel, start, count).1;
+                let target = (start as nat + 2 * count) as usize;
+                match crate::specs::part2_atk_target(previous, target, step, kernel) {
+                    Err(error) => (Err(error), previous),
+                    Ok(value) => (if target as nat + 2 > usize::MAX { Err(crate::specs::part1_transform_error(true)) } else { Ok(()) }, previous.update(target as int, value)),
+                }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_atk_target_prefix, 1);
+}
+
+pub proof fn production_atk_targets_error_guard(original: Seq<i64>, step: crate::specs::Part2RawKernelStep, kernel: crate::specs::Part2RawKernel, start: usize, count: nat, end: nat)
+    requires count <= end,
+    ensures crate::specs::part2_atk_target_prefix(original, step, kernel, start, count).0.is_err()
+        ==> crate::specs::part2_atk_target_prefix(original, step, kernel, start, end)
+            == crate::specs::part2_atk_target_prefix(original, step, kernel, start, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_atk_target_prefix, 1);
+    if count < end { production_atk_targets_error_guard(original, step, kernel, start, count, (end - 1) as nat); }
+}
+
+pub proof fn production_atk_steps_empty(original: Seq<i64>, kernel: crate::specs::Part2RawKernel, low_first: bool)
+    ensures crate::specs::part2_atk_steps(original, kernel, low_first, 0) == (Ok(()), original),
+{
+    reveal_with_fuel(crate::specs::part2_atk_steps, 1);
+}
+
+pub proof fn production_atk_steps_step(original: Seq<i64>, kernel: crate::specs::Part2RawKernel, low_first: bool, count: nat)
+    ensures crate::specs::part2_atk_steps(original, kernel, low_first, count + 1)
+        == match crate::specs::part2_atk_steps(original, kernel, low_first, count).0 {
+            Err(_) => crate::specs::part2_atk_steps(original, kernel, low_first, count),
+            Ok(()) => crate::specs::part2_atk_step(crate::specs::part2_atk_steps(original, kernel, low_first, count).1,
+                kernel.6[kernel.6.len() - count - 1], kernel, low_first, if count % 2 == 0 { kernel.3 } else { !kernel.3 }),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_atk_steps, 1);
+}
+
+pub proof fn production_atk_steps_error_guard(original: Seq<i64>, kernel: crate::specs::Part2RawKernel, low_first: bool, count: nat, end: nat)
+    requires count <= end,
+    ensures crate::specs::part2_atk_steps(original, kernel, low_first, count).0.is_err()
+        ==> crate::specs::part2_atk_steps(original, kernel, low_first, end) == crate::specs::part2_atk_steps(original, kernel, low_first, count),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_atk_steps, 1);
+    if count < end { production_atk_steps_error_guard(original, kernel, low_first, count, (end - 1) as nat); }
+}
+
+pub proof fn production_typed_components_output_push(
+    components: Seq<crate::TypedComponent>, component: crate::TypedComponent,
+)
+    ensures crate::image::typed_components_output_view(components.push(component))
+        == crate::image::typed_components_output_view(components).push(crate::image::typed_component_value_view(component)),
+{
+    assert(crate::image::typed_components_output_view(components.push(component))
+        =~= crate::image::typed_components_output_view(components).push(crate::image::typed_component_value_view(component)));
+}
+
+pub proof fn production_output_mapping_empty(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, header: crate::specs::Part2OutputHeader,
+)
+    ensures crate::specs::part2_output_mapping_prefix(components, header, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part2_output_mapping_prefix, 1);
+}
+
+pub proof fn production_output_mapping_step(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, header: crate::specs::Part2OutputHeader, count: nat,
+)
+    ensures crate::specs::part2_output_mapping_prefix(components, header, count + 1)
+        == match crate::specs::part2_output_mapping_prefix(components, header, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_output_mapped_component(components, header.0, header.1[count as int]) {
+                Err(error) => Err(error), Ok(component) => Ok(previous.push(component)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_output_mapping_prefix, 1);
+}
+
+pub proof fn production_output_mapping_error(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, header: crate::specs::Part2OutputHeader, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_output_mapping_prefix(components, header, start).is_err()
+        ==> crate::specs::part2_output_mapping_prefix(components, header, end)
+            == crate::specs::part2_output_mapping_prefix(components, header, start),
+    decreases end - start,
+{
+    if end > start {
+        production_output_mapping_error(components, header, start, (end - 1) as nat);
+        production_output_mapping_step(components, header, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_output_definition_empty(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, definitions: Seq<(u16, crate::specs::ColorDefinition)>,
+)
+    ensures crate::specs::part2_output_definition_prefix(components, definitions, 0) == Ok(components),
+{
+    reveal_with_fuel(crate::specs::part2_output_definition_prefix, 1);
+}
+
+pub proof fn production_output_definition_step(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, definitions: Seq<(u16, crate::specs::ColorDefinition)>, count: nat,
+)
+    ensures crate::specs::part2_output_definition_prefix(components, definitions, count + 1)
+        == match crate::specs::part2_output_definition_prefix(components, definitions, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part2_output_apply_definition(previous, definitions[count as int]),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_output_definition_prefix, 1);
+}
+
+pub proof fn production_output_definition_error(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, definitions: Seq<(u16, crate::specs::ColorDefinition)>, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_output_definition_prefix(components, definitions, start).is_err()
+        ==> crate::specs::part2_output_definition_prefix(components, definitions, end)
+            == crate::specs::part2_output_definition_prefix(components, definitions, start),
+    decreases end - start,
+{
+    if end > start {
+        production_output_definition_error(components, definitions, start, (end - 1) as nat);
+        production_output_definition_step(components, definitions, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_typed_image_admission_empty(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, maximum: u64,
+)
+    ensures crate::specs::part2_typed_image_admission_prefix(components, maximum, 0) == Ok(0),
+{
+    reveal_with_fuel(crate::specs::part2_typed_image_admission_prefix, 1);
+}
+
+pub proof fn production_typed_image_admission_step(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, maximum: u64, count: nat,
+)
+    ensures crate::specs::part2_typed_image_admission_prefix(components, maximum, count + 1)
+        == match crate::specs::part2_typed_image_admission_prefix(components, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part2_typed_image_admit_component(components[count as int], previous, maximum),
+        },
+{
+    reveal_with_fuel(crate::specs::part2_typed_image_admission_prefix, 1);
+}
+
+pub proof fn production_typed_image_admission_error(
+    components: Seq<crate::specs::Part2TypedComponentOutput>, maximum: u64, start: nat, end: nat,
+)
+    requires start <= end,
+    ensures crate::specs::part2_typed_image_admission_prefix(components, maximum, start).is_err()
+        ==> crate::specs::part2_typed_image_admission_prefix(components, maximum, end)
+            == crate::specs::part2_typed_image_admission_prefix(components, maximum, start),
+    decreases end - start,
+{
+    if end > start {
+        production_typed_image_admission_error(components, maximum, start, (end - 1) as nat);
+        production_typed_image_admission_step(components, maximum, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_legacy_magnitude_u64(limbs: Seq<u64>)
     requires limbs.len() == 6,
     ensures match crate::specs::part1_magnitude_u64(limbs) {
@@ -52,6 +418,7 @@ pub proof fn production_prepare_fold_empty(
     ensures crate::specs::part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, 0) == Ok(initial),
 {
     reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+    reveal_with_fuel(crate::specs::part2_prepare_fold, 1);
 }
 
 pub proof fn production_prepare_fold_step(
@@ -75,6 +442,7 @@ pub proof fn production_prepare_fold_step(
         },
 {
     reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+    reveal_with_fuel(crate::specs::part2_prepare_fold, 1);
 }
 
 pub proof fn production_prepare_fold_error_guard(
@@ -88,6 +456,7 @@ pub proof fn production_prepare_fold_error_guard(
     decreases end - count,
 {
     reveal_with_fuel(crate::specs::part1_prepare_fold, 1);
+    reveal_with_fuel(crate::specs::part2_prepare_fold, 1);
     if count < end { production_prepare_fold_error_guard(initial, bands, geometry, style, reversible, maximum, count, (end - 1) as nat); }
 }
 

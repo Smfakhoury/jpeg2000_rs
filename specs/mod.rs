@@ -49,7 +49,566 @@ pub open spec fn part1_tier1_coding_style_byte(value: u8) -> Result<crate::tier1
 pub type Part2RawKernelCoefficient = (Seq<u8>, u8);
 pub type Part2RawKernelStep = (i8, u8, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelCoefficient>);
 pub type Part2RawKernel = (bool, u8, bool, bool, bool, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelStep>);
+pub type Part2AtkMutation = (Result<(), crate::DecodeError>, Seq<i64>);
 
+pub open spec fn part2_atk_checked_isize(value: int) -> Result<isize, crate::DecodeError> {
+    if value < isize::MIN || value > isize::MAX { Err(part1_transform_error(true)) } else { Ok(value as isize) }
+}
+
+pub open spec fn part2_atk_checked_i128(value: int) -> Result<i128, crate::DecodeError> {
+    if value < i128::MIN || value > i128::MAX { Err(part1_transform_error(true)) } else { Ok(value as i128) }
+}
+
+pub open spec fn part2_atk_round_shift(value: i128, shift: u32) -> Result<i128, crate::DecodeError> {
+    if shift == 0 || shift >= 128 { Err(part1_transform_error(true)) }
+    else {
+        let half = 1i128 << (shift - 1);
+        let adjusted = if value >= 0 { value as int + half as int } else { value as int - half as int };
+        match part2_atk_checked_i128(adjusted) {
+            Err(error) => Err(error),
+            Ok(adjusted) => Ok(adjusted >> shift),
+        }
+    }
+}
+
+pub open spec fn part2_atk_fixed_mul(value: i64, factor: i64) -> Result<i64, crate::DecodeError> {
+    match part2_atk_checked_i128(value as int * factor as int) {
+        Err(error) => Err(error),
+        Ok(product) => match part2_atk_round_shift(product, 32) {
+            Err(error) => Err(error),
+            Ok(rounded) => part1_checked_sample(rounded as int),
+        },
+    }
+}
+
+pub open spec fn part2_atk_fixed_div(value: i64, divisor: i64) -> Result<i64, crate::DecodeError> {
+    if divisor == 0 { Err(part1_transform_error(true)) }
+    else {
+        match part2_atk_checked_i128(value as int * 0x1_0000_0000int) {
+            Err(error) => Err(error),
+            Ok(numerator) => {
+                if numerator == i128::MIN && divisor == -1 { Err(part1_transform_error(true)) }
+                else { part1_checked_sample((vstd::arithmetic::div_mod::rust_div(numerator as int, divisor as int) as i128) as int) }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_atk_checked_i32(value: int) -> Result<i32, crate::DecodeError> {
+    if value < i32::MIN || value > i32::MAX { Err(part1_transform_error(true)) } else { Ok(value as i32) }
+}
+
+pub open spec fn part2_atk_binary_magnitude(significand: u128, binary_exponent: i32)
+    -> Result<u128, crate::DecodeError>
+{
+    match part2_atk_checked_i32(binary_exponent as int + 32) {
+        Err(error) => Err(error),
+        Ok(shift) => {
+            if shift >= 0 {
+                let left = shift as u32;
+                if left >= 128 || significand > (u128::MAX >> left) { Err(part1_transform_error(true)) }
+                else { Ok(significand << left) }
+            } else {
+                match part2_atk_checked_i32(-(shift as int)) {
+                    Err(error) => Err(error),
+                    Ok(right) => {
+                        let right = right as u32;
+                        if right >= 128 { Ok(0) }
+                        else {
+                            let truncated = significand >> right;
+                            let mask = if right == 0 { 0u128 } else { ((1u128 << right) - 1) as u128 };
+                            let remainder = significand & mask;
+                            let half = if right == 0 { 0u128 } else { 1u128 << (right - 1) };
+                            let rounded = truncated as int + if remainder > half || (remainder == half && truncated & 1 != 0) { 1int } else { 0int };
+                            if rounded > u128::MAX { Err(part1_transform_error(true)) } else { Ok(rounded as u128) }
+                        }
+                    },
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part2_atk_binary_q32(negative: bool, significand: u128, binary_exponent: i32)
+    -> Result<i64, crate::DecodeError>
+{
+    match part2_atk_binary_magnitude(significand, binary_exponent) {
+        Err(error) => Err(error),
+        Ok(magnitude) => {
+            if magnitude > i128::MAX as u128 { Err(part1_transform_error(true)) }
+            else { part1_checked_sample(if negative { -(magnitude as int) } else { magnitude as int }) }
+        },
+    }
+}
+
+pub open spec fn part2_atk_binary_format(
+    bits: u128, total_bits: u32, exponent_bits: u32, fraction_bits: u32, bias: i32,
+) -> Result<i64, crate::DecodeError> {
+    if total_bits == 0 || total_bits > 128 || exponent_bits == 0 || exponent_bits >= 128 || fraction_bits >= 128 {
+        Err(part1_transform_error(false))
+    } else {
+        let negative = bits >> (total_bits - 1) != 0;
+        let mask = ((1u128 << exponent_bits) - 1) as u128;
+        let exponent = (bits >> fraction_bits) & mask;
+        let fraction = bits & ((1u128 << fraction_bits) - 1) as u128;
+        if exponent == mask { Err(part1_transform_error(false)) }
+        else if exponent == 0 && fraction == 0 { Ok(0) }
+        else {
+            let base = if exponent == 0 { Ok(1i32) }
+                else if exponent > i32::MAX as u128 { Err(part1_transform_error(true)) }
+                else { Ok(exponent as i32) };
+            match base {
+                Err(error) => Err(error),
+                Ok(base) => match part2_atk_checked_i32(base as int - bias as int) {
+                    Err(error) => Err(error),
+                    Ok(unbiased) => match part2_atk_checked_i32(unbiased as int - fraction_bits as int) {
+                        Err(error) => Err(error),
+                        Ok(binary_exponent) => part2_atk_binary_q32(negative,
+                            if exponent == 0 { fraction } else { (1u128 << fraction_bits) | fraction },
+                            binary_exponent),
+                    },
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn part2_atk_fixed_coefficient(coefficient: Part2RawKernelCoefficient, kind: u8)
+    -> Result<i64, crate::DecodeError>
+{
+    let bits = part2_atk_bytes_prefix(coefficient.0, 16);
+    if kind <= 1 {
+        match part2_atk_integer(coefficient, kind) {
+            Err(error) => Err(error),
+            Ok(integer) => match part2_atk_checked_i128(integer as int * 0x1_0000_0000int) {
+                Err(error) => Err(error), Ok(scaled) => part1_checked_sample(scaled as int),
+            },
+        }
+    } else if kind == 2 { part2_atk_binary_format(bits, 32, 8, 23, 127) }
+    else if kind == 3 { part2_atk_binary_format(bits, 64, 11, 52, 1023) }
+    else if kind == 4 { part2_atk_binary_format(bits, 128, 15, 112, 16383) }
+    else { Err(part1_transform_error(false)) }
+}
+
+pub open spec fn part2_atk_bytes_prefix(bytes: Seq<u8>, count: nat) -> u128
+    decreases count,
+{
+    if count == 0 { 0u128 }
+    else { (part2_atk_bytes_prefix(bytes, (count - 1) as nat) << 8u32) | bytes[count - 1] as u128 }
+}
+
+pub open spec fn part2_atk_integer(coefficient: Part2RawKernelCoefficient, kind: u8) -> Result<i128, crate::DecodeError> {
+    if kind > 1 { Err(part1_transform_error(false)) }
+    else { Ok(part2_atk_bytes_prefix(coefficient.0, 16) as i128) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_atk_extended(samples: Seq<i64>, index: isize, whole: bool) -> Result<i64, crate::DecodeError> {
+    if samples.len() == 0 { Err(part1_transform_error(false)) }
+    else if samples.len() == 1 { Ok(samples[0]) }
+    else if samples.len() > isize::MAX { Err(part1_transform_error(true)) }
+    else {
+        let length = samples.len() as isize;
+        let adjusted = if whole {
+            if index < 0 { part2_atk_checked_isize(-(index as int)) } else { Ok(index) }
+        } else { Ok(index) };
+        match adjusted {
+            Err(error) => Err(error),
+            Ok(position) => {
+                let mapped = if whole {
+                    if position < length { Ok(position) } else {
+                        match part2_atk_checked_isize(2 * (length as int - 1)) {
+                            Err(error) => Err(error),
+                            Ok(period) => {
+                                let wrapped = (position as int) % (period as int);
+                                Ok((if wrapped < length { wrapped } else { period as int - wrapped }) as isize)
+                            },
+                        }
+                    }
+                } else {
+                    let parity = index & 1isize;
+                    let end = length - 1;
+                    let last = if (end as isize & 1isize) == parity { end } else { length - 2 };
+                    Ok((if position < parity { parity as int } else if position > last { last } else { position as int }) as isize)
+                };
+                match mapped {
+                    Err(error) => Err(error),
+                    Ok(final_index) => if final_index < 0 || final_index > usize::MAX { Err(part1_transform_error(true)) }
+                        else if final_index >= samples.len() { Err(part1_transform_error(false)) }
+                        else { Ok(samples[final_index as int]) },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_atk_half_index(target: isize, coefficient: isize, offset: i8) -> Result<isize, crate::DecodeError> {
+    match part2_atk_checked_isize(coefficient as int + offset as int) {
+        Err(error) => Err(error),
+        Ok(position) => match part2_atk_checked_isize(2 * position as int) {
+            Err(error) => Err(error),
+            Ok(distance) => match part2_atk_checked_isize(1 - 2 * (target & 1isize) as int + distance as int) {
+                Err(error) => Err(error),
+                Ok(delta) => part2_atk_checked_isize(target as int + delta as int),
+            },
+        },
+    }
+}
+
+pub open spec fn part2_atk_source_sum(samples: Seq<i64>, target: usize, coefficient: usize, offset: i8, filter: bool, extension: bool)
+    -> Result<i64, crate::DecodeError>
+{
+    if target > isize::MAX || coefficient > isize::MAX { Err(part1_transform_error(true)) } else {
+        let position = target as isize;
+        let tap = coefficient as isize;
+        if filter {
+            match part2_atk_checked_isize(2 * tap as int) {
+                Err(error) => Err(error),
+                Ok(doubled) => match part2_atk_checked_isize(doubled as int + 1) {
+                    Err(error) => Err(error),
+                    Ok(distance) => match part2_atk_checked_isize(position as int - distance as int) {
+                        Err(error) => Err(error),
+                        Ok(left_index) => match part2_atk_extended(samples, left_index, extension) {
+                            Err(error) => Err(error),
+                            Ok(left) => match part2_atk_checked_isize(position as int + distance as int) {
+                                Err(error) => Err(error),
+                                Ok(right_index) => match part2_atk_extended(samples, right_index, extension) {
+                                    Err(error) => Err(error),
+                                    Ok(right) => part1_checked_sample(left as int + right as int),
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        } else {
+            match part2_atk_half_index(position, tap, offset) {
+                Err(error) => Err(error), Ok(index) => part2_atk_extended(samples, index, extension),
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_atk_sum(samples: Seq<i64>, target: usize, step: Part2RawKernelStep, kind: u8, filter: bool, extension: bool, count: nat)
+    -> Result<i128, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        match step.2 { None => Err(part1_transform_error(false)), Some(residue) => part2_atk_integer(residue, kind) }
+    } else {
+        match part2_atk_sum(samples, target, step, kind, filter, extension, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => if count > step.3.len() { Err(part1_transform_error(false)) } else {
+                match part2_atk_integer(step.3[count - 1], kind) {
+                    Err(error) => Err(error),
+                    Ok(alpha) => match part2_atk_source_sum(samples, target, (count - 1) as usize, step.0, filter, extension) {
+                        Err(error) => Err(error),
+                        Ok(contribution) => match part2_atk_checked_i128(alpha as int * contribution as int) {
+                            Err(error) => Err(error),
+                            Ok(product) => part2_atk_checked_i128(previous as int + product as int),
+                        },
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_atk_reversible_target(samples: Seq<i64>, target: usize, step: Part2RawKernelStep, kernel: Part2RawKernel)
+    -> Result<i64, crate::DecodeError> {
+    match part2_atk_sum(samples, target, step, kernel.1, kernel.2, kernel.4, step.3.len()) {
+        Err(error) => Err(error),
+        Ok(sum) => if step.1 >= 127 { Err(part1_transform_error(false)) } else {
+            match part2_atk_checked_i128(samples[target as int] as int - (sum >> (step.1 as u32)) as int) {
+                Err(error) => Err(error), Ok(updated) => part1_checked_sample(updated as int),
+            }
+        },
+    }
+}
+
+pub open spec fn part2_atk_target_passes(length: nat, start: usize) -> Result<usize, crate::DecodeError> {
+    if length < start || length - start + 1 > usize::MAX { Err(part1_transform_error(true)) }
+    else { Ok(((length - start + 1) / 2) as usize) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_atk_irreversible_sum(
+    samples: Seq<i64>, target: usize, step: Part2RawKernelStep, kernel: Part2RawKernel, count: nat,
+) -> Result<i128, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(0) }
+    else {
+        match part2_atk_irreversible_sum(samples, target, step, kernel, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                if count - 1 >= step.3.len() { Err(part1_transform_error(false)) }
+                else {
+                    match part2_atk_fixed_coefficient(step.3[count - 1], kernel.1) {
+                        Err(error) => Err(error),
+                        Ok(alpha) => match part2_atk_source_sum(samples, target, (count - 1) as usize, step.0, kernel.2, kernel.4) {
+                            Err(error) => Err(error),
+                            Ok(contribution) => match part2_atk_checked_i128(alpha as int * contribution as int) {
+                                Err(error) => Err(error),
+                                Ok(product) => part2_atk_checked_i128(previous as int + product as int),
+                            },
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_atk_irreversible_target(
+    samples: Seq<i64>, target: usize, step: Part2RawKernelStep, kernel: Part2RawKernel,
+) -> Result<i64, crate::DecodeError> {
+    match part2_atk_irreversible_sum(samples, target, step, kernel, step.3.len()) {
+        Err(error) => Err(error),
+        Ok(adjustment) => match part2_atk_round_shift(adjustment, 32) {
+            Err(error) => Err(error),
+            Ok(rounded) => match part1_checked_sample(rounded as int) {
+                Err(error) => Err(error),
+                Ok(converted) => part1_checked_sample(samples[target as int] as int - converted as int),
+            },
+        },
+    }
+}
+
+pub open spec fn part2_atk_target(
+    samples: Seq<i64>, target: usize, step: Part2RawKernelStep, kernel: Part2RawKernel,
+) -> Result<i64, crate::DecodeError> {
+    if kernel.0 { part2_atk_reversible_target(samples, target, step, kernel) }
+    else { part2_atk_irreversible_target(samples, target, step, kernel) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_atk_target_prefix(
+    original: Seq<i64>, step: Part2RawKernelStep, kernel: Part2RawKernel, start: usize, count: nat,
+) -> Part2AtkMutation
+    decreases count,
+{
+    if count == 0 { (Ok(()), original) } else {
+        let previous = part2_atk_target_prefix(original, step, kernel, start, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => {
+                let target = (start as nat + 2 * (count - 1)) as usize;
+                match part2_atk_target(previous.1, target, step, kernel) {
+                    Err(error) => (Err(error), previous.1),
+                    Ok(value) => {
+                        let updated = previous.1.update(target as int, value);
+                        if target as nat + 2 > usize::MAX { (Err(part1_transform_error(true)), updated) }
+                        else { (Ok(()), updated) }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_atk_step(samples: Seq<i64>, step: Part2RawKernelStep, kernel: Part2RawKernel, low_first: bool, update_odd: bool) -> Part2AtkMutation {
+    let start = if (if low_first { update_odd } else { !update_odd }) { 1usize } else { 0usize };
+    match part2_atk_target_passes(samples.len(), start) {
+        Err(error) => (Err(error), samples),
+        Ok(count) => part2_atk_target_prefix(samples, step, kernel, start, count as nat),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_atk_steps(original: Seq<i64>, kernel: Part2RawKernel, low_first: bool, count: nat) -> Part2AtkMutation
+    decreases count,
+{
+    if count == 0 { (Ok(()), original) } else {
+        let previous = part2_atk_steps(original, kernel, low_first, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_atk_step(previous.1, kernel.6[kernel.6.len() - count], kernel, low_first,
+                if count % 2 == 1 { kernel.3 } else { !kernel.3 }),
+        }
+    }
+}
+
+pub open spec fn part2_atk_half(value: i64) -> i64 {
+    (if value < 0 { -(-(value as int) / 2) } else { value as int / 2 }) as i64
+}
+
+pub open spec fn part2_atk_scale_sample(value: i64, factor: i64, low_first: bool, index: usize)
+    -> Result<i64, crate::DecodeError>
+{
+    if (index & 1 == 0) == low_first { part2_atk_fixed_mul(value, factor) }
+    else { part2_atk_fixed_div(value, factor) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_atk_scale_prefix(original: Seq<i64>, factor: i64, low_first: bool, count: nat)
+    -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(original) }
+    else {
+        match part2_atk_scale_prefix(original, factor, low_first, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_atk_scale_sample(previous[count - 1], factor, low_first, (count - 1) as usize) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(previous.update((count - 1) as int, value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_atk_scaled_input(original: Seq<i64>, low_first: bool, kernel: Part2RawKernel)
+    -> Result<Seq<i64>, crate::DecodeError>
+{
+    if kernel.0 { Ok(original) }
+    else {
+        match kernel.5 {
+            None => Err(part1_transform_error(false)),
+            Some(coefficient) => match part2_atk_fixed_coefficient(coefficient, kernel.1) {
+                Err(error) => Err(error),
+                Ok(factor) => if factor == 0 { Err(part1_transform_error(false)) }
+                    else { part2_atk_scale_prefix(original, factor, low_first, original.len()) },
+            },
+        }
+    }
+}
+
+pub open spec fn part2_inverse_arbitrary(low: Seq<i64>, high: Seq<i64>, low_first: bool, kernel: Part2RawKernel)
+    -> Result<Seq<i64>, crate::DecodeError>
+{
+    match part1_interleaved(low, high, low_first) {
+        Err(error) => Err(error),
+        Ok(samples) => if samples.len() == 1 {
+            Ok(if low_first { samples } else { samples.update(0, part2_atk_half(samples[0])) })
+        } else {
+            match part2_atk_scaled_input(samples, low_first, kernel) {
+                Err(error) => Err(error),
+                Ok(scaled) => {
+                    let result = part2_atk_steps(scaled, kernel, low_first, kernel.6.len());
+                    match result.0 { Err(error) => Err(error), Ok(()) => Ok(result.1) }
+                },
+            }
+        },
+    }
+}
+
+    pub open spec fn part2_atk_horizontal_row(low: Part1WaveletBand, high: Part1WaveletBand, y: u32, low_first: bool, kernel: Part2RawKernel)
+        -> Result<Seq<i64>, crate::DecodeError> {
+        match part1_band_row(low, y) {
+            Err(error) => Err(error),
+            Ok(a) => match part1_band_row(high, y) {
+                Err(error) => Err(error), Ok(b) => part2_inverse_arbitrary(a, b, low_first, kernel),
+            },
+        }
+    }
+
+    pub open spec fn part2_atk_horizontal_prefix(low: Part1WaveletBand, high: Part1WaveletBand, low_first: bool, kernel: Part2RawKernel, count: nat)
+        -> Result<Seq<i64>, crate::DecodeError>
+        decreases count,
+    {
+        if count == 0 { Ok(Seq::empty()) } else {
+            match part2_atk_horizontal_prefix(low, high, low_first, kernel, (count - 1) as nat) {
+                Err(error) => Err(error),
+                Ok(previous) => match part2_atk_horizontal_row(low, high, (count - 1) as u32, low_first, kernel) {
+                    Err(error) => Err(error), Ok(row) => Ok(previous + row),
+                },
+            }
+        }
+    }
+
+    pub open spec fn part2_atk_inverse_horizontal(low: Part1WaveletBand, high: Part1WaveletBand, width: u32, low_first: bool, irreversible: bool, kernel: Part2RawKernel, maximum: u64)
+        -> Part1ReconstructionResult {
+        match part1_horizontal_geometry(low, high, width, low_first) {
+            Err(error) => Err(error),
+            Ok(()) => match part1_transform_area(width, low.1) {
+                Err(error) => Err(error),
+                Ok(length) => match part1_quantization_budget(length as nat, maximum) {
+                    Err(error) => Err(error),
+                    Ok(()) => match part2_atk_horizontal_prefix(low, high, low_first, kernel, low.1 as nat) {
+                        Err(error) => Err(error), Ok(samples) => Ok((width, low.1, if irreversible { 16u8 } else { 0u8 }, samples)),
+                    },
+                },
+            },
+        }
+    }
+
+    pub open spec fn part2_atk_vertical_column(low: Part1WaveletBand, high: Part1WaveletBand, x: u32, low_first: bool, kernel: Part2RawKernel)
+        -> Result<Seq<i64>, crate::DecodeError> {
+        match part1_collect_column(low, x) {
+            Err(error) => Err(error),
+            Ok(a) => match part1_collect_column(high, x) {
+                Err(error) => Err(error), Ok(b) => part2_inverse_arbitrary(a, b, low_first, kernel),
+            },
+        }
+    }
+
+    pub open spec fn part2_atk_vertical_prefix(low: Part1WaveletBand, high: Part1WaveletBand, height: u32, low_first: bool, kernel: Part2RawKernel, length: usize, count: nat)
+        -> Result<Seq<i64>, crate::DecodeError>
+        decreases count,
+    {
+        if count == 0 { Ok(Seq::new(length as nat, |i: int| 0i64)) } else {
+            match part2_atk_vertical_prefix(low, high, height, low_first, kernel, length, (count - 1) as nat) {
+                Err(error) => Err(error),
+                Ok(previous) => match part2_atk_vertical_column(low, high, (count - 1) as u32, low_first, kernel) {
+                    Err(error) => Err(error),
+                    Ok(column) => {
+                        let stored = part1_store_column_prefix(previous, low.0, (count - 1) as u32, column, height as nat);
+                        match stored.0 { Err(error) => Err(error), Ok(()) => Ok(stored.1) }
+                    },
+                },
+            }
+        }
+    }
+
+    pub open spec fn part2_atk_inverse_vertical(low: Part1WaveletBand, high: Part1WaveletBand, height: u32, low_first: bool, irreversible: bool, kernel: Part2RawKernel, maximum: u64)
+        -> Part1ReconstructionResult {
+        match part1_vertical_geometry(low, high, height, low_first) {
+            Err(error) => Err(error),
+            Ok(()) => match part1_transform_area(low.0, height) {
+                Err(error) => Err(error),
+                Ok(length) => match part1_quantization_budget(length as nat, maximum) {
+                    Err(error) => Err(error),
+                    Ok(()) => match part2_atk_vertical_prefix(low, high, height, low_first, kernel, length, low.0 as nat) {
+                        Err(error) => Err(error), Ok(samples) => Ok((low.0, height, if irreversible { 16u8 } else { 0u8 }, samples)),
+                    },
+                },
+            },
+        }
+    }
+
+    pub open spec fn part2_atk_level_rows_and_columns(level: Part1WaveletLevel, irreversible: bool, kernel: Part2RawKernel, length: usize) -> Part1ReconstructionResult {
+        match part1_transform_area(level.4, level.0.1) {
+            Err(error) => Err(error),
+            Ok(_) => match part2_atk_horizontal_prefix(level.0, level.1, level.6, kernel, level.0.1 as nat) {
+                Err(error) => Err(error),
+                Ok(low) => match part1_transform_area(level.4, level.2.1) {
+                    Err(error) => Err(error),
+                    Ok(_) => match part2_atk_horizontal_prefix(level.2, level.3, level.6, kernel, level.2.1 as nat) {
+                        Err(error) => Err(error),
+                        Ok(high) => match part2_atk_vertical_prefix(
+                            (level.4, level.0.1, low), (level.4, level.2.1, high), level.5, level.7, kernel, length, level.4 as nat,
+                        ) {
+                            Err(error) => Err(error), Ok(samples) => Ok((level.4, level.5, if irreversible { 16u8 } else { 0u8 }, samples)),
+                        },
+                    },
+                },
+            },
+        }
+    }
+
+    pub open spec fn part2_atk_inverse_level(level: Part1WaveletLevel, irreversible: bool, kernel: Part2RawKernel, maximum: u64) -> Part1ReconstructionResult {
+        match part1_validate_level(level) {
+            Err(error) => Err(error),
+            Ok(()) => match part1_transform_area(level.4, level.5) {
+                Err(error) => Err(error),
+                Ok(length) => if !part1_wavelet_sample_count(level.4, level.5, length) { Err(part1_transform_error(false)) }
+                    else { match part1_quantization_budget(length as nat, maximum) {
+                        Err(error) => Err(error), Ok(()) => part2_atk_level_rows_and_columns(level, irreversible, kernel, length),
+                    } },
+            },
+        }
+    }
 pub type Part1DecodedComponentModel = (u32, u32, crate::codestream::ComponentInfo, u8, Seq<i64>);
 pub type Part1DecodedImageModel = (u32, u32, u32, u32, Seq<Part1DecodedComponentModel>);
 pub type Part1DecodedImageState = (Result<(), crate::DecodeError>, Part1DecodedImageModel);
@@ -259,9 +818,45 @@ pub open spec fn part1_prepare_band(band: Part1WorkingSubbandModel) -> Part1Wave
 }
 
 #[verifier::opaque]
+pub open spec fn part2_kernel_inverse_horizontal(
+    low: Part1WaveletBand, high: Part1WaveletBand, width: u32, low_first: bool,
+    reversible: bool, kernel: Option<Part2RawKernel>, maximum: u64,
+) -> Part1ReconstructionResult {
+    match kernel {
+        None => part1_inverse_horizontal(low, high, width, low_first, !reversible, maximum),
+        Some(kernel) => part2_atk_inverse_horizontal(low, high, width, low_first, !kernel.0, kernel, maximum),
+    }
+}
+
+pub open spec fn part2_kernel_inverse_vertical(
+    low: Part1WaveletBand, high: Part1WaveletBand, height: u32, low_first: bool,
+    reversible: bool, kernel: Option<Part2RawKernel>, maximum: u64,
+) -> Part1ReconstructionResult {
+    match kernel {
+        None => part1_inverse_vertical(low, high, height, low_first, !reversible, maximum),
+        Some(kernel) => part2_atk_inverse_vertical(low, high, height, low_first, !kernel.0, kernel, maximum),
+    }
+}
+
+pub open spec fn part2_kernel_inverse_level(
+    level: Part1WaveletLevel, reversible: bool, kernel: Option<Part2RawKernel>, maximum: u64,
+) -> Part1ReconstructionResult {
+    match kernel {
+        None => part1_inverse_level(level, !reversible, maximum),
+        Some(kernel) => part2_atk_inverse_level(level, !kernel.0, kernel, maximum),
+    }
+}
+
 pub open spec fn part1_prepare_resolution(
     before: Part1PrepareFold, bands: Seq<Part1WorkingSubbandModel>, geometry: Seq<crate::decode::SubbandGeometry>,
     direction: crate::codestream::DecompositionDirection, reversible: bool, maximum: u64,
+) -> Result<Part1PrepareFold, crate::DecodeError> {
+    part2_prepare_resolution(before, bands, geometry, direction, reversible, None, maximum)
+}
+
+pub open spec fn part2_prepare_resolution(
+    before: Part1PrepareFold, bands: Seq<Part1WorkingSubbandModel>, geometry: Seq<crate::decode::SubbandGeometry>,
+    direction: crate::codestream::DecompositionDirection, reversible: bool, kernel: Option<Part2RawKernel>, maximum: u64,
 ) -> Result<Part1PrepareFold, crate::DecodeError> {
     use crate::codestream::DecompositionDirection::*;
     let first = before.3 as nat;
@@ -276,9 +871,9 @@ pub open spec fn part1_prepare_resolution(
             None => Err(part1_block_placement_error(false)),
             Horizontal | Vertical => if first + 1 > usize::MAX { Err(part1_block_placement_error(true)) } else {
                 if matches!(direction, Horizontal) {
-                    part1_inverse_horizontal(low, part1_prepare_band(detail), shape.resolution_width, shape.low_pass_first_x, !reversible, maximum)
+                    part2_kernel_inverse_horizontal(low, part1_prepare_band(detail), shape.resolution_width, shape.low_pass_first_x, reversible, kernel, maximum)
                 } else {
-                    part1_inverse_vertical(low, part1_prepare_band(detail), shape.resolution_height, shape.low_pass_first_y, !reversible, maximum)
+                    part2_kernel_inverse_vertical(low, part1_prepare_band(detail), shape.resolution_height, shape.low_pass_first_y, reversible, kernel, maximum)
                 }
             },
             TwoDimensional => if first + 1 > usize::MAX { Err(part1_block_placement_error(true)) }
@@ -289,9 +884,9 @@ pub open spec fn part1_prepare_resolution(
                     || bands[(first + 2) as int].2 != part1_prepare_fraction(reversible) { Err(part1_block_placement_error(false)) }
                 else if first + 3 > usize::MAX { Err(part1_block_placement_error(true)) }
                 else {
-                    part1_inverse_level((low, part1_prepare_band(detail),
+                    part2_kernel_inverse_level((low, part1_prepare_band(detail),
                         part1_prepare_band(bands[(first + 1) as int]), part1_prepare_band(bands[(first + 2) as int]),
-                        shape.resolution_width, shape.resolution_height, shape.low_pass_first_x, shape.low_pass_first_y), !reversible, maximum)
+                        shape.resolution_width, shape.resolution_height, shape.low_pass_first_x, shape.low_pass_first_y), reversible, kernel, maximum)
                 },
         };
         match transformed {
@@ -306,17 +901,25 @@ pub open spec fn part1_prepare_resolution(
 pub open spec fn part1_prepare_fold(
     initial: Part1PrepareFold, bands: Seq<Part1WorkingSubbandModel>, geometry: Seq<crate::decode::SubbandGeometry>,
     style: Part1PrepareStyle, reversible: bool, maximum: u64, count: nat,
+) -> Result<Part1PrepareFold, crate::DecodeError> {
+    part2_prepare_fold(initial, bands, geometry, style, reversible, None, maximum, count)
+}
+
+#[verifier::opaque]
+pub open spec fn part2_prepare_fold(
+    initial: Part1PrepareFold, bands: Seq<Part1WorkingSubbandModel>, geometry: Seq<crate::decode::SubbandGeometry>,
+    style: Part1PrepareStyle, reversible: bool, kernel: Option<Part2RawKernel>, maximum: u64, count: nat,
 ) -> Result<Part1PrepareFold, crate::DecodeError>
     decreases count,
 {
     if count == 0 { Ok(initial) } else {
-        match part1_prepare_fold(initial, bands, geometry, style, reversible, maximum, (count - 1) as nat) {
+        match part2_prepare_fold(initial, bands, geometry, style, reversible, kernel, maximum, (count - 1) as nat) {
             Err(error) => Err(error),
             Ok(previous) => match part1_direction_for_resolution(style.1, style.2, count as u8) {
                 Err(error) => Err(error),
                 Ok(direction) => {
                     let transformed = if matches!(direction, crate::codestream::DecompositionDirection::None) { Ok(previous) }
-                        else { part1_prepare_resolution(previous, bands, geometry, direction, reversible, maximum) };
+                        else { part2_prepare_resolution(previous, bands, geometry, direction, reversible, kernel, maximum) };
                     match transformed {
                         Err(error) => Err(error),
                         Ok(after) => if count >= 255 { Err(part1_block_placement_error(true)) } else { Ok(after) },
@@ -334,9 +937,16 @@ pub open spec fn part1_prepare_copy_plane(plane: Part1ReconstructedPlane, first_
 pub open spec fn part1_prepare_reconstruct(
     bands: Seq<Part1WorkingSubbandModel>, plan: Part1PreparePlan, style: Part1PrepareStyle, reversible: bool, maximum: u64,
 ) -> Result<Part1PrepareFold, crate::DecodeError> {
+    part2_prepare_reconstruct(bands, plan, style, reversible, None, maximum)
+}
+
+pub open spec fn part2_prepare_reconstruct(
+    bands: Seq<Part1WorkingSubbandModel>, plan: Part1PreparePlan, style: Part1PrepareStyle,
+    reversible: bool, kernel: Option<Part2RawKernel>, maximum: u64,
+) -> Result<Part1PrepareFold, crate::DecodeError> {
     if bands.len() == 0 { Err(part1_block_placement_error(false)) } else {
         let ll = bands[0];
-        part1_prepare_fold((ll.0, ll.1, ll.3, 1usize), bands, plan.subbands, style, reversible, maximum, plan.resolution as nat)
+        part2_prepare_fold((ll.0, ll.1, ll.3, 1usize), bands, plan.subbands, style, reversible, kernel, maximum, plan.resolution as nat)
     }
 }
 
@@ -357,11 +967,30 @@ pub open spec fn part1_prepare_finish(plan: Part1PreparePlan, fraction: u8, fold
 pub open spec fn part1_prepare_standard_component(
     plan: Part1PreparePlan, precincts: Seq<Seq<Tier1RawPlane>>, style: Part1PrepareStyle, maximum: u64,
 ) -> Result<Part1AssemblyTile, crate::DecodeError> {
+    part2_prepare_component(plan, precincts, style, None, maximum)
+}
+
+pub open spec fn part2_prepare_reversible(style: Part1PrepareStyle, kernel: Option<Part2RawKernel>)
+    -> Result<bool, crate::DecodeError>
+{
+    match style.0 {
+        crate::codestream::WaveletTransform::Reversible5x3 => Ok(true),
+        crate::codestream::WaveletTransform::Irreversible9x7 => Ok(false),
+        crate::codestream::WaveletTransform::Arbitrary(_) => match kernel {
+            None => Err(part1_block_placement_error(false)), Some(kernel) => Ok(kernel.0),
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_prepare_component(
+    plan: Part1PreparePlan, precincts: Seq<Seq<Tier1RawPlane>>, style: Part1PrepareStyle,
+    kernel: Option<Part2RawKernel>, maximum: u64,
+) -> Result<Part1AssemblyTile, crate::DecodeError> {
     if plan.subbands.len() == 0 { Err(part1_block_placement_error(false)) } else {
-        match style.0 {
-            crate::codestream::WaveletTransform::Arbitrary(_) => Err(part1_block_placement_error(false)),
-            _ => {
-                let reversible = matches!(style.0, crate::codestream::WaveletTransform::Reversible5x3);
+        match part2_prepare_reversible(style, kernel) {
+            Err(error) => Err(error),
+            Ok(reversible) => {
                 match part1_subband_count_through_resolution(style.1, style.2, plan.resolution) {
                     Err(error) => Err(error),
                     Ok(selected) => if selected > plan.subbands.len() { Err(part1_block_placement_error(false)) } else {
@@ -375,8 +1004,8 @@ pub open spec fn part1_prepare_standard_component(
                                         Err(error) => Err(error),
                                         Ok(()) => if placed.1.0.len() == 0 { Err(part1_block_placement_error(false)) } else {
                                             let ll = placed.1.0[0];
-                                            match part1_prepare_fold((ll.0, ll.1, ll.3, 1usize), placed.1.0, plan.subbands,
-                                                style, reversible, maximum, plan.resolution as nat) {
+                                            match part2_prepare_fold((ll.0, ll.1, ll.3, 1usize), placed.1.0, plan.subbands,
+                                                style, reversible, kernel, maximum, plan.resolution as nat) {
                                                 Err(error) => Err(error),
                                                 Ok(folded) => part1_prepare_finish(plan, part1_prepare_fraction(reversible), folded),
                                             }
@@ -453,6 +1082,146 @@ pub type Part1DecodedTypedImage = (
 );
 
 pub type Part2TypedComponentOutput = (Part1TypedComponentModel, Seq<ColorDefinition>);
+pub type Part2OutputHeader = (
+    Option<Part2PaletteModel>,
+    Seq<(u16, crate::jp2::MappingType)>,
+    Seq<(u16, ColorDefinition)>,
+);
+
+pub open spec fn part2_typed_image_component(components: Seq<Part2TypedComponentOutput>, index: u16)
+    -> Result<Part2TypedComponentOutput, crate::DecodeError>
+{
+    if index as nat >= components.len() { Err(part1_image_error(false)) }
+    else { Ok(components[index as int]) }
+}
+
+pub open spec fn part2_output_mapped_component(
+    components: Seq<Part2TypedComponentOutput>, palette: Option<Part2PaletteModel>, mapping: (u16, crate::jp2::MappingType),
+) -> Result<Part2TypedComponentOutput, crate::DecodeError> {
+    match part2_typed_image_component(components, mapping.0) {
+        Err(error) => Err(error),
+        Ok(source) => match mapping.1 {
+            crate::jp2::MappingType::Direct => part2_typed_component_copy(source),
+            crate::jp2::MappingType::Palette { column } => match palette {
+                None => Err(part2_color_input_error()),
+                Some(palette) => part2_palette_component(source.0, palette, column),
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_output_mapping_prefix(
+    components: Seq<Part2TypedComponentOutput>, header: Part2OutputHeader, count: nat,
+) -> Result<Seq<Part2TypedComponentOutput>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) }
+    else {
+        match part2_output_mapping_prefix(components, header, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_output_mapped_component(components, header.0, header.1[count - 1]) {
+                Err(error) => Err(error),
+                Ok(component) => Ok(previous.push(component)),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_output_apply_definition(
+    components: Seq<Part2TypedComponentOutput>, record: (u16, ColorDefinition),
+) -> Result<Seq<Part2TypedComponentOutput>, crate::DecodeError> {
+    if record.0 as nat >= components.len() { Err(part2_color_input_error()) }
+    else {
+        let previous = components[record.0 as int];
+        Ok(components.update(record.0 as int, (previous.0, previous.1.push(record.1))))
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_output_definition_prefix(
+    components: Seq<Part2TypedComponentOutput>, definitions: Seq<(u16, ColorDefinition)>, count: nat,
+) -> Result<Seq<Part2TypedComponentOutput>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(components) }
+    else {
+        match part2_output_definition_prefix(components, definitions, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => part2_output_apply_definition(previous, definitions[count - 1]),
+        }
+    }
+}
+
+pub open spec fn part2_apply_output_header(
+    image: Part1DecodedTypedImage, header: Part2OutputHeader, maximum_components: u16, maximum_bytes: u64,
+) -> Result<Part1DecodedTypedImage, crate::DecodeError> {
+    let components = Seq::new(image.1.len(), |i: int| (image.1[i], image.2[i]));
+    let mapped = if header.1.len() == 0 { Ok(components) }
+        else { part2_output_mapping_prefix(components, header, header.1.len()) };
+    match mapped {
+        Err(error) => Err(error),
+        Ok(mapped) => match part2_output_definition_prefix(mapped, header.2, header.2.len()) {
+            Err(error) => Err(error),
+            Ok(defined) => part2_typed_image_from_parts(
+                image.0.0, image.0.1, image.0.2, image.0.3, defined, maximum_components, maximum_bytes,
+            ),
+        },
+    }
+}
+
+pub open spec fn part2_typed_image_admit_component(
+    component: Part2TypedComponentOutput, previous: u64, maximum: u64,
+) -> Result<u64, crate::DecodeError> {
+    match part1_transform_area(component.0.width, component.0.height) {
+        Err(error) => Err(error),
+        Ok(expected) => {
+            let count = part2_typed_sample_count(component.0.samples);
+            if count != expected { Err(part1_image_error(false)) }
+            else {
+                let charged = part1_accumulate_decoded_bytes(count, previous, maximum);
+                match charged.0 { Err(error) => Err(error), Ok(()) => Ok(charged.1) }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_typed_image_admission_prefix(
+    components: Seq<Part2TypedComponentOutput>, maximum: u64, count: nat,
+) -> Result<u64, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(0) }
+    else {
+        match part2_typed_image_admission_prefix(components, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => part2_typed_image_admit_component(components[count - 1], previous, maximum),
+        }
+    }
+}
+
+pub open spec fn part2_typed_image_from_parts(
+    width: u32, height: u32, x_origin: u32, y_origin: u32,
+    components: Seq<Part2TypedComponentOutput>, maximum_components: u16, maximum_bytes: u64,
+) -> Result<Part1DecodedTypedImage, crate::DecodeError> {
+    if x_origin as nat + width as nat > u32::MAX || y_origin as nat + height as nat > u32::MAX {
+        Err(part1_image_error(true))
+    } else if components.len() > u16::MAX {
+        Err(part1_image_error(true))
+    } else if components.len() > maximum_components {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::Components, limit: maximum_components as u64, actual: components.len() as u64,
+        })
+    } else {
+        match part2_typed_image_admission_prefix(components, maximum_bytes, components.len()) {
+            Err(error) => Err(error),
+            Ok(_) => Ok(((width, height, x_origin, y_origin),
+                Seq::new(components.len(), |i: int| components[i].0),
+                Seq::new(components.len(), |i: int| components[i].1))),
+        }
+    }
+}
 
 pub open spec fn part2_typed_sample_count(samples: Part1TypedSampleSequence) -> nat {
     match samples {

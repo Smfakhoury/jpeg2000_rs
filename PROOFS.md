@@ -78,9 +78,43 @@ partial, reordered and constant bindings. Existing sparse-magnitude arithmetic
 also explicitly instantiates its original final-limb premise to stabilize the
 joined proof; no theorem domain, native algorithm, trust or limit changed.
 
-Whole-header direct/palette component selection, CDEF record application,
-final typed-image admission, parser associations and selected-pixel composition
-remain separate F7 closure obligations.
+Whole-header selection and final admission have a separate complete relation
+below. Parser associations and selected-pixel composition remain separate F7
+closure obligations.
+
+## Complete native output-header and image admission
+
+The actual `decode::apply_jp2_output` now returns exactly
+`part2_apply_output_header` for every native typed image, supplied header and
+actual component/decoded-byte caps. Empty CMAP copies all components; otherwise
+the actual mapping vector selects sources in order. Direct mapping retains
+existing CDEF; palette mapping clears it before the actual ordered header CDEF
+records are appended. Duplicate records and unnormalized associations are
+retained. The first invalid source uses the image-index error, whereas a missing
+palette, invalid palette descriptor or out-of-range CDEF channel uses the
+container-mismatch error. Earlier mapping errors precede final image admission.
+
+The one executable `typed_image_from_components_with_origin` body is shared
+with the existing `TypedImage::from_components_with_origin` API. Its full result
+checks x/y origin addition, native u16 count conversion, component cap, then
+each actual component's area/cardinality and cumulative eight-byte sample
+charge, in production order. It preserves every sample, tag, metadata field
+and CDEF record. Precision, subsampling, sign/tag agreement, image/component
+dimension agreement and unused header image/color/count hints are not newly
+validated. The actual borrowed `TypedImage::component` has an exact result
+relation too. Explicit enum error construction and checked conversion matches
+retain the original native behavior while exposing complete error payloads.
+
+An independent whole-header oracle compares 15,624 supplied contexts, including
+malformed native shapes/tags/metadata, absent palettes, duplicate definitions,
+ignored header count hints, origin overflow and tight byte caps. Separate
+admission regressions cover 64/65 and 65,535/65,536 component thresholds and
+first-error priority. Three exact producer/model/input recipes reject partial
+results, wrong owners/caps/inputs and a wrong primary clause followed by a
+correct duplicate. Method resolution searches all formatted impl blocks of
+the exact owner and rejects ambiguity, foreign owners and nested functions.
+These are actual supplied-header results, not parsing/association, compressed
+decoding, target derivation or whole-F7 completion claims.
 
 ## Complete actual MQ and legacy three-pass producers
 
@@ -484,6 +518,50 @@ Proved properties preserve readonly identity/contexts, first-error priority,
 preflight-before-coefficients and every prior state effect at final accounting.
 This is not progression, tile-part/header reassembly, packet-length iteration,
 JPIP outer-transaction or whole-F5H completion.
+## Exact retained HT and selected group acceptance
+
+Four finite result/model/complete-state/input recipes bind the actual retained
+refinement, placeholder step, repeated placeholder loop and staged group
+producers. Mutations reject unrelated returns/models, old or partial final
+states, wrong actual inputs/pass counts/caps, extra unbound mutable state and
+incorrect owners/callers. A later correct clause cannot mask the primary
+whole-result clause's wrong argument binding. Trait Clone is proved data
+support, not a request for generic trait or implication matching.
+
+The legacy three-pass refactor's actual direct bypass caller is
+`RawBitReader::decode` in `impl Tier1SymbolDecoder for RawBitReader`, not the
+trait declaration or an older direct-pass wrapper. The curated raw-reader
+entry names that real edge. Only this exact known trait/owner method has
+additional formatted-scope resolution; unknown traits, foreign owners, nested
+functions and ambiguous inherent/trait duplicates reject. A trait name before
+`for` is not misidentified as the implementation's receiver type. No runtime
+adapter or decoder body is added to satisfy the inventory.
+
+Whole joined production verification and targeted acceptance regressions pass.
+Full frozen qualification is separate; legacy/mixed packet orchestration and
+complete F5L/F5H remain open.
+
+## Complete actual mixed packet-body acceptance
+
+The actual staged body and outer whole-decoder clone/commit body now have
+unconditional complete native Result/state relations. They execute the shared
+preparation once, then the real HT or legacy loop, with exact body slices,
+all164 stored segment entries, ordered counters/caps and public rollback.
+Both earlier selected-route results remain consequences, not entry premises.
+
+Ten finite exact producer/model/state/input recipes cover the shared header
+segment accessor, preparation, both real helper families and the mixed
+staged/public body. Aggregate legacy progress binds every mutable decoder,
+index, offset and pass field; HT progress and separate counters likewise stay
+complete. Negative tests reject partial or success-only states, unrelated
+inputs/models, wrong caps, omitted mutable state and a bad primary binding
+hidden by a later correct clause. Real production callers are required.
+
+The standalone public Tier1 segment dispatcher is also proved unconditionally,
+but is listed as proved API support rather than inventing an internal caller
+for the curated inventory. No generic expression/implication matching or
+mutable-completeness policy is weakened. Actual header/TagTree and precinct
+composition remain separate F5L/F5H obligations.
 
 ## Reproduce verification
 
@@ -701,8 +779,8 @@ None-kernel plan coordinator: raw decoder/plane and six-limb coefficient reads,
 signed midpoint handling, initialization and nine-byte cumulative charging,
 ROI/quantization, placement/coverage/fraction checks, the entire mixed-direction
 multilevel 5/3 or Q16 9/7 fold and every final PreparedTileComponent field/error.
-Its original private with-kernel body shares these real stages and exposes the
-explicit None-kernel guarantee; no proof-only executable coordinator is added.
+Its original private with-kernel body shares these real stages; the complete
+native None/Some extension below preserves the original None result.
 All public native malformed-input and resource cases remain modeled rejection,
 not header/normalization/coverage/budget/success/trace preconditions.
 The prepared-to-tile getter also has exact full-field/sample semantics.
@@ -713,11 +791,52 @@ Seven exact inventory recipes bind those complete returned objects to their
 actual plans, precincts, styles, planes, coordinates, fractions, selected counts,
 detail indices and decoded-byte cap. Negative tests reject incorrect listed
 models, unrelated or partial results, constant/reordered native inputs and
-success-only substitutions. The private with-kernel implementation remains a
-context link, not an unconditional Some-kernel contract: a regression explicitly
-rejects that promotion. No generic expression or implication matcher was added.
+success-only substitutions. The standard entry does not claim the generalized
+private producer under a standard-only model. No generic expression or
+implication matcher was added.
 
-F6 remains open: Some-kernel/arbitrary profiles, general MCT paths and the actual
+### Complete native arbitrary kernels and None/Some preparation
+
+The actual `inverse_arbitrary`, horizontal/vertical/2D arbitrary entry points
+and their shared production stages now have complete unconditional native
+Result relations. The raw kernel/step/coefficient views bind actual flags,
+full bytes and vectors. Interleave errors and singleton truncating half precede
+scaling; missing/zero scaling and every integer/binary32/binary64/binary128
+coefficient conversion, reverse-step order, parity, sample extension, source
+sum, checked wide arithmetic and exact final/partial buffers are included.
+No valid descriptor, normalized shape/precision, successful lifting operation
+or execution trace is a premise.
+
+The Q32 model distinguishes native truncating division, ties-even binary
+coefficient conversion, the existing excessive-right-shift zero cutoff, and
+the signed lifting bias before arithmetic shifting. Explicit checked-result
+matches, proved shift bounds and a faithful explicit zero/one rounding
+increment expose the existing semantics without adding trust or proof limits.
+The nonresizing lifting bodies use mutable slices and retain one executable
+body, actual update order and late-error partial writes.
+
+The actual `prepare_tile_component_with_kernel` now unconditionally equals
+`part2_prepare_component`; the former standard models are exact None wrappers
+of the same shared semantics. Every native style/kernel combination is
+admitted: style selects quantization reversibility, a supplied kernel selects
+the actual inverse operation, and the existing fraction mismatch rejects only
+after that operation. Zero-resolution paths do not invent kernel validation.
+The multilevel fold and every final field/error remain complete, including
+the distinct nine-byte working sample/visited charge.
+
+Native regressions cover all 256 kinds, four physical-width hints and all
+flag/parity/reversibility combinations in 32,768 contexts, independent
+integer-rational Q32 rounding and binary-layout edges, exact exponent-127
+rejection, reverse-step parity, ignored/unvisited defects, late partial writes
+and real None/Some preparation/fraction/budget error order. Twenty-one finite
+exact producer/model/result/input recipes bind every newly claimed scalar,
+sequence, plane, partial buffer and preparation stage. Negative tests reject
+wrong native views/flags/counts/caps, partial or success-only results and a
+wrong primary clause followed by a correct duplicate. Whole-production
+verification and targeted inventory tests pass; complete frozen numerical,
+resource and hosted qualification remain separate acceptance gates.
+
+F6 remains open: general MCT paths and the actual
 whole-decoder composed
 coefficient-to-component-sample bridge are not
 established here. Whole tile-sample-to-image assembly does not close those gaps.
