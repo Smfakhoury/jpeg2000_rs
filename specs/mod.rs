@@ -413,6 +413,122 @@ pub type Part1DecodedTypedImage = (
     Seq<Seq<(crate::image::ChannelType, crate::image::ChannelAssociation)>>,
 );
 
+pub type Part2TypedComponentOutput = (Part1TypedComponentModel, Seq<ColorDefinition>);
+
+pub open spec fn part2_typed_sample_count(samples: Part1TypedSampleSequence) -> nat {
+    match samples {
+        Part1TypedSampleSequence::Signed(values) => values.len(),
+        Part1TypedSampleSequence::Unsigned(values) => values.len(),
+    }
+}
+
+pub open spec fn part2_typed_component_from_parts(
+    width: u32, height: u32, info: crate::codestream::ComponentInfo, samples: Part1TypedSampleSequence,
+) -> Part2TypedComponentOutput {
+    (Part1TypedComponentModel { width, height, info, samples }, Seq::empty())
+}
+
+pub open spec fn part2_typed_component_copy(source: Part2TypedComponentOutput)
+    -> Result<Part2TypedComponentOutput, crate::DecodeError>
+{
+    Ok(source)
+}
+
+pub open spec fn part2_palette_modulus(precision: u8) -> Result<u64, crate::DecodeError> {
+    if precision == 0 || precision > 38 { Err(part2_color_input_error()) }
+    else { Ok(1u64 << precision) }
+}
+
+pub open spec fn part2_palette_source_index(samples: Part1TypedSampleSequence, index: usize)
+    -> Result<u16, crate::DecodeError>
+{
+    let value = match samples {
+        Part1TypedSampleSequence::Signed(values) =>
+            if index < values.len() { Some(values[index as int] as int) } else { None },
+        Part1TypedSampleSequence::Unsigned(values) =>
+            if index < values.len() { Some(values[index as int] as int) } else { None },
+    };
+    match value {
+        None => Err(part2_color_input_error()),
+        Some(value) => if value < 0 || value > u16::MAX { Err(part2_color_input_error()) }
+            else { Ok(value as u16) },
+    }
+}
+
+pub open spec fn part2_palette_sample(
+    samples: Part1TypedSampleSequence, palette: Part2PaletteModel, column: u8, index: usize,
+) -> Result<i64, crate::DecodeError> {
+    if column >= palette.1.len() { Err(part2_color_input_error()) }
+    else {
+        let descriptor = palette.1[column as int];
+        if descriptor.precision == 0 || descriptor.precision > 38 { Err(part2_color_input_error()) }
+        else {
+            match part2_palette_source_index(samples, index) {
+                Err(error) => Err(error),
+                Ok(entry) => if entry >= palette.0 { Err(part2_color_input_error()) } else {
+                    match part2_palette_value(palette, entry, column) {
+                        Err(error) => Err(error),
+                        Ok(value) =>
+                            if value < part1_output_minimum(descriptor.precision, descriptor.signed)
+                                || value > part1_output_maximum(descriptor.precision, descriptor.signed) {
+                                Err(part2_color_input_error())
+                            } else { Ok(value) },
+                    }
+                },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_palette_samples(
+    samples: Part1TypedSampleSequence, palette: Part2PaletteModel, column: u8, count: nat,
+) -> Result<Part1TypedSampleSequence, crate::DecodeError>
+    decreases count,
+{
+    if column >= palette.1.len() { Err(part2_color_input_error()) }
+    else {
+        let descriptor = palette.1[column as int];
+        if descriptor.precision == 0 || descriptor.precision > 38 { Err(part2_color_input_error()) }
+        else if count == 0 {
+            Ok(if descriptor.signed { Part1TypedSampleSequence::Signed(Seq::empty()) }
+                else { Part1TypedSampleSequence::Unsigned(Seq::empty()) })
+        } else {
+            match part2_palette_samples(samples, palette, column, (count - 1) as nat) {
+                Err(error) => Err(error),
+                Ok(previous) => match part2_palette_sample(samples, palette, column, (count - 1) as usize) {
+                    Err(error) => Err(error),
+                    Ok(value) => Ok(match previous {
+                        Part1TypedSampleSequence::Signed(values) =>
+                            Part1TypedSampleSequence::Signed(values.push(value)),
+                        Part1TypedSampleSequence::Unsigned(values) =>
+                            Part1TypedSampleSequence::Unsigned(values.push(value as u64)),
+                    }),
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn part2_palette_component(
+    source: Part1TypedComponentModel, palette: Part2PaletteModel, column: u8,
+) -> Result<Part2TypedComponentOutput, crate::DecodeError> {
+    if column >= palette.1.len() { Err(part2_color_input_error()) }
+    else {
+        let descriptor = palette.1[column as int];
+        if descriptor.precision == 0 || descriptor.precision > 38 { Err(part2_color_input_error()) }
+        else {
+            match part2_palette_samples(source.samples, palette, column, part2_typed_sample_count(source.samples)) {
+                Err(error) => Err(error),
+                Ok(samples) => Ok(part2_typed_component_from_parts(source.width, source.height,
+                    crate::codestream::ComponentInfo {
+                        precision: descriptor.precision, signed: descriptor.signed, ..source.info
+                    }, samples)),
+            }
+        }
+    }
+}
+
 pub open spec fn part1_packet_header_error() -> crate::DecodeError {
     crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidPacketHeader }
 }

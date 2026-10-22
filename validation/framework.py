@@ -355,6 +355,9 @@ def validate_normative_coverage(
                 ("src/decode.rs", "copy_prepare_plane"): "prepare_fold_outcome",
                 ("src/decode.rs", "finish_prepared_component"): "prepared_component_outcome",
                 ("src/decode.rs", "as_tile_component"): "crate::image::assembly_tile_view",
+                ("src/decode.rs", "copy_typed_component"): "crate::image::typed_component_output",
+                ("src/decode.rs", "map_palette_component"): "crate::image::typed_component_output",
+                ("src/image.rs", "typed_component_from_parts"): "typed_component_value_view",
                 ("src/image.rs", "assemble_image"): "decoded_image_outcome",
                 ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
                 ("src/image.rs", "typed_samples"): "decoded_typed_samples_outcome",
@@ -398,6 +401,11 @@ def validate_normative_coverage(
                 ("src/decode.rs", "copy_prepare_plane"): "part1_prepare_copy_plane",
                 ("src/decode.rs", "finish_prepared_component"): "part1_prepare_finish",
                 ("src/decode.rs", "as_tile_component"): "part1_prepared_as_tile",
+                ("src/decode.rs", "copy_typed_component"): "part2_typed_component_copy",
+                ("src/decode.rs", "map_palette_component"): "part2_palette_component",
+                ("src/decode.rs", "palette_modulus"): "part2_palette_modulus",
+                ("src/decode.rs", "invalid_jp2_output"): "part2_color_input_error",
+                ("src/image.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
                 ("src/color.rs", "crop"): "color_crop_image",
                 ("src/color.rs", "crop_plane"): "color_crop_plane",
                 ("src/color.rs", "crop_sample"): "color_crop_sample",
@@ -611,6 +619,31 @@ def validate_normative_coverage(
                     contract,
                 ) is not None
             )
+            component_contract_arguments = {
+                ("src/decode.rs", "copy_typed_component"): (
+                    "part2_typed_component_copy",
+                    r"crate::image::typed_component_output_view\s*\(\s*source\s*\)",
+                ),
+                ("src/decode.rs", "map_palette_component"): (
+                    "part2_palette_component",
+                    r"crate::image::typed_component_view\s*\(\s*source\s*\)\s*,\s*"
+                    r"crate::jp2::palette_view\s*\(\s*palette\s*\)\s*,\s*column",
+                ),
+                ("src/decode.rs", "palette_modulus"): ("part2_palette_modulus", r"precision"),
+                ("src/decode.rs", "invalid_jp2_output"): ("part2_color_input_error", r""),
+                ("src/image.rs", "typed_component_from_parts"): (
+                    "part2_typed_component_from_parts",
+                    r"width\s*,\s*height\s*,\s*info\s*,\s*typed_samples_view\s*\(\s*&\s*samples\s*\)",
+                ),
+            }.get((reference["path"], reference["symbol"]))
+            component_arguments_bound = (
+                component_contract_arguments is None
+                or re.search(
+                    r"crate::specs::" + re.escape(component_contract_arguments[0])
+                    + r"\s*\(\s*" + component_contract_arguments[1] + r"\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             statistic_arguments = {
                 "Tier1PassStatistics::scanned": (0, "count"),
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
@@ -631,6 +664,7 @@ def validate_normative_coverage(
                     or not palette_arguments_bound
                     or not cleanup_arguments_bound
                     or not prepare_arguments_bound
+                    or not component_arguments_bound
                     or not statistic_arguments_bound
                     or (expected_result_model is not None
                         and (named_result is None or named_result["model"] != expected_result_model))

@@ -3007,6 +3007,13 @@ fn apply_jp2_output(
     )
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::image::typed_component_output(result)
+            == crate::specs::part2_typed_component_copy(crate::image::typed_component_output_view(source)),
+    )
+)]
 fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, DecodeError> {
     let samples = match source.samples() {
         TypedSamples::Signed(source_samples) => {
@@ -3016,6 +3023,7 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 verus_keep_ghost,
                 verus_spec(
                     invariant index <= source_samples.len(),
+                    copied@ == source_samples@.take(index as int),
                     decreases source_samples.len() - index,
                 )
             )]
@@ -3023,6 +3031,8 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 copied.push(*source_samples.get(index).ok_or_else(invalid_jp2_output)?);
                 index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(copied@ =~= source_samples@); }
             TypedSamples::Signed(copied)
         }
         TypedSamples::Unsigned(source_samples) => {
@@ -3032,6 +3042,7 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 verus_keep_ghost,
                 verus_spec(
                     invariant index <= source_samples.len(),
+                    copied@ == source_samples@.take(index as int),
                     decreases source_samples.len() - index,
                 )
             )]
@@ -3039,17 +3050,31 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
                 copied.push(*source_samples.get(index).ok_or_else(invalid_jp2_output)?);
                 index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(copied@ =~= source_samples@); }
             TypedSamples::Unsigned(copied)
         }
     };
-    let mut copied =
-        TypedComponent::from_parts(source.width(), source.height(), source.info(), samples);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::image::typed_samples_view(&samples) == crate::image::typed_component_view(source).samples);
+    }
+    let mut copied = crate::image::typed_component_from_parts(
+        source.width(),
+        source.height(),
+        source.info(),
+        samples,
+    );
     let definition_count = source.channel_definitions().len();
     let mut definition_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant definition_index <= definition_count,
+            definition_count == crate::image::typed_component_definitions(source).len(),
+            crate::image::typed_component_view(&copied) == crate::image::typed_component_view(source),
+            crate::image::typed_component_definitions(&copied)
+                == crate::image::typed_component_definitions(source).take(definition_index as int),
             decreases definition_count - definition_index,
         )
     )]
@@ -3064,9 +3089,22 @@ fn copy_typed_component(source: &TypedComponent) -> Result<TypedComponent, Decod
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::image::typed_component_definitions(&copied)
+            =~= crate::image::typed_component_definitions(source));
+    }
     Ok(copied)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::image::typed_component_output(result) == crate::specs::part2_palette_component(
+            crate::image::typed_component_view(source), crate::jp2::palette_view(palette), column,
+        ),
+    )
+)]
 fn map_palette_component(
     source: &TypedComponent,
     palette: &jp2::Palette,
@@ -3076,7 +3114,8 @@ fn map_palette_component(
         .columns()
         .get(usize::from(column))
         .ok_or_else(invalid_jp2_output)?;
-    if descriptor.precision == 0 || descriptor.precision > 38 {
+    let precision = descriptor.precision;
+    if precision == 0 || precision > 38 {
         return Err(invalid_jp2_output());
     }
     let sample_count = match source.samples() {
@@ -3094,47 +3133,146 @@ fn map_palette_component(
         Vec::with_capacity(sample_count)
     };
     let mut sample_index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_palette_samples_empty(
+            crate::image::typed_component_view(source).samples, crate::jp2::palette_view(palette), column,
+        );
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant sample_index <= sample_count,
+            sample_count as nat == crate::specs::part2_typed_sample_count(crate::image::typed_component_view(source).samples),
+            column < crate::jp2::palette_view(palette).1.len(),
+            *descriptor == crate::jp2::palette_view(palette).1[column as int],
+            precision == descriptor.precision, 0 < precision <= 38,
+            crate::specs::part2_palette_samples(
+                crate::image::typed_component_view(source).samples, crate::jp2::palette_view(palette), column, sample_index as nat,
+            ) == Ok(if descriptor.signed {
+                crate::specs::Part1TypedSampleSequence::Signed(signed_samples@)
+            } else { crate::specs::Part1TypedSampleSequence::Unsigned(unsigned_samples@) }),
             decreases sample_count - sample_index,
         )
     )]
     while sample_index < sample_count {
-        let palette_index = match source.samples() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_palette_samples_step(
+                crate::image::typed_component_view(source).samples, crate::jp2::palette_view(palette), column, sample_index as nat,
+            );
+        }
+        let index_status = match source.samples() {
             TypedSamples::Signed(samples) => {
                 let value = *samples.get(sample_index).ok_or_else(invalid_jp2_output)?;
-                u16::try_from(value).map_err(|_| invalid_jp2_output())?
+                u16::try_from(value)
             }
             TypedSamples::Unsigned(samples) => {
                 let value = *samples.get(sample_index).ok_or_else(invalid_jp2_output)?;
-                u16::try_from(value).map_err(|_| invalid_jp2_output())?
+                u16::try_from(value)
+            }
+        };
+        let palette_index = match index_status {
+            Ok(index) => index,
+            Err(_) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_palette_sample_error(
+                        crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                        column, sample_index, crate::specs::part2_color_input_error(),
+                    );
+                }
+                return Err(invalid_jp2_output());
             }
         };
         if palette_index >= palette.entries() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_palette_sample_error(
+                    crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                    column, sample_index, crate::specs::part2_color_input_error(),
+                );
+            }
             return Err(invalid_jp2_output());
         }
-        let value = palette.value(palette_index, column)?;
+        let value_status = palette.value(palette_index, column);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = value_status {
+                crate::proofs::production_impl::production_palette_sample_error(
+                    crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                    column, sample_index, error,
+                );
+            }
+        }
+        let value = value_status?;
         if descriptor.signed {
-            let modulus = palette_modulus(descriptor.precision)?;
+            let modulus = palette_modulus(precision)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(2 <= modulus <= 274877906944) by(bit_vector)
+                    requires 0 < precision <= 38, modulus == 1u64 << precision;
+            }
             let half = i64::try_from(modulus.checked_div(2).ok_or_else(arithmetic_overflow)?)
                 .map_err(|_| arithmetic_overflow())?;
             let minimum = 0_i64.checked_sub(half).ok_or_else(arithmetic_overflow)?;
             let maximum = half.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(half == 1i64 << ((precision - 1) as u8)) by(bit_vector)
+                    requires 0 < precision <= 38, modulus == 1u64 << precision,
+                        half >= 0, half as u64 == modulus / 2;
+            }
             if value < minimum || value > maximum {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_palette_sample_error(
+                        crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                        column, sample_index, crate::specs::part2_color_input_error(),
+                    );
+                }
                 return Err(invalid_jp2_output());
             }
             signed_samples.push(value);
         } else {
-            let maximum = palette_modulus(descriptor.precision)?
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
-            let value = u64::try_from(value).map_err(|_| invalid_jp2_output())?;
-            if value > maximum {
+            let modulus = palette_modulus(precision)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(2 <= modulus <= 274877906944) by(bit_vector)
+                    requires 0 < precision <= 38, modulus == 1u64 << precision;
+            }
+            let maximum = modulus.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(maximum < 274877906944) by(bit_vector)
+                    requires 0 < precision <= 38, maximum == (1u64 << precision) - 1;
+                assert(maximum as i64 == ((1i64 << precision) - 1)) by(bit_vector)
+                    requires 0 < precision <= 38, maximum == (1u64 << precision) - 1;
+            }
+            let unsigned_value = match u64::try_from(value) {
+                Ok(value) => value,
+                Err(_) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_palette_sample_error(
+                            crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                            column, sample_index, crate::specs::part2_color_input_error(),
+                        );
+                    }
+                    return Err(invalid_jp2_output());
+                }
+            };
+            if unsigned_value > maximum {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_palette_sample_error(
+                        crate::image::typed_component_view(source), crate::jp2::palette_view(palette),
+                        column, sample_index, crate::specs::part2_color_input_error(),
+                    );
+                }
                 return Err(invalid_jp2_output());
             }
-            unsigned_samples.push(value);
+            unsigned_samples.push(unsigned_value);
         }
         sample_index = sample_index
             .checked_add(1)
@@ -3148,7 +3286,7 @@ fn map_palette_component(
     } else {
         TypedSamples::Unsigned(unsigned_samples)
     };
-    Ok(TypedComponent::from_parts(
+    Ok(crate::image::typed_component_from_parts(
         source.width(),
         source.height(),
         info,
@@ -3156,28 +3294,49 @@ fn map_palette_component(
     ))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::part2_palette_modulus(precision),)
+)]
 fn palette_modulus(precision: u8) -> Result<u64, DecodeError> {
     if precision == 0 || precision > 38 {
         return Err(invalid_jp2_output());
     }
     let mut modulus = 1_u64;
     let mut bit = 0_u8;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1u64 << 0u32 == 1) by(bit_vector); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant bit <= precision,
+            invariant bit <= precision, 0 < precision <= 38,
+            modulus == 1u64 << (bit as u32),
             decreases precision - bit,
         )
     )]
     while bit < precision {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(modulus <= 137438953472) by(bit_vector)
+                requires bit < 38, modulus == 1u64 << (bit as u32);
+            assert(modulus * 2 == 1u64 << ((bit + 1) as u32)) by(bit_vector)
+                requires bit < 38, modulus == 1u64 << (bit as u32);
+        }
         modulus = modulus.checked_mul(2).ok_or_else(arithmetic_overflow)?;
         bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(modulus)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(error => ensures error == crate::specs::part2_color_input_error(),)
+)]
 fn invalid_jp2_output() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ContainerCodestreamMismatch)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ContainerCodestreamMismatch,
+    }
 }
 
 struct ValidatedSelection {
@@ -5614,6 +5773,202 @@ mod tests {
         jp2.extend(box32(*b"jp2h", &header));
         jp2.extend(box32(*b"jp2c", codestream));
         jp2
+    }
+
+    #[test]
+    fn palette_component_mapping_matches_independent_complete_native_oracle() {
+        use crate::codestream::ComponentInfo;
+        use crate::image::{ChannelAssociation, ChannelDefinition, ChannelType};
+
+        fn malformed(kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput { offset: 0, kind }
+        }
+
+        fn samples(case: usize) -> TypedSamples {
+            match case {
+                0 => TypedSamples::Signed(vec![]),
+                1 => TypedSamples::Signed(vec![-1]),
+                2 => TypedSamples::Signed(vec![0]),
+                3 => TypedSamples::Signed(vec![1, 0]),
+                4 => TypedSamples::Signed(vec![i64::from(u16::MAX)]),
+                5 => TypedSamples::Signed(vec![i64::MIN]),
+                6 => TypedSamples::Signed(vec![0, 2, 1]),
+                7 => TypedSamples::Signed(vec![i64::MAX]),
+                8 => TypedSamples::Unsigned(vec![]),
+                9 => TypedSamples::Unsigned(vec![0]),
+                10 => TypedSamples::Unsigned(vec![1, 0]),
+                11 => TypedSamples::Unsigned(vec![u64::from(u16::MAX)]),
+                12 => TypedSamples::Unsigned(vec![u64::MAX]),
+                13 => TypedSamples::Unsigned(vec![0, 2, 1]),
+                _ => unreachable!(),
+            }
+        }
+
+        fn oracle(
+            input: &TypedSamples,
+            entries: u16,
+            columns: &[jp2::PaletteColumn],
+            values: &[i64],
+            column: u8,
+        ) -> Result<TypedSamples, DecodeError> {
+            let descriptor = columns
+                .get(usize::from(column))
+                .ok_or(malformed(MalformedKind::ContainerCodestreamMismatch))?;
+            if descriptor.precision == 0 || descriptor.precision > 38 {
+                return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+            }
+            let input = match input {
+                TypedSamples::Signed(values) => values
+                    .iter()
+                    .map(|value| i128::from(*value))
+                    .collect::<Vec<_>>(),
+                TypedSamples::Unsigned(values) => values
+                    .iter()
+                    .map(|value| i128::from(*value))
+                    .collect::<Vec<_>>(),
+            };
+            let modulus = 2_i128.pow(u32::from(descriptor.precision));
+            let (minimum, maximum) = if descriptor.signed {
+                (-(modulus / 2), modulus / 2 - 1)
+            } else {
+                (0, modulus - 1)
+            };
+            let mut signed = Vec::new();
+            let mut unsigned = Vec::new();
+            for index in input {
+                if index < 0 || index > i128::from(u16::MAX) || index >= i128::from(entries) {
+                    return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+                }
+                if columns.len() > usize::from(u8::MAX) {
+                    return Err(malformed(MalformedKind::ArithmeticOverflow));
+                }
+                let address = (index as u128) * columns.len() as u128 + u128::from(column);
+                if address > usize::MAX as u128 {
+                    return Err(malformed(MalformedKind::ArithmeticOverflow));
+                }
+                let value = *values
+                    .get(address as usize)
+                    .ok_or(malformed(MalformedKind::InvalidBoxContents))?;
+                if i128::from(value) < minimum || i128::from(value) > maximum {
+                    return Err(malformed(MalformedKind::ContainerCodestreamMismatch));
+                }
+                if descriptor.signed {
+                    signed.push(value);
+                } else {
+                    unsigned.push(u64::try_from(value).unwrap());
+                }
+            }
+            Ok(if descriptor.signed {
+                TypedSamples::Signed(signed)
+            } else {
+                TypedSamples::Unsigned(unsigned)
+            })
+        }
+
+        let tables = [
+            vec![],
+            vec![0, -1],
+            vec![127, -128, 255, 0, i64::MIN, i64::MAX],
+            vec![
+                (1_i64 << 37) - 1,
+                -(1_i64 << 37),
+                (1_i64 << 38) - 1,
+                1_i64 << 38,
+            ],
+        ];
+        let mut contexts = 0;
+        for entries in [0, 1, 2, u16::MAX] {
+            for column_count in [0, 1, 2, 256] {
+                for column in [0, 1, u8::MAX] {
+                    for precision in [0, 1, 8, 16, 38, 39, u8::MAX] {
+                        for signed in [false, true] {
+                            let columns =
+                                vec![jp2::PaletteColumn { precision, signed }; column_count];
+                            for values in &tables {
+                                let palette = jp2::Palette::for_test(
+                                    entries,
+                                    columns.clone(),
+                                    values.clone(),
+                                );
+                                for case in 0..14 {
+                                    let info = ComponentInfo {
+                                        precision: [0, 1, 38, u8::MAX][case % 4],
+                                        signed: case % 2 == 0,
+                                        x_subsampling: [0, 2, u8::MAX][case % 3],
+                                        y_subsampling: [u8::MAX, 0, 1][case % 3],
+                                        x_registration: u16::MAX,
+                                        y_registration: case as u16,
+                                    };
+                                    let width = if case % 3 == 0 { 0 } else { 5 };
+                                    let height = if case % 5 == 0 { u32::MAX } else { 1 };
+                                    let mut source = TypedComponent::from_parts(
+                                        width,
+                                        height,
+                                        info,
+                                        samples(case),
+                                    );
+                                    source.add_channel_definition(ChannelDefinition::new(
+                                        ChannelType::Unspecified,
+                                        ChannelAssociation::Color(u16::MAX),
+                                    ));
+                                    source.add_channel_definition(ChannelDefinition::new(
+                                        ChannelType::PremultipliedOpacity,
+                                        ChannelAssociation::WholeImage,
+                                    ));
+                                    assert_eq!(copy_typed_component(&source).unwrap(), source);
+                                    let expected =
+                                        oracle(source.samples(), entries, &columns, values, column);
+                                    match (
+                                        expected,
+                                        map_palette_component(&source, &palette, column),
+                                    ) {
+                                        (Err(expected), Err(actual)) => {
+                                            assert_eq!(actual, expected)
+                                        }
+                                        (Ok(expected), Ok(actual)) => {
+                                            assert_eq!(actual.width(), width);
+                                            assert_eq!(actual.height(), height);
+                                            assert_eq!(
+                                                actual.info(),
+                                                ComponentInfo {
+                                                    precision,
+                                                    signed,
+                                                    ..info
+                                                }
+                                            );
+                                            assert_eq!(actual.samples(), &expected);
+                                            assert!(actual.channel_definitions().is_empty());
+                                        }
+                                        (expected, actual) => panic!(
+                                            "entries={entries} columns={column_count} column={column} precision={precision} signed={signed} case={case}: expected={expected:?} actual={actual:?}"
+                                        ),
+                                    }
+                                    assert_eq!(source.info(), info);
+                                    assert_eq!(source.channel_definitions().len(), 2);
+                                    contexts += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 37_632);
+    }
+
+    #[test]
+    fn palette_component_modulus_matches_all_native_precisions() {
+        for precision in 0..=u8::MAX {
+            let expected = if (1..=38).contains(&precision) {
+                Ok((1_u128 << precision) as u64)
+            } else {
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ContainerCodestreamMismatch,
+                })
+            };
+            assert_eq!(palette_modulus(precision), expected);
+        }
     }
 
     #[test]

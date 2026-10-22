@@ -2326,6 +2326,50 @@
     },
     {
       "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "copy_typed_component"},
+        {"path": "src/decode.rs", "symbol": "map_palette_component"},
+        {"path": "src/decode.rs", "symbol": "palette_modulus"},
+        {"path": "src/decode.rs", "symbol": "invalid_jp2_output"},
+        {"path": "src/image.rs", "symbol": "typed_component_from_parts"}
+      ],
+      "id": "part2-complete-native-palette-component",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "apply_jp2_output"},
+        {"path": "src/decode.rs", "symbol": "copy_typed_component"},
+        {"path": "src/decode.rs", "symbol": "map_palette_component"},
+        {"path": "src/decode.rs", "symbol": "palette_modulus"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_component_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_sample_error"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::add_channel_definition"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::clear_channel_definitions"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_typed_component_from_parts"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_component_copy"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_samples"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_source_index"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_modulus"},
+        {"path": "specs/mod.rs", "symbol": "part2_color_input_error"},
+        {"path": "specs/mod.rs", "symbol": "part2_palette_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_output_minimum"},
+        {"path": "specs/mod.rs", "symbol": "part1_output_maximum"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_sample_count"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "palette_component_mapping_matches_independent_complete_native_oracle"},
+        {"path": "src/decode.rs", "symbol": "palette_component_modulus_matches_all_native_precisions"}
+      ],
+      "topic": "Complete actual typed component copy and palette component Result over every stored palette/source shape and native column: exact all sample values/tags/metadata, ordered native index and table errors, descriptor precision/range, empty-source bypass of unaccessed table defects, copy-preserved versus palette-cleared CDEF. No parsed/normalized/rectangular/success premise. Whole header cmap/CDEF application, final image admission and selected pixels remain separate."
+    },
+    {
+      "contract_refs": [
         {
           "path": "src/refinement.rs",
           "symbol": "signed_to_nominal"

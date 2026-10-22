@@ -196,6 +196,81 @@ pub proof fn production_prepare_placements_error(
     if count < end { production_prepare_placements_error(initial, plan, precincts, reversible, maximum, count, (end - 1) as nat); }
 }
 
+pub proof fn production_palette_samples_empty(
+    samples: crate::specs::Part1TypedSampleSequence, palette: crate::specs::Part2PaletteModel, column: u8,
+)
+    requires column < palette.1.len(), 0 < palette.1[column as int].precision <= 38,
+    ensures crate::specs::part2_palette_samples(samples, palette, column, 0)
+        == Ok(if palette.1[column as int].signed {
+            crate::specs::Part1TypedSampleSequence::Signed(Seq::empty())
+        } else { crate::specs::Part1TypedSampleSequence::Unsigned(Seq::empty()) }),
+{
+    reveal_with_fuel(crate::specs::part2_palette_samples, 1);
+}
+
+pub proof fn production_palette_samples_step(
+    samples: crate::specs::Part1TypedSampleSequence, palette: crate::specs::Part2PaletteModel,
+    column: u8, count: nat,
+)
+    requires column < palette.1.len(), 0 < palette.1[column as int].precision <= 38,
+    ensures crate::specs::part2_palette_samples(samples, palette, column, count + 1)
+        == match crate::specs::part2_palette_samples(samples, palette, column, count) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_palette_sample(samples, palette, column, count as usize) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(match previous {
+                    crate::specs::Part1TypedSampleSequence::Signed(values) =>
+                        crate::specs::Part1TypedSampleSequence::Signed(values.push(value)),
+                    crate::specs::Part1TypedSampleSequence::Unsigned(values) =>
+                        crate::specs::Part1TypedSampleSequence::Unsigned(values.push(value as u64)),
+                }),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_palette_samples, 1);
+}
+
+pub proof fn production_palette_samples_error(
+    samples: crate::specs::Part1TypedSampleSequence, palette: crate::specs::Part2PaletteModel,
+    column: u8, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end, crate::specs::part2_palette_samples(samples, palette, column, count) == Err(error),
+    ensures crate::specs::part2_palette_samples(samples, palette, column, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part2_palette_samples, 1);
+    if count < end {
+        production_palette_samples_error(samples, palette, column, count, (end - 1) as nat, error);
+    }
+}
+
+pub proof fn production_palette_component_error(
+    source: crate::specs::Part1TypedComponentModel, palette: crate::specs::Part2PaletteModel,
+    column: u8, count: nat, error: crate::DecodeError,
+)
+    requires count <= crate::specs::part2_typed_sample_count(source.samples),
+        crate::specs::part2_palette_samples(source.samples, palette, column, count) == Err(error),
+    ensures crate::specs::part2_palette_component(source, palette, column) == Err(error),
+{
+    production_palette_samples_error(source.samples, palette, column, count,
+        crate::specs::part2_typed_sample_count(source.samples), error);
+    reveal_with_fuel(crate::specs::part2_palette_samples, 1);
+}
+
+pub proof fn production_palette_sample_error(
+    source: crate::specs::Part1TypedComponentModel, palette: crate::specs::Part2PaletteModel,
+    column: u8, index: usize, error: crate::DecodeError,
+)
+    requires column < palette.1.len(), 0 < palette.1[column as int].precision <= 38,
+        index < crate::specs::part2_typed_sample_count(source.samples),
+        crate::specs::part2_palette_samples(source.samples, palette, column, index as nat).is_ok(),
+        crate::specs::part2_palette_sample(source.samples, palette, column, index) == Err(error),
+    ensures crate::specs::part2_palette_component(source, palette, column) == Err(error),
+{
+    production_palette_samples_step(source.samples, palette, column, index as nat);
+    production_palette_component_error(source, palette, column, index as nat + 1, error);
+}
+
 pub proof fn production_decoded_signed_empty(samples: Seq<i64>, fraction: u8, precision: u8)
     ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
 {
@@ -1472,8 +1547,10 @@ pub proof fn production_magnitude_sparse_prefix(limbs: Seq<u64>, index: nat, dig
         == if index < count { (digit as nat) * vstd::arithmetic::power2::pow2(64 * index) } else { 0 },
     decreases count,
 {
+    reveal_with_fuel(crate::specs::part1_magnitude_prefix_value, 1);
     if count > 0 {
         production_magnitude_sparse_prefix(limbs, index, digit, (count - 1) as nat);
+        assert(limbs[count - 1] == if count - 1 == index { digit } else { 0 });
     }
 }
 

@@ -477,6 +477,77 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_complete_palette_components_to_actual_results_and_inputs(self):
+        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(
+            item for item in original_coverage["requirements"]
+            if item["id"] == "part2-complete-native-palette-component"
+        )
+        read_text = Path.read_text
+        for relative, symbol, projection, model, arguments in (
+            ("src/decode.rs", "copy_typed_component", "crate::image::typed_component_output",
+             "part2_typed_component_copy", (
+                ("typed_component_output_view(source)", "typed_component_output_view(unrelated)"),
+            )),
+            ("src/decode.rs", "map_palette_component", "crate::image::typed_component_output",
+             "part2_palette_component", (
+                ("typed_component_view(source)", "typed_component_view(unrelated)"),
+                ("palette_view(palette)", "palette_view(unrelated)"),
+                ("palette), column", "palette), 0"),
+            )),
+            ("src/decode.rs", "palette_modulus", None, "part2_palette_modulus", (
+                ("part2_palette_modulus(precision)", "part2_palette_modulus(0)"),
+            )),
+            ("src/decode.rs", "invalid_jp2_output", None, "part2_color_input_error", ()),
+            ("src/image.rs", "typed_component_from_parts", "typed_component_value_view",
+             "part2_typed_component_from_parts", (
+                ("width, height, info", "height, width, info"),
+                ("typed_samples_view(&samples)", "typed_samples_view(&unrelated)"),
+            )),
+        ):
+            coverage = copy.deepcopy(original_coverage)
+            coverage["requirements"] = [copy.deepcopy(entry)]
+            reference = {"path": relative, "symbol": symbol}
+            self.assertIn(reference, entry["contract_refs"])
+            coverage["requirements"][0]["contract_refs"] = [reference]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            source = framework.ROOT / relative
+            original = source.read_text()
+            header = framework._coverage_function_header(original, symbol)
+            signature = original.find("fn", header.start())
+            start = original.rfind("#[cfg_attr", 0, signature)
+            contract = original[start:signature]
+            result = re.search(r"\bverus_spec\(\s*(\w+)\s*=>", contract)[1]
+            expression = f"{projection}({result})" if projection else result
+            wrong_model = (
+                "part2_typed_component_copy" if model == "part2_palette_component"
+                else "part2_palette_component"
+            )
+            mutations = [
+                (f"ensures {expression}", "ensures unrelated"),
+                (f"ensures {expression}", f"ensures {result}.is_ok()"),
+                (f"ensures {expression}", f"ensures {result}.is_ok() ==> {expression}"),
+                (f"crate::specs::{model}(", f"crate::specs::{wrong_model}("),
+                (f"crate::specs::{model}(", "crate::specs::unlisted_model("),
+                *arguments,
+            ]
+            if projection:
+                mutations.extend((
+                    (f"ensures {expression}", f"ensures {projection}(unrelated)"),
+                    (f"ensures {expression}", f"ensures unlisted_projection({result})"),
+                ))
+            for before, after in mutations:
+                self.assertIn(before, contract)
+                modified = original[:start] + contract.replace(before, after) + original[signature:]
+
+                def altered(path, *args, **kwargs):
+                    return modified if path == source else read_text(path, *args, **kwargs)
+
+                with self.subTest(symbol=symbol, after=after), \
+                        mock.patch.object(Path, "read_text", altered), \
+                        self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                    framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         entry = next(

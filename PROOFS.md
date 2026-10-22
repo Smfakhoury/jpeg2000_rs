@@ -44,9 +44,43 @@ contexts, signed extrema, physical stride and first-error priority. The source
 index binds the full Result, actual owner view, entry and column, with negative
 tests for wrong, partial, unrelated and reordered bindings.
 
-This boundary does not establish palette parsing, source-sample interpretation,
-output component mapping, CDEF application or their composition with selected
-pixels. Those actual callers remain separate F7 work.
+This raw lookup result alone does not establish palette parsing, source-sample
+interpretation or composition with selected pixels.
+
+## Complete native component copy and palette mapping
+
+The actual `decode::copy_typed_component` and `map_palette_component` now have
+unconditional complete Result relations. Copy preserves every metadata field,
+signed/unsigned sample and ordered channel definition, including duplicates and
+malformed source geometry. It does not invent validation of its inputs.
+
+Palette mapping checks the actual selected column and precision before sample
+access. Native signed/unsigned indices must fit `u16` and the stored entry
+count before raw table lookup. Every stored value must fit the selected signed
+or unsigned precision. Source geometry, subsampling and registration are
+preserved; precision/sign and the sample tag come from the descriptor, and
+incoming channel definitions are cleared. Empty input still checks the
+descriptor but does not access or validate unvisited table storage. All
+arithmetic, logical versus physical table and range errors retain their actual
+order/category/offset. No parsed/normalized/rectangular/success premise is used.
+
+The existing static component constructor API delegates to one verified free
+production constructor, which the proved callers use directly. This preserves
+the API and a single executable field-construction body while avoiding the
+conditional frontend's static-impl contract limitation. Full mutable
+channel-definition frames preserve component samples and metadata.
+
+An independent wide-integer oracle checks 37,632 complete supplied contexts,
+including invalid metadata/sign tags, integer extrema, empty/malformed tables,
+descriptor boundaries and error precedence. All 256 native precision values
+are checked separately. Five exact result/model/input recipes reject unrelated,
+partial, reordered and constant bindings. Existing sparse-magnitude arithmetic
+also explicitly instantiates its original final-limb premise to stabilize the
+joined proof; no theorem domain, native algorithm, trust or limit changed.
+
+Whole-header direct/palette component selection, CDEF record application,
+final typed-image admission, parser associations and selected-pixel composition
+remain separate F7 closure obligations.
 
 ## Reproduce verification
 

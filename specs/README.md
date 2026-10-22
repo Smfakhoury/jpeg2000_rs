@@ -40,7 +40,31 @@ or the mapper's precision/sign/sample-index rules. The raw operation returns the
 stored `i64` unchanged, including both extrema, and ignores descriptor
 precision/sign. Its complete actual production relation is unconditional on
 stored shape and native coordinates. Palette parsing, component mapping and
-their composition remain unproved by this result alone.
+their composition remain unproved by this raw lookup result alone.
+
+### Complete component copy and palette interpretation
+
+`part2_typed_component_copy` preserves all input fields and the ordered CDEF
+sequence without adding geometry, precision or sample-tag validation.
+`part2_palette_component` instead changes precision/sign from the actual
+selected descriptor and starts with empty CDEF. It preserves the source's
+width/height, subsampling and registration even when those fields are malformed.
+
+The precision variable is the descriptor's bit count, restricted by the actual
+body to 1..38. `part2_palette_modulus` denotes the same power of two; explicit
+bit-vector facts relate its original multiply-by-two loop to the existing
+`part1_output_minimum`/`part1_output_maximum` signed/unsigned range functions.
+Source indices are interpreted independently of source precision/sign metadata.
+They must fit the native 16-bit palette index and stored logical entry count
+before `part2_palette_value` checks physical storage.
+
+`part2_palette_samples` is the ordered whole-sequence denotation, including the
+first failing sample. Its prefix is essential result semantics, not a separate
+execution trace premise. Empty samples still reject an invalid descriptor but
+do not trigger physical-column-count/table/entry failures absent from the
+executed body. The actual full result also contains the output sample tag and
+all metadata. Whole-header cmap selection, CDEF routing, typed-image admission,
+parsing and selected-pixel joins remain outside these component results.
 
 ## Frozen F5H cleanup-plane reconstruction profile
 
