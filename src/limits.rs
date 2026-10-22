@@ -53,6 +53,26 @@ verus! {
     pub closed spec fn resource_decoded_bytes_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_decoded_bytes
     }
+
+    pub closed spec fn resource_packet_header_byte_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_packet_header_bytes
+    }
+
+    pub closed spec fn resource_tag_tree_node_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_tag_tree_nodes
+    }
+
+    pub closed spec fn resource_packet_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_packets
+    }
+
+    pub closed spec fn resource_precinct_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_precincts
+    }
+
+    pub closed spec fn resource_code_block_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_code_blocks
+    }
 }
 
 impl ResourceLimits {
@@ -135,10 +155,12 @@ impl ResourceLimits {
         self.maximum_resolutions_per_component
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_precinct_limit(self),))]
     pub const fn maximum_precincts(&self) -> u64 {
         self.maximum_precincts
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_code_block_limit(self),))]
     pub const fn maximum_code_blocks(&self) -> u64 {
         self.maximum_code_blocks
     }
@@ -167,10 +189,12 @@ impl ResourceLimits {
         self.maximum_frames
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_packet_limit(self),))]
     pub const fn maximum_packets(&self) -> u64 {
         self.maximum_packets
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_packet_header_byte_limit(self),))]
     pub const fn maximum_packet_header_bytes(&self) -> u64 {
         self.maximum_packet_header_bytes
     }
@@ -187,6 +211,7 @@ impl ResourceLimits {
         self.maximum_jpip_fragments
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_tag_tree_node_limit(self),))]
     pub const fn maximum_tag_tree_nodes(&self) -> u64 {
         self.maximum_tag_tree_nodes
     }
