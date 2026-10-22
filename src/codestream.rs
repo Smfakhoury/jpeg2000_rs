@@ -263,7 +263,23 @@ pub struct ProgressionChange {
     pub progression_order: ProgressionOrder,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn progression_change_contains(record: ProgressionChange, layer: u16, resolution: u8, component: u16) -> bool {
+        layer < record.layer_end
+            && resolution >= record.resolution_start && resolution < record.resolution_end
+            && component >= record.component_start && component < record.component_end
+    }
+
+    pub closed spec fn progression_changes_view(changes: &ProgressionChanges) -> Seq<ProgressionChange> {
+        changes.records@
+    }
+}
+
 impl ProgressionChange {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == progression_change_contains(self, layer, resolution, component),
+    ))]
     pub const fn contains(self, layer: u16, resolution: u8, component: u16) -> bool {
         layer < self.layer_end
             && resolution >= self.resolution_start
@@ -286,6 +302,7 @@ impl ProgressionChanges {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == progression_changes_view(self),))]
     pub fn records(&self) -> &[ProgressionChange] {
         &self.records
     }
@@ -295,14 +312,17 @@ impl ProgressionChanges {
         Self { records }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (progression_changes_view(self).len() != 0),))]
     pub const fn is_present(&self) -> bool {
         !self.records.is_empty()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result as nat == progression_changes_view(self).len(),))]
     pub fn len(&self) -> usize {
         self.records.len()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (progression_changes_view(self).len() == 0),))]
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }
@@ -8675,6 +8695,64 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_progression_owner_records_preserve_inverted_windows_duplicates_and_boundaries() {
+        let orders = [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ];
+        let mut records = Vec::new();
+        for progression_order in orders {
+            for resolution_start in [0, 1, u8::MAX] {
+                for resolution_end in [0, 1, u8::MAX] {
+                    for component_start in [0, 1, u16::MAX] {
+                        for component_end in [0, 1, u16::MAX] {
+                            for layer_end in [0, 1, u16::MAX] {
+                                let record = ProgressionChange {
+                                    resolution_start,
+                                    component_start,
+                                    layer_end,
+                                    resolution_end,
+                                    component_end,
+                                    progression_order,
+                                };
+                                for layer in [0, 1, u16::MAX] {
+                                    for resolution in [0, 1, u8::MAX] {
+                                        for component in [0, 1, u16::MAX] {
+                                            let expected = (0..layer_end).contains(&layer)
+                                                && (resolution_start..resolution_end)
+                                                    .contains(&resolution)
+                                                && (component_start..component_end)
+                                                    .contains(&component);
+                                            assert_eq!(
+                                                record.contains(layer, resolution, component),
+                                                expected
+                                            );
+                                        }
+                                    }
+                                }
+                                records.extend_from_slice(&[record, record]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let changes = ProgressionChanges::from_records(records.clone());
+        assert_eq!(changes.records(), records);
+        assert_eq!(changes.len(), records.len());
+        assert!(changes.is_present());
+        assert!(!changes.is_empty());
+        let empty = ProgressionChanges::from_records(Vec::new());
+        assert!(empty.records().is_empty());
+        assert_eq!(empty.len(), 0);
+        assert!(!empty.is_present());
+        assert!(empty.is_empty());
+    }
 
     #[test]
     fn complete_packet_style_owners_preserve_raw_counts_styles_and_header_presence() {

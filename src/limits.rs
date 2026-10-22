@@ -73,6 +73,22 @@ verus! {
     pub closed spec fn resource_code_block_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_code_blocks
     }
+
+    pub closed spec fn resource_component_limit(limits: &ResourceLimits) -> u16 {
+        limits.maximum_components
+    }
+
+    pub closed spec fn resource_tile_part_limit(limits: &ResourceLimits) -> u32 {
+        limits.maximum_tile_parts
+    }
+
+    pub closed spec fn resource_resolution_limit(limits: &ResourceLimits) -> u8 {
+        limits.maximum_resolutions_per_component
+    }
+
+    pub closed spec fn resource_layer_limit(limits: &ResourceLimits) -> u16 {
+        limits.maximum_layers
+    }
 }
 
 impl ResourceLimits {
@@ -139,6 +155,7 @@ impl ResourceLimits {
         self.maximum_pixels
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_component_limit(self),))]
     pub const fn maximum_components(&self) -> u16 {
         self.maximum_components
     }
@@ -147,10 +164,12 @@ impl ResourceLimits {
         self.maximum_tiles
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_tile_part_limit(self),))]
     pub const fn maximum_tile_parts(&self) -> u32 {
         self.maximum_tile_parts
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_resolution_limit(self),))]
     pub const fn maximum_resolutions_per_component(&self) -> u8 {
         self.maximum_resolutions_per_component
     }
@@ -181,6 +200,7 @@ impl ResourceLimits {
         self.maximum_code_block_bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_layer_limit(self),))]
     pub const fn maximum_layers(&self) -> u16 {
         self.maximum_layers
     }
