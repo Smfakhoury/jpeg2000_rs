@@ -22,6 +22,18 @@ Frozen `0da8f58` remains unchanged while this separate progression branch
 continues. Completing a raw lookup/iterator stage alone is not full progression
 or F5H completion.
 
+The complete named actual grid/iterator and multi-tile-part caller join is now
+in `packet_progression.rs` and `packet_tile.rs`. Native raw constructors,
+lookups and both complete iterators feed the actual selected/public tile
+packet caller. Its preparation derives packed bytes and expected lengths
+through the sole real owner producers, not supplied results. Every progress
+field, nested default/length cursor, context-layer write, seen value, statistic,
+restart and late error is retained. Its complete post observes the real
+`TilePacketDecode`/error and entire final precinct vector, without shape,
+normalization, successful-decode, budget or coordinate/header trace premises.
+This named producer closure does not assert the separate remaining public
+single/multi-code-block/JPIP wrappers or complete F5H/normative/project scope.
+
 Actual POC records are exposed as their complete ordered native values,
 including duplicate/inverted/empty windows and progression-order tags.
 Actual membership preserves its layer-end, resolution and component

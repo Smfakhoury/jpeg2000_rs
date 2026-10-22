@@ -2425,4 +2425,98 @@ pub proof fn precinct_final_accounting_preserves_every_prior_effect_even_on_erro
 {
 }
 
+pub proof fn raw_grid_absent_resolution_precedes_missing_count_storage(
+    grid:crate::specs::Part1PacketGrid,component:u16,resolution:u8,
+)
+    ensures component<grid.components && resolution<grid.resolutions
+        && (component as nat)<grid.component_resolutions.len()
+        && resolution>=grid.component_resolutions[component as int] ==>
+        crate::specs::part1_packet_grid_precinct_count(grid,component,resolution)==Ok(0),
+{
+}
+
+pub proof fn raw_packet_candidate_failure_keeps_advanced_cursor_and_prior_emission(
+    state:crate::specs::Part1PacketIterator,
+)
+    ensures state.candidate_index<state.grid.candidate_count
+        && crate::specs::part1_packet_candidate(state.grid,state.order,state.candidate_index).is_err() ==>
+        crate::specs::part1_packet_iterator_next(state).1.candidate_index==(state.candidate_index+1) as u64
+        && crate::specs::part1_packet_iterator_next(state).1.emitted==state.emitted
+        && crate::specs::part1_packet_iterator_next(state).0.is_err(),
+{
+    reveal(crate::specs::part1_packet_iterator_next);
+}
+
+pub proof fn raw_default_failure_does_not_synchronize_outer_emission(
+    state:crate::specs::Part1ProgressionPacketIterator,
+)
+    ensures match state.default {
+        None=>true,
+        Some(default)=>crate::specs::part1_packet_iterator_next(default).0.is_err() ==>
+            crate::specs::part1_progression_iterator_next(state).1.emitted==state.emitted
+            && crate::specs::part1_progression_iterator_next(state).1.default
+                ==Some(crate::specs::part1_packet_iterator_next(default).1),
+    },
+{
+}
+
+pub proof fn tile_boundary_preserves_real_work_seen_and_accounting_owners(
+    params:crate::specs::Part1TilePacketParameters<'_>,p:crate::specs::Part1TilePacketProgress,
+)
+    ensures
+        crate::specs::part1_tile_boundary(params,p).1.remaining_packets==p.remaining_packets,
+        crate::specs::part1_tile_boundary(params,p).1.seen==p.seen,
+        crate::specs::part1_tile_boundary(params,p).1.packets==p.packets,
+        crate::specs::part1_tile_boundary(params,p).1.present_packets==p.present_packets,
+        crate::specs::part1_tile_boundary(params,p).1.contributions==p.contributions,
+        crate::specs::part1_tile_boundary(params,p).1.segments==p.segments,
+        crate::specs::part1_tile_boundary(params,p).1.passes==p.passes,
+        crate::specs::part1_tile_boundary(params,p).1.packet_header_bytes==p.packet_header_bytes,
+        crate::specs::part1_tile_boundary(params,p).1.packet_body_bytes==p.packet_body_bytes,
+{
+}
+
+pub proof fn late_packed_offset_overflow_reports_new_tile_offset_without_later_commits(
+    p:crate::specs::Part1TilePacketProgress,decoded:crate::packet::PacketBodyDecode,
+    tile_bytes:usize,packed_bytes:usize,expected:Option<u32>,seen_index:usize,
+)
+    ensures seen_index<p.seen.len() && decoded.bytes_consumed>0
+        && (expected.is_none() || expected.unwrap()==decoded.bytes_consumed)
+        && p.offset as nat+tile_bytes as nat<=usize::MAX
+        && p.packed_offset as nat+packed_bytes as nat>usize::MAX ==>
+        crate::specs::part1_tile_account(p,decoded,tile_bytes,packed_bytes,expected,seen_index)
+            ==(Err(crate::specs::part1_packet_reader_error((p.offset+tile_bytes) as usize,
+                crate::MalformedKind::ArithmeticOverflow)),
+                crate::specs::Part1TilePacketProgress {offset:(p.offset+tile_bytes) as usize,..p}),
+{
+}
+
+pub proof fn actual_tile_work_guard_follows_the_real_iterator_transition(
+    params:crate::specs::Part1TilePacketParameters<'_>,state:crate::specs::Part1TilePacketExecution,
+)
+    ensures match crate::specs::part1_progression_iterator_next(state.progress.iterator).0 {
+        Ok(Some(_))=>state.progress.remaining_packets==0 ==>
+            crate::specs::part1_tile_run(params,state).0
+                ==Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidProgressionOrderChange))
+            && crate::specs::part1_tile_run(params,state).1.precincts==state.precincts
+            && crate::specs::part1_tile_run(params,state).1.progress.iterator
+                ==crate::specs::part1_progression_iterator_next(state.progress.iterator).1,
+        _=>true,
+    },
+{
+    reveal(crate::specs::part1_tile_run);
+}
+
+pub proof fn actual_missing_packed_storage_rejects_after_complete_layer_writes(
+    params:crate::specs::Part1TilePacketParameters<'_>,part:crate::codestream::TilePartPayload<'_>,
+    p:crate::specs::Part1TilePacketProgress,coordinate:crate::packet::PacketCoordinate,
+    expected:Option<u32>,precinct:crate::specs::Part1PacketPrecinctState,
+)
+    ensures p.current_tile_part>=params.input.packed.len() ==>
+        crate::specs::part1_tile_precinct_packet(params,part,p,coordinate,expected,precinct)
+            ==(Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidTilePart)),
+                crate::specs::part1_precinct_context_layer(precinct,coordinate.layer)),
+{
+}
+
 }

@@ -2163,6 +2163,10 @@ pub struct TilePacketDecode {
     pub payload_bytes: u64,
 }
 
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,packet_precinct_vector_view(final(precincts)))==crate::specs::part1_progression_tile_decode(
+        tile_parts@,packet_grid_view(grid),packet_precinct_vector_view(old(precincts)),None,limits),
+))]
 pub fn decode_progression_tile_packets(
     tile_parts: &[TilePartPayload<'_>],
     grid: &PacketGrid,
@@ -2487,6 +2491,555 @@ fn prepare_progression_tile_input(
     Ok(input)
 }
 
+struct ProgressionTileParameters<'a, 'data> {
+    tile_parts: &'a [TilePartPayload<'data>],
+    grid: &'a PacketGrid,
+    input: &'a ProgressionTilePreparation,
+    selection: Option<&'a [u8]>,
+    limits: &'a ResourceLimits,
+}
+
+struct ProgressionTileProgress<'a> {
+    iterator: ProgressionPacketIterator<'a>,
+    length_iterator: crate::codestream::PacketLengthIter<'a>,
+    current_tile_part: usize,
+    length_tile_part: usize,
+    offset: usize,
+    packed_offset: usize,
+    packets: u64,
+    present_packets: u64,
+    contributions: u64,
+    segments: u64,
+    passes: u64,
+    packet_header_bytes: u64,
+    packet_body_bytes: u64,
+    seen: Vec<bool>,
+    remaining_packets: u64,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn progression_tile_parameters_view<'a,'data>(value:&ProgressionTileParameters<'a,'data>)
+        ->crate::specs::Part1TilePacketParameters<'data> {
+        crate::specs::Part1TilePacketParameters {
+            parts:value.tile_parts@,grid:packet_grid_view(value.grid),input:progression_tile_preparation_view(value.input),
+            selection:packet_selection_view(value.selection),
+            caps:crate::specs::Part1TilePacketCaps {
+                work:crate::limits::resource_work_limit(value.limits),
+                header:crate::limits::resource_packet_header_byte_limit(value.limits),
+                blocks:crate::limits::resource_code_block_limit(value.limits),
+                passes:crate::limits::resource_code_block_pass_limit(value.limits),
+                bytes:crate::limits::resource_code_block_byte_limit(value.limits),
+                input:crate::limits::resource_input_byte_limit(value.limits),
+            },
+        }
+    }
+    pub closed spec fn progression_tile_progress_view(value:&ProgressionTileProgress<'_>)->crate::specs::Part1TilePacketProgress {
+        crate::specs::Part1TilePacketProgress {
+            iterator:progression_packet_iterator_view(&value.iterator),
+            length_iterator:crate::codestream::packet_length_iter_view(&value.length_iterator),
+            current_tile_part:value.current_tile_part,length_tile_part:value.length_tile_part,
+            offset:value.offset,packed_offset:value.packed_offset,packets:value.packets,present_packets:value.present_packets,
+            contributions:value.contributions,segments:value.segments,passes:value.passes,
+            packet_header_bytes:value.packet_header_bytes,packet_body_bytes:value.packet_body_bytes,
+            seen:value.seen@,remaining_packets:value.remaining_packets,
+        }
+    }
+    pub open spec fn progression_tile_progress_outcome(value:Result<ProgressionTileProgress<'_>,DecodeError>)
+        ->Result<crate::specs::Part1TilePacketProgress,DecodeError> {
+        match value {Ok(progress)=>Ok(progression_tile_progress_view(&progress)),Err(error)=>Err(error)}
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures progression_tile_progress_outcome(result)==crate::specs::part1_tile_progress_initial(progression_tile_parameters_view(params)),
+))]
+fn progression_tile_progress_new<'a, 'data>(
+    params: &ProgressionTileParameters<'a, 'data>,
+) -> Result<ProgressionTileProgress<'a>, DecodeError> {
+    let first = match params.tile_parts.first() {
+        Some(first) => first,
+        None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
+    };
+    let iterator = progression_packet_iterator_new(
+        params.grid,
+        first.coding_style.progression_order,
+        &first.progression_changes,
+        params.limits,
+    )?;
+    let length_iterator = first.packet_lengths.iter();
+    let seen_length = match usize::try_from(params.grid.packet_count) {
+        Ok(length) => length,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    let seen = vec![false; seen_length];
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(seen@ =~= Seq::new(params.grid.packet_count as nat,|i:int|false));}
+    Ok(ProgressionTileProgress {
+        iterator,
+        length_iterator,
+        current_tile_part: 0,
+        length_tile_part: 0,
+        offset: 0,
+        packed_offset: 0,
+        packets: 0,
+        present_packets: 0,
+        contributions: 0,
+        segments: 0,
+        passes: 0,
+        packet_header_bytes: 0,
+        packet_body_bytes: 0,
+        seen,
+        remaining_packets: params.limits.maximum_work_units(),
+    })
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,progression_tile_progress_view(final(p)))==crate::specs::part1_tile_boundary(
+        progression_tile_parameters_view(params),progression_tile_progress_view(old(p))),
+))]
+fn advance_progression_tile_part<'a, 'data>(
+    params: &ProgressionTileParameters<'a, 'data>,
+    p: &mut ProgressionTileProgress<'a>,
+) -> Result<(bool, bool), DecodeError> {
+    let previous = p.current_tile_part;
+    scan_progression_tile_boundary(params, p)?;
+    if p.current_tile_part != previous {
+        let Some(next) = params.tile_parts.get(p.current_tile_part) else {
+            return Ok((true, false));
+        };
+        p.iterator = progression_packet_iterator_new(
+            params.grid,
+            next.coding_style.progression_order,
+            &next.progression_changes,
+            params.limits,
+        )?;
+        Ok((true, true))
+    } else {
+        Ok((false, true))
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,progression_tile_progress_view(final(p)))==crate::specs::part1_tile_boundary_scan(
+        progression_tile_parameters_view(params),progression_tile_progress_view(old(p))),
+        progression_tile_progress_view(final(p))==crate::specs::part1_tile_boundary_frame(
+            progression_tile_progress_view(old(p)),progression_tile_progress_view(final(p))),
+))]
+fn scan_progression_tile_boundary<'a, 'data>(
+    params: &ProgressionTileParameters<'a, 'data>,
+    p: &mut ProgressionTileProgress<'a>,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {let ghost initial=progression_tile_progress_view(p);}
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_tile_boundary_scan);}
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant
+            progression_tile_progress_view(p)==crate::specs::part1_tile_boundary_frame(
+                progression_tile_progress_view(old(p)),progression_tile_progress_view(p)),
+            crate::specs::part1_tile_boundary_scan(progression_tile_parameters_view(params),progression_tile_progress_view(old(p)))
+                ==crate::specs::part1_tile_boundary_scan(progression_tile_parameters_view(params),progression_tile_progress_view(p)),
+        decreases params.tile_parts@.len()-p.current_tile_part,
+    ))]
+    while p.current_tile_part < params.tile_parts.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_tile_boundary_scan);}
+        let part = match params.tile_parts.get(p.current_tile_part) {
+            Some(part) => part,
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
+        };
+        let packed = match params.input.packed.get(p.current_tile_part) {
+            Some(packed) => packed,
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
+        };
+        if p.offset < part.data.len() || p.packed_offset < packed.len() {
+            return Ok(());
+        }
+        if p.offset != part.data.len() || p.packed_offset != packed.len() {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+        if part.packet_lengths.is_present()
+            && p.length_tile_part == p.current_tile_part
+            && p.length_iterator.next_length()?.is_some()
+        {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::InvalidPacketLength,
+            ));
+        }
+        p.current_tile_part = match p.current_tile_part.checked_add(1) {
+            Some(index) => index,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        p.offset = 0;
+        p.packed_offset = 0;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_tile_boundary_scan);
+        assert((Ok(()),progression_tile_progress_view(p))==
+            crate::specs::part1_tile_boundary_scan(progression_tile_parameters_view(params),initial));
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures result==Ok(()),
+        final(contexts)@==old(contexts)@.map_values(|context:CodeBlockPacketContext|
+            crate::specs::part1_packet_context_layer(context,layer)),
+))]
+fn set_progression_context_layer(
+    contexts: &mut [CodeBlockPacketContext],
+    layer: u16,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {let ghost initial=contexts@;}
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant index<=contexts@.len(),contexts@.len()==initial.len(),
+            forall|i:int|0<=i<contexts@.len() ==> contexts@[i]==if i<index {
+                crate::specs::part1_packet_context_layer(initial[i],layer)
+            }else{initial[i]},
+        decreases contexts@.len()-index,
+    ))]
+    while index < contexts.len() {
+        {
+            let context = match contexts.get_mut(index) {
+                Some(context) => context,
+                None => return Err(invalid_packet_header()),
+            };
+            context.layer = layer;
+        }
+        index = match index.checked_add(1) {
+            Some(index) => index,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(contexts@ =~= initial.map_values(|context:CodeBlockPacketContext|crate::specs::part1_packet_context_layer(context,layer)));}
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,packet_precinct_view(final(precinct)))==crate::specs::part1_tile_precinct_packet(
+        progression_tile_parameters_view(params),*part,progression_tile_progress_view(p),coordinate,expected,
+        packet_precinct_view(old(precinct))),
+))]
+fn decode_progression_precinct_packet(
+    params: &ProgressionTileParameters<'_, '_>,
+    part: &TilePartPayload<'_>,
+    p: &ProgressionTileProgress<'_>,
+    coordinate: PacketCoordinate,
+    expected: Option<u32>,
+    precinct: &mut PacketPrecinctDecoder,
+) -> Result<(PacketBodyDecode, usize, usize), DecodeError> {
+    set_progression_context_layer(&mut precinct.contexts, coordinate.layer)?;
+    let packed = match params.input.packed.get(p.current_tile_part) {
+        Some(packed) => packed,
+        None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
+    };
+    let decode = match params.selection {
+        Some(counts) => {
+            coordinate.resolution
+                < *match counts.get(usize::from(coordinate.component)) {
+                    Some(count) => count,
+                    None => return Err(packet_reader_error(0, MalformedKind::InvalidCodingStyle)),
+                }
+        }
+        None => true,
+    };
+    let word = p.packets;
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(word & 65535u64 <= 65535u64) by(bit_vector);}
+    let sequence = match u16::try_from(word & u64::from(u16::MAX)) {
+        Ok(sequence) => sequence,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    decode_precinct_packet(
+        part,
+        p.offset,
+        packed,
+        p.packed_offset,
+        expected,
+        sequence,
+        precinct,
+        decode,
+        params.limits,
+    )
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn progression_tile_execution_view(precincts:&[PacketPrecinctDecoder],p:&ProgressionTileProgress<'_>)
+        ->crate::specs::Part1TilePacketExecution {
+        crate::specs::Part1TilePacketExecution {progress:progression_tile_progress_view(p),precincts:packet_precinct_vector_view(precincts)}
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,progression_tile_execution_view(final(precincts),final(p)))==crate::specs::part1_tile_packet(
+        progression_tile_parameters_view(params),progression_tile_execution_view(old(precincts),old(p)),coordinate),
+))]
+fn execute_progression_packet<'a, 'data>(
+    params: &ProgressionTileParameters<'a, 'data>,
+    precincts: &mut [PacketPrecinctDecoder],
+    p: &mut ProgressionTileProgress<'a>,
+    coordinate: PacketCoordinate,
+) -> Result<(), DecodeError> {
+    let part = match params.tile_parts.get(p.current_tile_part) {
+        Some(part) => part,
+        None => {
+            return Err(DecodeError::MalformedInput {
+                offset: params.input.payload_bytes,
+                kind: MalformedKind::Truncated,
+            });
+        }
+    };
+    if p.length_tile_part != p.current_tile_part {
+        p.length_iterator = part.packet_lengths.iter();
+        p.length_tile_part = p.current_tile_part;
+    }
+    let expected = if part.packet_lengths.is_present() {
+        Some(match p.length_iterator.next_length()? {
+            Some(length) => length,
+            None => {
+                return Err(packet_reader_error(
+                    p.offset,
+                    MalformedKind::InvalidPacketLength,
+                ));
+            }
+        })
+    } else {
+        None
+    };
+    let index = params.grid.precinct_index(
+        coordinate.component,
+        coordinate.resolution,
+        coordinate.precinct,
+    )?;
+    let product = match index.checked_mul(usize::from(params.grid.layers)) {
+        Some(product) => product,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    let seen_index = match product.checked_add(usize::from(coordinate.layer)) {
+        Some(index) => index,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    let seen = match p.seen.get(seen_index) {
+        Some(seen) => *seen,
+        None => {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+    };
+    if !crate::refinement::progression_emit_allowed(seen) {
+        return Ok(());
+    }
+    if index >= precincts.len() {
+        return Err(packet_reader_error(
+            p.offset,
+            MalformedKind::InvalidPacketHeader,
+        ));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost prior_native=precincts@;
+        let ghost prior=packet_precinct_vector_view(precincts);
+        let ghost packet_expected=crate::specs::part1_tile_precinct_packet(
+            progression_tile_parameters_view(params),*part,progression_tile_progress_view(p),coordinate,expected,prior[index as int]);
+    }
+    let result = {
+        let precinct = &mut precincts[index];
+        decode_progression_precinct_packet(params, part, p, coordinate, expected, precinct)
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall|i:int|0<=i<precincts@.len() && i!=index as int implies precincts@[i]==prior_native[i] by {}
+        assert(packet_precinct_vector_view(precincts) =~= prior.update(index as int,packet_expected.1));
+        assert(result==packet_expected.0);
+    }
+    let (decoded, tile_bytes, packed_bytes) = result?;
+    account_progression_packet(p, decoded, tile_bytes, packed_bytes, expected, seen_index)
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,progression_tile_progress_view(final(p)))==crate::specs::part1_tile_account(
+        progression_tile_progress_view(old(p)),decoded,tile_bytes,packed_bytes,expected,seen_index),
+))]
+fn account_progression_packet(
+    p: &mut ProgressionTileProgress<'_>,
+    decoded: PacketBodyDecode,
+    tile_bytes: usize,
+    packed_bytes: usize,
+    expected: Option<u32>,
+    seen_index: usize,
+) -> Result<(), DecodeError> {
+    if seen_index >= p.seen.len() {
+        return Err(packet_reader_error(
+            p.offset,
+            MalformedKind::InvalidPacketHeader,
+        ));
+    }
+    if decoded.bytes_consumed == 0 {
+        return Err(packet_reader_error(
+            p.offset,
+            MalformedKind::InvalidPacketHeader,
+        ));
+    }
+    match expected {
+        Some(expected) if decoded.bytes_consumed != expected => {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::InvalidPacketLength,
+            ));
+        }
+        _ => {}
+    }
+    p.offset = match p.offset.checked_add(tile_bytes) {
+        Some(offset) => offset,
+        None => {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+    };
+    p.packed_offset = match p.packed_offset.checked_add(packed_bytes) {
+        Some(offset) => offset,
+        None => {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+    };
+    p.packets = match p.packets.checked_add(1) {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {let ghost prior_seen=p.seen@;}
+    p.seen[seen_index] = true;
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(p.seen@ =~= prior_seen.update(seen_index as int,true));}
+    let present = if decoded.present { 1_u64 } else { 0_u64 };
+    p.present_packets = match p.present_packets.checked_add(present) {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    p.contributions = match p
+        .contributions
+        .checked_add(u64::from(decoded.contributions))
+    {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    p.segments = match p.segments.checked_add(u64::from(decoded.segments)) {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    p.passes = match p.passes.checked_add(u64::from(decoded.passes)) {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    p.packet_header_bytes = match p
+        .packet_header_bytes
+        .checked_add(u64::from(decoded.header_bytes))
+    {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    p.packet_body_bytes = match p
+        .packet_body_bytes
+        .checked_add(u64::from(decoded.body_bytes))
+    {
+        Some(total) => total,
+        None => return Err(packet_arithmetic_overflow()),
+    };
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,progression_tile_progress_view(final(p)))==crate::specs::part1_tile_finish(
+        progression_tile_parameters_view(params),progression_tile_progress_view(old(p))),
+))]
+fn finish_progression_tile_packets(
+    params: &ProgressionTileParameters<'_, '_>,
+    p: &mut ProgressionTileProgress<'_>,
+) -> Result<TilePacketDecode, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_tile_finish_scan);}
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant crate::specs::part1_tile_finish_scan(progression_tile_parameters_view(params),progression_tile_progress_view(old(p)))
+            ==crate::specs::part1_tile_finish_scan(progression_tile_parameters_view(params),progression_tile_progress_view(p)),
+        decreases params.tile_parts@.len()-p.current_tile_part,
+    ))]
+    while p.current_tile_part < params.tile_parts.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_tile_finish_scan);}
+        let part = match params.tile_parts.get(p.current_tile_part) {
+            Some(part) => part,
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
+        };
+        let packed = match params.input.packed.get(p.current_tile_part) {
+            Some(packed) => packed,
+            None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
+        };
+        if p.offset != part.data.len() || p.packed_offset != packed.len() {
+            return Err(packet_reader_error(p.offset, MalformedKind::TrailingData));
+        }
+        if part.packet_lengths.is_present()
+            && p.length_tile_part == p.current_tile_part
+            && p.length_iterator.next_length()?.is_some()
+        {
+            return Err(packet_reader_error(
+                p.offset,
+                MalformedKind::InvalidPacketLength,
+            ));
+        }
+        p.current_tile_part = match p.current_tile_part.checked_add(1) {
+            Some(index) => index,
+            None => return Err(packet_arithmetic_overflow()),
+        };
+        p.offset = 0;
+        p.packed_offset = 0;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_tile_finish_scan);}
+    if p.packets != params.grid.packet_count {
+        return Err(DecodeError::MalformedInput {
+            offset: params.input.payload_bytes,
+            kind: MalformedKind::Truncated,
+        });
+    }
+    let tile_parts = match u32::try_from(params.tile_parts.len()) {
+        Ok(count) => count,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    Ok(TilePacketDecode {
+        tile_index: params.input.tile_index,
+        tile_parts,
+        packets: p.packets,
+        present_packets: p.present_packets,
+        contributions: p.contributions,
+        segments: p.segments,
+        passes: p.passes,
+        packet_header_bytes: p.packet_header_bytes,
+        packet_body_bytes: p.packet_body_bytes,
+        payload_bytes: params.input.payload_bytes,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,packet_precinct_vector_view(final(precincts)))==crate::specs::part1_progression_tile_decode(
+        tile_parts@,packet_grid_view(grid),packet_precinct_vector_view(old(precincts)),packet_selection_view(maximum_resolution_counts),limits),
+))]
 pub(crate) fn decode_progression_tile_packets_selected(
     tile_parts: &[TilePartPayload<'_>],
     grid: &PacketGrid,
@@ -2501,268 +3054,59 @@ pub(crate) fn decode_progression_tile_packets_selected(
         maximum_resolution_counts,
         limits,
     )?;
-    let first = tile_parts
-        .first()
-        .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-    let tile_index = input.tile_index;
-    let payload_bytes = input.payload_bytes;
-    let packed_headers = input.packed;
-    let mut iterator = ProgressionPacketIterator::new(
+    let params = ProgressionTileParameters {
+        tile_parts,
         grid,
-        first.coding_style.progression_order,
-        &first.progression_changes,
+        input: &input,
+        selection: maximum_resolution_counts,
         limits,
-    )?;
-    let mut current_tile_part = 0_usize;
-    let mut length_tile_part = 0_usize;
-    let mut length_iterator = first.packet_lengths.iter();
-    let mut offset = 0_usize;
-    let mut packed_offset = 0_usize;
-    let mut packets = 0_u64;
-    let mut present_packets = 0_u64;
-    let mut contributions = 0_u64;
-    let mut segments = 0_u64;
-    let mut passes = 0_u64;
-    let mut packet_header_bytes = 0_u64;
-    let mut packet_body_bytes = 0_u64;
-    let seen_length = usize::try_from(grid.packet_count)
-        .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-    let mut seen = vec![false; seen_length];
-    let mut remaining_packets = limits.maximum_work_units();
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(decreases remaining_packets,)
-    )]
-    'packet: while let Some(coordinate) = iterator.next_packet()? {
-        if remaining_packets == 0 {
-            return Err(DecodeError::malformed(
+    };
+    let mut progress = progression_tile_progress_new(&params)?;
+    run_progression_tile_packets(&params, precincts, &mut progress)?;
+    finish_progression_tile_packets(&params, &mut progress)
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,progression_tile_execution_view(final(precincts),final(p)))==crate::specs::part1_tile_run(
+        progression_tile_parameters_view(params),progression_tile_execution_view(old(precincts),old(p))),
+))]
+fn run_progression_tile_packets<'a, 'data>(
+    params: &ProgressionTileParameters<'a, 'data>,
+    precincts: &mut [PacketPrecinctDecoder],
+    p: &mut ProgressionTileProgress<'a>,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_tile_run);}
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant crate::specs::part1_tile_run(progression_tile_parameters_view(params),
+            progression_tile_execution_view(old(precincts),old(p)))
+            ==crate::specs::part1_tile_run(progression_tile_parameters_view(params),progression_tile_execution_view(precincts,p)),
+        decreases p.remaining_packets,
+    ))]
+    loop {
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_tile_run);}
+        let coordinate = match p.iterator.next_packet()? {
+            Some(coordinate) => coordinate,
+            None => return Ok(()),
+        };
+        if p.remaining_packets == 0 {
+            return Err(packet_reader_error(
                 0,
                 MalformedKind::InvalidProgressionOrderChange,
             ));
         }
-        remaining_packets -= 1;
-        let previous_tile_part = current_tile_part;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases tile_parts.len() - current_tile_part,)
-        )]
-        while current_tile_part < tile_parts.len() {
-            let current = tile_parts
-                .get(current_tile_part)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-            let current_packed = packed_headers
-                .get(current_tile_part)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-            if offset < current.data.len() || packed_offset < current_packed.len() {
-                break;
+        p.remaining_packets -= 1;
+        let (changed, more) = advance_progression_tile_part(params, p)?;
+        if changed {
+            if more {
+                continue;
+            } else {
+                return Ok(());
             }
-            if offset != current.data.len() || packed_offset != current_packed.len() {
-                return Err(DecodeError::malformed(
-                    offset as u64,
-                    MalformedKind::ArithmeticOverflow,
-                ));
-            }
-            if current.packet_lengths.is_present()
-                && length_tile_part == current_tile_part
-                && length_iterator.next_length()?.is_some()
-            {
-                return Err(DecodeError::malformed(
-                    offset as u64,
-                    MalformedKind::InvalidPacketLength,
-                ));
-            }
-            current_tile_part = current_tile_part
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            offset = 0;
-            packed_offset = 0;
         }
-        if current_tile_part != previous_tile_part {
-            let Some(next) = tile_parts.get(current_tile_part) else {
-                break;
-            };
-            iterator = ProgressionPacketIterator::new(
-                grid,
-                next.coding_style.progression_order,
-                &next.progression_changes,
-                limits,
-            )?;
-            continue 'packet;
-        }
-        let tile_part = tile_parts
-            .get(current_tile_part)
-            .ok_or_else(|| DecodeError::malformed(payload_bytes, MalformedKind::Truncated))?;
-        if length_tile_part != current_tile_part {
-            length_iterator = tile_part.packet_lengths.iter();
-            length_tile_part = current_tile_part;
-        }
-        let expected_packet_length = if tile_part.packet_lengths.is_present() {
-            Some(length_iterator.next_length()?.ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketLength)
-            })?)
-        } else {
-            None
-        };
-        let execution_index = grid.precinct_index(
-            coordinate.component,
-            coordinate.resolution,
-            coordinate.precinct,
-        )?;
-        let seen_index = execution_index
-            .checked_mul(usize::from(grid.layers))
-            .and_then(|value| value.checked_add(usize::from(coordinate.layer)))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        let seen_slot = seen.get_mut(seen_index).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-        })?;
-        if !crate::refinement::progression_emit_allowed(*seen_slot) {
-            continue;
-        }
-        let precinct = precincts.get_mut(execution_index).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-        })?;
-        let mut context_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant context_index <= precinct.contexts.len(),
-                decreases precinct.contexts.len() - context_index,
-            )
-        )]
-        while context_index < precinct.contexts.len() {
-            let context = precinct
-                .contexts
-                .get_mut(context_index)
-                .ok_or_else(invalid_packet_header)?;
-            context.layer = coordinate.layer;
-            context_index = context_index
-                .checked_add(1)
-                .ok_or_else(packet_arithmetic_overflow)?;
-        }
-        let packed = packed_headers
-            .get(current_tile_part)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-        let decode_tier1 = match maximum_resolution_counts {
-            Some(counts) => {
-                coordinate.resolution
-                    < *counts
-                        .get(usize::from(coordinate.component))
-                        .ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                        })?
-            }
-            None => true,
-        };
-        let (decoded, tile_bytes_consumed, packed_bytes_consumed) = decode_precinct_packet(
-            tile_part,
-            offset,
-            packed,
-            packed_offset,
-            expected_packet_length,
-            u16::try_from(packets & u64::from(u16::MAX))
-                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-            precinct,
-            decode_tier1,
-            limits,
-        )?;
-        if decoded.bytes_consumed == 0 {
-            return Err(DecodeError::malformed(
-                offset as u64,
-                MalformedKind::InvalidPacketHeader,
-            ));
-        }
-        match expected_packet_length {
-            Some(expected) if decoded.bytes_consumed != expected => {
-                return Err(DecodeError::malformed(
-                    offset as u64,
-                    MalformedKind::InvalidPacketLength,
-                ));
-            }
-            _ => {}
-        }
-        offset = offset.checked_add(tile_bytes_consumed).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-        packed_offset = packed_offset
-            .checked_add(packed_bytes_consumed)
-            .ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-            })?;
-        packets = packets
-            .checked_add(1)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        *seen_slot = true;
-        present_packets = present_packets
-            .checked_add(u64::from(decoded.present))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        contributions = contributions
-            .checked_add(u64::from(decoded.contributions))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        segments = segments
-            .checked_add(u64::from(decoded.segments))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        passes = passes
-            .checked_add(u64::from(decoded.passes))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        packet_header_bytes = packet_header_bytes
-            .checked_add(u64::from(decoded.header_bytes))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        packet_body_bytes = packet_body_bytes
-            .checked_add(u64::from(decoded.body_bytes))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        execute_progression_packet(params, precincts, p, coordinate)?;
     }
-
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(decreases tile_parts.len() - current_tile_part,)
-    )]
-    while current_tile_part < tile_parts.len() {
-        let current = tile_parts
-            .get(current_tile_part)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-        let current_packed = packed_headers
-            .get(current_tile_part)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-        if offset != current.data.len() || packed_offset != current_packed.len() {
-            return Err(DecodeError::malformed(
-                offset as u64,
-                MalformedKind::TrailingData,
-            ));
-        }
-        if current.packet_lengths.is_present()
-            && length_tile_part == current_tile_part
-            && length_iterator.next_length()?.is_some()
-        {
-            return Err(DecodeError::malformed(
-                offset as u64,
-                MalformedKind::InvalidPacketLength,
-            ));
-        }
-        current_tile_part = current_tile_part
-            .checked_add(1)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        offset = 0;
-        packed_offset = 0;
-    }
-    if packets != grid.packet_count {
-        return Err(DecodeError::malformed(
-            payload_bytes,
-            MalformedKind::Truncated,
-        ));
-    }
-    Ok(TilePacketDecode {
-        tile_index,
-        tile_parts: u32::try_from(tile_parts.len())
-            .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
-        packets,
-        present_packets,
-        contributions,
-        segments,
-        passes,
-        packet_header_bytes,
-        packet_body_bytes,
-        payload_bytes,
-    })
 }
 
 #[derive(Clone, Copy)]
@@ -6823,6 +7167,318 @@ mod tests {
             decoders: vec![one_bit_legacy_decoder(false)],
             subbands: vec![literal_header_subband()],
         }
+    }
+
+    fn literal_ht_progression_precinct(resolution: u8) -> PacketPrecinctDecoder {
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        let mut precinct = literal_packet_precinct();
+        precinct.resolution = resolution;
+        precinct.contexts[0].tier1_style = style;
+        precinct.decoders[0] =
+            Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        precinct
+    }
+
+    fn literal_progression_tile(
+        data: &[u8],
+        layers: u16,
+        levels: u8,
+        index: u8,
+        count: u8,
+    ) -> TilePartPayload<'_> {
+        let mut style = coding_style(false, false);
+        style.layers = layers;
+        style.decomposition_levels = levels;
+        style.code_block_style = 0x40;
+        TilePartPayload::uniform_for_packet_decoding(
+            7,
+            index,
+            count,
+            1,
+            style,
+            crate::codestream::RoiShifts::none(),
+            data,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn full_selected_progression_derives_literal_headers_and_skips_only_higher_resolution_coefficients()
+     {
+        let limits = ResourceLimits::default();
+        let grid =
+            packet_grid_new_with_component_resolutions(1, 1, vec![2], vec![1, 1], &limits).unwrap();
+        let parts = [literal_progression_tile(
+            &[0xe3, 0, 0x63, 0, 0xe3, 0, 0x63, 0],
+            1,
+            1,
+            0,
+            1,
+        )];
+        let mut precincts = [
+            literal_ht_progression_precinct(0),
+            literal_ht_progression_precinct(1),
+        ];
+        assert_eq!(
+            decode_progression_tile_packets_selected(
+                &parts,
+                &grid,
+                &mut precincts,
+                Some(&[1]),
+                &limits
+            ),
+            Ok(TilePacketDecode {
+                tile_index: 7,
+                tile_parts: 1,
+                packets: 2,
+                present_packets: 2,
+                contributions: 2,
+                segments: 1,
+                passes: 1,
+                packet_header_bytes: 2,
+                packet_body_bytes: 6,
+                payload_bytes: 8
+            })
+        );
+        assert_eq!(
+            precincts[0].decoders[0]
+                .plane()
+                .signed_coefficient(0, 0)
+                .unwrap(),
+            -1
+        );
+        assert_eq!(
+            precincts[1].decoders[0]
+                .plane()
+                .signed_coefficient(0, 0)
+                .unwrap(),
+            0
+        );
+        for precinct in &precincts {
+            assert!(precinct.states[0].included());
+            assert_eq!(precinct.states[0].total_passes(), 1);
+            assert_eq!(precinct.states[0].high_throughput(), Some(true));
+        }
+    }
+
+    #[test]
+    fn full_progression_restarts_actual_tile_iterators_and_retains_real_output_on_late_trailing_data()
+     {
+        let limits = ResourceLimits::default();
+        let grid =
+            packet_grid_new_with_component_resolutions(2, 1, vec![1], vec![1], &limits).unwrap();
+        for trailing in [false, true] {
+            let second: &[u8] = if trailing { &[0, 0x55] } else { &[0] };
+            let parts = [
+                literal_progression_tile(&[0xe3, 0, 0x63, 0], 2, 0, 0, 2),
+                literal_progression_tile(second, 2, 0, 1, 2),
+            ];
+            let mut precincts = [literal_ht_progression_precinct(0)];
+            assert_eq!(
+                decode_progression_tile_packets(&parts, &grid, &mut precincts, &limits),
+                if trailing {
+                    Err(packet_reader_error(1, MalformedKind::TrailingData))
+                } else {
+                    Ok(TilePacketDecode {
+                        tile_index: 7,
+                        tile_parts: 2,
+                        packets: 2,
+                        present_packets: 1,
+                        contributions: 1,
+                        segments: 1,
+                        passes: 1,
+                        packet_header_bytes: 2,
+                        packet_body_bytes: 3,
+                        payload_bytes: 5,
+                    })
+                }
+            );
+            assert_eq!(
+                precincts[0].decoders[0]
+                    .plane()
+                    .signed_coefficient(0, 0)
+                    .unwrap(),
+                -1
+            );
+            assert_eq!(precincts[0].contexts[0].layer, 1);
+            assert_eq!(precincts[0].states[0].total_passes(), 1);
+        }
+    }
+
+    #[test]
+    fn actual_progression_work_guard_follows_real_next_and_restart_duplicate_effects() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(3)
+            .unwrap();
+        let grid =
+            packet_grid_new_with_component_resolutions(2, 1, vec![1], vec![1], &limits).unwrap();
+        let parts = [
+            literal_progression_tile(&[0], 2, 0, 0, 2),
+            literal_progression_tile(&[0], 2, 0, 1, 2),
+        ];
+        let mut precincts = [literal_ht_progression_precinct(0)];
+        let input =
+            prepare_progression_tile_input(&parts, &grid, &precincts, None, &limits).unwrap();
+        let params = ProgressionTileParameters {
+            tile_parts: &parts,
+            grid: &grid,
+            input: &input,
+            selection: None,
+            limits: &limits,
+        };
+        let mut progress = progression_tile_progress_new(&params).unwrap();
+        assert_eq!(
+            run_progression_tile_packets(&params, &mut precincts, &mut progress),
+            Err(packet_reader_error(
+                0,
+                MalformedKind::InvalidProgressionOrderChange
+            ))
+        );
+        assert_eq!(
+            (
+                progress.remaining_packets,
+                progress.packets,
+                progress.current_tile_part,
+                progress.offset,
+                progress.packed_offset
+            ),
+            (0, 1, 1, 0, 0)
+        );
+        assert_eq!(progress.seen, vec![true, false]);
+        assert_eq!(progress.iterator.emitted(), 2);
+        assert_eq!(precincts[0].contexts[0].layer, 0);
+        assert!(!precincts[0].states[0].included());
+    }
+
+    #[test]
+    fn actual_progression_accounting_keeps_every_ordered_overflow_and_new_offset_error() {
+        let limits = ResourceLimits::default();
+        let grid = raw_iterator_grid();
+        let parts = [literal_progression_tile(&[0], 1, 0, 0, 1)];
+        let precincts = [literal_ht_progression_precinct(0)];
+        let input =
+            prepare_progression_tile_input(&parts, &grid, &precincts, None, &limits).unwrap();
+        let params = ProgressionTileParameters {
+            tile_parts: &parts,
+            grid: &grid,
+            input: &input,
+            selection: None,
+            limits: &limits,
+        };
+        let decoded = PacketBodyDecode {
+            present: true,
+            code_blocks: 1,
+            contributions: 1,
+            segments: 1,
+            passes: 1,
+            header_bytes: 1,
+            body_bytes: 1,
+            bytes_consumed: 2,
+        };
+        for field in 0..7 {
+            let mut progress = progression_tile_progress_new(&params).unwrap();
+            match field {
+                0 => progress.packets = u64::MAX,
+                1 => progress.present_packets = u64::MAX,
+                2 => progress.contributions = u64::MAX,
+                3 => progress.segments = u64::MAX,
+                4 => progress.passes = u64::MAX,
+                5 => progress.packet_header_bytes = u64::MAX,
+                6 => progress.packet_body_bytes = u64::MAX,
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                account_progression_packet(&mut progress, decoded, 2, 0, Some(2), 0),
+                Err(packet_arithmetic_overflow())
+            );
+            assert_eq!(progress.offset, 2);
+            assert_eq!(progress.seen, vec![field != 0]);
+            let actual = [
+                progress.packets,
+                progress.present_packets,
+                progress.contributions,
+                progress.segments,
+                progress.passes,
+                progress.packet_header_bytes,
+                progress.packet_body_bytes,
+            ];
+            for (index, value) in actual.into_iter().enumerate() {
+                assert_eq!(
+                    value,
+                    if index == field {
+                        u64::MAX
+                    } else {
+                        u64::from(index < field)
+                    }
+                );
+            }
+        }
+        let mut progress = progression_tile_progress_new(&params).unwrap();
+        progress.offset = 3;
+        progress.packed_offset = usize::MAX;
+        assert_eq!(
+            account_progression_packet(&mut progress, decoded, 2, 1, Some(2), 0),
+            Err(packet_reader_error(5, MalformedKind::ArithmeticOverflow))
+        );
+        assert_eq!(
+            (progress.offset, progress.packed_offset, progress.packets),
+            (5, usize::MAX, 0)
+        );
+        assert_eq!(progress.seen, vec![false]);
+    }
+
+    #[test]
+    fn full_progression_uses_real_ppt_reassembly_and_plt_iteration_without_tile_body_bytes() {
+        fn segment(stream: &mut Vec<u8>, marker: u16, payload: &[u8]) {
+            stream.extend_from_slice(&marker.to_be_bytes());
+            stream.extend_from_slice(&u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+            stream.extend_from_slice(payload);
+        }
+        let mut stream = vec![0xff, 0x4f];
+        let mut siz = vec![0, 0];
+        for value in [1_u32, 1, 0, 0, 1, 1, 0, 0] {
+            siz.extend_from_slice(&value.to_be_bytes());
+        }
+        siz.extend_from_slice(&[0, 1, 7, 1, 1]);
+        segment(&mut stream, 0xff51, &siz);
+        segment(&mut stream, 0xff52, &[0, 0, 0, 1, 0, 0, 0, 0, 0, 1]);
+        segment(&mut stream, 0xff5c, &[0x20, 0]);
+        segment(&mut stream, 0xff90, &[0, 0, 0, 0, 0, 26, 0, 1]);
+        segment(&mut stream, 0xff58, &[0, 1]);
+        segment(&mut stream, 0xff61, &[0, 0]);
+        stream.extend_from_slice(&[0xff, 0x93, 0xff, 0xd9]);
+        let limits = ResourceLimits::default();
+        let layout = crate::codestream::parse_layout(&stream, &limits).unwrap();
+        assert_eq!(layout.tile_parts.len(), 1);
+        assert!(layout.tile_parts[0].data.is_empty());
+        assert!(layout.tile_parts[0].packed_packet_headers.is_present());
+        assert!(layout.tile_parts[0].packet_lengths.is_present());
+        let grid =
+            packet_grid_new_with_component_resolutions(1, 1, vec![1], vec![1], &limits).unwrap();
+        let mut precincts = [literal_packet_precinct()];
+        assert_eq!(
+            decode_progression_tile_packets(&layout.tile_parts, &grid, &mut precincts, &limits),
+            Ok(TilePacketDecode {
+                tile_index: 0,
+                tile_parts: 1,
+                packets: 1,
+                present_packets: 0,
+                contributions: 0,
+                segments: 0,
+                passes: 0,
+                packet_header_bytes: 1,
+                packet_body_bytes: 0,
+                payload_bytes: 0
+            })
+        );
+        assert!(!precincts[0].states[0].included());
+        assert_eq!(
+            precincts[0].decoders[0]
+                .plane()
+                .signed_coefficient(0, 0)
+                .unwrap(),
+            0
+        );
     }
 
     fn raw_iterator_grid() -> PacketGrid {

@@ -546,8 +546,51 @@ unsupported static-`Self` specification binding. Parent's actual typed limit
 getters provide the caps. No successful factory outcome or normalized input
 shape is supplied.
 
-Outer tile-part/progression composition remains open at this intermediate
-stage; no full F5H or codestream claim follows.
+### Complete actual multi-tile-part progression caller
+
+The actual selected `decode_progression_tile_packets_selected` and public
+`decode_progression_tile_packets` now have unconditional Result/full-precinct-
+vector relations to `part1_progression_tile_decode`. Inputs are the actual raw
+`TilePartPayload` sequence, complete raw grid, complete initial precincts,
+actual optional resolution counts and real `ResourceLimits`. There is no
+supplied coordinate sequence, reassembled-byte/length bank, header/decoder
+outcome, valid-shape, normalized-metadata, success or adequate-budget premise.
+
+Real production preparation composes component-style lookup, typed tile-part
+caps, selection admission, F5L's sole actual packed-byte reassembly, raw length
+metadata and complete precinct-grid association. It preserves per-part and
+aggregate checks and ignores no contradictory native source/count fields.
+Actual packet/progression factories and `next_packet` produce coordinates;
+actual `PacketLengthIter` initialization/advancement produces expected lengths.
+Neither is replaced by a caller-supplied list.
+
+The real progress record observes both full iterators, tile-part and length
+owners, both byte offsets, every packet/statistic counter, the complete seen
+vector and remaining work. The iterator advances before the real work guard.
+Tile-part transitions can discard that coordinate, reset to the next part's
+actual POC/default order and then suppress duplicates. Length consumption still
+precedes seen checks. Complete context-layer writes precede selection/packed
+lookup and actual single-precinct decoding; scoped native borrows frame every
+untouched precinct and every nested owner.
+
+Ordered accounting preserves the new tile offset on later packed-offset error,
+packet-count commit before seen storage, and seen storage before later statistic
+overflows. Its ordinary input is the actual returned packet decode, bound by the
+complete producer relation. An explicit equivalent Boolean-to-word expression
+exposes the real 0/1 value rather than assuming a missing standard-library
+conversion specification. The boundary scanner separately proves its entire
+state and unchanged-owner frame; those fields are not postulated unchanged.
+Trailing data, excess/truncated lengths, missing packets and final conversions
+retain original error order and all earlier precinct/coefficient effects.
+
+Independent full API fixtures include literal nonzero HT cleanup, selected
+higher-resolution body consumption without coefficient execution, tile-part
+iterator restart/duplicate effects, late trailing data after real coefficients,
+actual PPT reassembly plus PLT iteration with zero physical tile-body bytes,
+and exact work/ordered-overflow states. These are not model-generated expected
+outputs. This closes the named actual progression producer scope, not every
+single/multi-code-block or JPIP outer wrapper, normative endorsement, the whole
+F5H epic or project completion.
 
 ## Reproduce verification
 
