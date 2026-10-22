@@ -8,6 +8,12 @@ pub use crate::proofs::internal_specs::{
 verus! {
 
 pub type Part2MctArray = (u8, crate::codestream::MctArrayKind, crate::codestream::MctNumericFormat, u8, Seq<i64>);
+pub type Part2MctWavelet = (crate::codestream::MctWaveletType, u8, i32);
+pub type Part2MctCollection = (
+    bool, Seq<u16>, Seq<u16>, crate::codestream::MctCollectionKind,
+    Option<Part2MctArray>, Option<Part2MctArray>, Option<Part2MctWavelet>,
+);
+pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 
 pub open spec fn part2_mct_row_initial(
     matrix: Part2MctArray, offsets: Option<Part2MctArray>, width: nat,

@@ -1,5 +1,13 @@
 # Specification audit guide
 
+The native MCT owner views preserve every raw array field and all wavelet,
+collection and stage fields, including complete ordered input/output lists,
+None versus Some arrays/wavelets and ordered stage/collection sequences.
+Their actual getters expose these complete values without geometry, precision,
+matrix-shape or success premises. These are semantic inputs for the pending
+actual collection/dependency/wavelet composition, not proof that those
+algorithms or general MCT are already complete.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

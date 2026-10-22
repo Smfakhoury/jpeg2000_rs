@@ -1778,6 +1778,29 @@ verus! {
     pub open spec fn mct_array_option(value: Option<&MctArray>) -> Option<crate::specs::Part2MctArray> {
         match value { None => None, Some(array) => Some(mct_array_view(array)) }
     }
+
+    pub closed spec fn mct_wavelet_view(wavelet: MctWavelet) -> crate::specs::Part2MctWavelet {
+        (wavelet.transform, wavelet.levels, wavelet.component_offset)
+    }
+
+    pub open spec fn mct_wavelet_option(value: Option<MctWavelet>) -> Option<crate::specs::Part2MctWavelet> {
+        match value { None => None, Some(wavelet) => Some(mct_wavelet_view(wavelet)) }
+    }
+
+    pub closed spec fn mct_collection_view(collection: &MctCollection) -> crate::specs::Part2MctCollection {
+        (collection.reversible, collection.input_components@, collection.output_components@, collection.kind,
+            match collection.matrix { None => None, Some(array) => Some(mct_array_view(&array)) },
+            match collection.offsets { None => None, Some(array) => Some(mct_array_view(&array)) },
+            mct_wavelet_option(collection.wavelet))
+    }
+
+    pub closed spec fn mct_stage_view(stage: &MctStage) -> crate::specs::Part2MctStage {
+        (stage.index, Seq::new(stage.collections@.len(), |index: int| mct_collection_view(&stage.collections@[index])))
+    }
+
+    pub closed spec fn multiple_component_transform_view(transform: &MultipleComponentTransform) -> Seq<crate::specs::Part2MctStage> {
+        Seq::new(transform.stages@.len(), |index: int| mct_stage_view(&transform.stages@[index]))
+    }
 }
 
 impl MctArray {
@@ -1851,6 +1874,10 @@ impl MctArray {
 }
 
 impl MultipleComponentTransform {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures Seq::new(result@.len(), |index: int| mct_stage_view(&result@[index]))
+            == multiple_component_transform_view(self),
+    ))]
     pub fn stages(&self) -> &[MctStage] {
         &self.stages
     }
@@ -1918,10 +1945,14 @@ impl MultipleComponentTransform {
 }
 
 impl MctStage {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_stage_view(self).0,))]
     pub const fn index(&self) -> u8 {
         self.index
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures Seq::new(result@.len(), |index: int| mct_collection_view(&result@[index])) == mct_stage_view(self).1,
+    ))]
     pub fn collections(&self) -> &[MctCollection] {
         &self.collections
     }
@@ -1960,30 +1991,37 @@ impl MctStage {
 }
 
 impl MctCollection {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_collection_view(self).0,))]
     pub const fn reversible(&self) -> bool {
         self.reversible
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == mct_collection_view(self).1,))]
     pub fn input_components(&self) -> &[u16] {
         &self.input_components
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == mct_collection_view(self).2,))]
     pub fn output_components(&self) -> &[u16] {
         &self.output_components
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_collection_view(self).3,))]
     pub const fn kind(&self) -> MctCollectionKind {
         self.kind
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_array_option(result) == mct_collection_view(self).4,))]
     pub const fn matrix(&self) -> Option<&MctArray> {
         self.matrix.as_ref()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_array_option(result) == mct_collection_view(self).5,))]
     pub const fn offsets(&self) -> Option<&MctArray> {
         self.offsets.as_ref()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_wavelet_option(result) == mct_collection_view(self).6,))]
     pub const fn wavelet(&self) -> Option<MctWavelet> {
         self.wavelet
     }
@@ -2071,14 +2109,17 @@ impl MctCollection {
 }
 
 impl MctWavelet {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_wavelet_view(self).0,))]
     pub const fn transform(self) -> MctWaveletType {
         self.transform
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_wavelet_view(self).1,))]
     pub const fn levels(self) -> u8 {
         self.levels
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_wavelet_view(self).2,))]
     pub const fn component_offset(self) -> i32 {
         self.component_offset
     }
