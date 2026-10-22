@@ -656,4 +656,401 @@ pub open spec fn part1_legacy_cleanup_column_tail(
         stripe as nat + rows, width, height, orientation, causal, 2), segsym)
 }
 
+pub open spec fn part1_legacy_pass_kind(index: u32) -> crate::tier1::Tier1PassKind {
+    let code = part1_tier1_pass_code(index as nat);
+    if code == 0 { crate::tier1::Tier1PassKind::SignificancePropagation }
+    else if code == 1 { crate::tier1::Tier1PassKind::MagnitudeRefinement }
+    else { crate::tier1::Tier1PassKind::Cleanup }
+}
+
+pub open spec fn part1_legacy_uses_raw(style: crate::tier1::Tier1CodingStyle, index: u32) -> bool {
+    style.selective_arithmetic_coding_bypass && index >= 10 && !(part1_legacy_pass_kind(index) is Cleanup)
+}
+
+pub open spec fn part1_legacy_plan(style: crate::tier1::Tier1CodingStyle, index: u32) -> crate::tier1::Tier1PassPlan {
+    let kind = part1_legacy_pass_kind(index);
+    let raw = part1_legacy_uses_raw(style, index);
+    let terminated = style.terminate_all_passes || (style.selective_arithmetic_coding_bypass
+        && (index == 9 || (index >= 10 && !(kind is SignificancePropagation))));
+    crate::tier1::Tier1PassPlan {
+        kind, coding_mode: if raw { crate::tier1::Tier1CodingMode::Raw } else { crate::tier1::Tier1CodingMode::Mq },
+        terminates_segment: terminated, reset_contexts_after_pass: style.reset_contexts,
+        validate_predictable_termination: style.predictable_termination && terminated && !raw,
+        expect_segmentation_symbol: style.segmentation_symbols && (kind is Cleanup),
+    }
+}
+
+pub open spec fn part1_legacy_segment_passes(style: crate::tier1::Tier1CodingStyle, first: u32, available: u32) -> u32 {
+    if available == 0 { 0 } else if style.terminate_all_passes { 1 }
+    else if !style.selective_arithmetic_coding_bypass { available }
+    else if first < 10 { if available < 10 - first { available } else { (10 - first) as u32 } }
+    else if part1_legacy_pass_kind(first) is SignificancePropagation {
+        if available < 2 { available } else { 2 }
+    } else { 1 }
+}
+
+pub open spec fn part1_legacy_ensure_bitplane(s: Tier1DecoderState) -> (Result<(), crate::DecodeError>, Tier1DecoderState) {
+    if s.bitplane_state.is_some() { (Ok(()), s) } else {
+        match part1_legacy_bitplane_initial(s.plane, s.bitplane) {
+            Err(error) => (Err(error), s),
+            Ok(state) => (Ok(()), Tier1DecoderState { bitplane_state: Some(state), ..s }),
+        }
+    }
+}
+
+pub open spec fn part1_legacy_advance(s: Tier1DecoderState, kind: crate::tier1::Tier1PassKind) -> (Result<(), crate::DecodeError>, Tier1DecoderState) {
+    if s.next_pass == u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+    else {
+        let next = Tier1DecoderState { next_pass: (s.next_pass + 1) as u32, ..s };
+        if kind is Cleanup {
+            let next = Tier1DecoderState { bitplane_state: None, ..next };
+            if next.next_pass < next.maximum_passes {
+                if next.bitplane == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), next) }
+                else { (Ok(()), Tier1DecoderState { bitplane: (next.bitplane - 1) as u16, ..next }) }
+            } else { (Ok(()), next) }
+        } else { (Ok(()), next) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_decode_pass(s: Tier1DecoderState, symbols: Part1LegacySymbols, kind: crate::tier1::Tier1PassKind)
+    -> (Result<crate::tier1::Tier1PassStatistics, crate::DecodeError>, Tier1DecoderState, Part1LegacySymbols)
+{
+    let ready = part1_legacy_ensure_bitplane(s);
+    match ready.0 {
+        Err(error) => (Err(error), ready.1, symbols),
+        Ok(()) => {
+            let s = ready.1;
+            match s.bitplane_state {
+                None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s, symbols),
+                Some(state) => {
+                    if (symbols is Raw) && (kind is Cleanup) {
+                        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s, symbols)
+                    } else {
+                        let pass = if kind is Cleanup {
+                            part1_legacy_cleanup_pass(s.plane, state, symbols, s.orientation, s.style.vertical_causal_context, s.style.segmentation_symbols)
+                        } else {
+                            part1_legacy_pass(s.plane, state, symbols,
+                                if kind is MagnitudeRefinement { crate::tier1::SubbandOrientation::Ll } else { s.orientation },
+                                s.style.vertical_causal_context, if kind is MagnitudeRefinement { 1u8 } else { 0u8 })
+                        };
+                        (pass.0, Tier1DecoderState { plane: pass.1, bitplane_state: Some(pass.2), ..s }, pass.3)
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub struct Part1LegacySegmentRun {
+    pub decoder: Tier1DecoderState,
+    pub symbols: Part1LegacySymbols,
+    pub statistics: crate::tier1::Tier1PassStatistics,
+}
+
+pub type Part1LegacySegmentEffect = (Result<(), crate::DecodeError>, Part1LegacySegmentRun);
+pub type Part1LegacySegmentPassEffect = (Result<crate::tier1::Tier1PassStatistics, crate::DecodeError>, Tier1DecoderState, Part1LegacySymbols);
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_segment_step(s: Part1LegacySegmentRun) -> Part1LegacySegmentEffect {
+    let plan = part1_legacy_plan(s.decoder.style, s.decoder.next_pass);
+    if (plan.coding_mode is Raw) != (s.symbols is Raw) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s)
+    } else {
+        let decoded = part1_legacy_decode_pass(s.decoder, s.symbols, plan.kind);
+        let s = Part1LegacySegmentRun { decoder: decoded.1, symbols: decoded.2, ..s };
+        match decoded.0 {
+            Err(error) => (Err(error), s),
+            Ok(statistics) => {
+                let merged = tier1_statistics_merge(s.statistics, statistics);
+                let s = Part1LegacySegmentRun { statistics: merged.1, ..s };
+                match merged.0 {
+                    Err(error) => (Err(error), s),
+                    Ok(()) => {
+                        let advanced = part1_legacy_advance(s.decoder, plan.kind);
+                        let s = Part1LegacySegmentRun { decoder: advanced.1, ..s };
+                        match advanced.0 {
+                            Err(error) => (Err(error), s),
+                            Ok(()) => {
+                                if s.symbols is Raw {
+                                    (Ok(()), Part1LegacySegmentRun { decoder: if s.decoder.style.reset_contexts {
+                                        Tier1DecoderState { reset_contexts_before_mq: true, ..s.decoder }
+                                    } else { s.decoder }, ..s })
+                                } else {
+                                    let mq = s.symbols->Mq_0;
+                                    (Ok(()), Part1LegacySegmentRun { symbols: Part1LegacySymbols::Mq(
+                                        if s.decoder.style.reset_contexts { part1_legacy_initialized(mq) } else { mq }), ..s })
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_legacy_segment_run(s: Part1LegacySegmentRun, remaining: nat) -> Part1LegacySegmentEffect
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(()), s) } else {
+        let step = part1_legacy_segment_step(s);
+        match step.0 {
+            Err(_) => step,
+            Ok(()) => part1_legacy_segment_run(step.1, (remaining - 1) as nat),
+        }
+    }
+}
+
+pub open spec fn part1_legacy_segment_finish(run: Part1LegacySegmentEffect) -> Part1LegacySegmentPassEffect {
+    let s = run.1;
+    (match run.0 { Err(error) => Err(error), Ok(()) => Ok(s.statistics) }, s.decoder, s.symbols)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_segment_admission(
+    s: Tier1DecoderState, input: Seq<u8>, count: u32, pass_limit: u32, byte_limit: u64,
+) -> Result<(), crate::DecodeError> {
+    if count == 0 || (input.len() == 0 && s.next_pass == 0) { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else if s.next_pass as nat + count as nat > u32::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else {
+        let next = (s.next_pass + count) as u32;
+        if next > pass_limit {
+            Err(part1_mq_limit(crate::Resource::CodeBlockPasses, pass_limit as u64, next as u64))
+        } else if s.decoded_bytes as nat + input.len() > u64::MAX {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else {
+            let bytes = (s.decoded_bytes as nat + input.len()) as u64;
+            if bytes > byte_limit { Err(part1_mq_limit(crate::Resource::CodeBlockBytes, byte_limit, bytes)) }
+            else if next > s.maximum_passes || part1_legacy_segment_passes(s.style, s.next_pass, count) != count {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+            } else if input.len() == 0 && next != s.maximum_passes && !part1_legacy_plan(s.style, (next - 1) as u32).terminates_segment {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+            } else { Ok(()) }
+        }
+    }
+}
+
+pub open spec fn part1_legacy_segment_setup(s: Tier1DecoderState, mq: Part1MqState) -> (Tier1DecoderState, Part1MqState) {
+    if s.reset_contexts_before_mq || s.mq_context_state.is_none() {
+        (Tier1DecoderState { reset_contexts_before_mq: false, ..s }, part1_legacy_initialized(mq))
+    } else {
+        match s.mq_context_state {
+            None => (s, mq),
+            Some(contexts) => (s, Part1MqState { contexts, ..mq }),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_segment_account(
+    s: Tier1DecoderState, bytes: nat, count: u32, statistics: crate::tier1::Tier1PassStatistics,
+) -> (Result<crate::tier1::Tier1SegmentDecode, crate::DecodeError>, Tier1DecoderState) {
+    if s.decoded_segments == u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+    else {
+        let s = Tier1DecoderState { decoded_segments: (s.decoded_segments + 1) as u32, ..s };
+        if s.decoded_bytes as nat + bytes > u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+        else {
+            let s = Tier1DecoderState { decoded_bytes: (s.decoded_bytes as nat + bytes) as u64, ..s };
+            if bytes > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+            else { (Ok(crate::tier1::Tier1SegmentDecode { passes: count, bytes: bytes as u32, statistics }), s) }
+        }
+    }
+}
+
+pub open spec fn part1_legacy_segment_mq_finish(
+    run: Part1LegacySegmentPassEffect, bytes: nat, count: u32,
+) -> (Result<crate::tier1::Tier1SegmentDecode, crate::DecodeError>, Tier1DecoderState) {
+    let s = run.1;
+    match run.0 {
+        Err(error) => (Err(error), s),
+        Ok(statistics) => match run.2 {
+            Part1LegacySymbols::Raw(_) => (Err(ht_reader_error(crate::MalformedKind::InvalidMqState)), s),
+            Part1LegacySymbols::Mq(mq) => {
+                let term = if s.style.predictable_termination { part1_mq_termination(mq) } else { Ok(()) };
+                match term {
+                    Err(error) => (Err(error), s),
+                    Ok(()) => part1_legacy_segment_account(
+                        Tier1DecoderState { mq_context_state: Some(mq.contexts), ..s }, bytes, count, statistics),
+                }
+            },
+        },
+    }
+}
+
+pub open spec fn part1_legacy_segment_raw_finish(
+    run: Part1LegacySegmentPassEffect, bytes: nat, count: u32,
+) -> (Result<crate::tier1::Tier1SegmentDecode, crate::DecodeError>, Tier1DecoderState) {
+    let s = run.1;
+    match run.0 {
+        Err(error) => (Err(error), s),
+        Ok(statistics) => match run.2 {
+            Part1LegacySymbols::Mq(_) => (Err(ht_reader_error(crate::MalformedKind::InvalidMqState)), s),
+            Part1LegacySymbols::Raw(raw) => {
+                let term = if s.style.predictable_termination { part1_raw_reader_termination(raw) } else { Ok(()) };
+                match term {
+                    Err(error) => (Err(error), s),
+                    Ok(()) => part1_legacy_segment_account(s, bytes, count, statistics),
+                }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_segment(
+    s: Tier1DecoderState, input: Seq<u8>, count: u32, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> (Result<crate::tier1::Tier1SegmentDecode, crate::DecodeError>, Tier1DecoderState) {
+    match part1_legacy_segment_admission(s, input, count, pass_limit, byte_limit) {
+        Err(error) => (Err(error), s),
+        Ok(()) => {
+            if part1_legacy_plan(s.style, s.next_pass).coding_mode is Mq {
+                match part1_mq_initial(input, input_limit, work_limit) {
+                    Err(error) => (Err(error), s),
+                    Ok(mq) => {
+                        let ready = part1_legacy_segment_setup(s, mq);
+                        part1_legacy_segment_mq_finish(part1_legacy_segment_finish(part1_legacy_segment_run(
+                            Part1LegacySegmentRun { decoder: ready.0, symbols: Part1LegacySymbols::Mq(ready.1), statistics: tier1_statistics_zero() },
+                            count as nat)), input.len(), count)
+                    },
+                }
+            } else {
+                match part1_raw_reader_initial(input, input_limit, work_limit) {
+                    Err(error) => (Err(error), s),
+                    Ok(raw) => part1_legacy_segment_raw_finish(part1_legacy_segment_finish(part1_legacy_segment_run(
+                        Part1LegacySegmentRun { decoder: s, symbols: Part1LegacySymbols::Raw(raw), statistics: tier1_statistics_zero() },
+                        count as nat)), input.len(), count),
+                }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_contribution_admission(
+    s: Tier1DecoderState, input: Seq<u8>, passes: u8, byte_limit: u64, work_limit: u64,
+) -> (Result<(u32, u32, u32), crate::DecodeError>, Tier1DecoderState) {
+    if passes == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s) }
+    else if s.decoded_bytes as nat + input.len() > u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+    else {
+        let bytes = (s.decoded_bytes as nat + input.len()) as u64;
+        if bytes > byte_limit { (Err(part1_mq_limit(crate::Resource::CodeBlockBytes, byte_limit, bytes)), s) }
+        else {
+            let previous = match s.legacy_segment { None => 0u32, Some(segment) => segment.passes };
+            if previous as nat + passes as nat > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+            else {
+                let replay = (previous + passes) as u32;
+                let base_work = s.plane.coefficients.len() * replay as nat;
+                if base_work > u64::MAX || base_work + bytes as nat > u64::MAX
+                    || base_work + bytes as nat + s.legacy_decode_work as nat > u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s)
+                } else {
+                    let work = (base_work + bytes as nat + s.legacy_decode_work as nat) as u64;
+                    if work > work_limit { (Err(part1_mq_limit(crate::Resource::WorkUnits, work_limit, work)), s) }
+                    else {
+                        let s = Tier1DecoderState { legacy_decode_work: work, ..s };
+                        if s.next_pass as nat + passes as nat > u32::MAX {
+                            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s)
+                        } else {
+                            let next = (s.next_pass + passes) as u32;
+                            if next == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s) }
+                            else { (Ok((replay, next, (next - 1) as u32)), s) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn part1_legacy_snapshot(s: Tier1DecoderState) -> Tier1LegacyFrame {
+    Tier1LegacyFrame {
+        plane: s.plane, next_pass: s.next_pass, bitplane: s.bitplane, bitplane_state: s.bitplane_state,
+        mq_context_state: s.mq_context_state, reset_contexts_before_mq: s.reset_contexts_before_mq,
+        decoded_segments: s.decoded_segments, decoded_bytes: s.decoded_bytes, input: Seq::empty(), passes: 0,
+    }
+}
+
+pub open spec fn part1_legacy_append(segment: Tier1LegacyFrame, input: Seq<u8>, passes: u32) -> Tier1LegacyFrame {
+    Tier1LegacyFrame { input: segment.input + input, passes, ..segment }
+}
+
+pub open spec fn part1_legacy_restore(s: Tier1DecoderState, segment: Tier1LegacyFrame) -> Tier1DecoderState {
+    Tier1DecoderState {
+        plane: segment.plane, next_pass: segment.next_pass, bitplane: segment.bitplane, bitplane_state: segment.bitplane_state,
+        mq_context_state: segment.mq_context_state, reset_contexts_before_mq: segment.reset_contexts_before_mq,
+        decoded_segments: segment.decoded_segments, decoded_bytes: segment.decoded_bytes, ..s
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_replay_commit(s: Tier1DecoderState, segment: Tier1LegacyFrame)
+    -> (Result<(), crate::DecodeError>, Tier1DecoderState)
+{
+    if s.next_pass == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s) }
+    else if s.next_pass < s.maximum_passes && !part1_legacy_plan(s.style, (s.next_pass - 1) as u32).terminates_segment {
+        (Ok(()), Tier1DecoderState { legacy_segment: Some(segment), ..s })
+    } else { (Ok(()), s) }
+}
+
+pub open spec fn part1_legacy_contribution_finish(
+    decoded: (Result<crate::tier1::Tier1SegmentDecode, crate::DecodeError>, Tier1DecoderState),
+    segment: Tier1LegacyFrame,
+) -> (Result<(), crate::DecodeError>, Tier1DecoderState) {
+    let s = decoded.1;
+    match decoded.0 {
+        Err(error) => (Err(error), s),
+        Ok(_) => part1_legacy_replay_commit(s, segment),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_replay(
+    s: Tier1DecoderState, input: Seq<u8>, replay: u32, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> (Result<(), crate::DecodeError>, Tier1DecoderState) {
+    let previous = s.legacy_segment;
+    let s = Tier1DecoderState { legacy_segment: None, ..s };
+    let segment = match previous { Some(segment) => segment, None => part1_legacy_snapshot(s) };
+    let segment = part1_legacy_append(segment, input, replay);
+    let restored = part1_legacy_restore(s, segment);
+    part1_legacy_contribution_finish(
+        part1_legacy_segment(restored, segment.input, segment.passes, pass_limit, byte_limit, input_limit, work_limit), segment)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_legacy_contribution(
+    s: Tier1DecoderState, input: Seq<u8>, passes: u8, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> (Result<(), crate::DecodeError>, Tier1DecoderState) {
+    let admitted = part1_legacy_contribution_admission(s, input, passes, byte_limit, work_limit);
+    match admitted.0 {
+        Err(error) => (Err(error), admitted.1),
+        Ok((replay, next, last)) => {
+            let s = admitted.1;
+            if s.legacy_segment.is_none() && (next == s.maximum_passes || part1_legacy_plan(s.style, last).terminates_segment) {
+                let decoded = part1_legacy_segment(s, input, passes as u32, pass_limit, byte_limit, input_limit, work_limit);
+                (match decoded.0 { Err(error) => Err(error), Ok(_) => Ok(()) }, decoded.1)
+            } else {
+                part1_legacy_replay(s, input, replay, pass_limit, byte_limit, input_limit, work_limit)
+            }
+        },
+    }
+}
+
+pub open spec fn part1_legacy_zero_bitplanes(s: Tier1DecoderState, zero: u16)
+    -> (Result<(), crate::DecodeError>, Tier1DecoderState)
+{
+    match s.zero_bitplanes {
+        Some(previous) => if previous == zero { (Ok(()), s) }
+            else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s) },
+        None => if s.next_pass != 0 || s.decoded_segments != 0 || zero > s.bitplane {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), s)
+        } else {
+            let bitplane = (s.bitplane - zero) as u16;
+            let maximum = bitplane as nat * 3 + 1;
+            if maximum > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), s) }
+            else { (Ok(()), Tier1DecoderState { bitplane, maximum_passes: maximum as u32, zero_bitplanes: Some(zero), ..s }) }
+        },
+    }
+}
+
 }

@@ -35,9 +35,37 @@ valid headers, adequate budgets or a supplied trace.
 Opaque model phase boundaries control proof unfolding only. The concrete
 production stages prove each phase against its body; both private reader-adapter
 implementations delegate to proved actual readers. There is no second executable
-decoder or uninterpreted successful entropy outcome. Segment/contribution/
-packet scheduling, retained replay and transactional whole-block composition
-are not established by this complete three-pass producer boundary.
+decoder or uninterpreted successful entropy outcome.
+
+The same module now composes actual segment scheduling and contribution replay.
+`part1_legacy_segment` checks the real pass/byte/empty-segment admission before
+reader construction, restores or initializes real contexts, runs the actual
+MQ/raw pass loop, checks existing termination policy and commits accounting in
+its real order. `part1_legacy_contribution` preserves exact replay-work charging,
+retained-record take/append/restore, the real segment's result and final record
+retention. Its starting numerical state and input bytes come from the actual
+retained record, never from a supplied successful decoder outcome.
+
+Complete logical bitplane and nineteen-context projections appear in both
+whole-decoder and retained-record frames. The actual faithful raw plane,
+bitplane and legacy-record Clone implementations preserve malformed shapes and
+all words/flags and retain original field/allocation order. Private arithmetic
+lemmas receive their six-word facts from those real native representations, not
+from a normalized-coefficient premise. Native record restoration and data
+append are verified operations, not assumed state transformers.
+
+The actual route/pass/accounting getters and zero-bitplane setter supply native
+owner facts for the next packet caller. The setter checks a previously stored
+value before its phase/counter checks and does not invent a 292-bitplane bound.
+Its existing checked multiply/add is one verified production helper over every
+native `u16`, with unchanged field commits. Header validity is not a premise.
+
+The internal contribution entry is not transactional: work charging can precede
+a later arithmetic error, and a taken retained record need not be restored on
+replay failure. The outer foreign packet caller's real clone/commit stage is a
+separate obligation. Packet/header associations, exact body/pass-total joins,
+whole-packet transactional results and the public mixed dispatcher union are
+not established by these complete actual legacy producers.
 
 ## Frozen full F5H refinement-plane profile
 

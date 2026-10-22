@@ -219,6 +219,7 @@ pub open spec fn part1_mq_termination(s: Part1MqState) -> Result<(), crate::Deco
     } else { Ok(()) }
 }
 
+#[verifier::opaque]
 pub open spec fn part1_mq_initial(input: Seq<u8>, maximum_input_bytes: u64, maximum_work_units: u64)
     -> Result<Part1MqState, crate::DecodeError>
 {
