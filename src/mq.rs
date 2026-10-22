@@ -378,7 +378,7 @@ fn mq_error(offset: usize, kind: MalformedKind) -> DecodeError {
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_mq_limit(resource, limit, actual),
 ))]
-fn mq_limit(resource: Resource, limit: u64, actual: u64) -> DecodeError {
+pub(crate) fn mq_limit(resource: Resource, limit: u64, actual: u64) -> DecodeError {
     DecodeError::LimitExceeded {
         resource,
         limit,
@@ -406,11 +406,13 @@ fn probability_state(index: usize) -> ProbabilityState {
     ensures mq_decoder_outcome(result) == crate::specs::part1_mq_initial(
         input@, maximum_input_bytes, maximum_work_units),
 ))]
-fn mq_from_input(
+pub(crate) fn mq_from_input(
     input: &[u8],
     maximum_input_bytes: u64,
     maximum_work_units: u64,
 ) -> Result<MqDecoder<'_>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_mq_initial); }
     let input_length = input.len() as u64;
     if input_length > maximum_input_bytes {
         return Err(mq_limit(
