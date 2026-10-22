@@ -4694,6 +4694,19 @@ pub open spec fn ht_decode_staged_group(
     }
 }
 
+pub open spec fn part1_tier1_segment(
+    state: Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> HtDecoderResult {
+    if passes == 0 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else if ht_group_route(state) {
+        ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit)
+    } else {
+        part1_legacy_segment(state, input, passes as u32, pass_limit, byte_limit, input_limit, work_limit)
+    }
+}
+
 pub open spec fn ht_has_current_cleanup(state: Tier1DecoderState) -> bool { state.ht_current_set_has_cleanup }
 
 pub open spec fn ht_packet_segment_route(

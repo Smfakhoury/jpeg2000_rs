@@ -5484,7 +5484,11 @@ impl Tier1CodeBlockDecoder {
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures (passes == 0 || crate::specs::ht_group_route(tier1_decoder_state(old(self)))) ==>
+        ensures (result, tier1_decoder_state(final(self))) == crate::specs::part1_tier1_segment(
+                tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
+                crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_input_byte_limit(limits),
+                crate::limits::resource_work_limit(limits)),
+            (passes == 0 || crate::specs::ht_group_route(tier1_decoder_state(old(self)))) ==>
             (result, tier1_decoder_state(final(self))) == crate::specs::ht_decode_staged_group(
                 tier1_decoder_state(old(self)), input@, passes, crate::limits::resource_code_block_pass_limit(limits),
                 crate::limits::resource_code_block_byte_limit(limits), crate::limits::resource_work_limit(limits)),
@@ -11233,6 +11237,41 @@ mod tests {
             (mixed.next_pass, mixed.plane.coefficients()[0].magnitude),
             (4, 3)
         );
+    }
+
+    #[test]
+    fn mixed_segment_dispatch_uses_actual_cleanup_option_not_current_flag() {
+        let limits = ResourceLimits::default();
+        let style = Tier1CodingStyle::from_code_block_style(0xc0).unwrap();
+        let mut legacy =
+            Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        legacy.decode_segment(&[0xff], 1, &limits).unwrap();
+        assert_eq!(legacy.plane.signed_coefficient(0, 0).unwrap(), 0);
+        assert_eq!(
+            (
+                legacy.next_pass,
+                legacy.decoded_segments,
+                legacy.decoded_bytes
+            ),
+            (1, 1, 1)
+        );
+        let mut ht = Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        ht.ht_cleanup_plane = Some(ht.plane.clone());
+        assert!(!ht.ht_current_set_has_cleanup);
+        ht.decode_segment(&[0, 0x63, 0], 1, &limits).unwrap();
+        assert_eq!(ht.plane.signed_coefficient(0, 0).unwrap(), -1);
+        assert_eq!(
+            (ht.next_pass, ht.decoded_segments, ht.decoded_bytes),
+            (1, 1, 3)
+        );
+        for mut decoder in [legacy, ht] {
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decoder.decode_segment(&[], 0, &limits),
+                Err(invalid_code_block())
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+        }
     }
 
     #[test]

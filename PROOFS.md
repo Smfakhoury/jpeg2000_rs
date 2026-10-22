@@ -196,8 +196,8 @@ including stored counts above the physical array size. Count admission precedes
 physical bounds; failures remain `InvalidPacketHeader` at offset zero. No
 header, pass-total, nonzero-pass or normalized-count premise is introduced.
 Independent tests cover all 65,536 count/index pairs and preserve the entire
-supplied record. This owner interface supports both HT and legacy routing;
-it does not itself establish either packet execution loop.
+supplied record. This owner interface alone does not establish packet execution;
+the actual legacy loop is composed below, while HT routing has a separate owner.
 
 ### Shared native contribution preparation
 
@@ -247,6 +247,79 @@ This closes the selected HT contribution-body boundary. It does **not** close
 the shared header parser, the full HT/legacy dispatcher union, precinct/packet
 orchestration, normative endorsement or the whole F5H epic. Those must consume
 their actual owner producers rather than assumed outcomes.
+
+### Actual legacy contribution-body execution
+
+The actual `decode_legacy_code_block_contribution_body` now refines a complete
+unconditional Result/full-decoder relation. It runs the original stored-count
+loop, performs each real physical descriptor lookup, computes and checks the
+actual body slice, invokes the proved actual legacy contribution producer and
+commits pass/offset/index counters in their original order. The one real
+per-segment operation exposes all four partial outputs: decoder, segment index,
+body offset and decoded-pass count. Native overflow, physical-array and range
+failures retain their actual priority; no header or successful-segment trace is
+supplied to the loop theorem.
+
+The final exact-consumption and pass-total checks follow all decoder effects.
+A late mismatch therefore preserves the already decoded state inside this
+operation. The stored `data_length` is returned, not silently replaced with the
+consumed count. Empty zero-pass storage can succeed here, since shared header
+preparation belongs to its actual caller. Those unvalidated native cases remain
+in the model instead of being excluded by a normalized-contribution premise.
+
+The shared prefix and the original HT branch are not duplicated by this
+extraction. Independent tests cover real MQ bytes through the full legacy call
+chain, late total mismatches, physical lookup before range overflow, pass-counter
+overflow after actual decoding, shared preparation and observed public rollback.
+The coherent owner join now supplies the actual faithful whole-decoder Clone.
+Both the actual staged caller and public `decode_code_block_contribution_body`
+refine their complete legacy-profile Result/full-state models. The profile is
+the actual `!contribution.high_throughput` branch selection, not a valid-header,
+successful-decode, normalized-state or adequate-budget premise; every other
+native descriptor/body/decoder/cap input remains admitted. Public errors leave
+the original entire decoder unchanged, while successful staged output is
+committed. The real shared preparation and actual legacy packet loop produce
+the staged outcome; no clone trace or supplied legacy outcome is an input.
+
+The one true-selector invariant in the still-inline HT loop only retains its
+actual immutable branch guard for that disjoint legacy-profile result. It
+changes no runtime operation or HT effect. This closes the selected legacy
+packet-body-to-coefficient call chain. The combined HT/legacy public packet
+relation, header parser/retained packet associations and full-codestream joins
+remain separate owner/integration obligations; this is not all of F5L.
+
+### Complete unconditional mixed contribution-body and Tier-1 dispatch
+
+The two actual packet route families now compose through one unconditional
+`part1_code_block_body_staged` relation: actual shared preparation, then the
+actual descriptor's HT selector, then the corresponding complete native helper.
+`part1_code_block_body_transaction` composes the actual faithful decoder Clone
+and commits only on success. The existing selected HT and legacy postconditions
+are retained as consequences of this full relation, not supplied outcomes.
+There is no header, decoder-shape, success, trace or adequate-budget premise.
+
+The obsolete selector-only loop frames disappear because both real loop helpers
+are used directly. All HT helper bodies are byte-identical to frozen `feddd4a`;
+both legacy helper bodies are byte-identical to frozen `7827a1b`. The public
+transaction's runtime body, shared preparation, error factories and allocation
+order are unchanged. No duplicate executable decoder or algorithm is added.
+
+The existing actual `Tier1CodeBlockDecoder::decode_segment` dispatcher also
+refines unconditional `part1_tier1_segment`: pass-zero rejection first, then
+the actual HT/Mixed-with-stored-cleanup-option selector, otherwise the actual
+complete legacy segment producer. Its native body and the primitive producers
+are unchanged. A cleanup option is not replaced by the current-cleanup flag.
+
+Independent mixed-style tests use literal MQ/HT bytes and coefficient values,
+empty-count asymmetry, late final-total failures and full original-state rollback,
+the distinct actual input-budget policies, and the stored-cleanup-option selector.
+Properties prove preservation of both selected profiles, first preparation
+failure, full transactional error framing and native Tier-1 route order.
+
+This closes these mixed native body/segment boundaries only. Actual shared
+header parsing, retained packet associations and complete precinct/packet
+orchestration still require their own complete producer contracts. It is not
+normative endorsement or whole-epic completion.
 
 ## Reproduce verification
 
@@ -540,6 +613,7 @@ Read each contract according to its inputs and postcondition:
 | Complete native HT placeholder/replacement step | All native pass/phase/set states and real pass caps, exact cleanup-flag/buffer reset, preserved stored cleanup/output, multiple-set permission/counting and partial segment-overflow effects | Entire staged multiple-group/packet or mixed dispatch; no assumed Clone/legacy outcome is supplied |
 | Actual selected HT staged packet group | Faithful whole-decoder raw cloning, original packet grouping, repeated skip-one/skip-two loop, substantive byte decode and whole-clone commit. Every failure preserves the complete original decoder; success reports the packet's original pass count. Includes raw malformed retained state and exact selected Mixed-with-cleanup-option route | Legacy dispatcher else, full mixed union, packet contribution/precinct orchestration or whole F5H; no supplied legacy/clone trace is accepted |
 | Complete selected HT packet contribution body | Actual shared preparation, complete stored descriptors and physical bounds, real borrowed slices, cleanup/refinement/placeholder routing, complete decoder and local progress/error state, final totals and actual transactional whole-clone commit; no valid-header/state/success/budget premise | Header parsing, full legacy/HT union, precinct/packet orchestration, normative endorsement or whole F5H |
+| Complete unconditional mixed contribution body and Tier-1 segment dispatch | Actual shared preparation, actual HT/legacy selector and complete native helpers, full staged errors, actual faithful clone/commit rollback and pass-zero/retained-cleanup-option Tier-1 routing; both selected relations retained without premises | Header parsing, retained packet associations, precinct/packet orchestration, normative endorsement or whole F5H |
 | Raw Tier-1 producer interfaces | Actual decoder plane, raw dimensions/sequence/indexed result even for malformed shapes, full stored words/flags, exact legacy-midpoint signed magnitude and native arithmetic rejection; no normalized-coefficient premise | Entropy meaning, coefficient normalization, complete reconstruction coordinator or end-to-end pixel correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |

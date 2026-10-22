@@ -1,5 +1,29 @@
 # Specification audit guide
 
+## Complete actual mixed native body and segment dispatch
+
+`part1_code_block_body_staged` consumes the sole full native contribution view,
+actual body sequence, raw decoder state and four real owner caps. It composes
+the single `part1_code_block_body_prepare` producer and then the actual
+`high_throughput` branch: `ht_packet_body_segments` or
+`part1_legacy_code_block_body`. No route result is an input.
+`part1_code_block_body_transaction` models the real whole-decoder clone/commit
+operation. Both actual staged/public functions have unconditional complete
+Result/state posts; their earlier selected posts remain available too.
+
+`part1_tier1_segment` likewise joins the actual Tier-1 public segment dispatcher:
+zero-pass rejection, then `ht_group_route` using the stored cleanup **option**,
+then actual HT group or legacy segment execution. It does not replace the option
+with a flag, normalize private state or introduce a decoder-validity premise.
+The old conditional HT relation remains a proved consequence.
+
+All native primitive/helper bodies and resource policies are preserved. In
+particular, a zero-count empty legacy contribution can succeed while the HT
+route rejects it; the legacy replay/input limit is not invented for HT decoding.
+Selector-only loop invariants used for the former disjoint proofs are gone.
+The actual shared header parser and complete precinct/packet caller remain
+separate composition obligations, not assumed successful traces.
+
 ## Frozen actual HT packet contribution-body route
 
 This stage is the actual HT branch of
@@ -158,10 +182,25 @@ native `u16`, with unchanged field commits. Header validity is not a premise.
 
 The internal contribution entry is not transactional: work charging can precede
 a later arithmetic error, and a taken retained record need not be restored on
-replay failure. The outer foreign packet caller's real clone/commit stage is a
-separate obligation. Packet/header associations, exact body/pass-total joins,
-whole-packet transactional results and the public mixed dispatcher union are
-not established by these complete actual legacy producers.
+replay failure. These Tier-1 results alone do not establish outer clone/commit,
+body/pass-total joins, packet/header associations or the public mixed dispatcher;
+the next actual packet stage closes the selected code-block caller boundary.
+
+The next actual packet stage is now in [packet.rs](packet.rs). Its sole raw
+contribution projection includes every public field, the stored count and both
+complete 164-entry arrays. Real descriptor lookup, checked body subranges,
+actual legacy contribution execution and ordered pass/offset/index commits
+form the complete legacy packet-body model. Final consumption/pass-total
+errors occur after decoder effects, not before them.
+
+Shared preparation models actual length/route/zero-setting admission. On the
+actual legacy selector `!contribution.high_throughput`, the staged and public
+packet-body callers now have complete Result/full-state refinements through the
+actual faithful whole-decoder Clone. Staged errors can expose partial work;
+public errors roll back every decoder field. This profile predicate selects a
+real format branch only: it adds no header validity, geometry, normalization,
+success, budget or trace premise. The HT packet branch and whole packet/header
+association remain separate integration obligations, not guessed outcomes.
 
 ## Frozen full F5H refinement-plane profile
 

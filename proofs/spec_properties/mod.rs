@@ -2210,4 +2210,57 @@ pub proof fn ht_packet_success_reports_exact_declared_counts(
 {
 }
 
+pub proof fn mixed_packet_dispatch_preserves_both_selected_profiles(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        header.high_throughput ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::ht_packet_body_staged(state, header, body, pass_limit, byte_limit, work_limit),
+        !header.high_throughput ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::part1_legacy_code_block_staged(
+                state, header, body, pass_limit, byte_limit, input_limit, work_limit),
+{
+    reveal(crate::specs::part1_legacy_code_block_staged);
+}
+
+pub proof fn mixed_packet_transaction_restores_every_decoder_field_on_error(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_code_block_body_transaction(
+        state, header, body, pass_limit, byte_limit, input_limit, work_limit).0.is_err()
+        ==> crate::specs::part1_code_block_body_transaction(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit).1 == state,
+{
+}
+
+pub proof fn mixed_packet_preparation_failure_precedes_both_actual_routes(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_code_block_body_prepare(state, header, body).0.is_err()
+        ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit).1
+            == crate::specs::part1_code_block_body_prepare(state, header, body).1,
+{
+}
+
+pub proof fn mixed_tier1_dispatch_retains_actual_native_route_order(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        passes == 0 ==> crate::specs::part1_tier1_segment(
+            state, input, passes, pass_limit, byte_limit, input_limit, work_limit)
+            == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        passes > 0 && !crate::specs::ht_group_route(state) ==> crate::specs::part1_tier1_segment(
+            state, input, passes, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::part1_legacy_segment(
+                state, input, passes as u32, pass_limit, byte_limit, input_limit, work_limit),
+{
+}
+
 }
