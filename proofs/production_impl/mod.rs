@@ -32,6 +32,49 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_color_plane_empty(
+    component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32,
+)
+    requires width > 0,
+    ensures crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, 0) == Ok(Seq::empty()),
+{
+    reveal(crate::specs::color_normalize_component_prefix);
+}
+
+pub proof fn production_color_plane_step(
+    component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32, count: nat,
+)
+    requires width > 0, width as nat <= usize::MAX as nat, count <= usize::MAX as nat,
+    ensures crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, count + 1)
+        == match crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, count) {
+            Err(error) => Err(error),
+            Ok(samples) => match crate::specs::color_pixel_coordinates(count as usize, width as usize) {
+                Err(error) => Err(error),
+                Ok((x, y)) => match crate::specs::color_component_normalized(component, x_origin, y_origin, x, y) {
+                    Err(error) => Err(error),
+                    Ok(value) => Ok(samples.push(value)),
+                },
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::color_normalize_component_prefix, 1);
+}
+
+pub proof fn production_color_plane_error(
+    component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires width > 0, count <= end,
+        crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, count) == Err(error),
+    ensures crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_color_plane_error(component, width, x_origin, y_origin, count, (end - 1) as nat, error);
+        reveal_with_fuel(crate::specs::color_normalize_component_prefix, 1);
+    }
+}
+
 pub proof fn production_supply_search_step(supplied: Seq<crate::specs::Part2SuppliedLayer>, reference: usize, start: nat)
     requires start <= supplied.len(),
     ensures crate::specs::part2_supply_search(supplied, reference, start)

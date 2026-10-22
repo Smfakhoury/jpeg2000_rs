@@ -105,6 +105,25 @@ pub struct TypedImage {
     components: Vec<TypedComponent>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn typed_samples_view(samples: &TypedSamples) -> crate::specs::Part1TypedSampleSequence {
+        match samples {
+            TypedSamples::Signed(values) => crate::specs::Part1TypedSampleSequence::Signed(values@),
+            TypedSamples::Unsigned(values) => crate::specs::Part1TypedSampleSequence::Unsigned(values@),
+        }
+    }
+
+    pub closed spec fn typed_component_view(component: &TypedComponent) -> crate::specs::Part1TypedComponentModel {
+        crate::specs::Part1TypedComponentModel {
+            width: component.width,
+            height: component.height,
+            info: component.info,
+            samples: typed_samples_view(&component.samples),
+        }
+    }
+}
+
 pub(crate) struct NonlinearRegion<'a> {
     pub component: u16,
     pub x0: u32,
@@ -1007,18 +1026,34 @@ impl TypedComponent {
         self.channel_definitions.clear();
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_component_view(self).width,)
+    )]
     pub const fn width(&self) -> u32 {
         self.width
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_component_view(self).height,)
+    )]
     pub const fn height(&self) -> u32 {
         self.height
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == typed_component_view(self).info,)
+    )]
     pub const fn info(&self) -> ComponentInfo {
         self.info
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures typed_samples_view(value) == typed_component_view(self).samples,)
+    )]
     pub const fn samples(&self) -> &TypedSamples {
         &self.samples
     }

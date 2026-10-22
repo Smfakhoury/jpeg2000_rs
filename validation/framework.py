@@ -281,6 +281,7 @@ def validate_normative_coverage(
                 ("src/jpx.rs", "render_normalized_frame"): "crate::color::converted_image_result",
                 ("src/color.rs", "from_layer"): "converted_image_result",
                 ("src/color.rs", "from_composited"): "converted_image_result",
+                ("src/color.rs", "normalize_component"): "normalized_plane_result",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,

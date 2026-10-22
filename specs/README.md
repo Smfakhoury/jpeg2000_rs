@@ -61,6 +61,17 @@ replace an independent standard-edition audit.
 
 ## Semantic definitions versus internal proof support
 
+`color_normalize_component` is a full fail-fast plane denotation over supplied
+typed integer components and target reference grids. `color_component_index`
+uses fixed-point registration in units of 1/65536, registered ceil origins,
+registered floor sampling and explicit edge clamping. Sample precision
+selects nominal maximum `2^p-1`; signed samples are checked and translated
+from `[-2^(p-1), 2^(p-1)-1]` before exact nearest/upward-tie 16-bit scaling.
+The word-width facts are checked by `color_precision_binary_bounds`, not
+implicitly assumed. All geometry/range/tag/missing-sample errors remain
+part of the model. The prefix definition describes the first actual sampling
+failure; it is not a sufficient-budget or valid-input-only theorem.
+
 `part2_layer_input` describes selection from supplied converted channels:
 scan all channel kinds first, then check the area and required color planes,
 then validate and combine alpha planes. Required colors are returned in slot

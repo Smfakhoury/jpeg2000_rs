@@ -5,6 +5,46 @@
   "requirements": [
     {
       "contract_refs": [
+        {"path": "src/color.rs", "symbol": "normalize_component"},
+        {"path": "src/color.rs", "symbol": "normalized_component_at"},
+        {"path": "src/color.rs", "symbol": "nominal_component_at"},
+        {"path": "src/color.rs", "symbol": "normalize_unsigned"},
+        {"path": "src/color.rs", "symbol": "registered_ceil_div"},
+        {"path": "src/color.rs", "symbol": "registered_floor_div"},
+        {"path": "src/color.rs", "symbol": "pixel_coordinates"}
+      ],
+      "id": "part1-complete-normalized-component-plane",
+      "implementation_refs": [
+        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color.rs", "symbol": "normalize_component"},
+        {"path": "src/color.rs", "symbol": "normalized_component_at"},
+        {"path": "src/color.rs", "symbol": "nominal_component_at"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "typed_component_view"},
+        {"path": "src/image.rs", "symbol": "typed_samples_view"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "color_precision_binary_bounds"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_plane_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_plane_error"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "color_normalize_component"},
+        {"path": "specs/mod.rs", "symbol": "color_component_normalized"},
+        {"path": "specs/mod.rs", "symbol": "color_component_nominal"},
+        {"path": "specs/mod.rs", "symbol": "color_component_index"},
+        {"path": "specs/mod.rs", "symbol": "color_normalize_unsigned"},
+        {"path": "specs/mod.rs", "symbol": "color_registered_coordinate"},
+        {"path": "specs/mod.rs", "symbol": "color_pixel_coordinates"}
+      ],
+      "test_refs": [
+        {"path": "src/color.rs", "symbol": "complete_normalized_component_planes_match_wide_registered_reference"},
+        {"path": "src/color.rs", "symbol": "registered_coordinates_match_wide_full_domain_boundaries"},
+        {"path": "src/color.rs", "symbol": "normalized_component_rejects_every_invalid_stage_input_in_order"}
+      ],
+      "topic": "Complete input-relative signed/unsigned integer component sampling and normalized output planes, registration, range and typed first-error behavior"
+    },
+    {
+      "contract_refs": [
         {
           "path": "src/refinement.rs",
           "symbol": "ceil_div_u32"

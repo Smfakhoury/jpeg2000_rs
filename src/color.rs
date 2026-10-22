@@ -76,6 +76,16 @@ verus! {
             },
         }
     }
+
+    #[verifier::inline]
+    pub(crate) open spec fn normalized_plane_result(result: Result<Vec<u16>, DecodeError>)
+        -> Result<Seq<u16>, DecodeError>
+    {
+        match result {
+            Ok(samples) => Ok(samples@),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 impl ConvertedChannel {
@@ -852,6 +862,14 @@ fn validate_output_size(
     Ok(())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures normalized_plane_result(result) == crate::specs::color_normalize_component(
+            crate::image::typed_component_view(component), width, height, x_origin, y_origin,
+        ),
+    )
+)]
 pub(crate) fn normalize_component(
     component: &TypedComponent,
     width: u32,
@@ -867,31 +885,83 @@ pub(crate) fn normalize_component(
         return Err(invalid_color_input());
     }
     let count = checked_area(width, height)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = crate::image::typed_component_view(component);
+    }
     let mut output = Vec::with_capacity(count);
     let mut pixel = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_color_plane_empty(input, width, x_origin, y_origin);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant pixel <= count,
+                input == crate::image::typed_component_view(component),
+                width > 0,
+                width as nat <= usize::MAX as nat,
+                row_width as nat == width as nat,
+                crate::specs::part2_layer_area(width, height) == Ok(count),
+                crate::specs::color_normalize_component_prefix(input, width, x_origin, y_origin, pixel as nat)
+                    == Ok(output@),
             decreases count - pixel,
         )
     )]
     while pixel < count {
-        let (x, y) = pixel_coordinates(pixel, row_width)?;
-        output.push(normalized_component_at(
-            component, x_origin, y_origin, x, y,
-        )?);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_color_plane_step(
+                input, width, x_origin, y_origin, pixel as nat,
+            );
+        }
+        let (x, y) = match pixel_coordinates(pixel, row_width) {
+            Ok(coordinates) => coordinates,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_color_plane_error(
+                        input, width, x_origin, y_origin, pixel as nat + 1, count as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        let value = match normalized_component_at(component, x_origin, y_origin, x, y) {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_color_plane_error(
+                        input, width, x_origin, y_origin, pixel as nat + 1, count as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        output.push(value);
         pixel = pixel.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(output)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_pixel_coordinates(pixel, width),)
+)]
 fn pixel_coordinates(pixel: usize, width: usize) -> Result<(u32, u32), DecodeError> {
     if width == 0 {
         return Err(invalid_color_input());
     }
-    let x = u32::try_from(pixel % width).map_err(|_| arithmetic_overflow())?;
-    let y = u32::try_from(pixel / width).map_err(|_| arithmetic_overflow())?;
+    let x = match u32::try_from(pixel % width) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let y = match u32::try_from(pixel / width) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
     Ok((x, y))
 }
 
@@ -945,6 +1015,14 @@ fn normalized_difference_at(
     i32::try_from(rounded).map_err(|_| arithmetic_overflow())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_component_normalized(
+            crate::image::typed_component_view(component), image_x_origin, image_y_origin, x, y,
+        ),
+    )
+)]
 fn normalized_component_at(
     component: &TypedComponent,
     image_x_origin: u32,
@@ -957,6 +1035,14 @@ fn normalized_component_at(
     normalize_unsigned(value, info.precision)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_component_nominal(
+            crate::image::typed_component_view(component), image_x_origin, image_y_origin, x, y,
+        ),
+    )
+)]
 fn nominal_component_at(
     component: &TypedComponent,
     image_x_origin: u32,
@@ -971,6 +1057,10 @@ fn nominal_component_at(
         || info.y_subsampling == 0
     {
         return Err(invalid_color_input());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::color_precision_binary_bounds(info.precision);
     }
     if component.width() == 0 || component.height() == 0 {
         return Err(invalid_color_input());
@@ -1011,9 +1101,11 @@ fn nominal_component_at(
     let sample_y = absolute_sample_y
         .checked_sub(component_y0)
         .ok_or_else(arithmetic_overflow)?;
-    let index = (sample_y as usize)
+    let row = (sample_y as usize)
         .checked_mul(component.width() as usize)
-        .and_then(|row| row.checked_add(sample_x as usize))
+        .ok_or_else(arithmetic_overflow)?;
+    let index = row
+        .checked_add(sample_x as usize)
         .ok_or_else(arithmetic_overflow)?;
     match component.samples() {
         TypedSamples::Unsigned(samples) if !info.signed => {
@@ -1048,9 +1140,17 @@ fn nominal_component_at(
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::color_normalize_unsigned(value, precision),)
+)]
 fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
     if precision == 0 || precision > 38 {
         return Err(invalid_color_input());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::color_precision_binary_bounds(precision);
     }
     let maximum = (1_u64 << precision)
         .checked_sub(1)
@@ -1061,11 +1161,22 @@ fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
     if value > maximum {
         return Err(invalid_color_input());
     }
-    let numerator = value
+    let scaled = value
         .checked_mul(OUTPUT_MAXIMUM)
-        .and_then(|scaled| scaled.checked_add(maximum / 2))
         .ok_or_else(arithmetic_overflow)?;
-    u16::try_from(numerator / maximum).map_err(|_| arithmetic_overflow())
+    let numerator = scaled
+        .checked_add(maximum / 2)
+        .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(scaled as nat <= 65535 * (maximum as nat));
+        crate::proofs::spec_properties::source_over_rounding_preserves_sample_bound(scaled, maximum);
+        assert(numerator / maximum <= 65535);
+    }
+    match u16::try_from(numerator / maximum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 fn sycc_to_srgb(y: u16, cb: i32, cr: i32) -> Result<(u16, u16, u16), DecodeError> {
@@ -1125,6 +1236,12 @@ fn clamp_u16(value: i128) -> u16 {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_registered_coordinate(value, divisor, registration, true),
+    )
+)]
 fn registered_ceil_div(value: u32, divisor: u32, registration: u16) -> Result<u32, DecodeError> {
     if divisor == 0 {
         return Err(invalid_color_input());
@@ -1142,13 +1259,19 @@ fn registered_ceil_div(value: u32, divisor: u32, registration: u16) -> Result<u3
     let denominator = u64::from(divisor)
         .checked_mul(scale)
         .ok_or_else(arithmetic_overflow)?;
-    let quotient = adjusted / denominator;
-    let rounded = quotient
-        .checked_add(u64::from(!adjusted.is_multiple_of(denominator)))
-        .ok_or_else(arithmetic_overflow)?;
-    u32::try_from(rounded).map_err(|_| arithmetic_overflow())
+    let rounded = crate::refinement::registered_extent(adjusted, denominator);
+    match u32::try_from(rounded) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_registered_coordinate(value, divisor, registration, false),
+    )
+)]
 fn registered_floor_div(value: u32, divisor: u32, registration: u16) -> Result<u32, DecodeError> {
     if divisor == 0 {
         return Err(invalid_color_input());
@@ -1166,7 +1289,10 @@ fn registered_floor_div(value: u32, divisor: u32, registration: u16) -> Result<u
     let denominator = u64::from(divisor)
         .checked_mul(scale)
         .ok_or_else(arithmetic_overflow)?;
-    u32::try_from(adjusted / denominator).map_err(|_| arithmetic_overflow())
+    match u32::try_from(adjusted / denominator) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 #[cfg_attr(
@@ -1219,6 +1345,264 @@ mod tests {
         codestream::ComponentInfo,
         image::{ChannelDefinition, ChannelType, TypedComponent, TypedImage, TypedSamples},
     };
+
+    fn sampled_plane_wide_reference(
+        nominal: &[u64],
+        component_size: (u32, u32),
+        info: ComponentInfo,
+        output_size: (u32, u32),
+        origin: (u32, u32),
+    ) -> Result<Vec<u16>, DecodeError> {
+        if output_size.0 == 0 {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ContainerCodestreamMismatch,
+            });
+        }
+        let coordinate = |value: u32, sampling: u8, registration: u16, ceil: bool| {
+            let numerator = (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
+            let denominator = u128::from(sampling) * 65_536;
+            if ceil {
+                numerator.div_ceil(denominator)
+            } else {
+                numerator / denominator
+            }
+        };
+        let x0 = coordinate(origin.0, info.x_subsampling, info.x_registration, true);
+        let y0 = coordinate(origin.1, info.y_subsampling, info.y_registration, true);
+        let maximum = (1_u128 << info.precision) - 1;
+        let mut result = Vec::new();
+        for y in 0..output_size.1 {
+            for x in 0..output_size.0 {
+                let sx = coordinate(origin.0 + x, info.x_subsampling, info.x_registration, false)
+                    .clamp(x0, x0 + u128::from(component_size.0) - 1);
+                let sy = coordinate(origin.1 + y, info.y_subsampling, info.y_registration, false)
+                    .clamp(y0, y0 + u128::from(component_size.1) - 1);
+                let index =
+                    usize::try_from((sy - y0) * u128::from(component_size.0) + sx - x0).unwrap();
+                let value = u128::from(nominal[index]);
+                result.push(u16::try_from((value * 65_535 + maximum / 2) / maximum).unwrap());
+            }
+        }
+        Ok(result)
+    }
+
+    #[test]
+    fn complete_normalized_component_planes_match_wide_registered_reference() {
+        let mut cases = 0;
+        for precision in [1, 2, 7, 8, 12, 16, 24, 31, 38] {
+            let maximum = (1_u64 << precision) - 1;
+            for signed in [false, true] {
+                for sampling in [(1, 1), (2, 1), (1, 2), (2, 3)] {
+                    for origin in [(0, 0), (1, 3), (3, 5), (7, 2)] {
+                        for registration in
+                            [(0, 0), (1, 65_535), (32_768, 12_345), (65_535, 32_768)]
+                        {
+                            for size in [(1_u32, 1_u32), (3, 2)] {
+                                let nominal = (0..size.0 * size.1)
+                                    .map(|i| match i {
+                                        0 => 0,
+                                        1 => maximum,
+                                        2 => maximum / 2,
+                                        _ => (u64::from(i) * 17 + 1) % (maximum + 1),
+                                    })
+                                    .collect::<Vec<_>>();
+                                let info = ComponentInfo {
+                                    precision,
+                                    signed,
+                                    x_subsampling: sampling.0,
+                                    y_subsampling: sampling.1,
+                                    x_registration: registration.0,
+                                    y_registration: registration.1,
+                                };
+                                let samples = if signed {
+                                    let level = 1_i64 << (precision - 1);
+                                    TypedSamples::Signed(
+                                        nominal
+                                            .iter()
+                                            .map(|&value| i64::try_from(value).unwrap() - level)
+                                            .collect(),
+                                    )
+                                } else {
+                                    TypedSamples::Unsigned(nominal.clone())
+                                };
+                                let input =
+                                    TypedComponent::from_parts(size.0, size.1, info, samples);
+                                for output in [(1, 1), (5, 4), (0, 3), (4, 0)] {
+                                    let expected = sampled_plane_wide_reference(
+                                        &nominal, size, info, output, origin,
+                                    );
+                                    assert_eq!(
+                                        normalize_component(
+                                            &input, output.0, output.1, origin.0, origin.1
+                                        ),
+                                        expected,
+                                        "precision={precision} signed={signed} sampling={sampling:?} origin={origin:?} registration={registration:?} size={size:?} output={output:?}",
+                                    );
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 9_216);
+    }
+
+    #[test]
+    fn registered_coordinates_match_wide_full_domain_boundaries() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        };
+        for value in [0, 1, 2, u32::MAX / 2, u32::MAX] {
+            for divisor in [0, 1, 2, 255, 65_536, u32::MAX] {
+                for registration in [0, 1, 32_768, u16::MAX] {
+                    let reference = |ceil: bool| {
+                        if divisor == 0 {
+                            return Err(invalid);
+                        }
+                        let numerator =
+                            (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
+                        let denominator = u128::from(divisor) * 65_536;
+                        let quotient = if ceil {
+                            numerator.div_ceil(denominator)
+                        } else {
+                            numerator / denominator
+                        };
+                        Ok(u32::try_from(quotient).unwrap())
+                    };
+                    assert_eq!(
+                        registered_ceil_div(value, divisor, registration),
+                        reference(true)
+                    );
+                    assert_eq!(
+                        registered_floor_div(value, divisor, registration),
+                        reference(false)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn normalized_component_rejects_every_invalid_stage_input_in_order() {
+        let invalid = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ContainerCodestreamMismatch,
+        });
+        let arithmetic = Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        });
+        let info = ComponentInfo {
+            precision: 8,
+            signed: false,
+            x_subsampling: 1,
+            y_subsampling: 1,
+            x_registration: 0,
+            y_registration: 0,
+        };
+        for bad_info in [
+            ComponentInfo {
+                precision: 0,
+                ..info
+            },
+            ComponentInfo {
+                precision: 39,
+                ..info
+            },
+            ComponentInfo {
+                precision: u8::MAX,
+                ..info
+            },
+            ComponentInfo {
+                x_subsampling: 0,
+                ..info
+            },
+            ComponentInfo {
+                y_subsampling: 0,
+                ..info
+            },
+        ] {
+            let input = TypedComponent::from_parts(1, 1, bad_info, TypedSamples::Unsigned(vec![0]));
+            assert_eq!(
+                normalize_component(&input, 1, 1, u32::MAX, u32::MAX),
+                invalid
+            );
+        }
+        for size in [(0, 1), (1, 0)] {
+            let input =
+                TypedComponent::from_parts(size.0, size.1, info, TypedSamples::Unsigned(vec![]));
+            assert_eq!(normalize_component(&input, 1, 1, 0, 0), invalid);
+        }
+        let wrong_tag = TypedComponent::from_parts(1, 1, info, TypedSamples::Signed(vec![0]));
+        assert_eq!(normalize_component(&wrong_tag, 1, 1, 0, 0), invalid);
+        let wrong_signed = TypedComponent::from_parts(
+            1,
+            1,
+            ComponentInfo {
+                signed: true,
+                ..info
+            },
+            TypedSamples::Unsigned(vec![0]),
+        );
+        assert_eq!(normalize_component(&wrong_signed, 1, 1, 0, 0), invalid);
+        for samples in [
+            TypedSamples::Unsigned(vec![256]),
+            TypedSamples::Unsigned(vec![]),
+        ] {
+            let input = TypedComponent::from_parts(1, 1, info, samples);
+            assert_eq!(normalize_component(&input, 1, 1, 0, 0), invalid);
+        }
+        for value in [-129, 128] {
+            let input = TypedComponent::from_parts(
+                1,
+                1,
+                ComponentInfo {
+                    signed: true,
+                    ..info
+                },
+                TypedSamples::Signed(vec![value]),
+            );
+            assert_eq!(normalize_component(&input, 1, 1, 0, 0), invalid);
+        }
+        let short = TypedComponent::from_parts(3, 2, info, TypedSamples::Unsigned(vec![0; 5]));
+        assert_eq!(normalize_component(&short, 3, 2, 0, 0), invalid);
+        let extra = TypedComponent::from_parts(3, 2, info, TypedSamples::Unsigned(vec![0; 7]));
+        assert_eq!(normalize_component(&extra, 3, 2, 0, 0), Ok(vec![0; 6]));
+        let outside = TypedComponent::from_parts(1, 1, info, TypedSamples::Unsigned(vec![0]));
+        assert_eq!(normalize_component(&outside, 1, 1, u32::MAX, 0), arithmetic);
+        let late_origin_overflow = TypedComponent::from_parts(
+            1,
+            1,
+            ComponentInfo {
+                x_subsampling: 255,
+                ..info
+            },
+            TypedSamples::Unsigned(vec![0]),
+        );
+        assert_eq!(
+            normalize_component(&late_origin_overflow, 2, 1, u32::MAX, 0),
+            arithmetic
+        );
+        let empty = TypedComponent::from_parts(
+            0,
+            0,
+            ComponentInfo {
+                precision: 0,
+                x_subsampling: 0,
+                ..info
+            },
+            TypedSamples::Unsigned(vec![]),
+        );
+        assert_eq!(normalize_component(&empty, 0, 0, 0, 0), invalid);
+        assert_eq!(
+            normalize_component(&empty, 1, 0, u32::MAX, u32::MAX),
+            Ok(vec![])
+        );
+    }
 
     fn component(
         samples: &[u64],

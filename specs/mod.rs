@@ -11,6 +11,182 @@ pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
 pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
 pub const PART2_NORMALIZED_SAMPLE_HALF: u16 = PART2_NORMALIZED_SAMPLE_MAX / 2;
 
+pub enum Part1TypedSampleSequence {
+    Signed(Seq<i64>),
+    Unsigned(Seq<u64>),
+}
+
+pub struct Part1TypedComponentModel {
+    pub width: u32,
+    pub height: u32,
+    pub info: crate::codestream::ComponentInfo,
+    pub samples: Part1TypedSampleSequence,
+}
+
+pub open spec fn color_registered_coordinate(value: u32, divisor: u32, registration: u16, ceil: bool)
+    -> Result<u32, crate::DecodeError>
+{
+    if divisor == 0 {
+        Err(part2_color_input_error())
+    } else {
+        let numerator = (value as nat) * 65536;
+        if numerator <= registration as nat {
+            Ok(0)
+        } else {
+            let adjusted = (numerator - registration as nat) as nat;
+            let denominator = (divisor as nat) * 65536;
+            let coordinate = if ceil { part1_ceil_div(adjusted, denominator) }
+                else { adjusted / denominator };
+            if coordinate > u32::MAX as nat {
+                Err(part2_composition_error(true))
+            } else { Ok(coordinate as u32) }
+        }
+    }
+}
+
+pub open spec fn color_normalize_unsigned(value: u64, precision: u8)
+    -> Result<u16, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 {
+        Err(part2_color_input_error())
+    } else {
+        let maximum = ((1u64 << precision) - 1) as nat;
+        if value as nat > maximum {
+            Err(part2_color_input_error())
+        } else {
+            Ok((((value as nat) * (PART2_NORMALIZED_SAMPLE_MAX as nat) + maximum / 2) / maximum) as u16)
+        }
+    }
+}
+
+pub open spec fn color_component_index(
+    component: Part1TypedComponentModel, x_origin: u32, y_origin: u32, x: u32, y: u32,
+) -> Result<usize, crate::DecodeError> {
+    let info = component.info;
+    if info.precision == 0 || info.precision > 38 || info.x_subsampling == 0
+        || info.y_subsampling == 0 || component.width == 0 || component.height == 0 {
+        Err(part2_color_input_error())
+    } else if (x_origin as nat) + x as nat > u32::MAX as nat
+        || (y_origin as nat) + y as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match (
+            color_registered_coordinate(x_origin, info.x_subsampling as u32, info.x_registration, true),
+            color_registered_coordinate(y_origin, info.y_subsampling as u32, info.y_registration, true),
+        ) {
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
+            (Ok(x0), Ok(y0)) => {
+                if (x0 as nat) + component.width as nat > u32::MAX as nat
+                    || (y0 as nat) + component.height as nat > u32::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else {
+                    match (
+                        color_registered_coordinate((x_origin + x) as u32, info.x_subsampling as u32, info.x_registration, false),
+                        color_registered_coordinate((y_origin + y) as u32, info.y_subsampling as u32, info.y_registration, false),
+                    ) {
+                        (Err(error), _) => Err(error),
+                        (_, Err(error)) => Err(error),
+                        (Ok(raw_x), Ok(raw_y)) => {
+                            let x1 = (x0 as nat) + component.width as nat;
+                            let y1 = (y0 as nat) + component.height as nat;
+                            let cx = if raw_x < x0 { x0 as nat } else if raw_x as nat >= x1 { (x1 - 1) as nat } else { raw_x as nat };
+                            let cy = if raw_y < y0 { y0 as nat } else if raw_y as nat >= y1 { (y1 - 1) as nat } else { raw_y as nat };
+                            let index = ((cy - y0 as nat) as nat) * (component.width as nat) + (cx - x0 as nat);
+                            if index > usize::MAX as nat { Err(part2_composition_error(true)) }
+                            else { Ok(index as usize) }
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_component_nominal(
+    component: Part1TypedComponentModel, x_origin: u32, y_origin: u32, x: u32, y: u32,
+) -> Result<u64, crate::DecodeError> {
+    match color_component_index(component, x_origin, y_origin, x, y) {
+        Err(error) => Err(error),
+        Ok(index) => match component.samples {
+            Part1TypedSampleSequence::Unsigned(samples) => {
+                let maximum = ((1u64 << component.info.precision) - 1) as nat;
+                if component.info.signed || index >= samples.len() || samples[index as int] as nat > maximum {
+                    Err(part2_color_input_error())
+                } else { Ok(samples[index as int]) }
+            },
+            Part1TypedSampleSequence::Signed(samples) => {
+                let level = 1i64 << ((component.info.precision - 1) as u8);
+                if !component.info.signed || index >= samples.len()
+                    || samples[index as int] < -(level as int)
+                    || samples[index as int] >= level {
+                    Err(part2_color_input_error())
+                } else if samples[index as int] > (i64::MAX - level) as int {
+                    Err(part2_composition_error(true))
+                } else { Ok((samples[index as int] + level) as u64) }
+            },
+        },
+    }
+}
+
+pub open spec fn color_component_normalized(
+    component: Part1TypedComponentModel, x_origin: u32, y_origin: u32, x: u32, y: u32,
+) -> Result<u16, crate::DecodeError> {
+    match color_component_nominal(component, x_origin, y_origin, x, y) {
+        Err(error) => Err(error),
+        Ok(value) => color_normalize_unsigned(value, component.info.precision),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_normalize_component_prefix(
+    component: Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32, count: nat,
+) -> Result<Seq<u16>, crate::DecodeError>
+    recommends width > 0,
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_normalize_component_prefix(component, width, x_origin, y_origin, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(samples) => {
+                let pixel = (count - 1) as nat;
+                if pixel > usize::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else {
+                    match color_pixel_coordinates(pixel as usize, width as usize) {
+                        Err(error) => Err(error),
+                        Ok((x, y)) => match color_component_normalized(component, x_origin, y_origin, x, y) {
+                            Err(error) => Err(error),
+                            Ok(value) => Ok(samples.push(value)),
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_normalize_component(
+    component: Part1TypedComponentModel, width: u32, height: u32, x_origin: u32, y_origin: u32,
+) -> Result<Seq<u16>, crate::DecodeError> {
+    if width == 0 { Err(part2_color_input_error()) }
+    else if width as nat > usize::MAX as nat { Err(part2_composition_error(true)) }
+    else {
+        match part2_layer_area(width, height) {
+            Err(error) => Err(error),
+            Ok(area) => color_normalize_component_prefix(component, width, x_origin, y_origin, area as nat),
+        }
+    }
+}
+
+pub open spec fn color_pixel_coordinates(pixel: usize, width: usize)
+    -> Result<(u32, u32), crate::DecodeError> {
+    if width == 0 { Err(part2_color_input_error()) }
+    else if (pixel % width) as nat > u32::MAX as nat || (pixel / width) as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else { Ok(((pixel % width) as u32, (pixel / width) as u32)) }
+}
+
 pub open spec fn region_fits(parent_length: nat, offset: nat, length: nat) -> bool {
     offset <= parent_length && length <= parent_length - offset
 }

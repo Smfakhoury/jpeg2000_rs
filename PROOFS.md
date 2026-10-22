@@ -142,6 +142,18 @@ Read each contract according to its inputs and postcondition:
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
+`normalize_component` has an unconditional complete result relation for
+supplied typed integer components, target dimensions and reference-grid
+origins. It covers every output sample, either signed/unsigned representation,
+declared precision 1..38, fixed-point registration, subsampling, edge clamping
+and the exact first typed error. Invalid precision, sampling, dimensions,
+signedness tags, missing/out-of-range samples and checked coordinate/index
+overflow are modeled rather than assumed away. Empty target height returns an
+empty plane without sampling; zero target width is rejected first, preserving
+the actual stage's behavior. This does not prove the earlier palette/channel/
+container interpretation, full color-layout/sYCC/alpha pipeline or parser-to-
+pixel relation. Public budget checking remains an earlier separate stage.
+
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
 channel order or valid plane lengths. Their result projections include every

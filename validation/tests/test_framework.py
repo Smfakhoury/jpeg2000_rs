@@ -262,6 +262,28 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
 
+    def test_inventory_requires_complete_normalized_plane_bound_result(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-normalized-component-plane"
+        ]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        for before, after in (
+            ("ensures normalized_plane_result(result)", "ensures normalized_plane_result(unrelated)"),
+            ("ensures normalized_plane_result(result)", "ensures unlisted_projection(result)"),
+            ("ensures normalized_plane_result(result)", "ensures converted_image_result(result)"),
+            ("ensures normalized_plane_result(result)", "ensures result.is_ok()"),
+            ("== crate::specs::color_normalize_component(", "== crate::specs::unlisted_model("),
+        ):
+            def altered(path, *args, **kwargs):
+                text = read_text(path, *args, **kwargs)
+                return text.replace(before, after) if path == framework.ROOT / "src/color.rs" else text
+            with self.subTest(after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         coverage["requirements"] = [
