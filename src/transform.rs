@@ -45,15 +45,6 @@ pub(crate) struct SignedMagnitude {
     pub negative: bool,
 }
 
-impl SignedMagnitude {
-    pub(crate) const fn new(magnitude: Magnitude, negative: bool) -> Self {
-        Self {
-            magnitude,
-            negative,
-        }
-    }
-}
-
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct ReconstructedPlane {
     width: u32,
@@ -2010,7 +2001,7 @@ fn transform_dimension(value: u32) -> Result<usize, DecodeError> {
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_transform_area(width, height),
 ))]
-fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
+pub(crate) fn checked_area(width: u32, height: u32) -> Result<usize, DecodeError> {
     transform_dimension(width)?
         .checked_mul(transform_dimension(height)?)
         .ok_or_else(arithmetic_overflow)
@@ -3105,8 +3096,9 @@ mod tests {
         for input in inputs {
             let coefficients: Vec<_> = input
                 .iter()
-                .map(|(limbs, negative)| {
-                    SignedMagnitude::new(Magnitude::from_limbs(*limbs), *negative)
+                .map(|(limbs, negative)| SignedMagnitude {
+                    magnitude: Magnitude::from_limbs(*limbs),
+                    negative: *negative,
                 })
                 .collect();
             for range in [1, 8, 16, 31, 38] {
@@ -3211,7 +3203,10 @@ mod tests {
             )),
             Err(arithmetic_overflow())
         );
-        let wide = [SignedMagnitude::new(Magnitude::from_limbs([u64::MAX; 6]), false); 2];
+        let wide = [SignedMagnitude {
+            magnitude: Magnitude::from_limbs([u64::MAX; 6]),
+            negative: false,
+        }; 2];
         assert_eq!(
             observed_reconstruction(inverse_quantize_magnitudes(
                 &wide, bad_step, 0, false, 255, &limits,

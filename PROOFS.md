@@ -25,6 +25,29 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native palette lookup boundary
+
+The actual `jp2::Palette::value` returns exactly `part2_palette_value` on its
+private stored entries, complete physical column descriptors and value sequence,
+for every native entry/column pair. No parsed-header, rectangular-table,
+valid-coordinate or successful-lookup premise is imposed. Actual physical column
+count conversion is checked before logical coordinates, followed by checked
+row-major address computation and physical value access. Invalid descriptor
+precision/sign does not itself make this raw lookup fail.
+
+The stored representation stays private behind its owner view and exact public
+getter contracts. Explicit matches retain the original conversion/multiplication/
+addition/error order while exposing every real error, rather than relying on
+uncontracted callback results. The shared local error producer is verified, not
+trusted. Independent tests cover 8,820 complete supplied-state/native-coordinate
+contexts, signed extrema, physical stride and first-error priority. The source
+index binds the full Result, actual owner view, entry and column, with negative
+tests for wrong, partial, unrelated and reordered bindings.
+
+This boundary does not establish palette parsing, source-sample interpretation,
+output component mapping, CDEF application or their composition with selected
+pixels. Those actual callers remain separate F7 work.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
@@ -124,6 +147,15 @@ bounds, without raising verifier limits. This interface supports actual
 HT reconstruction but does not by itself prove HT byte meaning or F6's
 remaining assembly bridge.
 
+The unchanged native `Magnitude::limb` also has an exact full-`usize`
+`Option` contract: each index below six returns its corresponding raw word,
+and every other index returns `None`. The pure owner representation proof
+`magnitude::representation_proofs::magnitude_limbs_shape` exports the intrinsic
+six-word shape without exposing private fields or requiring an executable
+getter call. A separate property in `proofs/spec_properties` checks that this
+closed-view interface is usable from another module. These are raw
+representation facts, not additional Tier-1 coefficient meaning.
+
 ### Bounded supplied-coefficient reconstruction
 
 `transform::inverse_quantize_values` and `transform::inverse_quantize_plane`
@@ -179,14 +211,48 @@ and lengths, monotone visited flags and protected previsited values. Independent
 wide-index tests cover full grids, short buffers, overlaps, empty blocks and
 coordinate failures. Geometry/quantization checks stay before the same real
 call. This is the complete write stage, not a result theorem for its surrounding
-placement, multilevel or tile/image assembly coordinator.
+placement or multilevel coordinator.
+
+The actual `assemble_image` and active `assemble_selected_image` entry points
+now have complete, unconditional Result relations over supplied tiles. Every
+output sample, component-info field, dimension, origin and fraction value is
+modeled. Shared actual component/tile/rectangle/row/pixel stages preserve complete
+partial sample/mask states, with first-error absorption. Registered coordinates,
+physical component-info bounds, cumulative decoded-byte charging, fraction
+consistency, overlaps and missing coverage retain their native ordering.
+Selected assembly keeps its distinct intersection-only sample domain and
+selection coverage errors; off-region matching tiles still undergo fraction
+and extent checks. Budget checks remain before crop-offset arithmetic.
+Independent widened coordinate/image tests compare complete results and exact
+error boundaries, including raw fractions and non-normalized metadata.
+
+Raw component-info lookup and reconstruction direction/count selectors have
+full-native-domain Result contracts with no valid-header or array-size premise.
+The only deleted inactive implementation is the nested selected-assembly
+duplicate; active production callers use the shared verified stages.
+
+The existing decoder component/image typed conversions now have complete
+Result relations using the actual F7 views, including all signed/unsigned
+samples, image/component metadata and the existing empty channel definitions.
+The original production loops retain their precision, per-component and
+cumulative byte-budget order. Fraction validation happens per accessed sample,
+so empty components with valid precision keep their native arbitrary-fraction
+behavior. Rounding bias and unsigned level-shift overflow precede clipping;
+no geometry, normalized-input or sufficient-budget premise is introduced.
+Independent widened references cover every `u8` precision/fraction value,
+complete sequences, whole images and exact error precedence.
+
+The narrowly scoped read-only packet decoder accessors also expose their
+actual private Vec through a public closed view, exact entire-`usize`
+indexed reference Result, count and complete slice contracts. Parallel
+packet-state/context shape and entropy meaning are not assumed.
 
 These are input-relative integer/fixed-point stage results, not compressed
 parsing/Tier-1 meaning or measured irreversible conformance. F6 remains open:
 the whole coefficient-placement coordinator, actual multilevel/resolution
-scheduling, arbitrary
-kernels, multiple-component transforms, decoder typed conversion, component/
-tile assembly and composed component-sample relations are not established here.
+scheduling, arbitrary kernels, general MCT paths and the composed
+coefficient-to-component-sample bridge are not
+established here. Whole tile-sample-to-image assembly does not close those gaps.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 
 ### General scope
@@ -224,12 +290,114 @@ Read each contract according to its inputs and postcondition:
 | Complete supplied-layer frame composition | `render_normalized_frame` returns exactly `part2_render_normalized_frame`: actual selection, indexed normalized outcome lookup/consumption, first supplied-layer failure, then complete budgeted rendering and final image | Compressed decoding, earlier normalization/registration/opacity/chroma-key, or a parser-to-pixel theorem |
 | Normalized image construction | `from_layer`/`from_composited` return exactly `part2_image_from_planes`: checked dimensions/plane cardinalities, exact errors, 16-bit precision, ordered channel kinds, whole-image alpha association and all buffers | The origin or correctness of supplied normalized samples |
 | Complete converted-image layer construction | Exact typed result, dimensions, ordered color planes, optional sequentially combined alpha and representation flag for actual borrowed selection and owned copies | Earlier component/color conversion or association validation, registration/opacity/chroma-key, layer/frame ordering or a parser-to-pixel theorem |
+| Complete typed JP2 color conversion | Every typed result, image field and color/alpha sample equals the composed model of the actual typed components, definitions, reference grid, color method and actual byte/work caps; includes complete preflight and fail-fast raster/channel traversal | Earlier compressed decoding, palette/container interpretation, selected-image crop or JPX registration/opacity/chroma-key; ICC methods are explicitly rejected, not executed |
 | JPX destination stores | Exact success flag and final slice: the indexed sample is set to the requested value, all other samples and length are preserved; an invalid index leaves the slice unchanged | That the selected plane/index is the normative destination, or that an entire render is transactional |
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
+| HT directional reader/substream state | All five actual readers: exact constructors, bytes/bits/positions, MagSgn words and drain, zero/one fill, stuffing, exhaustion, full cursors/counters, shared cleanup byte claims and refinement physical-bit vectors/padding, exact inner/outer budget and overflow effects | Upstream partition/pass accounting, UVLC/quad interpretation, coefficient/block reconstruction, replacement/placeholders, mixed sequencing or complete F5H acceptance |
+| HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
+| HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
+| Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
+| Complete actual HT cleanup metadata traversal | Exact public/segment result for all native header values and actual byte/work limits, ordered row/pair/member quads, north/west/east contexts, suppression/UVLC/events, sample bounds/counts, collision, work/counter first errors and every metadata field | Numerical magnitude/sign/exponent or coefficient-plane reconstruction, refinement passes, placeholder/replacement execution, mixed sequencing or full F5H |
+| Complete actual HT numeric MagSgn reconstruction | Every native parameter/flag and initial reader state: exact full 384-bit numeric magnitude, sign, exponent, typed first error and all final reader fields; actual full-value arithmetic through F6 contracts | Plane placement, raw high-limb storage, exponent stencils, final plane padding/termination, refinement or mixed sequencing |
+| Complete actual HT cleanup-plane reconstruction | Every raw output coefficient and all six words/flags, actual constructor and metadata rejection, coordinate-overflow-before-clipping, ordered numeric consumption/placement/counters, both full exponent stencils/reset/swap and final physical padding/stuffing/work termination; no valid-metadata, matching-shape or numeric-success premise | Refinement passes, replacement/placeholder/mixed sequencing, a composed metadata-plus-plane decoder theorem or complete F5H |
+| Raw Tier-1 producer interfaces | Actual decoder plane, raw dimensions/sequence/indexed result even for malformed shapes, full stored words/flags, exact legacy-midpoint signed magnitude and native arithmetic rejection; no normalized-coefficient premise | Entropy meaning, coefficient normalization, complete reconstruction coordinator or end-to-end pixel correctness |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
+
+`normalize_component` has an unconditional complete result relation for
+supplied typed integer components, target dimensions and reference-grid
+origins. It covers every output sample, either signed/unsigned representation,
+declared precision 1..38, fixed-point registration, subsampling, edge clamping
+and the exact first typed error. Invalid precision, sampling, dimensions,
+signedness tags, missing/out-of-range samples and checked coordinate/index
+overflow are modeled rather than assumed away. Empty target height returns an
+empty plane without sampling; zero target width is rejected first, preserving
+the actual stage's behavior. This does not prove the earlier palette/channel/
+container interpretation, full color-layout/sYCC/alpha pipeline or parser-to-
+pixel relation. Public budget checking remains an earlier separate stage.
+
+`channel_layout` now has a complete typed-result relation over the actual
+ordered component/CDEF metadata. With no definitions it requires one component
+per color and returns identity routing. Explicit definitions preserve ordered
+alpha associations and flags, ignore unspecified channels, allow repeated
+identical color assignments within one component, reject cross-component
+conflicts, and check missing required colors only after the entire definition
+scan. Invalid alpha-association errors therefore keep their actual precedence
+over a later missing-color error. These contracts do not independently prove
+that a container parser authored the normative definitions or close the
+subsequent whole color/alpha conversion.
+
+`normalized_at` and `normalized_difference_at` are connected to the actual
+typed-image component sequence and origins, including component lookup and
+all nominal sampling errors. Chroma differences subtract `2^(p-1)` and scale
+by `65535/(2^p-1)`, rounding signed half ties away from zero. `sycc_to_srgb`
+returns the exact separately rounded, clamped RGB triple for every native
+`u16`/`i32` input, without a restricted-chroma precondition. The checked
+`rounded_fixed` helper also retains both `i128` overflow boundaries. These
+pixel results do not close the earlier component/output-budget validation or
+the complete public color-converter channel/raster traversal.
+
+The separate public `convert_jp2_color` contract now composes these relations
+as `color_convert_jp2`. It has no valid-input, canonical-channel, restricted-
+chroma or sufficient-budget precondition. Zero image dimensions precede
+format selection; unsupported formats precede layout validation; layout
+precedes component metadata; component metadata precedes output-byte/work
+admission; and admission precedes every sample read. The complete sYCC raster,
+ordered grayscale/RGB channels and all alpha channels retain their exact first
+failure, including original association/premultiplication metadata. Output
+dimensions, color space, precision and every sample are connected to that one
+result model.
+
+Component validation covers precision/tags, subsampling, registered spans,
+dimensions and sample counts. Output admission retains native checked-count
+overflow and exact `DecodedBytes`/`WorkUnits` limit/actual fields, with bytes
+checked first. These are this stage's admission quantities, not a theorem
+about global cumulative work or peak live allocation. The normalization
+allocations retain ordinary Rust allocator behavior; allocation failure is
+not invented as a typed decoding result.
+
+The shared private channel/pixel helpers contain the original production
+operations and are called by the real converter, not an alternate decoder.
+The preflight invariant bundle is internal proof support under
+`proofs/internal_specs.rs`; essential format, validation, traversal and error
+semantics remain under `specs/`. Independent wide-integer tests compare 1,440
+complete supplied-input images and metadata plus 180 native-domain admission
+cases. Those direct typed-input tests are not new reference-qualified
+compressed profiles. Palette/channel-map interpretation, container selection/
+crop, earlier decoding and normative endorsement remain separate F7/F8/N1
+obligations.
+
+`ConvertedImage::crop` now has an unconditional complete image-result
+relation to `color_crop_image`, including the actual selected-color caller.
+Zero requested dimensions precede coordinate overflow, which precedes bounds
+checking. The existing exact whole-image identity path returns the supplied
+image without allocation or new plane validation; even an internally supplied
+short plane is retained unchanged. Other rectangles copy only requested
+samples, in channel/row/column order, with exact address and missing-sample
+errors. Color space, precision, every channel kind and alpha association/
+representation flag are preserved without a canonical-channel premise.
+
+The private plane helper shares the original two-dimensional production
+loops rather than replacing them with a slower division-per-pixel raster.
+Its only rectangle-order premises are established by the real method's
+checked geometry; no valid sample plane is assumed. Essential crop
+denotations remain in `specs/`; the immutable preflight bundle alone is in
+`proofs/internal_specs.rs`. Source-coordinate-mask tests cover 86,700 bounded
+contexts, alongside explicit native-boundary and identity-bypass cases.
+This proves cropping supplied converted pixels, not how the decoder chose
+the requested region or produced those pixels.
+
+The actual `convert_selected_color` caller now refines
+`color_convert_selected` from supplied typed components, color method, target
+rectangle and actual limits. It composes the real converter and crop
+contracts instead of assuming an unconnected converted image. Format,
+metadata, budget and sample errors precede target-coordinate subtraction;
+invalid target subtraction retains the existing `InvalidCodeBlock` error,
+while valid differences pass to the full crop semantics. Earlier compressed
+decoding, palette/channel-map application and selection-target derivation are
+not established by this typed-input composition theorem.
 
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
@@ -317,9 +485,9 @@ metadata and normalized layer results. They do **not** establish compressed
 decoding, container-to-metadata interpretation, normalization, registration,
 opacity or chroma-key semantics, nor standards-edition conformance. Owner
 integration/review and package acceptance remain separate from these local
-theorems. The two new complete output projections need parent-owned exact
-inventory-scanner mappings for `build_timeline` and `render_normalized_frame`;
-the prior four projections and their `contract_refs` are linked.
+theorems. All complete output projections have exact inventory-scanner
+mappings and linked `contract_refs`, including `build_timeline` and
+`render_normalized_frame`.
 
 The raw-bypass reader has unconditional exact typed result/state relations
 for byte loading and bit reads, plus exact termination classification.
@@ -330,8 +498,271 @@ remain unconsumed while synthetic `0xff` bits are supplied. Exhausted input
 uses the same selected bounded-reader policy. These are input-relative
 implementation semantics, not a completed selected-edition audit.
 
-Error states are not transactional: work-limit failure preserves the consumed
-bit and incremented work counter; work overflow preserves the consumed bit
+The frozen first F5H subprofile is documented in [specs/README.md](specs/README.md#frozen-f5h-directional-reader-stages).
+It comprises `HtMelBitReader` and `HtReverseVlcReader` construction, loading,
+single-bit reads, positions and counters, plus the actual shared cleanup
+pair's constructor, `can_claim_byte`, `tick`, `read_mel_bit` and `read_vlc_bit`.
+The three constructor bodies are shared private free implementations because
+the pinned conditional attribute cannot infer associated static context.
+The existing constructors remain thin Rust-tested adapters; no additional
+executable decoder or trusted codec specification is introduced.
+
+The mathematical transitions consume the actual input sequences. Their
+postconditions specify the exact typed result **and every final field** on
+both success and failure, without restricting the `u64` counter range.
+VLC's terminal nibble starts at bit four; reverse stuffing excludes bit seven
+only in the selected later-byte context. VLC charges the bit before eagerly
+loading its predecessor, so the first rejected work charge leaves the old
+byte and advanced cursor. MEL forces the low terminal nibble to ones before
+testing its distinct stuffing rule. Invalid MEL stuffing leaves the entire
+reader unchanged. Exhaustion and counter overflow retain their actual partial
+state effects rather than being modeled as rollback.
+
+The cleanup wrapper contracts compose those actual transitions, byte-claim
+checks and outer accounting with complete nested-reader and MEL-event frames.
+A collision precedes consumption; an inner failure does not record a claim or
+charge outer work; an outer failure retains the consumed bit and recorded
+claim. Mathematical prefix definitions and checked first-error absorption
+lemmas describe fail-fast clients; they do not assert that callers retrying
+after an error leave state unchanged. Independent fixed bytes and literal
+expected bits/full cursors cover terminal stuffing, exhaustion, constructor
+capacities, inner/outer budget order, collisions and full-width overflow.
+
+The subsequent complete directional substages also cover the actual MagSgn
+constructor, little-endian word loop, physical/fill/work counters and
+bounded finish drain. The models include zero-count no-op, oversized-count
+rejection, stuffed `0xff` synthetic fill, bad padding consumption and every
+ordered overflow/budget effect. Finish checks the native `input.len() * 8`
+fuel before testing pending physical data. Its semantic recurrence is not
+an invariant-only witness and does not assume termination succeeds.
+
+Both actual refinement readers have exact positioned and public bit-read
+contracts. Their pair's full state includes both complete readers (including
+an absent reverse reader), the entire claim vector and the entire stuffed-bit
+vector. Reverse stuffed-bit recording precedes claim collision, so rejection
+can retain both a consumed bit and a new stuffed mask. Work is the checked
+sum of physical/fill counters after selected-counter charging. Padding finish
+checks all encoded bytes without changing any state. A lexical mutable-borrow
+scope and extensional vector frames make the existing claim mutation visible
+to the verifier; the two public result projections use equivalent explicit
+matches rather than a standard-library `Result::map` contract. No decoding
+algorithm is duplicated or changed to suit an inventory expression.
+
+The actual VLC peek/advance loops and MEL event machine refine semantic
+recurrences for every native count/cache/counter input. Peek intentionally
+returns a partial `u16` on copied-reader failure or result-width exhaustion,
+without changing the real reader. Its loop distinguishes break-only results
+from normal continuation. MEL cache priority precedes state validation;
+event-counter overflow retains cache changes, and suffix-read failure retains
+only actual nested reader/claim/work mutations. A literal maximum-exponent
+fixture checks the five-bit MSB-first suffix and subsequent cached events.
+
+These are complete **selected directional/multi-bit/event substages**, not
+full-block or F5H completion. Upstream segment partition/accounting, UVLC/
+quad interpretation, cleanup/significance/refinement block denotations,
+placeholder/replacement sequencing and mixed routing remain required.
+The inventory uses nineteen additional exact constructor/mutating-view
+recipes, with fail-closed tests for each return binding, complete view,
+old/final snapshot and function/model pairing. Scope lookup, mutable-parameter
+completeness and expression matching are unchanged. Sixteen contracts have
+actual internal production callers and are indexed. Three standalone public
+APIs (`HtForwardMagSgnReader::read_bits` and both public refinement `read_bit`
+adapters) are proved and their recipes tested against real API tests, but have
+no internal decoder callers. They are not disguised as internal helper calls
+or indexed through a wrong same-named method. The exact-root verifier checks
+all these actual contracts independently of the non-exhaustive source index.
+The next complete interpretation stage connects the actual UVLC prefix,
+suffix, combined value and both U-mode decoders to the complete cleanup
+reader state. Every native mode/length is covered, not just successful
+prefixes: a true suffix bit above bit seven is rejected after consumption,
+whereas zero bits above the result width may continue. Read failures precede
+that width check. Initial mode three retains its special long-prefix route,
+and both modes retain their exact prefix/suffix read order and checked
+arithmetic failure points.
+
+The actual quad-word caller refines lookup into closed views of the unchanged
+production tables, then context-zero MEL suppression, codeword validation,
+advance and final tick. No table words/notices are copied or modified.
+Equivalent explicit boolean/checked-add conversions and one shared checked
+byte-conversion helper replace opaque standard-library callback composition;
+they do not introduce a second executable interpretation algorithm.
+U-pair results retain their native two-element arrays. Extensional content
+and exact array equality use the existing pinned `vstd::array` equality fact,
+not a new codec axiom or trusted escape. Prefix opacity only keeps caller
+composition modular; actual producer bodies explicitly unfold their models.
+
+The authorized nineteen directional and six interpretation registry recipes
+are complete. The six interpretation contracts use the same exact whole-state
+shape, preserving actual extra arguments and native tuple/array/word results;
+their models, true production callers, proofs and fixtures are indexed.
+Neither this source index nor successful local gates close full-block or
+mixed sequencing. The models and a green solver run are not human endorsement
+of T.814.
+
+`HtPassGroup::from_packet_passes` now shares one verified free implementation
+that returns the complete actual four-field group, retaining the static
+public wrapper and all original native bounds/error behavior. This is an
+input-relative grouping theorem, not placeholder/replacement execution.
+
+The complete actual public segment parser now refines `ht_parse_block_segments`
+through a public closed outcome projection of every result field. The sole
+authorized foreign edit supplies the owner-local `resource_code_block_byte_limit`
+view and exact getter postcondition. The parser model therefore uses the actual
+selected `ResourceLimits` value, not a chosen or existential budget. Size
+rejection precedes the exact CodeBlockBytes failure, which precedes Scup
+interpretation and partitioning. All encoded/substream bytes, offsets,
+directions, Scup and total bytes are included, retaining the observable
+distinction between absent and present empty refinement. No public-parser
+wrapper or successful-input assumption is introduced. Its complete outcome
+shape is proved by the root. The non-exhaustive source index binds this
+function to its exact outcome/model recipe and actual caller; negative tests
+reject unbound, partial, swapped or unknown outcomes/models without any
+matcher widening.
+
+Existing public F6 limb/value, constructor, zero-test, right-shift, exact
+checked-add, full-domain checked-left-shift and low-word contracts are now
+available in this combined branch. The actual HT numerical reconstruction
+consumers still need their complete result/reader-state relations connected
+through these interfaces. No Tier-1-local magnitude implementation or trusted
+shim is introduced.
+
+### Complete cleanup metadata boundary
+
+`decode_ht_cleanup_segment_metadata` now refines
+`ht_cleanup_segment_metadata` on **every return**. The public
+`decode_ht_cleanup_metadata` additionally composes the actual segment parser
+with its real code-block byte limit before the metadata header/work stage.
+There are no stream-validity, decode-success, sufficient-budget or selected
+trace preconditions on either entry point.
+
+The internal producer is indexed through its exact complete outcome/model,
+actual segment view, width/height/maximum-U arguments, actual work-limit
+snapshot and scoped coefficient-symbol caller. Fail-closed mutations reject
+swapped inputs/limits, unbound/partial outcomes, wrong models and wrong
+callers. The separately verified public facade currently has only API-test
+callers and is not falsely attributed to the internal block path.
+
+The semantic reading path includes complete deterministic word/member,
+sample/quad, pair and row folds in `specs/mod.rs`, with full typed first-error
+propagation. Checked step/absorption lemmas justify the actual loops. The
+source is still one executable traversal: the existing bodies are moved to
+word, append, pair and row helpers, not copied into a proof-only decoder.
+Their internal geometry and allocated-length facts are established from
+the actual header and loop bounds; reader/event/work and significant-count
+domains are not restricted to successful states.
+
+The helpers expose complete disjoint mutable frames. A failed word read
+retains prior current-pattern/left-context updates and all actual reader
+effects. An invalid significant edge sample retains earlier sample counts
+but does not store a quad or tick. A counter error precedes the store; a
+work error from the final tick retains the stored quad and updated count.
+The row's previous-pattern vector is replaced only after the entire row
+succeeds. Opaque prefix folds retain their exact first error and state.
+Canonical unit-result postconditions are proved from the actual bodies to
+compose these folds, not assumed from success.
+
+All returned fields are covered: dimensions, every ordered quad field,
+significant-sample count, MEL/VLC bit counts and MEL events, including final
+collision and checked 32-bit counter conversion. Allocation requests and
+tick/read order are preserved. The unused **private** cleanup constructor
+adapter is removed; metadata and its two existing tests use the same proved
+free implementation. Public reader constructors are unchanged. Three local
+`too_many_arguments` style allowances keep immutable codec inputs and
+disjoint mutable frames explicit; no verifier/trust/termination limit is
+relaxed.
+
+The four new HT-only state properties use fresh solver contexts
+(`spinoff_prover`) so their finite mask/geometry queries do not perturb
+unrelated existing incremental solver queries. Their bodies and all limits
+remain checked unchanged; no F6/color proof is edited for solver sensitivity.
+
+Independent literal regressions include nine suppressed quads across odd
+rows/columns/pairs, exact 24-unit success versus 23-unit last-store failure,
+each actual northern/western context input, invalid edge-sample partial
+counts, native counter overflow before/after stores, and public
+parser/header error priority. Existing nonzero, fused-byte, UVLC and
+collision fixtures remain in place.
+
+This complete metadata boundary is independent of numerical magnitude
+reconstruction. The F6 owner has now supplied the requested full-domain
+interfaces separately in `f7807fe3bc6b2d3ccc622e2d3998eb3a39927535`;
+they are not merged or duplicated in this metadata head. A clean joined
+baseline is required before consuming them for the next magnitude/plane
+stage. Neither metadata nor its positive tests complete coefficient blocks
+or mixed sequencing.
+
+### Complete numeric MagSgn boundary
+
+`reconstruct_ht_magnitude` now refines the deterministic
+`ht_reconstruct_numeric_magnitude` result/state model on every return. Invalid
+completed-U/bitplane parameters precede all reader operations. The actual
+payload loop consumes LSB-first physical/stuffed/fill bits with the already
+proved complete reader transition; every first read/counter/budget error
+retains its actual final reader state. Sign and exponent are accumulated
+alongside the full numeric value, not a low-word proxy.
+
+Embedding, odd-center correction, centering, checked left scaling, right
+division and zero rejection are one moved executable completion body using
+the real F6 factories and full-domain arithmetic contracts. Its private
+geometry facts are derived from the original public-entry checks; the
+completion body itself admits every native 384-bit magnitude and exponent,
+including capacity rejection. A checked modular-arithmetic lemma connects
+the real low-word parity test to full-value parity. No arithmetic algorithm,
+foreign source shim, assumed success or new limit is introduced.
+
+The source index has a narrowly typed recipe for this one actual producer:
+the complete numeric outcome and complete final MagSgn reader must equal the
+listed model on the actual old reader and native arguments. The existing
+every-mutable-parameter check remains active. Tests reject missing/old/wrong
+final states, unbound/partial outcomes, swapped inputs and wrong models; this
+does not introduce general expression matching or an API-root exception.
+
+Independent fixtures cover sign/exponent/scaling and inconsistent native
+embedded flags, zero-bit reconstruction without touching even over-budget
+reader state, all six limbs at bit 365, stuffing and physical/fill budget
+errors with complete literal cursor/counter states, native counter overflow
+and centering/shift overflow.
+
+The next actual cleanup-plane boundary reaches `CoefficientState::set_magnitude`,
+which uses the foreign `Magnitude::limb(index + 1)` to store all five high
+words. The owner now supplies its exact full-index
+`Some(magnitude_limbs(self)[index])`/`None` result and a public pure six-limb
+shape fact while keeping the representation closed. The actual stores and
+signed-result/plane consumers still need their complete relations through
+those interfaces; no shifted low-word replacement, assumption or duplicate
+limb algorithm is used. Plane reconstruction, placement,
+stencils and final padding/termination are not claimed by the numeric
+producer theorem.
+
+### Complete cleanup plane and raw producer interfaces
+
+`reconstruct_ht_cleanup_plane` now has a complete typed-result relation over
+the actual supplied plane dimensions, raw cleanup descriptor, arbitrary
+metadata, native maximum-U/bitplane values and actual work cap. Its blank
+allocation does not assume or reuse old coefficients. The ordered quad/sample
+fold includes checked coordinates before clipping, scan/read/placement/count
+ordering, every raw six-word coefficient and flag, both complete exponent
+vectors with reset/max/overwrite/swap behavior, and the final real reader
+padding/stuffing/work check. Failed private transitions retain their exact
+partial plane, reader, statistics and stencil state. This is not refinement,
+replacement/placeholder/mixed execution or a metadata-to-plane caller theorem.
+
+The raw coefficient/plane interfaces retain malformed shapes and full native
+legacy midpoint tags, including insignificant stale words and significant
+negative zero. Six thin ghost denotations express existing field/record
+projections in the already supported complete-model contract form; original
+numeric, shape and field facts remain available. The source index reuses its
+exact known projection/reader recipes and every-mutable-parameter checks,
+rather than adding a generic expression fallback.
+
+The old two-field `SignedMagnitude::new` was crate-private and, after the real
+signed producer's equivalent literal construction, used only in two tests.
+That now-unused constructor is removed and those tests use the same literal
+fields. No public API, decoder result, sign policy, arithmetic behavior,
+dummy runtime call or lint suppression is introduced.
+
+For raw bypass, error states are not transactional: work-limit failure preserves
+the consumed bit and incremented work counter; work overflow preserves the consumed bit
 and old counter. Marker-padding overflow preserves the already installed
 synthetic byte/eight-bit count, without consuming the bit or charging work.
 The constructor's private free helper is shared by the unchanged public

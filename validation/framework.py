@@ -204,15 +204,39 @@ def _coverage_symbol_present(path: Path, symbol: str) -> bool:
     ))
 
 
+def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
+    """Resolve formatted methods in their actual impl, never another short name."""
+    short = symbol.rsplit("::", 1)[-1]
+    start, end = 0, len(text)
+    if "::" in symbol:
+        owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        implementation = re.search(
+            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
+            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
+        )
+        if implementation is None:
+            return None
+        closing = re.search(
+            rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
+            text[implementation.end():],
+        )
+        if closing is None:
+            return None
+        start = implementation.end()
+        end = start + closing.start()
+    pattern = re.compile(
+        rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
+        rf"fn[ \t]+{re.escape(short)}\b",
+    )
+    return pattern.search(text, start, end)
+
+
 def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
     """Check another formatted function body, not the callee declaration."""
     short = caller.rsplit("::", 1)[-1]
     if short == callee:
         return False
-    header = re.search(
-        rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
-        rf"fn[ \t]+{re.escape(short)}\b", text,
-    )
+    header = _coverage_function_header(text, caller)
     if header is None:
         return False
     body_start = text.find("{", header.end())
@@ -256,10 +280,10 @@ def validate_normative_coverage(
         for reference in entry["contract_refs"]:
             text = (ROOT / reference["path"]).read_text(encoding="utf-8")
             short = reference["symbol"].rsplit("::", 1)[-1]
-            signature_match = re.search(rf"\bfn\s+{re.escape(short)}\b", text)
+            signature_match = _coverage_function_header(text, reference["symbol"])
             if signature_match is None:
                 raise ValueError(f"missing linked contract function: {short}")
-            signature = signature_match.start()
+            signature = text.find("fn", signature_match.start(), signature_match.end())
             contract_start = text.rfind("#[cfg_attr", 0, signature)
             contract = text[contract_start:signature] if contract_start >= 0 else ""
             body_start = text.find("{", signature)
@@ -283,6 +307,9 @@ def validate_normative_coverage(
                 ("src/jpx.rs", "render_normalized_frame"): "crate::color::converted_image_result",
                 ("src/color.rs", "from_layer"): "converted_image_result",
                 ("src/color.rs", "from_composited"): "converted_image_result",
+                ("src/color.rs", "normalize_component"): "normalized_plane_result",
+                ("src/color.rs", "channel_layout"): "channel_layout_result",
+                ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
                 ("src/transform.rs", "inverse_quantize_values"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize"): "reconstruction_outcome",
                 ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
@@ -297,7 +324,72 @@ def validate_normative_coverage(
                 ("src/transform.rs", "inverse_level_9_7"): "reconstruction_outcome",
                 ("src/transform.rs", "convert_samples"): "sequence_outcome",
                 ("src/transform.rs", "interleave"): "sequence_outcome",
-                ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
+                ("src/tier1.rs", "ht_mel_from_input"): "ht_mel_outcome",
+                ("src/tier1.rs", "ht_reverse_vlc_from_input"): "ht_reverse_vlc_outcome",
+                ("src/tier1.rs", "ht_cleanup_readers_from_inputs"): "ht_cleanup_readers_outcome",
+                ("src/tier1.rs", "ht_magsgn_from_input"): "ht_magsgn_outcome",
+                ("src/tier1.rs", "ht_forward_refinement_from_input"): "ht_forward_refinement_outcome",
+                ("src/tier1.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
+                ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
+                ("src/tier1.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
+                ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_metadata_outcome",
+                ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_plane_outcome",
+                ("src/tier1.rs", "code_block_plane_from_dimensions"): "code_block_plane_outcome",
+                ("src/tier1.rs", "coefficient_from_magnitude"): "coefficient_raw_outcome",
+                ("src/tier1.rs", "coefficient"): "coefficient_raw_outcome",
+                ("src/tier1.rs", "signed_magnitude"): "coefficient_signed_outcome",
+                ("src/tier1.rs", "coefficients"): "coefficient_slice_view",
+                ("src/tier1.rs", "wide_magnitude"): "crate::magnitude::magnitude_limbs",
+                ("src/color.rs", "convert_jp2_color"): "converted_image_result",
+                ("src/color.rs", "convert_color_channel"): "converted_channel_result",
+                ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
+                ("src/color.rs", "crop"): "converted_image_result",
+                ("src/color.rs", "crop_plane"): "normalized_plane_result",
+                ("src/decode.rs", "convert_selected_color"): "crate::color::converted_image_result",
+                ("src/image.rs", "assemble_image"): "decoded_image_outcome",
+                ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
+                ("src/image.rs", "typed_samples"): "decoded_typed_samples_outcome",
+                ("src/image.rs", "typed"): "decoded_typed_image_outcome",
+                ("src/packet.rs", "decoder"): "packet_decoder_outcome",
+            }.get((reference["path"], short))
+            expected_result_model = {
+                ("src/jp2.rs", "value"): "part2_palette_value",
+                ("src/jp2.rs", "palette_value_error"): "part2_composition_error",
+                ("src/image.rs", "typed_samples"): "part1_decoded_component_typed_samples",
+                ("src/image.rs", "typed"): "part1_decoded_image_typed",
+                ("src/packet.rs", "decoder"): "part1_packet_precinct_decoder",
+                ("src/image.rs", "assemble_image"): "part1_assemble_image",
+                ("src/image.rs", "assemble_selected_image"): "part1_assemble_selected_image",
+                ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
+                ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
+                ("src/tier1.rs", "reconstruct_ht_magnitude"): "ht_reconstruct_numeric_magnitude",
+                ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_cleanup_plane",
+                ("src/tier1.rs", "code_block_plane_from_dimensions"): "tier1_empty_plane",
+                ("src/tier1.rs", "coefficient_from_magnitude"): "tier1_coefficient_new_outcome",
+                ("src/tier1.rs", "complete_ht_kappa"): "ht_complete_kappa",
+                ("src/tier1.rs", "ht_statistics_zero"): "tier1_statistics_zero",
+                ("src/tier1.rs", "width"): "tier1_raw_plane_width",
+                ("src/tier1.rs", "height"): "tier1_raw_plane_height",
+                ("src/tier1.rs", "coefficients"): "tier1_raw_plane_coefficients",
+                ("src/tier1.rs", "coefficient"): "tier1_raw_plane_coefficient",
+                ("src/tier1.rs", "index"): "tier1_raw_plane_index",
+                ("src/tier1.rs", "wide_magnitude"): "tier1_coefficient_limbs",
+                ("src/tier1.rs", "signed_magnitude"): "tier1_raw_signed_coefficient",
+                ("src/tier1.rs", "scanned"): "tier1_statistics_increment",
+                ("src/tier1.rs", "decoded_symbols"): "tier1_statistics_increment",
+                ("src/tier1.rs", "became_significant"): "tier1_statistics_increment",
+                ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
+                ("src/color.rs", "crop"): "color_crop_image",
+                ("src/color.rs", "crop_plane"): "color_crop_plane",
+                ("src/color.rs", "crop_sample"): "color_crop_sample",
+                ("src/color.rs", "convert_jp2_color"): "color_convert_jp2",
+                ("src/color.rs", "convert_color_channel"): "color_convert_channel",
+                ("src/color.rs", "convert_alpha_channel"): "color_convert_alpha",
+                ("src/color.rs", "convert_sycc_pixel"): "color_sycc_pixel",
+                ("src/color.rs", "validate_components"): "color_validate_components",
+                ("src/color.rs", "validate_component_index"): "color_validate_component_index",
+                ("src/color.rs", "validate_component"): "color_validate_component",
+                ("src/color.rs", "validate_output_size"): "color_validate_output_size",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
@@ -308,10 +400,48 @@ def validate_normative_coverage(
                 r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
-            if reference["path"] == "src/tier1.rs" and short in ("read_bit", "load_byte"):
+            reader_contracts = {
+                "HtCleanupPlaneReconstruction::sample": ("ht_plane_view", "ht_plane_sample"),
+                "HtCleanupPlaneReconstruction::quad": ("ht_plane_view", "ht_plane_quad"),
+                "HtCleanupPlaneReconstruction::finish": ("ht_plane_view", "ht_plane_finish"),
+                "CodeBlockPlane::mark_significant_magnitude": ("code_block_plane_view", "tier1_mark_coefficient"),
+                "CoefficientState::set_magnitude": ("coefficient_state_view", "tier1_set_magnitude"),
+                "RawBitReader::read_bit": ("raw_bit_reader_view", "part1_raw_reader_read"),
+                "RawBitReader::load_byte": ("raw_bit_reader_view", "part1_raw_reader_load"),
+                "HtMelBitReader::load_byte": ("ht_mel_view", "ht_mel_load"),
+                "HtMelBitReader::read_bit": ("ht_mel_view", "ht_mel_read"),
+                "HtReverseVlcReader::load_previous_byte": ("ht_reverse_vlc_view", "ht_reverse_vlc_load"),
+                "HtReverseVlcReader::read_bit": ("ht_reverse_vlc_view", "ht_reverse_vlc_read"),
+                "HtCleanupReaders::tick": ("ht_cleanup_readers_view", "ht_cleanup_reader_tick"),
+                "HtCleanupReaders::read_mel_bit": ("ht_cleanup_readers_view", "ht_cleanup_reader_read_mel"),
+                "HtCleanupReaders::read_vlc_bit": ("ht_cleanup_readers_view", "ht_cleanup_reader_read_vlc"),
+                "HtForwardMagSgnReader::load_byte": ("ht_magsgn_view", "ht_magsgn_load"),
+                "HtForwardMagSgnReader::read_bit": ("ht_magsgn_view", "ht_magsgn_read"),
+                "HtForwardMagSgnReader::read_bits": ("ht_magsgn_view", "ht_magsgn_read_bits"),
+                "HtForwardMagSgnReader::finish": ("ht_magsgn_view", "ht_magsgn_finish"),
+                "HtForwardRefinementReader::load_byte": ("ht_forward_refinement_view", "ht_forward_refinement_load"),
+                "HtForwardRefinementReader::read_positioned_bit": ("ht_forward_refinement_view", "ht_forward_refinement_positioned"),
+                "HtForwardRefinementReader::read_bit": ("ht_forward_refinement_view", "ht_forward_refinement_read"),
+                "HtReverseRefinementReader::load_previous_byte": ("ht_reverse_refinement_view", "ht_reverse_refinement_load"),
+                "HtReverseRefinementReader::read_positioned_bit": ("ht_reverse_refinement_view", "ht_reverse_refinement_positioned"),
+                "HtReverseRefinementReader::read_bit": ("ht_reverse_refinement_view", "ht_reverse_refinement_read"),
+                "HtRefinementReaders::claim": ("ht_refinement_readers_view", "ht_refinement_claim"),
+                "HtRefinementReaders::read_forward": ("ht_refinement_readers_view", "ht_refinement_read_forward"),
+                "HtRefinementReaders::read_reverse": ("ht_refinement_readers_view", "ht_refinement_read_reverse"),
+                "HtCleanupReaders::advance_vlc": ("ht_cleanup_readers_view", "ht_cleanup_advance_vlc"),
+                "HtCleanupReaders::mel_event": ("ht_cleanup_readers_view", "ht_cleanup_mel_event"),
+                "HtCleanupReaders::read_prefix": ("ht_cleanup_readers_view", "ht_uvlc_prefix"),
+                "HtCleanupReaders::read_suffix": ("ht_cleanup_readers_view", "ht_uvlc_suffix"),
+                "HtCleanupReaders::prefix_value": ("ht_cleanup_readers_view", "ht_uvlc_prefix_value"),
+                "HtCleanupReaders::decode_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_initial"),
+                "HtCleanupReaders::decode_non_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_non_initial"),
+                "HtCleanupReaders::decode_quad_word": ("ht_cleanup_readers_view", "ht_cleanup_quad_word"),
+            }
+            reader_contract = reader_contracts.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            if reader_contract:
                 state_term = (
                     r"(?:" + state_term
-                    + r"|raw_bit_reader_view\(\s*final\(\s*self\s*\)\s*\))"
+                    + "|" + re.escape(reader_contract[0]) + r"\(\s*final\(\s*self\s*\)\s*\))"
                 )
             state_tail = r"\s*,\s*" + state_term + r"(?:\s*,\s*" + state_term + r")*\s*\))"
             state_result = re.search(
@@ -322,13 +452,95 @@ def validate_normative_coverage(
                     named_prefix + r"\1\.is_ok\(\)\s*==>\s*"
                     + r"(?P<state>\(\s*\1\.is_ok\(\)" + state_tail + model_suffix, contract,
                 )
+            if (reference["path"], short) == ("src/tier1.rs", "reconstruct_ht_magnitude"):
+                state_result = re.search(
+                    named_prefix
+                    + r"(?P<state>\(\s*ht_numeric_magnitude_outcome\(\s*\1\s*\)\s*,\s*"
+                    r"ht_magsgn_view\(\s*final\(\s*reader\s*\)\s*\)\s*\))"
+                    + model_suffix
+                    + r"\s*ht_magsgn_view\(\s*old\(\s*reader\s*\)\s*\)\s*,\s*"
+                    r"completed_u\s*,\s*embedded_bit\s*,\s*embedded_value\s*,\s*decoded_bitplanes\s*,?\s*\)",
+                    contract,
+                )
             final_parameters = set(re.findall(
                 r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
             )) if state_result is not None else set()
             complete_state = bool(mutable_parameters) and final_parameters == mutable_parameters
             named_result = state_result if mutating else scalar_result or projected_result or state_result
+            expected_constructor = {
+                "ht_mel_from_input": "ht_mel_initial",
+                "ht_reverse_vlc_from_input": "ht_reverse_vlc_initial",
+                "ht_cleanup_readers_from_inputs": "ht_cleanup_readers_initial",
+                "ht_magsgn_from_input": "ht_magsgn_initial",
+                "ht_forward_refinement_from_input": "ht_forward_refinement_initial",
+                "ht_reverse_refinement_from_input": "ht_reverse_refinement_initial",
+                "ht_refinement_readers_from_inputs": "ht_refinement_readers_initial",
+            }.get(short) if reference["path"] == "src/tier1.rs" else None
+            if expected_constructor and (named_result is None or named_result["model"] != expected_constructor):
+                raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong constructor model")
+            if (reference["path"], reference["symbol"]) == ("src/tier1.rs", "HtCleanupReaders::can_claim_byte"):
+                if named_result is None or named_result["model"] != "ht_cleanup_reader_can_claim":
+                    raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong claim model")
+            if reader_contract:
+                view, model = reader_contract
+                complete_reader_state = (
+                    state_result is not None
+                    and state_result["model"] == model
+                    and re.fullmatch(
+                        r"\(\s*" + re.escape(state_result[1]) + r"\s*,\s*"
+                        + re.escape(view) + r"\(\s*final\(\s*self\s*\)\s*\)\s*\)",
+                        state_result["state"],
+                    ) is not None
+                    and re.search(
+                        r"==\s*crate::specs::" + re.escape(model) + r"\(\s*"
+                        + re.escape(view) + r"\(\s*old\(\s*self\s*\)\s*\)",
+                        contract,
+                    ) is not None
+                )
+                if not complete_reader_state:
+                    raise ValueError(
+                        f"linked function lacks executable Verus contract: {reference['symbol']}; "
+                        "incomplete exact reader state relation"
+                    )
+            metadata_arguments_bound = (
+                (reference["path"], short) != ("src/tier1.rs", "decode_ht_cleanup_segment_metadata")
+                or re.search(
+                    r"\bht_cleanup_segment_metadata\s*\(\s*"
+                    r"ht_cleanup_segment_view\s*\(\s*&\s*cleanup\s*\)\s*,\s*"
+                    r"width\s*,\s*height\s*,\s*maximum_u\s*,\s*"
+                    r"crate::limits::resource_work_limit\s*\(\s*limits\s*\)\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
+            palette_arguments_bound = (
+                (reference["path"], reference["symbol"]) != ("src/jp2.rs", "Palette::value")
+                or re.search(
+                    r"\bpart2_palette_value\s*\(\s*palette_view\s*\(\s*self\s*\)\s*,\s*"
+                    r"entry\s*,\s*column\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
+            statistic_arguments = {
+                "Tier1PassStatistics::scanned": (0, "count"),
+                "Tier1PassStatistics::decoded_symbols": (1, "count"),
+                "Tier1PassStatistics::became_significant": (2, "1"),
+            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            statistic_arguments_bound = (
+                statistic_arguments is None
+                or re.search(
+                    r"crate::specs::tier1_statistics_increment\s*\(\s*\*\s*old\(\s*self\s*\)\s*,\s*"
+                    + str(statistic_arguments[0]) + r"\s*,\s*"
+                    + re.escape(statistic_arguments[1]) + r"\s*,?\s*\)",
+                    contract,
+                ) is not None
+            )
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
+                    or not metadata_arguments_bound
+                    or not palette_arguments_bound
+                    or not statistic_arguments_bound
+                    or (expected_result_model is not None
+                        and (named_result is None or named_result["model"] != expected_result_model))
                     or not ("ensures returns" in contract
                             or (named_result is not None and named_result["model"] in spec_symbols))):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")

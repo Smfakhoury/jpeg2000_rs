@@ -269,23 +269,31 @@ pub struct HtPassGroup {
 
 impl HtPassGroup {
     pub fn from_packet_passes(passes: u8) -> Result<Self, DecodeError> {
-        if passes == 0 || passes > 164 {
-            return Err(invalid_code_block());
-        }
-        let placeholder_passes = crate::refinement::ht_placeholder_passes(passes);
-        let skipped_bitplanes = placeholder_passes / 3;
-        let substantive_passes = crate::refinement::ht_substantive_passes(passes);
-        Ok(Self {
-            cleanup_passes: placeholder_passes
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?,
-            refinement_passes: substantive_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?,
-            placeholder_passes,
-            skipped_bitplanes,
-        })
+        ht_pass_group_from_packet(passes)
     }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_packet_pass_group(passes),)
+)]
+fn ht_pass_group_from_packet(passes: u8) -> Result<HtPassGroup, DecodeError> {
+    if passes == 0 || passes > 164 {
+        return Err(invalid_code_block());
+    }
+    let placeholder_passes = crate::refinement::ht_placeholder_passes(passes);
+    let skipped_bitplanes = placeholder_passes / 3;
+    let substantive_passes = crate::refinement::ht_substantive_passes(passes);
+    Ok(HtPassGroup {
+        cleanup_passes: placeholder_passes
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?,
+        refinement_passes: substantive_passes
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?,
+        placeholder_passes,
+        skipped_bitplanes,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -304,14 +312,17 @@ pub struct HtSubstreamView<'a> {
 }
 
 impl<'a> HtSubstreamView<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == ht_substream_view(self).bytes,))]
     pub fn bytes(&self) -> &'a [u8] {
         self.bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_substream_view(self).offset,))]
     pub const fn offset(&self) -> u32 {
         self.offset
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_direction_forward(result) == ht_substream_view(self).forward,))]
     pub const fn direction(&self) -> HtStreamDirection {
         self.direction
     }
@@ -329,26 +340,32 @@ pub struct HtCleanupSegment<'a> {
 }
 
 impl<'a> HtCleanupSegment<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == ht_cleanup_segment_view(self).encoded,))]
     pub fn encoded(&self) -> &'a [u8] {
         self.encoded
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_cleanup_segment_view(self).scup,))]
     pub const fn scup(&self) -> u16 {
         self.scup
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).mag_sgn,))]
     pub const fn mag_sgn(&self) -> HtSubstreamView<'a> {
         self.mag_sgn
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).mel_vlc,))]
     pub const fn mel_vlc(&self) -> HtSubstreamView<'a> {
         self.mel_vlc
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).mel,))]
     pub const fn mel(&self) -> HtSubstreamView<'a> {
         self.mel
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_cleanup_segment_view(self).vlc,))]
     pub const fn vlc(&self) -> HtSubstreamView<'a> {
         self.vlc
     }
@@ -378,36 +395,79 @@ pub struct HtForwardMagSgnReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtForwardMagSgnReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.len() > MAX_HT_CLEANUP_BYTES {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_magsgn_view(reader: &HtForwardMagSgnReader<'_>) -> crate::specs::HtMagSgnState {
+        crate::specs::HtMagSgnState {
+            input: reader.input@, next_byte: reader.next_byte, value: reader.value,
+            next_bit: reader.next_bit, last_bit: reader.last_bit, has_byte: reader.has_byte,
+            current_is_physical: reader.current_is_physical, previous_was_ff: reader.previous_was_ff,
+            physical_bits_read: reader.physical_bits_read, fill_bits_read: reader.fill_bits_read,
+            work_units: reader.work_units, maximum_work_units: reader.maximum_work_units,
         }
-        Ok(Self {
-            input,
-            next_byte: 0,
-            value: 0,
-            next_bit: 0,
-            last_bit: 0,
-            has_byte: false,
-            current_is_physical: false,
-            previous_was_ff: false,
-            physical_bits_read: 0,
-            fill_bits_read: 0,
-            work_units: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
     }
 
+    #[verifier::inline]
+    spec fn ht_magsgn_outcome(result: Result<HtForwardMagSgnReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtMagSgnState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_magsgn_view(&reader)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_magsgn_outcome(result) == crate::specs::ht_magsgn_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_magsgn_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtForwardMagSgnReader<'_>, DecodeError> {
+    if input.len() > MAX_HT_CLEANUP_BYTES {
+        return Err(invalid_code_block());
+    }
+    Ok(HtForwardMagSgnReader {
+        input,
+        next_byte: 0,
+        value: 0,
+        next_bit: 0,
+        last_bit: 0,
+        has_byte: false,
+        current_is_physical: false,
+        previous_was_ff: false,
+        physical_bits_read: 0,
+        fill_bits_read: 0,
+        work_units: 0,
+        maximum_work_units,
+    })
+}
+
+impl<'a> HtForwardMagSgnReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_magsgn_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_magsgn_view(self).physical_bits_read,))]
     pub const fn physical_bits_read(&self) -> u64 {
         self.physical_bits_read
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_magsgn_view(self).fill_bits_read,))]
     pub const fn fill_bits_read(&self) -> u64 {
         self.fill_bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_magsgn_view(final(self))) == crate::specs::ht_magsgn_read_bits(ht_magsgn_view(old(self)), count),
+        )
+    )]
     pub fn read_bits(&mut self, count: u8) -> Result<u64, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_magsgn_view(self); }
         if count > 39 {
             return Err(invalid_code_block());
         }
@@ -416,11 +476,20 @@ impl<'a> HtForwardMagSgnReader<'a> {
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant bit <= count,
+                invariant bit <= count, count <= 39,
+                    initial == ht_magsgn_view(old(self)),
+                    crate::specs::ht_magsgn_read_bits(initial, count)
+                        == crate::specs::ht_magsgn_word_run(ht_magsgn_view(self), (count - bit) as nat, bit as nat, value),
                 decreases count - bit,
             )
         )]
         while bit < count {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_magsgn_word_unfold(
+                    ht_magsgn_view(self), (count - bit) as nat, bit as nat, value,
+                );
+            }
             if bit >= 64 {
                 return Err(invalid_code_block());
             }
@@ -429,10 +498,22 @@ impl<'a> HtForwardMagSgnReader<'a> {
             }
             bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_magsgn_word_unfold(ht_magsgn_view(self), 0, bit as nat, value);
+        }
         Ok(value)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_magsgn_view(final(self))) == crate::specs::ht_magsgn_finish(ht_magsgn_view(old(self))),
+        )
+    )]
     pub fn finish(&mut self) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_magsgn_view(self); }
         let mut remaining_bits = self
             .input
             .len()
@@ -440,9 +521,18 @@ impl<'a> HtForwardMagSgnReader<'a> {
             .ok_or_else(arithmetic_overflow)?;
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases remaining_bits,)
+            verus_spec(
+                invariant initial == ht_magsgn_view(old(self)),
+                    crate::specs::ht_magsgn_finish(initial)
+                    == crate::specs::ht_magsgn_finish_run(ht_magsgn_view(self), remaining_bits as nat),
+                decreases remaining_bits,
+            )
         )]
         while self.has_pending_physical_bits() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_magsgn_finish_unfold(ht_magsgn_view(self), remaining_bits as nat);
+            }
             if remaining_bits == 0 {
                 return Err(invalid_code_block());
             }
@@ -451,14 +541,28 @@ impl<'a> HtForwardMagSgnReader<'a> {
                 return Err(invalid_code_block());
             }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_magsgn_finish_unfold(ht_magsgn_view(self), remaining_bits as nat);
+        }
         Ok(())
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result => ensures result == crate::specs::ht_magsgn_pending(ht_magsgn_view(self)),)
+    )]
     fn has_pending_physical_bits(&self) -> bool {
         (self.has_byte && self.current_is_physical && self.next_bit <= self.last_bit)
             || self.next_byte < self.input.len()
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_magsgn_view(final(self))) == crate::specs::ht_magsgn_read(ht_magsgn_view(old(self))),
+        )
+    )]
     fn read_bit(&mut self) -> Result<bool, DecodeError> {
         if !self.has_byte || self.next_bit > self.last_bit {
             self.load_byte()?;
@@ -490,15 +594,21 @@ impl<'a> HtForwardMagSgnReader<'a> {
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.work_units > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.work_units,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.work_units,
+            });
         }
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_magsgn_view(final(self))) == crate::specs::ht_magsgn_load(ht_magsgn_view(old(self))),
+        )
+    )]
     fn load_byte(&mut self) -> Result<(), DecodeError> {
         let stuffed = self.previous_was_ff;
         if self.next_byte < self.input.len() {
@@ -507,10 +617,10 @@ impl<'a> HtForwardMagSgnReader<'a> {
                 .get(self.next_byte)
                 .ok_or_else(invalid_code_block)?;
             if !crate::refinement::ht_forward_stuffing_valid(stuffed, value) {
-                return Err(DecodeError::malformed(
-                    self.next_byte as u64,
-                    MalformedKind::InvalidBitStuffing,
-                ));
+                return Err(DecodeError::MalformedInput {
+                    offset: self.next_byte as u64,
+                    kind: MalformedKind::InvalidBitStuffing,
+                });
             }
             self.value = value;
             self.current_is_physical = true;
@@ -543,25 +653,66 @@ pub struct HtMelBitReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtMelBitReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.is_empty() || input.len() > MAX_HT_SCUP - 1 {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_mel_view(reader: &HtMelBitReader<'_>) -> crate::specs::HtMelState {
+        crate::specs::HtMelState {
+            input: reader.input@, next_byte: reader.next_byte, current_byte: reader.current_byte,
+            value: reader.value, next_bit: reader.next_bit, previous_was_ff: reader.previous_was_ff,
+            bits_read: reader.bits_read, maximum_work_units: reader.maximum_work_units,
         }
-        let mut reader = Self {
-            input,
-            next_byte: 0,
-            current_byte: 0,
-            value: 0,
-            next_bit: -1,
-            previous_was_ff: false,
-            bits_read: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        };
-        reader.load_byte()?;
-        Ok(reader)
     }
 
+    #[verifier::inline]
+    spec fn ht_mel_outcome(result: Result<HtMelBitReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtMelState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_mel_view(&reader)), Err(error) => Err(error) }
+    }
+
+    pub closed spec fn ht_position_view(position: Option<HtBitPosition>) -> Option<(u16, u8)> {
+        match position { Some(position) => Some((position.byte, position.bit)), None => None }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_mel_outcome(result) == crate::specs::ht_mel_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_mel_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtMelBitReader<'_>, DecodeError> {
+    if input.is_empty() || input.len() > MAX_HT_SCUP - 1 {
+        return Err(invalid_code_block());
+    }
+    let mut reader = HtMelBitReader {
+        input,
+        next_byte: 0,
+        current_byte: 0,
+        value: 0,
+        next_bit: -1,
+        previous_was_ff: false,
+        bits_read: 0,
+        maximum_work_units,
+    };
+    reader.load_byte()?;
+    Ok(reader)
+}
+
+impl<'a> HtMelBitReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_mel_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures ht_position_view(result) == crate::specs::ht_mel_position(ht_mel_view(self)),
+        )
+    )]
     pub fn next_position(&self) -> Option<HtBitPosition> {
         if self.next_bit < 0 {
             None
@@ -573,10 +724,20 @@ impl<'a> HtMelBitReader<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result => ensures result == ht_mel_view(self).bits_read,)
+    )]
     pub const fn bits_read(&self) -> u64 {
         self.bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_mel_view(final(self))) == crate::specs::ht_mel_read(ht_mel_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
         if self.next_bit < 0 {
             self.load_byte()?;
@@ -595,15 +756,21 @@ impl<'a> HtMelBitReader<'a> {
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.bits_read > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.bits_read,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.bits_read,
+            });
         }
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_mel_view(final(self))) == crate::specs::ht_mel_load(ht_mel_view(old(self))),
+        )
+    )]
     fn load_byte(&mut self) -> Result<(), DecodeError> {
         if self.next_byte >= self.input.len() {
             self.next_bit = -1;
@@ -615,10 +782,10 @@ impl<'a> HtMelBitReader<'a> {
             value |= 0x0f;
         }
         if !crate::refinement::ht_mel_stuffing_valid(self.previous_was_ff, value) {
-            return Err(DecodeError::malformed(
-                index as u64,
-                MalformedKind::InvalidBitStuffing,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: index as u64,
+                kind: MalformedKind::InvalidBitStuffing,
+            });
         }
         self.current_byte = index;
         self.value = value;
@@ -646,27 +813,65 @@ pub struct HtReverseVlcReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtReverseVlcReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.len() < 2 || input.len() > MAX_HT_SCUP {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_reverse_vlc_view(reader: &HtReverseVlcReader<'_>) -> crate::specs::HtReverseVlcState {
+        crate::specs::HtReverseVlcState {
+            input: reader.input@, current_byte: reader.current_byte, value: reader.value,
+            next_bit: reader.next_bit, last_bit: reader.last_bit, has_byte: reader.has_byte,
+            later_byte_requires_unstuffing: reader.later_byte_requires_unstuffing,
+            bits_read: reader.bits_read, maximum_work_units: reader.maximum_work_units,
         }
-        let current_byte = input.len().checked_sub(2).ok_or_else(arithmetic_overflow)?;
-        let value = *input.get(current_byte).ok_or_else(invalid_code_block)?;
-        let nibble = value >> 4;
-        Ok(Self {
-            input,
-            current_byte,
-            value,
-            next_bit: 4,
-            last_bit: if nibble & 0x07 == 0x07 { 6 } else { 7 },
-            has_byte: true,
-            later_byte_requires_unstuffing: value | 0x0f > 0x8f,
-            bits_read: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
     }
 
+    #[verifier::inline]
+    spec fn ht_reverse_vlc_outcome(result: Result<HtReverseVlcReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtReverseVlcState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_reverse_vlc_view(&reader)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_reverse_vlc_outcome(result) == crate::specs::ht_reverse_vlc_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_reverse_vlc_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtReverseVlcReader<'_>, DecodeError> {
+    if input.len() < 2 || input.len() > MAX_HT_SCUP {
+        return Err(invalid_code_block());
+    }
+    let current_byte = input.len().checked_sub(2).ok_or_else(arithmetic_overflow)?;
+    let value = *input.get(current_byte).ok_or_else(invalid_code_block)?;
+    let nibble = value >> 4;
+    Ok(HtReverseVlcReader {
+        input,
+        current_byte,
+        value,
+        next_bit: 4,
+        last_bit: if nibble & 0x07 == 0x07 { 6 } else { 7 },
+        has_byte: true,
+        later_byte_requires_unstuffing: value | 0x0f > 0x8f,
+        bits_read: 0,
+        maximum_work_units,
+    })
+}
+
+impl<'a> HtReverseVlcReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_reverse_vlc_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures ht_position_view(result) == crate::specs::ht_reverse_vlc_position(ht_reverse_vlc_view(self)),
+        )
+    )]
     pub fn next_position(&self) -> Option<HtBitPosition> {
         if !self.has_byte {
             None
@@ -678,10 +883,21 @@ impl<'a> HtReverseVlcReader<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result => ensures result == ht_reverse_vlc_view(self).bits_read,)
+    )]
     pub const fn bits_read(&self) -> u64 {
         self.bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_vlc_view(final(self)))
+                == crate::specs::ht_reverse_vlc_read(ht_reverse_vlc_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
         if !self.has_byte || self.next_bit >= 8 {
             return Err(invalid_code_block());
@@ -696,11 +912,11 @@ impl<'a> HtReverseVlcReader<'a> {
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.bits_read > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.bits_read,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.bits_read,
+            });
         }
         if self.next_bit > self.last_bit {
             self.load_previous_byte()?;
@@ -708,6 +924,13 @@ impl<'a> HtReverseVlcReader<'a> {
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_vlc_view(final(self)))
+                == crate::specs::ht_reverse_vlc_load(ht_reverse_vlc_view(old(self))),
+        )
+    )]
     fn load_previous_byte(&mut self) -> Result<(), DecodeError> {
         if self.current_byte == 0 {
             self.has_byte = false;
@@ -783,38 +1006,91 @@ pub struct HtForwardRefinementReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtForwardRefinementReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.len() > MAX_HT_REFINEMENT_BYTES {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_forward_refinement_view(reader: &HtForwardRefinementReader<'_>) -> crate::specs::HtForwardRefinementState {
+        crate::specs::HtForwardRefinementState {
+            input: reader.input@, next_byte: reader.next_byte, current_byte: reader.current_byte,
+            value: reader.value, next_bit: reader.next_bit, last_bit: reader.last_bit,
+            has_byte: reader.has_byte, previous_was_ff: reader.previous_was_ff,
+            physical_bits_read: reader.physical_bits_read, fill_bits_read: reader.fill_bits_read,
+            maximum_work_units: reader.maximum_work_units,
         }
-        Ok(Self {
-            input,
-            next_byte: 0,
-            current_byte: 0,
-            value: 0,
-            next_bit: 0,
-            last_bit: 0,
-            has_byte: false,
-            previous_was_ff: false,
-            physical_bits_read: 0,
-            fill_bits_read: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
     }
 
+    #[verifier::inline]
+    spec fn ht_forward_refinement_outcome(result: Result<HtForwardRefinementReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtForwardRefinementState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_forward_refinement_view(&reader)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_forward_refinement_outcome(result)
+            == crate::specs::ht_forward_refinement_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_forward_refinement_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtForwardRefinementReader<'_>, DecodeError> {
+    if input.len() > MAX_HT_REFINEMENT_BYTES {
+        return Err(invalid_code_block());
+    }
+    Ok(HtForwardRefinementReader {
+        input,
+        next_byte: 0,
+        current_byte: 0,
+        value: 0,
+        next_bit: 0,
+        last_bit: 0,
+        has_byte: false,
+        previous_was_ff: false,
+        physical_bits_read: 0,
+        fill_bits_read: 0,
+        maximum_work_units,
+    })
+}
+
+impl<'a> HtForwardRefinementReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_forward_refinement_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_forward_refinement_view(self).physical_bits_read,))]
     pub const fn physical_bits_read(&self) -> u64 {
         self.physical_bits_read
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_forward_refinement_view(self).fill_bits_read,))]
     pub const fn fill_bits_read(&self) -> u64 {
         self.fill_bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_forward_refinement_view(final(self)))
+                == crate::specs::ht_forward_refinement_read(ht_forward_refinement_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
-        self.read_positioned_bit().map(|(bit, _)| bit)
+        match self.read_positioned_bit() {
+            Ok((bit, _)) => Ok(bit),
+            Err(error) => Err(error),
+        }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_forward_refinement_view(final(self)))
+                == crate::specs::ht_forward_refinement_positioned(ht_forward_refinement_view(old(self))),
+        )
+    )]
     fn read_positioned_bit(&mut self) -> Result<(bool, Option<HtBitPosition>), DecodeError> {
         if !self.has_byte || self.next_bit > self.last_bit {
             self.load_byte()?;
@@ -851,15 +1127,22 @@ impl<'a> HtForwardRefinementReader<'a> {
             .checked_add(self.fill_bits_read)
             .ok_or_else(arithmetic_overflow)?;
         if work > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                work,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: work,
+            });
         }
         Ok((bit, position))
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_forward_refinement_view(final(self)))
+                == crate::specs::ht_forward_refinement_load(ht_forward_refinement_view(old(self))),
+        )
+    )]
     fn load_byte(&mut self) -> Result<(), DecodeError> {
         let stuffed = self.previous_was_ff;
         if self.next_byte < self.input.len() {
@@ -868,10 +1151,10 @@ impl<'a> HtForwardRefinementReader<'a> {
                 .get(self.next_byte)
                 .ok_or_else(invalid_code_block)?;
             if stuffed && value & 0x80 != 0 {
-                return Err(DecodeError::malformed(
-                    self.next_byte as u64,
-                    MalformedKind::InvalidBitStuffing,
-                ));
+                return Err(DecodeError::MalformedInput {
+                    offset: self.next_byte as u64,
+                    kind: MalformedKind::InvalidBitStuffing,
+                });
             }
             self.current_byte = self.next_byte;
             self.value = value;
@@ -906,39 +1189,92 @@ pub struct HtReverseRefinementReader<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtReverseRefinementReader<'a> {
-    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        if input.len() > MAX_HT_REFINEMENT_BYTES {
-            return Err(invalid_code_block());
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_reverse_refinement_view(reader: &HtReverseRefinementReader<'_>) -> crate::specs::HtReverseRefinementState {
+        crate::specs::HtReverseRefinementState {
+            input: reader.input@, current_byte: reader.current_byte, value: reader.value,
+            next_bit: reader.next_bit, last_bit: reader.last_bit, has_byte: reader.has_byte,
+            later_requires_unstuffing: reader.later_requires_unstuffing,
+            physical_bits_read: reader.physical_bits_read, fill_bits_read: reader.fill_bits_read,
+            maximum_work_units: reader.maximum_work_units,
         }
-        let mut reader = Self {
-            input,
-            current_byte: input.len(),
-            value: 0,
-            next_bit: 0,
-            last_bit: 7,
-            has_byte: false,
-            later_requires_unstuffing: true,
-            physical_bits_read: 0,
-            fill_bits_read: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        };
-        reader.load_previous_byte()?;
-        Ok(reader)
     }
 
+    #[verifier::inline]
+    spec fn ht_reverse_refinement_outcome(result: Result<HtReverseRefinementReader<'_>, DecodeError>)
+        -> Result<crate::specs::HtReverseRefinementState, DecodeError>
+    {
+        match result { Ok(reader) => Ok(ht_reverse_refinement_view(&reader)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_reverse_refinement_outcome(result)
+            == crate::specs::ht_reverse_refinement_initial(input@, maximum_work_units),
+    )
+)]
+fn ht_reverse_refinement_from_input(
+    input: &[u8],
+    maximum_work_units: u64,
+) -> Result<HtReverseRefinementReader<'_>, DecodeError> {
+    if input.len() > MAX_HT_REFINEMENT_BYTES {
+        return Err(invalid_code_block());
+    }
+    let mut reader = HtReverseRefinementReader {
+        input,
+        current_byte: input.len(),
+        value: 0,
+        next_bit: 0,
+        last_bit: 7,
+        has_byte: false,
+        later_requires_unstuffing: true,
+        physical_bits_read: 0,
+        fill_bits_read: 0,
+        maximum_work_units,
+    };
+    reader.load_previous_byte()?;
+    Ok(reader)
+}
+
+impl<'a> HtReverseRefinementReader<'a> {
+    pub fn new(input: &'a [u8], limits: &ResourceLimits) -> Result<Self, DecodeError> {
+        ht_reverse_refinement_from_input(input, limits.maximum_work_units())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_reverse_refinement_view(self).physical_bits_read,))]
     pub const fn physical_bits_read(&self) -> u64 {
         self.physical_bits_read
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_reverse_refinement_view(self).fill_bits_read,))]
     pub const fn fill_bits_read(&self) -> u64 {
         self.fill_bits_read
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_refinement_view(final(self)))
+                == crate::specs::ht_reverse_refinement_read(ht_reverse_refinement_view(old(self))),
+        )
+    )]
     pub fn read_bit(&mut self) -> Result<bool, DecodeError> {
-        self.read_positioned_bit().map(|(bit, _)| bit)
+        match self.read_positioned_bit() {
+            Ok((bit, _)) => Ok(bit),
+            Err(error) => Err(error),
+        }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_refinement_view(final(self)))
+                == crate::specs::ht_reverse_refinement_positioned(ht_reverse_refinement_view(old(self))),
+        )
+    )]
     fn read_positioned_bit(&mut self) -> Result<(bool, Option<HtBitPosition>), DecodeError> {
         if !self.has_byte || self.next_bit > self.last_bit {
             self.load_previous_byte()?;
@@ -979,15 +1315,22 @@ impl<'a> HtReverseRefinementReader<'a> {
             .checked_add(self.fill_bits_read)
             .ok_or_else(arithmetic_overflow)?;
         if work > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                work,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: work,
+            });
         }
         Ok((bit, position))
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_reverse_refinement_view(final(self)))
+                == crate::specs::ht_reverse_refinement_load(ht_reverse_refinement_view(old(self))),
+        )
+    )]
     fn load_previous_byte(&mut self) -> Result<(), DecodeError> {
         if self.current_byte == 0 {
             self.has_byte = false;
@@ -1023,31 +1366,90 @@ struct HtRefinementReaders<'a> {
     stuffed: Vec<u8>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn ht_refinement_readers_view(readers: &HtRefinementReaders<'_>) -> crate::specs::HtRefinementReadersState {
+        crate::specs::HtRefinementReadersState {
+            forward: ht_forward_refinement_view(&readers.forward),
+            reverse: match readers.reverse {
+                None => None, Some(reverse) => Some(ht_reverse_refinement_view(&reverse)),
+            },
+            claimed: readers.claimed@, stuffed: readers.stuffed@,
+        }
+    }
+
+    #[verifier::inline]
+    spec fn ht_refinement_readers_outcome(result: Result<HtRefinementReaders<'_>, DecodeError>)
+        -> Result<crate::specs::HtRefinementReadersState, DecodeError>
+    {
+        match result { Ok(readers) => Ok(ht_refinement_readers_view(&readers)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_refinement_readers_outcome(result) == crate::specs::ht_refinement_readers_initial(
+            forward_input@, reverse_input@, bytes, has_reverse, maximum_work_units,
+        ),
+    )
+)]
+fn ht_refinement_readers_from_inputs<'a>(
+    forward_input: &'a [u8],
+    reverse_input: &'a [u8],
+    bytes: usize,
+    has_reverse: bool,
+    maximum_work_units: u64,
+) -> Result<HtRefinementReaders<'a>, DecodeError> {
+    let forward = ht_forward_refinement_from_input(forward_input, maximum_work_units)?;
+    let reverse = if has_reverse {
+        Some(ht_reverse_refinement_from_input(
+            reverse_input,
+            maximum_work_units,
+        )?)
+    } else {
+        None
+    };
+    let claimed = vec![0; bytes];
+    let stuffed = vec![0; bytes];
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(claimed@ =~= Seq::new(bytes as nat, |i: int| 0u8));
+        assert(stuffed@ =~= Seq::new(bytes as nat, |i: int| 0u8));
+    }
+    Ok(HtRefinementReaders {
+        forward,
+        reverse,
+        claimed,
+        stuffed,
+    })
+}
+
 impl<'a> HtRefinementReaders<'a> {
     fn new(
         segment: HtRefinementSegment<'a>,
         has_magnitude_refinement: bool,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        Ok(Self {
-            forward: HtForwardRefinementReader::new(
-                segment.significance_propagation().bytes(),
-                limits,
-            )?,
-            reverse: if has_magnitude_refinement {
-                Some(HtReverseRefinementReader::new(
-                    segment.magnitude_refinement().bytes(),
-                    limits,
-                )?)
-            } else {
-                None
-            },
-            claimed: vec![0; segment.encoded().len()],
-            stuffed: vec![0; segment.encoded().len()],
-        })
+        ht_refinement_readers_from_inputs(
+            segment.significance_propagation().bytes(),
+            segment.magnitude_refinement().bytes(),
+            segment.encoded().len(),
+            has_magnitude_refinement,
+            limits.maximum_work_units(),
+        )
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_refinement_readers_view(final(self)))
+                == crate::specs::ht_refinement_claim(ht_refinement_readers_view(old(self)), position),
+        )
+    )]
     fn claim(&mut self, position: Option<HtBitPosition>) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_refinement_readers_view(self); }
         let Some(position) = position else {
             return Ok(());
         };
@@ -1056,20 +1458,49 @@ impl<'a> HtRefinementReaders<'a> {
         }
         let byte = usize::from(position.byte);
         let mask = 1_u8 << position.bit;
-        let claimed = self.claimed.get_mut(byte).ok_or_else(invalid_code_block)?;
-        if !crate::refinement::ht_claim_available(*claimed & mask != 0) {
-            return Err(invalid_code_block());
+        let result = {
+            let claimed = self.claimed.get_mut(byte).ok_or_else(invalid_code_block)?;
+            if !crate::refinement::ht_claim_available(*claimed & mask != 0) {
+                Err(invalid_code_block())
+            } else {
+                *claimed |= mask;
+                Ok(())
+            }
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if result.is_err() {
+                assert(self.claimed@ =~= initial.claimed);
+            } else {
+                assert(self.claimed@ =~= initial.claimed.update(byte as int, initial.claimed[byte as int] | mask));
+            }
+            assert(ht_refinement_readers_view(self).forward == initial.forward);
+            assert(ht_refinement_readers_view(self).reverse == initial.reverse);
+            assert(ht_refinement_readers_view(self).stuffed == initial.stuffed);
         }
-        *claimed |= mask;
-        Ok(())
+        result
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_refinement_readers_view(final(self)))
+                == crate::specs::ht_refinement_read_forward(ht_refinement_readers_view(old(self))),
+        )
+    )]
     fn read_forward(&mut self) -> Result<bool, DecodeError> {
         let (bit, position) = self.forward.read_positioned_bit()?;
         self.claim(position)?;
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_refinement_readers_view(final(self)))
+                == crate::specs::ht_refinement_read_reverse(ht_refinement_readers_view(old(self))),
+        )
+    )]
     fn read_reverse(&mut self) -> Result<bool, DecodeError> {
         let reverse = self.reverse.as_mut().ok_or_else(invalid_code_block)?;
         let (bit, position) = reverse.read_positioned_bit()?;
@@ -1084,6 +1515,12 @@ impl<'a> HtRefinementReaders<'a> {
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::ht_refinement_finish(ht_refinement_readers_view(self), encoded@),
+        )
+    )]
     fn finish(&self, encoded: &[u8]) -> Result<(), DecodeError> {
         if self.claimed.len() != encoded.len() || self.stuffed.len() != encoded.len() {
             return Err(invalid_code_block());
@@ -1093,6 +1530,8 @@ impl<'a> HtRefinementReaders<'a> {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= encoded.len(),
+                    self.claimed.len() == encoded.len(), self.stuffed.len() == encoded.len(),
+                    forall |i: int| 0 <= i < index ==> encoded@[i] & !(self.claimed@[i] | self.stuffed@[i]) == 0,
                 decreases encoded.len() - index,
             )
         )]
@@ -1110,14 +1549,17 @@ impl<'a> HtRefinementReaders<'a> {
 }
 
 impl<'a> HtRefinementSegment<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == ht_refinement_segment_view(self).encoded,))]
     pub fn encoded(&self) -> &'a [u8] {
         self.encoded
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_refinement_segment_view(self).significance_propagation,))]
     pub const fn significance_propagation(&self) -> HtSubstreamView<'a> {
         self.significance_propagation
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_substream_view(&result) == ht_refinement_segment_view(self).magnitude_refinement,))]
     pub const fn magnitude_refinement(&self) -> HtSubstreamView<'a> {
         self.magnitude_refinement
     }
@@ -1131,15 +1573,66 @@ pub struct HtBlockSegments<'a> {
     bytes: u32,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn ht_substream_view(stream: &HtSubstreamView<'_>) -> crate::specs::HtSubstreamState {
+        crate::specs::HtSubstreamState {
+            bytes: stream.bytes@, offset: stream.offset, forward: ht_direction_forward(stream.direction),
+        }
+    }
+
+    pub closed spec fn ht_cleanup_segment_view(segment: &HtCleanupSegment<'_>) -> crate::specs::HtCleanupSegmentState {
+        crate::specs::HtCleanupSegmentState {
+            encoded: segment.encoded@, scup: segment.scup,
+            mag_sgn: ht_substream_view(&segment.mag_sgn), mel_vlc: ht_substream_view(&segment.mel_vlc),
+            mel: ht_substream_view(&segment.mel), vlc: ht_substream_view(&segment.vlc),
+        }
+    }
+
+    pub closed spec fn ht_refinement_segment_view(segment: &HtRefinementSegment<'_>) -> crate::specs::HtRefinementSegmentState {
+        crate::specs::HtRefinementSegmentState {
+            encoded: segment.encoded@,
+            significance_propagation: ht_substream_view(&segment.significance_propagation),
+            magnitude_refinement: ht_substream_view(&segment.magnitude_refinement),
+        }
+    }
+
+    pub closed spec fn ht_refinement_option_view(segment: Option<HtRefinementSegment<'_>>)
+        -> Option<crate::specs::HtRefinementSegmentState>
+    {
+        match segment { None => None, Some(segment) => Some(ht_refinement_segment_view(&segment)) }
+    }
+
+    pub closed spec fn ht_block_segments_view(segments: &HtBlockSegments<'_>) -> crate::specs::HtBlockSegmentsState {
+        crate::specs::HtBlockSegmentsState {
+            cleanup: ht_cleanup_segment_view(&segments.cleanup),
+            refinement: ht_refinement_option_view(segments.refinement), bytes: segments.bytes,
+        }
+    }
+
+    pub closed spec fn ht_optional_bytes_view(bytes: Option<&[u8]>) -> Option<Seq<u8>> {
+        match bytes { None => None, Some(bytes) => Some(bytes@) }
+    }
+
+    pub closed spec fn ht_block_segments_outcome(result: Result<HtBlockSegments<'_>, DecodeError>)
+        -> Result<crate::specs::HtBlockSegmentsState, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(segments) => Ok(ht_block_segments_view(&segments)) }
+    }
+}
+
 impl<'a> HtBlockSegments<'a> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_cleanup_segment_view(&result) == ht_block_segments_view(self).cleanup,))]
     pub const fn cleanup(&self) -> HtCleanupSegment<'a> {
         self.cleanup
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures ht_refinement_option_view(result) == ht_block_segments_view(self).refinement,))]
     pub const fn refinement(&self) -> Option<HtRefinementSegment<'a>> {
         self.refinement
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == ht_block_segments_view(self).bytes,))]
     pub const fn bytes(&self) -> u32 {
         self.bytes
     }
@@ -1287,6 +1780,14 @@ pub const fn pass_kind(pass_index: u32) -> Tier1PassKind {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_block_segments_outcome(result) == crate::specs::ht_parse_block_segments(
+            cleanup@, ht_optional_bytes_view(refinement), crate::limits::resource_code_block_byte_limit(limits),
+        ),
+    )
+)]
 pub fn parse_ht_block_segments<'a>(
     cleanup: &'a [u8],
     refinement: Option<&'a [u8]>,
@@ -1307,11 +1808,11 @@ pub fn parse_ht_block_segments<'a>(
         .checked_add(refinement_bytes)
         .ok_or_else(arithmetic_overflow)?;
     if total_bytes > limits.maximum_code_block_bytes() {
-        return Err(DecodeError::limit(
-            Resource::CodeBlockBytes,
-            limits.maximum_code_block_bytes(),
-            total_bytes,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::CodeBlockBytes,
+            limit: limits.maximum_code_block_bytes(),
+            actual: total_bytes,
+        });
     }
 
     let penultimate = *cleanup
@@ -1401,46 +1902,100 @@ struct HtCleanupReaders<'a> {
     maximum_work_units: u64,
 }
 
-impl<'a> HtCleanupReaders<'a> {
-    fn new(segment: HtCleanupSegment<'a>, limits: &ResourceLimits) -> Result<Self, DecodeError> {
-        Ok(Self {
-            mel: HtMelBitReader::new(segment.mel().bytes(), limits)?,
-            vlc: HtReverseVlcReader::new(segment.vlc().bytes(), limits)?,
-            mel_last_byte: None,
-            vlc_last_byte: None,
-            terminal_byte: u16::try_from(
-                segment
-                    .vlc()
-                    .bytes()
-                    .len()
-                    .checked_sub(2)
-                    .ok_or_else(invalid_code_block)?,
-            )
-            .map_err(|_| arithmetic_overflow())?,
-            mel_state: 0,
-            mel_zero_events: 0,
-            mel_terminating_one: false,
-            mel_events: 0,
-            work_units: 0,
-            maximum_work_units: limits.maximum_work_units(),
-        })
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn ht_cleanup_readers_view(readers: &HtCleanupReaders<'_>) -> crate::specs::HtCleanupReaderState {
+        crate::specs::HtCleanupReaderState {
+            mel: ht_mel_view(&readers.mel), vlc: ht_reverse_vlc_view(&readers.vlc),
+            mel_last_byte: readers.mel_last_byte, vlc_last_byte: readers.vlc_last_byte,
+            terminal_byte: readers.terminal_byte, mel_state: readers.mel_state,
+            mel_zero_events: readers.mel_zero_events, mel_terminating_one: readers.mel_terminating_one,
+            mel_events: readers.mel_events, work_units: readers.work_units,
+            maximum_work_units: readers.maximum_work_units,
+        }
     }
 
+    pub closed spec fn ht_direction_forward(direction: HtStreamDirection) -> bool {
+        matches!(direction, HtStreamDirection::Forward)
+    }
+
+    pub closed spec fn ht_vlc_table_view(initial: bool) -> Seq<u16> {
+        if initial { HT_VLC_INITIAL@ } else { HT_VLC_NON_INITIAL@ }
+    }
+
+    #[verifier::inline]
+    spec fn ht_cleanup_readers_outcome(result: Result<HtCleanupReaders<'_>, DecodeError>)
+        -> Result<crate::specs::HtCleanupReaderState, DecodeError>
+    {
+        match result { Ok(readers) => Ok(ht_cleanup_readers_view(&readers)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_cleanup_readers_outcome(result) == crate::specs::ht_cleanup_readers_initial(
+            mel_input@, vlc_input@, maximum_work_units,
+        ),
+    )
+)]
+fn ht_cleanup_readers_from_inputs<'a>(
+    mel_input: &'a [u8],
+    vlc_input: &'a [u8],
+    maximum_work_units: u64,
+) -> Result<HtCleanupReaders<'a>, DecodeError> {
+    Ok(HtCleanupReaders {
+        mel: ht_mel_from_input(mel_input, maximum_work_units)?,
+        vlc: ht_reverse_vlc_from_input(vlc_input, maximum_work_units)?,
+        mel_last_byte: None,
+        vlc_last_byte: None,
+        terminal_byte: u16::try_from(
+            vlc_input
+                .len()
+                .checked_sub(2)
+                .ok_or_else(invalid_code_block)?,
+        )
+        .map_err(|_| arithmetic_overflow())?,
+        mel_state: 0,
+        mel_zero_events: 0,
+        mel_terminating_one: false,
+        mel_events: 0,
+        work_units: 0,
+        maximum_work_units,
+    })
+}
+
+impl<'a> HtCleanupReaders<'a> {
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_reader_tick(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn tick(&mut self) -> Result<(), DecodeError> {
         self.work_units = self
             .work_units
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
         if self.work_units > self.maximum_work_units {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.maximum_work_units,
-                self.work_units,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.maximum_work_units,
+                actual: self.work_units,
+            });
         }
         Ok(())
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::ht_cleanup_reader_can_claim(
+                ht_cleanup_readers_view(self), ht_direction_forward(direction), byte,
+            ),
+        )
+    )]
     fn can_claim_byte(&self, direction: HtStreamDirection, byte: u16) -> bool {
         let value = match self.vlc.input.get(usize::from(byte)) {
             Some(value) => *value,
@@ -1468,6 +2023,13 @@ impl<'a> HtCleanupReaders<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_reader_read_mel(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn read_mel_bit(&mut self) -> Result<bool, DecodeError> {
         if self.mel.next_position().is_none() {
             self.mel.load_byte()?;
@@ -1482,6 +2044,13 @@ impl<'a> HtCleanupReaders<'a> {
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_reader_read_vlc(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn read_vlc_bit(&mut self) -> Result<bool, DecodeError> {
         let position = self.vlc.next_position().ok_or_else(invalid_code_block)?;
         if !self.can_claim_byte(HtStreamDirection::Reverse, position.byte) {
@@ -1493,18 +2062,42 @@ impl<'a> HtCleanupReaders<'a> {
         Ok(bit)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::ht_cleanup_peek_vlc(ht_cleanup_readers_view(self), count),
+        )
+    )]
     fn peek_vlc(&self, count: u8) -> u16 {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_cleanup_readers_view(self); }
         let mut copy = self.vlc;
         let mut value = 0_u16;
         let mut bit = 0_u8;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_cleanup_peek_unfold(initial, ht_reverse_vlc_view(&copy), 0, 0, value);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant bit <= count,
+                    initial == ht_cleanup_readers_view(self),
+                invariant_except_break
+                    crate::specs::ht_cleanup_peek_vlc(initial, count)
+                        == crate::specs::ht_cleanup_peek_run(initial, ht_reverse_vlc_view(&copy), (count - bit) as nat, bit as nat, value),
+                    crate::specs::ht_cleanup_peek_run(initial, ht_reverse_vlc_view(&copy), 0, bit as nat, value) == value,
+                ensures value == crate::specs::ht_cleanup_peek_vlc(initial, count),
                 decreases count - bit,
             )
         )]
         while bit < count {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_cleanup_peek_unfold(
+                    initial, ht_reverse_vlc_view(&copy), (count - bit) as nat, bit as nat, value,
+                );
+            }
             let available = match copy.next_position() {
                 Some(vlc) => self.can_claim_byte(HtStreamDirection::Reverse, vlc.byte),
                 None => false,
@@ -1522,27 +2115,67 @@ impl<'a> HtCleanupReaders<'a> {
                 value |= 1_u16 << bit;
             }
             bit += 1;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_cleanup_peek_unfold(initial, ht_reverse_vlc_view(&copy), 0, bit as nat, value);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if bit == count {
+                crate::proofs::production_impl::production_ht_cleanup_peek_unfold(initial, ht_reverse_vlc_view(&copy), 0, bit as nat, value);
+            }
         }
         value
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_advance_vlc(ht_cleanup_readers_view(old(self)), count as nat),
+        )
+    )]
     fn advance_vlc(&mut self, count: u8) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_cleanup_readers_view(self); }
         let mut consumed = 0_u8;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant consumed <= count,
+                invariant consumed <= count, initial == ht_cleanup_readers_view(old(self)),
+                    crate::specs::ht_cleanup_advance_vlc(initial, count as nat)
+                        == crate::specs::ht_cleanup_advance_vlc(ht_cleanup_readers_view(self), (count - consumed) as nat),
                 decreases count - consumed,
             )
         )]
         while consumed < count {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_cleanup_advance_unfold(
+                    ht_cleanup_readers_view(self), (count - consumed) as nat,
+                );
+            }
             let _ = self.read_vlc_bit()?;
             consumed = consumed.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_cleanup_advance_unfold(ht_cleanup_readers_view(self), 0);
         }
         Ok(())
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_cleanup_mel_event(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn mel_event(&mut self) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_cleanup_readers_view(self); }
         if self.mel_zero_events > 0 {
             self.mel_zero_events = self
                 .mel_zero_events
@@ -1576,20 +2209,41 @@ impl<'a> HtCleanupReaders<'a> {
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant decoded <= exponent,
+                    invariant decoded <= exponent, exponent <= 5,
+                        initial == ht_cleanup_readers_view(old(self)),
+                        crate::specs::ht_cleanup_mel_event(initial)
+                            == crate::specs::ht_cleanup_mel_complete_suffix(
+                                crate::specs::ht_cleanup_mel_suffix(ht_cleanup_readers_view(self), (exponent - decoded) as nat, suffix)),
                     decreases exponent - decoded,
                 )
             )]
             while decoded < exponent {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_ht_cleanup_mel_suffix_unfold(
+                        ht_cleanup_readers_view(self), (exponent - decoded) as nat, suffix,
+                    );
+                }
                 suffix <<= 1;
                 if self.read_mel_bit()? {
                     suffix |= 1;
                 }
                 decoded = decoded.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_cleanup_mel_suffix_unfold(
+                    ht_cleanup_readers_view(self), 0, suffix,
+                );
+            }
             self.mel_zero_events = suffix;
             self.mel_terminating_one = true;
             self.mel_state = crate::refinement::ht_mel_next_state(self.mel_state, false);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::ht_cleanup_mel_event(initial)
+                == crate::specs::ht_cleanup_mel_emit(ht_cleanup_readers_view(self)));
         }
         if self.mel_zero_events > 0 {
             self.mel_zero_events = self
@@ -1611,9 +2265,22 @@ impl<'a> HtCleanupReaders<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self))) == crate::specs::ht_cleanup_quad_word(
+                ht_cleanup_readers_view(old(self)), ht_vlc_table_view(initial), context,
+            ),
+        )
+    )]
     fn decode_quad_word(&mut self, initial: bool, context: u8) -> Result<u16, DecodeError> {
         if context > 7 {
             return Err(invalid_code_block());
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let word = crate::specs::ht_cleanup_peek_vlc(ht_cleanup_readers_view(self), 7);
+            assert(word & 0x7fu16 <= 127) by (bit_vector);
         }
         let lookahead = usize::from(self.peek_vlc(7) & 0x7f);
         let index = crate::refinement::ht_vlc_table_index(context, lookahead as u8);
@@ -1635,7 +2302,16 @@ impl<'a> HtCleanupReaders<'a> {
         Ok(word)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_uvlc_prefix(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn read_prefix(&mut self) -> Result<(u8, u8, u8), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_uvlc_prefix); }
         if self.read_vlc_bit()? {
             return Ok((1, 0, 1));
         }
@@ -1649,17 +2325,34 @@ impl<'a> HtCleanupReaders<'a> {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_uvlc_suffix(ht_cleanup_readers_view(old(self)), length),
+        )
+    )]
     fn read_suffix(&mut self, length: u8) -> Result<u8, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_cleanup_readers_view(self); }
         let mut value = 0_u8;
         let mut bit = 0_u8;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant bit <= length,
+                invariant bit <= length, initial == ht_cleanup_readers_view(old(self)),
+                    crate::specs::ht_uvlc_suffix(initial, length)
+                        == crate::specs::ht_uvlc_suffix_run(ht_cleanup_readers_view(self), (length - bit) as nat, bit as nat, value),
                 decreases length - bit,
             )
         )]
         while bit < length {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_ht_uvlc_suffix_unfold(
+                    ht_cleanup_readers_view(self), (length - bit) as nat, bit as nat, value,
+                );
+            }
             if self.read_vlc_bit()? {
                 if bit >= 8 {
                     return Err(invalid_code_block());
@@ -1668,17 +2361,39 @@ impl<'a> HtCleanupReaders<'a> {
             }
             bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_uvlc_suffix_unfold(ht_cleanup_readers_view(self), 0, bit as nat, value);
+        }
         Ok(value)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_uvlc_prefix_value(ht_cleanup_readers_view(old(self))),
+        )
+    )]
     fn prefix_value(&mut self) -> Result<(u8, u8), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_uvlc_prefix_value); }
         let (base, suffix_length, prefix_length) = self.read_prefix()?;
         let suffix = self.read_suffix(suffix_length)?;
         let value = base.checked_add(suffix).ok_or_else(arithmetic_overflow)?;
         Ok((value, prefix_length))
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_uvlc_initial(ht_cleanup_readers_view(old(self)), mode),
+        )
+    )]
     fn decode_initial_u(&mut self, mode: u8) -> Result<[u8; 2], DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_cleanup_readers_view(self); }
         let mut values = [1_u8, 1_u8];
         match mode {
             0 => {}
@@ -1690,47 +2405,63 @@ impl<'a> HtCleanupReaders<'a> {
             3 => {
                 let (base_0, suffix_0, prefix_0) = self.read_prefix()?;
                 if prefix_0 > 2 {
-                    values[1] = u8::from(self.read_vlc_bit()?)
+                    values[1] = (if self.read_vlc_bit()? { 1_u8 } else { 0_u8 })
                         .checked_add(2)
                         .ok_or_else(arithmetic_overflow)?;
                     values[0] = base_0
                         .checked_add(self.read_suffix(suffix_0)?)
-                        .and_then(|value| value.checked_add(1))
+                        .ok_or_else(arithmetic_overflow)?
+                        .checked_add(1)
                         .ok_or_else(arithmetic_overflow)?;
                 } else {
                     let (base_1, suffix_1, _) = self.read_prefix()?;
                     values[0] = base_0
                         .checked_add(self.read_suffix(suffix_0)?)
-                        .and_then(|value| value.checked_add(1))
+                        .ok_or_else(arithmetic_overflow)?
+                        .checked_add(1)
                         .ok_or_else(arithmetic_overflow)?;
                     values[1] = base_1
                         .checked_add(self.read_suffix(suffix_1)?)
-                        .and_then(|value| value.checked_add(1))
+                        .ok_or_else(arithmetic_overflow)?
+                        .checked_add(1)
                         .ok_or_else(arithmetic_overflow)?;
                 }
             }
             4 => {
                 let (base_0, suffix_0, _) = self.read_prefix()?;
                 let (base_1, suffix_1, _) = self.read_prefix()?;
-                values[0] = u8::try_from(crate::refinement::ht_uvlc_value(
-                    base_0,
-                    self.read_suffix(suffix_0)?,
-                    3,
-                ))
-                .map_err(|_| arithmetic_overflow())?;
-                values[1] = u8::try_from(crate::refinement::ht_uvlc_value(
-                    base_1,
-                    self.read_suffix(suffix_1)?,
-                    3,
-                ))
-                .map_err(|_| arithmetic_overflow())?;
+                values[0] = ht_uvlc_byte(base_0, self.read_suffix(suffix_0)?, 3)?;
+                values[1] = ht_uvlc_byte(base_1, self.read_suffix(suffix_1)?, 3)?;
             }
             _ => return Err(invalid_code_block()),
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let expected = crate::specs::ht_uvlc_initial(initial, mode);
+            assert(expected.0.is_ok());
+            assert(expected.1 == ht_cleanup_readers_view(self));
+            match expected.0 {
+                Ok(expected_values) => {
+                    assert(values@ =~= expected_values@);
+                    vstd::array::axiom_array_ext_equal(values, expected_values);
+                    assert(values =~= expected_values);
+                },
+                Err(_) => { assert(false); },
+            }
         }
         Ok(values)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures (result, ht_cleanup_readers_view(final(self)))
+                == crate::specs::ht_uvlc_non_initial(ht_cleanup_readers_view(old(self)), mode),
+        )
+    )]
     fn decode_non_initial_u(&mut self, mode: u8) -> Result<[u8; 2], DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = ht_cleanup_readers_view(self); }
         let mut values = [1_u8, 1_u8];
         match mode {
             0 => {}
@@ -1742,24 +2473,34 @@ impl<'a> HtCleanupReaders<'a> {
             3 => {
                 let (base_0, suffix_0, _) = self.read_prefix()?;
                 let (base_1, suffix_1, _) = self.read_prefix()?;
-                values[0] = u8::try_from(crate::refinement::ht_uvlc_value(
-                    base_0,
-                    self.read_suffix(suffix_0)?,
-                    1,
-                ))
-                .map_err(|_| arithmetic_overflow())?;
-                values[1] = u8::try_from(crate::refinement::ht_uvlc_value(
-                    base_1,
-                    self.read_suffix(suffix_1)?,
-                    1,
-                ))
-                .map_err(|_| arithmetic_overflow())?;
+                values[0] = ht_uvlc_byte(base_0, self.read_suffix(suffix_0)?, 1)?;
+                values[1] = ht_uvlc_byte(base_1, self.read_suffix(suffix_1)?, 1)?;
             }
             _ => return Err(invalid_code_block()),
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let expected = crate::specs::ht_uvlc_non_initial(initial, mode);
+            assert(expected.0.is_ok());
+            assert(expected.1 == ht_cleanup_readers_view(self));
+            match expected.0 {
+                Ok(expected_values) => {
+                    assert(values@ =~= expected_values@);
+                    vstd::array::axiom_array_ext_equal(values, expected_values);
+                    assert(values =~= expected_values);
+                },
+                Err(_) => { assert(false); },
+            }
         }
         Ok(values)
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::ht_cleanup_readers_finish(ht_cleanup_readers_view(self)),
+        )
+    )]
     fn finish(&self) -> Result<(), DecodeError> {
         match (self.mel_last_byte, self.vlc_last_byte) {
             (Some(mel), Some(vlc)) => {
@@ -1784,6 +2525,558 @@ impl<'a> HtCleanupReaders<'a> {
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_uvlc_byte(base, suffix, bias),)
+)]
+fn ht_uvlc_byte(base: u8, suffix: u8, bias: u8) -> Result<u8, DecodeError> {
+    match u8::try_from(crate::refinement::ht_uvlc_value(base, suffix, bias)) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn ht_metadata_words_outcome(result: Result<([u16; 2], [u8; 2]), DecodeError>)
+        -> Result<(Seq<u16>, Seq<u8>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((words, contexts)) => Ok((words@, contexts@)) }
+    }
+
+    #[verifier::inline]
+    spec fn ht_metadata_quad_input(
+        index: usize, row: usize, width: u16, height: u16, maximum_u: u8,
+        word: u16, context: u8, significance: u8, u_value: u8, initial: bool,
+    ) -> crate::specs::HtMetadataQuadInput {
+        crate::specs::HtMetadataQuadInput {
+            index, row, width, height, maximum_u, word, context, significance, u_value, initial,
+        }
+    }
+
+    #[verifier::inline]
+    spec fn ht_metadata_pair_view(
+        readers: &HtCleanupReaders<'_>, quads: &Vec<HtQuadMetadata>,                 current: Seq<u8>, significant: u16, left: u8,
+    ) -> crate::specs::HtMetadataPairState {
+        crate::specs::HtMetadataPairState {
+            readers: ht_cleanup_readers_view(readers), quads: quads@, current, significant, left,
+        }
+    }
+
+    #[verifier::inline]
+    spec fn ht_metadata_row_view(
+        readers: &HtCleanupReaders<'_>, quads: &Vec<HtQuadMetadata>, previous: &Vec<u8>, significant: u16,
+    ) -> crate::specs::HtMetadataRowState {
+        crate::specs::HtMetadataRowState {
+            readers: ht_cleanup_readers_view(readers), quads: quads@, previous: previous@, significant,
+        }
+    }
+
+    pub closed spec fn ht_cleanup_metadata_view(metadata: &HtCleanupMetadata) -> crate::specs::HtMetadataOutput {
+        crate::specs::HtMetadataOutput {
+            width: metadata.width, height: metadata.height, quads: metadata.quads@,
+            significant_samples: metadata.significant_samples, mel_bits: metadata.mel_bits,
+            vlc_bits: metadata.vlc_bits, mel_events: metadata.mel_events,
+        }
+    }
+
+    pub closed spec fn ht_cleanup_metadata_outcome(result: Result<HtCleanupMetadata, DecodeError>)
+        -> Result<crate::specs::HtMetadataOutput, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(metadata) => Ok(ht_cleanup_metadata_view(&metadata)) }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires 0 < quads_per_row <= 32768, pair < quads_per_row,
+            previous_patterns.len() == quads_per_row, old(current_patterns).len() == quads_per_row,
+        ensures (ht_metadata_words_outcome(result), ht_cleanup_readers_view(final(readers)),
+            final(current_patterns)@, *final(left_context))
+            == crate::specs::ht_metadata_words(ht_cleanup_readers_view(old(readers)),
+                old(current_patterns)@, *old(left_context), previous_patterns@, pair as nat, initial),
+            final(current_patterns).len() == old(current_patterns).len(),
+    )
+)]
+fn decode_ht_metadata_words(
+    readers: &mut HtCleanupReaders<'_>,
+    current_patterns: &mut [u8],
+    left_context: &mut u8,
+    previous_patterns: &[u8],
+    quads_per_row: usize,
+    pair: usize,
+    initial: bool,
+) -> Result<([u16; 2], [u8; 2]), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start_readers = ht_cleanup_readers_view(readers);
+        let ghost start_current = current_patterns@;
+        let ghost start_left = *left_context;
+    }
+    let mut words = [0_u16; 2];
+    let mut contexts = [0_u8; 2];
+    let mut member = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(words@ =~= Seq::new(2, |i: int| 0u16));
+        assert(contexts@ =~= Seq::new(2, |i: int| 0u8));
+    }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant member <= 2, 0 < quads_per_row <= 32768, pair < quads_per_row,
+                previous_patterns.len() == quads_per_row, current_patterns.len() == quads_per_row,
+                old(current_patterns).len() == quads_per_row, start_current.len() == quads_per_row,
+                start_readers == ht_cleanup_readers_view(old(readers)),
+                start_current == old(current_patterns)@, start_left == *old(left_context),
+                crate::specs::ht_metadata_words(start_readers, start_current, start_left, previous_patterns@, pair as nat, initial)
+                    == crate::specs::ht_metadata_words_finish(crate::specs::ht_metadata_words_run(
+                        crate::specs::HtMetadataWordsState {
+                            readers: ht_cleanup_readers_view(readers), current: current_patterns@,
+                            left: *left_context, words: words@, contexts: contexts@,
+                        }, previous_patterns@, pair as nat, initial, member as nat)),
+            ensures member == 2 || pair + member >= quads_per_row,
+            decreases 2 - member,
+        )
+    )]
+    while member < 2 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_words_unfold(
+                crate::specs::HtMetadataWordsState {
+                    readers: ht_cleanup_readers_view(readers), current: current_patterns@,
+                    left: *left_context, words: words@, contexts: contexts@,
+                }, previous_patterns@, pair as nat, initial, member as nat,
+            );
+        }
+        let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
+        if quad_index >= quads_per_row {
+            break;
+        }
+        let context = if initial {
+            *left_context
+        } else {
+            let north_pattern = *previous_patterns
+                .get(quad_index)
+                .ok_or_else(invalid_code_block)?;
+            let north_west_pattern = match quad_index.checked_sub(1) {
+                Some(index) => *previous_patterns
+                    .get(index)
+                    .ok_or_else(invalid_code_block)?,
+                None => 0,
+            };
+            let north_east_index = quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            let north_east_pattern = match previous_patterns.get(north_east_index) {
+                Some(pattern) => *pattern,
+                None => 0,
+            };
+            crate::refinement::ht_noninitial_vlc_context(
+                *left_context,
+                north_west_pattern,
+                north_pattern,
+                north_east_pattern,
+            )
+        };
+        let word = readers.decode_quad_word(initial, context)?;
+        let significance = ((word >> 4) & 0x0f) as u8;
+        *words.get_mut(member).ok_or_else(invalid_code_block)? = word;
+        *contexts.get_mut(member).ok_or_else(invalid_code_block)? = context;
+        *current_patterns
+            .get_mut(quad_index)
+            .ok_or_else(invalid_code_block)? = significance;
+        *left_context = if initial {
+            (significance & 0x01) | ((significance & 0x0e) >> 1)
+        } else if significance & 0x0c != 0 {
+            2
+        } else {
+            0
+        };
+        member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_metadata_words_unfold(
+            crate::specs::HtMetadataWordsState {
+                readers: ht_cleanup_readers_view(readers), current: current_patterns@,
+                left: *left_context, words: words@, contexts: contexts@,
+            }, previous_patterns@, pair as nat, initial, member as nat,
+        );
+    }
+    Ok((words, contexts))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires quad_index < 32768, quad_row < 32768,
+        ensures (result, ht_cleanup_readers_view(final(readers)), final(quads)@, *final(significant_samples))
+            == crate::specs::ht_metadata_emit(ht_cleanup_readers_view(old(readers)), old(quads)@,
+                *old(significant_samples), ht_metadata_quad_input(quad_index, quad_row, width, height,
+                    maximum_u, word, context, significance, u_value, initial)),
+            result.is_ok() ==> final(quads).len() == old(quads).len() + 1,
+    )
+)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit codec inputs and disjoint mutable outputs keep state frames auditable."
+)]
+fn append_ht_metadata_quad(
+    readers: &mut HtCleanupReaders<'_>,
+    quads: &mut Vec<HtQuadMetadata>,
+    significant_samples: &mut u16,
+    quad_index: usize,
+    quad_row: usize,
+    width: u16,
+    height: u16,
+    maximum_u: u8,
+    word: u16,
+    context: u8,
+    significance: u8,
+    u_value: u8,
+    initial: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start_readers = ht_cleanup_readers_view(readers);
+        let ghost start_quads = quads@;
+        let ghost start_significant = *significant_samples;
+        let ghost input = ht_metadata_quad_input(quad_index, quad_row, width, height, maximum_u, word, context, significance, u_value, initial);
+    }
+    if u_value > maximum_u {
+        return Err(invalid_code_block());
+    }
+    let x = u16::try_from(quad_index.checked_mul(2).ok_or_else(arithmetic_overflow)?)
+        .map_err(|_| arithmetic_overflow())?;
+    let y = u16::try_from(quad_row.checked_mul(2).ok_or_else(arithmetic_overflow)?)
+        .map_err(|_| arithmetic_overflow())?;
+    if !crate::refinement::ht_quad_origin_valid(x, y, width, height) {
+        return Err(invalid_code_block());
+    }
+    let mut sample = 0_u8;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant sample <= 4, x == quad_index * 2, y == quad_row * 2,
+                quad_index < 32768, quad_row < 32768, x <= 65534, y <= 65534,
+                start_readers == ht_cleanup_readers_view(old(readers)),
+                start_readers == ht_cleanup_readers_view(readers),
+                start_quads == old(quads)@, start_quads == quads@,
+                start_significant == *old(significant_samples),
+                input == ht_metadata_quad_input(quad_index, quad_row, width, height, maximum_u, word, context, significance, u_value, initial),
+                crate::specs::ht_quad_origin_valid(x as nat, y as nat, width as nat, height as nat),
+                u_value <= maximum_u,
+                crate::specs::ht_metadata_emit(start_readers, start_quads, start_significant, input)
+                    == crate::specs::ht_metadata_emit_after_samples(
+                        crate::specs::ht_metadata_samples(*significant_samples, significance, x, y, width, height, sample),
+                        start_readers, start_quads, input),
+            decreases 4 - sample,
+        )
+    )]
+    while sample < 4 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_samples_unfold(*significant_samples, significance, x, y, width, height, sample);
+            assert(sample >> 1u8 <= 1) by(bit_vector) requires sample < 4;
+            assert(sample & 1u8 <= 1) by(bit_vector);
+            assert(sample >> 1u8 == sample / 2u8) by(bit_vector);
+            assert(sample & 1u8 == sample % 2u8) by(bit_vector);
+        }
+        if significance & (1_u8 << sample) != 0 {
+            let sample_x = x
+                .checked_add(u16::from(sample >> 1))
+                .ok_or_else(arithmetic_overflow)?;
+            let sample_y = y
+                .checked_add(u16::from(sample & 1))
+                .ok_or_else(arithmetic_overflow)?;
+            if !crate::refinement::ht_quad_sample_in_bounds(x, y, sample, width, height)
+                || sample_x >= width
+                || sample_y >= height
+            {
+                return Err(invalid_code_block());
+            }
+            *significant_samples = significant_samples
+                .checked_add(1)
+                .ok_or_else(arithmetic_overflow)?;
+        }
+        sample = sample.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_metadata_samples_unfold(*significant_samples, significance, x, y, width, height, sample);
+    }
+    quads.push(HtQuadMetadata {
+        x,
+        y,
+        context,
+        initial_row: initial,
+        significance,
+        embedded_magnitude: ((word >> 8) & 0x0f) as u8,
+        embedded_bit_mask: ((word >> 12) & 0x0f) as u8,
+        u_offset: word & 0x08 != 0,
+        u_base: u_value,
+        codeword_bits: (word & 0x07) as u8,
+    });
+    readers.tick()?;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires 0 < quads_per_row <= 32768, pair < quads_per_row, quad_row < 32768,
+            previous_patterns.len() == quads_per_row, old(current_patterns).len() == quads_per_row,
+        ensures (result, ht_metadata_pair_view(final(readers), final(quads), final(current_patterns)@,
+                *final(significant_samples), *final(left_context)))
+            == crate::specs::ht_metadata_pair(
+                ht_metadata_pair_view(old(readers), old(quads), old(current_patterns)@,
+                    *old(significant_samples), *old(left_context)),
+                previous_patterns@, pair as nat, quad_row as nat, width, height, maximum_u, initial),
+            final(current_patterns).len() == old(current_patterns).len(),
+            result.is_ok() ==> final(quads).len() == old(quads).len() + if pair + 1 < quads_per_row { 2int } else { 1int },
+            result == Ok(()) || result.is_err(),
+    )
+)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit codec inputs and disjoint mutable outputs keep state frames auditable."
+)]
+fn decode_ht_metadata_pair(
+    readers: &mut HtCleanupReaders<'_>,
+    quads: &mut Vec<HtQuadMetadata>,
+    current_patterns: &mut [u8],
+    significant_samples: &mut u16,
+    left_context: &mut u8,
+    previous_patterns: &[u8],
+    quads_per_row: usize,
+    pair: usize,
+    quad_row: usize,
+    width: u16,
+    height: u16,
+    maximum_u: u8,
+    initial: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context);
+    }
+    let (words, contexts) = decode_ht_metadata_words(
+        readers,
+        current_patterns,
+        left_context,
+        previous_patterns,
+        quads_per_row,
+        pair,
+        initial,
+    )?;
+    let mut mode = if words[0] & 0x08 != 0 { 1_u8 } else { 0_u8 };
+    mode |= if words[1] & 0x08 != 0 { 2_u8 } else { 0_u8 };
+    if initial && mode == 3 && readers.mel_event()? {
+        mode = 4;
+    }
+    let u_values = if initial {
+        readers.decode_initial_u(mode)?
+    } else {
+        readers.decode_non_initial_u(mode)?
+    };
+    let mut member = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant member <= 2, pair + member <= quads_per_row,
+                0 < quads_per_row <= 32768, pair < quads_per_row, quad_row < 32768,
+                previous_patterns.len() == quads_per_row, current_patterns.len() == quads_per_row,
+                old(current_patterns).len() == quads_per_row,
+                start == ht_metadata_pair_view(old(readers), old(quads), old(current_patterns)@, *old(significant_samples), *old(left_context)),
+                quads.len() == start.quads.len() + member,
+                crate::specs::ht_metadata_pair(start, previous_patterns@, pair as nat, quad_row as nat, width, height, maximum_u, initial)
+                    == crate::specs::ht_metadata_emits_run(
+                        ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context),
+                        words@, contexts@, u_values, pair as nat, quad_row as nat, width, height, maximum_u, initial, member as nat),
+            ensures member == 2 || pair + member == quads_per_row,
+            decreases 2 - member,
+        )
+    )]
+    while member < 2 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_emits_unfold(
+                ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context),
+                words@, contexts@, u_values, pair as nat, quad_row as nat, width, height, maximum_u, initial, member as nat,
+            );
+        }
+        let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
+        if quad_index >= quads_per_row {
+            break;
+        }
+        let word = *words.get(member).ok_or_else(invalid_code_block)?;
+        let significance = *current_patterns
+            .get(quad_index)
+            .ok_or_else(invalid_code_block)?;
+        let u_value = *u_values.get(member).ok_or_else(invalid_code_block)?;
+        append_ht_metadata_quad(
+            readers,
+            quads,
+            significant_samples,
+            quad_index,
+            quad_row,
+            width,
+            height,
+            maximum_u,
+            word,
+            *contexts.get(member).ok_or_else(invalid_code_block)?,
+            significance,
+            u_value,
+            initial,
+        )?;
+        member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_metadata_emits_unfold(
+            ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, *left_context),
+            words@, contexts@, u_values, pair as nat, quad_row as nat, width, height, maximum_u, initial, member as nat,
+        );
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires 0 < quads_per_row <= 32768, quad_row < 32768,
+            old(previous_patterns).len() == quads_per_row,
+        ensures (result, ht_metadata_row_view(final(readers), final(quads), final(previous_patterns), *final(significant_samples)))
+            == crate::specs::ht_metadata_row(
+                ht_metadata_row_view(old(readers), old(quads), old(previous_patterns), *old(significant_samples)),
+                quad_row as nat, width, height, maximum_u),
+            final(previous_patterns).len() == old(previous_patterns).len(),
+            result.is_ok() ==> final(quads).len() == old(quads).len() + quads_per_row,
+            result == Ok(()) || result.is_err(),
+    )
+)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit geometry and disjoint mutable outputs keep state frames auditable."
+)]
+fn decode_ht_metadata_row(
+    readers: &mut HtCleanupReaders<'_>,
+    quads: &mut Vec<HtQuadMetadata>,
+    previous_patterns: &mut Vec<u8>,
+    significant_samples: &mut u16,
+    quads_per_row: usize,
+    quad_row: usize,
+    width: u16,
+    height: u16,
+    maximum_u: u8,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = ht_metadata_row_view(readers, quads, previous_patterns, *significant_samples);
+        let ghost start_pair = crate::specs::ht_metadata_row_initial(start);
+    }
+    let initial = quad_row == 0;
+    let mut current_patterns = vec![0_u8; quads_per_row];
+    let mut left_context = 0_u8;
+    let mut pair = 0_usize;
+    let mut pair_passes = quads_per_row
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?
+        / 2;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(current_patterns@ =~= Seq::new(quads_per_row as nat, |i: int| 0u8));
+        reveal_with_fuel(crate::specs::ht_metadata_pairs, 1);
+    }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant 0 < quads_per_row <= 32768, quad_row < 32768,
+                pair <= quads_per_row + 1, pair % 2 == 0,
+                pair + pair_passes * 2 >= quads_per_row,
+                pair + pair_passes * 2 <= quads_per_row + 1,
+                pair / 2 <= (quads_per_row + 1) / 2,
+                current_patterns.len() == quads_per_row,
+                previous_patterns.len() == quads_per_row,
+                old(previous_patterns).len() == quads_per_row,
+                start == ht_metadata_row_view(old(readers), old(quads), old(previous_patterns), *old(significant_samples)),
+                start.previous == previous_patterns@, start.previous.len() == quads_per_row,
+                start_pair == crate::specs::ht_metadata_row_initial(start),
+                initial == (quad_row == 0),
+                quads.len() == start.quads.len() + if pair <= quads_per_row { pair as int } else { quads_per_row as int },
+                crate::specs::ht_metadata_pairs(start_pair, start.previous, quad_row as nat,
+                    width, height, maximum_u, (pair / 2) as nat)
+                    == (Ok(()), ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context)),
+            decreases pair_passes,
+        )
+    )]
+    while pair < quads_per_row {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost before = ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert((pair / 2) * 2 == pair);
+            crate::proofs::production_impl::production_ht_metadata_pairs_step(start_pair, start.previous, quad_row as nat,
+                width, height, maximum_u, (pair / 2) as nat);
+        }
+        let result = decode_ht_metadata_pair(
+            readers,
+            quads,
+            &mut current_patterns,
+            significant_samples,
+            &mut left_context,
+            previous_patterns,
+            quads_per_row,
+            pair,
+            quad_row,
+            width,
+            height,
+            maximum_u,
+            initial,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::ht_metadata_pair(before, start.previous, pair as nat, quad_row as nat,
+                width, height, maximum_u, initial)
+                == (result, ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context)));
+        }
+        match result {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_ht_metadata_pairs_error(start_pair, start.previous,
+                        quad_row as nat, width, height, maximum_u, (pair / 2 + 1) as nat, ((quads_per_row + 1) / 2) as nat);
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(result == Ok(()));
+            assert(crate::specs::ht_metadata_pairs(start_pair, start.previous, quad_row as nat,
+                width, height, maximum_u, (pair / 2 + 1) as nat)
+                == (Ok(()), ht_metadata_pair_view(readers, quads, current_patterns@, *significant_samples, left_context)));
+        }
+        pair = pair.checked_add(2).ok_or_else(arithmetic_overflow)?;
+        pair_passes = pair_passes.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+    }
+    *previous_patterns = current_patterns;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_cleanup_metadata_outcome(result) == crate::specs::ht_decode_cleanup_metadata(
+            cleanup@, width, height, maximum_u, crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_work_limit(limits),
+        ),
+    )
+)]
 pub fn decode_ht_cleanup_metadata(
     cleanup: &[u8],
     width: u16,
@@ -1795,6 +3088,14 @@ pub fn decode_ht_cleanup_metadata(
     decode_ht_cleanup_segment_metadata(segments.cleanup(), width, height, maximum_u, limits)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures ht_cleanup_metadata_outcome(result) == crate::specs::ht_cleanup_segment_metadata(
+            ht_cleanup_segment_view(&cleanup), width, height, maximum_u, crate::limits::resource_work_limit(limits),
+        ),
+    )
+)]
 fn decode_ht_cleanup_segment_metadata(
     cleanup: HtCleanupSegment<'_>,
     width: u16,
@@ -1813,184 +3114,99 @@ fn decode_ht_cleanup_segment_metadata(
     }
     let quads_per_row = usize::from(width)
         .checked_add(1)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
+        .ok_or_else(arithmetic_overflow)?
+        / 2;
     let quad_rows = usize::from(height)
         .checked_add(1)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
+        .ok_or_else(arithmetic_overflow)?
+        / 2;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::spec_properties::ht_quad_count_is_bounded_by_samples(width as nat, height as nat);
+        assert(quads_per_row as nat * quad_rows as nat <= 4096);
+    }
     let quad_count = quads_per_row
         .checked_mul(quad_rows)
         .ok_or_else(arithmetic_overflow)?;
-    let mut readers = HtCleanupReaders::new(cleanup, limits)?;
+    let mut readers = ht_cleanup_readers_from_inputs(
+        cleanup.mel().bytes(),
+        cleanup.vlc().bytes(),
+        limits.maximum_work_units(),
+    )?;
     let mut quads = Vec::with_capacity(quad_count);
     let mut previous_patterns = vec![0_u8; quads_per_row];
     let mut significant_samples = 0_u16;
     let mut quad_row = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples);
+        let ghost segment = ht_cleanup_segment_view(&cleanup);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(previous_patterns@ =~= Seq::new(quads_per_row as nat, |i: int| 0u8));
+        assert(quads@ =~= Seq::<HtQuadMetadata>::empty());
+        reveal_with_fuel(crate::specs::ht_metadata_rows, 1);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant quad_row <= quad_rows,
+            invariant quad_row <= quad_rows, 0 < quads_per_row <= 32768, 0 < quad_rows <= 32768,
+                width > 0, height > 0, 0 < maximum_u <= 75,
+                width as nat * height as nat <= 4096,
+                previous_patterns.len() == quads_per_row,
+                quads_per_row as nat == (width as nat + 1) / 2,
+                quad_rows as nat == (height as nat + 1) / 2,
+                segment == ht_cleanup_segment_view(&cleanup),
+                crate::specs::ht_cleanup_readers_initial(segment.mel.bytes,
+                    segment.vlc.bytes, crate::limits::resource_work_limit(limits)) == Ok(start.readers),
+                start.quads == Seq::<HtQuadMetadata>::empty(), start.significant == 0,
+                start.previous == Seq::new(quads_per_row as nat, |i: int| 0u8),
+                crate::specs::ht_metadata_rows(start, width, height, maximum_u, quad_row as nat)
+                    == (Ok(()), ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples)),
             decreases quad_rows - quad_row,
         )
     )]
     while quad_row < quad_rows {
-        let initial = quad_row == 0;
-        let mut current_patterns = vec![0_u8; quads_per_row];
-        let mut left_context = 0_u8;
-        let mut pair = 0_usize;
-        let mut pair_passes = quads_per_row
-            .checked_add(1)
-            .and_then(|value| value.checked_div(2))
-            .ok_or_else(arithmetic_overflow)?;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases pair_passes,)
-        )]
-        while pair < quads_per_row {
-            let mut words = [0_u16; 2];
-            let mut contexts = [0_u8; 2];
-            let mut member = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant member <= 2,
-                    decreases 2 - member,
-                )
-            )]
-            while member < 2 {
-                let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
-                if quad_index >= quads_per_row {
-                    break;
-                }
-                let context = if initial {
-                    left_context
-                } else {
-                    let north_pattern = *previous_patterns
-                        .get(quad_index)
-                        .ok_or_else(invalid_code_block)?;
-                    let north_west_pattern = match quad_index.checked_sub(1) {
-                        Some(index) => *previous_patterns
-                            .get(index)
-                            .ok_or_else(invalid_code_block)?,
-                        None => 0,
-                    };
-                    let north_east_index =
-                        quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    let north_east_pattern = match previous_patterns.get(north_east_index) {
-                        Some(pattern) => *pattern,
-                        None => 0,
-                    };
-                    crate::refinement::ht_noninitial_vlc_context(
-                        left_context,
-                        north_west_pattern,
-                        north_pattern,
-                        north_east_pattern,
-                    )
-                };
-                let word = readers.decode_quad_word(initial, context)?;
-                let significance = ((word >> 4) & 0x0f) as u8;
-                *words.get_mut(member).ok_or_else(invalid_code_block)? = word;
-                *contexts.get_mut(member).ok_or_else(invalid_code_block)? = context;
-                *current_patterns
-                    .get_mut(quad_index)
-                    .ok_or_else(invalid_code_block)? = significance;
-                left_context = if initial {
-                    (significance & 0x01) | ((significance & 0x0e) >> 1)
-                } else if significance & 0x0c != 0 {
-                    2
-                } else {
-                    0
-                };
-                member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-
-            let mut mode = u8::from(words[0] & 0x08 != 0);
-            mode |= u8::from(words[1] & 0x08 != 0) << 1;
-            if initial && mode == 3 && readers.mel_event()? {
-                mode = 4;
-            }
-            let u_values = if initial {
-                readers.decode_initial_u(mode)?
-            } else {
-                readers.decode_non_initial_u(mode)?
-            };
-
-            member = 0;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant member <= 2,
-                    decreases 2 - member,
-                )
-            )]
-            while member < 2 {
-                let quad_index = pair.checked_add(member).ok_or_else(arithmetic_overflow)?;
-                if quad_index >= quads_per_row {
-                    break;
-                }
-                let word = *words.get(member).ok_or_else(invalid_code_block)?;
-                let significance = *current_patterns
-                    .get(quad_index)
-                    .ok_or_else(invalid_code_block)?;
-                let u_value = *u_values.get(member).ok_or_else(invalid_code_block)?;
-                if u_value > maximum_u {
-                    return Err(invalid_code_block());
-                }
-                let x = u16::try_from(quad_index.checked_mul(2).ok_or_else(arithmetic_overflow)?)
-                    .map_err(|_| arithmetic_overflow())?;
-                let y = u16::try_from(quad_row.checked_mul(2).ok_or_else(arithmetic_overflow)?)
-                    .map_err(|_| arithmetic_overflow())?;
-                if !crate::refinement::ht_quad_origin_valid(x, y, width, height) {
-                    return Err(invalid_code_block());
-                }
-                let mut sample = 0_u8;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant sample <= 4,
-                        decreases 4 - sample,
-                    )
-                )]
-                while sample < 4 {
-                    if significance & (1_u8 << sample) != 0 {
-                        let sample_x = x
-                            .checked_add(u16::from(sample >> 1))
-                            .ok_or_else(arithmetic_overflow)?;
-                        let sample_y = y
-                            .checked_add(u16::from(sample & 1))
-                            .ok_or_else(arithmetic_overflow)?;
-                        if !crate::refinement::ht_quad_sample_in_bounds(x, y, sample, width, height)
-                            || sample_x >= width
-                            || sample_y >= height
-                        {
-                            return Err(invalid_code_block());
-                        }
-                        significant_samples = significant_samples
-                            .checked_add(1)
-                            .ok_or_else(arithmetic_overflow)?;
-                    }
-                    sample = sample.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                quads.push(HtQuadMetadata {
-                    x,
-                    y,
-                    context: *contexts.get(member).ok_or_else(invalid_code_block)?,
-                    initial_row: initial,
-                    significance,
-                    embedded_magnitude: ((word >> 8) & 0x0f) as u8,
-                    embedded_bit_mask: ((word >> 12) & 0x0f) as u8,
-                    u_offset: word & 0x08 != 0,
-                    u_base: u_value,
-                    codeword_bits: (word & 0x07) as u8,
-                });
-                readers.tick()?;
-                member = member.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            pair = pair.checked_add(2).ok_or_else(arithmetic_overflow)?;
-            pair_passes = pair_passes.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples); }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_metadata_rows_step(start, width, height, maximum_u, quad_row as nat);
         }
-        previous_patterns = current_patterns;
+        let result = decode_ht_metadata_row(
+            &mut readers,
+            &mut quads,
+            &mut previous_patterns,
+            &mut significant_samples,
+            quads_per_row,
+            quad_row,
+            width,
+            height,
+            maximum_u,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::ht_metadata_row(before, quad_row as nat, width, height, maximum_u)
+                == (result, ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples)));
+        }
+        match result {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_ht_metadata_rows_error(start, width, height, maximum_u,
+                        (quad_row + 1) as nat, quad_rows as nat);
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(result == Ok(()));
+            assert(crate::specs::ht_metadata_rows(start, width, height, maximum_u, (quad_row + 1) as nat)
+                == (Ok(()), ht_metadata_row_view(&readers, &quads, &previous_patterns, significant_samples)));
+        }
         quad_row = quad_row.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     readers.finish()?;
@@ -1999,12 +3215,22 @@ fn decode_ht_cleanup_segment_metadata(
         height,
         quads,
         significant_samples,
-        mel_bits: u32::try_from(readers.mel.bits_read()).map_err(|_| arithmetic_overflow())?,
-        vlc_bits: u32::try_from(readers.vlc.bits_read()).map_err(|_| arithmetic_overflow())?,
+        mel_bits: match u32::try_from(readers.mel.bits_read()) {
+            Ok(value) => value,
+            Err(_) => return Err(arithmetic_overflow()),
+        },
+        vlc_bits: match u32::try_from(readers.vlc.bits_read()) {
+            Ok(value) => value,
+            Err(_) => return Err(arithmetic_overflow()),
+        },
         mel_events: readers.mel_events,
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_complete_kappa(
+        u_base, significance, north_west_exponent, north_east_exponent, maximum_u),
+))]
 pub fn complete_ht_kappa(
     u_base: u8,
     significance: u8,
@@ -2027,6 +3253,94 @@ pub fn complete_ht_kappa(
     Ok(completed)
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    #[verifier::inline]
+    spec fn ht_numeric_magnitude_outcome(result: Result<(Magnitude, bool, u8), DecodeError>)
+        -> Result<(nat, bool, u8), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok((magnitude, negative, exponent)) => Ok((crate::magnitude::magnitude_value(magnitude), negative, exponent)),
+        }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires magnitude_bits <= 75, 1 <= decoded_bitplanes <= 292,
+        ensures ht_numeric_magnitude_outcome(result) == crate::specs::ht_numeric_center(
+            crate::magnitude::magnitude_value(bin), negative, initial_exponent,
+            magnitude_bits, embedded_value, decoded_bitplanes),
+            match result {
+                Ok((value, _, _)) => crate::magnitude::magnitude_limbs(value)
+                    == crate::specs::tier1_value_limbs(crate::magnitude::magnitude_value(value))
+                    && crate::magnitude::magnitude_value(value) > 0
+                    && crate::magnitude::magnitude_value(value) < crate::specs::part1_magnitude_capacity(),
+                Err(_) => true,
+            },
+    )
+)]
+fn center_ht_numeric_magnitude(
+    bin: Magnitude,
+    negative: bool,
+    initial_exponent: u8,
+    magnitude_bits: u8,
+    embedded_value: bool,
+    decoded_bitplanes: u16,
+) -> Result<(Magnitude, bool, u8), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { vstd::arithmetic::power2::lemma2_to64(); }
+    let mut bin_center = bin;
+    let mut exponent = initial_exponent;
+    if embedded_value {
+        bin_center = bin_center.checked_add(crate::magnitude::magnitude_single_bit(u16::from(
+            magnitude_bits,
+        ))?)?;
+        exponent = magnitude_bits
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    let low = bin_center.low_u64();
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_ht_low_word_parity(crate::magnitude::magnitude_value(bin_center));
+        assert((low as nat % 2) == crate::magnitude::magnitude_value(bin_center) % 2);
+    }
+    if crate::refinement::ht_bin_center_odd(low) != low {
+        bin_center = bin_center.checked_add(crate::magnitude::magnitude_from_u64(1))?;
+        exponent = exponent.max(1);
+    }
+    let centered = bin_center.checked_add(crate::magnitude::magnitude_from_u64(2))?;
+    let shift = decoded_bitplanes - 1;
+    let magnitude = centered.checked_shl(shift)?.shift_right(1);
+    if magnitude.is_zero() {
+        return Err(invalid_code_block());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+        crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
+    }
+    Ok((magnitude, negative, exponent))
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (ht_numeric_magnitude_outcome(result), ht_magsgn_view(final(reader)))
+            == crate::specs::ht_reconstruct_numeric_magnitude(ht_magsgn_view(old(reader)),
+                completed_u, embedded_bit, embedded_value, decoded_bitplanes),
+            match result {
+                Ok((value, _, _)) => crate::magnitude::magnitude_limbs(value)
+                    == crate::specs::tier1_value_limbs(crate::magnitude::magnitude_value(value))
+                    && crate::magnitude::magnitude_value(value) > 0
+                    && crate::magnitude::magnitude_value(value) < crate::specs::part1_magnitude_capacity(),
+                Err(_) => true,
+            },
+    )
+)]
 fn reconstruct_ht_magnitude(
     reader: &mut HtForwardMagSgnReader<'_>,
     completed_u: u8,
@@ -2034,6 +3348,13 @@ fn reconstruct_ht_magnitude(
     embedded_value: bool,
     decoded_bitplanes: u16,
 ) -> Result<(Magnitude, bool, u8), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost start = ht_magsgn_view(reader); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        vstd::arithmetic::power2::lemma_pow2_pos(384);
+        vstd::arithmetic::power2::lemma2_to64();
+    }
     if completed_u == 0
         || completed_u > MAX_HT_MAGSGN_BITS
         || decoded_bitplanes == 0
@@ -2042,85 +3363,191 @@ fn reconstruct_ht_magnitude(
         return Err(invalid_code_block());
     }
     let magnitude_bits = crate::refinement::ht_magnitude_payload_bits(completed_u, embedded_bit);
-    let mut bin_center = Magnitude::ZERO;
+    let mut bin_center = crate::magnitude::magnitude_zero();
     let mut negative = false;
     let mut exponent = 0_u8;
     let mut bit = 0_u8;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant bit <= magnitude_bits,
+            invariant bit <= magnitude_bits, magnitude_bits <= 75,
+                1 <= completed_u <= 75, 1 <= decoded_bitplanes <= 292,
+                start == ht_magsgn_view(old(reader)),
+                magnitude_bits as nat == crate::specs::ht_magnitude_payload_bits(completed_u as nat, embedded_bit),
+                crate::magnitude::magnitude_value(bin_center) < crate::specs::part1_magnitude_capacity(),
+                vstd::arithmetic::power2::pow2(1) == 2,
+                crate::specs::ht_reconstruct_numeric_magnitude(start, completed_u, embedded_bit, embedded_value, decoded_bitplanes)
+                    == crate::specs::ht_numeric_finish(
+                        crate::specs::ht_numeric_payload(ht_magsgn_view(reader), (magnitude_bits - bit) as nat,
+                            bit as nat, crate::magnitude::magnitude_value(bin_center), negative, exponent),
+                        magnitude_bits, embedded_value, decoded_bitplanes),
             decreases magnitude_bits - bit,
         )
     )]
     while bit < magnitude_bits {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_ht_numeric_payload_unfold(
+                ht_magsgn_view(reader), (magnitude_bits - bit) as nat, bit as nat,
+                crate::magnitude::magnitude_value(bin_center), negative, exponent,
+            );
+        }
         if reader.read_bit()? {
             if crate::refinement::ht_magnitude_sign(bit, true) {
                 negative = true;
             }
-            bin_center = bin_center.checked_add(Magnitude::single_bit(u16::from(bit))?)?;
+            bin_center =
+                bin_center.checked_add(crate::magnitude::magnitude_single_bit(u16::from(bit))?)?;
             exponent = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if embedded_value {
-        bin_center = bin_center.checked_add(Magnitude::single_bit(u16::from(magnitude_bits))?)?;
-        exponent = magnitude_bits
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(bit == magnitude_bits);
+        crate::proofs::production_impl::production_ht_numeric_payload_unfold(
+            ht_magsgn_view(reader), 0, bit as nat,
+            crate::magnitude::magnitude_value(bin_center), negative, exponent,
+        );
     }
-    if crate::refinement::ht_bin_center_odd(bin_center.low_u64()) != bin_center.low_u64() {
-        bin_center = bin_center.checked_add(Magnitude::from_u64(1))?;
-        exponent = exponent.max(1);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost final_value = crate::magnitude::magnitude_value(bin_center);
     }
-    let centered = bin_center.checked_add(Magnitude::from_u64(2))?;
-    let shift = decoded_bitplanes - 1;
-    let magnitude = centered.checked_shl(shift)?.shift_right(1);
-    if magnitude.is_zero() {
-        return Err(invalid_code_block());
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::ht_reconstruct_numeric_magnitude(start, completed_u, embedded_bit, embedded_value, decoded_bitplanes)
+            == (crate::specs::ht_numeric_center(final_value, negative, exponent, magnitude_bits, embedded_value, decoded_bitplanes),
+                ht_magsgn_view(reader)));
     }
-    Ok((magnitude, negative, exponent))
+    center_ht_numeric_magnitude(
+        bin_center,
+        negative,
+        exponent,
+        magnitude_bits,
+        embedded_value,
+        decoded_bitplanes,
+    )
 }
 
-fn reconstruct_ht_cleanup_plane(
-    plane: &CodeBlockPlane,
-    cleanup: HtCleanupSegment<'_>,
-    metadata: &HtCleanupMetadata,
-    maximum_u: u8,
-    decoded_bitplanes: u16,
-    limits: &ResourceLimits,
-) -> Result<(CodeBlockPlane, Tier1PassStatistics), DecodeError> {
-    if metadata.width == 0 {
-        return Err(invalid_code_block());
+struct HtCleanupPlaneReconstruction<'a> {
+    output: CodeBlockPlane,
+    reader: HtForwardMagSgnReader<'a>,
+    previous_exponents: Vec<u8>,
+    current_exponents: Vec<u8>,
+    statistics: Tier1PassStatistics,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn ht_plane_view(state: &HtCleanupPlaneReconstruction<'_>) -> crate::specs::HtPlaneState {
+        crate::specs::HtPlaneState {
+            output: code_block_plane_view(&state.output), reader: ht_magsgn_view(&state.reader),
+            previous: state.previous_exponents@, current: state.current_exponents@, statistics: state.statistics,
+        }
     }
-    let mut output = CodeBlockPlane::new(plane.width(), plane.height())?;
-    let mut reader = HtForwardMagSgnReader::new(cleanup.mag_sgn().bytes(), limits)?;
-    let quads_per_row = usize::from(metadata.width)
-        .checked_add(1)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
-    if quads_per_row == 0 {
-        return Err(invalid_code_block());
+
+    closed spec fn ht_plane_outcome(result: Result<(CodeBlockPlane, Tier1PassStatistics), DecodeError>)
+        -> Result<(crate::specs::Tier1RawPlane, Tier1PassStatistics), DecodeError> {
+        match result { Err(error) => Err(error), Ok((plane, statistics)) => Ok((code_block_plane_view(&plane), statistics)) }
     }
-    let exponent_count = quads_per_row
-        .checked_add(1)
-        .ok_or_else(arithmetic_overflow)?;
-    let mut previous_exponents = vec![0_u8; exponent_count];
-    let mut current_exponents = vec![0_u8; exponent_count];
-    let mut statistics = Tier1PassStatistics::default();
-    let mut quad_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant quad_index <= metadata.quads.len(),
-            decreases metadata.quads.len() - quad_index,
-        )
+}
+
+impl HtCleanupPlaneReconstruction<'_> {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The actual sample transition consumes these independent metadata and geometry fields."
     )]
-    while quad_index < metadata.quads.len() {
-        let quad = *metadata
-            .quads
-            .get(quad_index)
-            .ok_or_else(invalid_code_block)?;
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires sample < 4, column + 1 < old(self).current_exponents.len(),
+        ensures (result, ht_plane_view(final(self))) == crate::specs::ht_plane_sample(
+            ht_plane_view(old(self)), quad, width, height, column as nat, completed_u, decoded_bitplanes, sample),
+            final(self).current_exponents.len() == old(self).current_exponents.len(),
+            final(self).previous_exponents@ == old(self).previous_exponents@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn sample(
+        &mut self,
+        quad: HtQuadMetadata,
+        width: u16,
+        height: u16,
+        column: usize,
+        completed_u: u8,
+        decoded_bitplanes: u16,
+        sample: u8,
+    ) -> Result<(), DecodeError> {
+        let next_column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        if sample >= 8 {
+            return Err(invalid_code_block());
+        }
+        let x = quad
+            .x
+            .checked_add(u16::from(sample >> 1))
+            .ok_or_else(arithmetic_overflow)?;
+        let y = quad
+            .y
+            .checked_add(u16::from(sample & 1))
+            .ok_or_else(arithmetic_overflow)?;
+        if x < width && y < height {
+            self.statistics.scanned(1)?;
+            if quad.significance & (1_u8 << sample) != 0 {
+                let embedded_bit = quad.embedded_bit_mask & (1_u8 << sample) != 0;
+                let embedded_value = quad.embedded_magnitude & (1_u8 << sample) != 0;
+                let (magnitude, negative, exponent) = reconstruct_ht_magnitude(
+                    &mut self.reader,
+                    completed_u,
+                    embedded_bit,
+                    embedded_value,
+                    decoded_bitplanes,
+                )?;
+                self.output
+                    .mark_significant_magnitude(x, y, magnitude, negative)?;
+                self.statistics.decoded_symbols(1)?;
+                self.statistics.became_significant()?;
+                if sample == 1 {
+                    let entry = self
+                        .current_exponents
+                        .get_mut(column)
+                        .ok_or_else(invalid_code_block)?;
+                    *entry = (*entry).max(exponent);
+                } else if sample == 3 {
+                    *self
+                        .current_exponents
+                        .get_mut(next_column)
+                        .ok_or_else(invalid_code_block)? = exponent;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The shared quad stage preserves the real caller's metadata and traversal inputs."
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires 0 < quads_per_row <= 32768,
+            old(self).current_exponents.len() == quads_per_row + 1,
+            old(self).previous_exponents.len() == quads_per_row + 1,
+        ensures (result, ht_plane_view(final(self))) == crate::specs::ht_plane_quad(
+            ht_plane_view(old(self)), quad, width, height, maximum_u, decoded_bitplanes,
+            quads_per_row as nat, quad_index as nat),
+            final(self).current_exponents.len() == quads_per_row + 1,
+            final(self).previous_exponents.len() == quads_per_row + 1,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn quad(
+        &mut self,
+        quad: HtQuadMetadata,
+        width: u16,
+        height: u16,
+        maximum_u: u8,
+        decoded_bitplanes: u16,
+        quads_per_row: usize,
+        quad_index: usize,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = ht_plane_view(self); }
         let column = quad_index
             .checked_rem(quads_per_row)
             .ok_or_else(arithmetic_overflow)?;
@@ -2129,18 +3556,29 @@ fn reconstruct_ht_cleanup_plane(
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant exponent_index <= current_exponents.len(),
-                    decreases current_exponents.len() - exponent_index,
+                    invariant exponent_index <= self.current_exponents.len(),
+                        self.current_exponents.len() == quads_per_row + 1,
+                        start.current.len() == quads_per_row + 1,
+                        start == ht_plane_view(old(self)),
+                        self.previous_exponents@ == start.previous,
+                        code_block_plane_view(&self.output) == start.output,
+                        ht_magsgn_view(&self.reader) == start.reader, self.statistics == start.statistics,
+                        forall |i: int| 0 <= i < self.current_exponents.len() ==>
+                            self.current_exponents@[i] == if i < exponent_index { 0u8 } else { start.current[i] },
+                    decreases self.current_exponents.len() - exponent_index,
                 )
             )]
-            while exponent_index < current_exponents.len() {
-                *current_exponents
+            while exponent_index < self.current_exponents.len() {
+                *self
+                    .current_exponents
                     .get_mut(exponent_index)
                     .ok_or_else(invalid_code_block)? = 0;
                 exponent_index = exponent_index
                     .checked_add(1)
                     .ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(self.current_exponents@ =~= Seq::new(start.current.len(), |i: int| 0u8)); }
         }
         let next_column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
         let completed_u = if quad.initial_row {
@@ -2152,71 +3590,175 @@ fn reconstruct_ht_cleanup_plane(
             complete_ht_kappa(
                 quad.u_base,
                 quad.significance,
-                *previous_exponents
+                *self
+                    .previous_exponents
                     .get(column)
                     .ok_or_else(invalid_code_block)?,
-                *previous_exponents
+                *self
+                    .previous_exponents
                     .get(next_column)
                     .ok_or_else(invalid_code_block)?,
                 maximum_u,
             )?
         };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost samples_start = ht_plane_view(self); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_plane_samples); }
         let mut sample = 0_u8;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant sample <= 4,
+                invariant sample <= 4, column < quads_per_row, next_column == column + 1,
+                    samples_start.current.len() == quads_per_row + 1,
+                    self.current_exponents.len() == quads_per_row + 1,
+                    self.previous_exponents.len() == quads_per_row + 1,
+                    crate::specs::ht_plane_quad(ht_plane_view(old(self)), quad, width, height,
+                        maximum_u, decoded_bitplanes, quads_per_row as nat, quad_index as nat)
+                        == crate::specs::ht_plane_quad_finish(crate::specs::ht_plane_samples(
+                            samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, 4),
+                            quads_per_row as nat, column as nat),
+                    (Ok::<(), DecodeError>(()), ht_plane_view(self)) == crate::specs::ht_plane_samples(
+                        samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, sample as nat),
                 decreases 4 - sample,
             )
         )]
         while sample < 4 {
-            if sample >= 8 {
-                return Err(invalid_code_block());
+            let result = self.sample(
+                quad,
+                width,
+                height,
+                column,
+                completed_u,
+                decoded_bitplanes,
+                sample,
+            );
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::ht_plane_samples);
+                assert((result, ht_plane_view(self)) == crate::specs::ht_plane_samples(
+                    samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, sample as nat + 1));
             }
-            let x = quad
-                .x
-                .checked_add(u16::from(sample >> 1))
-                .ok_or_else(arithmetic_overflow)?;
-            let y = quad
-                .y
-                .checked_add(u16::from(sample & 1))
-                .ok_or_else(arithmetic_overflow)?;
-            if x < metadata.width && y < metadata.height {
-                statistics.scanned(1)?;
-                if quad.significance & (1_u8 << sample) != 0 {
-                    let embedded_bit = quad.embedded_bit_mask & (1_u8 << sample) != 0;
-                    let embedded_value = quad.embedded_magnitude & (1_u8 << sample) != 0;
-                    let (magnitude, negative, exponent) = reconstruct_ht_magnitude(
-                        &mut reader,
-                        completed_u,
-                        embedded_bit,
-                        embedded_value,
-                        decoded_bitplanes,
-                    )?;
-                    output.mark_significant_magnitude(x, y, magnitude, negative)?;
-                    statistics.decoded_symbols(1)?;
-                    statistics.became_significant()?;
-                    if sample == 1 {
-                        let entry = current_exponents
-                            .get_mut(column)
-                            .ok_or_else(invalid_code_block)?;
-                        *entry = (*entry).max(exponent);
-                    } else if sample == 3 {
-                        *current_exponents
-                            .get_mut(next_column)
-                            .ok_or_else(invalid_code_block)? = exponent;
-                    }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                if result.is_err() {
+                    crate::proofs::production_impl::production_ht_plane_samples_error(
+                        samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, sample as nat + 1, 4);
                 }
             }
+            result?;
             sample = sample.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         if next_column == quads_per_row {
-            core::mem::swap(&mut previous_exponents, &mut current_exponents);
+            core::mem::swap(&mut self.previous_exponents, &mut self.current_exponents);
         }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, ht_plane_view(final(self))) == crate::specs::ht_plane_finish(ht_plane_view(old(self))),
+    ))]
+    fn finish(&mut self) -> Result<(), DecodeError> {
+        self.reader.finish()
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_plane_outcome(result) == crate::specs::ht_cleanup_plane(
+        code_block_plane_view(plane), ht_cleanup_segment_view(&cleanup), ht_cleanup_metadata_view(metadata),
+        maximum_u, decoded_bitplanes, crate::limits::resource_work_limit(limits)),
+))]
+fn reconstruct_ht_cleanup_plane(
+    plane: &CodeBlockPlane,
+    cleanup: HtCleanupSegment<'_>,
+    metadata: &HtCleanupMetadata,
+    maximum_u: u8,
+    decoded_bitplanes: u16,
+    limits: &ResourceLimits,
+) -> Result<(CodeBlockPlane, Tier1PassStatistics), DecodeError> {
+    if metadata.width == 0 {
+        return Err(invalid_code_block());
+    }
+    let output = code_block_plane_from_dimensions(plane.width(), plane.height())?;
+    let reader = ht_magsgn_from_input(cleanup.mag_sgn().bytes(), limits.maximum_work_units())?;
+    let doubled_quads = usize::from(metadata.width)
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let quads_per_row = doubled_quads
+        .checked_div(2)
+        .ok_or_else(arithmetic_overflow)?;
+    if quads_per_row == 0 {
+        return Err(invalid_code_block());
+    }
+    let exponent_count = quads_per_row
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let mut state = HtCleanupPlaneReconstruction {
+        output,
+        reader,
+        previous_exponents: vec![0_u8; exponent_count],
+        current_exponents: vec![0_u8; exponent_count],
+        statistics: ht_statistics_zero(),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost start = ht_plane_view(&state); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(state.previous_exponents@ =~= Seq::new(quads_per_row as nat + 1, |i: int| 0u8));
+        assert(state.current_exponents@ =~= Seq::new(quads_per_row as nat + 1, |i: int| 0u8));
+        reveal(crate::specs::ht_plane_quads);
+    }
+    let mut quad_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant quad_index <= metadata.quads.len(), 0 < quads_per_row <= 32768,
+            start.current.len() == quads_per_row + 1,
+            start.previous.len() == quads_per_row + 1,
+            state.current_exponents.len() == quads_per_row + 1,
+            state.previous_exponents.len() == quads_per_row + 1,
+            crate::specs::ht_cleanup_plane(code_block_plane_view(plane), ht_cleanup_segment_view(&cleanup),
+                ht_cleanup_metadata_view(metadata), maximum_u, decoded_bitplanes, crate::limits::resource_work_limit(limits))
+                == crate::specs::ht_plane_output(crate::specs::ht_plane_quads(
+                    start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                    decoded_bitplanes, quads_per_row as nat, metadata.quads@.len())),
+            (Ok::<(), DecodeError>(()), ht_plane_view(&state)) == crate::specs::ht_plane_quads(
+                start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                decoded_bitplanes, quads_per_row as nat, quad_index as nat),
+        decreases metadata.quads.len() - quad_index,
+    ))]
+    while quad_index < metadata.quads.len() {
+        let quad = *metadata
+            .quads
+            .get(quad_index)
+            .ok_or_else(invalid_code_block)?;
+        let result = state.quad(
+            quad,
+            metadata.width,
+            metadata.height,
+            maximum_u,
+            decoded_bitplanes,
+            quads_per_row,
+            quad_index,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::ht_plane_quads);
+            assert((result, ht_plane_view(&state)) == crate::specs::ht_plane_quads(
+                start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                decoded_bitplanes, quads_per_row as nat, quad_index as nat + 1));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if result.is_err() {
+                crate::proofs::production_impl::production_ht_plane_quads_error(
+                    start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                    decoded_bitplanes, quads_per_row as nat, quad_index as nat + 1, metadata.quads@.len());
+            }
+        }
+        result?;
         quad_index = quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    reader.finish()?;
-    Ok((output, statistics))
+    state.finish()?;
+    Ok((state.output, state.statistics))
 }
 
 fn ht_significance_magnitude(decoded_bitplanes: u16) -> Result<Magnitude, DecodeError> {
@@ -2449,25 +3991,104 @@ pub struct CoefficientState {
     pub refined: bool,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn coefficient_raw_view(value: CoefficientState) -> crate::specs::Tier1RawCoefficient {
+        crate::specs::Tier1RawCoefficient {
+            limbs: Seq::empty().push(value.magnitude) + value.magnitude_high@,
+            legacy_bitplane: value.legacy_bitplane, negative: value.negative,
+            significant: value.significant, refined: value.refined,
+        }
+    }
+
+    pub open spec fn coefficient_raw_views(values: Seq<CoefficientState>) -> Seq<crate::specs::Tier1RawCoefficient> {
+        Seq::new(values.len(), |i: int| coefficient_raw_view(values[i]))
+    }
+
+    pub open spec fn coefficient_state_view(value: &CoefficientState) -> crate::specs::Tier1RawCoefficient {
+        coefficient_raw_view(*value)
+    }
+
+    pub open spec fn coefficient_slice_view(values: &[CoefficientState]) -> Seq<crate::specs::Tier1RawCoefficient> {
+        coefficient_raw_views(values@)
+    }
+
+    pub(crate) open spec fn coefficient_signed_outcome(result: Result<SignedMagnitude, DecodeError>)
+        -> Result<(Seq<u64>, nat, bool), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(value) => Ok((crate::magnitude::magnitude_limbs(value.magnitude),
+                crate::magnitude::magnitude_value(value.magnitude), value.negative)),
+        }
+    }
+
+    pub open spec fn coefficient_raw_outcome(result: Result<CoefficientState, DecodeError>)
+        -> Result<crate::specs::Tier1RawCoefficient, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(coefficient_raw_view(value)) }
+    }
+
+    pub proof fn coefficient_raw_shape(value: CoefficientState)
+        ensures coefficient_raw_view(value).limbs.len() == 6,
+    {}
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures coefficient_raw_outcome(result) == crate::specs::tier1_coefficient_new_outcome(
+        crate::magnitude::magnitude_limbs(magnitude), negative, significant, refined),
+))]
+fn coefficient_from_magnitude(
+    magnitude: Magnitude,
+    negative: bool,
+    significant: bool,
+    refined: bool,
+) -> Result<CoefficientState, DecodeError> {
+    let mut output = CoefficientState {
+        magnitude: magnitude.low_u64(),
+        magnitude_high: [0; 5],
+        legacy_bitplane: None,
+        negative,
+        significant,
+        refined,
+    };
+    output.set_magnitude(magnitude)?;
+    Ok(output)
+}
+
 impl CoefficientState {
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures coefficient_signed_outcome(result)
+                == crate::specs::tier1_raw_signed_coefficient(coefficient_raw_view(*self)),
+        )
+    )]
     pub(crate) fn signed_magnitude(&self) -> Result<SignedMagnitude, DecodeError> {
         let mut magnitude = if self.significant {
             self.wide_magnitude()
         } else {
-            Magnitude::ZERO
+            crate::magnitude::magnitude_zero()
         };
         if let (true, Some(bitplane)) = (self.significant, self.legacy_bitplane) {
             let midpoint = if bitplane <= 64 {
-                Magnitude::from_u64(crate::refinement::tier1_midpoint_delta(bitplane))
+                crate::magnitude::magnitude_from_u64(crate::refinement::tier1_midpoint_delta(
+                    bitplane,
+                ))
             } else {
-                Magnitude::single_bit(bitplane - 1)?
+                crate::magnitude::magnitude_single_bit(bitplane - 1)?
             };
             magnitude = magnitude.checked_add(midpoint)?;
         }
-        Ok(SignedMagnitude::new(
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+            crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
+        }
+        Ok(SignedMagnitude {
             magnitude,
-            self.significant && self.negative,
-        ))
+            negative: self.significant && self.negative,
+        })
     }
     pub fn magnitude_limb(&self, index: usize) -> Option<u64> {
         if index == 0 {
@@ -2482,6 +4103,15 @@ impl CoefficientState {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures crate::magnitude::magnitude_limbs(result) == crate::specs::tier1_coefficient_limbs(coefficient_raw_view(*self)),
+                crate::magnitude::magnitude_limbs(result) == coefficient_raw_view(*self).limbs,
+                crate::magnitude::magnitude_value(result) == crate::specs::part1_magnitude_value(coefficient_raw_view(*self).limbs),
+                crate::magnitude::magnitude_value(result) < crate::specs::part1_magnitude_capacity(),
+        )
+    )]
     pub fn wide_magnitude(&self) -> Magnitude {
         let mut limbs = [0_u64; 6];
         limbs[0] = self.magnitude;
@@ -2490,6 +4120,8 @@ impl CoefficientState {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.magnitude_high.len(),
+                    limbs[0] == self.magnitude,
+                    forall |i: int| 0 <= i < index ==> limbs@[i + 1] == self.magnitude_high@[i],
                 decreases self.magnitude_high.len() - index,
             )
         )]
@@ -2497,34 +4129,35 @@ impl CoefficientState {
             limbs[index + 1] = self.magnitude_high[index];
             index += 1;
         }
-        Magnitude::from_limbs(limbs)
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(limbs@ =~= coefficient_raw_view(*self).limbs); }
+        crate::magnitude::magnitude_from_limbs(limbs)
     }
 
-    fn from_magnitude(
-        magnitude: Magnitude,
-        negative: bool,
-        significant: bool,
-        refined: bool,
-    ) -> Result<Self, DecodeError> {
-        let mut output = Self {
-            magnitude: magnitude.low_u64(),
-            magnitude_high: [0; 5],
-            legacy_bitplane: None,
-            negative,
-            significant,
-            refined,
-        };
-        output.set_magnitude(magnitude)?;
-        Ok(output)
-    }
-
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, coefficient_state_view(final(self))) == crate::specs::tier1_set_magnitude(
+                coefficient_state_view(old(self)), crate::magnitude::magnitude_limbs(magnitude)),
+            result == Ok(()),
+            coefficient_raw_view(*final(self)) == (crate::specs::Tier1RawCoefficient {
+                limbs: crate::magnitude::magnitude_limbs(magnitude), ..coefficient_raw_view(*old(self))
+            }),
+    ))]
     fn set_magnitude(&mut self, magnitude: Magnitude) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude); }
         self.magnitude = magnitude.low_u64();
         let mut index = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.magnitude_high.len(),
+                    crate::magnitude::magnitude_limbs(magnitude).len() == 6,
+                    self.magnitude == crate::magnitude::magnitude_limbs(magnitude)[0],
+                    self.legacy_bitplane == old(self).legacy_bitplane,
+                    self.negative == old(self).negative, self.significant == old(self).significant,
+                    self.refined == old(self).refined,
+                    forall |i: int| 0 <= i < index ==> self.magnitude_high@[i]
+                        == crate::magnitude::magnitude_limbs(magnitude)[i + 1],
                 decreases self.magnitude_high.len() - index,
             )
         )]
@@ -2533,6 +4166,8 @@ impl CoefficientState {
                 magnitude.limb(index + 1).ok_or_else(arithmetic_overflow)?;
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(coefficient_raw_view(*self).limbs =~= crate::magnitude::magnitude_limbs(magnitude)); }
         Ok(())
     }
 }
@@ -2719,6 +4354,9 @@ pub struct Tier1CodeBlockDecoder {
 }
 
 impl Tier1PassStatistics {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 0, count),
+    ))]
     fn scanned(&mut self, count: u32) -> Result<(), DecodeError> {
         self.coefficients_scanned = self
             .coefficients_scanned
@@ -2727,6 +4365,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 1, count),
+    ))]
     fn decoded_symbols(&mut self, count: u32) -> Result<(), DecodeError> {
         self.coding_symbols = self
             .coding_symbols
@@ -2735,6 +4376,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 2, 1),
+    ))]
     fn became_significant(&mut self) -> Result<(), DecodeError> {
         self.newly_significant = self
             .newly_significant
@@ -2822,6 +4466,9 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures code_block_plane_view(result) == tier1_decoder_plane_view(self),
+    ))]
     pub const fn plane(&self) -> &CodeBlockPlane {
         &self.plane
     }
@@ -4193,12 +5840,26 @@ const fn is_bitplane_mask(bitplane_mask: u64) -> bool {
     bitplane_mask != 0 && bitplane_mask & (bitplane_mask - 1) == 0
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_reader_error(MalformedKind::InvalidCodeBlock),)
+)]
 fn invalid_code_block() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidCodeBlock)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidCodeBlock,
+    }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result => ensures result == crate::specs::ht_reader_error(MalformedKind::ArithmeticOverflow),)
+)]
 fn arithmetic_overflow() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
 }
 
 pub fn apply_significance_decision(
@@ -4246,22 +5907,81 @@ pub struct CodeBlockPlane {
     coefficients: Vec<CoefficientState>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn code_block_plane_view(plane: &CodeBlockPlane) -> crate::specs::Tier1RawPlane {
+        crate::specs::Tier1RawPlane {
+            width: plane.width, height: plane.height, coefficients: coefficient_raw_views(plane.coefficients@),
+        }
+    }
+
+    pub closed spec fn tier1_decoder_plane_view(decoder: &Tier1CodeBlockDecoder) -> crate::specs::Tier1RawPlane {
+        code_block_plane_view(&decoder.plane)
+    }
+
+    pub closed spec fn code_block_plane_outcome(result: Result<CodeBlockPlane, DecodeError>)
+        -> Result<crate::specs::Tier1RawPlane, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(plane) => Ok(code_block_plane_view(&plane)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures code_block_plane_outcome(result) == crate::specs::tier1_empty_plane(width, height),
+))]
+fn code_block_plane_from_dimensions(
+    width: u16,
+    height: u16,
+) -> Result<CodeBlockPlane, DecodeError> {
+    if width == 0 || height == 0 {
+        return Err(invalid_code_block());
+    }
+    let samples = usize::from(width)
+        .checked_mul(usize::from(height))
+        .ok_or_else(arithmetic_overflow)?;
+    if samples > 4096 {
+        return Err(invalid_code_block());
+    }
+    let empty = CoefficientState {
+        magnitude: 0,
+        magnitude_high: [0; 5],
+        legacy_bitplane: None,
+        negative: false,
+        significant: false,
+        refined: false,
+    };
+    let coefficients = vec![empty; samples];
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(coefficient_raw_view(empty).limbs =~= Seq::new(6, |i: int| 0u64));
+        assert(coefficient_raw_view(empty) == crate::specs::tier1_empty_coefficient());
+        assert forall |i: int| 0 <= i < samples implies coefficient_raw_view(coefficients@[i])
+            == crate::specs::tier1_empty_coefficient() by {
+            assert(coefficients@[i] == empty);
+        }
+        assert(coefficient_raw_views(coefficients@) =~= Seq::new(samples as nat, |i: int| crate::specs::tier1_empty_coefficient()));
+    }
+    Ok(CodeBlockPlane {
+        width,
+        height,
+        coefficients,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == crate::specs::tier1_statistics_zero(),))]
+fn ht_statistics_zero() -> Tier1PassStatistics {
+    Tier1PassStatistics {
+        coefficients_scanned: 0,
+        coding_symbols: 0,
+        newly_significant: 0,
+        refined_coefficients: 0,
+        run_mode_columns: 0,
+    }
+}
+
 impl CodeBlockPlane {
     pub fn new(width: u16, height: u16) -> Result<Self, DecodeError> {
-        if width == 0 || height == 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-        }
-        let samples = usize::from(width)
-            .checked_mul(usize::from(height))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if samples > 4096 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-        }
-        Ok(Self {
-            width,
-            height,
-            coefficients: vec![CoefficientState::default(); samples],
-        })
+        code_block_plane_from_dimensions(width, height)
     }
 
     fn duplicate(&self) -> Result<Self, DecodeError> {
@@ -4290,22 +6010,37 @@ impl CodeBlockPlane {
         Ok(output)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::tier1_raw_plane_width(code_block_plane_view(self)),
+            result == code_block_plane_view(self).width,
+    ))]
     pub const fn width(&self) -> u16 {
         self.width
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::tier1_raw_plane_height(code_block_plane_view(self)),
+            result == code_block_plane_view(self).height,
+    ))]
     pub const fn height(&self) -> u16 {
         self.height
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures coefficient_raw_outcome(result) == crate::specs::tier1_raw_plane_coefficient(code_block_plane_view(self), x, y),
+    ))]
     pub fn coefficient(&self, x: u16, y: u16) -> Result<CoefficientState, DecodeError> {
         let index = self.index(x, y)?;
         if index >= self.coefficients.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         Ok(self.coefficients[index])
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures coefficient_slice_view(result) == crate::specs::tier1_raw_plane_coefficients(code_block_plane_view(self)),
+            coefficient_raw_views(result@) == code_block_plane_view(self).coefficients,
+    ))]
     pub fn coefficients(&self) -> &[CoefficientState] {
         &self.coefficients
     }
@@ -4360,6 +6095,11 @@ impl CodeBlockPlane {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::tier1_mark_coefficient(
+            code_block_plane_view(old(self)), x, y, crate::magnitude::magnitude_limbs(magnitude),
+            crate::magnitude::magnitude_value(magnitude), negative),
+    ))]
     fn mark_significant_magnitude(
         &mut self,
         x: u16,
@@ -4372,13 +6112,18 @@ impl CodeBlockPlane {
         }
         let index = self.index(x, y)?;
         if index >= self.coefficients.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         if self.coefficients[index].significant {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
-        self.coefficients[index] =
-            CoefficientState::from_magnitude(magnitude, negative, true, false)?;
+        self.coefficients[index] = coefficient_from_magnitude(magnitude, negative, true, false)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(coefficient_raw_views(self.coefficients@) =~=
+                code_block_plane_view(old(self)).coefficients.update(index as int,
+                    crate::specs::tier1_new_coefficient(crate::magnitude::magnitude_limbs(magnitude), negative, true, false)));
+        }
         Ok(())
     }
 
@@ -4500,16 +6245,20 @@ impl CodeBlockPlane {
         Ok(summary)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::tier1_raw_plane_index(code_block_plane_view(self), x, y),
+    ))]
     fn index(&self, x: u16, y: u16) -> Result<usize, DecodeError> {
         if x >= self.width || y >= self.height {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         let index = usize::from(y)
             .checked_mul(usize::from(self.width))
-            .and_then(|row| row.checked_add(usize::from(x)))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(arithmetic_overflow)?
+            .checked_add(usize::from(x))
+            .ok_or_else(arithmetic_overflow)?;
         if index >= self.coefficients.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         Ok(index)
     }
@@ -5212,6 +6961,1175 @@ mod tests {
     }
 
     #[test]
+    fn raw_plane_getters_preserve_malformed_shapes_and_exact_index_errors() {
+        let coefficient = CoefficientState {
+            magnitude: 17,
+            magnitude_high: [2, 3, 4, 5, 6],
+            legacy_bitplane: Some(65535),
+            negative: true,
+            significant: false,
+            refined: true,
+        };
+        let plane = CodeBlockPlane {
+            width: 2,
+            height: 2,
+            coefficients: vec![coefficient],
+        };
+        assert_eq!(
+            (plane.width(), plane.height(), plane.coefficients()),
+            (2, 2, &[coefficient][..])
+        );
+        assert_eq!(plane.coefficient(0, 0), Ok(coefficient));
+        for (x, y) in [(1, 0), (0, 1), (2, 0), (0, 2), (65535, 65535)] {
+            assert_eq!(
+                plane.coefficient(x, y),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock,
+                })
+            );
+        }
+        let trailing = CodeBlockPlane {
+            width: 1,
+            height: 1,
+            coefficients: vec![coefficient, CoefficientState::default()],
+        };
+        assert_eq!(trailing.coefficients().len(), 2);
+        assert_eq!(trailing.coefficient(0, 0), Ok(coefficient));
+        assert_eq!(trailing.coefficient(0, 1), Err(invalid_code_block()));
+        let zero_shape = CodeBlockPlane {
+            width: 0,
+            height: 0,
+            coefficients: vec![coefficient],
+        };
+        assert_eq!(
+            (
+                zero_shape.width(),
+                zero_shape.height(),
+                zero_shape.coefficients().len()
+            ),
+            (0, 0, 1)
+        );
+        assert_eq!(zero_shape.coefficient(0, 0), Err(invalid_code_block()));
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        decoder.plane = plane;
+        assert_eq!(
+            (
+                decoder.plane().width(),
+                decoder.plane().height(),
+                decoder.plane().coefficients()
+            ),
+            (2, 2, &[coefficient][..])
+        );
+    }
+
+    #[test]
+    fn raw_signed_coefficients_keep_full_words_flags_and_native_midpoint_errors() {
+        let mut coefficient = CoefficientState {
+            magnitude: 17,
+            magnitude_high: [2, 3, 4, 5, 6],
+            legacy_bitplane: Some(65535),
+            negative: true,
+            significant: false,
+            refined: true,
+        };
+        let wide = coefficient.wide_magnitude();
+        for (index, expected) in [17, 2, 3, 4, 5, 6].into_iter().enumerate() {
+            assert_eq!(wide.limb(index), Some(expected));
+        }
+        let absent = coefficient.signed_magnitude().unwrap();
+        assert_eq!(absent.magnitude, Magnitude::ZERO);
+        assert!(!absent.negative);
+        coefficient = CoefficientState {
+            magnitude: 0,
+            magnitude_high: [0; 5],
+            legacy_bitplane: None,
+            negative: true,
+            significant: true,
+            refined: false,
+        };
+        let negative_zero = coefficient.signed_magnitude().unwrap();
+        assert_eq!(negative_zero.magnitude, Magnitude::ZERO);
+        assert!(negative_zero.negative);
+        coefficient.magnitude = u64::MAX;
+        coefficient.legacy_bitplane = Some(1);
+        let carry = coefficient.signed_magnitude().unwrap();
+        assert_eq!(carry.magnitude.limb(0), Some(0));
+        assert_eq!(carry.magnitude.limb(1), Some(1));
+        assert!(carry.negative);
+        coefficient.magnitude = 0;
+        coefficient.legacy_bitplane = Some(384);
+        let high = coefficient.signed_magnitude().unwrap();
+        for (index, expected) in [0, 0, 0, 0, 0, 1_u64 << 63].into_iter().enumerate() {
+            assert_eq!(high.magnitude.limb(index), Some(expected));
+        }
+        for bitplane in [385, 65535] {
+            coefficient.legacy_bitplane = Some(bitplane);
+            assert_eq!(
+                coefficient.signed_magnitude(),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })
+            );
+        }
+        coefficient.magnitude = u64::MAX;
+        coefficient.magnitude_high = [u64::MAX; 5];
+        coefficient.legacy_bitplane = Some(0);
+        assert_eq!(
+            coefficient.signed_magnitude().unwrap().magnitude,
+            Magnitude::from_limbs([u64::MAX; 6])
+        );
+        coefficient.legacy_bitplane = Some(1);
+        assert_eq!(
+            coefficient.signed_magnitude(),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })
+        );
+    }
+
+    fn plane_quad(x: u16, y: u16, significance: u8, u_base: u8) -> HtQuadMetadata {
+        HtQuadMetadata {
+            x,
+            y,
+            context: 255,
+            initial_row: true,
+            significance,
+            embedded_magnitude: 0,
+            embedded_bit_mask: 0,
+            u_offset: true,
+            u_base,
+            codeword_bits: 255,
+        }
+    }
+
+    fn plane_metadata(width: u16, height: u16, quads: Vec<HtQuadMetadata>) -> HtCleanupMetadata {
+        HtCleanupMetadata {
+            width,
+            height,
+            quads,
+            significant_samples: u16::MAX,
+            mel_bits: u32::MAX,
+            vlc_bits: u32::MAX,
+            mel_events: u32::MAX,
+        }
+    }
+
+    fn plane_state(input: &[u8], width: u16, height: u16) -> HtCleanupPlaneReconstruction<'_> {
+        HtCleanupPlaneReconstruction {
+            output: CodeBlockPlane::new(width, height).unwrap(),
+            reader: HtForwardMagSgnReader::new(input, &ResourceLimits::default()).unwrap(),
+            previous_exponents: vec![5, 4, 3],
+            current_exponents: vec![9, 8, 7],
+            statistics: Tier1PassStatistics::default(),
+        }
+    }
+
+    #[test]
+    fn ht_cleanup_plane_places_literal_full_words_flags_and_ignores_old_coefficients() {
+        let limits = ResourceLimits::default();
+        let mut input = CodeBlockPlane::new(1, 2).unwrap();
+        input.coefficients[0] = CoefficientState {
+            magnitude: u64::MAX,
+            magnitude_high: [u64::MAX; 5],
+            legacy_bitplane: Some(u16::MAX),
+            negative: true,
+            significant: true,
+            refined: true,
+        };
+        let cleanup = parse_ht_block_segments(&[0xfa, 2, 0], None, &limits)
+            .unwrap()
+            .cleanup();
+        let metadata = plane_metadata(1, 2, vec![plane_quad(0, 0, 3, 2)]);
+        let (output, statistics) =
+            reconstruct_ht_cleanup_plane(&input, cleanup, &metadata, 2, 3, &limits).unwrap();
+        let expected = CoefficientState {
+            magnitude: 10,
+            magnitude_high: [0; 5],
+            legacy_bitplane: None,
+            negative: false,
+            significant: true,
+            refined: false,
+        };
+        assert_eq!(output.coefficients(), &[expected, expected]);
+        assert_eq!(
+            statistics,
+            Tier1PassStatistics {
+                coefficients_scanned: 2,
+                coding_symbols: 2,
+                newly_significant: 2,
+                refined_coefficients: 0,
+                run_mode_columns: 0
+            }
+        );
+        assert_eq!(input.coefficients[0].legacy_bitplane, Some(u16::MAX));
+
+        let data = [
+            0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 2, 0,
+        ];
+        let cleanup = parse_ht_block_segments(&data, None, &limits)
+            .unwrap()
+            .cleanup();
+        let metadata = plane_metadata(1, 1, vec![plane_quad(0, 0, 1, 75)]);
+        let (output, statistics) =
+            reconstruct_ht_cleanup_plane(&input, cleanup, &metadata, 75, 292, &limits).unwrap();
+        assert_eq!(
+            output.coefficients()[0],
+            CoefficientState {
+                magnitude: 0,
+                magnitude_high: [0, 0, 0, 1_u64 << 34, 1_u64 << 45],
+                legacy_bitplane: None,
+                negative: true,
+                significant: true,
+                refined: false,
+            }
+        );
+        assert_eq!(output.coefficients()[1], CoefficientState::default());
+        assert_eq!((output.width(), output.height()), (1, 2));
+        assert_eq!(
+            (
+                statistics.coefficients_scanned,
+                statistics.coding_symbols,
+                statistics.newly_significant
+            ),
+            (1, 1, 1)
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_plane_preserves_permissive_metadata_domains_and_coordinate_error_order() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap();
+        let cleanup = parse_ht_block_segments(&[2, 0], None, &limits)
+            .unwrap()
+            .cleanup();
+        let input = CodeBlockPlane::new(1, 1).unwrap();
+        for metadata in [
+            plane_metadata(1, 0, vec![]),
+            plane_metadata(1, 0, vec![plane_quad(0, 0, 255, 0)]),
+            plane_metadata(1, 1, vec![plane_quad(0, 0, 0xf0, 255)]),
+        ] {
+            let (output, statistics) =
+                reconstruct_ht_cleanup_plane(&input, cleanup, &metadata, 255, u16::MAX, &limits)
+                    .unwrap();
+            assert_eq!(output.coefficients(), &[CoefficientState::default()]);
+            assert_eq!(
+                (statistics.coding_symbols, statistics.newly_significant),
+                (0, 0)
+            );
+        }
+        let coordinate_overflow = plane_metadata(1, 0, vec![plane_quad(u16::MAX, 0, 0, 0)]);
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(&input, cleanup, &coordinate_overflow, 0, 0, &limits),
+            Err(arithmetic_overflow())
+        );
+        let mut noninitial = plane_quad(0, 0, 0, 1);
+        noninitial.initial_row = false;
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(
+                &input,
+                cleanup,
+                &plane_metadata(1, 0, vec![noninitial]),
+                0,
+                0,
+                &limits
+            ),
+            Err(invalid_code_block())
+        );
+        let no_numeric = plane_metadata(1, 1, vec![plane_quad(0, 0, 0, 76)]);
+        assert!(
+            reconstruct_ht_cleanup_plane(&input, cleanup, &no_numeric, 255, 0, &limits).is_ok()
+        );
+        let numeric = plane_metadata(1, 1, vec![plane_quad(0, 0, 1, 76)]);
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(&input, cleanup, &numeric, 255, 0, &limits),
+            Err(invalid_code_block())
+        );
+        let malformed = CodeBlockPlane {
+            width: 0,
+            height: 1,
+            coefficients: vec![CoefficientState::default()],
+        };
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(&malformed, cleanup, &no_numeric, 255, 0, &limits),
+            Err(invalid_code_block())
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_plane_placement_errors_follow_magsgn_consumption_and_scanning() {
+        let mut duplicate = plane_state(&[0xff], 1, 1);
+        let quad = plane_quad(0, 0, 1, 1);
+        duplicate.quad(quad, 1, 1, 1, 1, 2, 0).unwrap();
+        let output = duplicate.output.clone();
+        assert_eq!(
+            duplicate.quad(quad, 1, 1, 1, 1, 2, 1),
+            Err(invalid_code_block())
+        );
+        assert_eq!(duplicate.output, output);
+        assert_eq!(
+            (
+                duplicate.statistics.coefficients_scanned,
+                duplicate.statistics.coding_symbols,
+                duplicate.statistics.newly_significant,
+                duplicate.reader.physical_bits_read,
+                duplicate.reader.work_units
+            ),
+            (2, 1, 1, 2, 2)
+        );
+
+        let mut mismatch = plane_state(&[0xff], 1, 1);
+        let before = mismatch.output.clone();
+        assert_eq!(
+            mismatch.sample(plane_quad(1, 0, 1, 1), 2, 1, 0, 1, 1, 0),
+            Err(invalid_code_block())
+        );
+        assert_eq!(mismatch.output, before);
+        assert_eq!(
+            (
+                mismatch.statistics.coefficients_scanned,
+                mismatch.statistics.coding_symbols,
+                mismatch.statistics.newly_significant,
+                mismatch.reader.physical_bits_read
+            ),
+            (1, 0, 0, 1)
+        );
+        assert_eq!(mismatch.current_exponents, [9, 8, 7]);
+    }
+
+    #[test]
+    fn ht_cleanup_plane_statistic_overflows_retain_each_ordered_partial_effect() {
+        let quad = plane_quad(0, 0, 3, 1);
+        for field in 0..3 {
+            let mut state = plane_state(&[0xff], 2, 2);
+            match field {
+                0 => state.statistics.coefficients_scanned = u32::MAX,
+                1 => state.statistics.coding_symbols = u32::MAX,
+                _ => state.statistics.newly_significant = u32::MAX,
+            }
+            assert_eq!(
+                state.sample(quad, 2, 2, 0, 1, 1, 1),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(
+                state.statistics.coefficients_scanned,
+                if field == 0 { u32::MAX } else { 1 }
+            );
+            assert_eq!(
+                state.statistics.coding_symbols,
+                if field == 1 {
+                    u32::MAX
+                } else if field == 2 {
+                    1
+                } else {
+                    0
+                }
+            );
+            assert_eq!(
+                state.statistics.newly_significant,
+                if field == 2 { u32::MAX } else { 0 }
+            );
+            assert_eq!(state.output.coefficients()[2].significant, field != 0);
+            assert_eq!(state.reader.physical_bits_read, u64::from(field != 0));
+            assert_eq!(state.current_exponents, [9, 8, 7]);
+            assert_eq!(state.previous_exponents, [5, 4, 3]);
+        }
+        let mut work = plane_state(&[0xff], 2, 2);
+        work.reader.maximum_work_units = 0;
+        let before = work.output.clone();
+        assert_eq!(
+            work.sample(quad, 2, 2, 0, 1, 1, 0),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 1,
+            })
+        );
+        assert_eq!(work.output, before);
+        assert_eq!(
+            (
+                work.statistics.coefficients_scanned,
+                work.statistics.coding_symbols,
+                work.reader.work_units,
+                work.reader.physical_bits_read
+            ),
+            (1, 0, 1, 1)
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_plane_stencils_reset_max_overwrite_swap_and_drive_noninitial_u() {
+        let mut state = plane_state(&[], 4, 4);
+        state
+            .sample(plane_quad(0, 0, 2, 1), 4, 4, 0, 1, 1, 1)
+            .unwrap();
+        assert_eq!(state.current_exponents, [9, 8, 7]);
+        state
+            .sample(plane_quad(0, 0, 8, 1), 4, 4, 0, 1, 1, 3)
+            .unwrap();
+        assert_eq!(state.current_exponents, [9, 1, 7]);
+
+        let mut state = plane_state(&[], 4, 4);
+        state
+            .quad(plane_quad(0, 0, 0, 0), 4, 4, 4, 1, 2, 0)
+            .unwrap();
+        assert_eq!(state.current_exponents, [0, 0, 0]);
+        assert_eq!(state.previous_exponents, [5, 4, 3]);
+        state
+            .quad(plane_quad(2, 0, 10, 4), 4, 4, 4, 1, 2, 1)
+            .unwrap();
+        assert_eq!(state.previous_exponents, [0, 4, 4]);
+        assert_eq!(state.current_exponents, [5, 4, 3]);
+        let mut noninitial = plane_quad(0, 2, 3, 1);
+        noninitial.initial_row = false;
+        state.quad(noninitial, 4, 4, 4, 1, 2, 2).unwrap();
+        assert_eq!(state.current_exponents, [3, 0, 0]);
+        assert_eq!(state.previous_exponents, [0, 4, 4]);
+        assert_eq!(
+            (
+                state.output.coefficient(0, 2).unwrap().magnitude,
+                state.output.coefficient(0, 3).unwrap().magnitude
+            ),
+            (4, 4)
+        );
+        assert_eq!(
+            (
+                state.statistics.coefficients_scanned,
+                state.statistics.coding_symbols,
+                state.statistics.newly_significant,
+                state.reader.fill_bits_read
+            ),
+            (12, 4, 4, 14)
+        );
+        assert_eq!(
+            complete_ht_kappa(1, 1, 255, 0, 75),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(
+            complete_ht_kappa(0, 1, 255, 0, 75),
+            Err(invalid_code_block())
+        );
+        assert_eq!(
+            complete_ht_kappa(1, 0xf0, 255, 0, 75),
+            Err(invalid_code_block())
+        );
+        assert_eq!(complete_ht_kappa(1, 3, 2, 4, 3), Ok(3));
+    }
+
+    #[test]
+    fn ht_cleanup_plane_finish_preserves_outputs_and_reports_physical_padding_stuffing_and_budget()
+    {
+        for (input, maximum_work, error, physical, work) in [
+            (&[0xfe][..], 100, invalid_code_block(), 1, 1),
+            (
+                &[0xff, 0x80][..],
+                100,
+                DecodeError::MalformedInput {
+                    offset: 1,
+                    kind: MalformedKind::InvalidBitStuffing,
+                },
+                8,
+                8,
+            ),
+            (
+                &[0xff][..],
+                7,
+                DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: 7,
+                    actual: 8,
+                },
+                8,
+                8,
+            ),
+        ] {
+            let mut state = plane_state(input, 1, 1);
+            state.reader.maximum_work_units = maximum_work;
+            state.statistics.coefficients_scanned = 42;
+            let output = state.output.clone();
+            assert_eq!(state.finish(), Err(error));
+            assert_eq!(state.output, output);
+            assert_eq!(state.statistics.coefficients_scanned, 42);
+            assert_eq!(state.previous_exponents, [5, 4, 3]);
+            assert_eq!(state.current_exponents, [9, 8, 7]);
+            assert_eq!(
+                (state.reader.physical_bits_read, state.reader.work_units),
+                (physical, work)
+            );
+        }
+        let limits = ResourceLimits::default();
+        let cleanup = parse_ht_block_segments(&[0xfe, 2, 0], None, &limits)
+            .unwrap()
+            .cleanup();
+        let metadata = plane_metadata(1, 1, vec![]);
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(
+                &CodeBlockPlane::new(1, 1).unwrap(),
+                cleanup,
+                &metadata,
+                0,
+                0,
+                &limits
+            ),
+            Err(invalid_code_block())
+        );
+    }
+
+    #[test]
+    fn ht_numeric_reconstruction_has_independent_full_value_sign_and_exponent_fixtures() {
+        let limits = ResourceLimits::default();
+        for (
+            data,
+            completed,
+            embedded_bit,
+            embedded_value,
+            planes,
+            low,
+            negative,
+            exponent,
+            bits,
+        ) in [
+            (&[0x01][..], 3, false, false, 1, 1, true, 1, 3),
+            (&[0x06][..], 3, false, false, 3, 18, false, 3, 3),
+            (&[0x00][..], 1, false, true, 1, 2, false, 2, 1),
+            (&[][..], 3, false, false, 1, 4, true, 3, 3),
+            (&[][..], 3, true, true, 1, 4, true, 3, 2),
+            (&[][..], 3, true, false, 1, 2, true, 2, 2),
+            (&[][..], 3, false, true, 1, 8, true, 4, 3),
+        ] {
+            let mut reader = HtForwardMagSgnReader::new(data, &limits).unwrap();
+            let result = reconstruct_ht_magnitude(
+                &mut reader,
+                completed,
+                embedded_bit,
+                embedded_value,
+                planes,
+            )
+            .unwrap();
+            assert_eq!(
+                (result.0.to_u64(), result.1, result.2),
+                (Some(low), negative, exponent)
+            );
+            for index in 1..6 {
+                assert_eq!(result.0.limb(index), Some(0));
+            }
+            assert_eq!(reader.work_units, bits);
+            assert_eq!(reader.physical_bits_read + reader.fill_bits_read, bits);
+        }
+        let mut no_read = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        no_read.work_units = u64::MAX;
+        no_read.fill_bits_read = u64::MAX;
+        let before = no_read;
+        let result = reconstruct_ht_magnitude(&mut no_read, 1, true, false, 1).unwrap();
+        assert_eq!((result.0.to_u64(), result.1, result.2), (Some(1), false, 1));
+        assert_eq!(no_read, before);
+    }
+
+    #[test]
+    fn ht_numeric_reconstruction_preserves_wide_bits_at_the_native_precision_ceiling() {
+        let data = [0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f];
+        let limits = ResourceLimits::default();
+        let mut unscaled = HtForwardMagSgnReader::new(&data, &limits).unwrap();
+        let (magnitude, negative, exponent) =
+            reconstruct_ht_magnitude(&mut unscaled, 75, false, false, 1).unwrap();
+        for (index, expected) in [0, 1024, 0, 0, 0, 0].into_iter().enumerate() {
+            assert_eq!(magnitude.limb(index), Some(expected));
+        }
+        assert_eq!(
+            (
+                negative,
+                exponent,
+                unscaled.physical_bits_read,
+                unscaled.fill_bits_read
+            ),
+            (true, 75, 75, 0)
+        );
+        let mut scaled = HtForwardMagSgnReader::new(&data, &limits).unwrap();
+        let (magnitude, negative, exponent) =
+            reconstruct_ht_magnitude(&mut scaled, 75, false, false, 292).unwrap();
+        for (index, expected) in [0, 0, 0, 0, 1_u64 << 34, 1_u64 << 45]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(magnitude.limb(index), Some(expected));
+        }
+        assert_eq!(magnitude.to_u64(), None);
+        assert_eq!(
+            (
+                negative,
+                exponent,
+                scaled.work_units,
+                scaled.physical_bits_read
+            ),
+            (true, 75, 75, 75)
+        );
+        assert_eq!(
+            (
+                scaled.next_byte,
+                scaled.value,
+                scaled.next_bit,
+                scaled.last_bit,
+                scaled.has_byte,
+                scaled.current_is_physical,
+                scaled.previous_was_ff
+            ),
+            (10, 0x7f, 7, 6, true, true, false)
+        );
+    }
+
+    #[test]
+    fn ht_numeric_first_reader_failures_keep_every_actual_cursor_and_counter() {
+        let limits = ResourceLimits::default();
+        let data = [0xff, 0x80];
+        let mut reader = HtForwardMagSgnReader::new(&data, &limits).unwrap();
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut reader, 9, false, false, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing
+            })
+        );
+        assert_eq!(
+            reader,
+            HtForwardMagSgnReader {
+                input: &data,
+                next_byte: 1,
+                value: 0xff,
+                next_bit: 8,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: true,
+                previous_was_ff: true,
+                physical_bits_read: 8,
+                fill_bits_read: 0,
+                work_units: 8,
+                maximum_work_units: 1_000_000_000,
+            }
+        );
+        let budget = limits.with_maximum_work_units(2).unwrap();
+        let data = [0x06];
+        let mut physical = HtForwardMagSgnReader::new(&data, &budget).unwrap();
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut physical, 3, false, false, 1),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 2,
+                actual: 3
+            })
+        );
+        assert_eq!(
+            physical,
+            HtForwardMagSgnReader {
+                input: &data,
+                next_byte: 1,
+                value: 6,
+                next_bit: 3,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: true,
+                previous_was_ff: false,
+                physical_bits_read: 3,
+                fill_bits_read: 0,
+                work_units: 3,
+                maximum_work_units: 2,
+            }
+        );
+        let mut fill = HtForwardMagSgnReader::new(&[], &budget).unwrap();
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut fill, 3, false, false, 1),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 2,
+                actual: 3
+            })
+        );
+        assert_eq!(
+            fill,
+            HtForwardMagSgnReader {
+                input: &[],
+                next_byte: 0,
+                value: 0xff,
+                next_bit: 3,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: false,
+                previous_was_ff: true,
+                physical_bits_read: 0,
+                fill_bits_read: 3,
+                work_units: 3,
+                maximum_work_units: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn ht_numeric_header_and_native_overflow_order_do_not_assume_a_valid_reader() {
+        let limits = ResourceLimits::default();
+        let mut reader = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        reader.fill_bits_read = u64::MAX;
+        reader.work_units = 7;
+        let before = reader;
+        for (completed, planes) in [(0, 1), (76, 1), (255, 1), (1, 0), (1, 293), (1, u16::MAX)] {
+            assert_eq!(
+                reconstruct_ht_magnitude(&mut reader, completed, false, false, planes),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock
+                })
+            );
+            assert_eq!(reader, before);
+        }
+        assert_eq!(
+            reconstruct_ht_magnitude(&mut reader, 1, false, false, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(
+            reader,
+            HtForwardMagSgnReader {
+                input: &[],
+                next_byte: 0,
+                value: 0xff,
+                next_bit: 1,
+                last_bit: 7,
+                has_byte: true,
+                current_is_physical: false,
+                previous_was_ff: true,
+                physical_bits_read: 0,
+                fill_bits_read: u64::MAX,
+                work_units: 7,
+                maximum_work_units: 1_000_000_000,
+            }
+        );
+        assert_eq!(
+            center_ht_numeric_magnitude(
+                Magnitude::from_limbs([u64::MAX; 6]),
+                false,
+                255,
+                0,
+                false,
+                1
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(
+            center_ht_numeric_magnitude(
+                Magnitude::single_bit(200).unwrap(),
+                true,
+                201,
+                0,
+                false,
+                292
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        let (value, negative, exponent) =
+            center_ht_numeric_magnitude(Magnitude::from_u64(1), true, 255, 0, true, 1).unwrap();
+        assert_eq!((value.to_u64(), negative, exponent), (Some(2), true, 1));
+    }
+
+    #[test]
+    fn ht_complete_metadata_odd_rows_pairs_and_members_have_literal_outputs() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(24)
+            .unwrap();
+        let metadata = decode_ht_cleanup_metadata(&[0xff, 3, 0], 5, 5, 1, &limits).unwrap();
+        let expected_quads: Vec<_> = [
+            (0, 0),
+            (2, 0),
+            (4, 0),
+            (0, 2),
+            (2, 2),
+            (4, 2),
+            (0, 4),
+            (2, 4),
+            (4, 4),
+        ]
+        .into_iter()
+        .map(|(x, y)| HtQuadMetadata {
+            x,
+            y,
+            context: 0,
+            initial_row: y == 0,
+            significance: 0,
+            embedded_magnitude: 0,
+            embedded_bit_mask: 0,
+            u_offset: false,
+            u_base: 1,
+            codeword_bits: 0,
+        })
+        .collect();
+        assert_eq!(
+            metadata,
+            HtCleanupMetadata {
+                width: 5,
+                height: 5,
+                quads: expected_quads,
+                significant_samples: 0,
+                mel_bits: 6,
+                vlc_bits: 0,
+                mel_events: 9,
+            }
+        );
+        let one_short = ResourceLimits::default()
+            .with_maximum_work_units(23)
+            .unwrap();
+        assert_eq!(
+            decode_ht_cleanup_metadata(&[0xff, 3, 0], 5, 5, 1, &one_short),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 23,
+                actual: 24
+            })
+        );
+    }
+
+    #[test]
+    fn ht_metadata_last_row_budget_failure_retains_stored_quad_and_all_counters() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0xff, 3], &[0xff, 3, 0], 23).unwrap();
+        let mut quads = Vec::with_capacity(9);
+        let mut previous = vec![0; 3];
+        let mut significant = 0;
+        assert_eq!(
+            decode_ht_metadata_row(
+                &mut readers,
+                &mut quads,
+                &mut previous,
+                &mut significant,
+                3,
+                0,
+                5,
+                5,
+                1
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            (
+                quads.len(),
+                readers.work_units,
+                readers.mel.bits_read,
+                readers.mel_events
+            ),
+            (3, 9, 3, 3)
+        );
+        assert_eq!(
+            decode_ht_metadata_row(
+                &mut readers,
+                &mut quads,
+                &mut previous,
+                &mut significant,
+                3,
+                1,
+                5,
+                5,
+                1
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            (
+                quads.len(),
+                readers.work_units,
+                readers.mel.bits_read,
+                readers.mel_events
+            ),
+            (6, 17, 5, 6)
+        );
+        assert_eq!(
+            decode_ht_metadata_row(
+                &mut readers,
+                &mut quads,
+                &mut previous,
+                &mut significant,
+                3,
+                2,
+                5,
+                5,
+                1
+            ),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 23,
+                actual: 24
+            })
+        );
+        assert_eq!(quads.len(), 9);
+        assert_eq!(
+            quads[8],
+            HtQuadMetadata {
+                x: 4,
+                y: 4,
+                context: 0,
+                initial_row: false,
+                significance: 0,
+                embedded_magnitude: 0,
+                embedded_bit_mask: 0,
+                u_offset: false,
+                u_base: 1,
+                codeword_bits: 0,
+            }
+        );
+        assert_eq!(previous, [0, 0, 0]);
+        assert_eq!(
+            (
+                significant,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events,
+                readers.mel_last_byte,
+                readers.vlc_last_byte
+            ),
+            (0, 24, 23, 6, 0, false, 9, Some(0), None)
+        );
+        assert_eq!(
+            (
+                readers.mel.next_byte,
+                readers.mel.current_byte,
+                readers.mel.value,
+                readers.mel.next_bit,
+                readers.mel.previous_was_ff,
+                readers.mel.bits_read,
+                readers.mel.maximum_work_units
+            ),
+            (1, 0, 0xff, 1, true, 6, 23)
+        );
+        assert_eq!(
+            (
+                readers.vlc.current_byte,
+                readers.vlc.value,
+                readers.vlc.next_bit,
+                readers.vlc.last_bit,
+                readers.vlc.has_byte,
+                readers.vlc.later_byte_requires_unstuffing,
+                readers.vlc.bits_read,
+                readers.vlc.maximum_work_units
+            ),
+            (1, 3, 4, 7, true, false, 0, 23)
+        );
+    }
+
+    #[test]
+    fn ht_metadata_actual_word_phase_chooses_each_neighbor_and_west_context() {
+        for (previous, left, expected) in [
+            ([0, 0, 0], 2, 2),
+            ([0, 8, 0], 0, 1),
+            ([0, 0, 2], 0, 1),
+            ([0, 0, 8], 0, 4),
+            ([0, 8, 8], 2, 7),
+        ] {
+            let mut readers =
+                ht_cleanup_readers_from_inputs(&[0, 0, 4], &[0, 0, 4, 0], 100).unwrap();
+            let mut current = [0; 3];
+            let mut west = left;
+            let (words, contexts) = decode_ht_metadata_words(
+                &mut readers,
+                &mut current,
+                &mut west,
+                &previous,
+                3,
+                2,
+                false,
+            )
+            .unwrap();
+            assert_eq!(contexts, [expected, 0]);
+            assert_eq!(words[1], 0);
+            assert_eq!(&current[..2], &[0, 0]);
+            assert_eq!(readers.mel.bits_read, 0);
+        }
+        let mut readers = ht_cleanup_readers_from_inputs(&[0, 0, 4], &[0, 0, 4, 0], 100).unwrap();
+        let mut current = [0; 3];
+        let mut west = 0;
+        let (_, contexts) = decode_ht_metadata_words(
+            &mut readers,
+            &mut current,
+            &mut west,
+            &[0, 2, 0],
+            3,
+            0,
+            false,
+        )
+        .unwrap();
+        assert_eq!(contexts[0], 4);
+    }
+
+    #[test]
+    fn ht_metadata_sample_error_and_counter_overflow_have_exact_mutation_frames() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0], &[0, 0], 100).unwrap();
+        let original_mel = readers.mel;
+        let original_vlc = readers.vlc;
+        let mut quads = Vec::new();
+        let mut significant = 0;
+        assert_eq!(
+            append_ht_metadata_quad(
+                &mut readers,
+                &mut quads,
+                &mut significant,
+                0,
+                0,
+                1,
+                1,
+                1,
+                0x0055,
+                0,
+                5,
+                1,
+                true
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+        assert_eq!(significant, 1);
+        assert!(quads.is_empty());
+        assert_eq!(readers.mel, original_mel);
+        assert_eq!(readers.vlc, original_vlc);
+        assert_eq!((readers.work_units, readers.mel_events), (0, 0));
+        significant = u16::MAX;
+        assert_eq!(
+            append_ht_metadata_quad(
+                &mut readers,
+                &mut quads,
+                &mut significant,
+                0,
+                0,
+                1,
+                1,
+                1,
+                0x0014,
+                0,
+                1,
+                1,
+                true
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(significant, u16::MAX);
+        assert!(quads.is_empty());
+        assert_eq!(readers.mel, original_mel);
+        assert_eq!(readers.vlc, original_vlc);
+        assert_eq!(readers.work_units, 0);
+        readers.work_units = u64::MAX;
+        significant = 0;
+        assert_eq!(
+            append_ht_metadata_quad(
+                &mut readers,
+                &mut quads,
+                &mut significant,
+                0,
+                0,
+                2,
+                2,
+                1,
+                0x00f7,
+                0,
+                15,
+                1,
+                true
+            ),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow
+            })
+        );
+        assert_eq!(
+            (significant, quads.len(), readers.work_units),
+            (4, 1, u64::MAX)
+        );
+        assert_eq!(
+            quads[0],
+            HtQuadMetadata {
+                x: 0,
+                y: 0,
+                context: 0,
+                initial_row: true,
+                significance: 15,
+                embedded_magnitude: 0,
+                embedded_bit_mask: 0,
+                u_offset: false,
+                u_base: 1,
+                codeword_bits: 7,
+            }
+        );
+        assert_eq!(readers.mel, original_mel);
+        assert_eq!(readers.vlc, original_vlc);
+    }
+
+    #[test]
+    fn ht_metadata_public_header_order_and_empty_private_streams_are_typed() {
+        let limits = ResourceLimits::default();
+        let too_small = limits.with_maximum_code_block_bytes(2).unwrap();
+        assert_eq!(
+            decode_ht_cleanup_metadata(&[0xff, 3, 0], 0, 0, 0, &too_small),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: 2,
+                actual: 3
+            })
+        );
+        for (width, height, maximum) in [
+            (0, 1, 1),
+            (1, 0, 1),
+            (65535, 65535, 1),
+            (1, 1, 0),
+            (1, 1, 76),
+            (1, 1, 255),
+        ] {
+            assert_eq!(
+                decode_ht_cleanup_metadata(&[0xff, 3, 0], width, height, maximum, &limits),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock
+                })
+            );
+        }
+        let segments = parse_ht_block_segments(&[0xff, 3, 0], None, &limits).unwrap();
+        let mut cleanup = segments.cleanup();
+        cleanup.mel.bytes = &[];
+        assert_eq!(
+            decode_ht_cleanup_segment_metadata(cleanup, 1, 1, 1, &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+        cleanup = segments.cleanup();
+        cleanup.vlc.bytes = &[0];
+        assert_eq!(
+            decode_ht_cleanup_segment_metadata(cleanup, 1, 1, 1, &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+    }
+
+    #[test]
     fn decodes_bounded_ht_cleanup_quad_metadata() {
         let limits = ResourceLimits::default();
         let metadata = decode_ht_cleanup_metadata(&[0x00, 0x63, 0x00], 1, 1, 1, &limits).unwrap();
@@ -5237,6 +8155,991 @@ mod tests {
         );
         assert_eq!(metadata.mel_bits, 1);
         assert_eq!(metadata.vlc_bits, 4);
+    }
+
+    #[test]
+    fn ht_complete_partition_preserves_every_stream_and_optional_empty() {
+        let limits = ResourceLimits::default();
+        let cleanup = [0xaa, 0xbb, 0x23, 0];
+        let refinement = [0x5a, 0];
+        let segments = parse_ht_block_segments(&cleanup, Some(&refinement), &limits).unwrap();
+        assert_eq!(segments.bytes(), 6);
+        let segment = segments.cleanup();
+        assert_eq!(segment.encoded(), &[0xaa, 0xbb, 0x23, 0]);
+        assert_eq!(segment.scup(), 3);
+        for (view, bytes, offset, direction) in [
+            (
+                segment.mag_sgn(),
+                &[0xaa][..],
+                0,
+                HtStreamDirection::Forward,
+            ),
+            (
+                segment.mel_vlc(),
+                &[0xbb, 0x23, 0][..],
+                1,
+                HtStreamDirection::Forward,
+            ),
+            (
+                segment.mel(),
+                &[0xbb, 0x23][..],
+                1,
+                HtStreamDirection::Forward,
+            ),
+            (
+                segment.vlc(),
+                &[0xbb, 0x23, 0][..],
+                1,
+                HtStreamDirection::Reverse,
+            ),
+        ] {
+            assert_eq!(
+                (view.bytes(), view.offset(), view.direction()),
+                (bytes, offset, direction)
+            );
+        }
+        let refinement = segments.refinement().unwrap();
+        assert_eq!(refinement.encoded(), &[0x5a, 0]);
+        assert_eq!(
+            (
+                refinement.significance_propagation().bytes(),
+                refinement.significance_propagation().offset(),
+                refinement.significance_propagation().direction()
+            ),
+            (&[0x5a, 0][..], 4, HtStreamDirection::Forward)
+        );
+        assert_eq!(
+            (
+                refinement.magnitude_refinement().bytes(),
+                refinement.magnitude_refinement().offset(),
+                refinement.magnitude_refinement().direction()
+            ),
+            (&[0x5a, 0][..], 4, HtStreamDirection::Reverse)
+        );
+        let absent = parse_ht_block_segments(&cleanup, None, &limits).unwrap();
+        let empty = parse_ht_block_segments(&cleanup, Some(&[]), &limits).unwrap();
+        assert_eq!((absent.bytes(), empty.bytes()), (4, 4));
+        assert!(absent.refinement().is_none());
+        let empty = empty.refinement().unwrap();
+        assert!(empty.encoded().is_empty());
+        assert_eq!(
+            (
+                empty.significance_propagation().bytes(),
+                empty.significance_propagation().offset(),
+                empty.significance_propagation().direction()
+            ),
+            (&[][..], 4, HtStreamDirection::Forward)
+        );
+        assert_eq!(
+            (
+                empty.magnitude_refinement().bytes(),
+                empty.magnitude_refinement().offset(),
+                empty.magnitude_refinement().direction()
+            ),
+            (&[][..], 4, HtStreamDirection::Reverse)
+        );
+    }
+
+    #[test]
+    fn ht_partition_checks_actual_budget_before_scup_and_sizes_before_budget() {
+        let limits = ResourceLimits::default()
+            .with_maximum_code_block_bytes(1)
+            .unwrap();
+        assert_eq!(
+            parse_ht_block_segments(&[0, 0], None, &limits),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlockBytes,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[0], None, &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            })
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[2, 0], Some(&[0; 2047]), &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+        let exact = ResourceLimits::default()
+            .with_maximum_code_block_bytes(2)
+            .unwrap();
+        assert!(parse_ht_block_segments(&[2, 0], Some(&[]), &exact).is_ok());
+        assert_eq!(
+            parse_ht_block_segments(&[0, 0], None, &exact),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        );
+    }
+
+    #[test]
+    fn ht_partition_native_capacity_and_scup_boundaries_are_exact() {
+        let limits = ResourceLimits::default();
+        let mut cleanup = vec![0; 65534];
+        cleanup[65532] = 2;
+        let refinement = [0; 2046];
+        let segments = parse_ht_block_segments(&cleanup, Some(&refinement), &limits).unwrap();
+        assert_eq!(
+            (
+                segments.bytes(),
+                segments.cleanup().scup(),
+                segments.cleanup().mag_sgn().bytes().len(),
+                segments.cleanup().vlc().offset()
+            ),
+            (67580, 2, 65532, 65532)
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[0; 65535], None, &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(
+            parse_ht_block_segments(&[3, 0], None, &limits),
+            Err(invalid_code_block())
+        );
+        let mut maximum_scup = vec![0; 4079];
+        maximum_scup[4077] = 0x0f;
+        maximum_scup[4078] = 0xfe;
+        let segment = parse_ht_block_segments(&maximum_scup, None, &limits)
+            .unwrap()
+            .cleanup();
+        assert_eq!(
+            (
+                segment.scup(),
+                segment.mag_sgn().bytes().len(),
+                segment.mel().bytes().len(),
+                segment.vlc().bytes().len()
+            ),
+            (4079, 0, 4078, 4079)
+        );
+        let mut excessive_scup = vec![0; 4080];
+        excessive_scup[4079] = 0xff;
+        assert_eq!(
+            parse_ht_block_segments(&excessive_scup, None, &limits),
+            Err(invalid_code_block())
+        );
+    }
+
+    #[test]
+    fn ht_packet_pass_group_has_literal_complete_fields_and_native_rejections() {
+        for (passes, cleanup, refinement, placeholders, skipped) in [
+            (1, 1, 0, 0, 0),
+            (2, 1, 1, 0, 0),
+            (3, 1, 2, 0, 0),
+            (4, 4, 0, 3, 1),
+            (5, 4, 1, 3, 1),
+            (6, 4, 2, 3, 1),
+            (162, 160, 2, 159, 53),
+            (163, 163, 0, 162, 54),
+            (164, 163, 1, 162, 54),
+        ] {
+            assert_eq!(
+                HtPassGroup::from_packet_passes(passes),
+                Ok(HtPassGroup {
+                    cleanup_passes: cleanup,
+                    refinement_passes: refinement,
+                    placeholder_passes: placeholders,
+                    skipped_bitplanes: skipped,
+                })
+            );
+        }
+        for passes in [0, 165, 255] {
+            assert_eq!(
+                HtPassGroup::from_packet_passes(passes),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn ht_uvlc_prefixes_and_suffixes_use_exact_physical_bits() {
+        for (bytes, expected, bits, cursor) in [
+            ([0x10, 0], (1, 0, 1), 1, 5),
+            ([0x20, 0], (2, 0, 2), 2, 6),
+            ([0x40, 0], (3, 1, 3), 3, 7),
+            ([0x00, 0], (5, 5, 3), 3, 7),
+        ] {
+            let mut readers = ht_cleanup_readers_from_inputs(&[0], &bytes, 100).unwrap();
+            let mel = readers.mel;
+            assert_eq!(readers.read_prefix(), Ok(expected));
+            assert_eq!(
+                (
+                    readers.vlc.bits_read,
+                    readers.vlc.next_bit,
+                    readers.work_units
+                ),
+                (bits, cursor, bits)
+            );
+            assert_eq!(readers.mel, mel);
+        }
+        let mut value = ht_cleanup_readers_from_inputs(&[0, 0], &[0x0b, 0, 0], 100).unwrap();
+        assert_eq!(value.prefix_value(), Ok((27, 3)));
+        assert_eq!(
+            (
+                value.vlc.current_byte,
+                value.vlc.value,
+                value.vlc.next_bit,
+                value.vlc.bits_read,
+                value.work_units
+            ),
+            (0, 0x0b, 4, 8, 8)
+        );
+
+        let mut zero_extended = ht_cleanup_readers_from_inputs(&[0; 41], &[0; 42], 1000).unwrap();
+        assert_eq!(zero_extended.read_suffix(255), Ok(0));
+        assert_eq!(
+            (
+                zero_extended.vlc.current_byte,
+                zero_extended.vlc.next_bit,
+                zero_extended.vlc.bits_read,
+                zero_extended.work_units
+            ),
+            (8, 3, 255, 255)
+        );
+    }
+
+    #[test]
+    fn ht_uvlc_result_width_and_budget_rejections_keep_the_consumed_bit() {
+        let mut width = ht_cleanup_readers_from_inputs(&[0, 0], &[0x10, 0, 0], 100).unwrap();
+        let mel = width.mel;
+        assert_eq!(
+            width.read_suffix(9),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            })
+        );
+        assert_eq!(
+            (
+                width.vlc.current_byte,
+                width.vlc.next_bit,
+                width.vlc.bits_read,
+                width.vlc_last_byte,
+                width.work_units
+            ),
+            (0, 5, 9, Some(0), 9)
+        );
+        assert_eq!(width.mel, mel);
+        let mut budget = ht_cleanup_readers_from_inputs(&[0, 0], &[0x10, 0, 0], 8).unwrap();
+        assert_eq!(
+            budget.read_suffix(9),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 8,
+                actual: 9,
+            })
+        );
+        assert_eq!(
+            (budget.vlc.next_bit, budget.vlc.bits_read, budget.work_units),
+            (5, 9, 8)
+        );
+
+        let mut prefix = ht_cleanup_readers_from_inputs(&[0], &[0x40, 0], 2).unwrap();
+        assert_eq!(
+            prefix.read_prefix(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 2,
+                actual: 3,
+            })
+        );
+        assert_eq!(
+            (prefix.vlc.next_bit, prefix.vlc.bits_read, prefix.work_units),
+            (7, 3, 2)
+        );
+    }
+
+    #[test]
+    fn ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results() {
+        for (mode, initial_expected, noninitial_expected, bits) in [
+            (0, [1, 1], [1, 1], 0),
+            (1, [2, 1], [2, 1], 1),
+            (2, [1, 2], [1, 2], 1),
+            (3, [2, 2], [2, 2], 2),
+        ] {
+            let mut initial = ht_cleanup_readers_from_inputs(&[0], &[0x30, 0], 100).unwrap();
+            let mut noninitial = ht_cleanup_readers_from_inputs(&[0], &[0x30, 0], 100).unwrap();
+            assert_eq!(initial.decode_initial_u(mode), Ok(initial_expected));
+            assert_eq!(
+                noninitial.decode_non_initial_u(mode),
+                Ok(noninitial_expected)
+            );
+            assert_eq!((initial.vlc.bits_read, initial.work_units), (bits, bits));
+            assert_eq!(
+                (noninitial.vlc.bits_read, noninitial.work_units),
+                (bits, bits)
+            );
+        }
+        let mut biased = ht_cleanup_readers_from_inputs(&[0], &[0x30, 0], 100).unwrap();
+        assert_eq!(biased.decode_initial_u(4), Ok([4, 4]));
+        assert_eq!((biased.vlc.bits_read, biased.work_units), (2, 2));
+        let mut special = ht_cleanup_readers_from_inputs(&[0, 0], &[0, 0xc0, 0], 100).unwrap();
+        let mut ordinary = ht_cleanup_readers_from_inputs(&[0, 0], &[0, 0xc0, 0], 100).unwrap();
+        assert_eq!(special.decode_initial_u(3), Ok([4, 3]));
+        assert_eq!(ordinary.decode_non_initial_u(3), Ok([4, 2]));
+        assert_eq!(
+            (
+                special.vlc.bits_read,
+                special.work_units,
+                ordinary.vlc.bits_read,
+                ordinary.work_units
+            ),
+            (5, 5, 5, 5)
+        );
+        let mut long = ht_cleanup_readers_from_inputs(&[0, 0], &[0x1f, 0, 0], 100).unwrap();
+        assert_eq!(long.decode_initial_u(3), Ok([37, 2]));
+        assert_eq!((long.vlc.bits_read, long.work_units), (9, 9));
+    }
+
+    #[test]
+    fn ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked() {
+        for mode in [5, 255] {
+            let mut readers = ht_cleanup_readers_from_inputs(&[0], &[0x30, 0], 0).unwrap();
+            let mel = readers.mel;
+            let vlc = readers.vlc;
+            assert_eq!(readers.decode_initial_u(mode), Err(invalid_code_block()));
+            assert_eq!(readers.mel, mel);
+            assert_eq!(readers.vlc, vlc);
+            assert_eq!(
+                (
+                    readers.mel_last_byte,
+                    readers.vlc_last_byte,
+                    readers.work_units
+                ),
+                (None, None, 0)
+            );
+        }
+        let mut readers = ht_cleanup_readers_from_inputs(&[0], &[0x30, 0], 0).unwrap();
+        let vlc = readers.vlc;
+        assert_eq!(readers.decode_non_initial_u(4), Err(invalid_code_block()));
+        assert_eq!(readers.vlc, vlc);
+        for base in [0, 1, 5, 255] {
+            for suffix in [0, 31, 254, 255] {
+                for bias in [0, 1, 3, 255] {
+                    let wide = u16::from(base) + u16::from(suffix) + u16::from(bias);
+                    let expected = if wide <= 255 {
+                        Ok(wide as u8)
+                    } else {
+                        Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::ArithmeticOverflow,
+                        })
+                    };
+                    assert_eq!(ht_uvlc_byte(base, suffix, bias), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ht_quad_word_context_suppression_and_charge_order_are_exact() {
+        let mut word = ht_cleanup_readers_from_inputs(&[0], &[0, 0], 100).unwrap();
+        let mel = word.mel;
+        assert_eq!(word.decode_quad_word(true, 1), Ok(0x0002));
+        assert_eq!(word.mel, mel);
+        assert_eq!(
+            (word.vlc.next_bit, word.vlc.bits_read, word.work_units),
+            (6, 2, 3)
+        );
+
+        let mut suppressed = ht_cleanup_readers_from_inputs(&[0], &[0, 0], 0).unwrap();
+        suppressed.mel_zero_events = 1;
+        suppressed.mel_state = 255;
+        let mel = suppressed.mel;
+        let vlc = suppressed.vlc;
+        assert_eq!(
+            suppressed.decode_quad_word(true, 0),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 1,
+            })
+        );
+        assert_eq!(suppressed.mel, mel);
+        assert_eq!(suppressed.vlc, vlc);
+        assert_eq!(
+            (
+                suppressed.mel_zero_events,
+                suppressed.mel_state,
+                suppressed.mel_events,
+                suppressed.work_units
+            ),
+            (0, 255, 1, 1)
+        );
+
+        let mut final_charge = ht_cleanup_readers_from_inputs(&[0], &[0, 0], 2).unwrap();
+        assert_eq!(
+            final_charge.decode_quad_word(true, 1),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 2,
+                actual: 3,
+            })
+        );
+        assert_eq!(
+            (
+                final_charge.vlc.next_bit,
+                final_charge.vlc.bits_read,
+                final_charge.work_units
+            ),
+            (6, 2, 3)
+        );
+        let mut invalid = ht_cleanup_readers_from_inputs(&[0], &[0, 0], 100).unwrap();
+        let mel = invalid.mel;
+        let vlc = invalid.vlc;
+        assert_eq!(
+            invalid.decode_quad_word(false, 255),
+            Err(invalid_code_block())
+        );
+        assert_eq!(invalid.mel, mel);
+        assert_eq!(invalid.vlc, vlc);
+        assert_eq!((invalid.mel_events, invalid.work_units), (0, 0));
+    }
+
+    #[test]
+    fn ht_cleanup_vlc_words_peek_without_mutation_and_advance_to_first_error() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0, 0], &[0x7f, 0x90, 0], 100).unwrap();
+        let mel = readers.mel;
+        let vlc = readers.vlc;
+        for (count, expected) in [(0, 0), (4, 9), (11, 0x7f9), (255, 0x7f9)] {
+            assert_eq!(readers.peek_vlc(count), expected);
+        }
+        assert_eq!(readers.mel, mel);
+        assert_eq!(readers.vlc, vlc);
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.work_units,
+                readers.mel_events
+            ),
+            (None, None, 0, 0)
+        );
+        assert_eq!(readers.advance_vlc(0), Ok(()));
+        assert_eq!(readers.vlc, vlc);
+        assert_eq!(readers.advance_vlc(4), Ok(()));
+        assert_eq!(
+            (
+                readers.vlc.current_byte,
+                readers.vlc.next_bit,
+                readers.vlc.last_bit,
+                readers.vlc.bits_read,
+                readers.vlc_last_byte,
+                readers.work_units
+            ),
+            (0, 0, 6, 4, Some(1), 4)
+        );
+        assert_eq!(readers.advance_vlc(8), Err(invalid_code_block()));
+        assert_eq!(
+            (
+                readers.vlc.current_byte,
+                readers.vlc.next_bit,
+                readers.vlc.has_byte,
+                readers.vlc.bits_read,
+                readers.vlc_last_byte,
+                readers.work_units
+            ),
+            (0, 7, false, 11, Some(0), 11)
+        );
+
+        let capacity =
+            ht_cleanup_readers_from_inputs(&[0, 0, 0], &[0xff, 0xff, 0, 0], 100).unwrap();
+        assert_eq!(capacity.peek_vlc(16), 0xfff0);
+        assert_eq!(capacity.peek_vlc(255), 0xfff0);
+        assert_eq!(capacity.vlc.bits_read, 0);
+        let budget = ht_cleanup_readers_from_inputs(&[0, 0], &[0x7f, 0x90, 0], 3).unwrap();
+        assert_eq!(budget.peek_vlc(255), 1);
+        assert_eq!(
+            (
+                budget.vlc.bits_read,
+                budget.work_units,
+                budget.vlc_last_byte
+            ),
+            (0, 0, None)
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_mel_events_have_exact_run_suffix_and_cache_transitions() {
+        let mut run = ht_cleanup_readers_from_inputs(&[0xff, 0], &[0, 0, 0], 100).unwrap();
+        for _ in 0..5 {
+            assert_eq!(run.mel_event(), Ok(false));
+        }
+        assert_eq!(
+            (
+                run.mel_state,
+                run.mel_zero_events,
+                run.mel_terminating_one,
+                run.mel_events,
+                run.mel.next_bit,
+                run.mel.bits_read,
+                run.work_units
+            ),
+            (4, 0, false, 5, 3, 4, 4)
+        );
+
+        let mut suffix = ht_cleanup_readers_from_inputs(&[0x40, 0], &[0, 0, 0], 100).unwrap();
+        suffix.mel_state = 3;
+        assert_eq!(suffix.mel_event(), Ok(false));
+        assert_eq!(
+            (
+                suffix.mel_state,
+                suffix.mel_zero_events,
+                suffix.mel_terminating_one,
+                suffix.mel_events,
+                suffix.mel.next_bit,
+                suffix.mel.bits_read,
+                suffix.work_units
+            ),
+            (2, 0, true, 1, 5, 2, 2)
+        );
+        assert_eq!(suffix.mel_event(), Ok(true));
+        assert_eq!(
+            (
+                suffix.mel_state,
+                suffix.mel_zero_events,
+                suffix.mel_terminating_one,
+                suffix.mel_events,
+                suffix.mel.next_bit,
+                suffix.mel.bits_read,
+                suffix.work_units
+            ),
+            (2, 0, false, 2, 5, 2, 2)
+        );
+
+        let mut maximum = ht_cleanup_readers_from_inputs(&[0x54, 0], &[0, 0, 0], 100).unwrap();
+        maximum.mel_state = 12;
+        assert_eq!(maximum.mel_event(), Ok(false));
+        assert_eq!(
+            (
+                maximum.mel_state,
+                maximum.mel_zero_events,
+                maximum.mel_terminating_one,
+                maximum.mel_events,
+                maximum.mel.next_bit,
+                maximum.mel.bits_read,
+                maximum.work_units
+            ),
+            (11, 20, true, 1, 1, 6, 6)
+        );
+        for _ in 0..20 {
+            assert_eq!(maximum.mel_event(), Ok(false));
+        }
+        assert_eq!(maximum.mel_event(), Ok(true));
+        assert_eq!(
+            (
+                maximum.mel_zero_events,
+                maximum.mel_terminating_one,
+                maximum.mel_events,
+                maximum.mel.bits_read,
+                maximum.work_units
+            ),
+            (0, false, 22, 6, 6)
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_mel_event_overflow_and_partial_suffix_failure_keep_actual_state() {
+        let mut cached = ht_cleanup_readers_from_inputs(&[0x40, 0], &[0, 0, 0], 100).unwrap();
+        cached.mel_state = 255;
+        cached.mel_zero_events = 2;
+        cached.mel_events = u32::MAX;
+        let mel = cached.mel;
+        let vlc = cached.vlc;
+        assert_eq!(cached.mel_event(), Err(arithmetic_overflow()));
+        assert_eq!(
+            (
+                cached.mel_state,
+                cached.mel_zero_events,
+                cached.mel_terminating_one,
+                cached.mel_events,
+                cached.work_units
+            ),
+            (255, 1, false, u32::MAX, 0)
+        );
+        assert_eq!(cached.mel, mel);
+        assert_eq!(cached.vlc, vlc);
+        cached.mel_zero_events = 0;
+        cached.mel_terminating_one = true;
+        assert_eq!(cached.mel_event(), Err(arithmetic_overflow()));
+        assert!(!cached.mel_terminating_one);
+        assert_eq!(cached.mel_event(), Err(invalid_code_block()));
+        assert_eq!(cached.mel, mel);
+        assert_eq!(cached.vlc, vlc);
+
+        let mut suffix = ht_cleanup_readers_from_inputs(&[0x40, 0], &[0, 0, 0], 1).unwrap();
+        suffix.mel_state = 3;
+        suffix.mel_events = u32::MAX;
+        let vlc = suffix.vlc;
+        assert_eq!(
+            suffix.mel_event(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            (
+                suffix.mel_state,
+                suffix.mel_zero_events,
+                suffix.mel_terminating_one,
+                suffix.mel_events,
+                suffix.mel.next_bit,
+                suffix.mel.bits_read,
+                suffix.work_units,
+                suffix.mel_last_byte
+            ),
+            (3, 0, false, u32::MAX, 5, 2, 1, Some(0))
+        );
+        assert_eq!(suffix.vlc, vlc);
+    }
+
+    #[test]
+    fn ht_cleanup_pair_collision_precedes_bit_and_outer_budget_follows_claim() {
+        let mut readers = ht_cleanup_readers_from_inputs(&[0x21, 0], &[0x7f, 0x90, 0], 20).unwrap();
+        readers.mel_last_byte = Some(1);
+        let before_mel = readers.mel;
+        let before_vlc = readers.vlc;
+        assert_eq!(readers.read_vlc_bit(), Err(invalid_code_block()));
+        assert_eq!(readers.mel, before_mel);
+        assert_eq!(readers.vlc, before_vlc);
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.terminal_byte,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events
+            ),
+            (Some(1), None, 1, 0, 20, 0, 0, false, 0),
+        );
+
+        let mut readers = ht_cleanup_readers_from_inputs(&[0x21, 0], &[0x7f, 0x90, 0], 1).unwrap();
+        readers.work_units = 1;
+        let before_mel = readers.mel;
+        assert_eq!(
+            readers.read_vlc_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(readers.mel, before_mel);
+        assert_eq!(
+            (
+                readers.vlc.current_byte,
+                readers.vlc.value,
+                readers.vlc.next_bit,
+                readers.vlc.last_bit,
+                readers.vlc.has_byte,
+                readers.vlc.later_byte_requires_unstuffing,
+                readers.vlc.bits_read,
+                readers.vlc.maximum_work_units
+            ),
+            (1, 0x90, 5, 7, true, true, 1, 1),
+        );
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.terminal_byte,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events
+            ),
+            (None, Some(1), 1, 2, 1, 0, 0, false, 0),
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_pair_inner_failure_preserves_claims_and_outer_counter() {
+        let mut readers =
+            ht_cleanup_readers_from_inputs(&[0xff, 0x90], &[0x7f, 0x90, 0], 20).unwrap();
+        for _ in 0..8 {
+            assert_eq!(readers.read_mel_bit(), Ok(true));
+        }
+        let before_mel = readers.mel;
+        let before_vlc = readers.vlc;
+        assert_eq!(
+            readers.read_mel_bit(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing,
+            })
+        );
+        assert_eq!(readers.mel, before_mel);
+        assert_eq!(readers.vlc, before_vlc);
+        assert_eq!(
+            (
+                readers.mel_last_byte,
+                readers.vlc_last_byte,
+                readers.terminal_byte,
+                readers.work_units,
+                readers.maximum_work_units,
+                readers.mel_state,
+                readers.mel_zero_events,
+                readers.mel_terminating_one,
+                readers.mel_events
+            ),
+            (Some(0), None, 1, 8, 20, 0, 0, false, 0),
+        );
+
+        let mut readers = ht_cleanup_readers_from_inputs(&[0x21, 0], &[0x7f, 0x90, 0], 1).unwrap();
+        assert_eq!(readers.read_vlc_bit(), Ok(true));
+        assert_eq!(
+            readers.read_vlc_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            (
+                readers.vlc.next_bit,
+                readers.vlc.bits_read,
+                readers.vlc_last_byte,
+                readers.work_units
+            ),
+            (6, 2, Some(1), 1)
+        );
+    }
+
+    #[test]
+    fn ht_reverse_vlc_fixed_stream_has_exact_terminal_and_stuffed_cursors() {
+        let mut reader =
+            HtReverseVlcReader::new(&[0x7f, 0x90, 0x00], &ResourceLimits::default()).unwrap();
+        for (index, expected) in [
+            true, false, false, true, true, true, true, true, true, true, true,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(reader.read_bit(), Ok(expected));
+            assert_eq!(reader.bits_read(), index as u64 + 1);
+            if index == 3 {
+                assert_eq!(
+                    (
+                        reader.current_byte,
+                        reader.value,
+                        reader.next_bit,
+                        reader.last_bit,
+                        reader.has_byte,
+                        reader.later_byte_requires_unstuffing
+                    ),
+                    (0, 0x7f, 0, 6, true, false),
+                );
+            }
+        }
+        assert_eq!(
+            (
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.last_bit,
+                reader.has_byte,
+                reader.later_byte_requires_unstuffing,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (0, 0x7f, 7, 6, false, false, 11, 1_000_000_000),
+        );
+        let exhausted = reader;
+        assert_eq!(reader.next_position(), None);
+        assert_eq!(reader.read_bit(), Err(invalid_code_block()));
+        assert_eq!(reader, exhausted);
+
+        let mut terminal = HtReverseVlcReader::new(&[0x70, 0], &ResourceLimits::default()).unwrap();
+        assert_eq!(terminal.last_bit, 6);
+        assert_eq!(terminal.read_bit(), Ok(true));
+        assert_eq!(terminal.read_bit(), Ok(true));
+        assert_eq!(terminal.read_bit(), Ok(true));
+        assert_eq!(
+            (terminal.next_bit, terminal.has_byte, terminal.bits_read),
+            (7, false, 3)
+        );
+    }
+
+    #[test]
+    fn ht_reverse_vlc_first_budget_error_does_not_eagerly_load() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(3)
+            .unwrap();
+        let mut reader = HtReverseVlcReader::new(&[0x7f, 0x90, 0], &limits).unwrap();
+        assert_eq!(reader.read_bit(), Ok(true));
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(
+            reader.read_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 3,
+                actual: 4,
+            })
+        );
+        assert_eq!(
+            (
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.last_bit,
+                reader.has_byte,
+                reader.later_byte_requires_unstuffing,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (1, 0x90, 8, 7, true, true, 4, 3),
+        );
+        assert_eq!(
+            reader.next_position(),
+            Some(HtBitPosition { byte: 1, bit: 8 })
+        );
+        let failed = reader;
+        assert_eq!(reader.read_bit(), Err(invalid_code_block()));
+        assert_eq!(reader, failed);
+    }
+
+    #[test]
+    fn ht_cleanup_reader_overflow_keeps_the_exact_partial_cursor_update() {
+        let limits = ResourceLimits::default();
+        let mut reverse = HtReverseVlcReader::new(&[0x90, 0], &limits).unwrap();
+        reverse.bits_read = u64::MAX;
+        let mut expected = reverse;
+        expected.next_bit = 5;
+        assert_eq!(reverse.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(reverse, expected);
+
+        let mut mel = HtMelBitReader::new(&[0x20], &limits).unwrap();
+        mel.bits_read = u64::MAX;
+        let mut expected = mel;
+        expected.next_bit = 6;
+        assert_eq!(mel.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(mel, expected);
+    }
+
+    #[test]
+    fn ht_mel_fixed_stream_covers_terminal_nibble_stuffing_and_exhaustion() {
+        let limits = ResourceLimits::default();
+        let mut reader = HtMelBitReader::new(&[0x21], &limits).unwrap();
+        for expected in [false, false, true, false, true, true, true, true] {
+            assert_eq!(reader.read_bit(), Ok(expected));
+        }
+        assert_eq!(
+            (
+                reader.next_byte,
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.previous_was_ff,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (1, 0, 0x2f, -1, false, 8, 1_000_000_000),
+        );
+        let exhausted = reader;
+        assert_eq!(reader.next_position(), None);
+        assert_eq!(reader.read_bit(), Err(invalid_code_block()));
+        assert_eq!(reader, exhausted);
+
+        let mut stuffed = HtMelBitReader::new(&[0xff, 0x80], &limits).unwrap();
+        for expected in [
+            true, true, true, true, true, true, true, true, false, false, false, true, true, true,
+            true,
+        ] {
+            assert_eq!(stuffed.read_bit(), Ok(expected));
+        }
+        assert_eq!(
+            (
+                stuffed.next_byte,
+                stuffed.current_byte,
+                stuffed.value,
+                stuffed.next_bit,
+                stuffed.previous_was_ff,
+                stuffed.bits_read
+            ),
+            (2, 1, 0x8f, -1, false, 15),
+        );
+    }
+
+    #[test]
+    fn ht_mel_first_stuffing_and_budget_errors_preserve_full_state() {
+        let mut malformed = HtMelBitReader::new(&[0xff, 0x90], &ResourceLimits::default()).unwrap();
+        for _ in 0..8 {
+            assert_eq!(malformed.read_bit(), Ok(true));
+        }
+        let failed = malformed;
+        assert_eq!(
+            malformed.read_bit(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing,
+            })
+        );
+        assert_eq!(malformed, failed);
+
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(1)
+            .unwrap();
+        let mut reader = HtMelBitReader::new(&[0x21], &limits).unwrap();
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(
+            reader.read_bit(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            (
+                reader.next_byte,
+                reader.current_byte,
+                reader.value,
+                reader.next_bit,
+                reader.previous_was_ff,
+                reader.bits_read,
+                reader.maximum_work_units
+            ),
+            (1, 0, 0x2f, 5, false, 2, 1),
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_reader_length_boundaries_are_typed() {
+        let limits = ResourceLimits::default();
+        for length in [0, 1, 4080] {
+            assert_eq!(
+                HtReverseVlcReader::new(&vec![0; length], &limits),
+                Err(invalid_code_block()),
+            );
+        }
+        for length in [0, 4079] {
+            assert_eq!(
+                HtMelBitReader::new(&vec![0; length], &limits),
+                Err(invalid_code_block())
+            );
+        }
+        assert!(HtReverseVlcReader::new(&vec![0; 4079], &limits).is_ok());
+        assert!(HtMelBitReader::new(&vec![0; 4078], &limits).is_ok());
     }
 
     #[test]
@@ -5270,6 +9173,176 @@ mod tests {
     }
 
     #[test]
+    fn ht_magsgn_words_have_exact_fill_and_physical_state() {
+        let limits = ResourceLimits::default();
+        let mut empty = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        let initial = empty;
+        assert_eq!(empty.read_bits(0), Ok(0));
+        assert_eq!(empty, initial);
+        assert_eq!(empty.read_bits(40), Err(invalid_code_block()));
+        assert_eq!(empty, initial);
+        assert_eq!(empty.read_bits(39), Ok(0x7f_ffff_ffff));
+        assert_eq!(
+            (
+                empty.next_byte,
+                empty.value,
+                empty.next_bit,
+                empty.last_bit,
+                empty.has_byte,
+                empty.current_is_physical,
+                empty.previous_was_ff,
+                empty.physical_bits_read,
+                empty.fill_bits_read,
+                empty.work_units
+            ),
+            (0, 0xff, 3, 6, true, false, true, 0, 39, 39),
+        );
+        let filled = empty;
+        assert_eq!(empty.finish(), Ok(()));
+        assert_eq!(empty, filled);
+
+        let mut physical = HtForwardMagSgnReader::new(&[0xff, 0x7f], &limits).unwrap();
+        assert_eq!(physical.read_bits(20), Ok(0x0f_ffff));
+        assert_eq!(
+            (
+                physical.next_byte,
+                physical.value,
+                physical.next_bit,
+                physical.last_bit,
+                physical.has_byte,
+                physical.current_is_physical,
+                physical.previous_was_ff,
+                physical.physical_bits_read,
+                physical.fill_bits_read,
+                physical.work_units
+            ),
+            (2, 0xff, 5, 7, true, false, true, 15, 5, 20),
+        );
+        assert!(matches!(
+            HtForwardMagSgnReader::new(&vec![0; 65535], &limits),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock
+            })
+        ));
+        assert!(HtForwardMagSgnReader::new(&vec![0; 65534], &limits).is_ok());
+    }
+
+    #[test]
+    fn ht_magsgn_word_and_finish_fail_at_the_first_actual_bit() {
+        let limits = ResourceLimits::default();
+        let mut stuffed = HtForwardMagSgnReader::new(&[0xff, 0x80], &limits).unwrap();
+        assert_eq!(
+            stuffed.read_bits(9),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing,
+            })
+        );
+        assert_eq!(
+            (
+                stuffed.next_byte,
+                stuffed.value,
+                stuffed.next_bit,
+                stuffed.last_bit,
+                stuffed.current_is_physical,
+                stuffed.physical_bits_read,
+                stuffed.fill_bits_read,
+                stuffed.work_units
+            ),
+            (1, 0xff, 8, 7, true, 8, 0, 8),
+        );
+        let failed = stuffed;
+        assert_eq!(
+            stuffed.finish(),
+            Err(DecodeError::MalformedInput {
+                offset: 1,
+                kind: MalformedKind::InvalidBitStuffing,
+            })
+        );
+        assert_eq!(stuffed, failed);
+
+        let mut padding = HtForwardMagSgnReader::new(&[0xfe], &limits).unwrap();
+        assert_eq!(padding.finish(), Err(invalid_code_block()));
+        assert_eq!(
+            (
+                padding.next_byte,
+                padding.value,
+                padding.next_bit,
+                padding.last_bit,
+                padding.physical_bits_read,
+                padding.fill_bits_read,
+                padding.work_units
+            ),
+            (1, 0xfe, 1, 7, 1, 0, 1),
+        );
+        assert_eq!(padding.finish(), Ok(()));
+        assert_eq!(
+            (
+                padding.next_bit,
+                padding.physical_bits_read,
+                padding.work_units
+            ),
+            (8, 8, 8)
+        );
+
+        let limits = limits.with_maximum_work_units(1).unwrap();
+        let mut budget = HtForwardMagSgnReader::new(&[0xff], &limits).unwrap();
+        assert_eq!(
+            budget.finish(),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 1,
+                actual: 2,
+            })
+        );
+        assert_eq!(
+            (
+                budget.next_bit,
+                budget.physical_bits_read,
+                budget.work_units
+            ),
+            (2, 2, 2)
+        );
+    }
+
+    #[test]
+    fn ht_magsgn_overflow_keeps_each_ordered_partial_update() {
+        let limits = ResourceLimits::default();
+        let mut physical = HtForwardMagSgnReader::new(&[0xff], &limits).unwrap();
+        assert_eq!(physical.read_bits(1), Ok(1));
+        physical.physical_bits_read = u64::MAX;
+        let mut expected = physical;
+        expected.next_bit = 2;
+        assert_eq!(physical.read_bits(1), Err(arithmetic_overflow()));
+        assert_eq!(physical, expected);
+
+        let mut work = HtForwardMagSgnReader::new(&[0xff], &limits).unwrap();
+        assert_eq!(work.read_bits(1), Ok(1));
+        work.work_units = u64::MAX;
+        let mut expected = work;
+        expected.next_bit = 2;
+        expected.physical_bits_read = 2;
+        assert_eq!(work.read_bits(1), Err(arithmetic_overflow()));
+        assert_eq!(work, expected);
+
+        let mut fill = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        assert_eq!(fill.read_bits(1), Ok(1));
+        fill.fill_bits_read = u64::MAX;
+        let mut expected = fill;
+        expected.next_bit = 2;
+        assert_eq!(fill.read_bits(1), Err(arithmetic_overflow()));
+        assert_eq!(fill, expected);
+
+        let mut zero_fuel = HtForwardMagSgnReader::new(&[], &limits).unwrap();
+        zero_fuel.has_byte = true;
+        zero_fuel.current_is_physical = true;
+        let expected = zero_fuel;
+        assert_eq!(zero_fuel.finish(), Err(invalid_code_block()));
+        assert_eq!(zero_fuel, expected);
+    }
+
+    #[test]
     fn ht_magsgn_reader_is_bounded_stuffed_and_termination_checked() {
         let limits = ResourceLimits::default();
         let mut reader = HtForwardMagSgnReader::new(&[0xff, 0x7f], &limits).unwrap();
@@ -5293,6 +9366,246 @@ mod tests {
         let mut bad_termination = HtForwardMagSgnReader::new(&[0xfc], &limits).unwrap();
         assert_eq!(bad_termination.read_bits(1).unwrap(), 0);
         assert!(bad_termination.finish().is_err());
+    }
+
+    #[test]
+    fn ht_refinement_fixed_bytes_return_exact_directional_positions_and_fill() {
+        let limits = ResourceLimits::default();
+        let mut forward = HtForwardRefinementReader::new(&[0xff, 0x7f], &limits).unwrap();
+        for (byte, bit) in [
+            (0, 0),
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (0, 4),
+            (0, 5),
+            (0, 6),
+            (0, 7),
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (1, 4),
+            (1, 5),
+            (1, 6),
+        ] {
+            assert_eq!(
+                forward.read_positioned_bit(),
+                Ok((true, Some(HtBitPosition { byte, bit })))
+            );
+        }
+        assert_eq!(forward.read_positioned_bit(), Ok((false, None)));
+        assert_eq!(
+            (
+                forward.next_byte,
+                forward.current_byte,
+                forward.value,
+                forward.next_bit,
+                forward.last_bit,
+                forward.has_byte,
+                forward.previous_was_ff,
+                forward.physical_bits_read,
+                forward.fill_bits_read
+            ),
+            (2, 2, 0, 1, 7, true, false, 15, 1),
+        );
+
+        let mut reverse = HtReverseRefinementReader::new(&[0x7f, 0x90], &limits).unwrap();
+        for (value, byte, bit) in [
+            (false, 1, 0),
+            (false, 1, 1),
+            (false, 1, 2),
+            (false, 1, 3),
+            (true, 1, 4),
+            (false, 1, 5),
+            (false, 1, 6),
+            (true, 1, 7),
+            (true, 0, 0),
+            (true, 0, 1),
+            (true, 0, 2),
+            (true, 0, 3),
+            (true, 0, 4),
+            (true, 0, 5),
+            (true, 0, 6),
+        ] {
+            assert_eq!(
+                reverse.read_positioned_bit(),
+                Ok((value, Some(HtBitPosition { byte, bit })))
+            );
+        }
+        assert_eq!(reverse.read_positioned_bit(), Ok((false, None)));
+        assert_eq!(
+            (
+                reverse.current_byte,
+                reverse.value,
+                reverse.next_bit,
+                reverse.last_bit,
+                reverse.has_byte,
+                reverse.later_requires_unstuffing,
+                reverse.physical_bits_read,
+                reverse.fill_bits_read
+            ),
+            (0, 0, 0, 7, false, false, 15, 1),
+        );
+    }
+
+    #[test]
+    fn ht_refinement_counter_and_sum_overflow_preserve_ordered_cursor_updates() {
+        let limits = ResourceLimits::default();
+        let mut forward = HtForwardRefinementReader::new(&[0xff], &limits).unwrap();
+        assert!(forward.read_bit().unwrap());
+        forward.fill_bits_read = u64::MAX;
+        let mut expected = forward;
+        expected.next_bit = 2;
+        expected.physical_bits_read = 2;
+        assert_eq!(forward.read_positioned_bit(), Err(arithmetic_overflow()));
+        assert_eq!(forward, expected);
+        forward.physical_bits_read = u64::MAX;
+        let mut expected = forward;
+        expected.next_bit = 3;
+        assert_eq!(forward.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(forward, expected);
+
+        let mut reverse = HtReverseRefinementReader::new(&[0xff], &limits).unwrap();
+        assert!(reverse.read_bit().unwrap());
+        reverse.fill_bits_read = u64::MAX;
+        let mut expected = reverse;
+        expected.next_bit = 2;
+        expected.physical_bits_read = 2;
+        assert_eq!(reverse.read_positioned_bit(), Err(arithmetic_overflow()));
+        assert_eq!(reverse, expected);
+        reverse.physical_bits_read = u64::MAX;
+        let mut expected = reverse;
+        expected.next_bit = 3;
+        assert_eq!(reverse.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(reverse, expected);
+
+        let mut forward_fill = HtForwardRefinementReader::new(&[], &limits).unwrap();
+        assert!(!forward_fill.read_bit().unwrap());
+        forward_fill.fill_bits_read = u64::MAX;
+        let mut expected = forward_fill;
+        expected.next_bit = 2;
+        assert_eq!(forward_fill.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(forward_fill, expected);
+        let mut reverse_fill = HtReverseRefinementReader::new(&[], &limits).unwrap();
+        reverse_fill.fill_bits_read = u64::MAX;
+        let expected = reverse_fill;
+        assert_eq!(reverse_fill.read_bit(), Err(arithmetic_overflow()));
+        assert_eq!(reverse_fill, expected);
+    }
+
+    #[test]
+    fn ht_refinement_budget_boundaries_and_constructor_capacities_are_exact() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(1)
+            .unwrap();
+        let mut forward = HtForwardRefinementReader::new(&[0x03], &limits).unwrap();
+        let mut reverse = HtReverseRefinementReader::new(&[0x03], &limits).unwrap();
+        assert_eq!(forward.read_bit(), Ok(true));
+        assert_eq!(reverse.read_bit(), Ok(true));
+        let mut expected_forward = forward;
+        expected_forward.next_bit = 2;
+        expected_forward.physical_bits_read = 2;
+        let mut expected_reverse = reverse;
+        expected_reverse.next_bit = 2;
+        expected_reverse.physical_bits_read = 2;
+        let error = DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: 1,
+            actual: 2,
+        };
+        assert_eq!(forward.read_bit(), Err(error));
+        assert_eq!(reverse.read_bit(), Err(error));
+        assert_eq!(forward, expected_forward);
+        assert_eq!(reverse, expected_reverse);
+        assert_eq!(
+            HtForwardRefinementReader::new(&vec![0; 2047], &limits),
+            Err(invalid_code_block())
+        );
+        assert_eq!(
+            HtReverseRefinementReader::new(&vec![0; 2047], &limits),
+            Err(invalid_code_block())
+        );
+        assert!(HtForwardRefinementReader::new(&vec![0; 2046], &limits).is_ok());
+        assert!(HtReverseRefinementReader::new(&vec![0; 2046], &limits).is_ok());
+    }
+
+    #[test]
+    fn ht_refinement_collision_retains_consumption_and_reverse_stuffed_mask() {
+        let mut readers =
+            ht_refinement_readers_from_inputs(&[0xff], &[0xff], 1, true, 100).unwrap();
+        assert_eq!(readers.read_forward(), Ok(true));
+        let forward = readers.forward;
+        assert_eq!(readers.read_reverse(), Err(invalid_code_block()));
+        assert_eq!(readers.forward, forward);
+        let reverse = readers.reverse.unwrap();
+        assert_eq!(
+            (
+                reverse.current_byte,
+                reverse.value,
+                reverse.next_bit,
+                reverse.last_bit,
+                reverse.has_byte,
+                reverse.later_requires_unstuffing,
+                reverse.physical_bits_read,
+                reverse.fill_bits_read
+            ),
+            (0, 0xff, 1, 6, true, true, 1, 0),
+        );
+        assert_eq!(
+            (readers.claimed.as_slice(), readers.stuffed.as_slice()),
+            (&[1][..], &[0x80][..])
+        );
+        assert_eq!(readers.finish(&[0xff]), Err(invalid_code_block()));
+        for _ in 0..6 {
+            assert_eq!(readers.read_reverse(), Ok(true));
+        }
+        assert_eq!(
+            (readers.claimed.as_slice(), readers.stuffed.as_slice()),
+            (&[0x7f][..], &[0x80][..])
+        );
+        assert_eq!(readers.finish(&[0xff]), Ok(()));
+        assert_eq!(readers.read_forward(), Err(invalid_code_block()));
+        assert_eq!(
+            (readers.forward.next_bit, readers.forward.physical_bits_read),
+            (2, 2)
+        );
+        assert_eq!(
+            (readers.claimed.as_slice(), readers.stuffed.as_slice()),
+            (&[0x7f][..], &[0x80][..])
+        );
+    }
+
+    #[test]
+    fn ht_refinement_missing_claim_storage_and_reverse_absence_have_exact_effects() {
+        let mut readers = ht_refinement_readers_from_inputs(&[1], &[], 0, false, 100).unwrap();
+        let forward = readers.forward;
+        assert_eq!(readers.read_reverse(), Err(invalid_code_block()));
+        assert_eq!(readers.forward, forward);
+        assert!(readers.reverse.is_none());
+        assert_eq!(readers.read_forward(), Err(invalid_code_block()));
+        assert_eq!(
+            (readers.forward.next_bit, readers.forward.physical_bits_read),
+            (1, 1)
+        );
+        assert!(readers.claimed.is_empty() && readers.stuffed.is_empty());
+        assert_eq!(readers.claim(None), Ok(()));
+        assert_eq!(
+            readers.claim(Some(HtBitPosition { byte: 0, bit: 8 })),
+            Err(invalid_code_block())
+        );
+        assert_eq!(readers.finish(&[]), Ok(()));
+        assert_eq!(readers.finish(&[0]), Err(invalid_code_block()));
+
+        let mut short = ht_refinement_readers_from_inputs(&[], &[0xff], 1, true, 100).unwrap();
+        short.stuffed.clear();
+        let forward = short.forward;
+        assert_eq!(short.read_reverse(), Err(invalid_code_block()));
+        assert_eq!(short.forward, forward);
+        let reverse = short.reverse.unwrap();
+        assert_eq!((reverse.next_bit, reverse.physical_bits_read), (1, 1));
+        assert_eq!(short.claimed, [0]);
+        assert!(short.stuffed.is_empty());
     }
 
     #[test]
@@ -5513,7 +9826,12 @@ mod tests {
     fn ht_cleanup_fusion_does_not_cross_bytes() {
         let limits = ResourceLimits::default();
         let segments = parse_ht_block_segments(&[0x00, 0x00, 0x04, 0x00], None, &limits).unwrap();
-        let mut readers = HtCleanupReaders::new(segments.cleanup(), &limits).unwrap();
+        let mut readers = ht_cleanup_readers_from_inputs(
+            segments.cleanup().mel().bytes(),
+            segments.cleanup().vlc().bytes(),
+            limits.maximum_work_units(),
+        )
+        .unwrap();
         for _ in 0..4 {
             readers.read_vlc_bit().unwrap();
         }
@@ -5535,7 +9853,12 @@ mod tests {
     fn ht_cleanup_fusion_excludes_ff() {
         let limits = ResourceLimits::default();
         let segments = parse_ht_block_segments(&[0x00, 0xff, 0x04, 0x00], None, &limits).unwrap();
-        let mut readers = HtCleanupReaders::new(segments.cleanup(), &limits).unwrap();
+        let mut readers = ht_cleanup_readers_from_inputs(
+            segments.cleanup().mel().bytes(),
+            segments.cleanup().vlc().bytes(),
+            limits.maximum_work_units(),
+        )
+        .unwrap();
         for _ in 0..4 {
             readers.read_vlc_bit().unwrap();
         }

@@ -16,10 +16,989 @@ pub type Part1DecodedImageModel = (u32, u32, u32, u32, Seq<Part1DecodedComponent
 pub type Part1DecodedImageState = (Result<(), crate::DecodeError>, Part1DecodedImageModel);
 pub type Part1WorkingSubbandModel = (u32, u32, u8, Seq<i64>, Seq<bool>);
 pub type Part1WorkingSubbandState = (Result<(), crate::DecodeError>, Part1WorkingSubbandModel);
+pub type Part1AssemblySize = (u32, u32, u32, u32, u16, Seq<crate::codestream::ComponentInfo>);
+pub type Part1AssemblyTile = (u16, u32, u32, u32, u32, u8, Seq<i64>);
+pub type Part1AssemblyPlane = (u32, u32, Option<u8>, Seq<i64>, Seq<bool>);
+pub type Part1AssemblyPlaneState = (Result<(), crate::DecodeError>, Part1AssemblyPlane);
+pub type Part1AssemblyState = (Result<(), crate::DecodeError>, Part1DecodedImageModel, u64);
+pub type Part1AssemblyDimensions = (crate::codestream::ComponentInfo, u32, u32, u32, u32, u32, u32);
+pub type Part1AssemblySelection = Option<([u32; 4], u32)>;
 
 pub const PART2_NORMALIZED_SAMPLE_BITS: u32 = 16;
 pub const PART2_NORMALIZED_SAMPLE_MAX: u16 = u16::MAX;
 pub const PART2_NORMALIZED_SAMPLE_HALF: u16 = PART2_NORMALIZED_SAMPLE_MAX / 2;
+
+pub const COLOR_FIXED_SCALE: u32 = 65_536;
+pub const COLOR_FIXED_HALF: u32 = COLOR_FIXED_SCALE / 2;
+
+pub open spec fn color_fixed_round(value: int) -> int {
+    if value < 0 { -((-value + COLOR_FIXED_HALF) / (COLOR_FIXED_SCALE as int)) }
+    else { (value + COLOR_FIXED_HALF) / (COLOR_FIXED_SCALE as int) }
+}
+
+pub open spec fn color_rounded_fixed(value: i128) -> Result<i128, crate::DecodeError> {
+    if (value as int) < (i128::MIN as int) + COLOR_FIXED_HALF
+        || (value as int) > (i128::MAX as int) - COLOR_FIXED_HALF {
+        Err(part2_composition_error(true))
+    } else { Ok(color_fixed_round(value as int) as i128) }
+}
+
+pub open spec fn color_clamp_u16(value: int) -> u16 {
+    if value <= 0 { 0 } else if value >= PART2_NORMALIZED_SAMPLE_MAX as int {
+        PART2_NORMALIZED_SAMPLE_MAX
+    } else { value as u16 }
+}
+
+pub open spec fn color_sycc_to_srgb(y: u16, cb: i32, cr: i32)
+    -> Result<(u16, u16, u16), crate::DecodeError>
+{
+    Ok((
+        color_clamp_u16((y as int) + color_fixed_round(91881 * (cr as int))),
+        color_clamp_u16((y as int) - color_fixed_round(22554 * (cb as int))
+            - color_fixed_round(46802 * (cr as int))),
+        color_clamp_u16((y as int) + color_fixed_round(116130 * (cb as int))),
+    ))
+}
+
+pub enum Part1TypedSampleSequence {
+    Signed(Seq<i64>),
+    Unsigned(Seq<u64>),
+}
+
+pub struct Part1TypedComponentModel {
+    pub width: u32,
+    pub height: u32,
+    pub info: crate::codestream::ComponentInfo,
+    pub samples: Part1TypedSampleSequence,
+}
+
+pub type Part1DecodedTypedImage = (
+    ColorGeometry, Seq<Part1TypedComponentModel>,
+    Seq<Seq<(crate::image::ChannelType, crate::image::ChannelAssociation)>>,
+);
+
+pub open spec fn part1_packet_header_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidPacketHeader }
+}
+
+pub open spec fn part1_packet_decoder_count(decoders: Seq<crate::tier1::Tier1CodeBlockDecoder>) -> nat {
+    decoders.len()
+}
+
+pub open spec fn part1_packet_precinct_decoder(
+    decoders: Seq<crate::tier1::Tier1CodeBlockDecoder>, index: usize,
+) -> Result<crate::tier1::Tier1CodeBlockDecoder, crate::DecodeError> {
+    if index < decoders.len() { Ok(decoders[index as int]) } else { Err(part1_packet_header_error()) }
+}
+
+pub open spec fn part1_image_round_fixed(value: i64, fraction_bits: u8) -> Result<i64, crate::DecodeError> {
+    if fraction_bits > 62 { Err(part1_image_error(false)) }
+    else { part1_round_fixed(value, fraction_bits) }
+}
+
+pub open spec fn part1_image_byte_budget(samples: nat, bytes_per_sample: u64, maximum: u64)
+    -> Result<(), crate::DecodeError>
+{
+    let bytes = samples * bytes_per_sample;
+    if bytes > u64::MAX { Err(part1_image_error(true)) }
+    else if bytes > maximum {
+        Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::DecodedBytes, limit: maximum, actual: bytes as u64,
+        })
+    } else { Ok(()) }
+}
+
+pub open spec fn part1_decoded_signed_value(value: i64, fraction_bits: u8, minimum: i64, maximum: i64)
+    -> Result<i64, crate::DecodeError>
+{
+    match part1_image_round_fixed(value, fraction_bits) {
+        Err(error) => Err(error),
+        Ok(rounded) => {
+            let raised = if rounded < minimum { minimum } else { rounded };
+            Ok(if raised > maximum { maximum } else { raised })
+        },
+    }
+}
+
+pub open spec fn part1_decoded_unsigned_value(value: i64, fraction_bits: u8, level_shift: i64, maximum: u64)
+    -> Result<u64, crate::DecodeError>
+{
+    match part1_image_round_fixed(value, fraction_bits) {
+        Err(error) => Err(error),
+        Ok(rounded) => match part1_checked_sample((rounded as int) + (level_shift as int)) {
+            Err(error) => Err(error),
+            Ok(shifted) => {
+                let nonnegative = if shifted < 0 { 0u64 } else { shifted as u64 };
+                Ok(if nonnegative < maximum { nonnegative } else { maximum })
+            },
+        },
+    }
+}
+
+pub open spec fn part1_decoded_signed_sample(value: i64, fraction_bits: u8, precision: u8)
+    -> Result<i64, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 { Err(part1_image_error(false)) } else {
+        part1_decoded_signed_value(value, fraction_bits, part1_output_minimum(precision, true), part1_output_maximum(precision, true))
+    }
+}
+
+pub open spec fn part1_decoded_unsigned_sample(value: i64, fraction_bits: u8, precision: u8)
+    -> Result<u64, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 { Err(part1_image_error(false)) } else {
+        part1_decoded_unsigned_value(value, fraction_bits, 1i64 << ((precision - 1) as u8), ((1u64 << precision) - 1) as u64)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decoded_signed_prefix(samples: Seq<i64>, fraction_bits: u8, precision: u8, count: nat)
+    -> Result<Seq<i64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match part1_decoded_signed_prefix(samples, fraction_bits, precision, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => match part1_decoded_signed_sample(samples[count - 1], fraction_bits, precision) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(output.push(value)),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decoded_unsigned_prefix(samples: Seq<i64>, fraction_bits: u8, precision: u8, count: nat)
+    -> Result<Seq<u64>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match part1_decoded_unsigned_prefix(samples, fraction_bits, precision, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => match part1_decoded_unsigned_sample(samples[count - 1], fraction_bits, precision) {
+                Err(error) => Err(error),
+                Ok(value) => Ok(output.push(value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part1_decoded_component_typed_samples(component: Part1DecodedComponentModel, maximum: u64)
+    -> Result<Part1TypedSampleSequence, crate::DecodeError>
+{
+    if component.2.precision == 0 || component.2.precision > 38 { Err(part1_image_error(false)) } else {
+        match part1_image_byte_budget(component.4.len(), 8, maximum) {
+            Err(error) => Err(error),
+            Ok(()) => if component.2.signed {
+                match part1_decoded_signed_prefix(component.4, component.3, component.2.precision, component.4.len()) {
+                    Err(error) => Err(error), Ok(values) => Ok(Part1TypedSampleSequence::Signed(values)),
+                }
+            } else {
+                match part1_decoded_unsigned_prefix(component.4, component.3, component.2.precision, component.4.len()) {
+                    Err(error) => Err(error), Ok(values) => Ok(Part1TypedSampleSequence::Unsigned(values)),
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decoded_typed_components(
+    components: Seq<Part1DecodedComponentModel>, maximum: u64, count: nat,
+) -> Result<(Seq<Part1TypedComponentModel>, u64), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), 0)) } else {
+        match part1_decoded_typed_components(components, maximum, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let component = components[count - 1];
+                let charged = part1_accumulate_decoded_bytes(component.4.len(), previous.1, maximum);
+                match charged.0 {
+                    Err(error) => Err(error),
+                    Ok(()) => match part1_decoded_component_typed_samples(component, maximum) {
+                        Err(error) => Err(error),
+                        Ok(samples) => Ok((previous.0.push(Part1TypedComponentModel {
+                            width: component.0, height: component.1, info: component.2, samples,
+                        }), charged.1)),
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_decoded_image_typed(image: Part1DecodedImageModel, maximum: u64)
+    -> Result<Part1DecodedTypedImage, crate::DecodeError>
+{
+    match part1_decoded_typed_components(image.4, maximum, image.4.len()) {
+        Err(error) => Err(error),
+        Ok(converted) => Ok(((image.0, image.1, image.2, image.3), converted.0,
+            Seq::new(converted.0.len(), |i: int| Seq::empty()))),
+    }
+}
+
+pub open spec fn color_registered_coordinate(value: u32, divisor: u32, registration: u16, ceil: bool)
+    -> Result<u32, crate::DecodeError>
+{
+    if divisor == 0 {
+        Err(part2_color_input_error())
+    } else {
+        let numerator = (value as nat) * 65536;
+        if numerator <= registration as nat {
+            Ok(0)
+        } else {
+            let adjusted = (numerator - registration as nat) as nat;
+            let denominator = (divisor as nat) * 65536;
+            let coordinate = if ceil { part1_ceil_div(adjusted, denominator) }
+                else { adjusted / denominator };
+            if coordinate > u32::MAX as nat {
+                Err(part2_composition_error(true))
+            } else { Ok(coordinate as u32) }
+        }
+    }
+}
+
+pub open spec fn color_normalize_unsigned(value: u64, precision: u8)
+    -> Result<u16, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 {
+        Err(part2_color_input_error())
+    } else {
+        let maximum = ((1u64 << precision) - 1) as nat;
+        if value as nat > maximum {
+            Err(part2_color_input_error())
+        } else {
+            Ok((((value as nat) * (PART2_NORMALIZED_SAMPLE_MAX as nat) + maximum / 2) / maximum) as u16)
+        }
+    }
+}
+
+pub open spec fn color_component_index(
+    component: Part1TypedComponentModel, x_origin: u32, y_origin: u32, x: u32, y: u32,
+) -> Result<usize, crate::DecodeError> {
+    let info = component.info;
+    if info.precision == 0 || info.precision > 38 || info.x_subsampling == 0
+        || info.y_subsampling == 0 || component.width == 0 || component.height == 0 {
+        Err(part2_color_input_error())
+    } else if (x_origin as nat) + x as nat > u32::MAX as nat
+        || (y_origin as nat) + y as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match (
+            color_registered_coordinate(x_origin, info.x_subsampling as u32, info.x_registration, true),
+            color_registered_coordinate(y_origin, info.y_subsampling as u32, info.y_registration, true),
+        ) {
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
+            (Ok(x0), Ok(y0)) => {
+                if (x0 as nat) + component.width as nat > u32::MAX as nat
+                    || (y0 as nat) + component.height as nat > u32::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else {
+                    match (
+                        color_registered_coordinate((x_origin + x) as u32, info.x_subsampling as u32, info.x_registration, false),
+                        color_registered_coordinate((y_origin + y) as u32, info.y_subsampling as u32, info.y_registration, false),
+                    ) {
+                        (Err(error), _) => Err(error),
+                        (_, Err(error)) => Err(error),
+                        (Ok(raw_x), Ok(raw_y)) => {
+                            let x1 = (x0 as nat) + component.width as nat;
+                            let y1 = (y0 as nat) + component.height as nat;
+                            let cx = if raw_x < x0 { x0 as nat } else if raw_x as nat >= x1 { (x1 - 1) as nat } else { raw_x as nat };
+                            let cy = if raw_y < y0 { y0 as nat } else if raw_y as nat >= y1 { (y1 - 1) as nat } else { raw_y as nat };
+                            let index = ((cy - y0 as nat) as nat) * (component.width as nat) + (cx - x0 as nat);
+                            if index > usize::MAX as nat { Err(part2_composition_error(true)) }
+                            else { Ok(index as usize) }
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_component_nominal(
+    component: Part1TypedComponentModel, x_origin: u32, y_origin: u32, x: u32, y: u32,
+) -> Result<u64, crate::DecodeError> {
+    match color_component_index(component, x_origin, y_origin, x, y) {
+        Err(error) => Err(error),
+        Ok(index) => match component.samples {
+            Part1TypedSampleSequence::Unsigned(samples) => {
+                let maximum = ((1u64 << component.info.precision) - 1) as nat;
+                if component.info.signed || index >= samples.len() || samples[index as int] as nat > maximum {
+                    Err(part2_color_input_error())
+                } else { Ok(samples[index as int]) }
+            },
+            Part1TypedSampleSequence::Signed(samples) => {
+                let level = 1i64 << ((component.info.precision - 1) as u8);
+                if !component.info.signed || index >= samples.len()
+                    || samples[index as int] < -(level as int)
+                    || samples[index as int] >= level {
+                    Err(part2_color_input_error())
+                } else if samples[index as int] > (i64::MAX - level) as int {
+                    Err(part2_composition_error(true))
+                } else { Ok((samples[index as int] + level) as u64) }
+            },
+        },
+    }
+}
+
+pub open spec fn color_component_normalized(
+    component: Part1TypedComponentModel, x_origin: u32, y_origin: u32, x: u32, y: u32,
+) -> Result<u16, crate::DecodeError> {
+    match color_component_nominal(component, x_origin, y_origin, x, y) {
+        Err(error) => Err(error),
+        Ok(value) => color_normalize_unsigned(value, component.info.precision),
+    }
+}
+
+pub open spec fn color_normalize_difference(value: u64, precision: u8)
+    -> Result<i32, crate::DecodeError>
+{
+    if precision == 0 || precision > 38 {
+        Err(part2_color_input_error())
+    } else {
+        let maximum = ((1u64 << precision) - 1) as nat;
+        if value as nat > maximum { Err(part2_color_input_error()) }
+        else {
+            let midpoint = 1u64 << ((precision - 1) as u8);
+            let scaled = ((value as int) - midpoint as int) * (PART2_NORMALIZED_SAMPLE_MAX as int);
+            let rounded = if scaled < 0 {
+                -((-scaled + maximum / 2) / (maximum as int))
+            } else { (scaled + maximum / 2) / (maximum as int) };
+            if rounded < i32::MIN || rounded > i32::MAX {
+                Err(part2_composition_error(true))
+            } else { Ok(rounded as i32) }
+        }
+    }
+}
+
+pub open spec fn color_image_normalized(
+    components: Seq<Part1TypedComponentModel>, x_origin: u32, y_origin: u32,
+    component_index: usize, x: u32, y: u32,
+) -> Result<u16, crate::DecodeError> {
+    if component_index >= components.len() { Err(part2_color_input_error()) }
+    else { color_component_normalized(components[component_index as int], x_origin, y_origin, x, y) }
+}
+
+pub open spec fn color_image_difference(
+    components: Seq<Part1TypedComponentModel>, x_origin: u32, y_origin: u32,
+    component_index: usize, x: u32, y: u32,
+) -> Result<i32, crate::DecodeError> {
+    if component_index >= components.len() { Err(part2_color_input_error()) }
+    else {
+        let component = components[component_index as int];
+        if component.info.precision == 0 || component.info.precision > 38 {
+            Err(part2_color_input_error())
+        } else {
+            match color_component_nominal(component, x_origin, y_origin, x, y) {
+                Err(error) => Err(error),
+                Ok(value) => color_normalize_difference(value, component.info.precision),
+            }
+        }
+    }
+}
+
+pub type ColorGeometry = (u32, u32, u32, u32);
+
+pub open spec fn color_registered_span(start: u32, end: u32, step: u8, registration: u16)
+    -> Result<u32, crate::DecodeError>
+{
+    match (
+        color_registered_coordinate(end, step as u32, registration, true),
+        color_registered_coordinate(start, step as u32, registration, true),
+    ) {
+        (Err(error), _) => Err(error),
+        (_, Err(error)) => Err(error),
+        (Ok(last), Ok(first)) => if last < first { Err(part2_composition_error(true)) }
+            else { Ok((last - first) as u32) },
+    }
+}
+
+pub open spec fn color_validate_component(component: Part1TypedComponentModel, geometry: ColorGeometry)
+    -> Result<(), crate::DecodeError>
+{
+    let info = component.info;
+    let signed = match component.samples {
+        Part1TypedSampleSequence::Signed(_) => true,
+        Part1TypedSampleSequence::Unsigned(_) => false,
+    };
+    if info.precision == 0 || info.precision > 38 || info.signed != signed
+        || info.x_subsampling == 0 || info.y_subsampling == 0 {
+        Err(part2_color_input_error())
+    } else if (geometry.2 as nat) + geometry.0 as nat > u32::MAX as nat
+        || (geometry.3 as nat) + geometry.1 as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match (
+            color_registered_span(geometry.2, (geometry.2 + geometry.0) as u32,
+                info.x_subsampling, info.x_registration),
+            color_registered_span(geometry.3, (geometry.3 + geometry.1) as u32,
+                info.y_subsampling, info.y_registration),
+        ) {
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
+            (Ok(width), Ok(height)) => {
+                if component.width != width || component.height != height {
+                    Err(part2_color_input_error())
+                } else {
+                    match part2_layer_area(width, height) {
+                        Err(error) => Err(error),
+                        Ok(area) => {
+                            let samples = match component.samples {
+                                Part1TypedSampleSequence::Signed(values) => values.len(),
+                                Part1TypedSampleSequence::Unsigned(values) => values.len(),
+                            };
+                            if samples != area { Err(part2_color_input_error()) } else { Ok(()) }
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_validate_component_index(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry, index: usize,
+) -> Result<(), crate::DecodeError> {
+    if index >= components.len() { Err(part2_color_input_error()) }
+    else { color_validate_component(components[index as int], geometry) }
+}
+
+#[verifier::opaque]
+pub open spec fn color_validate_indices_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry, indices: Seq<usize>, count: nat,
+) -> Result<(), crate::DecodeError>
+    recommends count <= indices.len(),
+    decreases count,
+{
+    if count == 0 { Ok(()) } else {
+        match color_validate_indices_prefix(components, geometry, indices, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => color_validate_component_index(components, geometry, indices[count - 1]),
+        }
+    }
+}
+
+pub open spec fn color_validate_components(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry, layout: ColorLayoutState,
+) -> Result<(), crate::DecodeError> {
+    match color_validate_indices_prefix(components, geometry, layout.0, layout.0.len()) {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let indices = Seq::new(layout.1.len(), |i: int| layout.1[i].0);
+            color_validate_indices_prefix(components, geometry, indices, indices.len())
+        },
+    }
+}
+
+pub open spec fn color_validate_output_size(
+    width: u32, height: u32, colors: usize, alphas: usize, byte_limit: u64, work_limit: u64,
+) -> Result<(), crate::DecodeError> {
+    if (colors as nat) + alphas as nat > usize::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        match part2_layer_area(width, height) {
+            Err(error) => Err(error),
+            Ok(area) => {
+                let samples = (area as nat) * ((colors as nat) + alphas as nat);
+                let bytes = ((samples as u64) as nat) * 2;
+                if samples > usize::MAX as nat || bytes > u64::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else if bytes > byte_limit as nat {
+                    Err(crate::DecodeError::LimitExceeded {
+                        resource: crate::Resource::DecodedBytes, limit: byte_limit, actual: bytes as u64,
+                    })
+                } else if samples > u64::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else if samples > work_limit as nat {
+                    Err(crate::DecodeError::LimitExceeded {
+                        resource: crate::Resource::WorkUnits, limit: work_limit, actual: samples as u64,
+                    })
+                } else { Ok(()) }
+            },
+        }
+    }
+}
+
+pub type ColorChannelModel = (crate::color::ConvertedChannelType, Seq<u16>);
+pub type ColorSyccPlanes = (Seq<u16>, Seq<u16>, Seq<u16>);
+pub type ColorImageModel = (u32, u32, crate::color::ConvertedColorSpace, u8, Seq<ColorChannelModel>);
+
+pub open spec fn color_convert_channel(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, color_count: usize, index: usize,
+) -> Result<ColorChannelModel, crate::DecodeError> {
+    if index >= colors.len() || colors[index as int] >= components.len() {
+        Err(part2_color_input_error())
+    } else {
+        match color_normalize_component(components[colors[index as int] as int],
+            geometry.0, geometry.1, geometry.2, geometry.3) {
+            Err(error) => Err(error),
+            Ok(samples) => match (color_count, index) {
+                (1, 0) => Ok((crate::color::ConvertedChannelType::Gray, samples)),
+                (3, 0) => Ok((crate::color::ConvertedChannelType::Red, samples)),
+                (3, 1) => Ok((crate::color::ConvertedChannelType::Green, samples)),
+                (3, 2) => Ok((crate::color::ConvertedChannelType::Blue, samples)),
+                _ => Err(part2_color_input_error()),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_convert_channels_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, color_count: usize, count: nat,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_convert_channels_prefix(components, geometry, colors, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(channels) => if count - 1 > usize::MAX {
+                Err(part2_composition_error(true))
+            } else {
+                match color_convert_channel(components, geometry, colors, color_count, (count - 1) as usize) {
+                    Err(error) => Err(error),
+                    Ok(channel) => Ok(channels.push(channel)),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_convert_alpha(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    alpha: (usize, bool, crate::image::ChannelAssociation),
+) -> Result<ColorChannelModel, crate::DecodeError> {
+    if alpha.0 >= components.len() { Err(part2_color_input_error()) } else {
+        match color_normalize_component(components[alpha.0 as int],
+            geometry.0, geometry.1, geometry.2, geometry.3) {
+            Err(error) => Err(error),
+            Ok(samples) => Ok((crate::color::ConvertedChannelType::Alpha {
+                premultiplied: alpha.1, association: alpha.2,
+            }, samples)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_append_alphas_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>,
+    initial: Seq<ColorChannelModel>, count: nat,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError>
+    recommends count <= alphas.len(),
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match color_append_alphas_prefix(components, geometry, alphas, initial, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(channels) => match color_convert_alpha(components, geometry, alphas[count - 1]) {
+                Err(error) => Err(error),
+                Ok(channel) => Ok(channels.push(channel)),
+            },
+        }
+    }
+}
+
+pub open spec fn color_sycc_pixel(
+    components: Seq<Part1TypedComponentModel>, x_origin: u32, y_origin: u32,
+    colors: Seq<usize>, pixel: usize, width: usize,
+) -> Result<(u16, u16, u16), crate::DecodeError> {
+    match color_pixel_coordinates(pixel, width) {
+        Err(error) => Err(error),
+        Ok((x, y)) => {
+            if colors.len() == 0 { Err(part2_color_input_error()) } else {
+                match color_image_normalized(components, x_origin, y_origin, colors[0], x, y) {
+                    Err(error) => Err(error),
+                    Ok(y_sample) => if colors.len() <= 1 { Err(part2_color_input_error()) } else {
+                        match color_image_difference(components, x_origin, y_origin, colors[1], x, y) {
+                            Err(error) => Err(error),
+                            Ok(cb) => if colors.len() <= 2 { Err(part2_color_input_error()) } else {
+                                match color_image_difference(components, x_origin, y_origin, colors[2], x, y) {
+                                    Err(error) => Err(error),
+                                    Ok(cr) => color_sycc_to_srgb(y_sample, cb, cr),
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_sycc_planes_prefix(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, width: usize, count: nat,
+) -> Result<ColorSyccPlanes, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), Seq::empty(), Seq::empty())) } else {
+        match color_sycc_planes_prefix(components, geometry, colors, width, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(planes) => if count - 1 > usize::MAX {
+                Err(part2_composition_error(true))
+            } else {
+                match color_sycc_pixel(components, geometry.2, geometry.3, colors, (count - 1) as usize, width) {
+                    Err(error) => Err(error),
+                    Ok((r, g, b)) => Ok((planes.0.push(r), planes.1.push(g), planes.2.push(b))),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_convert_colors(
+    components: Seq<Part1TypedComponentModel>, geometry: ColorGeometry,
+    colors: Seq<usize>, color_count: usize, sycc: bool,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError> {
+    if sycc {
+        if geometry.0 as nat > usize::MAX as nat { Err(part2_composition_error(true)) }
+        else if geometry.0 == 0 { Err(part2_color_input_error()) }
+        else {
+            match part2_layer_area(geometry.0, geometry.1) {
+                Err(error) => Err(error),
+                Ok(area) => match color_sycc_planes_prefix(components, geometry, colors, geometry.0 as usize, area as nat) {
+                    Err(error) => Err(error),
+                    Ok(planes) => Ok(seq![
+                        (crate::color::ConvertedChannelType::Red, planes.0),
+                        (crate::color::ConvertedChannelType::Green, planes.1),
+                        (crate::color::ConvertedChannelType::Blue, planes.2),
+                    ]),
+                },
+            }
+        }
+    } else { color_convert_channels_prefix(components, geometry, colors, color_count, color_count as nat) }
+}
+
+pub open spec fn color_output_format(method: crate::jp2::ColorMethod)
+    -> Result<(usize, crate::color::ConvertedColorSpace, bool), crate::DecodeError>
+{
+    match method {
+        crate::jp2::ColorMethod::Enumerated { color_space: crate::jp2::ENUMERATED_SRGB } =>
+            Ok((3, crate::color::ConvertedColorSpace::Srgb, false)),
+        crate::jp2::ColorMethod::Enumerated { color_space: crate::jp2::ENUMERATED_GRAYSCALE } =>
+            Ok((1, crate::color::ConvertedColorSpace::Grayscale, false)),
+        crate::jp2::ColorMethod::Enumerated { color_space: crate::jp2::ENUMERATED_SYCC } =>
+            Ok((3, crate::color::ConvertedColorSpace::Srgb, true)),
+        crate::jp2::ColorMethod::Enumerated { .. } => Err(crate::DecodeError::UnsupportedColorConversion {
+            reason: crate::UnsupportedColorConversion::EnumeratedColorSpace,
+        }),
+        _ => Err(crate::DecodeError::UnsupportedColorConversion {
+            reason: crate::UnsupportedColorConversion::IccProfile,
+        }),
+    }
+}
+
+pub open spec fn color_convert_jp2(
+    components: Seq<Part1TypedComponentModel>, definitions: Seq<Seq<ColorDefinition>>,
+    geometry: ColorGeometry, method: crate::jp2::ColorMethod, byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    if geometry.0 == 0 || geometry.1 == 0 { Err(part2_color_input_error()) }
+    else {
+        match color_output_format(method) {
+            Err(error) => Err(error),
+            Ok((color_count, space, sycc)) => match color_channel_layout(definitions, color_count) {
+                Err(error) => Err(error),
+                Ok(layout) => match color_validate_components(components, geometry, layout) {
+                    Err(error) => Err(error),
+                    Ok(()) => match color_validate_output_size(
+                        geometry.0, geometry.1, color_count, layout.1.len() as usize, byte_limit, work_limit,
+                    ) {
+                        Err(error) => Err(error),
+                        Ok(()) => match part2_layer_area(geometry.0, geometry.1) {
+                            Err(error) => Err(error),
+                            Ok(_) => match color_convert_colors(components, geometry, layout.0, color_count, sycc) {
+                                Err(error) => Err(error),
+                                Ok(channels) => match color_append_alphas_prefix(
+                                    components, geometry, layout.1, channels, layout.1.len(),
+                                ) {
+                                    Err(error) => Err(error),
+                                    Ok(output) => Ok((geometry.0, geometry.1, space, 16, output)),
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn color_crop_sample(samples: Seq<u16>, width: u32, row: u32, column: u32)
+    -> Result<u16, crate::DecodeError>
+{
+    let index = (row as nat) * (width as nat) + column as nat;
+    if index > usize::MAX as nat { Err(part2_composition_error(true)) }
+    else if index >= samples.len() { Err(part2_color_input_error()) }
+    else { Ok(samples[index as int]) }
+}
+
+#[verifier::opaque]
+pub open spec fn color_crop_columns(
+    samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>, count: nat,
+) -> Result<Seq<u16>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match color_crop_columns(samples, source_width, row, x, initial, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => {
+                let column = (x as nat) + count - 1;
+                if column > u32::MAX as nat { Err(part2_composition_error(true)) }
+                else {
+                    match color_crop_sample(samples, source_width, row, column as u32) {
+                        Err(error) => Err(error),
+                        Ok(value) => Ok(output.push(value)),
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_crop_rows(
+    samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32, count: nat,
+) -> Result<Seq<u16>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_crop_rows(samples, source_width, x, y, width, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => {
+                let row = (y as nat) + count - 1;
+                if row > u32::MAX as nat { Err(part2_composition_error(true)) }
+                else { color_crop_columns(samples, source_width, row as u32, x, output, width as nat) }
+            },
+        }
+    }
+}
+
+pub open spec fn color_crop_plane(
+    samples: Seq<u16>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32,
+) -> Result<Seq<u16>, crate::DecodeError> {
+    if x > x1 || y > y1 { Err(part2_color_input_error()) }
+    else { color_crop_rows(samples, source_width, x, y, (x1 - x) as u32, (y1 - y) as nat) }
+}
+
+#[verifier::opaque]
+pub open spec fn color_crop_channels(
+    channels: Seq<ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32, count: nat,
+) -> Result<Seq<ColorChannelModel>, crate::DecodeError>
+    recommends count <= channels.len(),
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_crop_channels(channels, source_width, x, y, x1, y1, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(output) => {
+                let channel = channels[count - 1];
+                match color_crop_plane(channel.1, source_width, x, y, x1, y1) {
+                    Err(error) => Err(error),
+                    Ok(samples) => Ok(output.push((channel.0, samples))),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_crop_image(image: ColorImageModel, x: u32, y: u32, width: u32, height: u32)
+    -> Part2ConvertedImageResult
+{
+    if width == 0 || height == 0 { Err(part2_color_input_error()) }
+    else if (x as nat) + width as nat > u32::MAX as nat
+        || (y as nat) + height as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else {
+        let x1 = (x + width) as u32;
+        let y1 = (y + height) as u32;
+        if x1 > image.0 || y1 > image.1 { Err(part2_color_input_error()) }
+        else if x == 0 && y == 0 && width == image.0 && height == image.1 { Ok(image) }
+        else {
+            match part2_layer_area(width, height) {
+                Err(error) => Err(error),
+                Ok(_) => match color_crop_channels(image.4, image.0, x, y, x1, y1, image.4.len()) {
+                    Err(error) => Err(error),
+                    Ok(channels) => Ok((width, height, image.2, image.3, channels)),
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn color_selection_target_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidCodeBlock }
+}
+
+pub open spec fn color_convert_selected(
+    components: Seq<Part1TypedComponentModel>, definitions: Seq<Seq<ColorDefinition>>,
+    geometry: ColorGeometry, method: crate::jp2::ColorMethod, target: [u32; 4],
+    byte_limit: u64, work_limit: u64,
+) -> Part2ConvertedImageResult {
+    match color_convert_jp2(components, definitions, geometry, method, byte_limit, work_limit) {
+        Err(error) => Err(error),
+        Ok(image) => {
+            if target[0] < geometry.2 || target[1] < geometry.3
+                || target[2] < target[0] || target[3] < target[1] {
+                Err(color_selection_target_error())
+            } else {
+                color_crop_image(image, (target[0] - geometry.2) as u32, (target[1] - geometry.3) as u32,
+                    (target[2] - target[0]) as u32, (target[3] - target[1]) as u32)
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_normalize_component_prefix(
+    component: Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32, count: nat,
+) -> Result<Seq<u16>, crate::DecodeError>
+    recommends width > 0,
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match color_normalize_component_prefix(component, width, x_origin, y_origin, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(samples) => {
+                let pixel = (count - 1) as nat;
+                if pixel > usize::MAX as nat {
+                    Err(part2_composition_error(true))
+                } else {
+                    match color_pixel_coordinates(pixel as usize, width as usize) {
+                        Err(error) => Err(error),
+                        Ok((x, y)) => match color_component_normalized(component, x_origin, y_origin, x, y) {
+                            Err(error) => Err(error),
+                            Ok(value) => Ok(samples.push(value)),
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn color_normalize_component(
+    component: Part1TypedComponentModel, width: u32, height: u32, x_origin: u32, y_origin: u32,
+) -> Result<Seq<u16>, crate::DecodeError> {
+    if width == 0 { Err(part2_color_input_error()) }
+    else if width as nat > usize::MAX as nat { Err(part2_composition_error(true)) }
+    else {
+        match part2_layer_area(width, height) {
+            Err(error) => Err(error),
+            Ok(area) => color_normalize_component_prefix(component, width, x_origin, y_origin, area as nat),
+        }
+    }
+}
+
+pub open spec fn color_pixel_coordinates(pixel: usize, width: usize)
+    -> Result<(u32, u32), crate::DecodeError> {
+    if width == 0 { Err(part2_color_input_error()) }
+    else if (pixel % width) as nat > u32::MAX as nat || (pixel / width) as nat > u32::MAX as nat {
+        Err(part2_composition_error(true))
+    } else { Ok(((pixel % width) as u32, (pixel / width) as u32)) }
+}
+
+pub type ColorDefinition = (crate::image::ChannelType, crate::image::ChannelAssociation);
+pub type ColorLayoutState = (Seq<usize>, Seq<(usize, bool, crate::image::ChannelAssociation)>);
+pub type ColorLayoutResult = Result<ColorLayoutState, crate::DecodeError>;
+
+pub open spec fn color_layout_error() -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidChannelLayout }
+}
+
+pub open spec fn color_alpha_association(association: crate::image::ChannelAssociation, count: usize)
+    -> Result<(), crate::DecodeError>
+{
+    match association {
+        crate::image::ChannelAssociation::Color(value) if value == 0 || value as nat > count as nat =>
+            Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidAlphaAssociation }),
+        _ => Ok(()),
+    }
+}
+
+pub open spec fn color_layout_definition_step(
+    state: ColorLayoutState, definition: ColorDefinition, component: usize, color_count: usize,
+) -> ColorLayoutResult {
+    match definition.0 {
+        crate::image::ChannelType::Color => match definition.1 {
+            crate::image::ChannelAssociation::Color(value) => {
+                if value == 0 || value as nat > color_count as nat { Err(color_layout_error()) }
+                else {
+                    let slot = (value - 1) as int;
+                    if slot >= state.0.len() { Err(part2_color_input_error()) }
+                    else if state.0[slot] != usize::MAX && state.0[slot] != component {
+                        Err(color_layout_error())
+                    } else {
+                        Ok((state.0.update(slot, component), state.1))
+                    }
+                }
+            },
+            _ => Err(color_layout_error()),
+        },
+        crate::image::ChannelType::Opacity | crate::image::ChannelType::PremultipliedOpacity =>
+            match color_alpha_association(definition.1, color_count) {
+                Err(error) => Err(error),
+                Ok(()) => Ok((state.0, state.1.push((component,
+                    matches!(definition.0, crate::image::ChannelType::PremultipliedOpacity), definition.1)))),
+            },
+        crate::image::ChannelType::Unspecified => Ok(state),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_layout_definitions_prefix(
+    initial: ColorLayoutState, definitions: Seq<ColorDefinition>,
+    component: usize, color_count: usize, count: nat,
+) -> ColorLayoutResult
+    recommends count <= definitions.len(),
+    decreases count,
+{
+    if count == 0 { Ok(initial) } else {
+        match color_layout_definitions_prefix(initial, definitions, component, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(state) => color_layout_definition_step(state, definitions[(count - 1) as int], component, color_count),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn color_layout_components_prefix(
+    definitions: Seq<Seq<ColorDefinition>>, color_count: usize, count: nat,
+) -> ColorLayoutResult
+    recommends count <= definitions.len(),
+    decreases count,
+{
+    if count == 0 { Ok((Seq::new(color_count as nat, |i: int| usize::MAX), Seq::empty())) }
+    else {
+        match color_layout_components_prefix(definitions, color_count, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(state) => color_layout_definitions_prefix(state, definitions[(count - 1) as int],
+                (count - 1) as usize, color_count, definitions[(count - 1) as int].len()),
+        }
+    }
+}
+
+pub open spec fn color_channel_layout(definitions: Seq<Seq<ColorDefinition>>, color_count: usize)
+    -> ColorLayoutResult
+{
+    if !(exists|i: int| #![trigger definitions[i]] 0 <= i < definitions.len() && definitions[i].len() > 0) {
+        if definitions.len() != color_count as nat { Err(color_layout_error()) }
+        else { Ok((Seq::new(color_count as nat, |i: int| i as usize), Seq::empty())) }
+    } else {
+        match color_layout_components_prefix(definitions, color_count, definitions.len()) {
+            Err(error) => Err(error),
+            Ok(state) => if exists|i: int| #![trigger state.0[i]] 0 <= i < state.0.len() && state.0[i] == usize::MAX {
+                Err(color_layout_error())
+            } else { Ok(state) },
+        }
+    }
+}
 
 pub open spec fn region_fits(parent_length: nat, offset: nat, length: nat) -> bool {
     offset <= parent_length && length <= parent_length - offset
@@ -1154,6 +2133,27 @@ pub open spec fn part2_palette_coordinates_valid(
     entry < entries && column < columns
 }
 
+pub type Part2PaletteModel = (u16, Seq<crate::jp2::PaletteColumn>, Seq<i64>);
+
+pub open spec fn part2_palette_value(
+    palette: Part2PaletteModel, entry: u16, column: u8,
+) -> Result<i64, crate::DecodeError> {
+    if palette.1.len() > u8::MAX {
+        Err(part2_composition_error(true))
+    } else if !part2_palette_coordinates_valid(
+        entry, palette.0, column, palette.1.len() as u8,
+    ) {
+        Err(part2_composition_error(false))
+    } else {
+        let index = (entry as nat) * palette.1.len() + (column as nat);
+        if index > usize::MAX {
+            Err(part2_composition_error(true))
+        } else if index >= palette.2.len() {
+            Err(part2_composition_error(false))
+        } else { Ok(palette.2[index as int]) }
+    }
+}
+
 pub open spec fn part2_component_mapping_valid(
     component: u16,
     components: u16,
@@ -2216,6 +3216,1936 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub struct Tier1RawCoefficient {
+    pub limbs: Seq<u64>,
+    pub legacy_bitplane: Option<u16>,
+    pub negative: bool,
+    pub significant: bool,
+    pub refined: bool,
+}
+
+pub struct Tier1RawPlane {
+    pub width: u16,
+    pub height: u16,
+    pub coefficients: Seq<Tier1RawCoefficient>,
+}
+
+pub open spec fn tier1_raw_plane_index(plane: Tier1RawPlane, x: u16, y: u16) -> Result<usize, crate::DecodeError> {
+    let index = y as nat * plane.width as nat + x as nat;
+    if x >= plane.width || y >= plane.height {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else if index > usize::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else if index >= plane.coefficients.len() {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else { Ok(index as usize) }
+}
+
+pub open spec fn tier1_raw_plane_coefficient(plane: Tier1RawPlane, x: u16, y: u16)
+    -> Result<Tier1RawCoefficient, crate::DecodeError>
+{
+    match tier1_raw_plane_index(plane, x, y) {
+        Err(error) => Err(error),
+        Ok(index) => Ok(plane.coefficients[index as int]),
+    }
+}
+
+pub open spec fn tier1_value_limbs(value: nat) -> Seq<u64> {
+    Seq::new(6, |i: int| ((value / pow2((64 * i) as nat)) % 18446744073709551616) as u64)
+}
+
+pub open spec fn tier1_empty_coefficient() -> Tier1RawCoefficient {
+    Tier1RawCoefficient {
+        limbs: Seq::new(6, |i: int| 0u64), legacy_bitplane: None,
+        negative: false, significant: false, refined: false,
+    }
+}
+
+pub open spec fn tier1_empty_plane(width: u16, height: u16) -> Result<Tier1RawPlane, crate::DecodeError> {
+    let samples = width as nat * height as nat;
+    if width == 0 || height == 0 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else if samples > usize::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else if samples > 4096 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else { Ok(Tier1RawPlane {
+        width, height, coefficients: Seq::new(samples, |i: int| tier1_empty_coefficient()),
+    }) }
+}
+
+pub open spec fn tier1_new_coefficient(limbs: Seq<u64>, negative: bool, significant: bool, refined: bool)
+    -> Tier1RawCoefficient {
+    Tier1RawCoefficient { limbs, legacy_bitplane: None, negative, significant, refined }
+}
+
+pub open spec fn tier1_coefficient_new_outcome(
+    limbs: Seq<u64>, negative: bool, significant: bool, refined: bool,
+) -> Result<Tier1RawCoefficient, crate::DecodeError> {
+    Ok(tier1_new_coefficient(limbs, negative, significant, refined))
+}
+
+pub open spec fn tier1_set_magnitude(coefficient: Tier1RawCoefficient, limbs: Seq<u64>)
+    -> (Result<(), crate::DecodeError>, Tier1RawCoefficient)
+{
+    (Ok(()), Tier1RawCoefficient { limbs, ..coefficient })
+}
+
+pub open spec fn tier1_raw_plane_width(plane: Tier1RawPlane) -> u16 { plane.width }
+pub open spec fn tier1_raw_plane_height(plane: Tier1RawPlane) -> u16 { plane.height }
+pub open spec fn tier1_raw_plane_coefficients(plane: Tier1RawPlane) -> Seq<Tier1RawCoefficient> {
+    plane.coefficients
+}
+pub open spec fn tier1_coefficient_limbs(coefficient: Tier1RawCoefficient) -> Seq<u64> {
+    coefficient.limbs
+}
+
+pub open spec fn tier1_mark_coefficient(
+    plane: Tier1RawPlane, x: u16, y: u16, limbs: Seq<u64>, value: nat, negative: bool,
+) -> (Result<(), crate::DecodeError>, Tier1RawPlane) {
+    if value == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), plane) }
+    else {
+        match tier1_raw_plane_index(plane, x, y) {
+            Err(error) => (Err(error), plane),
+            Ok(index) => if plane.coefficients[index as int].significant {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), plane)
+            } else {
+                (Ok(()), Tier1RawPlane { coefficients: plane.coefficients.update(index as int,
+                    tier1_new_coefficient(limbs, negative, true, false)), ..plane })
+            },
+        }
+    }
+}
+
+pub open spec fn tier1_statistics_zero() -> crate::tier1::Tier1PassStatistics {
+    crate::tier1::Tier1PassStatistics {
+        coefficients_scanned: 0, coding_symbols: 0, newly_significant: 0, refined_coefficients: 0, run_mode_columns: 0,
+    }
+}
+
+pub open spec fn tier1_statistics_increment(
+    state: crate::tier1::Tier1PassStatistics, field: u8, count: u32,
+) -> (Result<(), crate::DecodeError>, crate::tier1::Tier1PassStatistics) {
+    let value = if field == 0 { state.coefficients_scanned } else if field == 1 { state.coding_symbols }
+        else if field == 2 { state.newly_significant } else if field == 3 { state.refined_coefficients }
+        else { state.run_mode_columns };
+    if value + count > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let value = (value + count) as u32;
+        (Ok(()), if field == 0 { crate::tier1::Tier1PassStatistics { coefficients_scanned: value, ..state } }
+            else if field == 1 { crate::tier1::Tier1PassStatistics { coding_symbols: value, ..state } }
+            else if field == 2 { crate::tier1::Tier1PassStatistics { newly_significant: value, ..state } }
+            else if field == 3 { crate::tier1::Tier1PassStatistics { refined_coefficients: value, ..state } }
+            else { crate::tier1::Tier1PassStatistics { run_mode_columns: value, ..state } })
+    }
+}
+
+pub open spec fn tier1_raw_signed_coefficient(coefficient: Tier1RawCoefficient)
+    -> Result<(Seq<u64>, nat, bool), crate::DecodeError>
+    recommends coefficient.limbs.len() == 6,
+{
+    if !coefficient.significant {
+        Ok((Seq::new(6, |i: int| 0u64), 0, false))
+    } else {
+        let base = part1_magnitude_value(coefficient.limbs);
+        let delta = match coefficient.legacy_bitplane {
+            None => 0nat,
+            Some(bitplane) => if bitplane <= 64 { part1_tier1_midpoint_delta(bitplane) as nat }
+                else { pow2((bitplane - 1) as nat) },
+        };
+        if (match coefficient.legacy_bitplane { Some(bitplane) => bitplane > 384, None => false })
+            || base + delta >= part1_magnitude_capacity() {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else { Ok((tier1_value_limbs(base + delta), base + delta, coefficient.negative)) }
+    }
+}
+
+pub type HtNumericMagnitudeResult = (Result<(nat, bool, u8), crate::DecodeError>, HtMagSgnState);
+
+pub open spec fn ht_complete_kappa(base: u8, significance: u8, north_west: u8, north_east: u8, maximum: u8)
+    -> Result<u8, crate::DecodeError> {
+    let exponent = if north_west > north_east { north_west } else { north_east };
+    let gamma = significance & significance.wrapping_sub(1) != 0;
+    if base == 0 || significance & 0xf0u8 != 0 || maximum == 0 || maximum > 75 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else if base as nat + exponent as nat > 255 {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let completed = ht_kappa_completion(base as nat, gamma, exponent as nat);
+        if completed > maximum { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+        else { Ok(completed as u8) }
+    }
+}
+
+pub struct HtPlaneState {
+    pub output: Tier1RawPlane,
+    pub reader: HtMagSgnState,
+    pub previous: Seq<u8>,
+    pub current: Seq<u8>,
+    pub statistics: crate::tier1::Tier1PassStatistics,
+}
+
+pub type HtPlaneResult = (Result<(), crate::DecodeError>, HtPlaneState);
+
+pub open spec fn ht_plane_sample_store(
+    state: HtPlaneState, x: u16, y: u16, sample: u8, column: nat,
+    value: nat, negative: bool, exponent: u8,
+) -> HtPlaneResult
+    recommends column + 1 < state.current.len(),
+{
+    let store = tier1_mark_coefficient(state.output, x, y, tier1_value_limbs(value), value, negative);
+    let state = HtPlaneState { output: store.1, ..state };
+    match store.0 {
+        Err(error) => (Err(error), state),
+        Ok(()) => {
+            let count = tier1_statistics_increment(state.statistics, 1, 1);
+            let state = HtPlaneState { statistics: count.1, ..state };
+            match count.0 {
+                Err(error) => (Err(error), state),
+                Ok(()) => {
+                    let count = tier1_statistics_increment(state.statistics, 2, 1);
+                    let state = HtPlaneState { statistics: count.1, ..state };
+                    match count.0 {
+                        Err(error) => (Err(error), state),
+                        Ok(()) => (Ok(()), HtPlaneState {
+                            current: if sample == 1 {
+                                state.current.update(column as int,
+                                    if state.current[column as int] > exponent { state.current[column as int] } else { exponent })
+                            } else if sample == 3 { state.current.update((column + 1) as int, exponent) }
+                            else { state.current }, ..state
+                        }),
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_plane_sample(
+    state: HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+    column: nat, completed_u: u8, bitplanes: u16, sample: u8,
+) -> HtPlaneResult
+    recommends sample < 4, column + 1 < state.current.len(),
+{
+    let x = quad.x as nat + (sample >> 1) as nat;
+    let y = quad.y as nat + (sample & 1u8) as nat;
+    if x > u16::MAX || y > u16::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else if x >= width || y >= height { (Ok(()), state) }
+    else {
+        let scanned = tier1_statistics_increment(state.statistics, 0, 1);
+        let state = HtPlaneState { statistics: scanned.1, ..state };
+        match scanned.0 {
+            Err(error) => (Err(error), state),
+            Ok(()) => if quad.significance & (1u8 << sample) == 0 { (Ok(()), state) } else {
+                let decoded = ht_reconstruct_numeric_magnitude(state.reader, completed_u,
+                    quad.embedded_bit_mask & (1u8 << sample) != 0,
+                    quad.embedded_magnitude & (1u8 << sample) != 0, bitplanes);
+                let state = HtPlaneState { reader: decoded.1, ..state };
+                match decoded.0 {
+                    Err(error) => (Err(error), state),
+                    Ok((value, negative, exponent)) =>
+                        ht_plane_sample_store(state, x as u16, y as u16, sample, column, value, negative, exponent),
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_plane_samples(
+    state: HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+    column: nat, completed_u: u8, bitplanes: u16, count: nat,
+) -> HtPlaneResult
+    recommends count <= 4, column + 1 < state.current.len(),
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, (count - 1) as nat);
+        match prefix.0 { Err(_) => prefix, Ok(()) =>
+            ht_plane_sample(prefix.1, quad, width, height, column, completed_u, bitplanes, (count - 1) as u8) }
+    }
+}
+
+pub open spec fn ht_plane_quad_finish(result: HtPlaneResult, quads_per_row: nat, column: nat) -> HtPlaneResult {
+    match result.0 {
+        Err(_) => result,
+        Ok(()) => (Ok(()), if column + 1 == quads_per_row {
+            HtPlaneState { previous: result.1.current, current: result.1.previous, ..result.1 }
+        } else { result.1 }),
+    }
+}
+
+pub open spec fn ht_plane_quad(
+    state: HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+    maximum_u: u8, bitplanes: u16, quads_per_row: nat, index: nat,
+) -> HtPlaneResult
+    recommends 0 < quads_per_row <= 32768, state.current.len() == quads_per_row + 1,
+        state.previous.len() == quads_per_row + 1,
+{
+    let column = index % quads_per_row;
+    let state = HtPlaneState { current: if column == 0 { Seq::new(state.current.len(), |i: int| 0u8) }
+        else { state.current }, ..state };
+    let completed = if quad.initial_row {
+        if quad.u_base > maximum_u { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) } else { Ok(quad.u_base) }
+    } else { ht_complete_kappa(quad.u_base, quad.significance, state.previous[column as int],
+        state.previous[(column + 1) as int], maximum_u) };
+    match completed {
+        Err(error) => (Err(error), state),
+        Ok(value) => {
+            let result = ht_plane_samples(state, quad, width, height, column, value, bitplanes, 4);
+            ht_plane_quad_finish(result, quads_per_row, column)
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_plane_quads(
+    state: HtPlaneState, quads: Seq<crate::tier1::HtQuadMetadata>, width: u16, height: u16,
+    maximum_u: u8, bitplanes: u16, quads_per_row: nat, count: nat,
+) -> HtPlaneResult
+    recommends count <= quads.len(), 0 < quads_per_row <= 32768,
+        state.current.len() == quads_per_row + 1, state.previous.len() == quads_per_row + 1,
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, (count - 1) as nat);
+        match prefix.0 { Err(_) => prefix, Ok(()) =>
+            ht_plane_quad(prefix.1, quads[(count - 1) as int], width, height, maximum_u, bitplanes, quads_per_row, (count - 1) as nat) }
+    }
+}
+
+pub open spec fn ht_plane_finish(state: HtPlaneState) -> HtPlaneResult {
+    let finished = ht_magsgn_finish(state.reader);
+    (finished.0, HtPlaneState { reader: finished.1, ..state })
+}
+
+pub open spec fn ht_plane_output(decoded: HtPlaneResult)
+    -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError> {
+    match decoded.0 {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let finished = ht_plane_finish(decoded.1);
+            match finished.0 { Err(error) => Err(error),
+                Ok(()) => Ok((finished.1.output, finished.1.statistics)) }
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_plane(
+    plane: Tier1RawPlane, cleanup: HtCleanupSegmentState, metadata: HtMetadataOutput,
+    maximum_u: u8, bitplanes: u16, maximum_work: u64,
+) -> Result<(Tier1RawPlane, crate::tier1::Tier1PassStatistics), crate::DecodeError> {
+    if metadata.width == 0 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else {
+        match tier1_empty_plane(plane.width, plane.height) {
+            Err(error) => Err(error),
+            Ok(output) => match ht_magsgn_initial(cleanup.mag_sgn.bytes, maximum_work) {
+                Err(error) => Err(error),
+                Ok(reader) => {
+                    let quads_per_row = (metadata.width as nat + 1) / 2;
+                    if metadata.width as nat + 1 > usize::MAX || quads_per_row + 1 > usize::MAX {
+                        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+                    } else if quads_per_row == 0 {
+                        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+                    } else {
+                    let state = HtPlaneState { output, reader,
+                        previous: Seq::new(quads_per_row + 1, |i: int| 0u8),
+                        current: Seq::new(quads_per_row + 1, |i: int| 0u8),
+                        statistics: tier1_statistics_zero(),
+                    };
+                    let decoded = ht_plane_quads(state, metadata.quads, metadata.width, metadata.height,
+                        maximum_u, bitplanes, quads_per_row, metadata.quads.len());
+                    ht_plane_output(decoded)
+                    }
+                },
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_numeric_payload(
+    reader: HtMagSgnState, remaining: nat, index: nat, value: nat, negative: bool, exponent: u8,
+) -> HtNumericMagnitudeResult
+    recommends index + remaining <= 75, value < part1_magnitude_capacity(),
+    decreases remaining,
+{
+    if remaining == 0 { (Ok((value, negative, exponent)), reader) } else {
+        let read = ht_magsgn_read(reader);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => if bit {
+                let changed = value + pow2(index);
+                if changed >= part1_magnitude_capacity() {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), read.1)
+                } else {
+                    ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, changed,
+                        negative || index == 0, (index + 1) as u8)
+                }
+            } else {
+                ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, value, negative, exponent)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_numeric_center(
+    base: nat, negative: bool, exponent: u8, magnitude_bits: u8, embedded_value: bool, decoded_bitplanes: u16,
+) -> Result<(nat, bool, u8), crate::DecodeError>
+    recommends magnitude_bits <= 75, 1 <= decoded_bitplanes <= 292,
+{
+    let embedded = if embedded_value { base + pow2(magnitude_bits as nat) } else { base };
+    let exp = if embedded_value { (magnitude_bits + 1) as u8 } else { exponent };
+    if embedded >= part1_magnitude_capacity() {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let odd = if embedded % 2 == 0 { embedded + 1 } else { embedded };
+        let exp = if embedded % 2 == 0 && exp < 1 { 1u8 } else { exp };
+        let centered = odd + 2;
+        let scaled = centered * pow2((decoded_bitplanes - 1) as nat);
+        if odd >= part1_magnitude_capacity() || centered >= part1_magnitude_capacity()
+            || scaled >= part1_magnitude_capacity() {
+            Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+        } else if scaled / 2 == 0 {
+            Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+        } else { Ok(((scaled / 2) as nat, negative, exp)) }
+    }
+}
+
+pub open spec fn ht_numeric_finish(
+    payload: HtNumericMagnitudeResult, magnitude_bits: u8, embedded_value: bool, decoded_bitplanes: u16,
+) -> HtNumericMagnitudeResult
+    recommends magnitude_bits <= 75, 1 <= decoded_bitplanes <= 292,
+{
+    (match payload.0 {
+        Err(error) => Err(error),
+        Ok((base, negative, exponent)) => ht_numeric_center(base, negative, exponent, magnitude_bits, embedded_value, decoded_bitplanes),
+    }, payload.1)
+}
+
+pub open spec fn ht_reconstruct_numeric_magnitude(
+    reader: HtMagSgnState, completed_u: u8, embedded_bit: bool, embedded_value: bool, decoded_bitplanes: u16,
+) -> HtNumericMagnitudeResult {
+    if completed_u == 0 || completed_u > 75 || decoded_bitplanes == 0 || decoded_bitplanes > 292 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), reader)
+    } else {
+        let bits = ht_magnitude_payload_bits(completed_u as nat, embedded_bit) as u8;
+        ht_numeric_finish(ht_numeric_payload(reader, bits as nat, 0, 0, false, 0),
+            bits, embedded_value, decoded_bitplanes)
+    }
+}
+
+pub struct HtMetadataWordsState {
+    pub readers: HtCleanupReaderState,
+    pub current: Seq<u8>,
+    pub left: u8,
+    pub words: Seq<u16>,
+    pub contexts: Seq<u8>,
+}
+
+pub type HtMetadataWordsResult = (
+    Result<(Seq<u16>, Seq<u8>), crate::DecodeError>, HtCleanupReaderState, Seq<u8>, u8,
+);
+
+pub open spec fn ht_metadata_context(previous: Seq<u8>, left: u8, index: nat, initial: bool) -> u8
+    recommends index < previous.len(),
+{
+    if initial { left } else {
+        ht_noninitial_vlc_context(left,
+            if index > 0 { previous[(index - 1) as int] } else { 0 },
+            previous[index as int],
+            if index + 1 < previous.len() { previous[(index + 1) as int] } else { 0 })
+    }
+}
+
+pub open spec fn ht_metadata_left(significance: u8, initial: bool) -> u8 {
+    if initial { (significance & 1u8) | ((significance & 0x0eu8) >> 1u8) }
+    else if significance & 0x0cu8 != 0 { 2 } else { 0 }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_words_run(
+    state: HtMetadataWordsState, previous: Seq<u8>, pair: nat, initial: bool, member: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataWordsState)
+    recommends member <= 2, state.words.len() == 2, state.contexts.len() == 2,
+        state.current.len() == previous.len(),
+    decreases 2nat - member,
+{
+    if member >= 2 || pair + member >= previous.len() { (Ok(()), state) } else {
+        let index = pair + member;
+        let context = ht_metadata_context(previous, state.left, index, initial);
+        let read = ht_cleanup_quad_word(state.readers, crate::tier1::ht_vlc_table_view(initial), context);
+        let consumed = HtMetadataWordsState { readers: read.1, ..state };
+        match read.0 {
+            Err(error) => (Err(error), consumed),
+            Ok(word) => {
+                let significance = ((word >> 4u16) & 0x0fu16) as u8;
+                ht_metadata_words_run(HtMetadataWordsState {
+                    current: state.current.update(index as int, significance),
+                    left: ht_metadata_left(significance, initial),
+                    words: state.words.update(member as int, word),
+                    contexts: state.contexts.update(member as int, context), ..consumed
+                }, previous, pair, initial, member + 1)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_metadata_words_finish(result: (Result<(), crate::DecodeError>, HtMetadataWordsState))
+    -> HtMetadataWordsResult
+{
+    (match result.0 { Err(error) => Err(error), Ok(()) => Ok((result.1.words, result.1.contexts)) },
+        result.1.readers, result.1.current, result.1.left)
+}
+
+pub open spec fn ht_metadata_words(
+    readers: HtCleanupReaderState, current: Seq<u8>, left: u8,
+    previous: Seq<u8>, pair: nat, initial: bool,
+) -> HtMetadataWordsResult
+    recommends current.len() == previous.len(),
+{
+    ht_metadata_words_finish(ht_metadata_words_run(HtMetadataWordsState {
+        readers, current, left, words: Seq::new(2, |i: int| 0u16), contexts: Seq::new(2, |i: int| 0u8),
+    }, previous, pair, initial, 0))
+}
+
+pub struct HtMetadataQuadInput {
+    pub index: usize,
+    pub row: usize,
+    pub width: u16,
+    pub height: u16,
+    pub maximum_u: u8,
+    pub word: u16,
+    pub context: u8,
+    pub significance: u8,
+    pub u_value: u8,
+    pub initial: bool,
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_samples(
+    significant: u16, significance: u8, x: u16, y: u16, width: u16, height: u16, sample: u8,
+) -> (Result<(), crate::DecodeError>, u16)
+    recommends sample <= 4, x <= 65534, y <= 65534,
+    decreases 4nat - sample,
+{
+    if sample >= 4 { (Ok(()), significant) }
+    else if significance & (1u8 << sample) == 0 {
+        ht_metadata_samples(significant, significance, x, y, width, height, (sample + 1) as u8)
+    } else if x as nat + (sample >> 1u8) as nat >= width
+        || y as nat + (sample & 1u8) as nat >= height {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), significant)
+    } else if significant == u16::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), significant)
+    } else {
+        ht_metadata_samples((significant + 1) as u16, significance, x, y, width, height, (sample + 1) as u8)
+    }
+}
+
+pub type HtMetadataEmitResult = (
+    Result<(), crate::DecodeError>, HtCleanupReaderState, Seq<crate::tier1::HtQuadMetadata>, u16,
+);
+
+pub open spec fn ht_metadata_emit_after_samples(
+    result: (Result<(), crate::DecodeError>, u16),
+    readers: HtCleanupReaderState, quads: Seq<crate::tier1::HtQuadMetadata>, input: HtMetadataQuadInput,
+) -> HtMetadataEmitResult {
+    match result.0 {
+        Err(error) => (Err(error), readers, quads, result.1),
+        Ok(()) => {
+            let quad = crate::tier1::HtQuadMetadata {
+                x: (input.index * 2) as u16, y: (input.row * 2) as u16,
+                context: input.context, initial_row: input.initial,
+                significance: input.significance,
+                embedded_magnitude: ((input.word >> 8u16) & 0x0fu16) as u8,
+                embedded_bit_mask: ((input.word >> 12u16) & 0x0fu16) as u8,
+                u_offset: input.word & 8u16 != 0, u_base: input.u_value,
+                codeword_bits: (input.word & 7u16) as u8,
+            };
+            let tick = ht_cleanup_reader_tick(readers);
+            (tick.0, tick.1, quads.push(quad), result.1)
+        },
+    }
+}
+
+pub open spec fn ht_metadata_emit(
+    readers: HtCleanupReaderState, quads: Seq<crate::tier1::HtQuadMetadata>,
+    significant: u16, input: HtMetadataQuadInput,
+) -> HtMetadataEmitResult
+    recommends input.index < 32768, input.row < 32768,
+{
+    let x = (input.index * 2) as u16;
+    let y = (input.row * 2) as u16;
+    if input.u_value > input.maximum_u
+        || !ht_quad_origin_valid(x as nat, y as nat, input.width as nat, input.height as nat) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), readers, quads, significant)
+    } else {
+        ht_metadata_emit_after_samples(ht_metadata_samples(significant, input.significance, x, y,
+            input.width, input.height, 0), readers, quads, input)
+    }
+}
+
+pub struct HtMetadataPairState {
+    pub readers: HtCleanupReaderState,
+    pub quads: Seq<crate::tier1::HtQuadMetadata>,
+    pub current: Seq<u8>,
+    pub significant: u16,
+    pub left: u8,
+}
+
+pub open spec fn ht_metadata_u_values(readers: HtCleanupReaderState, words: Seq<u16>, initial: bool)
+    -> (Result<[u8; 2], crate::DecodeError>, HtCleanupReaderState)
+    recommends words.len() == 2,
+{
+    let mode = (if words[0] & 8u16 != 0 { 1u8 } else { 0u8 })
+        | (if words[1] & 8u16 != 0 { 2u8 } else { 0u8 });
+    let event = if initial && mode == 3 { ht_cleanup_mel_event(readers) } else { (Ok(false), readers) };
+    match event.0 {
+        Err(error) => (Err(error), event.1),
+        Ok(four) => {
+            let selected = if four { 4u8 } else { mode };
+            if initial { ht_uvlc_initial(event.1, selected) } else { ht_uvlc_non_initial(event.1, selected) }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_emits_run(
+    state: HtMetadataPairState, words: Seq<u16>, contexts: Seq<u8>, values: [u8; 2],
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool, member: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends member <= 2, words.len() == 2, contexts.len() == 2, pair < 32768, row < 32768,
+        state.current.len() <= 32768,
+    decreases 2nat - member,
+{
+    if member >= 2 || pair + member >= state.current.len() { (Ok(()), state) } else {
+        let index = pair + member;
+        let emit = ht_metadata_emit(state.readers, state.quads, state.significant, HtMetadataQuadInput {
+            index: index as usize, row: row as usize, width, height, maximum_u,
+            word: words[member as int], context: contexts[member as int],
+            significance: state.current[index as int], u_value: values[member as int], initial,
+        });
+        let changed = HtMetadataPairState {
+            readers: emit.1, quads: emit.2, significant: emit.3, ..state
+        };
+        match emit.0 {
+            Err(error) => (Err(error), changed),
+            Ok(()) => ht_metadata_emits_run(changed, words, contexts, values,
+                pair, row, width, height, maximum_u, initial, member + 1),
+        }
+    }
+}
+
+pub open spec fn ht_metadata_pair_after_words(
+    words: HtMetadataWordsResult, quads: Seq<crate::tier1::HtQuadMetadata>, significant: u16,
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends pair < 32768, row < 32768, words.2.len() <= 32768,
+{
+    let changed = HtMetadataPairState { readers: words.1, quads, significant, current: words.2, left: words.3 };
+    match words.0 {
+        Err(error) => (Err(error), changed),
+        Ok((cache, contexts)) => {
+            let values = ht_metadata_u_values(changed.readers, cache, initial);
+            let consumed = HtMetadataPairState { readers: values.1, ..changed };
+            match values.0 {
+                Err(error) => (Err(error), consumed),
+                Ok(values) => ht_metadata_emits_run(consumed, cache, contexts, values,
+                    pair, row, width, height, maximum_u, initial, 0),
+            }
+        },
+    }
+}
+
+pub open spec fn ht_metadata_pair(
+    state: HtMetadataPairState, previous: Seq<u8>,
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends pair < 32768, row < 32768, state.current.len() == previous.len() <= 32768,
+{
+    ht_metadata_pair_after_words(
+        ht_metadata_words(state.readers, state.current, state.left, previous, pair, initial),
+        state.quads, state.significant, pair, row, width, height, maximum_u, initial)
+}
+
+pub struct HtMetadataRowState {
+    pub readers: HtCleanupReaderState,
+    pub quads: Seq<crate::tier1::HtQuadMetadata>,
+    pub previous: Seq<u8>,
+    pub significant: u16,
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_pairs(
+    state: HtMetadataPairState, previous: Seq<u8>, row: nat,
+    width: u16, height: u16, maximum_u: u8, count: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataPairState)
+    recommends 0 < previous.len() <= 32768, state.current.len() == previous.len(),
+        row < 32768, count <= (previous.len() + 1) / 2,
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_metadata_pairs(state, previous, row, width, height, maximum_u, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(()) => ht_metadata_pair(prefix.1, previous, 2 * ((count - 1) as nat), row, width, height, maximum_u, row == 0),
+        }
+    }
+}
+
+pub open spec fn ht_metadata_row_initial(state: HtMetadataRowState) -> HtMetadataPairState {
+    HtMetadataPairState {
+        readers: state.readers, quads: state.quads, significant: state.significant,
+        current: Seq::new(state.previous.len(), |i: int| 0u8), left: 0,
+    }
+}
+
+pub open spec fn ht_metadata_row_finish(
+    result: (Result<(), crate::DecodeError>, HtMetadataPairState), previous: Seq<u8>,
+) -> (Result<(), crate::DecodeError>, HtMetadataRowState) {
+    (result.0, HtMetadataRowState {
+        readers: result.1.readers, quads: result.1.quads, significant: result.1.significant,
+        previous: if result.0.is_ok() { result.1.current } else { previous },
+    })
+}
+
+pub open spec fn ht_metadata_row(
+    state: HtMetadataRowState, row: nat, width: u16, height: u16, maximum_u: u8,
+) -> (Result<(), crate::DecodeError>, HtMetadataRowState)
+    recommends 0 < state.previous.len() <= 32768, row < 32768,
+{
+    ht_metadata_row_finish(ht_metadata_pairs(ht_metadata_row_initial(state), state.previous, row,
+        width, height, maximum_u, (state.previous.len() + 1) / 2), state.previous)
+}
+
+#[verifier::opaque]
+pub open spec fn ht_metadata_rows(
+    state: HtMetadataRowState, width: u16, height: u16, maximum_u: u8, count: nat,
+) -> (Result<(), crate::DecodeError>, HtMetadataRowState)
+    recommends 0 < state.previous.len() <= 32768, count <= 32768,
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let prefix = ht_metadata_rows(state, width, height, maximum_u, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(()) => ht_metadata_row(prefix.1, (count - 1) as nat, width, height, maximum_u),
+        }
+    }
+}
+
+pub struct HtMetadataOutput {
+    pub width: u16,
+    pub height: u16,
+    pub quads: Seq<crate::tier1::HtQuadMetadata>,
+    pub significant_samples: u16,
+    pub mel_bits: u32,
+    pub vlc_bits: u32,
+    pub mel_events: u32,
+}
+
+pub open spec fn ht_metadata_finish(
+    result: (Result<(), crate::DecodeError>, HtMetadataRowState), width: u16, height: u16,
+) -> Result<HtMetadataOutput, crate::DecodeError> {
+    match result.0 {
+        Err(error) => Err(error),
+        Ok(()) => {
+            let state = result.1;
+            match ht_cleanup_readers_finish(state.readers) {
+                Err(error) => Err(error),
+                Ok(()) => if state.readers.mel.bits_read > u32::MAX || state.readers.vlc.bits_read > u32::MAX {
+                    Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    Ok(HtMetadataOutput {
+                        width, height, quads: state.quads, significant_samples: state.significant,
+                        mel_bits: state.readers.mel.bits_read as u32, vlc_bits: state.readers.vlc.bits_read as u32,
+                        mel_events: state.readers.mel_events,
+                    })
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_segment_metadata(
+    cleanup: HtCleanupSegmentState, width: u16, height: u16, maximum_u: u8, maximum_work: u64,
+) -> Result<HtMetadataOutput, crate::DecodeError> {
+    if width == 0 || height == 0 || maximum_u == 0 || maximum_u > 75 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else if width as nat * height as nat > u32::MAX {
+        Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
+    } else if width as nat * height as nat > 4096 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        match ht_cleanup_readers_initial(cleanup.mel.bytes, cleanup.vlc.bytes, maximum_work) {
+            Err(error) => Err(error),
+            Ok(readers) => ht_metadata_finish(ht_metadata_rows(HtMetadataRowState {
+                readers, quads: Seq::empty(), significant: 0,
+                previous: Seq::new((width as nat + 1) / 2, |i: int| 0u8),
+            }, width, height, maximum_u, (height as nat + 1) / 2), width, height),
+        }
+    }
+}
+
+pub open spec fn ht_decode_cleanup_metadata(
+    cleanup: Seq<u8>, width: u16, height: u16, maximum_u: u8, maximum_bytes: u64, maximum_work: u64,
+) -> Result<HtMetadataOutput, crate::DecodeError> {
+    match ht_parse_block_segments(cleanup, None, maximum_bytes) {
+        Err(error) => Err(error),
+        Ok(segments) => ht_cleanup_segment_metadata(segments.cleanup, width, height, maximum_u, maximum_work),
+    }
+}
+
+pub struct HtSubstreamState {
+    pub bytes: Seq<u8>,
+    pub offset: u32,
+    pub forward: bool,
+}
+
+pub struct HtCleanupSegmentState {
+    pub encoded: Seq<u8>,
+    pub scup: u16,
+    pub mag_sgn: HtSubstreamState,
+    pub mel_vlc: HtSubstreamState,
+    pub mel: HtSubstreamState,
+    pub vlc: HtSubstreamState,
+}
+
+pub struct HtRefinementSegmentState {
+    pub encoded: Seq<u8>,
+    pub significance_propagation: HtSubstreamState,
+    pub magnitude_refinement: HtSubstreamState,
+}
+
+pub struct HtBlockSegmentsState {
+    pub cleanup: HtCleanupSegmentState,
+    pub refinement: Option<HtRefinementSegmentState>,
+    pub bytes: u32,
+}
+
+pub open spec fn ht_parse_block_segments(
+    cleanup: Seq<u8>, refinement: Option<Seq<u8>>, maximum_bytes: u64,
+) -> Result<HtBlockSegmentsState, crate::DecodeError> {
+    let refinement_length = match refinement { None => 0nat, Some(bytes) => bytes.len() };
+    if cleanup.len() < 2 || cleanup.len() > 65534 || refinement_length > 2046 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let total = cleanup.len() + refinement_length;
+        if total > maximum_bytes {
+            Err(crate::DecodeError::LimitExceeded {
+                resource: crate::Resource::CodeBlockBytes, limit: maximum_bytes, actual: total as u64,
+            })
+        } else {
+            let scup = ht_scup(cleanup[(cleanup.len() - 2) as int], cleanup[(cleanup.len() - 1) as int]);
+            if scup < 2 || scup > 4079 || scup > cleanup.len() {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+            } else {
+                let start = (cleanup.len() - scup) as int;
+                let offset = start as u32;
+                let suffix = cleanup.subrange(start, cleanup.len() as int);
+                Ok(HtBlockSegmentsState {
+                    cleanup: HtCleanupSegmentState {
+                        encoded: cleanup, scup: scup as u16,
+                        mag_sgn: HtSubstreamState { bytes: cleanup.subrange(0, start), offset: 0, forward: true },
+                        mel_vlc: HtSubstreamState { bytes: suffix, offset, forward: true },
+                        mel: HtSubstreamState { bytes: cleanup.subrange(start, (cleanup.len() - 1) as int), offset, forward: true },
+                        vlc: HtSubstreamState { bytes: suffix, offset, forward: false },
+                    },
+                    refinement: match refinement {
+                        None => None,
+                        Some(bytes) => Some(HtRefinementSegmentState {
+                            encoded: bytes,
+                            significance_propagation: HtSubstreamState { bytes, offset: cleanup.len() as u32, forward: true },
+                            magnitude_refinement: HtSubstreamState { bytes, offset: cleanup.len() as u32, forward: false },
+                        }),
+                    },
+                    bytes: total as u32,
+                })
+            }
+        }
+    }
+}
+
+pub open spec fn ht_packet_pass_group(passes: u8) -> Result<crate::tier1::HtPassGroup, crate::DecodeError> {
+    if passes == 0 || passes > 164 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let placeholders = ht_placeholder_passes(passes as nat);
+        Ok(crate::tier1::HtPassGroup {
+            cleanup_passes: (placeholders + 1) as u8,
+            refinement_passes: (ht_substantive_passes(passes as nat) - 1) as u8,
+            placeholder_passes: placeholders as u8,
+            skipped_bitplanes: (placeholders / 3) as u8,
+        })
+    }
+}
+
+pub struct HtMagSgnState {
+    pub input: Seq<u8>,
+    pub next_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub current_is_physical: bool,
+    pub previous_was_ff: bool,
+    pub physical_bits_read: u64,
+    pub fill_bits_read: u64,
+    pub work_units: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn ht_magsgn_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtMagSgnState, crate::DecodeError>
+{
+    if input.len() > 65534 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        Ok(HtMagSgnState {
+            input, next_byte: 0, value: 0, next_bit: 0, last_bit: 0, has_byte: false,
+            current_is_physical: false, previous_was_ff: false,
+            physical_bits_read: 0, fill_bits_read: 0, work_units: 0, maximum_work_units,
+        })
+    }
+}
+
+pub open spec fn ht_magsgn_load(state: HtMagSgnState)
+    -> (Result<(), crate::DecodeError>, HtMagSgnState)
+{
+    let physical = state.next_byte < state.input.len();
+    let value = if physical { state.input[state.next_byte as int] } else { 0xffu8 };
+    if physical && !ht_forward_stuffing_valid(state.previous_was_ff, value) {
+        (Err(crate::DecodeError::MalformedInput {
+            offset: state.next_byte as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+        }), state)
+    } else {
+        let changed = HtMagSgnState { value, current_is_physical: physical, ..state };
+        if physical && state.next_byte == usize::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), changed)
+        } else {
+            (Ok(()), HtMagSgnState {
+                next_byte: if physical { (state.next_byte + 1) as usize } else { state.next_byte },
+                next_bit: 0, last_bit: (ht_forward_data_bits(state.previous_was_ff) - 1) as u8,
+                has_byte: true, previous_was_ff: value == 0xff, ..changed
+            })
+        }
+    }
+}
+
+pub open spec fn ht_magsgn_read(state: HtMagSgnState)
+    -> (Result<bool, crate::DecodeError>, HtMagSgnState)
+{
+    let loaded = if !state.has_byte || state.next_bit > state.last_bit {
+        ht_magsgn_load(state)
+    } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if !ready.has_byte || ready.next_bit > ready.last_bit || ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let advanced = HtMagSgnState { next_bit: (ready.next_bit + 1) as u8, ..ready };
+                let counter = if ready.current_is_physical { ready.physical_bits_read } else { ready.fill_bits_read };
+                if counter == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let consumed = HtMagSgnState {
+                        physical_bits_read: if ready.current_is_physical { (counter + 1) as u64 } else { ready.physical_bits_read },
+                        fill_bits_read: if ready.current_is_physical { ready.fill_bits_read } else { (counter + 1) as u64 },
+                        ..advanced
+                    };
+                    if ready.work_units == u64::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), consumed)
+                    } else {
+                        let charged = HtMagSgnState { work_units: (ready.work_units + 1) as u64, ..consumed };
+                        if charged.work_units > ready.maximum_work_units {
+                            (Err(ht_reader_work_error(ready.maximum_work_units, charged.work_units)), charged)
+                        } else {
+                            (Ok(ht_reader_bit(ready.value, ready.next_bit)), charged)
+                        }
+                    }
+                }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magsgn_word_run(state: HtMagSgnState, remaining: nat, index: nat, value: u64)
+    -> (Result<u64, crate::DecodeError>, HtMagSgnState)
+    recommends index + remaining <= 39,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(value), state) } else {
+        let read = ht_magsgn_read(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => ht_magsgn_word_run(read.1, (remaining - 1) as nat, index + 1,
+                if bit { value | (1u64 << index as u8) } else { value }),
+        }
+    }
+}
+
+pub open spec fn ht_magsgn_read_bits(state: HtMagSgnState, count: u8)
+    -> (Result<u64, crate::DecodeError>, HtMagSgnState)
+{
+    if count > 39 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else { ht_magsgn_word_run(state, count as nat, 0, 0) }
+}
+
+pub open spec fn ht_magsgn_pending(state: HtMagSgnState) -> bool {
+    (state.has_byte && state.current_is_physical && state.next_bit <= state.last_bit)
+        || state.next_byte < state.input.len()
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magsgn_finish_run(state: HtMagSgnState, remaining: nat)
+    -> (Result<(), crate::DecodeError>, HtMagSgnState)
+    decreases remaining,
+{
+    if !ht_magsgn_pending(state) { (Ok(()), state) }
+    else if remaining == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let read = ht_magsgn_read(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(false) => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1),
+            Ok(true) => ht_magsgn_finish_run(read.1, (remaining - 1) as nat),
+        }
+    }
+}
+
+pub open spec fn ht_magsgn_finish(state: HtMagSgnState)
+    -> (Result<(), crate::DecodeError>, HtMagSgnState)
+{
+    if state.input.len() * 8 > usize::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else { ht_magsgn_finish_run(state, state.input.len() * 8) }
+}
+
+pub struct HtForwardRefinementState {
+    pub input: Seq<u8>,
+    pub next_byte: usize,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub previous_was_ff: bool,
+    pub physical_bits_read: u64,
+    pub fill_bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub struct HtReverseRefinementState {
+    pub input: Seq<u8>,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub later_requires_unstuffing: bool,
+    pub physical_bits_read: u64,
+    pub fill_bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub type HtPositionedRead = Result<(bool, Option<crate::tier1::HtBitPosition>), crate::DecodeError>;
+
+pub open spec fn ht_refinement_work(physical: u64, fill: u64, maximum: u64) -> Result<(), crate::DecodeError> {
+    if physical + fill > u64::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else if physical + fill > maximum { Err(ht_reader_work_error(maximum, (physical + fill) as u64)) }
+    else { Ok(()) }
+}
+
+pub open spec fn ht_forward_refinement_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtForwardRefinementState, crate::DecodeError>
+{
+    if input.len() > 2046 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else { Ok(HtForwardRefinementState {
+        input, next_byte: 0, current_byte: 0, value: 0, next_bit: 0, last_bit: 0,
+        has_byte: false, previous_was_ff: false, physical_bits_read: 0, fill_bits_read: 0, maximum_work_units,
+    }) }
+}
+
+pub open spec fn ht_forward_refinement_load(state: HtForwardRefinementState)
+    -> (Result<(), crate::DecodeError>, HtForwardRefinementState)
+{
+    let physical = state.next_byte < state.input.len();
+    let value = if physical { state.input[state.next_byte as int] } else { 0u8 };
+    if physical && state.previous_was_ff && value & 0x80u8 != 0 {
+        (Err(crate::DecodeError::MalformedInput {
+            offset: state.next_byte as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+        }), state)
+    } else {
+        let changed = HtForwardRefinementState {
+            current_byte: if physical { state.next_byte } else { state.input.len() as usize },
+            value, ..state
+        };
+        if physical && state.next_byte == usize::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), changed)
+        } else {
+            (Ok(()), HtForwardRefinementState {
+                next_byte: if physical { (state.next_byte + 1) as usize } else { state.next_byte },
+                next_bit: 0, last_bit: if state.previous_was_ff { 6 } else { 7 },
+                has_byte: true, previous_was_ff: value == 0xff, ..changed
+            })
+        }
+    }
+}
+
+pub open spec fn ht_forward_refinement_positioned(state: HtForwardRefinementState)
+    -> (HtPositionedRead, HtForwardRefinementState)
+{
+    let loaded = if !state.has_byte || state.next_bit > state.last_bit {
+        ht_forward_refinement_load(state)
+    } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if !ready.has_byte || ready.next_bit > ready.last_bit || ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let physical = ready.current_byte < ready.input.len();
+                let position = if physical {
+                    Some(crate::tier1::HtBitPosition { byte: ready.current_byte as u16, bit: ready.next_bit })
+                } else { None };
+                let advanced = HtForwardRefinementState { next_bit: (ready.next_bit + 1) as u8, ..ready };
+                let counter = if physical { ready.physical_bits_read } else { ready.fill_bits_read };
+                if counter == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let consumed = HtForwardRefinementState {
+                        physical_bits_read: if physical { (counter + 1) as u64 } else { ready.physical_bits_read },
+                        fill_bits_read: if physical { ready.fill_bits_read } else { (counter + 1) as u64 }, ..advanced
+                    };
+                    match ht_refinement_work(consumed.physical_bits_read, consumed.fill_bits_read, consumed.maximum_work_units) {
+                        Err(error) => (Err(error), consumed),
+                        Ok(()) => (Ok((ht_reader_bit(ready.value, ready.next_bit), position)), consumed),
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn ht_forward_refinement_read(state: HtForwardRefinementState)
+    -> (Result<bool, crate::DecodeError>, HtForwardRefinementState)
+{
+    let read = ht_forward_refinement_positioned(state);
+    (match read.0 { Err(error) => Err(error), Ok((bit, _)) => Ok(bit) }, read.1)
+}
+
+pub open spec fn ht_reverse_refinement_load(state: HtReverseRefinementState)
+    -> (Result<(), crate::DecodeError>, HtReverseRefinementState)
+{
+    if state.current_byte == 0 {
+        (Ok(()), HtReverseRefinementState { has_byte: false, value: 0, next_bit: 0, last_bit: 7, ..state })
+    } else {
+        let index = (state.current_byte - 1) as usize;
+        let moved = HtReverseRefinementState { current_byte: index, ..state };
+        if index >= state.input.len() {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), moved)
+        } else {
+            let value = state.input[index as int];
+            (Ok(()), HtReverseRefinementState {
+                value, next_bit: 0,
+                last_bit: if state.later_requires_unstuffing && value & 0x7fu8 == 0x7f { 6 } else { 7 },
+                later_requires_unstuffing: value > 0x8f, has_byte: true, ..moved
+            })
+        }
+    }
+}
+
+pub open spec fn ht_reverse_refinement_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtReverseRefinementState, crate::DecodeError>
+{
+    if input.len() > 2046 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else {
+        let loaded = ht_reverse_refinement_load(HtReverseRefinementState {
+            current_byte: input.len() as usize, input, value: 0, next_bit: 0, last_bit: 7,
+            has_byte: false, later_requires_unstuffing: true, physical_bits_read: 0, fill_bits_read: 0, maximum_work_units,
+        });
+        match loaded.0 { Err(error) => Err(error), Ok(()) => Ok(loaded.1) }
+    }
+}
+
+pub open spec fn ht_reverse_refinement_positioned(state: HtReverseRefinementState)
+    -> (HtPositionedRead, HtReverseRefinementState)
+{
+    let loaded = if !state.has_byte || state.next_bit > state.last_bit {
+        ht_reverse_refinement_load(state)
+    } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if ready.has_byte && ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let position = if ready.has_byte {
+                    Some(crate::tier1::HtBitPosition { byte: ready.current_byte as u16, bit: ready.next_bit })
+                } else { None };
+                let advanced = HtReverseRefinementState {
+                    next_bit: if ready.has_byte { (ready.next_bit + 1) as u8 } else { ready.next_bit }, ..ready
+                };
+                let counter = if ready.has_byte { ready.physical_bits_read } else { ready.fill_bits_read };
+                if counter == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let consumed = HtReverseRefinementState {
+                        physical_bits_read: if ready.has_byte { (counter + 1) as u64 } else { ready.physical_bits_read },
+                        fill_bits_read: if ready.has_byte { ready.fill_bits_read } else { (counter + 1) as u64 }, ..advanced
+                    };
+                    match ht_refinement_work(consumed.physical_bits_read, consumed.fill_bits_read, consumed.maximum_work_units) {
+                        Err(error) => (Err(error), consumed),
+                        Ok(()) => (Ok((if ready.has_byte { ht_reader_bit(ready.value, ready.next_bit) } else { false }, position)), consumed),
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn ht_reverse_refinement_read(state: HtReverseRefinementState)
+    -> (Result<bool, crate::DecodeError>, HtReverseRefinementState)
+{
+    let read = ht_reverse_refinement_positioned(state);
+    (match read.0 { Err(error) => Err(error), Ok((bit, _)) => Ok(bit) }, read.1)
+}
+
+pub struct HtRefinementReadersState {
+    pub forward: HtForwardRefinementState,
+    pub reverse: Option<HtReverseRefinementState>,
+    pub claimed: Seq<u8>,
+    pub stuffed: Seq<u8>,
+}
+
+pub open spec fn ht_refinement_readers_initial(
+    forward_input: Seq<u8>, reverse_input: Seq<u8>, bytes: usize, has_reverse: bool, maximum_work_units: u64,
+) -> Result<HtRefinementReadersState, crate::DecodeError> {
+    match ht_forward_refinement_initial(forward_input, maximum_work_units) {
+        Err(error) => Err(error),
+        Ok(forward) => {
+            let reverse = if has_reverse {
+                match ht_reverse_refinement_initial(reverse_input, maximum_work_units) {
+                    Err(error) => Err(error), Ok(reverse) => Ok(Some(reverse)),
+                }
+            } else { Ok(None) };
+            match reverse {
+                Err(error) => Err(error),
+                Ok(reverse) => Ok(HtRefinementReadersState {
+                    forward, reverse, claimed: Seq::new(bytes as nat, |i: int| 0u8), stuffed: Seq::new(bytes as nat, |i: int| 0u8),
+                }),
+            }
+        },
+    }
+}
+
+pub open spec fn ht_refinement_claim(state: HtRefinementReadersState, position: Option<crate::tier1::HtBitPosition>)
+    -> (Result<(), crate::DecodeError>, HtRefinementReadersState)
+{
+    match position {
+        None => (Ok(()), state),
+        Some(position) => if position.bit >= 8 || position.byte >= state.claimed.len() {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else {
+            let mask = 1u8 << position.bit;
+            let value = state.claimed[position.byte as int];
+            if value & mask != 0 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+            } else {
+                (Ok(()), HtRefinementReadersState { claimed: state.claimed.update(position.byte as int, value | mask), ..state })
+            }
+        },
+    }
+}
+
+pub open spec fn ht_refinement_read_forward(state: HtRefinementReadersState)
+    -> (Result<bool, crate::DecodeError>, HtRefinementReadersState)
+{
+    let read = ht_forward_refinement_positioned(state.forward);
+    let consumed = HtRefinementReadersState { forward: read.1, ..state };
+    match read.0 {
+        Err(error) => (Err(error), consumed),
+        Ok((bit, position)) => {
+            let claim = ht_refinement_claim(consumed, position);
+            (match claim.0 { Err(error) => Err(error), Ok(()) => Ok(bit) }, claim.1)
+        },
+    }
+}
+
+pub open spec fn ht_refinement_read_reverse(state: HtRefinementReadersState)
+    -> (Result<bool, crate::DecodeError>, HtRefinementReadersState)
+{
+    match state.reverse {
+        None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        Some(reverse) => {
+            let read = ht_reverse_refinement_positioned(reverse);
+            let consumed = HtRefinementReadersState { reverse: Some(read.1), ..state };
+            match read.0 {
+                Err(error) => (Err(error), consumed),
+                Ok((bit, position)) => {
+                    if read.1.has_byte && read.1.last_bit == 6 && read.1.current_byte >= consumed.stuffed.len() {
+                        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), consumed)
+                    } else {
+                        let marked = if read.1.has_byte && read.1.last_bit == 6 {
+                            HtRefinementReadersState { stuffed: consumed.stuffed.update(
+                                read.1.current_byte as int, consumed.stuffed[read.1.current_byte as int] | 0x80u8), ..consumed }
+                        } else { consumed };
+                        let claim = ht_refinement_claim(marked, position);
+                        (match claim.0 { Err(error) => Err(error), Ok(()) => Ok(bit) }, claim.1)
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_refinement_finish(state: HtRefinementReadersState, encoded: Seq<u8>) -> Result<(), crate::DecodeError> {
+    if state.claimed.len() != encoded.len() || state.stuffed.len() != encoded.len()
+        || !(forall |i: int| 0 <= i < encoded.len() ==> encoded[i] & !(state.claimed[i] | state.stuffed[i]) == 0) {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else { Ok(()) }
+}
+
+pub struct HtReverseVlcState {
+    pub input: Seq<u8>,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub later_byte_requires_unstuffing: bool,
+    pub bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub struct HtMelState {
+    pub input: Seq<u8>,
+    pub next_byte: usize,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: i8,
+    pub previous_was_ff: bool,
+    pub bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn ht_reader_error(kind: crate::MalformedKind) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind }
+}
+
+pub open spec fn ht_reader_work_error(limit: u64, actual: u64) -> crate::DecodeError {
+    crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits, limit, actual }
+}
+
+pub open spec fn ht_reader_bit(value: u8, index: u8) -> bool
+    recommends index < 8,
+{
+    (value >> index) & 1 != 0
+}
+
+pub open spec fn ht_reverse_vlc_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtReverseVlcState, crate::DecodeError>
+{
+    if input.len() < 2 || input.len() > 4079 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let index = (input.len() - 2) as usize;
+        let value = input[index as int];
+        Ok(HtReverseVlcState {
+            input, current_byte: index, value, next_bit: 4,
+            last_bit: if (value >> 4) & 7 == 7 { 6 } else { 7 },
+            has_byte: true, later_byte_requires_unstuffing: value | 0x0fu8 > 0x8f,
+            bits_read: 0, maximum_work_units,
+        })
+    }
+}
+
+pub open spec fn ht_reverse_vlc_load(state: HtReverseVlcState)
+    -> (Result<(), crate::DecodeError>, HtReverseVlcState)
+{
+    if state.current_byte == 0 {
+        (Ok(()), HtReverseVlcState { has_byte: false, ..state })
+    } else {
+        let index = (state.current_byte - 1) as usize;
+        let moved = HtReverseVlcState { current_byte: index, ..state };
+        if index >= state.input.len() {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), moved)
+        } else {
+            let value = state.input[index as int];
+            (Ok(()), HtReverseVlcState {
+                value, next_bit: 0,
+                last_bit: (ht_reverse_data_bits(state.later_byte_requires_unstuffing, value) - 1) as u8,
+                later_byte_requires_unstuffing: value > 0x8f, ..moved
+            })
+        }
+    }
+}
+
+pub open spec fn ht_reverse_vlc_read(state: HtReverseVlcState)
+    -> (Result<bool, crate::DecodeError>, HtReverseVlcState)
+{
+    if !state.has_byte || state.next_bit >= 8 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        let advanced = HtReverseVlcState { next_bit: (state.next_bit + 1) as u8, ..state };
+        if state.bits_read == u64::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+        } else {
+            let charged = HtReverseVlcState { bits_read: (state.bits_read + 1) as u64, ..advanced };
+            if charged.bits_read > state.maximum_work_units {
+                (Err(ht_reader_work_error(state.maximum_work_units, charged.bits_read)), charged)
+            } else {
+                let loaded = if charged.next_bit > state.last_bit {
+                    ht_reverse_vlc_load(charged)
+                } else { (Ok(()), charged) };
+                match loaded.0 {
+                    Err(error) => (Err(error), loaded.1),
+                    Ok(()) => (Ok(ht_reader_bit(state.value, state.next_bit)), loaded.1),
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn ht_reverse_vlc_position(state: HtReverseVlcState) -> Option<(u16, u8)> {
+    if !state.has_byte || state.current_byte > u16::MAX { None }
+    else { Some((state.current_byte as u16, state.next_bit)) }
+}
+
+pub open spec fn ht_mel_load(state: HtMelState)
+    -> (Result<(), crate::DecodeError>, HtMelState)
+{
+    if state.next_byte >= state.input.len() {
+        (Ok(()), HtMelState { next_bit: -1i8, ..state })
+    } else {
+        let index = state.next_byte;
+        let value = if index + 1 == state.input.len() {
+            state.input[index as int] | 0x0fu8
+        } else { state.input[index as int] };
+        if !ht_mel_stuffing_valid(state.previous_was_ff, value as nat) {
+            (Err(crate::DecodeError::MalformedInput {
+                offset: index as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+            }), state)
+        } else {
+            (Ok(()), HtMelState {
+                next_byte: (index + 1) as usize, current_byte: index, value,
+                next_bit: if state.previous_was_ff { 6 } else { 7 },
+                previous_was_ff: value == 0xff, ..state
+            })
+        }
+    }
+}
+
+pub open spec fn ht_mel_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtMelState, crate::DecodeError>
+{
+    if input.len() == 0 || input.len() > 4078 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let loaded = ht_mel_load(HtMelState {
+            input, next_byte: 0, current_byte: 0, value: 0, next_bit: -1i8,
+            previous_was_ff: false, bits_read: 0, maximum_work_units,
+        });
+        match loaded.0 { Err(error) => Err(error), Ok(()) => Ok(loaded.1) }
+    }
+}
+
+pub open spec fn ht_mel_read(state: HtMelState)
+    -> (Result<bool, crate::DecodeError>, HtMelState)
+{
+    let loaded = if state.next_bit < 0 { ht_mel_load(state) } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if ready.next_bit < 0 || ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let advanced = HtMelState { next_bit: (ready.next_bit - 1) as i8, ..ready };
+                if ready.bits_read == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let charged = HtMelState { bits_read: (ready.bits_read + 1) as u64, ..advanced };
+                    if charged.bits_read > ready.maximum_work_units {
+                        (Err(ht_reader_work_error(ready.maximum_work_units, charged.bits_read)), charged)
+                    } else {
+                        (Ok(ht_reader_bit(ready.value, ready.next_bit as u8)), charged)
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn ht_mel_position(state: HtMelState) -> Option<(u16, u8)> {
+    if state.next_bit < 0 || state.current_byte > u16::MAX { None }
+    else { Some((state.current_byte as u16, state.next_bit as u8)) }
+}
+
+pub open spec fn ht_reverse_vlc_prefix(state: HtReverseVlcState, count: nat)
+    -> (Result<Seq<bool>, crate::DecodeError>, HtReverseVlcState)
+    decreases count,
+{
+    if count == 0 { (Ok(Seq::empty()), state) }
+    else {
+        let prefix = ht_reverse_vlc_prefix(state, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = ht_reverse_vlc_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn ht_mel_prefix(state: HtMelState, count: nat)
+    -> (Result<Seq<bool>, crate::DecodeError>, HtMelState)
+    decreases count,
+{
+    if count == 0 { (Ok(Seq::empty()), state) }
+    else {
+        let prefix = ht_mel_prefix(state, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = ht_mel_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    }
+}
+
+pub struct HtCleanupReaderState {
+    pub mel: HtMelState,
+    pub vlc: HtReverseVlcState,
+    pub mel_last_byte: Option<u16>,
+    pub vlc_last_byte: Option<u16>,
+    pub terminal_byte: u16,
+    pub mel_state: u8,
+    pub mel_zero_events: u8,
+    pub mel_terminating_one: bool,
+    pub mel_events: u32,
+    pub work_units: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn ht_cleanup_readers_initial(mel_input: Seq<u8>, vlc_input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtCleanupReaderState, crate::DecodeError>
+{
+    match ht_mel_initial(mel_input, maximum_work_units) {
+        Err(error) => Err(error),
+        Ok(mel) => match ht_reverse_vlc_initial(vlc_input, maximum_work_units) {
+            Err(error) => Err(error),
+            Ok(vlc) => Ok(HtCleanupReaderState {
+                mel, vlc, mel_last_byte: None, vlc_last_byte: None,
+                terminal_byte: (vlc_input.len() - 2) as u16,
+                mel_state: 0, mel_zero_events: 0, mel_terminating_one: false,
+                mel_events: 0, work_units: 0, maximum_work_units,
+            }),
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_reader_tick(state: HtCleanupReaderState)
+    -> (Result<(), crate::DecodeError>, HtCleanupReaderState)
+{
+    if state.work_units == u64::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        let changed = HtCleanupReaderState { work_units: (state.work_units + 1) as u64, ..state };
+        if changed.work_units > state.maximum_work_units {
+            (Err(ht_reader_work_error(state.maximum_work_units, changed.work_units)), changed)
+        } else { (Ok(()), changed) }
+    }
+}
+
+pub open spec fn ht_cleanup_reader_can_claim(state: HtCleanupReaderState, forward: bool, byte: u16) -> bool {
+    if byte >= state.vlc.input.len() { false } else {
+        let value = state.vlc.input[byte as int];
+        let opposite = if forward { state.vlc_last_byte } else { state.mel_last_byte };
+        match opposite {
+            None => byte <= state.terminal_byte,
+            Some(other) => if forward {
+                ht_cleanup_byte_claims_valid(byte as nat, other as nat, state.terminal_byte as nat, value)
+            } else {
+                ht_cleanup_byte_claims_valid(other as nat, byte as nat, state.terminal_byte as nat, value)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_reader_read_mel(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    let loaded = if ht_mel_position(state.mel).is_none() { ht_mel_load(state.mel) }
+        else { (Ok(()), state.mel) };
+    let ready = HtCleanupReaderState { mel: loaded.1, ..state };
+    match loaded.0 {
+        Err(error) => (Err(error), ready),
+        Ok(()) => match ht_mel_position(ready.mel) {
+            None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready),
+            Some(position) => if !ht_cleanup_reader_can_claim(ready, true, position.0) {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let read = ht_mel_read(ready.mel);
+                let consumed = HtCleanupReaderState { mel: read.1, ..ready };
+                match read.0 {
+                    Err(error) => (Err(error), consumed),
+                    Ok(bit) => {
+                        let claimed = HtCleanupReaderState { mel_last_byte: Some(position.0), ..consumed };
+                        let charged = ht_cleanup_reader_tick(claimed);
+                        match charged.0 { Err(error) => (Err(error), charged.1), Ok(()) => (Ok(bit), charged.1) }
+                    },
+                }
+            },
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_reader_read_vlc(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    match ht_reverse_vlc_position(state.vlc) {
+        None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        Some(position) => if !ht_cleanup_reader_can_claim(state, false, position.0) {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else {
+            let read = ht_reverse_vlc_read(state.vlc);
+            let consumed = HtCleanupReaderState { vlc: read.1, ..state };
+            match read.0 {
+                Err(error) => (Err(error), consumed),
+                Ok(bit) => {
+                    let claimed = HtCleanupReaderState { vlc_last_byte: Some(position.0), ..consumed };
+                    let charged = ht_cleanup_reader_tick(claimed);
+                    match charged.0 { Err(error) => (Err(error), charged.1), Ok(()) => (Ok(bit), charged.1) }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_cleanup_peek_run(
+    owner: HtCleanupReaderState, copy: HtReverseVlcState, remaining: nat, index: nat, value: u16,
+) -> u16
+    recommends index + remaining <= 255,
+    decreases remaining,
+{
+    if remaining == 0 { value } else {
+        let available = match ht_reverse_vlc_position(copy) {
+            None => false, Some(position) => ht_cleanup_reader_can_claim(owner, false, position.0),
+        };
+        if !available { value } else {
+            let read = ht_reverse_vlc_read(copy);
+            match read.0 {
+                Err(_) => value,
+                Ok(bit) => if bit && index >= 16 { value } else {
+                    ht_cleanup_peek_run(owner, read.1, (remaining - 1) as nat, index + 1,
+                        if bit { value | (1u16 << index as u8) } else { value })
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_peek_vlc(state: HtCleanupReaderState, count: u8) -> u16 {
+    ht_cleanup_peek_run(state, state.vlc, count as nat, 0, 0)
+}
+
+pub open spec fn ht_cleanup_readers_finish(state: HtCleanupReaderState) -> Result<(), crate::DecodeError> {
+    match (state.mel_last_byte, state.vlc_last_byte) {
+        (Some(mel), Some(vlc)) => {
+            if mel >= state.vlc.input.len()
+                || !ht_cleanup_byte_claims_valid(mel as nat, vlc as nat, state.terminal_byte as nat, state.vlc.input[mel as int]) {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+            } else { Ok(()) }
+        },
+        _ => Ok(()),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_cleanup_advance_vlc(state: HtCleanupReaderState, count: nat)
+    -> (Result<(), crate::DecodeError>, HtCleanupReaderState)
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let read = ht_cleanup_reader_read_vlc(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(_) => ht_cleanup_advance_vlc(read.1, (count - 1) as nat),
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_mel_emit(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    let changed = if state.mel_zero_events > 0 {
+        HtCleanupReaderState { mel_zero_events: (state.mel_zero_events - 1) as u8, ..state }
+    } else { HtCleanupReaderState { mel_terminating_one: false, ..state } };
+    if state.mel_events == u32::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), changed)
+    } else {
+        (Ok(state.mel_zero_events == 0), HtCleanupReaderState { mel_events: (state.mel_events + 1) as u32, ..changed })
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_cleanup_mel_suffix(state: HtCleanupReaderState, remaining: nat, suffix: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+    recommends remaining <= 5,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(suffix), state) } else {
+        let shifted = suffix << 1u8;
+        let read = ht_cleanup_reader_read_mel(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => ht_cleanup_mel_suffix(read.1, (remaining - 1) as nat,
+                if bit { shifted | 1u8 } else { shifted }),
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_mel_complete_suffix(result: (Result<u8, crate::DecodeError>, HtCleanupReaderState))
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    match result.0 {
+        Err(error) => (Err(error), result.1),
+        Ok(suffix) => ht_cleanup_mel_emit(HtCleanupReaderState {
+            mel_zero_events: suffix, mel_terminating_one: true,
+            mel_state: ht_mel_next_state(result.1.mel_state as nat, false) as u8, ..result.1
+        }),
+    }
+}
+
+pub open spec fn ht_cleanup_mel_event(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    if state.mel_zero_events > 0 || state.mel_terminating_one { ht_cleanup_mel_emit(state) }
+    else if state.mel_state > 12 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let read = ht_cleanup_reader_read_mel(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(true) => ht_cleanup_mel_emit(HtCleanupReaderState {
+                mel_zero_events: 1u8 << ht_mel_exponent(state.mel_state as nat) as u8,
+                mel_state: ht_mel_next_state(state.mel_state as nat, true) as u8, ..read.1
+            }),
+            Ok(false) => ht_cleanup_mel_complete_suffix(
+                ht_cleanup_mel_suffix(read.1, ht_mel_exponent(state.mel_state as nat), 0)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_prefix(state: HtCleanupReaderState)
+    -> (Result<(u8, u8, u8), crate::DecodeError>, HtCleanupReaderState)
+{
+    let first = ht_cleanup_reader_read_vlc(state);
+    match first.0 {
+        Err(error) => (Err(error), first.1),
+        Ok(true) => (Ok((1, 0, 1)), first.1),
+        Ok(false) => {
+            let second = ht_cleanup_reader_read_vlc(first.1);
+            match second.0 {
+                Err(error) => (Err(error), second.1),
+                Ok(true) => (Ok((2, 0, 2)), second.1),
+                Ok(false) => {
+                    let third = ht_cleanup_reader_read_vlc(second.1);
+                    match third.0 {
+                        Err(error) => (Err(error), third.1),
+                        Ok(true) => (Ok((3, 1, 3)), third.1),
+                        Ok(false) => (Ok((5, 5, 3)), third.1),
+                    }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_suffix_run(state: HtCleanupReaderState, remaining: nat, index: nat, value: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+    recommends index + remaining <= 255,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(value), state) } else {
+        let read = ht_cleanup_reader_read_vlc(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => if bit && index >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1)
+            } else {
+                ht_uvlc_suffix_run(read.1, (remaining - 1) as nat, index + 1,
+                    if bit { value | (1u8 << index as u8) } else { value })
+            },
+        }
+    }
+}
+
+pub open spec fn ht_uvlc_suffix(state: HtCleanupReaderState, length: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+{
+    ht_uvlc_suffix_run(state, length as nat, 0, 0)
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_prefix_value(state: HtCleanupReaderState)
+    -> (Result<(u8, u8), crate::DecodeError>, HtCleanupReaderState)
+{
+    let prefix = ht_uvlc_prefix(state);
+    match prefix.0 {
+        Err(error) => (Err(error), prefix.1),
+        Ok((base, length, prefix_length)) => {
+            let suffix = ht_uvlc_suffix(prefix.1, length);
+            match suffix.0 {
+                Err(error) => (Err(error), suffix.1),
+                Ok(value) => if base + value > u8::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), suffix.1)
+                } else { (Ok(((base + value) as u8, prefix_length)), suffix.1) },
+            }
+        },
+    }
+}
+
+pub type HtUvlcPairResult = (Result<[u8; 2], crate::DecodeError>, HtCleanupReaderState);
+
+pub open spec fn ht_uvlc_byte(base: u8, suffix: u8, bias: u8) -> Result<u8, crate::DecodeError> {
+    let value = base + suffix + bias;
+    if value > u8::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else { Ok(value as u8) }
+}
+
+pub open spec fn ht_uvlc_single(state: HtCleanupReaderState, first: bool) -> HtUvlcPairResult {
+    let prefix = ht_uvlc_prefix_value(state);
+    match prefix.0 {
+        Err(error) => (Err(error), prefix.1),
+        Ok((value, _)) => if value == u8::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), prefix.1)
+        } else {
+            (Ok(if first { [(value + 1) as u8, 1u8] } else { [1u8, (value + 1) as u8] }), prefix.1)
+        },
+    }
+}
+
+pub open spec fn ht_uvlc_pair_after_first(
+    state: HtCleanupReaderState, first: (u8, u8, u8), bias: u8,
+) -> HtUvlcPairResult {
+    let second = ht_uvlc_prefix(state);
+    match second.0 {
+        Err(error) => (Err(error), second.1),
+        Ok(second_prefix) => {
+            let first_suffix = ht_uvlc_suffix(second.1, first.1);
+            match first_suffix.0 {
+                Err(error) => (Err(error), first_suffix.1),
+                Ok(value) => {
+                    let first_value = first.0 + value + bias;
+                    if first_value > u8::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), first_suffix.1)
+                    } else {
+                        let second_suffix = ht_uvlc_suffix(first_suffix.1, second_prefix.1);
+                        match second_suffix.0 {
+                            Err(error) => (Err(error), second_suffix.1),
+                            Ok(value) => {
+                                let second_value = second_prefix.0 + value + bias;
+                                if second_value > u8::MAX {
+                                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), second_suffix.1)
+                                } else { (Ok([first_value as u8, second_value as u8]), second_suffix.1) }
+                            },
+                        }
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_uvlc_initial(state: HtCleanupReaderState, mode: u8) -> HtUvlcPairResult {
+    if mode == 0 { (Ok([1u8, 1u8]), state) }
+    else if mode == 1 || mode == 2 { ht_uvlc_single(state, mode == 1) }
+    else if mode == 3 || mode == 4 {
+        let prefix = ht_uvlc_prefix(state);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(first) => if mode == 4 || first.2 <= 2 {
+                ht_uvlc_pair_after_first(prefix.1, first, if mode == 4 { 3 } else { 1 })
+            } else {
+                let bit = ht_cleanup_reader_read_vlc(prefix.1);
+                match bit.0 {
+                    Err(error) => (Err(error), bit.1),
+                    Ok(bit_value) => {
+                        let suffix = ht_uvlc_suffix(bit.1, first.1);
+                        match suffix.0 {
+                            Err(error) => (Err(error), suffix.1),
+                            Ok(value) => if first.0 + value + 1 > u8::MAX {
+                                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), suffix.1)
+                            } else {
+                                (Ok([(first.0 + value + 1) as u8, if bit_value { 3u8 } else { 2u8 }]), suffix.1)
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    } else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+}
+
+pub open spec fn ht_uvlc_non_initial(state: HtCleanupReaderState, mode: u8) -> HtUvlcPairResult {
+    if mode == 0 { (Ok([1u8, 1u8]), state) }
+    else if mode == 1 || mode == 2 { ht_uvlc_single(state, mode == 1) }
+    else if mode == 3 {
+        let prefix = ht_uvlc_prefix(state);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(first) => ht_uvlc_pair_after_first(prefix.1, first, 1),
+        }
+    } else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+}
+
+pub open spec fn ht_cleanup_quad_word(state: HtCleanupReaderState, table: Seq<u16>, context: u8)
+    -> (Result<u16, crate::DecodeError>, HtCleanupReaderState)
+{
+    if context > 7 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let index = context as nat * 128 + (ht_cleanup_peek_vlc(state, 7) & 0x7fu16) as nat;
+        if index >= table.len() { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+        else {
+            let event = if context == 0 { ht_cleanup_mel_event(state) } else { (Ok(true), state) };
+            match event.0 {
+                Err(error) => (Err(error), event.1),
+                Ok(keep) => {
+                    let word = if keep { table[index as int] } else { 0u16 };
+                    let length = (word & 7u16) as u8;
+                    if !ht_vlc_word_valid(word as nat, length as nat) {
+                        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), event.1)
+                    } else {
+                        let advanced = ht_cleanup_advance_vlc(event.1, length as nat);
+                        match advanced.0 {
+                            Err(error) => (Err(error), advanced.1),
+                            Ok(()) => {
+                                let charged = ht_cleanup_reader_tick(advanced.1);
+                                (match charged.0 { Err(error) => Err(error), Ok(()) => Ok(word) }, charged.1)
+                            },
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
 pub struct Part1RawReaderState {
     pub input: Seq<u8>,
     pub next_index: usize,
@@ -2698,6 +5628,10 @@ pub open spec fn part1_component_output_shape_valid(
     samples: usize,
 ) -> bool {
     width > 0 && height > 0 && part1_wavelet_sample_count(width, height, samples)
+}
+
+pub open spec fn part1_magnitude_limb(limbs: Seq<u64>, index: usize) -> Option<u64> {
+    if index < limbs.len() { Some(limbs[index as int]) } else { None }
 }
 
 pub open spec fn part1_magnitude_zero(limbs: Seq<u64>) -> bool {
@@ -3552,6 +6486,527 @@ pub open spec fn part1_image_error(arithmetic: bool) -> crate::DecodeError {
         offset: 0,
         kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
             else { crate::MalformedKind::InvalidImageGeometry },
+    }
+}
+
+pub open spec fn part1_image_size_component(
+    components: u16, information: Seq<crate::codestream::ComponentInfo>, index: u16,
+) -> Result<crate::codestream::ComponentInfo, crate::DecodeError> {
+    if index >= components || index >= information.len() {
+        Err(part1_image_error(false))
+    } else {
+        Ok(information[index as int])
+    }
+}
+
+pub open spec fn part1_image_checked_u32(value: int) -> Result<u32, crate::DecodeError> {
+    if value < 0 || value > u32::MAX { Err(part1_image_error(true)) } else { Ok(value as u32) }
+}
+
+pub open spec fn part1_image_ceil_div(value: u32, divisor: u32) -> Result<u32, crate::DecodeError> {
+    if divisor == 0 { Err(part1_image_error(false)) }
+    else { Ok(part1_ceil_div(value as nat, divisor as nat) as u32) }
+}
+
+pub open spec fn part1_assembly_registered_ceil(value: u32, divisor: u32, registration: u16)
+    -> Result<u32, crate::DecodeError>
+{
+    if divisor == 0 { Err(part1_image_error(false)) }
+    else { color_registered_coordinate(value, divisor, registration, true) }
+}
+
+pub open spec fn part1_accumulate_decoded_bytes(samples: nat, before: u64, maximum: u64)
+    -> (Result<(), crate::DecodeError>, u64)
+{
+    let bytes = samples * 8;
+    if bytes > u64::MAX || before as nat + bytes > u64::MAX {
+        (Err(part1_image_error(true)), before)
+    } else {
+        let next = (before as nat + bytes) as u64;
+        if next > maximum {
+            (Err(crate::DecodeError::LimitExceeded {
+                resource: crate::Resource::DecodedBytes, limit: maximum, actual: next,
+            }), next)
+        } else { (Ok(()), next) }
+    }
+}
+
+pub open spec fn part1_assembly_write_indices(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, destination: usize, source: usize,
+) -> Part1AssemblyPlaneState {
+    if destination >= plane.3.len() || destination >= plane.4.len()
+        || source >= tile.6.len() || plane.4[destination as int] {
+        (Err(part1_image_error(false)), plane)
+    } else {
+        (Ok(()), (plane.0, plane.1, plane.2,
+            plane.3.update(destination as int, tile.6[source as int]), plane.4.update(destination as int, true)))
+    }
+}
+
+pub open spec fn part1_assembly_pixel(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, x: u32, y: u32, crop: Option<(u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    let destination_x = match crop {
+        Some(origin) => part1_image_checked_u32((x as int) - origin.0),
+        None => part1_image_checked_u32((tile.1 as int) + x),
+    };
+    let destination_y = match crop {
+        Some(origin) => part1_image_checked_u32((y as int) - origin.1),
+        None => part1_image_checked_u32((tile.2 as int) + y),
+    };
+    match destination_x {
+        Err(error) => (Err(error), plane),
+        Ok(dx) => match destination_y {
+            Err(error) => (Err(error), plane),
+            Ok(dy) => match part1_transform_offset(dy, plane.0, dx) {
+                Err(error) => (Err(error), plane),
+                Ok(destination) => {
+                    let source_x = match crop {
+                        Some(_) => part1_image_checked_u32((x as int) - tile.1),
+                        None => Ok(x),
+                    };
+                    let source_y = match crop {
+                        Some(_) => part1_image_checked_u32((y as int) - tile.2),
+                        None => Ok(y),
+                    };
+                    match source_x {
+                        Err(error) => (Err(error), plane),
+                        Ok(sx) => match source_y {
+                            Err(error) => (Err(error), plane),
+                            Ok(sy) => match part1_transform_offset(sy, tile.3, sx) {
+                                Err(error) => (Err(error), plane),
+                                Ok(source) => part1_assembly_write_indices(plane, tile, destination, source),
+                            },
+                        },
+                    }
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_row_prefix(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, x_start: u32, y: u32,
+    crop: Option<(u32, u32)>, completed: nat,
+) -> Part1AssemblyPlaneState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), plane) } else {
+        let previous = part1_assembly_row_prefix(plane, tile, x_start, y, crop, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_pixel(previous.1, tile, (x_start as nat + completed - 1) as u32, y, crop),
+        }
+    }
+}
+
+pub open spec fn part1_assembly_rectangle_prefix(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, rectangle: (u32, u32, u32, u32),
+    crop: Option<(u32, u32)>, completed: nat,
+) -> Part1AssemblyPlaneState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), plane) } else {
+        let previous = part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_row_prefix(
+                previous.1, tile, rectangle.0, (rectangle.1 as nat + completed - 1) as u32, crop,
+                (rectangle.2 as nat - rectangle.0 as nat) as nat,
+            ),
+        }
+    }
+}
+
+pub open spec fn part1_assembly_rectangle(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, rectangle: (u32, u32, u32, u32),
+    crop: Option<(u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    if rectangle.0 >= rectangle.2 || rectangle.1 >= rectangle.3 {
+        (Ok(()), plane)
+    } else {
+        part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, (rectangle.3 - rectangle.1) as nat)
+    }
+}
+
+pub open spec fn part1_validate_assembly_tile(plane: Part1AssemblyPlane, tile: Part1AssemblyTile)
+    -> Result<(), crate::DecodeError>
+{
+    if tile.3 == 0 || tile.4 == 0 { Err(part1_image_error(false)) } else {
+        match part1_image_checked_u32((tile.1 as int) + tile.3) {
+            Err(error) => Err(error),
+            Ok(x1) => if x1 > plane.0 { Err(part1_image_error(false)) } else {
+                match part1_image_checked_u32((tile.2 as int) + tile.4) {
+                    Err(error) => Err(error),
+                    Ok(y1) => if y1 > plane.1 { Err(part1_image_error(false)) } else {
+                        match part1_transform_area(tile.3, tile.4) {
+                            Err(error) => Err(error),
+                            Ok(count) => if tile.6.len() != count { Err(part1_image_error(false)) } else { Ok(()) },
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_place_assembly_tile(plane: Part1AssemblyPlane, tile: Part1AssemblyTile)
+    -> Part1AssemblyPlaneState
+{
+    match part1_validate_assembly_tile(plane, tile) {
+        Err(error) => (Err(error), plane),
+        Ok(()) => part1_assembly_rectangle_prefix(plane, tile, (0, 0, tile.3, tile.4), None, tile.4 as nat),
+    }
+}
+
+pub open spec fn part1_place_selected_tile(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, crop: (u32, u32, u32, u32),
+) -> Part1AssemblyPlaneState {
+    let x0 = if tile.1 > crop.0 { tile.1 } else { crop.0 };
+    let y0 = if tile.2 > crop.1 { tile.2 } else { crop.1 };
+    match part1_image_checked_u32((tile.1 as int) + tile.3) {
+        Err(error) => (Err(error), plane),
+        Ok(tile_x1) => match part1_image_checked_u32((tile.2 as int) + tile.4) {
+            Err(error) => (Err(error), plane),
+            Ok(tile_y1) => {
+                let x1 = if tile_x1 < crop.2 { tile_x1 } else { crop.2 };
+                let y1 = if tile_y1 < crop.3 { tile_y1 } else { crop.3 };
+                if x0 < x1 && y0 < y1 {
+                    part1_assembly_rectangle_prefix(
+                        plane, tile, (x0, y0, x1, y1), Some((crop.0, crop.1)), (y1 - y0) as nat,
+                    )
+                } else { (Ok(()), plane) }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_assembly_tile_step(
+    plane: Part1AssemblyPlane, tile: Part1AssemblyTile, component: u16, crop: Option<(u32, u32, u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    if tile.0 != component {
+        (Ok(()), plane)
+    } else if plane.2.is_some() && plane.2 != Some(tile.5) {
+        (Err(part1_image_error(false)), plane)
+    } else {
+        let changed = (plane.0, plane.1, Some(tile.5), plane.3, plane.4);
+        match crop {
+            None => part1_place_assembly_tile(changed, tile),
+            Some(region) => part1_place_selected_tile(changed, tile, region),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_assembly_tiles_prefix(
+    plane: Part1AssemblyPlane, tiles: Seq<Part1AssemblyTile>, component: u16,
+    crop: Option<(u32, u32, u32, u32)>, completed: nat,
+) -> Part1AssemblyPlaneState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), plane) } else {
+        let previous = part1_assembly_tiles_prefix(plane, tiles, component, crop, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_tile_step(previous.1, tiles[completed - 1], component, crop),
+        }
+    }
+}
+
+pub open spec fn part1_assembly_coverage_error(selected: bool) -> crate::DecodeError {
+    if selected {
+        crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutsideSelectedTiles }
+    } else { part1_image_error(false) }
+}
+
+pub open spec fn part1_collect_assembly_tiles(
+    plane: Part1AssemblyPlane, tiles: Seq<Part1AssemblyTile>, component: u16,
+    crop: Option<(u32, u32, u32, u32)>,
+) -> Part1AssemblyPlaneState {
+    let result = part1_assembly_tiles_prefix(plane, tiles, component, crop, tiles.len());
+    match result.0 {
+        Err(_) => result,
+        Ok(()) => if result.1.2.is_none() || !(forall |i: int| 0 <= i < result.1.4.len() ==> result.1.4[i]) {
+            (Err(part1_assembly_coverage_error(crop.is_some())), result.1)
+        } else { result },
+    }
+}
+
+pub open spec fn part1_assembly_base_dimensions(
+    size: Part1AssemblySize, info: crate::codestream::ComponentInfo, extent: (u32, u32),
+) -> Result<Part1AssemblyDimensions, crate::DecodeError> {
+    match part1_assembly_registered_ceil(extent.0, info.x_subsampling as u32, info.x_registration) {
+        Err(error) => Err(error),
+        Ok(x1) => match part1_assembly_registered_ceil(size.2, info.x_subsampling as u32, info.x_registration) {
+            Err(error) => Err(error),
+            Ok(x0) => match part1_image_checked_u32((x1 as int) - x0) {
+                Err(error) => Err(error),
+                Ok(width) => match part1_assembly_registered_ceil(extent.1, info.y_subsampling as u32, info.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(y1) => match part1_assembly_registered_ceil(size.3, info.y_subsampling as u32, info.y_registration) {
+                        Err(error) => Err(error),
+                        Ok(y0) => match part1_image_checked_u32((y1 as int) - y0) {
+                            Err(error) => Err(error),
+                            Ok(height) => Ok((info, width, height, info.x_subsampling as u32, info.y_subsampling as u32, x0, y0)),
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_selected_dimensions(
+    info: crate::codestream::ComponentInfo, region: [u32; 4], scale: u32,
+) -> Result<Part1AssemblyDimensions, crate::DecodeError> {
+    match part1_image_checked_u32((info.x_subsampling as int) * (scale as int)) {
+        Err(error) => Err(error),
+        Ok(x_step) => match part1_image_checked_u32((info.y_subsampling as int) * (scale as int)) {
+            Err(error) => Err(error),
+            Ok(y_step) => match part1_assembly_registered_ceil(region[0], x_step, info.x_registration) {
+                Err(error) => Err(error),
+                Ok(x0) => match part1_assembly_registered_ceil(region[1], y_step, info.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(y0) => match part1_assembly_registered_ceil(region[2], x_step, info.x_registration) {
+                        Err(error) => Err(error),
+                        Ok(x1) => match part1_image_checked_u32((x1 as int) - x0) {
+                            Err(error) => Err(error),
+                            Ok(width) => match part1_assembly_registered_ceil(region[3], y_step, info.y_registration) {
+                                Err(error) => Err(error),
+                                Ok(y1) => match part1_image_checked_u32((y1 as int) - y0) {
+                                    Err(error) => Err(error),
+                                    Ok(height) => if width == 0 || height == 0 {
+                                        Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::EmptyComponentIntersection })
+                                    } else { Ok((info, width, height, x_step, y_step, x0, y0)) },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_component_dimensions(
+    size: Part1AssemblySize, component: u16, extent: (u32, u32), selection: Part1AssemblySelection,
+) -> Result<Part1AssemblyDimensions, crate::DecodeError> {
+    match part1_image_size_component(size.4, size.5, component) {
+        Err(error) => Err(error),
+        Ok(info) => match selection {
+            None => part1_assembly_base_dimensions(size, info, extent),
+            Some((region, scale)) => part1_assembly_selected_dimensions(info, region, scale),
+        },
+    }
+}
+
+pub open spec fn part1_assembly_component_crop(
+    size: Part1AssemblySize, dimensions: Part1AssemblyDimensions, selected: bool,
+) -> Result<Option<(u32, u32, u32, u32)>, crate::DecodeError> {
+    if !selected { Ok(None) } else {
+        match part1_assembly_registered_ceil(size.2, dimensions.3, dimensions.0.x_registration) {
+            Err(error) => Err(error),
+            Ok(full_x0) => match part1_image_checked_u32((dimensions.5 as int) - full_x0) {
+                Err(error) => Err(error),
+                Ok(x0) => match part1_assembly_registered_ceil(size.3, dimensions.4, dimensions.0.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(full_y0) => match part1_image_checked_u32((dimensions.6 as int) - full_y0) {
+                        Err(error) => Err(error),
+                        Ok(y0) => match part1_image_checked_u32((x0 as int) + dimensions.1) {
+                            Err(error) => Err(error),
+                            Ok(x1) => match part1_image_checked_u32((y0 as int) + dimensions.2) {
+                                Err(error) => Err(error),
+                                Ok(y1) => Ok(Some((x0, y0, x1, y1))),
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_assembly_append_plane(
+    image: Part1DecodedImageModel, bytes: u64, size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>,
+    component: u16, extent: (u32, u32), selection: Part1AssemblySelection, maximum: u64,
+) -> Part1AssemblyState {
+    match part1_assembly_component_dimensions(size, component, extent, selection) {
+        Err(error) => (Err(error), image, bytes),
+        Ok(dimensions) => match part1_transform_area(dimensions.1, dimensions.2) {
+            Err(error) => (Err(error), image, bytes),
+            Ok(count) => {
+                let charged = part1_accumulate_decoded_bytes(count as nat, bytes, maximum);
+                match charged.0 {
+                    Err(error) => (Err(error), image, charged.1),
+                    Ok(()) => match part1_assembly_component_crop(size, dimensions, selection.is_some()) {
+                        Err(error) => (Err(error), image, charged.1),
+                        Ok(crop) => {
+                            let initial = (dimensions.1, dimensions.2, None,
+                                Seq::new(count as nat, |i: int| 0i64), Seq::new(count as nat, |i: int| false));
+                            let collected = part1_collect_assembly_tiles(initial, tiles, component, crop);
+                            match collected.0 {
+                                Err(error) => (Err(error), image, charged.1),
+                                Ok(()) => match collected.1.2 {
+                                    None => (Err(part1_image_error(false)), image, charged.1),
+                                    Some(fraction_bits) => (Ok(()),
+                                        (image.0, image.1, image.2, image.3, image.4.push((
+                                            dimensions.1, dimensions.2, dimensions.0, fraction_bits, collected.1.3,
+                                        ))), charged.1),
+                                },
+                            }
+                        },
+                    },
+                }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_assembly_components_prefix(
+    image: Part1DecodedImageModel, bytes: u64, size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>,
+    extent: (u32, u32), selection: Part1AssemblySelection, maximum: u64, completed: nat,
+) -> Part1AssemblyState
+    decreases completed,
+{
+    if completed == 0 { (Ok(()), image, bytes) } else {
+        let previous = part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, (completed - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part1_assembly_append_plane(previous.1, previous.2, size, tiles, (completed - 1) as u16, extent, selection, maximum),
+        }
+    }
+}
+
+pub open spec fn part1_assemble_image(size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>, maximum: u64)
+    -> Result<Part1DecodedImageModel, crate::DecodeError>
+{
+    match part1_image_checked_u32((size.2 as int) + size.0) {
+        Err(error) => Err(error),
+        Ok(x1) => match part1_image_checked_u32((size.3 as int) + size.1) {
+            Err(error) => Err(error),
+            Ok(y1) => {
+                let initial = (size.0, size.1, size.2, size.3, Seq::empty());
+                let result = part1_assembly_components_prefix(initial, 0, size, tiles, (x1, y1), None, maximum, size.4 as nat);
+                match result.0 { Err(error) => Err(error), Ok(()) => Ok(result.1) }
+            },
+        },
+    }
+}
+
+pub open spec fn part1_assembly_selected_header(region: [u32; 4], discard: u8)
+    -> Result<(u32, u32, u32, u32, u32), crate::DecodeError>
+{
+    if region[0] >= region[2] || region[1] >= region[3] || discard > 31 {
+        Err(part1_image_error(false))
+    } else {
+        let scale = 1u32 << discard;
+        match part1_image_ceil_div(region[0], scale) {
+            Err(error) => Err(error),
+            Ok(x0) => match part1_image_ceil_div(region[1], scale) {
+                Err(error) => Err(error),
+                Ok(y0) => match part1_image_ceil_div(region[2], scale) {
+                    Err(error) => Err(error),
+                    Ok(x1) => match part1_image_checked_u32((x1 as int) - x0) {
+                        Err(error) => Err(error),
+                        Ok(width) => match part1_image_ceil_div(region[3], scale) {
+                            Err(error) => Err(error),
+                            Ok(y1) => match part1_image_checked_u32((y1 as int) - y0) {
+                                Err(error) => Err(error),
+                                Ok(height) => if width == 0 || height == 0 { Err(part1_image_error(false)) }
+                                    else { Ok((scale, x0, y0, width, height)) },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_assemble_selected_image(
+    size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>, region: [u32; 4], discard: u8, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match part1_assembly_selected_header(region, discard) {
+        Err(error) => Err(error),
+        Ok(header) => {
+            let initial = (header.3, header.4, header.1, header.2, Seq::empty());
+            let result = part1_assembly_components_prefix(initial, 0, size, tiles, (0, 0), Some((region, header.0)), maximum, size.4 as nat);
+            match result.0 { Err(error) => Err(error), Ok(()) => Ok(result.1) }
+        },
+    }
+}
+
+pub open spec fn part1_selector_error(arithmetic: bool) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic { crate::MalformedKind::ArithmeticOverflow }
+            else { crate::MalformedKind::InvalidCodingStyle },
+    }
+}
+
+pub open spec fn part1_decomposition_direction(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, stage: u8,
+) -> Result<crate::codestream::DecompositionDirection, crate::DecodeError> {
+    if stage >= levels || stage >= directions.len() {
+        Err(part1_selector_error(false))
+    } else {
+        Ok(directions[stage as int])
+    }
+}
+
+pub open spec fn part1_direction_for_resolution(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, resolution: u8,
+) -> Result<crate::codestream::DecompositionDirection, crate::DecodeError> {
+    if resolution == 0 || resolution > levels {
+        Err(part1_selector_error(false))
+    } else {
+        part1_decomposition_direction(levels, directions, (levels - resolution) as u8)
+    }
+}
+
+pub open spec fn part1_direction_detail_count(direction: crate::codestream::DecompositionDirection) -> nat {
+    match direction {
+        crate::codestream::DecompositionDirection::None => 0,
+        crate::codestream::DecompositionDirection::Horizontal => 1,
+        crate::codestream::DecompositionDirection::Vertical => 1,
+        crate::codestream::DecompositionDirection::TwoDimensional => 3,
+    }
+}
+
+pub open spec fn part1_subband_count_prefix(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, completed: nat,
+) -> Result<usize, crate::DecodeError>
+    decreases completed,
+{
+    if completed == 0 {
+        Ok(1)
+    } else {
+        match part1_subband_count_prefix(levels, directions, (completed - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_direction_for_resolution(levels, directions, completed as u8) {
+                Err(error) => Err(error),
+                Ok(direction) => {
+                    let next = previous as nat + part1_direction_detail_count(direction);
+                    if next > usize::MAX || completed as u8 == u8::MAX {
+                        Err(part1_selector_error(true))
+                    } else {
+                        Ok(next as usize)
+                    }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part1_subband_count_through_resolution(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, resolution: u8,
+) -> Result<usize, crate::DecodeError> {
+    if resolution > levels {
+        Err(part1_selector_error(false))
+    } else {
+        part1_subband_count_prefix(levels, directions, resolution as nat)
     }
 }
 

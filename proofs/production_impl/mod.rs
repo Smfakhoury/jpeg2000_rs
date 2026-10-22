@@ -32,6 +32,840 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_decoded_signed_empty(samples: Seq<i64>, fraction: u8, precision: u8)
+    ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+}
+
+pub proof fn production_decoded_signed_step(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
+    ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count + 1)
+        == match crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) {
+            Err(error) => Err(error),
+            Ok(output) => match crate::specs::part1_decoded_signed_sample(samples[count as int], fraction, precision) {
+                Err(error) => Err(error), Ok(value) => Ok(output.push(value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+}
+
+pub proof fn production_decoded_signed_error(samples: Seq<i64>, fraction: u8, precision: u8, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, count) == Err(error),
+    ensures crate::specs::part1_decoded_signed_prefix(samples, fraction, precision, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_signed_prefix, 1);
+    if count < end { production_decoded_signed_error(samples, fraction, precision, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_decoded_unsigned_empty(samples: Seq<i64>, fraction: u8, precision: u8)
+    ensures crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+}
+
+pub proof fn production_decoded_unsigned_step(samples: Seq<i64>, fraction: u8, precision: u8, count: nat)
+    ensures crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count + 1)
+        == match crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count) {
+            Err(error) => Err(error),
+            Ok(output) => match crate::specs::part1_decoded_unsigned_sample(samples[count as int], fraction, precision) {
+                Err(error) => Err(error), Ok(value) => Ok(output.push(value)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+}
+
+pub proof fn production_decoded_unsigned_error(samples: Seq<i64>, fraction: u8, precision: u8, count: nat, end: nat, error: crate::DecodeError)
+    requires count <= end, crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, count) == Err(error),
+    ensures crate::specs::part1_decoded_unsigned_prefix(samples, fraction, precision, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_unsigned_prefix, 1);
+    if count < end { production_decoded_unsigned_error(samples, fraction, precision, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_decoded_typed_components_empty(components: Seq<crate::specs::Part1DecodedComponentModel>, maximum: u64)
+    ensures crate::specs::part1_decoded_typed_components(components, maximum, 0) == Ok((Seq::empty(), 0)),
+{
+    reveal_with_fuel(crate::specs::part1_decoded_typed_components, 1);
+}
+
+pub proof fn production_decoded_typed_components_step(components: Seq<crate::specs::Part1DecodedComponentModel>, maximum: u64, count: nat)
+    ensures crate::specs::part1_decoded_typed_components(components, maximum, count + 1)
+        == match crate::specs::part1_decoded_typed_components(components, maximum, count) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let component = components[count as int];
+                let charged = crate::specs::part1_accumulate_decoded_bytes(component.4.len(), previous.1, maximum);
+                match charged.0 {
+                    Err(error) => Err(error),
+                    Ok(()) => match crate::specs::part1_decoded_component_typed_samples(component, maximum) {
+                        Err(error) => Err(error),
+                        Ok(samples) => Ok((previous.0.push(crate::specs::Part1TypedComponentModel {
+                            width: component.0, height: component.1, info: component.2, samples,
+                        }), charged.1)),
+                    },
+                }
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part1_decoded_typed_components, 1);
+}
+
+pub proof fn production_decoded_typed_components_error(
+    components: Seq<crate::specs::Part1DecodedComponentModel>, maximum: u64, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end, crate::specs::part1_decoded_typed_components(components, maximum, count) == Err(error),
+    ensures crate::specs::part1_decoded_typed_components(components, maximum, end) == Err(error),
+    decreases end - count,
+{
+    reveal_with_fuel(crate::specs::part1_decoded_typed_components, 1);
+    if count < end { production_decoded_typed_components_error(components, maximum, count, (end - 1) as nat, error); }
+}
+
+pub proof fn production_tier1_value_limbs(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures limbs == crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs)),
+{
+    vstd::arithmetic::power2::lemma2_to64();
+    assert forall |i: int| 0 <= i < 6 implies limbs[i]
+        == crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs))[i] by {
+        let shift = (64 * i) as u16;
+        assert(shift / 64 == i && shift % 64 == 0);
+        let shifted = crate::specs::part1_magnitude_shift(limbs, shift);
+        production_magnitude_right_shift_value(limbs, shift);
+        production_magnitude_low_word(shifted);
+        assert(shifted[0] == limbs[i]) by {
+            let word = limbs[i];
+            assert(word >> 0u32 == word) by(bit_vector);
+        }
+    }
+    assert(limbs =~= crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs)));
+}
+
+pub proof fn production_assembly_row_error_persists(
+    plane: crate::specs::Part1AssemblyPlane, tile: crate::specs::Part1AssemblyTile,
+    x: u32, y: u32, crop: Option<(u32, u32)>, completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_row_prefix(plane, tile, x, y, crop, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_row_prefix(plane, tile, x, y, crop, total)
+        == crate::specs::part1_assembly_row_prefix(plane, tile, x, y, crop, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_assembly_row_error_persists(plane, tile, x, y, crop, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_rectangle_error_persists(
+    plane: crate::specs::Part1AssemblyPlane, tile: crate::specs::Part1AssemblyTile,
+    rectangle: (u32, u32, u32, u32), crop: Option<(u32, u32)>, completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, total)
+        == crate::specs::part1_assembly_rectangle_prefix(plane, tile, rectangle, crop, completed),
+    decreases total - completed,
+{
+    if completed < total {
+        production_assembly_rectangle_error_persists(plane, tile, rectangle, crop, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_tiles_error_persists(
+    plane: crate::specs::Part1AssemblyPlane, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    component: u16, crop: Option<(u32, u32, u32, u32)>, completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, total)
+        == crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, completed),
+    decreases total - completed,
+{
+    reveal_with_fuel(crate::specs::part1_assembly_tiles_prefix, 1);
+    if completed < total {
+        production_assembly_tiles_error_persists(plane, tiles, component, crop, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_components_error_persists(
+    image: crate::specs::Part1DecodedImageModel, bytes: u64,
+    size: crate::specs::Part1AssemblySize, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    extent: (u32, u32), selection: crate::specs::Part1AssemblySelection, maximum: u64,
+    completed: nat, total: nat,
+)
+    requires completed <= total,
+        crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, completed).0.is_err(),
+    ensures crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, total)
+        == crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, completed),
+    decreases total - completed,
+{
+    reveal_with_fuel(crate::specs::part1_assembly_components_prefix, 1);
+    if completed < total {
+        production_assembly_components_error_persists(image, bytes, size, tiles, extent, selection, maximum, completed, (total - 1) as nat);
+    }
+}
+
+pub proof fn production_assembly_tiles_empty(
+    plane: crate::specs::Part1AssemblyPlane, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    component: u16, crop: Option<(u32, u32, u32, u32)>,
+)
+    ensures crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, 0) == (Ok(()), plane),
+{
+    reveal_with_fuel(crate::specs::part1_assembly_tiles_prefix, 1);
+}
+
+pub proof fn production_assembly_tiles_step(
+    plane: crate::specs::Part1AssemblyPlane, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    component: u16, crop: Option<(u32, u32, u32, u32)>, count: nat,
+)
+    ensures crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count + 1)
+        == match crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count).0 {
+            Err(_) => crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count),
+            Ok(()) => crate::specs::part1_assembly_tile_step(
+                crate::specs::part1_assembly_tiles_prefix(plane, tiles, component, crop, count).1,
+                tiles[count as int], component, crop,
+            ),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_assembly_tiles_prefix, 1);
+}
+
+pub proof fn production_assembly_components_empty(
+    image: crate::specs::Part1DecodedImageModel, bytes: u64,
+    size: crate::specs::Part1AssemblySize, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    extent: (u32, u32), selection: crate::specs::Part1AssemblySelection, maximum: u64,
+)
+    ensures crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, 0)
+        == (Ok(()), image, bytes),
+{
+    reveal_with_fuel(crate::specs::part1_assembly_components_prefix, 1);
+}
+
+pub proof fn production_assembly_components_step(
+    image: crate::specs::Part1DecodedImageModel, bytes: u64,
+    size: crate::specs::Part1AssemblySize, tiles: Seq<crate::specs::Part1AssemblyTile>,
+    extent: (u32, u32), selection: crate::specs::Part1AssemblySelection, maximum: u64, count: nat,
+)
+    ensures crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count + 1)
+        == match crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count).0 {
+            Err(_) => crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count),
+            Ok(()) => crate::specs::part1_assembly_append_plane(
+                crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count).1,
+                crate::specs::part1_assembly_components_prefix(image, bytes, size, tiles, extent, selection, maximum, count).2,
+                size, tiles, count as u16, extent, selection, maximum,
+            ),
+        },
+{
+    reveal_with_fuel(crate::specs::part1_assembly_components_prefix, 1);
+}
+
+pub proof fn production_subband_count_error_persists(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>,
+    completed: nat, total: nat, error: crate::DecodeError,
+)
+    requires completed <= total,
+        crate::specs::part1_subband_count_prefix(levels, directions, completed) == Err(error),
+    ensures crate::specs::part1_subband_count_prefix(levels, directions, total) == Err(error),
+    decreases total - completed,
+{
+    if completed < total {
+        production_subband_count_error_persists(levels, directions, completed, (total - 1) as nat, error);
+    }
+}
+
+pub proof fn production_ht_low_word_parity(value: nat)
+    ensures (value % 18446744073709551616) % 2 == value % 2,
+{
+    vstd::arithmetic::div_mod::lemma_mod_mod(value as int, 2, 9223372036854775808);
+}
+
+pub proof fn production_ht_numeric_payload_unfold(
+    reader: crate::specs::HtMagSgnState, remaining: nat, index: nat, value: nat, negative: bool, exponent: u8,
+)
+    requires index + remaining <= 75, value < crate::specs::part1_magnitude_capacity(),
+    ensures crate::specs::ht_numeric_payload(reader, remaining, index, value, negative, exponent)
+        == if remaining == 0 { (Ok((value, negative, exponent)), reader) } else {
+            let read = crate::specs::ht_magsgn_read(reader);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => if bit {
+                    let changed = value + vstd::arithmetic::power2::pow2(index);
+                    if changed >= crate::specs::part1_magnitude_capacity() {
+                        (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), read.1)
+                    } else {
+                        crate::specs::ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, changed,
+                            negative || index == 0, (index + 1) as u8)
+                    }
+                } else {
+                    crate::specs::ht_numeric_payload(read.1, (remaining - 1) as nat, index + 1, value, negative, exponent)
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_numeric_payload, 1);
+}
+
+pub proof fn production_crop_columns_empty(samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>)
+    ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::color_crop_columns, 1);
+}
+
+pub proof fn production_crop_columns_step(samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>, count: nat)
+    ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, count + 1)
+        == match crate::specs::color_crop_columns(samples, source_width, row, x, initial, count) {
+            Err(error) => Err(error),
+            Ok(output) => if (x as nat) + count > u32::MAX as nat { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    match crate::specs::color_crop_sample(samples, source_width, row, ((x as nat) + count) as u32) {
+                        Err(error) => Err(error),
+                        Ok(value) => Ok(output.push(value)),
+                    }
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_crop_columns, 1);
+}
+
+pub proof fn production_crop_columns_error(
+    samples: Seq<u16>, source_width: u32, row: u32, x: u32, initial: Seq<u16>,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_crop_columns(samples, source_width, row, x, initial, count) == Err(error),
+    ensures crate::specs::color_crop_columns(samples, source_width, row, x, initial, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_crop_columns_step(samples, source_width, row, x, initial, count);
+        production_crop_columns_error(samples, source_width, row, x, initial, count + 1, end, error);
+    }
+}
+
+pub proof fn production_crop_rows_empty(samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32)
+    ensures crate::specs::color_crop_rows(samples, source_width, x, y, width, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::color_crop_rows, 1);
+}
+
+pub proof fn production_crop_rows_step(samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32, count: nat)
+    ensures crate::specs::color_crop_rows(samples, source_width, x, y, width, count + 1)
+        == match crate::specs::color_crop_rows(samples, source_width, x, y, width, count) {
+            Err(error) => Err(error),
+            Ok(output) => if (y as nat) + count > u32::MAX as nat { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    crate::specs::color_crop_columns(samples, source_width, ((y as nat) + count) as u32, x, output, width as nat)
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_crop_rows, 1);
+}
+
+pub proof fn production_crop_rows_error(
+    samples: Seq<u16>, source_width: u32, x: u32, y: u32, width: u32,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_crop_rows(samples, source_width, x, y, width, count) == Err(error),
+    ensures crate::specs::color_crop_rows(samples, source_width, x, y, width, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_crop_rows_step(samples, source_width, x, y, width, count);
+        production_crop_rows_error(samples, source_width, x, y, width, count + 1, end, error);
+    }
+}
+
+pub proof fn production_crop_channels_empty(
+    channels: Seq<crate::specs::ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32,
+)
+    ensures crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, 0) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::color_crop_channels, 1);
+}
+
+pub proof fn production_crop_channels_step(
+    channels: Seq<crate::specs::ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32, count: nat,
+)
+    requires count < channels.len(),
+    ensures crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, count + 1)
+        == match crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, count) {
+            Err(error) => Err(error),
+            Ok(output) => match crate::specs::color_crop_plane(channels[count as int].1, source_width, x, y, x1, y1) {
+                Err(error) => Err(error),
+                Ok(samples) => Ok(output.push((channels[count as int].0, samples))),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::color_crop_channels, 1);
+}
+
+pub proof fn production_crop_channels_error(
+    channels: Seq<crate::specs::ColorChannelModel>, source_width: u32, x: u32, y: u32, x1: u32, y1: u32,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= channels.len(),
+        crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, count) == Err(error),
+    ensures crate::specs::color_crop_channels(channels, source_width, x, y, x1, y1, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_crop_channels_step(channels, source_width, x, y, x1, y1, count);
+        production_crop_channels_error(channels, source_width, x, y, x1, y1, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_channels_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, color_count: usize,
+)
+    ensures crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, 0)
+        == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::color_convert_channels_prefix, 1);
+}
+
+pub proof fn production_color_channels_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, color_count: usize, count: nat,
+)
+    ensures crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, count + 1)
+        == match crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, count) {
+            Err(error) => Err(error),
+            Ok(channels) => if count > usize::MAX { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    match crate::specs::color_convert_channel(components, geometry, colors, color_count, count as usize) {
+                        Err(error) => Err(error),
+                        Ok(channel) => Ok(channels.push(channel)),
+                    }
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_convert_channels_prefix, 1);
+}
+
+pub proof fn production_color_channels_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, color_count: usize, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, count) == Err(error),
+    ensures crate::specs::color_convert_channels_prefix(components, geometry, colors, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_channels_step(components, geometry, colors, color_count, count);
+        production_color_channels_error(components, geometry, colors, color_count, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_alphas_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>, initial: Seq<crate::specs::ColorChannelModel>,
+)
+    ensures crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, 0) == Ok(initial),
+{
+    reveal_with_fuel(crate::specs::color_append_alphas_prefix, 1);
+}
+
+pub proof fn production_color_alphas_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>,
+    initial: Seq<crate::specs::ColorChannelModel>, count: nat,
+)
+    requires count < alphas.len(),
+    ensures crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, count + 1)
+        == match crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, count) {
+            Err(error) => Err(error),
+            Ok(channels) => match crate::specs::color_convert_alpha(components, geometry, alphas[count as int]) {
+                Err(error) => Err(error),
+                Ok(channel) => Ok(channels.push(channel)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::color_append_alphas_prefix, 1);
+}
+
+pub proof fn production_color_alphas_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    alphas: Seq<(usize, bool, crate::image::ChannelAssociation)>,
+    initial: Seq<crate::specs::ColorChannelModel>, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= alphas.len(),
+        crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, count) == Err(error),
+    ensures crate::specs::color_append_alphas_prefix(components, geometry, alphas, initial, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_alphas_step(components, geometry, alphas, initial, count);
+        production_color_alphas_error(components, geometry, alphas, initial, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_sycc_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, width: usize,
+)
+    ensures crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, 0)
+        == Ok((Seq::empty(), Seq::empty(), Seq::empty())),
+{
+    reveal_with_fuel(crate::specs::color_sycc_planes_prefix, 1);
+}
+
+pub proof fn production_color_sycc_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, width: usize, count: nat,
+)
+    ensures crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, count + 1)
+        == match crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, count) {
+            Err(error) => Err(error),
+            Ok(planes) => if count > usize::MAX { Err(crate::specs::part2_composition_error(true)) }
+                else {
+                    match crate::specs::color_sycc_pixel(components, geometry.2, geometry.3, colors, count as usize, width) {
+                        Err(error) => Err(error),
+                        Ok((r, g, b)) => Ok((planes.0.push(r), planes.1.push(g), planes.2.push(b))),
+                    }
+                },
+        },
+{
+    reveal_with_fuel(crate::specs::color_sycc_planes_prefix, 1);
+}
+
+pub proof fn production_color_sycc_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    colors: Seq<usize>, width: usize, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end,
+        crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, count) == Err(error),
+    ensures crate::specs::color_sycc_planes_prefix(components, geometry, colors, width, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_sycc_step(components, geometry, colors, width, count);
+        production_color_sycc_error(components, geometry, colors, width, count + 1, end, error);
+    }
+}
+
+pub proof fn production_color_validation_empty(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    indices: Seq<usize>,
+)
+    ensures crate::specs::color_validate_indices_prefix(components, geometry, indices, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::color_validate_indices_prefix, 1);
+}
+
+pub proof fn production_color_validation_step(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    indices: Seq<usize>, count: nat,
+)
+    requires count < indices.len(),
+    ensures crate::specs::color_validate_indices_prefix(components, geometry, indices, count + 1)
+        == match crate::specs::color_validate_indices_prefix(components, geometry, indices, count) {
+            Err(error) => Err(error),
+            Ok(()) => crate::specs::color_validate_component_index(components, geometry, indices[count as int]),
+        },
+{
+    reveal_with_fuel(crate::specs::color_validate_indices_prefix, 1);
+}
+
+pub proof fn production_color_validation_error(
+    components: Seq<crate::specs::Part1TypedComponentModel>, geometry: crate::specs::ColorGeometry,
+    indices: Seq<usize>, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= indices.len(),
+        crate::specs::color_validate_indices_prefix(components, geometry, indices, count) == Err(error),
+    ensures crate::specs::color_validate_indices_prefix(components, geometry, indices, end) == Err(error),
+    decreases end - count,
+{
+    if count < end {
+        production_color_validation_step(components, geometry, indices, count);
+        production_color_validation_error(components, geometry, indices, count + 1, end, error);
+    }
+}
+
+pub proof fn production_ht_metadata_pairs_step(
+    state: crate::specs::HtMetadataPairState, previous: Seq<u8>, row: nat,
+    width: u16, height: u16, maximum_u: u8, count: nat,
+)
+    requires 0 < previous.len() <= 32768, state.current.len() == previous.len(), row < 32768,
+        count < (previous.len() + 1) / 2,
+    ensures crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count + 1)
+        == match crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).0 {
+            Err(error) => (Err(error), crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).1),
+            Ok(()) => crate::specs::ht_metadata_pair(
+                crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).1,
+                previous, count * 2, row, width, height, maximum_u, row == 0),
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_pairs, 1);
+}
+
+pub proof fn production_ht_metadata_pairs_error(
+    state: crate::specs::HtMetadataPairState, previous: Seq<u8>, row: nat,
+    width: u16, height: u16, maximum_u: u8, count: nat, end: nat,
+)
+    requires 0 < previous.len() <= 32768, state.current.len() == previous.len(), row < 32768,
+        count <= end <= (previous.len() + 1) / 2,
+        crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count).0.is_err(),
+    ensures crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, end)
+        == crate::specs::ht_metadata_pairs(state, previous, row, width, height, maximum_u, count),
+    decreases end - count,
+{
+    if end > count {
+        production_ht_metadata_pairs_error(state, previous, row, width, height, maximum_u, count, (end - 1) as nat);
+        production_ht_metadata_pairs_step(state, previous, row, width, height, maximum_u, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_ht_metadata_rows_step(
+    state: crate::specs::HtMetadataRowState, width: u16, height: u16, maximum_u: u8, count: nat,
+)
+    requires 0 < state.previous.len() <= 32768, count < 32768,
+    ensures crate::specs::ht_metadata_rows(state, width, height, maximum_u, count + 1)
+        == match crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).0 {
+            Err(error) => (Err(error), crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).1),
+            Ok(()) => crate::specs::ht_metadata_row(
+                crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).1,
+                count, width, height, maximum_u),
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_rows, 1);
+}
+
+pub proof fn production_ht_metadata_rows_error(
+    state: crate::specs::HtMetadataRowState, width: u16, height: u16, maximum_u: u8, count: nat, end: nat,
+)
+    requires 0 < state.previous.len() <= 32768, count <= end <= 32768,
+        crate::specs::ht_metadata_rows(state, width, height, maximum_u, count).0.is_err(),
+    ensures crate::specs::ht_metadata_rows(state, width, height, maximum_u, end)
+        == crate::specs::ht_metadata_rows(state, width, height, maximum_u, count),
+    decreases end - count,
+{
+    if end > count {
+        production_ht_metadata_rows_error(state, width, height, maximum_u, count, (end - 1) as nat);
+        production_ht_metadata_rows_step(state, width, height, maximum_u, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_ht_metadata_emits_unfold(
+    state: crate::specs::HtMetadataPairState, words: Seq<u16>, contexts: Seq<u8>, values: [u8; 2],
+    pair: nat, row: nat, width: u16, height: u16, maximum_u: u8, initial: bool, member: nat,
+)
+    requires member <= 2, words.len() == 2, contexts.len() == 2, pair < 32768, row < 32768,
+        state.current.len() <= 32768,
+    ensures crate::specs::ht_metadata_emits_run(state, words, contexts, values, pair, row, width, height, maximum_u, initial, member)
+        == if member >= 2 || pair + member >= state.current.len() { (Ok(()), state) } else {
+            let index = pair + member;
+            let emit = crate::specs::ht_metadata_emit(state.readers, state.quads, state.significant, crate::specs::HtMetadataQuadInput {
+                index: index as usize, row: row as usize, width, height, maximum_u,
+                word: words[member as int], context: contexts[member as int],
+                significance: state.current[index as int], u_value: values[member as int], initial,
+            });
+            let changed = crate::specs::HtMetadataPairState {
+                readers: emit.1, quads: emit.2, significant: emit.3, ..state
+            };
+            match emit.0 {
+                Err(error) => (Err(error), changed),
+                Ok(()) => crate::specs::ht_metadata_emits_run(changed, words, contexts, values, pair, row, width, height, maximum_u, initial, member + 1),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_emits_run, 1);
+}
+
+pub proof fn production_ht_metadata_words_unfold(
+    state: crate::specs::HtMetadataWordsState, previous: Seq<u8>, pair: nat, initial: bool, member: nat,
+)
+    requires member <= 2, state.words.len() == 2, state.contexts.len() == 2, state.current.len() == previous.len(),
+    ensures crate::specs::ht_metadata_words_run(state, previous, pair, initial, member)
+        == if member >= 2 || pair + member >= previous.len() { (Ok(()), state) } else {
+            let index = pair + member;
+            let context = crate::specs::ht_metadata_context(previous, state.left, index, initial);
+            let read = crate::specs::ht_cleanup_quad_word(state.readers, crate::tier1::ht_vlc_table_view(initial), context);
+            let consumed = crate::specs::HtMetadataWordsState { readers: read.1, ..state };
+            match read.0 {
+                Err(error) => (Err(error), consumed),
+                Ok(word) => {
+                    let significance = ((word >> 4u16) & 0x0fu16) as u8;
+                    crate::specs::ht_metadata_words_run(crate::specs::HtMetadataWordsState {
+                        current: state.current.update(index as int, significance),
+                        left: crate::specs::ht_metadata_left(significance, initial),
+                        words: state.words.update(member as int, word),
+                        contexts: state.contexts.update(member as int, context), ..consumed
+                    }, previous, pair, initial, member + 1)
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_words_run, 1);
+}
+
+pub proof fn production_ht_metadata_samples_unfold(
+    significant: u16, significance: u8, x: u16, y: u16, width: u16, height: u16, sample: u8,
+)
+    requires sample <= 4, x <= 65534, y <= 65534,
+    ensures crate::specs::ht_metadata_samples(significant, significance, x, y, width, height, sample)
+        == if sample >= 4 { (Ok(()), significant) }
+        else if significance & (1u8 << sample) == 0 {
+            crate::specs::ht_metadata_samples(significant, significance, x, y, width, height, (sample + 1) as u8)
+        } else if x as nat + (sample >> 1u8) as nat >= width || y as nat + (sample & 1u8) as nat >= height {
+            (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), significant)
+        } else if significant == u16::MAX {
+            (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), significant)
+        } else {
+            crate::specs::ht_metadata_samples((significant + 1) as u16, significance, x, y, width, height, (sample + 1) as u8)
+        },
+{
+    reveal_with_fuel(crate::specs::ht_metadata_samples, 1);
+}
+
+pub proof fn production_color_definition_presence_step(
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, count: nat,
+)
+    requires count < definitions.len(),
+    ensures
+        (exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0)
+        == ((exists|i: int| #![trigger definitions[i]] 0 <= i < count && definitions[i].len() > 0)
+            || definitions[count as int].len() > 0),
+{
+    if exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0 {
+        let witness = choose|i: int| 0 <= i < count + 1 && definitions[i].len() > 0;
+        if witness < count {
+            assert(exists|i: int| #![trigger definitions[i]] 0 <= i < count && definitions[i].len() > 0);
+        } else {
+            assert(witness == count);
+        }
+    }
+    if exists|i: int| #![trigger definitions[i]] 0 <= i < count && definitions[i].len() > 0 {
+        let witness = choose|i: int| 0 <= i < count && definitions[i].len() > 0;
+        assert(exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0);
+    } else if definitions[count as int].len() > 0 {
+        assert(exists|i: int| #![trigger definitions[i]] 0 <= i < count + 1 && definitions[i].len() > 0);
+    }
+}
+
+pub proof fn production_color_definitions_empty(
+    initial: crate::specs::ColorLayoutState, definitions: Seq<crate::specs::ColorDefinition>,
+    component: usize, color_count: usize,
+)
+    ensures crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, 0) == Ok(initial),
+{
+    reveal(crate::specs::color_layout_definitions_prefix);
+}
+
+pub proof fn production_color_definitions_step(
+    initial: crate::specs::ColorLayoutState, definitions: Seq<crate::specs::ColorDefinition>,
+    component: usize, color_count: usize, count: nat,
+)
+    requires count < definitions.len(),
+    ensures crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, count + 1)
+        == match crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, count) {
+            Err(error) => Err(error),
+            Ok(state) => crate::specs::color_layout_definition_step(state, definitions[count as int], component, color_count),
+        },
+{
+    reveal_with_fuel(crate::specs::color_layout_definitions_prefix, 1);
+}
+
+pub proof fn production_color_definitions_error(
+    initial: crate::specs::ColorLayoutState, definitions: Seq<crate::specs::ColorDefinition>,
+    component: usize, color_count: usize, count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= definitions.len(),
+        crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, count) == Err(error),
+    ensures crate::specs::color_layout_definitions_prefix(initial, definitions, component, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_color_definitions_error(initial, definitions, component, color_count, count, (end - 1) as nat, error);
+        production_color_definitions_step(initial, definitions, component, color_count, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_color_layout_empty(definitions: Seq<Seq<crate::specs::ColorDefinition>>, color_count: usize)
+    ensures crate::specs::color_layout_components_prefix(definitions, color_count, 0)
+        == Ok((Seq::new(color_count as nat, |i: int| usize::MAX), Seq::empty())),
+{
+    reveal(crate::specs::color_layout_components_prefix);
+}
+
+pub proof fn production_color_layout_step(
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, color_count: usize, count: nat,
+)
+    requires count < definitions.len(),
+    ensures crate::specs::color_layout_components_prefix(definitions, color_count, count + 1)
+        == match crate::specs::color_layout_components_prefix(definitions, color_count, count) {
+            Err(error) => Err(error),
+            Ok(state) => crate::specs::color_layout_definitions_prefix(state, definitions[count as int],
+                count as usize, color_count, definitions[count as int].len()),
+        },
+{
+    reveal_with_fuel(crate::specs::color_layout_components_prefix, 1);
+}
+
+pub proof fn production_color_layout_error(
+    definitions: Seq<Seq<crate::specs::ColorDefinition>>, color_count: usize,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires count <= end <= definitions.len(),
+        crate::specs::color_layout_components_prefix(definitions, color_count, count) == Err(error),
+    ensures crate::specs::color_layout_components_prefix(definitions, color_count, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_color_layout_error(definitions, color_count, count, (end - 1) as nat, error);
+        production_color_layout_step(definitions, color_count, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_color_plane_empty(
+    component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32,
+)
+    requires width > 0,
+    ensures crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, 0) == Ok(Seq::empty()),
+{
+    reveal(crate::specs::color_normalize_component_prefix);
+}
+
+pub proof fn production_color_plane_step(
+    component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32, count: nat,
+)
+    requires width > 0, width as nat <= usize::MAX as nat, count <= usize::MAX as nat,
+    ensures crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, count + 1)
+        == match crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, count) {
+            Err(error) => Err(error),
+            Ok(samples) => match crate::specs::color_pixel_coordinates(count as usize, width as usize) {
+                Err(error) => Err(error),
+                Ok((x, y)) => match crate::specs::color_component_normalized(component, x_origin, y_origin, x, y) {
+                    Err(error) => Err(error),
+                    Ok(value) => Ok(samples.push(value)),
+                },
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::color_normalize_component_prefix, 1);
+}
+
+pub proof fn production_color_plane_error(
+    component: crate::specs::Part1TypedComponentModel, width: u32, x_origin: u32, y_origin: u32,
+    count: nat, end: nat, error: crate::DecodeError,
+)
+    requires width > 0, count <= end,
+        crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, count) == Err(error),
+    ensures crate::specs::color_normalize_component_prefix(component, width, x_origin, y_origin, end) == Err(error),
+    decreases end - count,
+{
+    if end > count {
+        production_color_plane_error(component, width, x_origin, y_origin, count, (end - 1) as nat, error);
+        reveal_with_fuel(crate::specs::color_normalize_component_prefix, 1);
+    }
+}
+
 pub proof fn production_supply_search_step(supplied: Seq<crate::specs::Part2SuppliedLayer>, reference: usize, start: nat)
     requires start <= supplied.len(),
     ensures crate::specs::part2_supply_search(supplied, reference, start)
@@ -244,6 +1078,150 @@ pub proof fn production_render_error(
         production_render_step(width, height, layers, initial, byte_limit, work_limit, count);
         production_render_error(width, height, layers, initial, byte_limit, work_limit, count + 1);
     }
+}
+
+pub proof fn production_ht_uvlc_suffix_unfold(
+    state: crate::specs::HtCleanupReaderState, remaining: nat, index: nat, value: u8,
+)
+    requires index + remaining <= 255,
+    ensures crate::specs::ht_uvlc_suffix_run(state, remaining, index, value)
+        == if remaining == 0 { (Ok(value), state) } else {
+            let read = crate::specs::ht_cleanup_reader_read_vlc(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => if bit && index >= 8 {
+                    (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1)
+                } else {
+                    crate::specs::ht_uvlc_suffix_run(read.1, (remaining - 1) as nat, index + 1,
+                        if bit { value | (1u8 << index as u8) } else { value })
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_uvlc_suffix_run, 1);
+}
+
+pub proof fn production_ht_cleanup_peek_unfold(
+    owner: crate::specs::HtCleanupReaderState, copy: crate::specs::HtReverseVlcState,
+    remaining: nat, index: nat, value: u16,
+)
+    requires index + remaining <= 255,
+    ensures crate::specs::ht_cleanup_peek_run(owner, copy, remaining, index, value)
+        == if remaining == 0 { value } else {
+            let available = match crate::specs::ht_reverse_vlc_position(copy) {
+                None => false, Some(position) => crate::specs::ht_cleanup_reader_can_claim(owner, false, position.0),
+            };
+            if !available { value } else {
+                let read = crate::specs::ht_reverse_vlc_read(copy);
+                match read.0 {
+                    Err(_) => value,
+                    Ok(bit) => if bit && index >= 16 { value } else {
+                        crate::specs::ht_cleanup_peek_run(owner, read.1, (remaining - 1) as nat, index + 1,
+                            if bit { value | (1u16 << index as u8) } else { value })
+                    },
+                }
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_cleanup_peek_run, 1);
+}
+
+pub proof fn production_ht_cleanup_advance_unfold(state: crate::specs::HtCleanupReaderState, count: nat)
+    ensures crate::specs::ht_cleanup_advance_vlc(state, count)
+        == if count == 0 { (Ok(()), state) } else {
+            let read = crate::specs::ht_cleanup_reader_read_vlc(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(_) => crate::specs::ht_cleanup_advance_vlc(read.1, (count - 1) as nat),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_cleanup_advance_vlc, 1);
+}
+
+pub proof fn production_ht_cleanup_mel_suffix_unfold(state: crate::specs::HtCleanupReaderState, remaining: nat, suffix: u8)
+    requires remaining <= 5,
+    ensures crate::specs::ht_cleanup_mel_suffix(state, remaining, suffix)
+        == if remaining == 0 { (Ok(suffix), state) } else {
+            let read = crate::specs::ht_cleanup_reader_read_mel(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => crate::specs::ht_cleanup_mel_suffix(read.1, (remaining - 1) as nat,
+                    if bit { (suffix << 1u8) | 1u8 } else { suffix << 1u8 }),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_cleanup_mel_suffix, 1);
+}
+
+pub proof fn production_ht_magsgn_word_unfold(
+    state: crate::specs::HtMagSgnState, remaining: nat, index: nat, value: u64,
+)
+    requires index + remaining <= 39,
+    ensures crate::specs::ht_magsgn_word_run(state, remaining, index, value)
+        == if remaining == 0 { (Ok(value), state) } else {
+            let read = crate::specs::ht_magsgn_read(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(bit) => crate::specs::ht_magsgn_word_run(read.1, (remaining - 1) as nat, index + 1,
+                    if bit { value | (1u64 << index as u8) } else { value }),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_magsgn_word_run, 1);
+}
+
+pub proof fn production_ht_magsgn_finish_unfold(state: crate::specs::HtMagSgnState, remaining: nat)
+    ensures crate::specs::ht_magsgn_finish_run(state, remaining)
+        == if !crate::specs::ht_magsgn_pending(state) { (Ok(()), state) }
+        else if remaining == 0 {
+            (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else {
+            let read = crate::specs::ht_magsgn_read(state);
+            match read.0 {
+                Err(error) => (Err(error), read.1),
+                Ok(false) => (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1),
+                Ok(true) => crate::specs::ht_magsgn_finish_run(read.1, (remaining - 1) as nat),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::ht_magsgn_finish_run, 1);
+}
+
+pub proof fn production_ht_reverse_vlc_prefix_step(state: crate::specs::HtReverseVlcState, count: nat)
+    ensures crate::specs::ht_reverse_vlc_prefix(state, count + 1) == {
+        let prefix = crate::specs::ht_reverse_vlc_prefix(state, count);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = crate::specs::ht_reverse_vlc_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::ht_reverse_vlc_prefix, 1);
+}
+
+pub proof fn production_ht_mel_prefix_step(state: crate::specs::HtMelState, count: nat)
+    ensures crate::specs::ht_mel_prefix(state, count + 1) == {
+        let prefix = crate::specs::ht_mel_prefix(state, count);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = crate::specs::ht_mel_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::ht_mel_prefix, 1);
 }
 
 pub proof fn production_magnitude_radix_powers()
@@ -2342,4 +3320,39 @@ pub proof fn production_mct_wavelet_work_is_explicit(
     reveal(mct_wavelet_work_units);
 }
 
+}
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub proof fn production_ht_plane_samples_error(
+        state: crate::specs::HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+        column: nat, completed_u: u8, bitplanes: u16, prefix: nat, count: nat,
+    )
+        requires prefix <= count <= 4, column + 1 < state.current.len(),
+            crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, prefix).0.is_err(),
+        ensures crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, count)
+            == crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, prefix),
+        decreases count - prefix,
+    {
+        if prefix < count {
+            production_ht_plane_samples_error(state, quad, width, height, column, completed_u, bitplanes, prefix, (count - 1) as nat);
+            reveal(crate::specs::ht_plane_samples);
+        }
+    }
+
+    pub proof fn production_ht_plane_quads_error(
+        state: crate::specs::HtPlaneState, quads: Seq<crate::tier1::HtQuadMetadata>, width: u16, height: u16,
+        maximum_u: u8, bitplanes: u16, quads_per_row: nat, prefix: nat, count: nat,
+    )
+        requires prefix <= count <= quads.len(), 0 < quads_per_row <= 32768,
+            state.current.len() == quads_per_row + 1, state.previous.len() == quads_per_row + 1,
+            crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix).0.is_err(),
+        ensures crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, count)
+            == crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix),
+        decreases count - prefix,
+    {
+        if prefix < count {
+            production_ht_plane_quads_error(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix, (count - 1) as nat);
+            reveal(crate::specs::ht_plane_quads);
+        }
+    }
 }

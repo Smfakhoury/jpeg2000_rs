@@ -23,6 +23,19 @@ verus! {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+pub mod representation_proofs {
+    use vstd::prelude::*;
+
+    verus! {
+        pub proof fn magnitude_limbs_shape(value: super::Magnitude)
+            ensures super::magnitude_limbs(value).len() == 6,
+        {
+            reveal(super::magnitude_limbs);
+        }
+    }
+}
+
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == Magnitude::ZERO,
     magnitude_limbs(result) == Seq::new(6, |i: int| 0u64),
@@ -160,6 +173,11 @@ impl Magnitude {
         self.limbs[0]
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_magnitude_limb(magnitude_limbs(self), index),
+        magnitude_limbs(self).len() == 6,
+        result == if index < 6 { Some(magnitude_limbs(self)[index as int]) } else { None },
+    ))]
     pub const fn limb(self, index: usize) -> Option<u64> {
         if index < MAGNITUDE_LIMBS {
             Some(self.limbs[index])
@@ -586,6 +604,27 @@ mod tests {
             }
         }
         words
+    }
+
+    #[test]
+    fn full_native_limb_getter_matches_independent_array_and_extreme_indices() {
+        let mut vectors = vec![
+            [0; 6],
+            [u64::MAX; 6],
+            [1, 2, 3, 4, 5, 6],
+            [0, u64::MAX, 0, u64::MAX, 0, u64::MAX],
+        ];
+        for word in 0..6 {
+            let mut limbs = [0; 6];
+            limbs[word] = 1_u64 << 63;
+            vectors.push(limbs);
+        }
+        for limbs in vectors {
+            let value = Magnitude::from_limbs(limbs);
+            for index in (0..=12).chain([usize::MAX / 2, usize::MAX - 1, usize::MAX]) {
+                assert_eq!(value.limb(index), limbs.get(index).copied());
+            }
+        }
     }
 
     #[test]

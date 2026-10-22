@@ -364,6 +364,13 @@ pub struct ColorSpecification {
     icc_profile: Option<Vec<u8>>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn color_specification_method(color: &ColorSpecification) -> ColorMethod {
+        color.method
+    }
+}
+
 impl ColorSpecification {
     pub const fn enumerated(color_space: u32) -> Self {
         Self {
@@ -374,6 +381,10 @@ impl ColorSpecification {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(method => ensures method == color_specification_method(self),)
+    )]
     pub const fn method(&self) -> ColorMethod {
         self.method
     }
@@ -689,6 +700,13 @@ pub struct Palette {
     values: Vec<i64>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn palette_view(palette: &Palette) -> crate::specs::Part2PaletteModel {
+        (palette.entries, palette.columns@, palette.values@)
+    }
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub enum MappingType {
@@ -711,28 +729,70 @@ pub struct ChannelDefinitionRecord {
 }
 
 impl Palette {
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == palette_view(self).0,)
+    )]
     pub const fn entries(&self) -> u16 {
         self.entries
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value@ == palette_view(self).1,)
+    )]
     pub fn columns(&self) -> &[PaletteColumn] {
         &self.columns
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures result == crate::specs::part2_palette_value(palette_view(self), entry, column),
+        )
+    )]
     pub fn value(&self, entry: u16, column: u8) -> Result<i64, DecodeError> {
-        let columns = u8::try_from(self.columns.len())
-            .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if !crate::refinement::palette_coordinates_valid(entry, self.entries, column, columns) {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents));
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(palette_view);
+            reveal(crate::specs::part2_palette_value);
         }
-        let index = usize::from(entry)
-            .checked_mul(self.columns.len())
-            .and_then(|row| row.checked_add(usize::from(column)))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        let columns = match u8::try_from(self.columns.len()) {
+            Ok(columns) => columns,
+            Err(_) => return Err(palette_value_error(true)),
+        };
+        if !crate::refinement::palette_coordinates_valid(entry, self.entries, column, columns) {
+            return Err(palette_value_error(false));
+        }
+        let row = match usize::from(entry).checked_mul(self.columns.len()) {
+            Some(row) => row,
+            None => return Err(palette_value_error(true)),
+        };
+        let index = match row.checked_add(usize::from(column)) {
+            Some(index) => index,
+            None => return Err(palette_value_error(true)),
+        };
         match self.values.get(index) {
             Some(value) => Ok(*value),
-            None => Err(DecodeError::malformed(0, MalformedKind::InvalidBoxContents)),
+            None => Err(palette_value_error(false)),
         }
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_composition_error(arithmetic),
+    )
+)]
+fn palette_value_error(arithmetic: bool) -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: if arithmetic {
+            MalformedKind::ArithmeticOverflow
+        } else {
+            MalformedKind::InvalidBoxContents
+        },
     }
 }
 
@@ -3408,6 +3468,116 @@ mod tests {
         with_bpcc.extend(box32(*b"colr", &[1, 0, 0, 0, 0, 0, 16]));
         let parsed = parse_jp2_header(&with_bpcc, &ResourceLimits::default(), 0).unwrap();
         assert_eq!(parsed.image.components, 2);
+    }
+
+    #[test]
+    fn palette_lookup_matches_independent_complete_native_shape_oracle() {
+        let mut contexts = 0;
+        for entries in [0, 1, 2, 3, u16::MAX] {
+            for column_count in [0, 1, 2, 3, 255, 256, 257] {
+                for value_count in [0, 1, 2, 5, 6, 11, 16] {
+                    let columns = (0..column_count)
+                        .map(|index| PaletteColumn {
+                            precision: [0, 8, 38, u8::MAX][index % 4],
+                            signed: index % 2 == 0,
+                        })
+                        .collect();
+                    let values = (0..value_count)
+                        .map(|index| [i64::MIN, -1, 0, 1, i64::MAX][index % 5])
+                        .collect::<Vec<_>>();
+                    let palette = Palette {
+                        entries,
+                        columns,
+                        values: values.clone(),
+                    };
+                    assert_eq!(palette.entries(), entries);
+                    assert_eq!(palette.columns().len(), column_count);
+                    for entry in [0, 1, 2, 3, u16::MAX - 1, u16::MAX] {
+                        for column in [0, 1, 2, 3, u8::MAX - 1, u8::MAX] {
+                            let address =
+                                u128::from(entry) * column_count as u128 + u128::from(column);
+                            let expected = if column_count > u8::MAX as usize {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                })
+                            } else if entry >= entries || usize::from(column) >= column_count {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::InvalidBoxContents,
+                                })
+                            } else if address > usize::MAX as u128 {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                })
+                            } else {
+                                values.get(address as usize).copied().ok_or(
+                                    DecodeError::MalformedInput {
+                                        offset: 0,
+                                        kind: MalformedKind::InvalidBoxContents,
+                                    },
+                                )
+                            };
+                            assert_eq!(
+                                palette.value(entry, column),
+                                expected,
+                                "entries={entries}, columns={column_count}, values={value_count}, entry={entry}, column={column}"
+                            );
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 8_820);
+    }
+
+    #[test]
+    fn palette_lookup_preserves_physical_stride_and_first_error() {
+        let values = [i64::MIN, -1, 0, i64::MAX, 42, -17];
+        let mut palette = Palette {
+            entries: 2,
+            columns: vec![
+                PaletteColumn {
+                    precision: 0,
+                    signed: false,
+                };
+                3
+            ],
+            values: values.to_vec(),
+        };
+        for entry in 0..2 {
+            for column in 0..3 {
+                assert_eq!(
+                    palette.value(entry, column),
+                    Ok(values[usize::from(entry) * 3 + usize::from(column)])
+                );
+            }
+        }
+        palette.entries = 0;
+        assert_eq!(
+            palette.value(0, 0),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidBoxContents,
+            })
+        );
+        palette.columns.resize(
+            256,
+            PaletteColumn {
+                precision: 255,
+                signed: true,
+            },
+        );
+        palette.values.clear();
+        assert_eq!(
+            palette.value(u16::MAX, u8::MAX),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })
+        );
     }
 
     #[test]
