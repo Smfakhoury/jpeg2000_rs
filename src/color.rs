@@ -65,15 +65,17 @@ verus! {
         Seq::new(channels.len(), |i: int| converted_channel_view(&channels[i]))
     }
 
+    pub open spec fn converted_image_model(image: &ConvertedImage) -> crate::specs::ColorImageModel {
+        let view = converted_image_view(image);
+        (view.0, view.1, view.2, view.3, converted_channel_views(view.4))
+    }
+
     pub open spec fn converted_image_result(result: Result<ConvertedImage, DecodeError>)
         -> crate::specs::Part2ConvertedImageResult
     {
         match result {
             Err(error) => Err(error),
-            Ok(image) => {
-                let view = converted_image_view(&image);
-                Ok((view.0, view.1, view.2, view.3, converted_channel_views(view.4)))
-            },
+            Ok(image) => Ok(converted_image_model(&image)),
         }
     }
 
@@ -124,7 +126,17 @@ impl ConvertedChannel {
 }
 
 impl ConvertedImage {
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures converted_image_result(result) == crate::specs::color_crop_image(
+                converted_image_model(&self), x, y, width, height,
+            ),
+        )
+    )]
     pub(crate) fn crop(self, x: u32, y: u32, width: u32, height: u32) -> Result<Self, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost input = converted_image_model(&self); }
         if width == 0 || height == 0 {
             return Err(invalid_color_input());
         }
@@ -138,36 +150,52 @@ impl ConvertedImage {
         }
         let count = checked_area(width, height)?;
         let mut channels = Vec::with_capacity(self.channels.len());
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::proofs::internal_specs::color_crop_ready(input, x, y, width, height, x1, y1, count));
+            crate::proofs::production_impl::production_crop_channels_empty(input.4, input.0, x, y, x1, y1);
+            assert(converted_channel_views(channels@) =~= Seq::<crate::specs::ColorChannelModel>::empty());
+        }
         let mut channel_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases self.channels.len() - channel_index,)
+            verus_spec(
+                invariant channel_index <= self.channels.len(),
+                    input == converted_image_model(&self),
+                    crate::proofs::internal_specs::color_crop_ready(input, x, y, width, height, x1, y1, count),
+                    crate::specs::color_crop_channels(input.4, input.0, x, y, x1, y1, channel_index as nat)
+                        == Ok(converted_channel_views(channels@)),
+                decreases self.channels.len() - channel_index,
+            )
         )]
         while channel_index < self.channels.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_crop_channels_step(input.4, input.0, x, y, x1, y1, channel_index as nat);
+            }
             let channel = self
                 .channels
                 .get(channel_index)
                 .ok_or_else(invalid_color_input)?;
-            let mut samples = Vec::with_capacity(count);
-            let mut row = y;
-            #[cfg_attr(verus_keep_ghost, verus_spec(decreases y1 - row,))]
-            while row < y1 {
-                let mut column = x;
-                #[cfg_attr(verus_keep_ghost, verus_spec(decreases x1 - column,))]
-                while column < x1 {
-                    let index = (row as usize)
-                        .checked_mul(self.width as usize)
-                        .and_then(|value| value.checked_add(column as usize))
-                        .ok_or_else(arithmetic_overflow)?;
-                    samples.push(*channel.samples.get(index).ok_or_else(invalid_color_input)?);
-                    column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            let samples = match crop_plane(&channel.samples, self.width, x, y, x1, y1, count) {
+                Ok(samples) => samples,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_crop_channels_error(
+                            input.4, input.0, x, y, x1, y1, channel_index as nat + 1, input.4.len(), error,
+                        );
+                    }
+                    return Err(error);
                 }
-                row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            channels.push(ConvertedChannel {
+            };
+            let output = ConvertedChannel {
                 channel_type: channel.channel_type,
                 samples,
-            });
+            };
+            #[cfg(verus_keep_ghost)]
+            proof! { converted_channel_views_push(channels@, output); }
+            channels.push(output);
             channel_index = channel_index
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
@@ -202,6 +230,117 @@ impl ConvertedImage {
                 .collect(),
         }
     }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        requires x <= x1, y <= y1,
+        ensures normalized_plane_result(result) == crate::specs::color_crop_plane(input@, source_width, x, y, x1, y1),
+    )
+)]
+fn crop_plane(
+    input: &[u16],
+    source_width: u32,
+    x: u32,
+    y: u32,
+    x1: u32,
+    y1: u32,
+    count: usize,
+) -> Result<Vec<u16>, DecodeError> {
+    let mut samples = Vec::with_capacity(count);
+    let mut row = y;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_crop_rows_empty(input@, source_width, x, y, (x1 - x) as u32);
+    }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant y <= row <= y1, x <= x1,
+                crate::specs::color_crop_rows(input@, source_width, x, y, (x1 - x) as u32, (row - y) as nat)
+                    == Ok(samples@),
+            decreases y1 - row,
+        )
+    )]
+    while row < y1 {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = samples@; }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_crop_columns_empty(input@, source_width, row, x, initial);
+        }
+        let mut column = x;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant x <= column <= x1, y <= row < y1,
+                    crate::specs::color_crop_rows(input@, source_width, x, y, (x1 - x) as u32, (row - y) as nat)
+                        == Ok(initial),
+                    crate::specs::color_crop_columns(input@, source_width, row, x, initial, (column - x) as nat)
+                        == Ok(samples@),
+                decreases x1 - column,
+            )
+        )]
+        while column < x1 {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_crop_columns_step(
+                    input@, source_width, row, x, initial, (column - x) as nat,
+                );
+            }
+            let value = match crop_sample(input, source_width, row, column) {
+                Ok(value) => value,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        crate::proofs::production_impl::production_crop_columns_error(
+                            input@, source_width, row, x, initial, (column - x) as nat + 1, (x1 - x) as nat, error,
+                        );
+                        crate::proofs::production_impl::production_crop_rows_step(
+                            input@, source_width, x, y, (x1 - x) as u32, (row - y) as nat,
+                        );
+                        crate::proofs::production_impl::production_crop_rows_error(
+                            input@, source_width, x, y, (x1 - x) as u32,
+                            (row - y) as nat + 1, (y1 - y) as nat, error,
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            samples.push(value);
+            column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_crop_rows_step(
+                input@, source_width, x, y, (x1 - x) as u32, (row - y) as nat,
+            );
+        }
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(samples)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::color_crop_sample(input@, source_width, row, column),
+    )
+)]
+fn crop_sample(
+    input: &[u16],
+    source_width: u32,
+    row: u32,
+    column: u32,
+) -> Result<u16, DecodeError> {
+    let offset = (row as usize)
+        .checked_mul(source_width as usize)
+        .ok_or_else(arithmetic_overflow)?;
+    let index = offset
+        .checked_add(column as usize)
+        .ok_or_else(arithmetic_overflow)?;
+    Ok(*input.get(index).ok_or_else(invalid_color_input)?)
 }
 
 #[cfg_attr(
@@ -1928,6 +2067,188 @@ mod tests {
             sample(i64::from(y) - round(22_554 * cb) - round(46_802 * cr)),
             sample(i64::from(y) + round(116_130 * cb)),
         )
+    }
+
+    #[test]
+    fn complete_crop_matches_independent_source_coordinate_masks_and_all_metadata() {
+        fn reference(
+            input: &ConvertedImage,
+            x: u32,
+            y: u32,
+            width: u32,
+            height: u32,
+        ) -> Result<ConvertedImage, DecodeError> {
+            let invalid = DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ContainerCodestreamMismatch,
+            };
+            let overflow = DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            };
+            if width == 0 || height == 0 {
+                return Err(invalid);
+            }
+            let x1 = u64::from(x) + u64::from(width);
+            let y1 = u64::from(y) + u64::from(height);
+            if x1 > u64::from(u32::MAX) || y1 > u64::from(u32::MAX) {
+                return Err(overflow);
+            }
+            if x1 > u64::from(input.width) || y1 > u64::from(input.height) {
+                return Err(invalid);
+            }
+            let identity = x == 0 && y == 0 && width == input.width && height == input.height;
+            let area = u128::from(width) * u128::from(height);
+            if !identity && area > usize::MAX as u128 {
+                return Err(overflow);
+            }
+            let mut channels = Vec::new();
+            for channel in &input.channels {
+                let samples = if identity {
+                    channel.samples.clone()
+                } else {
+                    channel
+                        .samples
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, sample)| {
+                            let row = (index as u128) / u128::from(input.width);
+                            let column = (index as u128) % u128::from(input.width);
+                            (row >= u128::from(y)
+                                && row < u128::from(y1)
+                                && column >= u128::from(x)
+                                && column < u128::from(x1))
+                            .then_some(*sample)
+                        })
+                        .collect::<Vec<_>>()
+                };
+                if !identity && samples.len() as u128 != area {
+                    return Err(invalid);
+                }
+                channels.push(ConvertedChannel {
+                    channel_type: channel.channel_type,
+                    samples,
+                });
+            }
+            Ok(ConvertedImage {
+                width,
+                height,
+                color_space: input.color_space,
+                precision: input.precision,
+                channels,
+            })
+        }
+        let mut cases = 0;
+        for (source_width, source_height) in [(0, 2), (1, 1), (3, 2), (4, 3)] {
+            let area = usize::try_from(u64::from(source_width) * u64::from(source_height)).unwrap();
+            for kinds in [
+                vec![],
+                vec![ConvertedChannelType::Gray],
+                vec![
+                    ConvertedChannelType::Red,
+                    ConvertedChannelType::Green,
+                    ConvertedChannelType::Blue,
+                ],
+                vec![
+                    ConvertedChannelType::Gray,
+                    ConvertedChannelType::Alpha {
+                        premultiplied: true,
+                        association: ChannelAssociation::Color(3),
+                    },
+                ],
+            ] {
+                for length in [0, 1, area.saturating_sub(1), area, area + 2] {
+                    for precision in [0, 16, 255] {
+                        for x in 0..=source_width + 1 {
+                            for y in 0..=source_height + 1 {
+                                for width in 0..=source_width + 1 {
+                                    for height in 0..=source_height + 1 {
+                                        let input = ConvertedImage {
+                                            width: source_width,
+                                            height: source_height,
+                                            color_space: if kinds.len() == 1 {
+                                                ConvertedColorSpace::Grayscale
+                                            } else {
+                                                ConvertedColorSpace::Srgb
+                                            },
+                                            precision,
+                                            channels: kinds
+                                                .iter()
+                                                .enumerate()
+                                                .map(|(role, kind)| ConvertedChannel {
+                                                    channel_type: *kind,
+                                                    samples: (0..length)
+                                                        .map(|index| {
+                                                            u16::try_from(index + role * 67)
+                                                                .unwrap()
+                                                        })
+                                                        .collect(),
+                                                })
+                                                .collect(),
+                                        };
+                                        let expected = reference(&input, x, y, width, height);
+                                        assert_eq!(input.crop(x, y, width, height), expected);
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 86_700);
+    }
+
+    #[test]
+    fn crop_identity_and_native_boundary_error_priority_are_exact() {
+        let image = || ConvertedImage {
+            width: u32::MAX,
+            height: u32::MAX,
+            color_space: ConvertedColorSpace::Grayscale,
+            precision: 255,
+            channels: vec![ConvertedChannel {
+                channel_type: ConvertedChannelType::Gray,
+                samples: vec![],
+            }],
+        };
+        let identity = image().crop(0, 0, u32::MAX, u32::MAX).unwrap();
+        assert_eq!(
+            (identity.width(), identity.height(), identity.precision()),
+            (u32::MAX, u32::MAX, 255)
+        );
+        assert!(identity.channels()[0].samples().is_empty());
+        assert_eq!(
+            image().crop(u32::MAX, u32::MAX, 0, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ContainerCodestreamMismatch,
+            })
+        );
+        assert_eq!(
+            image().crop(u32::MAX, 0, 1, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })
+        );
+        assert_eq!(
+            image().crop(0, u32::MAX, 1, 1),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })
+        );
+        let partial = ConvertedImage::from_test_channels(
+            2,
+            2,
+            ConvertedColorSpace::Grayscale,
+            vec![(ConvertedChannelType::Gray, vec![10, 20])],
+        );
+        assert_eq!(
+            partial.crop(0, 0, 2, 1).unwrap().channels()[0].samples(),
+            &[10, 20]
+        );
     }
 
     #[test]

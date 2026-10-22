@@ -255,6 +255,26 @@ compressed profiles. Palette/channel-map interpretation, container selection/
 crop, earlier decoding and normative endorsement remain separate F7/F8/N1
 obligations.
 
+`ConvertedImage::crop` now has an unconditional complete image-result
+relation to `color_crop_image`, including the actual selected-color caller.
+Zero requested dimensions precede coordinate overflow, which precedes bounds
+checking. The existing exact whole-image identity path returns the supplied
+image without allocation or new plane validation; even an internally supplied
+short plane is retained unchanged. Other rectangles copy only requested
+samples, in channel/row/column order, with exact address and missing-sample
+errors. Color space, precision, every channel kind and alpha association/
+representation flag are preserved without a canonical-channel premise.
+
+The private plane helper shares the original two-dimensional production
+loops rather than replacing them with a slower division-per-pixel raster.
+Its only rectangle-order premises are established by the real method's
+checked geometry; no valid sample plane is assumed. Essential crop
+denotations remain in `specs/`; the immutable preflight bundle alone is in
+`proofs/internal_specs.rs`. Source-coordinate-mask tests cover 86,700 bounded
+contexts, alongside explicit native-boundary and identity-bypass cases.
+This proves cropping supplied converted pixels, not how the decoder chose
+the requested region or produced those pixels.
+
 `layer_channels` and `owned_layer_from_image` refine `part2_layer_input`
 and `part2_owned_layer_input` on every return, without assuming canonical
 channel order or valid plane lengths. Their result projections include every
