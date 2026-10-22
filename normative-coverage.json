@@ -4,6 +4,106 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part15-complete-actual-cleanup-plane",
+      "topic": "Actual full cleanup-plane Result and complete sample/quad/termination states, arbitrary metadata/native domains, six-word coefficients, ordered first errors and exponent stencils; not refinement, mixed sequencing or full F5H",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::sample"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::quad"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::finish"},
+        {"path": "src/tier1.rs", "symbol": "complete_ht_kappa"},
+        {"path": "src/tier1.rs", "symbol": "code_block_plane_from_dimensions"},
+        {"path": "src/tier1.rs", "symbol": "coefficient_from_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "CoefficientState::set_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::mark_significant_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "ht_statistics_zero"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::scanned"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::decoded_symbols"},
+        {"path": "src/tier1.rs", "symbol": "Tier1PassStatistics::became_significant"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_ht_coefficient_symbols"},
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::quad"},
+        {"path": "src/tier1.rs", "symbol": "HtCleanupPlaneReconstruction::sample"},
+        {"path": "src/tier1.rs", "symbol": "coefficient_from_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::mark_significant_magnitude"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "ht_cleanup_plane"},
+        {"path": "specs/mod.rs", "symbol": "ht_plane_quads"},
+        {"path": "specs/mod.rs", "symbol": "ht_plane_quad"},
+        {"path": "specs/mod.rs", "symbol": "ht_plane_samples"},
+        {"path": "specs/mod.rs", "symbol": "ht_plane_sample"},
+        {"path": "specs/mod.rs", "symbol": "ht_plane_finish"},
+        {"path": "specs/mod.rs", "symbol": "ht_complete_kappa"},
+        {"path": "specs/mod.rs", "symbol": "tier1_empty_plane"},
+        {"path": "specs/mod.rs", "symbol": "tier1_mark_coefficient"},
+        {"path": "specs/mod.rs", "symbol": "tier1_statistics_increment"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_plane_view"},
+        {"path": "src/tier1.rs", "symbol": "ht_plane_outcome"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_plane_samples_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_ht_plane_quads_error"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_plane_zero_metadata_width_precedes_all_other_rejections"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_plane_coordinate_overflow_precedes_scanning_and_reader_errors"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_plane_clipping_does_not_validate_numeric_inputs"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_kappa_conservative_overflow_applies_without_gamma"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_places_literal_full_words_flags_and_ignores_old_coefficients"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_preserves_permissive_metadata_domains_and_coordinate_error_order"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_placement_errors_follow_magsgn_consumption_and_scanning"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_statistic_overflows_retain_each_ordered_partial_effect"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_stencils_reset_max_overwrite_swap_and_drive_noninitial_u"},
+        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_finish_preserves_outputs_and_reports_physical_padding_stuffing_and_budget"}
+      ]
+    },
+    {
+      "id": "part1-raw-tier1-reconstruction-interfaces",
+      "topic": "Exact existing raw plane/coefficient getters and full six-limb signed magnitude with significance, native legacy-midpoint and overflow behavior, without entropy or shape-normalization assumptions",
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::width"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::height"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::coefficients"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::coefficient"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::index"},
+        {"path": "src/tier1.rs", "symbol": "CoefficientState::wide_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "CoefficientState::signed_magnitude"}
+      ],
+      "implementation_refs": [
+        {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::signed_coefficient"},
+        {"path": "src/tier1.rs", "symbol": "CoefficientState::signed_magnitude"},
+        {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::coefficient"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "tier1_raw_plane_index"},
+        {"path": "specs/mod.rs", "symbol": "tier1_raw_plane_coefficient"},
+        {"path": "specs/mod.rs", "symbol": "tier1_raw_signed_coefficient"},
+        {"path": "specs/mod.rs", "symbol": "tier1_value_limbs"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "coefficient_raw_view"},
+        {"path": "src/tier1.rs", "symbol": "coefficient_raw_views"},
+        {"path": "src/tier1.rs", "symbol": "code_block_plane_view"},
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_plane_view"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::plane"},
+        {"path": "src/tier1.rs", "symbol": "coefficient_raw_outcome"},
+        {"path": "src/tier1.rs", "symbol": "coefficient_signed_outcome"},
+        {"path": "src/tier1.rs", "symbol": "coefficient_raw_shape"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_tier1_value_limbs"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "tier1_raw_index_rejects_missing_storage_without_a_rectangular_premise"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "tier1_raw_insignificance_ignores_stale_full_words_and_legacy_tags"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "raw_plane_getters_preserve_malformed_shapes_and_exact_index_errors"},
+        {"path": "src/tier1.rs", "symbol": "raw_signed_coefficients_keep_full_words_flags_and_native_midpoint_errors"}
+      ]
+    },
+    {
       "contract_refs": [
         {"path": "src/decode.rs", "symbol": "convert_selected_color"}
       ],

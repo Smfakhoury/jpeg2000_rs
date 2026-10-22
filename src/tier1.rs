@@ -3227,6 +3227,10 @@ fn decode_ht_cleanup_segment_metadata(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::ht_complete_kappa(
+        u_base, significance, north_west_exponent, north_east_exponent, maximum_u),
+))]
 pub fn complete_ht_kappa(
     u_base: u8,
     significance: u8,
@@ -3269,6 +3273,13 @@ verus! {
         ensures ht_numeric_magnitude_outcome(result) == crate::specs::ht_numeric_center(
             crate::magnitude::magnitude_value(bin), negative, initial_exponent,
             magnitude_bits, embedded_value, decoded_bitplanes),
+            match result {
+                Ok((value, _, _)) => crate::magnitude::magnitude_limbs(value)
+                    == crate::specs::tier1_value_limbs(crate::magnitude::magnitude_value(value))
+                    && crate::magnitude::magnitude_value(value) > 0
+                    && crate::magnitude::magnitude_value(value) < crate::specs::part1_magnitude_capacity(),
+                Err(_) => true,
+            },
     )
 )]
 fn center_ht_numeric_magnitude(
@@ -3307,6 +3318,11 @@ fn center_ht_numeric_magnitude(
     if magnitude.is_zero() {
         return Err(invalid_code_block());
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+        crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
+    }
     Ok((magnitude, negative, exponent))
 }
 
@@ -3316,6 +3332,13 @@ fn center_ht_numeric_magnitude(
         ensures (ht_numeric_magnitude_outcome(result), ht_magsgn_view(final(reader)))
             == crate::specs::ht_reconstruct_numeric_magnitude(ht_magsgn_view(old(reader)),
                 completed_u, embedded_bit, embedded_value, decoded_bitplanes),
+            match result {
+                Ok((value, _, _)) => crate::magnitude::magnitude_limbs(value)
+                    == crate::specs::tier1_value_limbs(crate::magnitude::magnitude_value(value))
+                    && crate::magnitude::magnitude_value(value) > 0
+                    && crate::magnitude::magnitude_value(value) < crate::specs::part1_magnitude_capacity(),
+                Err(_) => true,
+            },
     )
 )]
 fn reconstruct_ht_magnitude(
@@ -3407,45 +3430,124 @@ fn reconstruct_ht_magnitude(
     )
 }
 
-fn reconstruct_ht_cleanup_plane(
-    plane: &CodeBlockPlane,
-    cleanup: HtCleanupSegment<'_>,
-    metadata: &HtCleanupMetadata,
-    maximum_u: u8,
-    decoded_bitplanes: u16,
-    limits: &ResourceLimits,
-) -> Result<(CodeBlockPlane, Tier1PassStatistics), DecodeError> {
-    if metadata.width == 0 {
-        return Err(invalid_code_block());
+struct HtCleanupPlaneReconstruction<'a> {
+    output: CodeBlockPlane,
+    reader: HtForwardMagSgnReader<'a>,
+    previous_exponents: Vec<u8>,
+    current_exponents: Vec<u8>,
+    statistics: Tier1PassStatistics,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn ht_plane_view(state: &HtCleanupPlaneReconstruction<'_>) -> crate::specs::HtPlaneState {
+        crate::specs::HtPlaneState {
+            output: code_block_plane_view(&state.output), reader: ht_magsgn_view(&state.reader),
+            previous: state.previous_exponents@, current: state.current_exponents@, statistics: state.statistics,
+        }
     }
-    let mut output = CodeBlockPlane::new(plane.width(), plane.height())?;
-    let mut reader = HtForwardMagSgnReader::new(cleanup.mag_sgn().bytes(), limits)?;
-    let quads_per_row = usize::from(metadata.width)
-        .checked_add(1)
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
-    if quads_per_row == 0 {
-        return Err(invalid_code_block());
+
+    closed spec fn ht_plane_outcome(result: Result<(CodeBlockPlane, Tier1PassStatistics), DecodeError>)
+        -> Result<(crate::specs::Tier1RawPlane, Tier1PassStatistics), DecodeError> {
+        match result { Err(error) => Err(error), Ok((plane, statistics)) => Ok((code_block_plane_view(&plane), statistics)) }
     }
-    let exponent_count = quads_per_row
-        .checked_add(1)
-        .ok_or_else(arithmetic_overflow)?;
-    let mut previous_exponents = vec![0_u8; exponent_count];
-    let mut current_exponents = vec![0_u8; exponent_count];
-    let mut statistics = Tier1PassStatistics::default();
-    let mut quad_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant quad_index <= metadata.quads.len(),
-            decreases metadata.quads.len() - quad_index,
-        )
+}
+
+impl HtCleanupPlaneReconstruction<'_> {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The actual sample transition consumes these independent metadata and geometry fields."
     )]
-    while quad_index < metadata.quads.len() {
-        let quad = *metadata
-            .quads
-            .get(quad_index)
-            .ok_or_else(invalid_code_block)?;
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires sample < 4, column + 1 < old(self).current_exponents.len(),
+        ensures (result, ht_plane_view(final(self))) == crate::specs::ht_plane_sample(
+            ht_plane_view(old(self)), quad, width, height, column as nat, completed_u, decoded_bitplanes, sample),
+            final(self).current_exponents.len() == old(self).current_exponents.len(),
+            final(self).previous_exponents@ == old(self).previous_exponents@,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn sample(
+        &mut self,
+        quad: HtQuadMetadata,
+        width: u16,
+        height: u16,
+        column: usize,
+        completed_u: u8,
+        decoded_bitplanes: u16,
+        sample: u8,
+    ) -> Result<(), DecodeError> {
+        let next_column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        if sample >= 8 {
+            return Err(invalid_code_block());
+        }
+        let x = quad
+            .x
+            .checked_add(u16::from(sample >> 1))
+            .ok_or_else(arithmetic_overflow)?;
+        let y = quad
+            .y
+            .checked_add(u16::from(sample & 1))
+            .ok_or_else(arithmetic_overflow)?;
+        if x < width && y < height {
+            self.statistics.scanned(1)?;
+            if quad.significance & (1_u8 << sample) != 0 {
+                let embedded_bit = quad.embedded_bit_mask & (1_u8 << sample) != 0;
+                let embedded_value = quad.embedded_magnitude & (1_u8 << sample) != 0;
+                let (magnitude, negative, exponent) = reconstruct_ht_magnitude(
+                    &mut self.reader,
+                    completed_u,
+                    embedded_bit,
+                    embedded_value,
+                    decoded_bitplanes,
+                )?;
+                self.output
+                    .mark_significant_magnitude(x, y, magnitude, negative)?;
+                self.statistics.decoded_symbols(1)?;
+                self.statistics.became_significant()?;
+                if sample == 1 {
+                    let entry = self
+                        .current_exponents
+                        .get_mut(column)
+                        .ok_or_else(invalid_code_block)?;
+                    *entry = (*entry).max(exponent);
+                } else if sample == 3 {
+                    *self
+                        .current_exponents
+                        .get_mut(next_column)
+                        .ok_or_else(invalid_code_block)? = exponent;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The shared quad stage preserves the real caller's metadata and traversal inputs."
+    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        requires 0 < quads_per_row <= 32768,
+            old(self).current_exponents.len() == quads_per_row + 1,
+            old(self).previous_exponents.len() == quads_per_row + 1,
+        ensures (result, ht_plane_view(final(self))) == crate::specs::ht_plane_quad(
+            ht_plane_view(old(self)), quad, width, height, maximum_u, decoded_bitplanes,
+            quads_per_row as nat, quad_index as nat),
+            final(self).current_exponents.len() == quads_per_row + 1,
+            final(self).previous_exponents.len() == quads_per_row + 1,
+            result == Ok(()) || result.is_err(),
+    ))]
+    fn quad(
+        &mut self,
+        quad: HtQuadMetadata,
+        width: u16,
+        height: u16,
+        maximum_u: u8,
+        decoded_bitplanes: u16,
+        quads_per_row: usize,
+        quad_index: usize,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost start = ht_plane_view(self); }
         let column = quad_index
             .checked_rem(quads_per_row)
             .ok_or_else(arithmetic_overflow)?;
@@ -3454,18 +3556,29 @@ fn reconstruct_ht_cleanup_plane(
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant exponent_index <= current_exponents.len(),
-                    decreases current_exponents.len() - exponent_index,
+                    invariant exponent_index <= self.current_exponents.len(),
+                        self.current_exponents.len() == quads_per_row + 1,
+                        start.current.len() == quads_per_row + 1,
+                        start == ht_plane_view(old(self)),
+                        self.previous_exponents@ == start.previous,
+                        code_block_plane_view(&self.output) == start.output,
+                        ht_magsgn_view(&self.reader) == start.reader, self.statistics == start.statistics,
+                        forall |i: int| 0 <= i < self.current_exponents.len() ==>
+                            self.current_exponents@[i] == if i < exponent_index { 0u8 } else { start.current[i] },
+                    decreases self.current_exponents.len() - exponent_index,
                 )
             )]
-            while exponent_index < current_exponents.len() {
-                *current_exponents
+            while exponent_index < self.current_exponents.len() {
+                *self
+                    .current_exponents
                     .get_mut(exponent_index)
                     .ok_or_else(invalid_code_block)? = 0;
                 exponent_index = exponent_index
                     .checked_add(1)
                     .ok_or_else(arithmetic_overflow)?;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(self.current_exponents@ =~= Seq::new(start.current.len(), |i: int| 0u8)); }
         }
         let next_column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
         let completed_u = if quad.initial_row {
@@ -3477,71 +3590,175 @@ fn reconstruct_ht_cleanup_plane(
             complete_ht_kappa(
                 quad.u_base,
                 quad.significance,
-                *previous_exponents
+                *self
+                    .previous_exponents
                     .get(column)
                     .ok_or_else(invalid_code_block)?,
-                *previous_exponents
+                *self
+                    .previous_exponents
                     .get(next_column)
                     .ok_or_else(invalid_code_block)?,
                 maximum_u,
             )?
         };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost samples_start = ht_plane_view(self); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::ht_plane_samples); }
         let mut sample = 0_u8;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant sample <= 4,
+                invariant sample <= 4, column < quads_per_row, next_column == column + 1,
+                    samples_start.current.len() == quads_per_row + 1,
+                    self.current_exponents.len() == quads_per_row + 1,
+                    self.previous_exponents.len() == quads_per_row + 1,
+                    crate::specs::ht_plane_quad(ht_plane_view(old(self)), quad, width, height,
+                        maximum_u, decoded_bitplanes, quads_per_row as nat, quad_index as nat)
+                        == crate::specs::ht_plane_quad_finish(crate::specs::ht_plane_samples(
+                            samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, 4),
+                            quads_per_row as nat, column as nat),
+                    (Ok::<(), DecodeError>(()), ht_plane_view(self)) == crate::specs::ht_plane_samples(
+                        samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, sample as nat),
                 decreases 4 - sample,
             )
         )]
         while sample < 4 {
-            if sample >= 8 {
-                return Err(invalid_code_block());
+            let result = self.sample(
+                quad,
+                width,
+                height,
+                column,
+                completed_u,
+                decoded_bitplanes,
+                sample,
+            );
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::ht_plane_samples);
+                assert((result, ht_plane_view(self)) == crate::specs::ht_plane_samples(
+                    samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, sample as nat + 1));
             }
-            let x = quad
-                .x
-                .checked_add(u16::from(sample >> 1))
-                .ok_or_else(arithmetic_overflow)?;
-            let y = quad
-                .y
-                .checked_add(u16::from(sample & 1))
-                .ok_or_else(arithmetic_overflow)?;
-            if x < metadata.width && y < metadata.height {
-                statistics.scanned(1)?;
-                if quad.significance & (1_u8 << sample) != 0 {
-                    let embedded_bit = quad.embedded_bit_mask & (1_u8 << sample) != 0;
-                    let embedded_value = quad.embedded_magnitude & (1_u8 << sample) != 0;
-                    let (magnitude, negative, exponent) = reconstruct_ht_magnitude(
-                        &mut reader,
-                        completed_u,
-                        embedded_bit,
-                        embedded_value,
-                        decoded_bitplanes,
-                    )?;
-                    output.mark_significant_magnitude(x, y, magnitude, negative)?;
-                    statistics.decoded_symbols(1)?;
-                    statistics.became_significant()?;
-                    if sample == 1 {
-                        let entry = current_exponents
-                            .get_mut(column)
-                            .ok_or_else(invalid_code_block)?;
-                        *entry = (*entry).max(exponent);
-                    } else if sample == 3 {
-                        *current_exponents
-                            .get_mut(next_column)
-                            .ok_or_else(invalid_code_block)? = exponent;
-                    }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                if result.is_err() {
+                    crate::proofs::production_impl::production_ht_plane_samples_error(
+                        samples_start, quad, width, height, column as nat, completed_u, decoded_bitplanes, sample as nat + 1, 4);
                 }
             }
+            result?;
             sample = sample.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         if next_column == quads_per_row {
-            core::mem::swap(&mut previous_exponents, &mut current_exponents);
+            core::mem::swap(&mut self.previous_exponents, &mut self.current_exponents);
         }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, ht_plane_view(final(self))) == crate::specs::ht_plane_finish(ht_plane_view(old(self))),
+    ))]
+    fn finish(&mut self) -> Result<(), DecodeError> {
+        self.reader.finish()
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures ht_plane_outcome(result) == crate::specs::ht_cleanup_plane(
+        code_block_plane_view(plane), ht_cleanup_segment_view(&cleanup), ht_cleanup_metadata_view(metadata),
+        maximum_u, decoded_bitplanes, crate::limits::resource_work_limit(limits)),
+))]
+fn reconstruct_ht_cleanup_plane(
+    plane: &CodeBlockPlane,
+    cleanup: HtCleanupSegment<'_>,
+    metadata: &HtCleanupMetadata,
+    maximum_u: u8,
+    decoded_bitplanes: u16,
+    limits: &ResourceLimits,
+) -> Result<(CodeBlockPlane, Tier1PassStatistics), DecodeError> {
+    if metadata.width == 0 {
+        return Err(invalid_code_block());
+    }
+    let output = code_block_plane_from_dimensions(plane.width(), plane.height())?;
+    let reader = ht_magsgn_from_input(cleanup.mag_sgn().bytes(), limits.maximum_work_units())?;
+    let doubled_quads = usize::from(metadata.width)
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let quads_per_row = doubled_quads
+        .checked_div(2)
+        .ok_or_else(arithmetic_overflow)?;
+    if quads_per_row == 0 {
+        return Err(invalid_code_block());
+    }
+    let exponent_count = quads_per_row
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let mut state = HtCleanupPlaneReconstruction {
+        output,
+        reader,
+        previous_exponents: vec![0_u8; exponent_count],
+        current_exponents: vec![0_u8; exponent_count],
+        statistics: ht_statistics_zero(),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost start = ht_plane_view(&state); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(state.previous_exponents@ =~= Seq::new(quads_per_row as nat + 1, |i: int| 0u8));
+        assert(state.current_exponents@ =~= Seq::new(quads_per_row as nat + 1, |i: int| 0u8));
+        reveal(crate::specs::ht_plane_quads);
+    }
+    let mut quad_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant quad_index <= metadata.quads.len(), 0 < quads_per_row <= 32768,
+            start.current.len() == quads_per_row + 1,
+            start.previous.len() == quads_per_row + 1,
+            state.current_exponents.len() == quads_per_row + 1,
+            state.previous_exponents.len() == quads_per_row + 1,
+            crate::specs::ht_cleanup_plane(code_block_plane_view(plane), ht_cleanup_segment_view(&cleanup),
+                ht_cleanup_metadata_view(metadata), maximum_u, decoded_bitplanes, crate::limits::resource_work_limit(limits))
+                == crate::specs::ht_plane_output(crate::specs::ht_plane_quads(
+                    start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                    decoded_bitplanes, quads_per_row as nat, metadata.quads@.len())),
+            (Ok::<(), DecodeError>(()), ht_plane_view(&state)) == crate::specs::ht_plane_quads(
+                start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                decoded_bitplanes, quads_per_row as nat, quad_index as nat),
+        decreases metadata.quads.len() - quad_index,
+    ))]
+    while quad_index < metadata.quads.len() {
+        let quad = *metadata
+            .quads
+            .get(quad_index)
+            .ok_or_else(invalid_code_block)?;
+        let result = state.quad(
+            quad,
+            metadata.width,
+            metadata.height,
+            maximum_u,
+            decoded_bitplanes,
+            quads_per_row,
+            quad_index,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::ht_plane_quads);
+            assert((result, ht_plane_view(&state)) == crate::specs::ht_plane_quads(
+                start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                decoded_bitplanes, quads_per_row as nat, quad_index as nat + 1));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if result.is_err() {
+                crate::proofs::production_impl::production_ht_plane_quads_error(
+                    start, metadata.quads@, metadata.width, metadata.height, maximum_u,
+                    decoded_bitplanes, quads_per_row as nat, quad_index as nat + 1, metadata.quads@.len());
+            }
+        }
+        result?;
         quad_index = quad_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    reader.finish()?;
-    Ok((output, statistics))
+    state.finish()?;
+    Ok((state.output, state.statistics))
 }
 
 fn ht_significance_magnitude(decoded_bitplanes: u16) -> Result<Magnitude, DecodeError> {
@@ -3774,25 +3991,96 @@ pub struct CoefficientState {
     pub refined: bool,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn coefficient_raw_view(value: CoefficientState) -> crate::specs::Tier1RawCoefficient {
+        crate::specs::Tier1RawCoefficient {
+            limbs: Seq::empty().push(value.magnitude) + value.magnitude_high@,
+            legacy_bitplane: value.legacy_bitplane, negative: value.negative,
+            significant: value.significant, refined: value.refined,
+        }
+    }
+
+    pub open spec fn coefficient_raw_views(values: Seq<CoefficientState>) -> Seq<crate::specs::Tier1RawCoefficient> {
+        Seq::new(values.len(), |i: int| coefficient_raw_view(values[i]))
+    }
+
+    pub(crate) closed spec fn coefficient_signed_outcome(result: Result<SignedMagnitude, DecodeError>)
+        -> Result<(Seq<u64>, nat, bool), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(value) => Ok((crate::magnitude::magnitude_limbs(value.magnitude),
+                crate::magnitude::magnitude_value(value.magnitude), value.negative)),
+        }
+    }
+
+    pub closed spec fn coefficient_raw_outcome(result: Result<CoefficientState, DecodeError>)
+        -> Result<crate::specs::Tier1RawCoefficient, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(coefficient_raw_view(value)) }
+    }
+
+    pub proof fn coefficient_raw_shape(value: CoefficientState)
+        ensures coefficient_raw_view(value).limbs.len() == 6,
+    {}
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures coefficient_raw_outcome(result) == Ok(crate::specs::tier1_new_coefficient(
+        crate::magnitude::magnitude_limbs(magnitude), negative, significant, refined)),
+))]
+fn coefficient_from_magnitude(
+    magnitude: Magnitude,
+    negative: bool,
+    significant: bool,
+    refined: bool,
+) -> Result<CoefficientState, DecodeError> {
+    let mut output = CoefficientState {
+        magnitude: magnitude.low_u64(),
+        magnitude_high: [0; 5],
+        legacy_bitplane: None,
+        negative,
+        significant,
+        refined,
+    };
+    output.set_magnitude(magnitude)?;
+    Ok(output)
+}
+
 impl CoefficientState {
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures coefficient_signed_outcome(result)
+                == crate::specs::tier1_raw_signed_coefficient(coefficient_raw_view(*self)),
+        )
+    )]
     pub(crate) fn signed_magnitude(&self) -> Result<SignedMagnitude, DecodeError> {
         let mut magnitude = if self.significant {
             self.wide_magnitude()
         } else {
-            Magnitude::ZERO
+            crate::magnitude::magnitude_zero()
         };
         if let (true, Some(bitplane)) = (self.significant, self.legacy_bitplane) {
             let midpoint = if bitplane <= 64 {
-                Magnitude::from_u64(crate::refinement::tier1_midpoint_delta(bitplane))
+                crate::magnitude::magnitude_from_u64(crate::refinement::tier1_midpoint_delta(
+                    bitplane,
+                ))
             } else {
-                Magnitude::single_bit(bitplane - 1)?
+                crate::magnitude::magnitude_single_bit(bitplane - 1)?
             };
             magnitude = magnitude.checked_add(midpoint)?;
         }
-        Ok(SignedMagnitude::new(
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude);
+            crate::proofs::production_impl::production_tier1_value_limbs(crate::magnitude::magnitude_limbs(magnitude));
+        }
+        Ok(SignedMagnitude {
             magnitude,
-            self.significant && self.negative,
-        ))
+            negative: self.significant && self.negative,
+        })
     }
     pub fn magnitude_limb(&self, index: usize) -> Option<u64> {
         if index == 0 {
@@ -3807,6 +4095,14 @@ impl CoefficientState {
         }
     }
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(result =>
+            ensures crate::magnitude::magnitude_limbs(result) == coefficient_raw_view(*self).limbs,
+                crate::magnitude::magnitude_value(result) == crate::specs::part1_magnitude_value(coefficient_raw_view(*self).limbs),
+                crate::magnitude::magnitude_value(result) < crate::specs::part1_magnitude_capacity(),
+        )
+    )]
     pub fn wide_magnitude(&self) -> Magnitude {
         let mut limbs = [0_u64; 6];
         limbs[0] = self.magnitude;
@@ -3815,6 +4111,8 @@ impl CoefficientState {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.magnitude_high.len(),
+                    limbs[0] == self.magnitude,
+                    forall |i: int| 0 <= i < index ==> limbs@[i + 1] == self.magnitude_high@[i],
                 decreases self.magnitude_high.len() - index,
             )
         )]
@@ -3822,34 +4120,33 @@ impl CoefficientState {
             limbs[index + 1] = self.magnitude_high[index];
             index += 1;
         }
-        Magnitude::from_limbs(limbs)
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(limbs@ =~= coefficient_raw_view(*self).limbs); }
+        crate::magnitude::magnitude_from_limbs(limbs)
     }
 
-    fn from_magnitude(
-        magnitude: Magnitude,
-        negative: bool,
-        significant: bool,
-        refined: bool,
-    ) -> Result<Self, DecodeError> {
-        let mut output = Self {
-            magnitude: magnitude.low_u64(),
-            magnitude_high: [0; 5],
-            legacy_bitplane: None,
-            negative,
-            significant,
-            refined,
-        };
-        output.set_magnitude(magnitude)?;
-        Ok(output)
-    }
-
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == Ok(()),
+            coefficient_raw_view(*final(self)) == (crate::specs::Tier1RawCoefficient {
+                limbs: crate::magnitude::magnitude_limbs(magnitude), ..coefficient_raw_view(*old(self))
+            }),
+    ))]
     fn set_magnitude(&mut self, magnitude: Magnitude) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::magnitude::representation_proofs::magnitude_limbs_shape(magnitude); }
         self.magnitude = magnitude.low_u64();
         let mut index = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.magnitude_high.len(),
+                    crate::magnitude::magnitude_limbs(magnitude).len() == 6,
+                    self.magnitude == crate::magnitude::magnitude_limbs(magnitude)[0],
+                    self.legacy_bitplane == old(self).legacy_bitplane,
+                    self.negative == old(self).negative, self.significant == old(self).significant,
+                    self.refined == old(self).refined,
+                    forall |i: int| 0 <= i < index ==> self.magnitude_high@[i]
+                        == crate::magnitude::magnitude_limbs(magnitude)[i + 1],
                 decreases self.magnitude_high.len() - index,
             )
         )]
@@ -3858,6 +4155,8 @@ impl CoefficientState {
                 magnitude.limb(index + 1).ok_or_else(arithmetic_overflow)?;
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(coefficient_raw_view(*self).limbs =~= crate::magnitude::magnitude_limbs(magnitude)); }
         Ok(())
     }
 }
@@ -4044,6 +4343,9 @@ pub struct Tier1CodeBlockDecoder {
 }
 
 impl Tier1PassStatistics {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 0, count),
+    ))]
     fn scanned(&mut self, count: u32) -> Result<(), DecodeError> {
         self.coefficients_scanned = self
             .coefficients_scanned
@@ -4052,6 +4354,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 1, count),
+    ))]
     fn decoded_symbols(&mut self, count: u32) -> Result<(), DecodeError> {
         self.coding_symbols = self
             .coding_symbols
@@ -4060,6 +4365,9 @@ impl Tier1PassStatistics {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, *final(self)) == crate::specs::tier1_statistics_increment(*old(self), 2, 1),
+    ))]
     fn became_significant(&mut self) -> Result<(), DecodeError> {
         self.newly_significant = self
             .newly_significant
@@ -4147,6 +4455,9 @@ impl Tier1CodeBlockDecoder {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures code_block_plane_view(result) == tier1_decoder_plane_view(self),
+    ))]
     pub const fn plane(&self) -> &CodeBlockPlane {
         &self.plane
     }
@@ -5585,22 +5896,81 @@ pub struct CodeBlockPlane {
     coefficients: Vec<CoefficientState>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn code_block_plane_view(plane: &CodeBlockPlane) -> crate::specs::Tier1RawPlane {
+        crate::specs::Tier1RawPlane {
+            width: plane.width, height: plane.height, coefficients: coefficient_raw_views(plane.coefficients@),
+        }
+    }
+
+    pub closed spec fn tier1_decoder_plane_view(decoder: &Tier1CodeBlockDecoder) -> crate::specs::Tier1RawPlane {
+        code_block_plane_view(&decoder.plane)
+    }
+
+    pub closed spec fn code_block_plane_outcome(result: Result<CodeBlockPlane, DecodeError>)
+        -> Result<crate::specs::Tier1RawPlane, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(plane) => Ok(code_block_plane_view(&plane)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures code_block_plane_outcome(result) == crate::specs::tier1_empty_plane(width, height),
+))]
+fn code_block_plane_from_dimensions(
+    width: u16,
+    height: u16,
+) -> Result<CodeBlockPlane, DecodeError> {
+    if width == 0 || height == 0 {
+        return Err(invalid_code_block());
+    }
+    let samples = usize::from(width)
+        .checked_mul(usize::from(height))
+        .ok_or_else(arithmetic_overflow)?;
+    if samples > 4096 {
+        return Err(invalid_code_block());
+    }
+    let empty = CoefficientState {
+        magnitude: 0,
+        magnitude_high: [0; 5],
+        legacy_bitplane: None,
+        negative: false,
+        significant: false,
+        refined: false,
+    };
+    let coefficients = vec![empty; samples];
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(coefficient_raw_view(empty).limbs =~= Seq::new(6, |i: int| 0u64));
+        assert(coefficient_raw_view(empty) == crate::specs::tier1_empty_coefficient());
+        assert forall |i: int| 0 <= i < samples implies coefficient_raw_view(coefficients@[i])
+            == crate::specs::tier1_empty_coefficient() by {
+            assert(coefficients@[i] == empty);
+        }
+        assert(coefficient_raw_views(coefficients@) =~= Seq::new(samples as nat, |i: int| crate::specs::tier1_empty_coefficient()));
+    }
+    Ok(CodeBlockPlane {
+        width,
+        height,
+        coefficients,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == crate::specs::tier1_statistics_zero(),))]
+fn ht_statistics_zero() -> Tier1PassStatistics {
+    Tier1PassStatistics {
+        coefficients_scanned: 0,
+        coding_symbols: 0,
+        newly_significant: 0,
+        refined_coefficients: 0,
+        run_mode_columns: 0,
+    }
+}
+
 impl CodeBlockPlane {
     pub fn new(width: u16, height: u16) -> Result<Self, DecodeError> {
-        if width == 0 || height == 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-        }
-        let samples = usize::from(width)
-            .checked_mul(usize::from(height))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        if samples > 4096 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
-        }
-        Ok(Self {
-            width,
-            height,
-            coefficients: vec![CoefficientState::default(); samples],
-        })
+        code_block_plane_from_dimensions(width, height)
     }
 
     fn duplicate(&self) -> Result<Self, DecodeError> {
@@ -5629,22 +5999,30 @@ impl CodeBlockPlane {
         Ok(output)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == code_block_plane_view(self).width,))]
     pub const fn width(&self) -> u16 {
         self.width
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == code_block_plane_view(self).height,))]
     pub const fn height(&self) -> u16 {
         self.height
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures coefficient_raw_outcome(result) == crate::specs::tier1_raw_plane_coefficient(code_block_plane_view(self), x, y),
+    ))]
     pub fn coefficient(&self, x: u16, y: u16) -> Result<CoefficientState, DecodeError> {
         let index = self.index(x, y)?;
         if index >= self.coefficients.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         Ok(self.coefficients[index])
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures coefficient_raw_views(result@) == code_block_plane_view(self).coefficients,
+    ))]
     pub fn coefficients(&self) -> &[CoefficientState] {
         &self.coefficients
     }
@@ -5699,6 +6077,11 @@ impl CodeBlockPlane {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, code_block_plane_view(final(self))) == crate::specs::tier1_mark_coefficient(
+            code_block_plane_view(old(self)), x, y, crate::magnitude::magnitude_limbs(magnitude),
+            crate::magnitude::magnitude_value(magnitude), negative),
+    ))]
     fn mark_significant_magnitude(
         &mut self,
         x: u16,
@@ -5711,13 +6094,18 @@ impl CodeBlockPlane {
         }
         let index = self.index(x, y)?;
         if index >= self.coefficients.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         if self.coefficients[index].significant {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
-        self.coefficients[index] =
-            CoefficientState::from_magnitude(magnitude, negative, true, false)?;
+        self.coefficients[index] = coefficient_from_magnitude(magnitude, negative, true, false)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(coefficient_raw_views(self.coefficients@) =~=
+                code_block_plane_view(old(self)).coefficients.update(index as int,
+                    crate::specs::tier1_new_coefficient(crate::magnitude::magnitude_limbs(magnitude), negative, true, false)));
+        }
         Ok(())
     }
 
@@ -5839,16 +6227,20 @@ impl CodeBlockPlane {
         Ok(summary)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::tier1_raw_plane_index(code_block_plane_view(self), x, y),
+    ))]
     fn index(&self, x: u16, y: u16) -> Result<usize, DecodeError> {
         if x >= self.width || y >= self.height {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         let index = usize::from(y)
             .checked_mul(usize::from(self.width))
-            .and_then(|row| row.checked_add(usize::from(x)))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(arithmetic_overflow)?
+            .checked_add(usize::from(x))
+            .ok_or_else(arithmetic_overflow)?;
         if index >= self.coefficients.len() {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodeBlock));
+            return Err(invalid_code_block());
         }
         Ok(index)
     }
@@ -6548,6 +6940,531 @@ mod tests {
             HtStreamDirection::Reverse
         );
         assert_eq!(retained.significance_propagation().offset(), 4);
+    }
+
+    #[test]
+    fn raw_plane_getters_preserve_malformed_shapes_and_exact_index_errors() {
+        let coefficient = CoefficientState {
+            magnitude: 17,
+            magnitude_high: [2, 3, 4, 5, 6],
+            legacy_bitplane: Some(65535),
+            negative: true,
+            significant: false,
+            refined: true,
+        };
+        let plane = CodeBlockPlane {
+            width: 2,
+            height: 2,
+            coefficients: vec![coefficient],
+        };
+        assert_eq!(
+            (plane.width(), plane.height(), plane.coefficients()),
+            (2, 2, &[coefficient][..])
+        );
+        assert_eq!(plane.coefficient(0, 0), Ok(coefficient));
+        for (x, y) in [(1, 0), (0, 1), (2, 0), (0, 2), (65535, 65535)] {
+            assert_eq!(
+                plane.coefficient(x, y),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock,
+                })
+            );
+        }
+        let trailing = CodeBlockPlane {
+            width: 1,
+            height: 1,
+            coefficients: vec![coefficient, CoefficientState::default()],
+        };
+        assert_eq!(trailing.coefficients().len(), 2);
+        assert_eq!(trailing.coefficient(0, 0), Ok(coefficient));
+        assert_eq!(trailing.coefficient(0, 1), Err(invalid_code_block()));
+        let zero_shape = CodeBlockPlane {
+            width: 0,
+            height: 0,
+            coefficients: vec![coefficient],
+        };
+        assert_eq!(
+            (
+                zero_shape.width(),
+                zero_shape.height(),
+                zero_shape.coefficients().len()
+            ),
+            (0, 0, 1)
+        );
+        assert_eq!(zero_shape.coefficient(0, 0), Err(invalid_code_block()));
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            1,
+            1,
+            1,
+            SubbandOrientation::Ll,
+            Tier1CodingStyle::default(),
+        )
+        .unwrap();
+        decoder.plane = plane;
+        assert_eq!(
+            (
+                decoder.plane().width(),
+                decoder.plane().height(),
+                decoder.plane().coefficients()
+            ),
+            (2, 2, &[coefficient][..])
+        );
+    }
+
+    #[test]
+    fn raw_signed_coefficients_keep_full_words_flags_and_native_midpoint_errors() {
+        let mut coefficient = CoefficientState {
+            magnitude: 17,
+            magnitude_high: [2, 3, 4, 5, 6],
+            legacy_bitplane: Some(65535),
+            negative: true,
+            significant: false,
+            refined: true,
+        };
+        let wide = coefficient.wide_magnitude();
+        for (index, expected) in [17, 2, 3, 4, 5, 6].into_iter().enumerate() {
+            assert_eq!(wide.limb(index), Some(expected));
+        }
+        let absent = coefficient.signed_magnitude().unwrap();
+        assert_eq!(absent.magnitude, Magnitude::ZERO);
+        assert!(!absent.negative);
+        coefficient = CoefficientState {
+            magnitude: 0,
+            magnitude_high: [0; 5],
+            legacy_bitplane: None,
+            negative: true,
+            significant: true,
+            refined: false,
+        };
+        let negative_zero = coefficient.signed_magnitude().unwrap();
+        assert_eq!(negative_zero.magnitude, Magnitude::ZERO);
+        assert!(negative_zero.negative);
+        coefficient.magnitude = u64::MAX;
+        coefficient.legacy_bitplane = Some(1);
+        let carry = coefficient.signed_magnitude().unwrap();
+        assert_eq!(carry.magnitude.limb(0), Some(0));
+        assert_eq!(carry.magnitude.limb(1), Some(1));
+        assert!(carry.negative);
+        coefficient.magnitude = 0;
+        coefficient.legacy_bitplane = Some(384);
+        let high = coefficient.signed_magnitude().unwrap();
+        for (index, expected) in [0, 0, 0, 0, 0, 1_u64 << 63].into_iter().enumerate() {
+            assert_eq!(high.magnitude.limb(index), Some(expected));
+        }
+        for bitplane in [385, 65535] {
+            coefficient.legacy_bitplane = Some(bitplane);
+            assert_eq!(
+                coefficient.signed_magnitude(),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })
+            );
+        }
+        coefficient.magnitude = u64::MAX;
+        coefficient.magnitude_high = [u64::MAX; 5];
+        coefficient.legacy_bitplane = Some(0);
+        assert_eq!(
+            coefficient.signed_magnitude().unwrap().magnitude,
+            Magnitude::from_limbs([u64::MAX; 6])
+        );
+        coefficient.legacy_bitplane = Some(1);
+        assert_eq!(
+            coefficient.signed_magnitude(),
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })
+        );
+    }
+
+    fn plane_quad(x: u16, y: u16, significance: u8, u_base: u8) -> HtQuadMetadata {
+        HtQuadMetadata {
+            x,
+            y,
+            context: 255,
+            initial_row: true,
+            significance,
+            embedded_magnitude: 0,
+            embedded_bit_mask: 0,
+            u_offset: true,
+            u_base,
+            codeword_bits: 255,
+        }
+    }
+
+    fn plane_metadata(width: u16, height: u16, quads: Vec<HtQuadMetadata>) -> HtCleanupMetadata {
+        HtCleanupMetadata {
+            width,
+            height,
+            quads,
+            significant_samples: u16::MAX,
+            mel_bits: u32::MAX,
+            vlc_bits: u32::MAX,
+            mel_events: u32::MAX,
+        }
+    }
+
+    fn plane_state(input: &[u8], width: u16, height: u16) -> HtCleanupPlaneReconstruction<'_> {
+        HtCleanupPlaneReconstruction {
+            output: CodeBlockPlane::new(width, height).unwrap(),
+            reader: HtForwardMagSgnReader::new(input, &ResourceLimits::default()).unwrap(),
+            previous_exponents: vec![5, 4, 3],
+            current_exponents: vec![9, 8, 7],
+            statistics: Tier1PassStatistics::default(),
+        }
+    }
+
+    #[test]
+    fn ht_cleanup_plane_places_literal_full_words_flags_and_ignores_old_coefficients() {
+        let limits = ResourceLimits::default();
+        let mut input = CodeBlockPlane::new(1, 2).unwrap();
+        input.coefficients[0] = CoefficientState {
+            magnitude: u64::MAX,
+            magnitude_high: [u64::MAX; 5],
+            legacy_bitplane: Some(u16::MAX),
+            negative: true,
+            significant: true,
+            refined: true,
+        };
+        let cleanup = parse_ht_block_segments(&[0xfa, 2, 0], None, &limits)
+            .unwrap()
+            .cleanup();
+        let metadata = plane_metadata(1, 2, vec![plane_quad(0, 0, 3, 2)]);
+        let (output, statistics) =
+            reconstruct_ht_cleanup_plane(&input, cleanup, &metadata, 2, 3, &limits).unwrap();
+        let expected = CoefficientState {
+            magnitude: 10,
+            magnitude_high: [0; 5],
+            legacy_bitplane: None,
+            negative: false,
+            significant: true,
+            refined: false,
+        };
+        assert_eq!(output.coefficients(), &[expected, expected]);
+        assert_eq!(
+            statistics,
+            Tier1PassStatistics {
+                coefficients_scanned: 2,
+                coding_symbols: 2,
+                newly_significant: 2,
+                refined_coefficients: 0,
+                run_mode_columns: 0
+            }
+        );
+        assert_eq!(input.coefficients[0].legacy_bitplane, Some(u16::MAX));
+
+        let data = [
+            0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 2, 0,
+        ];
+        let cleanup = parse_ht_block_segments(&data, None, &limits)
+            .unwrap()
+            .cleanup();
+        let metadata = plane_metadata(1, 1, vec![plane_quad(0, 0, 1, 75)]);
+        let (output, statistics) =
+            reconstruct_ht_cleanup_plane(&input, cleanup, &metadata, 75, 292, &limits).unwrap();
+        assert_eq!(
+            output.coefficients()[0],
+            CoefficientState {
+                magnitude: 0,
+                magnitude_high: [0, 0, 0, 1_u64 << 34, 1_u64 << 45],
+                legacy_bitplane: None,
+                negative: true,
+                significant: true,
+                refined: false,
+            }
+        );
+        assert_eq!(output.coefficients()[1], CoefficientState::default());
+        assert_eq!((output.width(), output.height()), (1, 2));
+        assert_eq!(
+            (
+                statistics.coefficients_scanned,
+                statistics.coding_symbols,
+                statistics.newly_significant
+            ),
+            (1, 1, 1)
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_plane_preserves_permissive_metadata_domains_and_coordinate_error_order() {
+        let limits = ResourceLimits::default()
+            .with_maximum_work_units(0)
+            .unwrap();
+        let cleanup = parse_ht_block_segments(&[2, 0], None, &limits)
+            .unwrap()
+            .cleanup();
+        let input = CodeBlockPlane::new(1, 1).unwrap();
+        for metadata in [
+            plane_metadata(1, 0, vec![]),
+            plane_metadata(1, 0, vec![plane_quad(0, 0, 255, 0)]),
+            plane_metadata(1, 1, vec![plane_quad(0, 0, 0xf0, 255)]),
+        ] {
+            let (output, statistics) =
+                reconstruct_ht_cleanup_plane(&input, cleanup, &metadata, 255, u16::MAX, &limits)
+                    .unwrap();
+            assert_eq!(output.coefficients(), &[CoefficientState::default()]);
+            assert_eq!(
+                (statistics.coding_symbols, statistics.newly_significant),
+                (0, 0)
+            );
+        }
+        let coordinate_overflow = plane_metadata(1, 0, vec![plane_quad(u16::MAX, 0, 0, 0)]);
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(&input, cleanup, &coordinate_overflow, 0, 0, &limits),
+            Err(arithmetic_overflow())
+        );
+        let mut noninitial = plane_quad(0, 0, 0, 1);
+        noninitial.initial_row = false;
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(
+                &input,
+                cleanup,
+                &plane_metadata(1, 0, vec![noninitial]),
+                0,
+                0,
+                &limits
+            ),
+            Err(invalid_code_block())
+        );
+        let no_numeric = plane_metadata(1, 1, vec![plane_quad(0, 0, 0, 76)]);
+        assert!(
+            reconstruct_ht_cleanup_plane(&input, cleanup, &no_numeric, 255, 0, &limits).is_ok()
+        );
+        let numeric = plane_metadata(1, 1, vec![plane_quad(0, 0, 1, 76)]);
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(&input, cleanup, &numeric, 255, 0, &limits),
+            Err(invalid_code_block())
+        );
+        let malformed = CodeBlockPlane {
+            width: 0,
+            height: 1,
+            coefficients: vec![CoefficientState::default()],
+        };
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(&malformed, cleanup, &no_numeric, 255, 0, &limits),
+            Err(invalid_code_block())
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_plane_placement_errors_follow_magsgn_consumption_and_scanning() {
+        let mut duplicate = plane_state(&[0xff], 1, 1);
+        let quad = plane_quad(0, 0, 1, 1);
+        duplicate.quad(quad, 1, 1, 1, 1, 2, 0).unwrap();
+        let output = duplicate.output.clone();
+        assert_eq!(
+            duplicate.quad(quad, 1, 1, 1, 1, 2, 1),
+            Err(invalid_code_block())
+        );
+        assert_eq!(duplicate.output, output);
+        assert_eq!(
+            (
+                duplicate.statistics.coefficients_scanned,
+                duplicate.statistics.coding_symbols,
+                duplicate.statistics.newly_significant,
+                duplicate.reader.physical_bits_read,
+                duplicate.reader.work_units
+            ),
+            (2, 1, 1, 2, 2)
+        );
+
+        let mut mismatch = plane_state(&[0xff], 1, 1);
+        let before = mismatch.output.clone();
+        assert_eq!(
+            mismatch.sample(plane_quad(1, 0, 1, 1), 2, 1, 0, 1, 1, 0),
+            Err(invalid_code_block())
+        );
+        assert_eq!(mismatch.output, before);
+        assert_eq!(
+            (
+                mismatch.statistics.coefficients_scanned,
+                mismatch.statistics.coding_symbols,
+                mismatch.statistics.newly_significant,
+                mismatch.reader.physical_bits_read
+            ),
+            (1, 0, 0, 1)
+        );
+        assert_eq!(mismatch.current_exponents, [9, 8, 7]);
+    }
+
+    #[test]
+    fn ht_cleanup_plane_statistic_overflows_retain_each_ordered_partial_effect() {
+        let quad = plane_quad(0, 0, 3, 1);
+        for field in 0..3 {
+            let mut state = plane_state(&[0xff], 2, 2);
+            match field {
+                0 => state.statistics.coefficients_scanned = u32::MAX,
+                1 => state.statistics.coding_symbols = u32::MAX,
+                _ => state.statistics.newly_significant = u32::MAX,
+            }
+            assert_eq!(
+                state.sample(quad, 2, 2, 0, 1, 1, 1),
+                Err(arithmetic_overflow())
+            );
+            assert_eq!(
+                state.statistics.coefficients_scanned,
+                if field == 0 { u32::MAX } else { 1 }
+            );
+            assert_eq!(
+                state.statistics.coding_symbols,
+                if field == 1 {
+                    u32::MAX
+                } else if field == 2 {
+                    1
+                } else {
+                    0
+                }
+            );
+            assert_eq!(
+                state.statistics.newly_significant,
+                if field == 2 { u32::MAX } else { 0 }
+            );
+            assert_eq!(state.output.coefficients()[2].significant, field != 0);
+            assert_eq!(state.reader.physical_bits_read, u64::from(field != 0));
+            assert_eq!(state.current_exponents, [9, 8, 7]);
+            assert_eq!(state.previous_exponents, [5, 4, 3]);
+        }
+        let mut work = plane_state(&[0xff], 2, 2);
+        work.reader.maximum_work_units = 0;
+        let before = work.output.clone();
+        assert_eq!(
+            work.sample(quad, 2, 2, 0, 1, 1, 0),
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: 0,
+                actual: 1,
+            })
+        );
+        assert_eq!(work.output, before);
+        assert_eq!(
+            (
+                work.statistics.coefficients_scanned,
+                work.statistics.coding_symbols,
+                work.reader.work_units,
+                work.reader.physical_bits_read
+            ),
+            (1, 0, 1, 1)
+        );
+    }
+
+    #[test]
+    fn ht_cleanup_plane_stencils_reset_max_overwrite_swap_and_drive_noninitial_u() {
+        let mut state = plane_state(&[], 4, 4);
+        state
+            .sample(plane_quad(0, 0, 2, 1), 4, 4, 0, 1, 1, 1)
+            .unwrap();
+        assert_eq!(state.current_exponents, [9, 8, 7]);
+        state
+            .sample(plane_quad(0, 0, 8, 1), 4, 4, 0, 1, 1, 3)
+            .unwrap();
+        assert_eq!(state.current_exponents, [9, 1, 7]);
+
+        let mut state = plane_state(&[], 4, 4);
+        state
+            .quad(plane_quad(0, 0, 0, 0), 4, 4, 4, 1, 2, 0)
+            .unwrap();
+        assert_eq!(state.current_exponents, [0, 0, 0]);
+        assert_eq!(state.previous_exponents, [5, 4, 3]);
+        state
+            .quad(plane_quad(2, 0, 10, 4), 4, 4, 4, 1, 2, 1)
+            .unwrap();
+        assert_eq!(state.previous_exponents, [0, 4, 4]);
+        assert_eq!(state.current_exponents, [5, 4, 3]);
+        let mut noninitial = plane_quad(0, 2, 3, 1);
+        noninitial.initial_row = false;
+        state.quad(noninitial, 4, 4, 4, 1, 2, 2).unwrap();
+        assert_eq!(state.current_exponents, [3, 0, 0]);
+        assert_eq!(state.previous_exponents, [0, 4, 4]);
+        assert_eq!(
+            (
+                state.output.coefficient(0, 2).unwrap().magnitude,
+                state.output.coefficient(0, 3).unwrap().magnitude
+            ),
+            (4, 4)
+        );
+        assert_eq!(
+            (
+                state.statistics.coefficients_scanned,
+                state.statistics.coding_symbols,
+                state.statistics.newly_significant,
+                state.reader.fill_bits_read
+            ),
+            (12, 4, 4, 14)
+        );
+        assert_eq!(
+            complete_ht_kappa(1, 1, 255, 0, 75),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(
+            complete_ht_kappa(0, 1, 255, 0, 75),
+            Err(invalid_code_block())
+        );
+        assert_eq!(
+            complete_ht_kappa(1, 0xf0, 255, 0, 75),
+            Err(invalid_code_block())
+        );
+        assert_eq!(complete_ht_kappa(1, 3, 2, 4, 3), Ok(3));
+    }
+
+    #[test]
+    fn ht_cleanup_plane_finish_preserves_outputs_and_reports_physical_padding_stuffing_and_budget()
+    {
+        for (input, maximum_work, error, physical, work) in [
+            (&[0xfe][..], 100, invalid_code_block(), 1, 1),
+            (
+                &[0xff, 0x80][..],
+                100,
+                DecodeError::MalformedInput {
+                    offset: 1,
+                    kind: MalformedKind::InvalidBitStuffing,
+                },
+                8,
+                8,
+            ),
+            (
+                &[0xff][..],
+                7,
+                DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: 7,
+                    actual: 8,
+                },
+                8,
+                8,
+            ),
+        ] {
+            let mut state = plane_state(input, 1, 1);
+            state.reader.maximum_work_units = maximum_work;
+            state.statistics.coefficients_scanned = 42;
+            let output = state.output.clone();
+            assert_eq!(state.finish(), Err(error));
+            assert_eq!(state.output, output);
+            assert_eq!(state.statistics.coefficients_scanned, 42);
+            assert_eq!(state.previous_exponents, [5, 4, 3]);
+            assert_eq!(state.current_exponents, [9, 8, 7]);
+            assert_eq!(
+                (state.reader.physical_bits_read, state.reader.work_units),
+                (physical, work)
+            );
+        }
+        let limits = ResourceLimits::default();
+        let cleanup = parse_ht_block_segments(&[0xfe, 2, 0], None, &limits)
+            .unwrap()
+            .cleanup();
+        let metadata = plane_metadata(1, 1, vec![]);
+        assert_eq!(
+            reconstruct_ht_cleanup_plane(
+                &CodeBlockPlane::new(1, 1).unwrap(),
+                cleanup,
+                &metadata,
+                0,
+                0,
+                &limits
+            ),
+            Err(invalid_code_block())
+        );
     }
 
     #[test]

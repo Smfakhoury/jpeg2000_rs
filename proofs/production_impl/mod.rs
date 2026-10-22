@@ -32,6 +32,26 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_tier1_value_limbs(limbs: Seq<u64>)
+    requires limbs.len() == 6,
+    ensures limbs == crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs)),
+{
+    vstd::arithmetic::power2::lemma2_to64();
+    assert forall |i: int| 0 <= i < 6 implies limbs[i]
+        == crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs))[i] by {
+        let shift = (64 * i) as u16;
+        assert(shift / 64 == i && shift % 64 == 0);
+        let shifted = crate::specs::part1_magnitude_shift(limbs, shift);
+        production_magnitude_right_shift_value(limbs, shift);
+        production_magnitude_low_word(shifted);
+        assert(shifted[0] == limbs[i]) by {
+            let word = limbs[i];
+            assert(word >> 0u32 == word) by(bit_vector);
+        }
+    }
+    assert(limbs =~= crate::specs::tier1_value_limbs(crate::specs::part1_magnitude_value(limbs)));
+}
+
 pub proof fn production_assembly_row_error_persists(
     plane: crate::specs::Part1AssemblyPlane, tile: crate::specs::Part1AssemblyTile,
     x: u32, y: u32, crop: Option<(u32, u32)>, completed: nat, total: nat,
@@ -3206,4 +3226,39 @@ pub proof fn production_mct_wavelet_work_is_explicit(
     reveal(mct_wavelet_work_units);
 }
 
+}
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub proof fn production_ht_plane_samples_error(
+        state: crate::specs::HtPlaneState, quad: crate::tier1::HtQuadMetadata, width: u16, height: u16,
+        column: nat, completed_u: u8, bitplanes: u16, prefix: nat, count: nat,
+    )
+        requires prefix <= count <= 4, column + 1 < state.current.len(),
+            crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, prefix).0.is_err(),
+        ensures crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, count)
+            == crate::specs::ht_plane_samples(state, quad, width, height, column, completed_u, bitplanes, prefix),
+        decreases count - prefix,
+    {
+        if prefix < count {
+            production_ht_plane_samples_error(state, quad, width, height, column, completed_u, bitplanes, prefix, (count - 1) as nat);
+            reveal(crate::specs::ht_plane_samples);
+        }
+    }
+
+    pub proof fn production_ht_plane_quads_error(
+        state: crate::specs::HtPlaneState, quads: Seq<crate::tier1::HtQuadMetadata>, width: u16, height: u16,
+        maximum_u: u8, bitplanes: u16, quads_per_row: nat, prefix: nat, count: nat,
+    )
+        requires prefix <= count <= quads.len(), 0 < quads_per_row <= 32768,
+            state.current.len() == quads_per_row + 1, state.previous.len() == quads_per_row + 1,
+            crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix).0.is_err(),
+        ensures crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, count)
+            == crate::specs::ht_plane_quads(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix),
+        decreases count - prefix,
+    {
+        if prefix < count {
+            production_ht_plane_quads_error(state, quads, width, height, maximum_u, bitplanes, quads_per_row, prefix, (count - 1) as nat);
+            reveal(crate::specs::ht_plane_quads);
+        }
+    }
 }
