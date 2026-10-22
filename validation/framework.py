@@ -204,15 +204,39 @@ def _coverage_symbol_present(path: Path, symbol: str) -> bool:
     ))
 
 
+def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
+    """Resolve formatted methods in their actual impl, never another short name."""
+    short = symbol.rsplit("::", 1)[-1]
+    start, end = 0, len(text)
+    if "::" in symbol:
+        owner = symbol.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+        implementation = re.search(
+            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
+            rf"{re.escape(owner)}\b[^{{}}\n]*\{{", text,
+        )
+        if implementation is None:
+            return None
+        closing = re.search(
+            rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
+            text[implementation.end():],
+        )
+        if closing is None:
+            return None
+        start = implementation.end()
+        end = start + closing.start()
+    pattern = re.compile(
+        rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
+        rf"fn[ \t]+{re.escape(short)}\b",
+    )
+    return pattern.search(text, start, end)
+
+
 def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
     """Check another formatted function body, not the callee declaration."""
     short = caller.rsplit("::", 1)[-1]
     if short == callee:
         return False
-    header = re.search(
-        rf"(?m)^([ \t]*)(?:(?:pub(?:\([^)\n]*\))?|const|async|unsafe)[ \t]+)*"
-        rf"fn[ \t]+{re.escape(short)}\b", text,
-    )
+    header = _coverage_function_header(text, caller)
     if header is None:
         return False
     body_start = text.find("{", header.end())
@@ -256,10 +280,10 @@ def validate_normative_coverage(
         for reference in entry["contract_refs"]:
             text = (ROOT / reference["path"]).read_text(encoding="utf-8")
             short = reference["symbol"].rsplit("::", 1)[-1]
-            signature_match = re.search(rf"\bfn\s+{re.escape(short)}\b", text)
+            signature_match = _coverage_function_header(text, reference["symbol"])
             if signature_match is None:
                 raise ValueError(f"missing linked contract function: {short}")
-            signature = signature_match.start()
+            signature = text.find("fn", signature_match.start(), signature_match.end())
             contract_start = text.rfind("#[cfg_attr", 0, signature)
             contract = text[contract_start:signature] if contract_start >= 0 else ""
             body_start = text.find("{", signature)
@@ -278,6 +302,13 @@ def validate_normative_coverage(
                 ("src/jpx.rs", "layer_channels"): "layer_channels_outcome",
                 ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
                 ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
+                ("src/tier1.rs", "ht_mel_from_input"): "ht_mel_outcome",
+                ("src/tier1.rs", "ht_reverse_vlc_from_input"): "ht_reverse_vlc_outcome",
+                ("src/tier1.rs", "ht_cleanup_readers_from_inputs"): "ht_cleanup_readers_outcome",
+                ("src/tier1.rs", "ht_magsgn_from_input"): "ht_magsgn_outcome",
+                ("src/tier1.rs", "ht_forward_refinement_from_input"): "ht_forward_refinement_outcome",
+                ("src/tier1.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
+                ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
             }.get((reference["path"], short))
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
@@ -288,10 +319,43 @@ def validate_normative_coverage(
                 r"crate::specs::part2_composition_planes\(\s*final\(\s*\w+\s*\)@\s*\)|"
                 r"\*\s*final\(\s*\w+\s*\)(?:\s+as\s+nat)?)"
             )
-            if reference["path"] == "src/tier1.rs" and short in ("read_bit", "load_byte"):
+            reader_contracts = {
+                "RawBitReader::read_bit": ("raw_bit_reader_view", "part1_raw_reader_read"),
+                "RawBitReader::load_byte": ("raw_bit_reader_view", "part1_raw_reader_load"),
+                "HtMelBitReader::load_byte": ("ht_mel_view", "ht_mel_load"),
+                "HtMelBitReader::read_bit": ("ht_mel_view", "ht_mel_read"),
+                "HtReverseVlcReader::load_previous_byte": ("ht_reverse_vlc_view", "ht_reverse_vlc_load"),
+                "HtReverseVlcReader::read_bit": ("ht_reverse_vlc_view", "ht_reverse_vlc_read"),
+                "HtCleanupReaders::tick": ("ht_cleanup_readers_view", "ht_cleanup_reader_tick"),
+                "HtCleanupReaders::read_mel_bit": ("ht_cleanup_readers_view", "ht_cleanup_reader_read_mel"),
+                "HtCleanupReaders::read_vlc_bit": ("ht_cleanup_readers_view", "ht_cleanup_reader_read_vlc"),
+                "HtForwardMagSgnReader::load_byte": ("ht_magsgn_view", "ht_magsgn_load"),
+                "HtForwardMagSgnReader::read_bit": ("ht_magsgn_view", "ht_magsgn_read"),
+                "HtForwardMagSgnReader::read_bits": ("ht_magsgn_view", "ht_magsgn_read_bits"),
+                "HtForwardMagSgnReader::finish": ("ht_magsgn_view", "ht_magsgn_finish"),
+                "HtForwardRefinementReader::load_byte": ("ht_forward_refinement_view", "ht_forward_refinement_load"),
+                "HtForwardRefinementReader::read_positioned_bit": ("ht_forward_refinement_view", "ht_forward_refinement_positioned"),
+                "HtForwardRefinementReader::read_bit": ("ht_forward_refinement_view", "ht_forward_refinement_read"),
+                "HtReverseRefinementReader::load_previous_byte": ("ht_reverse_refinement_view", "ht_reverse_refinement_load"),
+                "HtReverseRefinementReader::read_positioned_bit": ("ht_reverse_refinement_view", "ht_reverse_refinement_positioned"),
+                "HtReverseRefinementReader::read_bit": ("ht_reverse_refinement_view", "ht_reverse_refinement_read"),
+                "HtRefinementReaders::claim": ("ht_refinement_readers_view", "ht_refinement_claim"),
+                "HtRefinementReaders::read_forward": ("ht_refinement_readers_view", "ht_refinement_read_forward"),
+                "HtRefinementReaders::read_reverse": ("ht_refinement_readers_view", "ht_refinement_read_reverse"),
+                "HtCleanupReaders::advance_vlc": ("ht_cleanup_readers_view", "ht_cleanup_advance_vlc"),
+                "HtCleanupReaders::mel_event": ("ht_cleanup_readers_view", "ht_cleanup_mel_event"),
+                "HtCleanupReaders::read_prefix": ("ht_cleanup_readers_view", "ht_uvlc_prefix"),
+                "HtCleanupReaders::read_suffix": ("ht_cleanup_readers_view", "ht_uvlc_suffix"),
+                "HtCleanupReaders::prefix_value": ("ht_cleanup_readers_view", "ht_uvlc_prefix_value"),
+                "HtCleanupReaders::decode_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_initial"),
+                "HtCleanupReaders::decode_non_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_non_initial"),
+                "HtCleanupReaders::decode_quad_word": ("ht_cleanup_readers_view", "ht_cleanup_quad_word"),
+            }
+            reader_contract = reader_contracts.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            if reader_contract:
                 state_term = (
                     r"(?:" + state_term
-                    + r"|raw_bit_reader_view\(\s*final\(\s*self\s*\)\s*\))"
+                    + "|" + re.escape(reader_contract[0]) + r"\(\s*final\(\s*self\s*\)\s*\))"
                 )
             state_tail = r"\s*,\s*" + state_term + r"(?:\s*,\s*" + state_term + r")*\s*\))"
             state_result = re.search(
@@ -307,6 +371,41 @@ def validate_normative_coverage(
             )) if state_result is not None else set()
             complete_state = bool(mutable_parameters) and final_parameters == mutable_parameters
             named_result = state_result if mutating else scalar_result or projected_result or state_result
+            expected_constructor = {
+                "ht_mel_from_input": "ht_mel_initial",
+                "ht_reverse_vlc_from_input": "ht_reverse_vlc_initial",
+                "ht_cleanup_readers_from_inputs": "ht_cleanup_readers_initial",
+                "ht_magsgn_from_input": "ht_magsgn_initial",
+                "ht_forward_refinement_from_input": "ht_forward_refinement_initial",
+                "ht_reverse_refinement_from_input": "ht_reverse_refinement_initial",
+                "ht_refinement_readers_from_inputs": "ht_refinement_readers_initial",
+            }.get(short) if reference["path"] == "src/tier1.rs" else None
+            if expected_constructor and (named_result is None or named_result["model"] != expected_constructor):
+                raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong constructor model")
+            if (reference["path"], reference["symbol"]) == ("src/tier1.rs", "HtCleanupReaders::can_claim_byte"):
+                if named_result is None or named_result["model"] != "ht_cleanup_reader_can_claim":
+                    raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong claim model")
+            if reader_contract:
+                view, model = reader_contract
+                complete_reader_state = (
+                    state_result is not None
+                    and state_result["model"] == model
+                    and re.fullmatch(
+                        r"\(\s*" + re.escape(state_result[1]) + r"\s*,\s*"
+                        + re.escape(view) + r"\(\s*final\(\s*self\s*\)\s*\)\s*\)",
+                        state_result["state"],
+                    ) is not None
+                    and re.search(
+                        r"==\s*crate::specs::" + re.escape(model) + r"\(\s*"
+                        + re.escape(view) + r"\(\s*old\(\s*self\s*\)\s*\)",
+                        contract,
+                    ) is not None
+                )
+                if not complete_reader_state:
+                    raise ValueError(
+                        f"linked function lacks executable Verus contract: {reference['symbol']}; "
+                        "incomplete exact reader state relation"
+                    )
             if ("verus_spec(" not in contract
                     or (mutating and (state_result is None or not complete_state))
                     or not ("ensures returns" in contract

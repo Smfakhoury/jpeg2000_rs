@@ -138,6 +138,10 @@ Read each contract according to its inputs and postcondition:
 | JPX placement coordinates | The selected floor-scaled source coordinates remain inside the cropped source, clipped destination coordinates remain inside the canvas, and actual read/write indices equal checked row-major addresses | Complete canvas traversal/channel routing, all resampling profiles, or an edition-level placement/conformance theorem |
 | Tier-1 state and reconstruction | Selected pass-state, magnitude-prefix and integer-midpoint operations | A complete mathematical denotation of every code-block and inverse-transform combination |
 | Complete raw-bypass reader transitions | Actual reader initialization, byte loading, bit result, every final field, exact input/work/overflow errors and predictable-termination result | Complete MQ decoding, packet/segment accounting, significance/refinement/cleanup traversal, coefficient meaning or end-to-end legacy correctness |
+| HT directional reader/substream state | All five actual readers: exact constructors, bytes/bits/positions, MagSgn words and drain, zero/one fill, stuffing, exhaustion, full cursors/counters, shared cleanup byte claims and refinement physical-bit vectors/padding, exact inner/outer budget and overflow effects | Upstream partition/pass accounting, UVLC/quad interpretation, coefficient/block reconstruction, replacement/placeholders, mixed sequencing or complete F5H acceptance |
+| HT cleanup multi-bit/event operations | Every `u8` VLC peek/advance count, non-mutating copied-reader peek truncation, fail-fast actual advance, complete MEL event cache/head/suffix/adaptation and full-width event-counter failure state | That callers request the normative symbols, select the right table/context, reconstruct full cleanup blocks or route mixed pass groups correctly |
+| HT UVLC/quad-word interpretation | Actual prefix, all native suffix lengths, prefix value, initial/non-initial U pairs and quad words, with exact typed result and complete final reader/event/claim/work state; actual table selection, context-zero MEL suppression, length validation, advance and tick order | Normative codebook endorsement, context selection by the quad traversal, complete metadata/coefficient blocks, placeholders/replacement or mixed sequencing |
+| Actual packet-pass placeholder grouping | Every native packet-pass input: exact typed rejection outside 1..=164 and all four cleanup/refinement/placeholder/skipped-plane fields inside it | Actual pass execution/replacement, segment partitioning, coefficient planes or mixed dispatch |
 | Decoded output shape | Nonempty image/component counts and rectangular sample cardinality | Pixel equality with the JPEG 2000 decoding process |
 | Representation views | Mathematical descriptions used by the referenced lemmas | An automatic connection to all production state or end-to-end output |
 
@@ -168,8 +172,125 @@ remain unconsumed while synthetic `0xff` bits are supplied. Exhausted input
 uses the same selected bounded-reader policy. These are input-relative
 implementation semantics, not a completed selected-edition audit.
 
-Error states are not transactional: work-limit failure preserves the consumed
-bit and incremented work counter; work overflow preserves the consumed bit
+The frozen first F5H subprofile is documented in [specs/README.md](specs/README.md#frozen-f5h-directional-reader-stages).
+It comprises `HtMelBitReader` and `HtReverseVlcReader` construction, loading,
+single-bit reads, positions and counters, plus the actual shared cleanup
+pair's constructor, `can_claim_byte`, `tick`, `read_mel_bit` and `read_vlc_bit`.
+The three constructor bodies are shared private free implementations because
+the pinned conditional attribute cannot infer associated static context.
+The existing constructors remain thin Rust-tested adapters; no additional
+executable decoder or trusted codec specification is introduced.
+
+The mathematical transitions consume the actual input sequences. Their
+postconditions specify the exact typed result **and every final field** on
+both success and failure, without restricting the `u64` counter range.
+VLC's terminal nibble starts at bit four; reverse stuffing excludes bit seven
+only in the selected later-byte context. VLC charges the bit before eagerly
+loading its predecessor, so the first rejected work charge leaves the old
+byte and advanced cursor. MEL forces the low terminal nibble to ones before
+testing its distinct stuffing rule. Invalid MEL stuffing leaves the entire
+reader unchanged. Exhaustion and counter overflow retain their actual partial
+state effects rather than being modeled as rollback.
+
+The cleanup wrapper contracts compose those actual transitions, byte-claim
+checks and outer accounting with complete nested-reader and MEL-event frames.
+A collision precedes consumption; an inner failure does not record a claim or
+charge outer work; an outer failure retains the consumed bit and recorded
+claim. Mathematical prefix definitions and checked first-error absorption
+lemmas describe fail-fast clients; they do not assert that callers retrying
+after an error leave state unchanged. Independent fixed bytes and literal
+expected bits/full cursors cover terminal stuffing, exhaustion, constructor
+capacities, inner/outer budget order, collisions and full-width overflow.
+
+The subsequent complete directional substages also cover the actual MagSgn
+constructor, little-endian word loop, physical/fill/work counters and
+bounded finish drain. The models include zero-count no-op, oversized-count
+rejection, stuffed `0xff` synthetic fill, bad padding consumption and every
+ordered overflow/budget effect. Finish checks the native `input.len() * 8`
+fuel before testing pending physical data. Its semantic recurrence is not
+an invariant-only witness and does not assume termination succeeds.
+
+Both actual refinement readers have exact positioned and public bit-read
+contracts. Their pair's full state includes both complete readers (including
+an absent reverse reader), the entire claim vector and the entire stuffed-bit
+vector. Reverse stuffed-bit recording precedes claim collision, so rejection
+can retain both a consumed bit and a new stuffed mask. Work is the checked
+sum of physical/fill counters after selected-counter charging. Padding finish
+checks all encoded bytes without changing any state. A lexical mutable-borrow
+scope and extensional vector frames make the existing claim mutation visible
+to the verifier; the two public result projections use equivalent explicit
+matches rather than a standard-library `Result::map` contract. No decoding
+algorithm is duplicated or changed to suit an inventory expression.
+
+The actual VLC peek/advance loops and MEL event machine refine semantic
+recurrences for every native count/cache/counter input. Peek intentionally
+returns a partial `u16` on copied-reader failure or result-width exhaustion,
+without changing the real reader. Its loop distinguishes break-only results
+from normal continuation. MEL cache priority precedes state validation;
+event-counter overflow retains cache changes, and suffix-read failure retains
+only actual nested reader/claim/work mutations. A literal maximum-exponent
+fixture checks the five-bit MSB-first suffix and subsequent cached events.
+
+These are complete **selected directional/multi-bit/event substages**, not
+full-block or F5H completion. Upstream segment partition/accounting, UVLC/
+quad interpretation, cleanup/significance/refinement block denotations,
+placeholder/replacement sequencing and mixed routing remain required.
+The inventory uses nineteen additional exact constructor/mutating-view
+recipes, with fail-closed tests for each return binding, complete view,
+old/final snapshot and function/model pairing. Scope lookup, mutable-parameter
+completeness and expression matching are unchanged. Sixteen contracts have
+actual internal production callers and are indexed. Three standalone public
+APIs (`HtForwardMagSgnReader::read_bits` and both public refinement `read_bit`
+adapters) are proved and their recipes tested against real API tests, but have
+no internal decoder callers. They are not disguised as internal helper calls
+or indexed through a wrong same-named method. The exact-root verifier checks
+all these actual contracts independently of the non-exhaustive source index.
+The next complete interpretation stage connects the actual UVLC prefix,
+suffix, combined value and both U-mode decoders to the complete cleanup
+reader state. Every native mode/length is covered, not just successful
+prefixes: a true suffix bit above bit seven is rejected after consumption,
+whereas zero bits above the result width may continue. Read failures precede
+that width check. Initial mode three retains its special long-prefix route,
+and both modes retain their exact prefix/suffix read order and checked
+arithmetic failure points.
+
+The actual quad-word caller refines lookup into closed views of the unchanged
+production tables, then context-zero MEL suppression, codeword validation,
+advance and final tick. No table words/notices are copied or modified.
+Equivalent explicit boolean/checked-add conversions and one shared checked
+byte-conversion helper replace opaque standard-library callback composition;
+they do not introduce a second executable interpretation algorithm.
+U-pair results retain their native two-element arrays. Extensional content
+and exact array equality use the existing pinned `vstd::array` equality fact,
+not a new codec axiom or trusted escape. Prefix opacity only keeps caller
+composition modular; actual producer bodies explicitly unfold their models.
+
+The authorized nineteen directional and six interpretation registry recipes
+are complete. The six interpretation contracts use the same exact whole-state
+shape, preserving actual extra arguments and native tuple/array/word results;
+their models, true production callers, proofs and fixtures are indexed.
+Neither this source index nor successful local gates close full-block or
+mixed sequencing. The models and a green solver run are not human endorsement
+of T.814.
+
+`HtPassGroup::from_packet_passes` now shares one verified free implementation
+that returns the complete actual four-field group, retaining the static
+public wrapper and all original native bounds/error behavior. This is an
+input-relative grouping theorem, not placeholder/replacement execution.
+
+The next complete public segment-parser relation is blocked on a foreign
+interface: `ResourceLimits::maximum_code_block_bytes` has no functional
+specification or public closed view of its private field. Its exact selected
+value is needed to prove that budget rejection precedes Scup interpretation.
+An arbitrary/existential budget wrapper would not establish that public
+relation, and no trusted shim or partial-success guarantee is substituted.
+The limits owner is asked for the same minimal view/getter pairing already
+provided for `resource_work_limit`. Subsequent magnitude reconstruction also
+needs the F6-owned private magnitude value view and exact operation contracts;
+the current branch exposes only executable, functionally unspecified methods.
+
+For raw bypass, error states are not transactional: work-limit failure preserves
+the consumed bit and incremented work counter; work overflow preserves the consumed bit
 and old counter. Marker-padding overflow preserves the already installed
 synthetic byte/eight-bit count, without consuming the bit or charging work.
 The constructor's private free helper is shared by the unchanged public

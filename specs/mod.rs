@@ -1811,6 +1811,1088 @@ pub open spec fn part1_packet_bit(byte: u8, remaining: u8) -> bool
     ((byte >> remaining) & 1) != 0
 }
 
+pub open spec fn ht_packet_pass_group(passes: u8) -> Result<crate::tier1::HtPassGroup, crate::DecodeError> {
+    if passes == 0 || passes > 164 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let placeholders = ht_placeholder_passes(passes as nat);
+        Ok(crate::tier1::HtPassGroup {
+            cleanup_passes: (placeholders + 1) as u8,
+            refinement_passes: (ht_substantive_passes(passes as nat) - 1) as u8,
+            placeholder_passes: placeholders as u8,
+            skipped_bitplanes: (placeholders / 3) as u8,
+        })
+    }
+}
+
+pub struct HtMagSgnState {
+    pub input: Seq<u8>,
+    pub next_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub current_is_physical: bool,
+    pub previous_was_ff: bool,
+    pub physical_bits_read: u64,
+    pub fill_bits_read: u64,
+    pub work_units: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn ht_magsgn_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtMagSgnState, crate::DecodeError>
+{
+    if input.len() > 65534 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        Ok(HtMagSgnState {
+            input, next_byte: 0, value: 0, next_bit: 0, last_bit: 0, has_byte: false,
+            current_is_physical: false, previous_was_ff: false,
+            physical_bits_read: 0, fill_bits_read: 0, work_units: 0, maximum_work_units,
+        })
+    }
+}
+
+pub open spec fn ht_magsgn_load(state: HtMagSgnState)
+    -> (Result<(), crate::DecodeError>, HtMagSgnState)
+{
+    let physical = state.next_byte < state.input.len();
+    let value = if physical { state.input[state.next_byte as int] } else { 0xffu8 };
+    if physical && !ht_forward_stuffing_valid(state.previous_was_ff, value) {
+        (Err(crate::DecodeError::MalformedInput {
+            offset: state.next_byte as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+        }), state)
+    } else {
+        let changed = HtMagSgnState { value, current_is_physical: physical, ..state };
+        if physical && state.next_byte == usize::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), changed)
+        } else {
+            (Ok(()), HtMagSgnState {
+                next_byte: if physical { (state.next_byte + 1) as usize } else { state.next_byte },
+                next_bit: 0, last_bit: (ht_forward_data_bits(state.previous_was_ff) - 1) as u8,
+                has_byte: true, previous_was_ff: value == 0xff, ..changed
+            })
+        }
+    }
+}
+
+pub open spec fn ht_magsgn_read(state: HtMagSgnState)
+    -> (Result<bool, crate::DecodeError>, HtMagSgnState)
+{
+    let loaded = if !state.has_byte || state.next_bit > state.last_bit {
+        ht_magsgn_load(state)
+    } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if !ready.has_byte || ready.next_bit > ready.last_bit || ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let advanced = HtMagSgnState { next_bit: (ready.next_bit + 1) as u8, ..ready };
+                let counter = if ready.current_is_physical { ready.physical_bits_read } else { ready.fill_bits_read };
+                if counter == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let consumed = HtMagSgnState {
+                        physical_bits_read: if ready.current_is_physical { (counter + 1) as u64 } else { ready.physical_bits_read },
+                        fill_bits_read: if ready.current_is_physical { ready.fill_bits_read } else { (counter + 1) as u64 },
+                        ..advanced
+                    };
+                    if ready.work_units == u64::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), consumed)
+                    } else {
+                        let charged = HtMagSgnState { work_units: (ready.work_units + 1) as u64, ..consumed };
+                        if charged.work_units > ready.maximum_work_units {
+                            (Err(ht_reader_work_error(ready.maximum_work_units, charged.work_units)), charged)
+                        } else {
+                            (Ok(ht_reader_bit(ready.value, ready.next_bit)), charged)
+                        }
+                    }
+                }
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magsgn_word_run(state: HtMagSgnState, remaining: nat, index: nat, value: u64)
+    -> (Result<u64, crate::DecodeError>, HtMagSgnState)
+    recommends index + remaining <= 39,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(value), state) } else {
+        let read = ht_magsgn_read(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => ht_magsgn_word_run(read.1, (remaining - 1) as nat, index + 1,
+                if bit { value | (1u64 << index as u8) } else { value }),
+        }
+    }
+}
+
+pub open spec fn ht_magsgn_read_bits(state: HtMagSgnState, count: u8)
+    -> (Result<u64, crate::DecodeError>, HtMagSgnState)
+{
+    if count > 39 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else { ht_magsgn_word_run(state, count as nat, 0, 0) }
+}
+
+pub open spec fn ht_magsgn_pending(state: HtMagSgnState) -> bool {
+    (state.has_byte && state.current_is_physical && state.next_bit <= state.last_bit)
+        || state.next_byte < state.input.len()
+}
+
+#[verifier::opaque]
+pub open spec fn ht_magsgn_finish_run(state: HtMagSgnState, remaining: nat)
+    -> (Result<(), crate::DecodeError>, HtMagSgnState)
+    decreases remaining,
+{
+    if !ht_magsgn_pending(state) { (Ok(()), state) }
+    else if remaining == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let read = ht_magsgn_read(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(false) => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1),
+            Ok(true) => ht_magsgn_finish_run(read.1, (remaining - 1) as nat),
+        }
+    }
+}
+
+pub open spec fn ht_magsgn_finish(state: HtMagSgnState)
+    -> (Result<(), crate::DecodeError>, HtMagSgnState)
+{
+    if state.input.len() * 8 > usize::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else { ht_magsgn_finish_run(state, state.input.len() * 8) }
+}
+
+pub struct HtForwardRefinementState {
+    pub input: Seq<u8>,
+    pub next_byte: usize,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub previous_was_ff: bool,
+    pub physical_bits_read: u64,
+    pub fill_bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub struct HtReverseRefinementState {
+    pub input: Seq<u8>,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub later_requires_unstuffing: bool,
+    pub physical_bits_read: u64,
+    pub fill_bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub type HtPositionedRead = Result<(bool, Option<crate::tier1::HtBitPosition>), crate::DecodeError>;
+
+pub open spec fn ht_refinement_work(physical: u64, fill: u64, maximum: u64) -> Result<(), crate::DecodeError> {
+    if physical + fill > u64::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else if physical + fill > maximum { Err(ht_reader_work_error(maximum, (physical + fill) as u64)) }
+    else { Ok(()) }
+}
+
+pub open spec fn ht_forward_refinement_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtForwardRefinementState, crate::DecodeError>
+{
+    if input.len() > 2046 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else { Ok(HtForwardRefinementState {
+        input, next_byte: 0, current_byte: 0, value: 0, next_bit: 0, last_bit: 0,
+        has_byte: false, previous_was_ff: false, physical_bits_read: 0, fill_bits_read: 0, maximum_work_units,
+    }) }
+}
+
+pub open spec fn ht_forward_refinement_load(state: HtForwardRefinementState)
+    -> (Result<(), crate::DecodeError>, HtForwardRefinementState)
+{
+    let physical = state.next_byte < state.input.len();
+    let value = if physical { state.input[state.next_byte as int] } else { 0u8 };
+    if physical && state.previous_was_ff && value & 0x80u8 != 0 {
+        (Err(crate::DecodeError::MalformedInput {
+            offset: state.next_byte as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+        }), state)
+    } else {
+        let changed = HtForwardRefinementState {
+            current_byte: if physical { state.next_byte } else { state.input.len() as usize },
+            value, ..state
+        };
+        if physical && state.next_byte == usize::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), changed)
+        } else {
+            (Ok(()), HtForwardRefinementState {
+                next_byte: if physical { (state.next_byte + 1) as usize } else { state.next_byte },
+                next_bit: 0, last_bit: if state.previous_was_ff { 6 } else { 7 },
+                has_byte: true, previous_was_ff: value == 0xff, ..changed
+            })
+        }
+    }
+}
+
+pub open spec fn ht_forward_refinement_positioned(state: HtForwardRefinementState)
+    -> (HtPositionedRead, HtForwardRefinementState)
+{
+    let loaded = if !state.has_byte || state.next_bit > state.last_bit {
+        ht_forward_refinement_load(state)
+    } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if !ready.has_byte || ready.next_bit > ready.last_bit || ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let physical = ready.current_byte < ready.input.len();
+                let position = if physical {
+                    Some(crate::tier1::HtBitPosition { byte: ready.current_byte as u16, bit: ready.next_bit })
+                } else { None };
+                let advanced = HtForwardRefinementState { next_bit: (ready.next_bit + 1) as u8, ..ready };
+                let counter = if physical { ready.physical_bits_read } else { ready.fill_bits_read };
+                if counter == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let consumed = HtForwardRefinementState {
+                        physical_bits_read: if physical { (counter + 1) as u64 } else { ready.physical_bits_read },
+                        fill_bits_read: if physical { ready.fill_bits_read } else { (counter + 1) as u64 }, ..advanced
+                    };
+                    match ht_refinement_work(consumed.physical_bits_read, consumed.fill_bits_read, consumed.maximum_work_units) {
+                        Err(error) => (Err(error), consumed),
+                        Ok(()) => (Ok((ht_reader_bit(ready.value, ready.next_bit), position)), consumed),
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn ht_forward_refinement_read(state: HtForwardRefinementState)
+    -> (Result<bool, crate::DecodeError>, HtForwardRefinementState)
+{
+    let read = ht_forward_refinement_positioned(state);
+    (match read.0 { Err(error) => Err(error), Ok((bit, _)) => Ok(bit) }, read.1)
+}
+
+pub open spec fn ht_reverse_refinement_load(state: HtReverseRefinementState)
+    -> (Result<(), crate::DecodeError>, HtReverseRefinementState)
+{
+    if state.current_byte == 0 {
+        (Ok(()), HtReverseRefinementState { has_byte: false, value: 0, next_bit: 0, last_bit: 7, ..state })
+    } else {
+        let index = (state.current_byte - 1) as usize;
+        let moved = HtReverseRefinementState { current_byte: index, ..state };
+        if index >= state.input.len() {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), moved)
+        } else {
+            let value = state.input[index as int];
+            (Ok(()), HtReverseRefinementState {
+                value, next_bit: 0,
+                last_bit: if state.later_requires_unstuffing && value & 0x7fu8 == 0x7f { 6 } else { 7 },
+                later_requires_unstuffing: value > 0x8f, has_byte: true, ..moved
+            })
+        }
+    }
+}
+
+pub open spec fn ht_reverse_refinement_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtReverseRefinementState, crate::DecodeError>
+{
+    if input.len() > 2046 { Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)) }
+    else {
+        let loaded = ht_reverse_refinement_load(HtReverseRefinementState {
+            current_byte: input.len() as usize, input, value: 0, next_bit: 0, last_bit: 7,
+            has_byte: false, later_requires_unstuffing: true, physical_bits_read: 0, fill_bits_read: 0, maximum_work_units,
+        });
+        match loaded.0 { Err(error) => Err(error), Ok(()) => Ok(loaded.1) }
+    }
+}
+
+pub open spec fn ht_reverse_refinement_positioned(state: HtReverseRefinementState)
+    -> (HtPositionedRead, HtReverseRefinementState)
+{
+    let loaded = if !state.has_byte || state.next_bit > state.last_bit {
+        ht_reverse_refinement_load(state)
+    } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if ready.has_byte && ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let position = if ready.has_byte {
+                    Some(crate::tier1::HtBitPosition { byte: ready.current_byte as u16, bit: ready.next_bit })
+                } else { None };
+                let advanced = HtReverseRefinementState {
+                    next_bit: if ready.has_byte { (ready.next_bit + 1) as u8 } else { ready.next_bit }, ..ready
+                };
+                let counter = if ready.has_byte { ready.physical_bits_read } else { ready.fill_bits_read };
+                if counter == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let consumed = HtReverseRefinementState {
+                        physical_bits_read: if ready.has_byte { (counter + 1) as u64 } else { ready.physical_bits_read },
+                        fill_bits_read: if ready.has_byte { ready.fill_bits_read } else { (counter + 1) as u64 }, ..advanced
+                    };
+                    match ht_refinement_work(consumed.physical_bits_read, consumed.fill_bits_read, consumed.maximum_work_units) {
+                        Err(error) => (Err(error), consumed),
+                        Ok(()) => (Ok((if ready.has_byte { ht_reader_bit(ready.value, ready.next_bit) } else { false }, position)), consumed),
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn ht_reverse_refinement_read(state: HtReverseRefinementState)
+    -> (Result<bool, crate::DecodeError>, HtReverseRefinementState)
+{
+    let read = ht_reverse_refinement_positioned(state);
+    (match read.0 { Err(error) => Err(error), Ok((bit, _)) => Ok(bit) }, read.1)
+}
+
+pub struct HtRefinementReadersState {
+    pub forward: HtForwardRefinementState,
+    pub reverse: Option<HtReverseRefinementState>,
+    pub claimed: Seq<u8>,
+    pub stuffed: Seq<u8>,
+}
+
+pub open spec fn ht_refinement_readers_initial(
+    forward_input: Seq<u8>, reverse_input: Seq<u8>, bytes: usize, has_reverse: bool, maximum_work_units: u64,
+) -> Result<HtRefinementReadersState, crate::DecodeError> {
+    match ht_forward_refinement_initial(forward_input, maximum_work_units) {
+        Err(error) => Err(error),
+        Ok(forward) => {
+            let reverse = if has_reverse {
+                match ht_reverse_refinement_initial(reverse_input, maximum_work_units) {
+                    Err(error) => Err(error), Ok(reverse) => Ok(Some(reverse)),
+                }
+            } else { Ok(None) };
+            match reverse {
+                Err(error) => Err(error),
+                Ok(reverse) => Ok(HtRefinementReadersState {
+                    forward, reverse, claimed: Seq::new(bytes as nat, |i: int| 0u8), stuffed: Seq::new(bytes as nat, |i: int| 0u8),
+                }),
+            }
+        },
+    }
+}
+
+pub open spec fn ht_refinement_claim(state: HtRefinementReadersState, position: Option<crate::tier1::HtBitPosition>)
+    -> (Result<(), crate::DecodeError>, HtRefinementReadersState)
+{
+    match position {
+        None => (Ok(()), state),
+        Some(position) => if position.bit >= 8 || position.byte >= state.claimed.len() {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else {
+            let mask = 1u8 << position.bit;
+            let value = state.claimed[position.byte as int];
+            if value & mask != 0 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+            } else {
+                (Ok(()), HtRefinementReadersState { claimed: state.claimed.update(position.byte as int, value | mask), ..state })
+            }
+        },
+    }
+}
+
+pub open spec fn ht_refinement_read_forward(state: HtRefinementReadersState)
+    -> (Result<bool, crate::DecodeError>, HtRefinementReadersState)
+{
+    let read = ht_forward_refinement_positioned(state.forward);
+    let consumed = HtRefinementReadersState { forward: read.1, ..state };
+    match read.0 {
+        Err(error) => (Err(error), consumed),
+        Ok((bit, position)) => {
+            let claim = ht_refinement_claim(consumed, position);
+            (match claim.0 { Err(error) => Err(error), Ok(()) => Ok(bit) }, claim.1)
+        },
+    }
+}
+
+pub open spec fn ht_refinement_read_reverse(state: HtRefinementReadersState)
+    -> (Result<bool, crate::DecodeError>, HtRefinementReadersState)
+{
+    match state.reverse {
+        None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        Some(reverse) => {
+            let read = ht_reverse_refinement_positioned(reverse);
+            let consumed = HtRefinementReadersState { reverse: Some(read.1), ..state };
+            match read.0 {
+                Err(error) => (Err(error), consumed),
+                Ok((bit, position)) => {
+                    if read.1.has_byte && read.1.last_bit == 6 && read.1.current_byte >= consumed.stuffed.len() {
+                        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), consumed)
+                    } else {
+                        let marked = if read.1.has_byte && read.1.last_bit == 6 {
+                            HtRefinementReadersState { stuffed: consumed.stuffed.update(
+                                read.1.current_byte as int, consumed.stuffed[read.1.current_byte as int] | 0x80u8), ..consumed }
+                        } else { consumed };
+                        let claim = ht_refinement_claim(marked, position);
+                        (match claim.0 { Err(error) => Err(error), Ok(()) => Ok(bit) }, claim.1)
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_refinement_finish(state: HtRefinementReadersState, encoded: Seq<u8>) -> Result<(), crate::DecodeError> {
+    if state.claimed.len() != encoded.len() || state.stuffed.len() != encoded.len()
+        || !(forall |i: int| 0 <= i < encoded.len() ==> encoded[i] & !(state.claimed[i] | state.stuffed[i]) == 0) {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else { Ok(()) }
+}
+
+pub struct HtReverseVlcState {
+    pub input: Seq<u8>,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: u8,
+    pub last_bit: u8,
+    pub has_byte: bool,
+    pub later_byte_requires_unstuffing: bool,
+    pub bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub struct HtMelState {
+    pub input: Seq<u8>,
+    pub next_byte: usize,
+    pub current_byte: usize,
+    pub value: u8,
+    pub next_bit: i8,
+    pub previous_was_ff: bool,
+    pub bits_read: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn ht_reader_error(kind: crate::MalformedKind) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: 0, kind }
+}
+
+pub open spec fn ht_reader_work_error(limit: u64, actual: u64) -> crate::DecodeError {
+    crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits, limit, actual }
+}
+
+pub open spec fn ht_reader_bit(value: u8, index: u8) -> bool
+    recommends index < 8,
+{
+    (value >> index) & 1 != 0
+}
+
+pub open spec fn ht_reverse_vlc_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtReverseVlcState, crate::DecodeError>
+{
+    if input.len() < 2 || input.len() > 4079 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let index = (input.len() - 2) as usize;
+        let value = input[index as int];
+        Ok(HtReverseVlcState {
+            input, current_byte: index, value, next_bit: 4,
+            last_bit: if (value >> 4) & 7 == 7 { 6 } else { 7 },
+            has_byte: true, later_byte_requires_unstuffing: value | 0x0fu8 > 0x8f,
+            bits_read: 0, maximum_work_units,
+        })
+    }
+}
+
+pub open spec fn ht_reverse_vlc_load(state: HtReverseVlcState)
+    -> (Result<(), crate::DecodeError>, HtReverseVlcState)
+{
+    if state.current_byte == 0 {
+        (Ok(()), HtReverseVlcState { has_byte: false, ..state })
+    } else {
+        let index = (state.current_byte - 1) as usize;
+        let moved = HtReverseVlcState { current_byte: index, ..state };
+        if index >= state.input.len() {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), moved)
+        } else {
+            let value = state.input[index as int];
+            (Ok(()), HtReverseVlcState {
+                value, next_bit: 0,
+                last_bit: (ht_reverse_data_bits(state.later_byte_requires_unstuffing, value) - 1) as u8,
+                later_byte_requires_unstuffing: value > 0x8f, ..moved
+            })
+        }
+    }
+}
+
+pub open spec fn ht_reverse_vlc_read(state: HtReverseVlcState)
+    -> (Result<bool, crate::DecodeError>, HtReverseVlcState)
+{
+    if !state.has_byte || state.next_bit >= 8 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        let advanced = HtReverseVlcState { next_bit: (state.next_bit + 1) as u8, ..state };
+        if state.bits_read == u64::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+        } else {
+            let charged = HtReverseVlcState { bits_read: (state.bits_read + 1) as u64, ..advanced };
+            if charged.bits_read > state.maximum_work_units {
+                (Err(ht_reader_work_error(state.maximum_work_units, charged.bits_read)), charged)
+            } else {
+                let loaded = if charged.next_bit > state.last_bit {
+                    ht_reverse_vlc_load(charged)
+                } else { (Ok(()), charged) };
+                match loaded.0 {
+                    Err(error) => (Err(error), loaded.1),
+                    Ok(()) => (Ok(ht_reader_bit(state.value, state.next_bit)), loaded.1),
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn ht_reverse_vlc_position(state: HtReverseVlcState) -> Option<(u16, u8)> {
+    if !state.has_byte || state.current_byte > u16::MAX { None }
+    else { Some((state.current_byte as u16, state.next_bit)) }
+}
+
+pub open spec fn ht_mel_load(state: HtMelState)
+    -> (Result<(), crate::DecodeError>, HtMelState)
+{
+    if state.next_byte >= state.input.len() {
+        (Ok(()), HtMelState { next_bit: -1i8, ..state })
+    } else {
+        let index = state.next_byte;
+        let value = if index + 1 == state.input.len() {
+            state.input[index as int] | 0x0fu8
+        } else { state.input[index as int] };
+        if !ht_mel_stuffing_valid(state.previous_was_ff, value as nat) {
+            (Err(crate::DecodeError::MalformedInput {
+                offset: index as u64, kind: crate::MalformedKind::InvalidBitStuffing,
+            }), state)
+        } else {
+            (Ok(()), HtMelState {
+                next_byte: (index + 1) as usize, current_byte: index, value,
+                next_bit: if state.previous_was_ff { 6 } else { 7 },
+                previous_was_ff: value == 0xff, ..state
+            })
+        }
+    }
+}
+
+pub open spec fn ht_mel_initial(input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtMelState, crate::DecodeError>
+{
+    if input.len() == 0 || input.len() > 4078 {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        let loaded = ht_mel_load(HtMelState {
+            input, next_byte: 0, current_byte: 0, value: 0, next_bit: -1i8,
+            previous_was_ff: false, bits_read: 0, maximum_work_units,
+        });
+        match loaded.0 { Err(error) => Err(error), Ok(()) => Ok(loaded.1) }
+    }
+}
+
+pub open spec fn ht_mel_read(state: HtMelState)
+    -> (Result<bool, crate::DecodeError>, HtMelState)
+{
+    let loaded = if state.next_bit < 0 { ht_mel_load(state) } else { (Ok(()), state) };
+    match loaded.0 {
+        Err(error) => (Err(error), loaded.1),
+        Ok(()) => {
+            let ready = loaded.1;
+            if ready.next_bit < 0 || ready.next_bit >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let advanced = HtMelState { next_bit: (ready.next_bit - 1) as i8, ..ready };
+                if ready.bits_read == u64::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), advanced)
+                } else {
+                    let charged = HtMelState { bits_read: (ready.bits_read + 1) as u64, ..advanced };
+                    if charged.bits_read > ready.maximum_work_units {
+                        (Err(ht_reader_work_error(ready.maximum_work_units, charged.bits_read)), charged)
+                    } else {
+                        (Ok(ht_reader_bit(ready.value, ready.next_bit as u8)), charged)
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn ht_mel_position(state: HtMelState) -> Option<(u16, u8)> {
+    if state.next_bit < 0 || state.current_byte > u16::MAX { None }
+    else { Some((state.current_byte as u16, state.next_bit as u8)) }
+}
+
+pub open spec fn ht_reverse_vlc_prefix(state: HtReverseVlcState, count: nat)
+    -> (Result<Seq<bool>, crate::DecodeError>, HtReverseVlcState)
+    decreases count,
+{
+    if count == 0 { (Ok(Seq::empty()), state) }
+    else {
+        let prefix = ht_reverse_vlc_prefix(state, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = ht_reverse_vlc_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn ht_mel_prefix(state: HtMelState, count: nat)
+    -> (Result<Seq<bool>, crate::DecodeError>, HtMelState)
+    decreases count,
+{
+    if count == 0 { (Ok(Seq::empty()), state) }
+    else {
+        let prefix = ht_mel_prefix(state, (count - 1) as nat);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(bits) => {
+                let step = ht_mel_read(prefix.1);
+                match step.0 {
+                    Err(error) => (Err(error), step.1),
+                    Ok(bit) => (Ok(bits.push(bit)), step.1),
+                }
+            },
+        }
+    }
+}
+
+pub struct HtCleanupReaderState {
+    pub mel: HtMelState,
+    pub vlc: HtReverseVlcState,
+    pub mel_last_byte: Option<u16>,
+    pub vlc_last_byte: Option<u16>,
+    pub terminal_byte: u16,
+    pub mel_state: u8,
+    pub mel_zero_events: u8,
+    pub mel_terminating_one: bool,
+    pub mel_events: u32,
+    pub work_units: u64,
+    pub maximum_work_units: u64,
+}
+
+pub open spec fn ht_cleanup_readers_initial(mel_input: Seq<u8>, vlc_input: Seq<u8>, maximum_work_units: u64)
+    -> Result<HtCleanupReaderState, crate::DecodeError>
+{
+    match ht_mel_initial(mel_input, maximum_work_units) {
+        Err(error) => Err(error),
+        Ok(mel) => match ht_reverse_vlc_initial(vlc_input, maximum_work_units) {
+            Err(error) => Err(error),
+            Ok(vlc) => Ok(HtCleanupReaderState {
+                mel, vlc, mel_last_byte: None, vlc_last_byte: None,
+                terminal_byte: (vlc_input.len() - 2) as u16,
+                mel_state: 0, mel_zero_events: 0, mel_terminating_one: false,
+                mel_events: 0, work_units: 0, maximum_work_units,
+            }),
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_reader_tick(state: HtCleanupReaderState)
+    -> (Result<(), crate::DecodeError>, HtCleanupReaderState)
+{
+    if state.work_units == u64::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        let changed = HtCleanupReaderState { work_units: (state.work_units + 1) as u64, ..state };
+        if changed.work_units > state.maximum_work_units {
+            (Err(ht_reader_work_error(state.maximum_work_units, changed.work_units)), changed)
+        } else { (Ok(()), changed) }
+    }
+}
+
+pub open spec fn ht_cleanup_reader_can_claim(state: HtCleanupReaderState, forward: bool, byte: u16) -> bool {
+    if byte >= state.vlc.input.len() { false } else {
+        let value = state.vlc.input[byte as int];
+        let opposite = if forward { state.vlc_last_byte } else { state.mel_last_byte };
+        match opposite {
+            None => byte <= state.terminal_byte,
+            Some(other) => if forward {
+                ht_cleanup_byte_claims_valid(byte as nat, other as nat, state.terminal_byte as nat, value)
+            } else {
+                ht_cleanup_byte_claims_valid(other as nat, byte as nat, state.terminal_byte as nat, value)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_reader_read_mel(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    let loaded = if ht_mel_position(state.mel).is_none() { ht_mel_load(state.mel) }
+        else { (Ok(()), state.mel) };
+    let ready = HtCleanupReaderState { mel: loaded.1, ..state };
+    match loaded.0 {
+        Err(error) => (Err(error), ready),
+        Ok(()) => match ht_mel_position(ready.mel) {
+            None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready),
+            Some(position) => if !ht_cleanup_reader_can_claim(ready, true, position.0) {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), ready)
+            } else {
+                let read = ht_mel_read(ready.mel);
+                let consumed = HtCleanupReaderState { mel: read.1, ..ready };
+                match read.0 {
+                    Err(error) => (Err(error), consumed),
+                    Ok(bit) => {
+                        let claimed = HtCleanupReaderState { mel_last_byte: Some(position.0), ..consumed };
+                        let charged = ht_cleanup_reader_tick(claimed);
+                        match charged.0 { Err(error) => (Err(error), charged.1), Ok(()) => (Ok(bit), charged.1) }
+                    },
+                }
+            },
+        },
+    }
+}
+
+pub open spec fn ht_cleanup_reader_read_vlc(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    match ht_reverse_vlc_position(state.vlc) {
+        None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        Some(position) => if !ht_cleanup_reader_can_claim(state, false, position.0) {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else {
+            let read = ht_reverse_vlc_read(state.vlc);
+            let consumed = HtCleanupReaderState { vlc: read.1, ..state };
+            match read.0 {
+                Err(error) => (Err(error), consumed),
+                Ok(bit) => {
+                    let claimed = HtCleanupReaderState { vlc_last_byte: Some(position.0), ..consumed };
+                    let charged = ht_cleanup_reader_tick(claimed);
+                    match charged.0 { Err(error) => (Err(error), charged.1), Ok(()) => (Ok(bit), charged.1) }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_cleanup_peek_run(
+    owner: HtCleanupReaderState, copy: HtReverseVlcState, remaining: nat, index: nat, value: u16,
+) -> u16
+    recommends index + remaining <= 255,
+    decreases remaining,
+{
+    if remaining == 0 { value } else {
+        let available = match ht_reverse_vlc_position(copy) {
+            None => false, Some(position) => ht_cleanup_reader_can_claim(owner, false, position.0),
+        };
+        if !available { value } else {
+            let read = ht_reverse_vlc_read(copy);
+            match read.0 {
+                Err(_) => value,
+                Ok(bit) => if bit && index >= 16 { value } else {
+                    ht_cleanup_peek_run(owner, read.1, (remaining - 1) as nat, index + 1,
+                        if bit { value | (1u16 << index as u8) } else { value })
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_peek_vlc(state: HtCleanupReaderState, count: u8) -> u16 {
+    ht_cleanup_peek_run(state, state.vlc, count as nat, 0, 0)
+}
+
+pub open spec fn ht_cleanup_readers_finish(state: HtCleanupReaderState) -> Result<(), crate::DecodeError> {
+    match (state.mel_last_byte, state.vlc_last_byte) {
+        (Some(mel), Some(vlc)) => {
+            if mel >= state.vlc.input.len()
+                || !ht_cleanup_byte_claims_valid(mel as nat, vlc as nat, state.terminal_byte as nat, state.vlc.input[mel as int]) {
+                Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+            } else { Ok(()) }
+        },
+        _ => Ok(()),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_cleanup_advance_vlc(state: HtCleanupReaderState, count: nat)
+    -> (Result<(), crate::DecodeError>, HtCleanupReaderState)
+    decreases count,
+{
+    if count == 0 { (Ok(()), state) } else {
+        let read = ht_cleanup_reader_read_vlc(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(_) => ht_cleanup_advance_vlc(read.1, (count - 1) as nat),
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_mel_emit(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    let changed = if state.mel_zero_events > 0 {
+        HtCleanupReaderState { mel_zero_events: (state.mel_zero_events - 1) as u8, ..state }
+    } else { HtCleanupReaderState { mel_terminating_one: false, ..state } };
+    if state.mel_events == u32::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), changed)
+    } else {
+        (Ok(state.mel_zero_events == 0), HtCleanupReaderState { mel_events: (state.mel_events + 1) as u32, ..changed })
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_cleanup_mel_suffix(state: HtCleanupReaderState, remaining: nat, suffix: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+    recommends remaining <= 5,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(suffix), state) } else {
+        let shifted = suffix << 1u8;
+        let read = ht_cleanup_reader_read_mel(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => ht_cleanup_mel_suffix(read.1, (remaining - 1) as nat,
+                if bit { shifted | 1u8 } else { shifted }),
+        }
+    }
+}
+
+pub open spec fn ht_cleanup_mel_complete_suffix(result: (Result<u8, crate::DecodeError>, HtCleanupReaderState))
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    match result.0 {
+        Err(error) => (Err(error), result.1),
+        Ok(suffix) => ht_cleanup_mel_emit(HtCleanupReaderState {
+            mel_zero_events: suffix, mel_terminating_one: true,
+            mel_state: ht_mel_next_state(result.1.mel_state as nat, false) as u8, ..result.1
+        }),
+    }
+}
+
+pub open spec fn ht_cleanup_mel_event(state: HtCleanupReaderState)
+    -> (Result<bool, crate::DecodeError>, HtCleanupReaderState)
+{
+    if state.mel_zero_events > 0 || state.mel_terminating_one { ht_cleanup_mel_emit(state) }
+    else if state.mel_state > 12 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let read = ht_cleanup_reader_read_mel(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(true) => ht_cleanup_mel_emit(HtCleanupReaderState {
+                mel_zero_events: 1u8 << ht_mel_exponent(state.mel_state as nat) as u8,
+                mel_state: ht_mel_next_state(state.mel_state as nat, true) as u8, ..read.1
+            }),
+            Ok(false) => ht_cleanup_mel_complete_suffix(
+                ht_cleanup_mel_suffix(read.1, ht_mel_exponent(state.mel_state as nat), 0)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_prefix(state: HtCleanupReaderState)
+    -> (Result<(u8, u8, u8), crate::DecodeError>, HtCleanupReaderState)
+{
+    let first = ht_cleanup_reader_read_vlc(state);
+    match first.0 {
+        Err(error) => (Err(error), first.1),
+        Ok(true) => (Ok((1, 0, 1)), first.1),
+        Ok(false) => {
+            let second = ht_cleanup_reader_read_vlc(first.1);
+            match second.0 {
+                Err(error) => (Err(error), second.1),
+                Ok(true) => (Ok((2, 0, 2)), second.1),
+                Ok(false) => {
+                    let third = ht_cleanup_reader_read_vlc(second.1);
+                    match third.0 {
+                        Err(error) => (Err(error), third.1),
+                        Ok(true) => (Ok((3, 1, 3)), third.1),
+                        Ok(false) => (Ok((5, 5, 3)), third.1),
+                    }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_suffix_run(state: HtCleanupReaderState, remaining: nat, index: nat, value: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+    recommends index + remaining <= 255,
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(value), state) } else {
+        let read = ht_cleanup_reader_read_vlc(state);
+        match read.0 {
+            Err(error) => (Err(error), read.1),
+            Ok(bit) => if bit && index >= 8 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), read.1)
+            } else {
+                ht_uvlc_suffix_run(read.1, (remaining - 1) as nat, index + 1,
+                    if bit { value | (1u8 << index as u8) } else { value })
+            },
+        }
+    }
+}
+
+pub open spec fn ht_uvlc_suffix(state: HtCleanupReaderState, length: u8)
+    -> (Result<u8, crate::DecodeError>, HtCleanupReaderState)
+{
+    ht_uvlc_suffix_run(state, length as nat, 0, 0)
+}
+
+#[verifier::opaque]
+pub open spec fn ht_uvlc_prefix_value(state: HtCleanupReaderState)
+    -> (Result<(u8, u8), crate::DecodeError>, HtCleanupReaderState)
+{
+    let prefix = ht_uvlc_prefix(state);
+    match prefix.0 {
+        Err(error) => (Err(error), prefix.1),
+        Ok((base, length, prefix_length)) => {
+            let suffix = ht_uvlc_suffix(prefix.1, length);
+            match suffix.0 {
+                Err(error) => (Err(error), suffix.1),
+                Ok(value) => if base + value > u8::MAX {
+                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), suffix.1)
+                } else { (Ok(((base + value) as u8, prefix_length)), suffix.1) },
+            }
+        },
+    }
+}
+
+pub type HtUvlcPairResult = (Result<[u8; 2], crate::DecodeError>, HtCleanupReaderState);
+
+pub open spec fn ht_uvlc_byte(base: u8, suffix: u8, bias: u8) -> Result<u8, crate::DecodeError> {
+    let value = base + suffix + bias;
+    if value > u8::MAX { Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)) }
+    else { Ok(value as u8) }
+}
+
+pub open spec fn ht_uvlc_single(state: HtCleanupReaderState, first: bool) -> HtUvlcPairResult {
+    let prefix = ht_uvlc_prefix_value(state);
+    match prefix.0 {
+        Err(error) => (Err(error), prefix.1),
+        Ok((value, _)) => if value == u8::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), prefix.1)
+        } else {
+            (Ok(if first { [(value + 1) as u8, 1u8] } else { [1u8, (value + 1) as u8] }), prefix.1)
+        },
+    }
+}
+
+pub open spec fn ht_uvlc_pair_after_first(
+    state: HtCleanupReaderState, first: (u8, u8, u8), bias: u8,
+) -> HtUvlcPairResult {
+    let second = ht_uvlc_prefix(state);
+    match second.0 {
+        Err(error) => (Err(error), second.1),
+        Ok(second_prefix) => {
+            let first_suffix = ht_uvlc_suffix(second.1, first.1);
+            match first_suffix.0 {
+                Err(error) => (Err(error), first_suffix.1),
+                Ok(value) => {
+                    let first_value = first.0 + value + bias;
+                    if first_value > u8::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), first_suffix.1)
+                    } else {
+                        let second_suffix = ht_uvlc_suffix(first_suffix.1, second_prefix.1);
+                        match second_suffix.0 {
+                            Err(error) => (Err(error), second_suffix.1),
+                            Ok(value) => {
+                                let second_value = second_prefix.0 + value + bias;
+                                if second_value > u8::MAX {
+                                    (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), second_suffix.1)
+                                } else { (Ok([first_value as u8, second_value as u8]), second_suffix.1) }
+                            },
+                        }
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn ht_uvlc_initial(state: HtCleanupReaderState, mode: u8) -> HtUvlcPairResult {
+    if mode == 0 { (Ok([1u8, 1u8]), state) }
+    else if mode == 1 || mode == 2 { ht_uvlc_single(state, mode == 1) }
+    else if mode == 3 || mode == 4 {
+        let prefix = ht_uvlc_prefix(state);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(first) => if mode == 4 || first.2 <= 2 {
+                ht_uvlc_pair_after_first(prefix.1, first, if mode == 4 { 3 } else { 1 })
+            } else {
+                let bit = ht_cleanup_reader_read_vlc(prefix.1);
+                match bit.0 {
+                    Err(error) => (Err(error), bit.1),
+                    Ok(bit_value) => {
+                        let suffix = ht_uvlc_suffix(bit.1, first.1);
+                        match suffix.0 {
+                            Err(error) => (Err(error), suffix.1),
+                            Ok(value) => if first.0 + value + 1 > u8::MAX {
+                                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), suffix.1)
+                            } else {
+                                (Ok([(first.0 + value + 1) as u8, if bit_value { 3u8 } else { 2u8 }]), suffix.1)
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    } else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+}
+
+pub open spec fn ht_uvlc_non_initial(state: HtCleanupReaderState, mode: u8) -> HtUvlcPairResult {
+    if mode == 0 { (Ok([1u8, 1u8]), state) }
+    else if mode == 1 || mode == 2 { ht_uvlc_single(state, mode == 1) }
+    else if mode == 3 {
+        let prefix = ht_uvlc_prefix(state);
+        match prefix.0 {
+            Err(error) => (Err(error), prefix.1),
+            Ok(first) => ht_uvlc_pair_after_first(prefix.1, first, 1),
+        }
+    } else { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+}
+
+pub open spec fn ht_cleanup_quad_word(state: HtCleanupReaderState, table: Seq<u16>, context: u8)
+    -> (Result<u16, crate::DecodeError>, HtCleanupReaderState)
+{
+    if context > 7 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let index = context as nat * 128 + (ht_cleanup_peek_vlc(state, 7) & 0x7fu16) as nat;
+        if index >= table.len() { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+        else {
+            let event = if context == 0 { ht_cleanup_mel_event(state) } else { (Ok(true), state) };
+            match event.0 {
+                Err(error) => (Err(error), event.1),
+                Ok(keep) => {
+                    let word = if keep { table[index as int] } else { 0u16 };
+                    let length = (word & 7u16) as u8;
+                    if !ht_vlc_word_valid(word as nat, length as nat) {
+                        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), event.1)
+                    } else {
+                        let advanced = ht_cleanup_advance_vlc(event.1, length as nat);
+                        match advanced.0 {
+                            Err(error) => (Err(error), advanced.1),
+                            Ok(()) => {
+                                let charged = ht_cleanup_reader_tick(advanced.1);
+                                (match charged.0 { Err(error) => Err(error), Ok(()) => Ok(word) }, charged.1)
+                            },
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
 pub struct Part1RawReaderState {
     pub input: Seq<u8>,
     pub next_index: usize,
