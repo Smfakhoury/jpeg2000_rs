@@ -16,6 +16,23 @@ pub type Part2MctCollection = (
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
 
+pub open spec fn part2_mct_store_component_sample(
+    before: Part2MctComponent, index: usize, value: i64,
+) -> (Result<(), crate::DecodeError>, Part2MctComponent) {
+    if index >= before.3.len() { (Err(part1_transform_error(false)), before) }
+    else { (Ok(()), (before.0, before.1, before.2, before.3.update(index as int, value))) }
+}
+
+pub open spec fn part2_mct_store_sample(
+    before: Seq<Part2MctComponent>, component: usize, index: usize, value: i64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>) {
+    if component >= before.len() { (Err(part1_transform_error(false)), before) }
+    else {
+        let stored = part2_mct_store_component_sample(before[component as int], index, value);
+        (stored.0, before.update(component as int, stored.1))
+    }
+}
+
 pub open spec fn part2_mct_component_tags(components: Seq<Part2MctComponent>) -> Seq<u16> {
     Seq::new(components.len(), |index: int| components[index].0)
 }

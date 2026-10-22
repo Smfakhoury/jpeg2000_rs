@@ -39,6 +39,41 @@ verus! {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_component_mut_view(final(component))) == crate::specs::part2_mct_store_component_sample(
+        transform_component_mut_view(old(component)), index, value,
+    ),
+))]
+fn store_transform_component_sample(
+    component: &mut TransformComponentMut<'_>,
+    index: usize,
+    value: i64,
+) -> Result<(), DecodeError> {
+    let sample = component
+        .samples
+        .get_mut(index)
+        .ok_or_else(invalid_transform)?;
+    *sample = value;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_store_sample(
+        transform_components_view(old(components)), destination, index, value,
+    ),
+))]
+fn store_transform_sample(
+    components: &mut [TransformComponentMut<'_>],
+    destination: usize,
+    index: usize,
+    value: i64,
+) -> Result<(), DecodeError> {
+    let component = components
+        .get_mut(destination)
+        .ok_or_else(invalid_transform)?;
+    store_transform_component_sample(component, index, value)
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct TileComponent<'a> {
@@ -2475,10 +2510,8 @@ fn apply_mct_decorrelation(
         )]
         while row < rows {
             let destination = *destination_indexes.get(row).ok_or_else(invalid_transform)?;
-            *components
-                .get_mut(destination)
-                .and_then(|component| component.samples.get_mut(sample_index))
-                .ok_or_else(invalid_transform)? = *output.get(row).ok_or_else(invalid_transform)?;
+            let value = *output.get(row).ok_or_else(invalid_transform)?;
+            store_transform_sample(components, destination, sample_index, value)?;
             row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         sample_index = sample_index
@@ -4415,6 +4448,126 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_array_store_frames_every_unselected_component_and_error() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for destination in [0, 1, 2, 3, usize::MAX] {
+            for index in [0, 1, 2, usize::MAX] {
+                for value in [i64::MIN, 0, i64::MAX] {
+                    let mut samples = [vec![], vec![7], vec![-3, 9]];
+                    let mut expected = samples.clone();
+                    let expected_result = match expected
+                        .get_mut(destination)
+                        .and_then(|samples| samples.get_mut(index))
+                    {
+                        Some(sample) => {
+                            *sample = value;
+                            Ok(())
+                        }
+                        None => Err(invalid),
+                    };
+                    let mut fractions = [u8::MAX, 32, 0];
+                    let before_fractions = fractions;
+                    let mut components: Vec<_> = samples
+                        .iter_mut()
+                        .zip(fractions.iter_mut())
+                        .zip([0, 17, u16::MAX])
+                        .map(
+                            |((samples, fraction_bits), component)| TransformComponentMut {
+                                component,
+                                x: u32::MAX,
+                                y: 1,
+                                width: 0,
+                                height: u32::MAX,
+                                x_subsampling: 0,
+                                y_subsampling: u8::MAX,
+                                fraction_bits,
+                                samples,
+                            },
+                        )
+                        .collect();
+                    assert_eq!(
+                        store_transform_sample(&mut components, destination, index, value),
+                        expected_result
+                    );
+                    for component in &components {
+                        assert_eq!(
+                            (
+                                component.x,
+                                component.y,
+                                component.width,
+                                component.height,
+                                component.x_subsampling,
+                                component.y_subsampling
+                            ),
+                            (u32::MAX, 1, 0, u32::MAX, 0, u8::MAX)
+                        );
+                    }
+                    drop(components);
+                    assert_eq!(samples, expected);
+                    assert_eq!(fractions, before_fractions);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_sample_store_preserves_all_metadata_and_failure_samples() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for length in 0..=4 {
+            for index in [0, 1, 3, 4, 5, usize::MAX] {
+                for value in [i64::MIN, -1, 0, i64::MAX] {
+                    let mut samples: Vec<_> =
+                        (0..length).map(|sample| i64::from(sample) - 2).collect();
+                    let mut expected = samples.clone();
+                    let result = match expected.get_mut(index) {
+                        Some(sample) => {
+                            *sample = value;
+                            Ok(())
+                        }
+                        None => Err(invalid),
+                    };
+                    let mut fraction_bits = u8::MAX;
+                    let mut component = TransformComponentMut {
+                        component: u16::MAX,
+                        x: u32::MAX,
+                        y: 1,
+                        width: 0,
+                        height: u32::MAX,
+                        x_subsampling: 0,
+                        y_subsampling: u8::MAX,
+                        fraction_bits: &mut fraction_bits,
+                        samples: &mut samples,
+                    };
+                    assert_eq!(
+                        store_transform_component_sample(&mut component, index, value),
+                        result
+                    );
+                    assert_eq!(
+                        (
+                            component.component,
+                            component.x,
+                            component.y,
+                            component.width,
+                            component.height,
+                            component.x_subsampling,
+                            component.y_subsampling,
+                            *component.fraction_bits
+                        ),
+                        (u16::MAX, u32::MAX, 1, 0, u32::MAX, 0, u8::MAX, u8::MAX)
+                    );
+                    assert_eq!(component.samples, expected);
+                }
+            }
+        }
+    }
 
     #[test]
     fn native_mct_component_lookup_keeps_first_duplicate_and_all_raw_mutable_values() {

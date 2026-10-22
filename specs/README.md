@@ -25,6 +25,15 @@ lookup proves complete duplicate/missing/error behavior over this full view;
 malformed geometry and precision are not silently admitted as validity facts
 for later collections.
 
+The actual decorrelation sample store now refines the full deep component
+update: exactly one in-range sample changes and every metadata/precision field
+is retained; an invalid index retains all values and returns the real typed
+error. Its caller preserves original output-read-before-destination-store
+evaluation order. This is a real shared mutation boundary for pending mutable
+collection proofs, not an assumed write or a normalized component premise.
+The actual array store additionally frames every unselected component and
+all metadata/precision/sample values on a destination or sample-index error.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for
