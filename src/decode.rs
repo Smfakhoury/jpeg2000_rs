@@ -4757,28 +4757,137 @@ fn apply_prepared_component_transform(
     Ok(())
 }
 
-fn validate_part2_execution(layout: &CodestreamLayout<'_>) -> Result<(), DecodeError> {
-    layout.info.part2_extensions.validate_executable()?;
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) closed spec fn execution_header_view(styles: ComponentCodingStyles, extensions: &codestream::Part2Extensions)
+        -> crate::specs::Part2ExecutionHeader
+    {
+        (styles, codestream::part2_execution_registry(extensions), codestream::part2_kernel_registry(extensions),
+            codestream::part2_component_depths(extensions))
+    }
+
+    pub(crate) closed spec fn execution_tile_headers(parts: Seq<TilePartPayload<'_>>) -> Seq<crate::specs::Part2ExecutionHeader> {
+        Seq::new(parts.len(), |index: int|
+            execution_header_view(parts[index].component_coding_styles, &parts[index].part2_extensions))
+    }
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_validate_execution_component(
+            execution_header_view(*styles, extensions), component),
+    )
+)]
+fn validate_part2_component(
+    styles: &ComponentCodingStyles,
+    extensions: &codestream::Part2Extensions,
+    component: u16,
+) -> Result<(), DecodeError> {
+    validate_part2_coding_style(styles.style(component)?, extensions)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_execution_components_prefix(
+            execution_header_view(*styles, extensions), count as nat),
+    )
+)]
+fn validate_part2_components(
+    styles: &ComponentCodingStyles,
+    extensions: &codestream::Part2Extensions,
+    count: u16,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost header = execution_header_view(*styles, extensions); }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_execution_components_empty(header); }
     let mut component = 0_u16;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant component <= layout.info.image_size.components,
-            decreases layout.info.image_size.components - component,
+            invariant component <= count, header == execution_header_view(*styles, extensions),
+                crate::specs::part2_execution_components_prefix(header, component as nat) == Ok(()),
+            decreases count - component,
         )
     )]
-    while component < layout.info.image_size.components {
-        validate_part2_coding_style(
-            layout.info.component_coding_styles.style(component)?,
-            &layout.info.part2_extensions,
-        )?;
+    while component < count {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_execution_components_step(header, component as nat); }
+        let result = validate_part2_component(styles, extensions, component);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_execution_components_prefix(header, component as nat + 1) == Err(error));
+                crate::proofs::production_impl::production_execution_components_error(header, component as nat + 1, count as nat);
+            } else { crate::proofs::production_impl::production_mct_unit_result(result); }
+        }
+        result?;
         component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_validate_execution_tile(
+            execution_header_view(part.component_coding_styles, &part.part2_extensions),
+            codestream::part2_component_depths(main), count),
+    )
+)]
+fn validate_part2_tile_execution(
+    part: &TilePartPayload<'_>,
+    main: &codestream::Part2Extensions,
+    count: u16,
+) -> Result<(), DecodeError> {
+    part.part2_extensions.validate_executable()?;
+    validate_part2_components(&part.component_coding_styles, &part.part2_extensions, count)?;
+    if !part.part2_extensions.component_bit_depths().is_empty()
+        && !part.part2_extensions.component_bit_depths_equal(main)
+    {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidMarkerOrder,
+        });
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_validate_execution_layout(
+            layout.info.image_size.components,
+            execution_header_view(layout.info.component_coding_styles, &layout.info.part2_extensions),
+            execution_tile_headers(layout.tile_parts@)),
+    )
+)]
+pub(crate) fn validate_part2_execution(layout: &CodestreamLayout<'_>) -> Result<(), DecodeError> {
+    layout.info.part2_extensions.validate_executable()?;
+    validate_part2_components(
+        &layout.info.component_coding_styles,
+        &layout.info.part2_extensions,
+        layout.info.image_size.components,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_execution_tiles_empty(
+            execution_tile_headers(layout.tile_parts@), codestream::part2_component_depths(&layout.info.part2_extensions),
+            layout.info.image_size.components);
     }
     let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= layout.tile_parts.len(),
+                crate::specs::part2_execution_components_prefix(
+                    execution_header_view(layout.info.component_coding_styles, &layout.info.part2_extensions),
+                    layout.info.image_size.components as nat) == Ok(()),
+                crate::specs::part2_execution_tiles_prefix(execution_tile_headers(layout.tile_parts@),
+                    codestream::part2_component_depths(&layout.info.part2_extensions),
+                    layout.info.image_size.components, index as nat) == Ok(()),
             decreases layout.tile_parts.len() - index,
         )
     )]
@@ -4787,29 +4896,29 @@ fn validate_part2_execution(layout: &CodestreamLayout<'_>) -> Result<(), DecodeE
             .tile_parts
             .get(index)
             .ok_or_else(arithmetic_overflow)?;
-        tile_part.part2_extensions.validate_executable()?;
-        component = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= layout.info.image_size.components,
-                decreases layout.info.image_size.components - component,
-            )
-        )]
-        while component < layout.info.image_size.components {
-            validate_part2_coding_style(
-                tile_part.component_coding_styles.style(component)?,
-                &tile_part.part2_extensions,
-            )?;
-            component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_execution_tiles_step(
+                execution_tile_headers(layout.tile_parts@), codestream::part2_component_depths(&layout.info.part2_extensions),
+                layout.info.image_size.components, index as nat);
         }
-        if !tile_part.part2_extensions.component_bit_depths().is_empty()
-            && !tile_part
-                .part2_extensions
-                .component_bit_depths_equal(&layout.info.part2_extensions)
-        {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidMarkerOrder));
+        let result = validate_part2_tile_execution(
+            tile_part,
+            &layout.info.part2_extensions,
+            layout.info.image_size.components,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_execution_tiles_prefix(execution_tile_headers(layout.tile_parts@),
+                    codestream::part2_component_depths(&layout.info.part2_extensions),
+                    layout.info.image_size.components, index as nat + 1) == Err(error));
+                crate::proofs::production_impl::production_execution_tiles_error(
+                    execution_tile_headers(layout.tile_parts@), codestream::part2_component_depths(&layout.info.part2_extensions),
+                    layout.info.image_size.components, index as nat + 1, layout.tile_parts@.len());
+            } else { crate::proofs::production_impl::production_mct_unit_result(result); }
         }
+        result?;
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(())

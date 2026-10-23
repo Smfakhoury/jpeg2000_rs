@@ -1,5 +1,12 @@
 # Specification audit guide
 
+`part2_validate_execution_layout` composes the actual ordered component/tile
+admission from raw parsed headers and logical counts. Component style lookup
+errors, missing metadata, nonempty CBD mismatch and empty CBD bypass retain
+native order; executable observation remains its actual no-op. Header views
+contain observed native fields, not supplied validator/decoder outcomes.
+Actual packet planning/component/file/frame composition remains separate.
+
 `part2_validate_execution_style` observes only actual decomposition identity
 and transform selection, with real DSC/ADS presence and ATK lookup. It does
 not silently validate unused raw style fields. `part2_component_depths_equal`

@@ -896,6 +896,28 @@ _DECODER_ADMISSION_CONTRACTS = {
     ),
 }
 
+_DECODER_LAYOUT_CONTRACTS = {
+    ("src/decode.rs", "validate_part2_component"): (
+        "part2_validate_execution_component", r"\1", None,
+        _coverage_call("execution_header_view", r"\*\s*styles", "extensions") + r"\s*,\s*component",
+    ),
+    ("src/decode.rs", "validate_part2_components"): (
+        "part2_execution_components_prefix", r"\1", None,
+        _coverage_call("execution_header_view", r"\*\s*styles", "extensions") + r"\s*,\s*count\s+as\s+nat",
+    ),
+    ("src/decode.rs", "validate_part2_tile_execution"): (
+        "part2_validate_execution_tile", r"\1", None,
+        _coverage_call("execution_header_view", r"part\.component_coding_styles", r"&\s*part\.part2_extensions")
+        + r"\s*,\s*" + _coverage_call("codestream::part2_component_depths", "main") + r"\s*,\s*count",
+    ),
+    ("src/decode.rs", "validate_part2_execution"): (
+        "part2_validate_execution_layout", r"\1", None,
+        r"layout\.info\.image_size\.components\s*,\s*"
+        + _coverage_call("execution_header_view", r"layout\.info\.component_coding_styles", r"&\s*layout\.info\.part2_extensions")
+        + r"\s*,\s*" + _coverage_call("execution_tile_headers", r"layout\.tile_parts\s*@"),
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1399,6 +1421,7 @@ def validate_normative_coverage(
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))

@@ -2259,3 +2259,27 @@ F2/F4 file joins. Whole layout admission, planning, compressed/parsed decoder
 and frame composition remain open. No normalized input, lookup/decoder outcome
 bank, conformance or whole-F2/F4/F8 claim follows. Frozen full-root/MSRV/
 local/hosted/main acceptance remain required for delivery.
+## Complete actual parsed-layout execution admission
+
+The original `validate_part2_execution` now refines a complete Result over raw
+main/tile execution headers, original component styles and the native logical
+component count. It executes the actual executable observation, style lookup,
+style admission and ordered raw depth comparison. Main components precede all
+tile headers; each tile's components precede its nonempty-CBD agreement check.
+Empty CBD retains its native bypass, including contradictory raw metadata.
+
+The real single/all-component and tile admission phases have complete input-
+relative Results, with proved prefix/error absorption. No valid-layout, style,
+successful validator/decoder result or sufficient-budget premise is supplied.
+Full and selected actual decode-layout callers use the same sole bodies.
+
+Independent literal registry/depth and native-qualified style-lookup references
+cover 12,960 raw count/physical-owner/style/header/CBD combinations, including
+zero/MAX counts, malformed unused metadata, main-before-tile and style-before-
+CBD first errors. Four finite exact recipes and adversarial binding tests
+require the genuine caller chain; moved style/depth edges are updated.
+
+This closes parsed-layout admission, not actual packet planning, decoder
+components, file normalization/opacity, frame output or complete F2/F4/F8.
+Frozen full-root/MSRV/native/reference/resource/hosted/main acceptance remain
+required, with no normative/conformance claim.
