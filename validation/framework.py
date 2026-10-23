@@ -883,6 +883,25 @@ _LAYER_OPACITY_CONTRACTS = {
     ),
 }
 
+_LAYER_EXTERNAL_ALPHA_CONTRACTS = {
+    ("src/jpx.rs", "copy_registered_layer_opacity"): (
+        "part2_copy_registered_opacity", r"\1",
+        _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
+        _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*"
+        + _coverage_call("owned_layer_view", "source") + r"\s*,\s*premultiplied",
+    ),
+    ("src/jpx.rs", "copy_opacity_pixel"): (
+        "part2_opacity_pixel", r"\1", _coverage_call("final", "alpha") + r"\s*@",
+        r"\(\s*samples\s*@\s*,\s*geometry\.0\s*,\s*geometry\.1\s*\)\s*,\s*"
+        r"geometry\.2\s*,\s*geometry\.3\s*,\s*" + _coverage_call("old", "alpha") + r"\s*@",
+    ),
+    ("src/jpx.rs", "copy_opacity_row"): (
+        "part2_opacity_columns_prefix", r"\1", _coverage_call("final", "alpha") + r"\s*@",
+        r"\(\s*samples\s*@\s*,\s*source_width\s*,\s*destination\.0\s*\)\s*,\s*"
+        r"destination\.1\s*,\s*" + _coverage_call("old", "alpha") + r"\s*@\s*,\s*destination\.2\s+as\s+nat",
+    ),
+}
+
 
 _DECODER_ADMISSION_CONTRACTS = {
     ("src/decode.rs", "validate_part2_coding_style"): (
@@ -1406,6 +1425,7 @@ def validate_normative_coverage(
                 or _LAYER_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_COMPONENT_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_OPACITY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_EXTERNAL_ALPHA_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

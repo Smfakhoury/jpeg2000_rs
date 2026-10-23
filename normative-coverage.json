@@ -33,6 +33,41 @@
       ]
     },
     {
+      "id": "part2-complete-native-external-alpha",
+      "topic": "Complete actual external registered-alpha copy Result/full OwnedLayer and real pixel/row scratch state. Source first-color admission precedes target checked area; actual minimum rectangle, zero padding, target-before-source checked addresses and source-before-destination store are preserved, with first/late errors and final-only alpha/representation commit. No normalized registered source, successful read/store, prepared mask or budget premise. Actual opacity path executes these sole bodies; full file/normalization/frame joins and F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "apply_layer_opacity"},
+        {"path": "src/jpx.rs", "symbol": "copy_registered_layer_opacity"},
+        {"path": "src/jpx.rs", "symbol": "copy_opacity_row"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_copy_registered_opacity"},
+        {"path": "specs/mod.rs", "symbol": "part2_opacity_pixel"},
+        {"path": "specs/mod.rs", "symbol": "part2_opacity_columns_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_opacity_rows_prefix"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "copy_registered_layer_opacity"},
+        {"path": "src/jpx.rs", "symbol": "copy_opacity_pixel"},
+        {"path": "src/jpx.rs", "symbol": "copy_opacity_row"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "owned_layer_view"},
+        {"path": "src/jpx.rs", "symbol": "checked_area"},
+        {"path": "src/jpx.rs", "symbol": "index_of"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_opacity_columns_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_opacity_columns_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_opacity_columns_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_opacity_rows_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_opacity_rows_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_opacity_rows_error"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "external_opacity_matches_raw_min_rectangle_and_commits_owner_only_on_success"},
+        {"path": "src/jpx.rs", "symbol": "opacity_pixel_and_row_preserve_wide_indices_and_prior_scratch_updates"}
+      ]
+    },
+    {
       "id": "part2-complete-native-local-opacity",
       "topic": "Complete actual local opacity Result/full OwnedLayer relations: shared real chroma-key traversal with explicit general permissive versus opacity strict missing-sample policy, final-only straight alpha replacement and exact flag-only premultiplied/straight retag or missing-alpha error at actual caller offset. Raw geometry/planes/old alpha/keys/flags/offsets are not normalized; no successful source/key/alpha premise. Actual opacity consumers preserve metadata admission order. External-alpha copy, complete file preparation and F2/F4/F8 remain separate.",
       "implementation_refs": [
