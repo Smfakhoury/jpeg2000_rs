@@ -32,6 +32,75 @@ use crate::specs::{
 
 verus! {
 
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_every_failure_preserves_complete_original_decoder(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_staged_group_success_reports_original_packet_pass_count(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true, Ok(result) => result.passes == passes as u32,
+    },
+{
+}
+
+pub proof fn ht_group_route_uses_retained_option_not_current_cleanup_flag(state: crate::specs::Tier1DecoderState)
+    requires matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::Mixed),
+        state.ht_cleanup_plane.is_some(),
+    ensures crate::specs::ht_group_route(state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_continuation_first_accounting_overflow_preserves_already_prepared_state(
+    state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+)
+    requires state.next_pass as nat + passes as nat > u32::MAX,
+    ensures crate::specs::ht_finish_refinement_contribution(state, passes, bytes, next_bytes, statistics, replayed)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_continuation_segment_overflow_keeps_pass_but_not_byte_update(
+    state: crate::specs::Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+)
+    requires state.next_pass as nat + passes as nat <= u32::MAX, state.decoded_segments == u32::MAX,
+    ensures crate::specs::ht_finish_refinement_contribution(state, passes, bytes, next_bytes, statistics, replayed)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::ArithmeticOverflow)),
+            crate::specs::Tier1DecoderState { next_pass: (state.next_pass + passes) as u32, ..state }),
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_placeholder_preserves_output_and_retained_cleanup_on_every_return(
+    state: crate::specs::Tier1DecoderState, passes: u8, maximum_passes: u32,
+)
+    ensures crate::specs::ht_skip_segment(state, passes, maximum_passes).1.plane == state.plane,
+        crate::specs::ht_skip_segment(state, passes, maximum_passes).1.ht_cleanup_plane == state.ht_cleanup_plane,
+        crate::specs::ht_skip_segment(state, passes, maximum_passes).1.decoded_bytes == state.decoded_bytes,
+{
+}
+
+#[verifier::spinoff_prover]
+pub proof fn ht_refinement_reset_frames_all_unrelated_decoder_fields(state: crate::specs::Tier1DecoderState)
+    ensures crate::specs::ht_clear_refinement_state(state) == (crate::specs::Tier1DecoderState {
+        ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state
+    }),
+{
+}
+
 pub proof fn standard_prepare_preserves_complete_plan_metadata(
     plan: crate::specs::Part1PreparePlan, precincts: Seq<Seq<crate::specs::Tier1RawPlane>>,
     style: crate::specs::Part1PrepareStyle, maximum: u64,
@@ -2094,6 +2163,427 @@ pub proof fn quantized_block_preserves_metadata_and_previsited_samples(
             crate::specs::part1_quantized_block_row(previous.1, source, block_width, placement_x, placement_y, (count - 1) as u32, block_width as nat).1,
         );
     }
+}
+
+pub proof fn ht_packet_segment_pass_error_precedes_range_and_state_effects(
+    state: crate::specs::Tier1DecoderState, segment: crate::packet::CodeBlockSegmentContribution,
+    body: Seq<u8>, offset: usize, decoded_passes: u32,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures segment.passes == 0 || segment.passes > 2 ==>
+        crate::specs::ht_packet_segment_body(state, segment, body, offset, decoded_passes,
+            pass_limit, byte_limit, work_limit)
+        == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+            state, offset, decoded_passes),
+{
+}
+
+pub proof fn ht_packet_finished_progress_preserves_complete_state(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, progress: crate::specs::HtPacketBodyProgress,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures progress.segment_index >= header.segment_count ==>
+        crate::specs::ht_packet_body_run(state, header, body, progress, pass_limit, byte_limit, work_limit)
+        == (Ok(()), state, progress),
+{
+    reveal(crate::specs::ht_packet_body_run);
+}
+
+pub proof fn ht_packet_transaction_errors_restore_complete_decoder(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::ht_packet_body(state, header, body, pass_limit, byte_limit, work_limit).0.is_err()
+        ==> crate::specs::ht_packet_body(state, header, body, pass_limit, byte_limit, work_limit).1 == state,
+{
+}
+
+pub proof fn ht_packet_success_reports_exact_declared_counts(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, work_limit: u64,
+)
+    ensures match crate::specs::ht_packet_body_segments(state, header, body, pass_limit, byte_limit, work_limit).0 {
+        Err(_) => true,
+        Ok(result) => result.segments == header.segment_count
+            && result.passes == header.new_passes && result.bytes == header.data_length,
+    },
+{
+}
+
+pub proof fn mixed_packet_dispatch_preserves_both_selected_profiles(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        header.high_throughput ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::ht_packet_body_staged(state, header, body, pass_limit, byte_limit, work_limit),
+        !header.high_throughput ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::part1_legacy_code_block_staged(
+                state, header, body, pass_limit, byte_limit, input_limit, work_limit),
+{
+    reveal(crate::specs::part1_legacy_code_block_staged);
+}
+
+pub proof fn mixed_packet_transaction_restores_every_decoder_field_on_error(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_code_block_body_transaction(
+        state, header, body, pass_limit, byte_limit, input_limit, work_limit).0.is_err()
+        ==> crate::specs::part1_code_block_body_transaction(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit).1 == state,
+{
+}
+
+pub proof fn mixed_packet_preparation_failure_precedes_both_actual_routes(
+    state: crate::specs::Tier1DecoderState, header: crate::specs::Part1CodeBlockContribution,
+    body: Seq<u8>, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_code_block_body_prepare(state, header, body).0.is_err()
+        ==> crate::specs::part1_code_block_body_staged(
+            state, header, body, pass_limit, byte_limit, input_limit, work_limit).1
+            == crate::specs::part1_code_block_body_prepare(state, header, body).1,
+{
+}
+
+pub proof fn mixed_tier1_dispatch_retains_actual_native_route_order(
+    state: crate::specs::Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        passes == 0 ==> crate::specs::part1_tier1_segment(
+            state, input, passes, pass_limit, byte_limit, input_limit, work_limit)
+            == (Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+        passes > 0 && !crate::specs::ht_group_route(state) ==> crate::specs::part1_tier1_segment(
+            state, input, passes, pass_limit, byte_limit, input_limit, work_limit)
+            == crate::specs::part1_legacy_segment(
+                state, input, passes as u32, pass_limit, byte_limit, input_limit, work_limit),
+{
+}
+
+pub proof fn packet_body_finished_preflight_preserves_raw_cursor(
+    state: crate::specs::Part1PacketBodyPreflight,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+)
+    ensures state.index >= contributions.len() ==>
+        crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset) == (Ok(()), state),
+{
+    reveal(crate::specs::part1_packet_body_preflight);
+    reveal(crate::specs::part1_packet_body_preflight_at);
+}
+
+pub proof fn packet_body_preflight_truncation_retains_advanced_end_before_index(
+    state: crate::specs::Part1PacketBodyPreflight,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+)
+    ensures if state.index < contributions.len() {
+        match contributions[state.index as int] {
+            None => true,
+            Some(contribution) => contribution.data_length as nat <= usize::MAX
+                && state.end as nat + contribution.data_length as nat <= usize::MAX
+                && state.end as nat + contribution.data_length as nat > data.len()
+                ==> crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset)
+                    == (Err(crate::DecodeError::MalformedInput {
+                        offset: error_offset as u64, kind: crate::MalformedKind::Truncated,
+                    }), crate::specs::Part1PacketBodyPreflight {
+                        end: (state.end + contribution.data_length) as usize, ..state
+                    }),
+        }
+    } else { true },
+{
+    reveal(crate::specs::part1_packet_body_preflight);
+    reveal(crate::specs::part1_packet_body_preflight_at);
+}
+
+pub proof fn packet_body_skipped_execution_preserves_all_decoders_and_counts(
+    state: crate::specs::Part1PacketBodyExecution,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.decoders == state.decoders,
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.segments == state.segments,
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.passes == state.passes,
+    decreases contributions.len() - state.index as nat,
+{
+    reveal(crate::specs::part1_packet_body_execute);
+    reveal(crate::specs::part1_packet_body_execute_at);
+    if state.index < contributions.len() {
+        let step = match contributions[state.index as int] {
+            None => (Ok(()), state),
+            Some(contribution) => crate::specs::part1_packet_body_execute_slot(
+                state, contribution, data, error_offset, false, pass_limit, byte_limit, input_limit, work_limit),
+        };
+        if step.0.is_ok() && step.1.index != usize::MAX {
+            packet_body_skipped_execution_preserves_all_decoders_and_counts(
+                crate::specs::Part1PacketBodyExecution { index: (step.1.index + 1) as usize, ..step.1 },
+                contributions, data, error_offset, pass_limit, byte_limit, input_limit, work_limit,
+            );
+        }
+    }
+}
+
+pub proof fn precinct_finished_raw_header_cursor_preserves_every_owner(
+    state: crate::specs::Part1PrecinctHeaderState,
+    contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16, style: crate::tier1::Tier1CodingStyle,
+)
+    ensures state.subband_index >= state.subbands.len() ==>
+        crate::specs::part1_precinct_headers(state, contexts, layer, style) == (Ok(()), state),
+{
+    reveal(crate::specs::part1_precinct_headers_run);
+}
+
+pub proof fn precinct_header_slot_preserves_all_physical_storage_lengths(
+    state: crate::specs::Part1PrecinctHeaderState,
+    contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16, style: crate::tier1::Tier1CodingStyle,
+)
+    ensures
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.states.len() == state.states.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.subbands.len() == state.subbands.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.contributions.len()
+            == state.contributions.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.subband_index == state.subband_index,
+{
+    reveal(crate::specs::part1_precinct_header_slot);
+}
+
+pub proof fn precinct_style_comparison_retains_native_force_flag_policy(
+    style: crate::tier1::Tier1CodingStyle, required: bool,
+)
+    ensures crate::specs::part1_packet_styles_equal(
+        style, crate::tier1::Tier1CodingStyle { force_high_throughput: required, ..style }),
+{
+}
+
+pub proof fn precinct_sop_truncation_precedes_packed_offsets_and_reader_budgets(
+    data: Seq<u8>, packed: Seq<u8>, parameters: crate::specs::Part1PrecinctPayloadParameters,
+    header_limit: u64, work_limit: u64,
+)
+    ensures parameters.sop && data.len() < 4 ==>
+        crate::specs::part1_precinct_payload_prefix(data, packed, parameters, header_limit, work_limit)
+            == Err(crate::specs::part1_packet_reader_error(parameters.error_offset, crate::MalformedKind::Truncated)),
+{
+}
+
+pub proof fn precinct_malformed_sop_precedes_missing_sequence_and_reader_budgets(
+    data: Seq<u8>, packed: Seq<u8>, parameters: crate::specs::Part1PrecinctPayloadParameters,
+    header_limit: u64, work_limit: u64,
+)
+    ensures parameters.sop && data.len() >= 4
+        && !crate::specs::part1_sop_valid(data[0], data[1], data[2], data[3]) ==>
+        crate::specs::part1_precinct_payload_prefix(data, packed, parameters, header_limit, work_limit)
+            == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidPacketHeader)),
+{
+}
+
+pub proof fn precinct_payload_preserves_readonly_identity_and_every_context(
+    state: crate::specs::Part1PacketPrecinctState, data: Seq<u8>, packed: Seq<u8>,
+    parameters: crate::specs::Part1PrecinctPayloadParameters,
+    header_limit: u64, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.component == state.component,
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.resolution == state.resolution,
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.precinct == state.precinct,
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.contexts == state.contexts,
+{
+    reveal(crate::specs::part1_precinct_payload_headers);
+    reveal(crate::specs::part1_precinct_payload_after_headers);
+    reveal(crate::specs::part1_precinct_payload_body);
+}
+
+pub proof fn precinct_payload_preflight_failure_precedes_every_coefficient_execution(
+    state: crate::specs::Part1PacketPrecinctState,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>,
+    parameters: crate::specs::Part1PrecinctPayloadParameters, present: bool, contribution_count: u32,
+    header_bytes: usize, body_start: usize, packed_consumed: usize,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_packet_body_preflight(
+        crate::specs::Part1PacketBodyPreflight { index: 0, end: body_start },
+        contributions, data, parameters.error_offset).0.is_err() ==>
+        crate::specs::part1_precinct_payload_body(state, contributions, data, parameters,
+            present, contribution_count, header_bytes, body_start, packed_consumed,
+            pass_limit, byte_limit, input_limit, work_limit).1 == state,
+{
+    reveal(crate::specs::part1_precinct_payload_body);
+}
+
+pub proof fn precinct_final_accounting_preserves_every_prior_effect_even_on_error(
+    state: crate::specs::Part1PacketPrecinctState, parameters: crate::specs::Part1PrecinctPayloadParameters,
+    present: bool, contribution_count: u32, segments: u32, passes: u32,
+    header_bytes: usize, body_start: usize, tile_offset: usize, packed_consumed: usize,
+)
+    ensures crate::specs::part1_precinct_payload_finish(state, parameters, present, contribution_count,
+        segments, passes, header_bytes, body_start, tile_offset, packed_consumed).1 == state,
+{
+}
+
+pub proof fn raw_grid_absent_resolution_precedes_missing_count_storage(
+    grid:crate::specs::Part1PacketGrid,component:u16,resolution:u8,
+)
+    ensures component<grid.components && resolution<grid.resolutions
+        && (component as nat)<grid.component_resolutions.len()
+        && resolution>=grid.component_resolutions[component as int] ==>
+        crate::specs::part1_packet_grid_precinct_count(grid,component,resolution)==Ok(0),
+{
+}
+
+pub proof fn raw_packet_candidate_failure_keeps_advanced_cursor_and_prior_emission(
+    state:crate::specs::Part1PacketIterator,
+)
+    ensures state.candidate_index<state.grid.candidate_count
+        && crate::specs::part1_packet_candidate(state.grid,state.order,state.candidate_index).is_err() ==>
+        crate::specs::part1_packet_iterator_next(state).1.candidate_index==(state.candidate_index+1) as u64
+        && crate::specs::part1_packet_iterator_next(state).1.emitted==state.emitted
+        && crate::specs::part1_packet_iterator_next(state).0.is_err(),
+{
+    reveal(crate::specs::part1_packet_iterator_next);
+}
+
+pub proof fn raw_default_failure_does_not_synchronize_outer_emission(
+    state:crate::specs::Part1ProgressionPacketIterator,
+)
+    ensures match state.default {
+        None=>true,
+        Some(default)=>crate::specs::part1_packet_iterator_next(default).0.is_err() ==>
+            crate::specs::part1_progression_iterator_next(state).1.emitted==state.emitted
+            && crate::specs::part1_progression_iterator_next(state).1.default
+                ==Some(crate::specs::part1_packet_iterator_next(default).1),
+    },
+{
+}
+
+pub proof fn tile_boundary_preserves_real_work_seen_and_accounting_owners(
+    params:crate::specs::Part1TilePacketParameters<'_>,p:crate::specs::Part1TilePacketProgress,
+)
+    ensures
+        crate::specs::part1_tile_boundary(params,p).1.remaining_packets==p.remaining_packets,
+        crate::specs::part1_tile_boundary(params,p).1.seen==p.seen,
+        crate::specs::part1_tile_boundary(params,p).1.packets==p.packets,
+        crate::specs::part1_tile_boundary(params,p).1.present_packets==p.present_packets,
+        crate::specs::part1_tile_boundary(params,p).1.contributions==p.contributions,
+        crate::specs::part1_tile_boundary(params,p).1.segments==p.segments,
+        crate::specs::part1_tile_boundary(params,p).1.passes==p.passes,
+        crate::specs::part1_tile_boundary(params,p).1.packet_header_bytes==p.packet_header_bytes,
+        crate::specs::part1_tile_boundary(params,p).1.packet_body_bytes==p.packet_body_bytes,
+{
+}
+
+pub proof fn late_packed_offset_overflow_reports_new_tile_offset_without_later_commits(
+    p:crate::specs::Part1TilePacketProgress,decoded:crate::packet::PacketBodyDecode,
+    tile_bytes:usize,packed_bytes:usize,expected:Option<u32>,seen_index:usize,
+)
+    ensures seen_index<p.seen.len() && decoded.bytes_consumed>0
+        && (expected.is_none() || expected.unwrap()==decoded.bytes_consumed)
+        && p.offset as nat+tile_bytes as nat<=usize::MAX
+        && p.packed_offset as nat+packed_bytes as nat>usize::MAX ==>
+        crate::specs::part1_tile_account(p,decoded,tile_bytes,packed_bytes,expected,seen_index)
+            ==(Err(crate::specs::part1_packet_reader_error((p.offset+tile_bytes) as usize,
+                crate::MalformedKind::ArithmeticOverflow)),
+                crate::specs::Part1TilePacketProgress {offset:(p.offset+tile_bytes) as usize,..p}),
+{
+}
+
+pub proof fn actual_tile_work_guard_follows_the_real_iterator_transition(
+    params:crate::specs::Part1TilePacketParameters<'_>,state:crate::specs::Part1TilePacketExecution,
+)
+    ensures match crate::specs::part1_progression_iterator_next(state.progress.iterator).0 {
+        Ok(Some(_))=>state.progress.remaining_packets==0 ==>
+            crate::specs::part1_tile_run(params,state).0
+                ==Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidProgressionOrderChange))
+            && crate::specs::part1_tile_run(params,state).1.precincts==state.precincts
+            && crate::specs::part1_tile_run(params,state).1.progress.iterator
+                ==crate::specs::part1_progression_iterator_next(state.progress.iterator).1,
+        _=>true,
+    },
+{
+    reveal(crate::specs::part1_tile_run);
+}
+
+pub proof fn actual_missing_packed_storage_rejects_after_complete_layer_writes(
+    params:crate::specs::Part1TilePacketParameters<'_>,part:crate::codestream::TilePartPayload<'_>,
+    p:crate::specs::Part1TilePacketProgress,coordinate:crate::packet::PacketCoordinate,
+    expected:Option<u32>,precinct:crate::specs::Part1PacketPrecinctState,
+)
+    ensures p.current_tile_part>=params.input.packed.len() ==>
+        crate::specs::part1_tile_precinct_packet(params,part,p,coordinate,expected,precinct)
+            ==(Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidTilePart)),
+                crate::specs::part1_precinct_context_layer(precinct,coordinate.layer)),
+{
+}
+
+pub proof fn single_whole_payload_cap_precedes_all_tree_and_decoder_effects(
+    s:crate::specs::Part1SinglePacketState,data:Seq<u8>,context:crate::packet::CodeBlockPacketContext,
+    header_limit:u64,pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+)
+    ensures data.len() as u64>header_limit ==>
+        crate::specs::part1_single_code_block_packet(s,data,context,header_limit,pass_limit,byte_limit,input_limit,work_limit)
+            ==(Err(crate::specs::part1_packet_reader_limit(crate::Resource::PacketHeaderBytes,header_limit,data.len() as u64)),s),
+{
+}
+
+pub proof fn multi_sop_sequence_bytes_are_not_a_sequence_validation_premise(
+    first_hi:u8,first_lo:u8,second_hi:u8,second_lo:u8,tail:Seq<u8>,offset:usize,header_limit:u64,work_limit:u64,
+)
+    ensures crate::specs::part1_multi_packet_prefix(seq![255u8,145u8,0u8,4u8,first_hi,first_lo]+tail,true,offset,header_limit,work_limit)
+        ==crate::specs::part1_multi_packet_prefix(seq![255u8,145u8,0u8,4u8,second_hi,second_lo]+tail,true,offset,header_limit,work_limit),
+{
+    assert((seq![255u8,145u8,0u8,4u8,first_hi,first_lo]+tail).subrange(6,(6+tail.len()) as int) =~= tail);
+    assert((seq![255u8,145u8,0u8,4u8,second_hi,second_lo]+tail).subrange(6,(6+tail.len()) as int) =~= tail);
+}
+
+pub proof fn common_preflight_overflow_retains_real_progress_and_caller_offset(
+    s:crate::specs::Part1PacketBodyPreflight,contributions:Seq<Option<crate::specs::Part1CodeBlockContribution>>,
+    data:Seq<u8>,truncated_offset:usize,local_offset:usize,
+)
+    ensures s.end==usize::MAX && s.index<contributions.len() && contributions[s.index as int].is_some()
+        && contributions[s.index as int].unwrap().data_length>0 ==>
+        crate::specs::part1_packet_body_preflight_at(s,contributions,data,truncated_offset,local_offset)
+            ==(Err(crate::specs::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)),s),
+{
+    reveal(crate::specs::part1_packet_body_preflight_at);
+}
+
+pub proof fn multi_complete_preflight_failure_precedes_every_coefficient_effect(
+    s:crate::specs::Part1MultiPacketState,data:Seq<u8>,contributions:Seq<Option<crate::specs::Part1CodeBlockContribution>>,
+    present:bool,count:u32,header:usize,start:usize,offset:usize,pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+)
+    ensures crate::specs::part1_packet_body_preflight_at(crate::specs::Part1PacketBodyPreflight {index:0,end:start},
+        contributions,data,offset,offset).0.is_err() ==>
+        crate::specs::part1_multi_body(s,data,contributions,present,count,header,start,offset,pass_limit,byte_limit,input_limit,work_limit).1==s,
+{
+    reveal(crate::specs::part1_multi_body);
+}
+
+pub proof fn jpip_actual_layer_writes_precede_raw_shape_rejection(
+    s:crate::specs::Part1PacketPrecinctState,template:&crate::codestream::TilePartPayload<'_>,
+    data:Seq<u8>,sequence:u16,layer:u16,limits:&crate::ResourceLimits,
+)
+    ensures s.states.len()!=s.contexts.len() ==>
+        crate::specs::part1_jpip_precinct_packet_inner(s,template,data,sequence,layer,limits)
+            ==(Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidPacketHeader)),
+                crate::specs::part1_precinct_context_layer(s,layer)),
+{
+}
+
+pub proof fn jpip_actual_transaction_preserves_every_owner_on_any_error(
+    s:crate::specs::Part1PacketPrecinctState,template:&crate::codestream::TilePartPayload<'_>,
+    data:Seq<u8>,sequence:u16,layer:u16,limits:&crate::ResourceLimits,
+)
+    ensures crate::specs::part1_jpip_precinct_packet(s,template,data,sequence,layer,limits).0.is_err() ==>
+        crate::specs::part1_jpip_precinct_packet(s,template,data,sequence,layer,limits).1==s,
+{
 }
 
 }

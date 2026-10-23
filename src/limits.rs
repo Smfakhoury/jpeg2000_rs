@@ -34,6 +34,10 @@ pub struct ResourceLimits {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn resource_input_byte_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_input_bytes
+    }
+
     pub closed spec fn resource_work_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_work_units
     }
@@ -50,8 +54,40 @@ verus! {
         limits.maximum_decoded_bytes
     }
 
+    pub closed spec fn resource_packet_header_byte_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_packet_header_bytes
+    }
+
+    pub closed spec fn resource_tag_tree_node_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_tag_tree_nodes
+    }
+
+    pub closed spec fn resource_packet_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_packets
+    }
+
+    pub closed spec fn resource_precinct_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_precincts
+    }
+
+    pub closed spec fn resource_code_block_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_code_blocks
+    }
+
     pub closed spec fn resource_component_limit(limits: &ResourceLimits) -> u16 {
         limits.maximum_components
+    }
+
+    pub closed spec fn resource_tile_part_limit(limits: &ResourceLimits) -> u32 {
+        limits.maximum_tile_parts
+    }
+
+    pub closed spec fn resource_resolution_limit(limits: &ResourceLimits) -> u8 {
+        limits.maximum_resolutions_per_component
+    }
+
+    pub closed spec fn resource_layer_limit(limits: &ResourceLimits) -> u16 {
+        limits.maximum_layers
     }
 }
 
@@ -83,6 +119,10 @@ impl ResourceLimits {
         maximum_work_units: 1_000_000_000,
     };
 
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(value => ensures value == resource_input_byte_limit(self),)
+    )]
     pub const fn maximum_input_bytes(&self) -> u64 {
         self.maximum_input_bytes
     }
@@ -126,18 +166,22 @@ impl ResourceLimits {
         self.maximum_tiles
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_tile_part_limit(self),))]
     pub const fn maximum_tile_parts(&self) -> u32 {
         self.maximum_tile_parts
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_resolution_limit(self),))]
     pub const fn maximum_resolutions_per_component(&self) -> u8 {
         self.maximum_resolutions_per_component
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_precinct_limit(self),))]
     pub const fn maximum_precincts(&self) -> u64 {
         self.maximum_precincts
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_code_block_limit(self),))]
     pub const fn maximum_code_blocks(&self) -> u64 {
         self.maximum_code_blocks
     }
@@ -158,6 +202,7 @@ impl ResourceLimits {
         self.maximum_code_block_bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_layer_limit(self),))]
     pub const fn maximum_layers(&self) -> u16 {
         self.maximum_layers
     }
@@ -166,10 +211,12 @@ impl ResourceLimits {
         self.maximum_frames
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_packet_limit(self),))]
     pub const fn maximum_packets(&self) -> u64 {
         self.maximum_packets
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_packet_header_byte_limit(self),))]
     pub const fn maximum_packet_header_bytes(&self) -> u64 {
         self.maximum_packet_header_bytes
     }
@@ -186,6 +233,7 @@ impl ResourceLimits {
         self.maximum_jpip_fragments
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == resource_tag_tree_node_limit(self),))]
     pub const fn maximum_tag_tree_nodes(&self) -> u64 {
         self.maximum_tag_tree_nodes
     }

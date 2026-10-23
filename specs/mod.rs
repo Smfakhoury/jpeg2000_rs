@@ -1,6 +1,27 @@
 use vstd::arithmetic::power2::pow2;
 use vstd::prelude::*;
 
+mod mq;
+pub use mq::*;
+mod legacy;
+pub use legacy::*;
+mod packet;
+pub use packet::*;
+mod packet_orchestration;
+pub use packet_orchestration::*;
+mod packet_progression;
+pub use packet_progression::*;
+mod packet_tile;
+pub use packet_tile::*;
+mod packet_boundaries;
+pub use packet_boundaries::*;
+mod header;
+pub use header::*;
+mod tag_tree;
+pub use tag_tree::*;
+mod packet_input;
+pub use packet_input::*;
+
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
 };
@@ -1250,10 +1271,497 @@ pub open spec fn part2_mct_charge_work(before: u64, operations: u64, maximum: u6
     }
 }
 
+pub open spec fn part1_tier1_block_coding_byte(value: u8) -> Result<crate::tier1::Tier1BlockCoding, crate::DecodeError> {
+    match value >> 6 {
+        0 => Ok(crate::tier1::Tier1BlockCoding::Legacy),
+        1 if value & 0x37 == 0 => Ok(crate::tier1::Tier1BlockCoding::HighThroughput),
+        1 | 2 => Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+        3 if value & 0x05 == 0 => Ok(crate::tier1::Tier1BlockCoding::Mixed),
+        _ => Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+    }
+}
+
+pub open spec fn part1_tier1_coding_style_byte(value: u8) -> Result<crate::tier1::Tier1CodingStyle, crate::DecodeError> {
+    match part1_tier1_block_coding_byte(value) {
+        Err(error) => Err(error),
+        Ok(block_coding) => Ok(crate::tier1::Tier1CodingStyle {
+            block_coding,
+            force_high_throughput: matches!(block_coding, crate::tier1::Tier1BlockCoding::HighThroughput),
+            selective_arithmetic_coding_bypass: value & 0x01 != 0,
+            reset_contexts: value & 0x02 != 0,
+            terminate_all_passes: value & 0x04 != 0,
+            vertical_causal_context: value & 0x08 != 0,
+            predictable_termination: value & 0x10 != 0,
+            segmentation_symbols: value & 0x20 != 0,
+        }),
+    }
+}
+
 pub type Part2RawKernelCoefficient = (Seq<u8>, u8);
 pub type Part2RawKernelStep = (i8, u8, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelCoefficient>);
 pub type Part2RawKernel = (bool, u8, bool, bool, bool, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelStep>);
 pub type Part2AtkMutation = (Result<(), crate::DecodeError>, Seq<i64>);
+
+pub enum Part2TileSelection {
+    All,
+    Index(u16),
+    Set(Seq<u16>),
+}
+
+pub type Part2DecodeSelection = (Part2TileSelection, Option<crate::ImageRegion>, u8);
+pub type Part2ValidatedSelection = (Seq<u16>, Seq<u32>, u8);
+pub type Part2SelectionGeometry = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+pub type Part2TileRectangle = (u32, u32, u32, u32);
+pub type Part2AssociatedHeader = (Part2OutputHeader, crate::jp2::ImageHeader, crate::jp2::ColorMethod);
+
+pub open spec fn part2_finish_associated_selected_output(
+    image: Part1DecodedTypedImage, header: Option<Part2AssociatedHeader>, target: [u32; 4],
+    maximum_components: u16, maximum_bytes: u64, maximum_work: u64,
+) -> Part2ConvertedImageResult {
+    match part2_apply_associated_output(image, header, maximum_components, maximum_bytes) {
+        Err(error) => Err(error),
+        Ok(mapped) => part2_convert_associated_selected(mapped.0, mapped.1, target, maximum_bytes, maximum_work),
+    }
+}
+
+pub open spec fn part2_selection_from_parts(
+    tiles: Part2TileSelection, region: Option<crate::ImageRegion>, discard: u8,
+) -> Part2DecodeSelection { (tiles, region, discard) }
+
+pub open spec fn part2_tile_list_contains(tiles: Seq<u16>, tile: u16) -> Result<bool, crate::DecodeError> {
+    Ok(tiles.contains(tile))
+}
+
+pub open spec fn part2_apply_associated_output(
+    image: Part1DecodedTypedImage, header: Option<Part2AssociatedHeader>, maximum_components: u16, maximum_bytes: u64,
+) -> Result<(Part1DecodedTypedImage, Option<Part2AssociatedHeader>), crate::DecodeError> {
+    match header {
+        None => Ok((image, None)),
+        Some(header) => match part2_apply_output_header(image, header.0, maximum_components, maximum_bytes) {
+            Err(error) => Err(error), Ok(mapped) => Ok((mapped, Some(header))),
+        },
+    }
+}
+
+pub open spec fn part2_convert_associated_selected(
+    image: Part1DecodedTypedImage, header: Option<Part2AssociatedHeader>, target: [u32; 4], maximum_bytes: u64, maximum_work: u64,
+) -> Part2ConvertedImageResult {
+    match header {
+        None => Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::MissingRequiredStructure }),
+        Some(header) => color_convert_selected(image.1, image.2, image.0, header.2, target, maximum_bytes, maximum_work),
+    }
+}
+
+pub open spec fn part2_convert_associated(
+    image: Part1DecodedTypedImage, header: Option<Part2AssociatedHeader>, maximum_bytes: u64, maximum_work: u64,
+) -> Part2ConvertedImageResult {
+    match header {
+        None => Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::MissingRequiredStructure }),
+        Some(header) => color_convert_jp2(image.1, image.2, image.0, header.2, maximum_bytes, maximum_work),
+    }
+}
+
+pub open spec fn part2_associated_codestream_header(
+    association: Option<(u64, Option<Part2AssociatedHeader>)>, fallback: Part2AssociatedHeader,
+) -> Result<Part2AssociatedHeader, crate::DecodeError> {
+    match association {
+        None => Ok(fallback),
+        Some(association) => match association.1 {
+            Some(header) => Ok(header),
+            None => Err(crate::DecodeError::MalformedInput {
+                offset: association.0, kind: crate::MalformedKind::MissingRequiredStructure,
+            }),
+        },
+    }
+}
+
+pub open spec fn part2_validate_selected_header(
+    image: crate::jp2::ImageHeader, width: u32, height: u32, components: u16,
+    uniform: Option<u8>, signed: Option<bool>, offset: u64,
+) -> Result<(), crate::DecodeError> {
+    let mismatch = crate::DecodeError::MalformedInput { offset, kind: crate::MalformedKind::ContainerCodestreamMismatch };
+    if image.width != width || image.height != height || image.components != components { Err(mismatch) }
+    else {
+        match image.bit_depth {
+            crate::jp2::ComponentBitDepth::Variable => Ok(()),
+            crate::jp2::ComponentBitDepth::Uniform { bits, signed: sign } => {
+                if uniform == Some(bits) && signed == Some(sign) { Ok(()) } else { Err(mismatch) }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_color_selection_requested(
+    size: Part2SelectionGeometry, components: Seq<crate::codestream::ComponentInfo>, count: u16, requested: Part2DecodeSelection,
+) -> Result<(Part2DecodeSelection, Seq<u32>), crate::DecodeError> {
+    match part2_validate_selection(size, requested) {
+        Err(error) => Err(error),
+        Ok(selected) => part2_color_selection_context(size.2, size.3, components, count, selected),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_selected_region_prefix(
+    size: Part2SelectionGeometry, tiles: Seq<u16>, image_x1: u32, image_y1: u32, count: nat,
+) -> Result<Part2TileRectangle, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((image_x1, image_y1, size.2, size.3)) }
+    else {
+        match part2_selected_region_prefix(size, tiles, image_x1, image_y1, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_selection_tile_bounds(size, tiles[count - 1]) {
+                Err(error) => Err(error),
+                Ok(bounds) => Ok((if previous.0 < bounds.x0 { previous.0 } else { bounds.x0 },
+                    if previous.1 < bounds.y0 { previous.1 } else { bounds.y0 },
+                    if previous.2 > bounds.x1 { previous.2 } else { bounds.x1 },
+                    if previous.3 > bounds.y1 { previous.3 } else { bounds.y1 })),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_selection_region(
+    size: Part2SelectionGeometry, tiles: Seq<u16>, requested: Option<crate::ImageRegion>, image_x1: u32, image_y1: u32,
+) -> Result<Seq<u32>, crate::DecodeError> {
+    match requested {
+        Some(region) => {
+            if region.width == 0 || region.height == 0 {
+                Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::EmptyRegion })
+            } else if region.x as nat + region.width as nat > u32::MAX || region.y as nat + region.height as nat > u32::MAX {
+                Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutOfBounds })
+            } else {
+                let x1 = (region.x + region.width) as u32;
+                let y1 = (region.y + region.height) as u32;
+                if region.x < size.2 || region.y < size.3 || x1 > image_x1 || y1 > image_y1 {
+                    Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutOfBounds })
+                } else { Ok(seq![region.x, region.y, x1, y1]) }
+            }
+        },
+        None => if tiles.len() == 0 { Ok(seq![size.2, size.3, image_x1, image_y1]) }
+            else {
+                match part2_selected_region_prefix(size, tiles, image_x1, image_y1, tiles.len()) {
+                    Err(error) => Err(error), Ok(bounds) => Ok(seq![bounds.0, bounds.1, bounds.2, bounds.3]),
+                }
+            },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_selected_tiles_prefix(size: Part2SelectionGeometry, explicit: Seq<u16>, region: Seq<u32>, count: nat)
+    -> Result<Seq<u16>, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(Seq::empty()) } else {
+        match part2_selected_tiles_prefix(size, explicit, region, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => if count - 1 > u16::MAX { Err(part1_block_placement_error(true)) }
+                else {
+                    let index = (count - 1) as u16;
+                    match part2_selection_tile_bounds(size, index) {
+                        Err(error) => Err(error),
+                        Ok(bounds) => if bounds.x0 < region[2] && bounds.x1 > region[0] && bounds.y0 < region[3] && bounds.y1 > region[1] {
+                            if explicit.len() > 0 && !explicit.contains(index) {
+                                Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutsideSelectedTiles })
+                            } else { Ok(previous.push(index)) }
+                        } else { Ok(previous) },
+                    }
+                },
+        }
+    }
+}
+
+pub open spec fn part2_select_intersecting_tiles(size: Part2SelectionGeometry, explicit: Seq<u16>, region: Seq<u32>, count: u64)
+    -> Result<Seq<u16>, crate::DecodeError> {
+    match part2_selected_tiles_prefix(size, explicit, region, count as nat) {
+        Err(error) => Err(error),
+        Ok(tiles) => if tiles.len() == 0 {
+            Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::RegionOutsideSelectedTiles })
+        } else { Ok(tiles) },
+    }
+}
+
+pub open spec fn part2_selection_explicit(tiles: Part2TileSelection) -> Result<Seq<u16>, crate::DecodeError> {
+    match tiles {
+        Part2TileSelection::All => Ok(Seq::empty()),
+        Part2TileSelection::Index(index) => Ok(seq![index]),
+        Part2TileSelection::Set(indices) => if indices.len() == 0 {
+            Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::EmptyTileSet })
+        } else { Ok(indices) },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_validate_selection(size: Part2SelectionGeometry, selection: Part2DecodeSelection)
+    -> Result<Part2ValidatedSelection, crate::DecodeError> {
+    match part1_image_checked_u32(size.2 as int + size.0 as int) {
+        Err(error) => Err(error),
+        Ok(image_x1) => match part1_image_checked_u32(size.3 as int + size.1 as int) {
+            Err(error) => Err(error),
+            Ok(image_y1) => match part2_selection_tile_count(size) {
+                Err(error) => Err(error),
+                Ok(count) => if size.8 == 0 || count > u16::MAX as u64 + 1 { Err(part1_image_error(false)) }
+                    else {
+                        match part2_selection_explicit(selection.0) {
+                            Err(error) => Err(error),
+                            Ok(explicit) => match part2_explicit_tile_prefix(explicit, count, explicit.len()) {
+                                Err(error) => Err(error),
+                                Ok(()) => {
+                                    let rectangle = if explicit.len() > 1 { part2_validate_tile_rectangle(explicit, size.8) } else { Ok(()) };
+                                    match rectangle {
+                                        Err(error) => Err(error),
+                                        Ok(()) => match part2_selection_region(size, explicit, selection.1, image_x1, image_y1) {
+                                            Err(error) => Err(error),
+                                            Ok(region) => match part2_select_intersecting_tiles(size, explicit, region, count) {
+                                                Err(error) => Err(error), Ok(tiles) => Ok((tiles, region, selection.2)),
+                                            },
+                                        },
+                                    }
+                                },
+                            },
+                        }
+                    },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_tile_rectangle_prefix(tiles: Seq<u16>, across: u32, count: nat) -> Part2TileRectangle
+    decreases count,
+{
+    if count <= 1 {
+        (((tiles[0] as u32) / across) as u32, ((tiles[0] as u32) % across) as u32,
+            ((tiles[0] as u32) / across) as u32, ((tiles[0] as u32) % across) as u32)
+    } else {
+        let previous = part2_tile_rectangle_prefix(tiles, across, (count - 1) as nat);
+        let row = ((tiles[count - 1] as u32) / across) as u32;
+        let column = ((tiles[count - 1] as u32) % across) as u32;
+        (if row < previous.0 { row } else { previous.0 },
+            if column < previous.1 { column } else { previous.1 },
+            if row > previous.2 { row } else { previous.2 },
+            if column > previous.3 { column } else { previous.3 })
+    }
+}
+
+pub open spec fn part2_rectangle_area(bounds: Part2TileRectangle) -> Result<u32, crate::DecodeError> {
+    let error = crate::DecodeError::InvalidSelection { reason: crate::SelectionError::NonRectangularTileSet };
+    if bounds.2 < bounds.0 || bounds.3 < bounds.1 { Err(error) }
+    else {
+        let rows = bounds.2 as nat - bounds.0 as nat + 1;
+        let columns = bounds.3 as nat - bounds.1 as nat + 1;
+        if rows > u32::MAX || columns > u32::MAX || rows * columns > u32::MAX { Err(error) }
+        else { Ok((rows * columns) as u32) }
+    }
+}
+
+pub open spec fn part2_rectangle_cell(tiles: Seq<u16>, across: u32, row: u32, column: u32)
+    -> Result<(), crate::DecodeError>
+{
+    if row as nat * across as nat > u32::MAX || row as nat * across as nat + column as nat > u32::MAX {
+        Err(part1_block_placement_error(true))
+    } else {
+        let index = row as nat * across as nat + column as nat;
+        if index > u16::MAX { Err(part1_block_placement_error(true)) }
+        else if !tiles.contains(index as u16) {
+            Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::NonRectangularTileSet })
+        } else { Ok(()) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_rectangle_columns(tiles: Seq<u16>, across: u32, bounds: Part2TileRectangle, row: u32, count: nat)
+    -> Result<(), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(()) } else {
+        match part2_rectangle_columns(tiles, across, bounds, row, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => part2_rectangle_cell(tiles, across, row, (bounds.1 as nat + count - 1) as u32),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_rectangle_rows(tiles: Seq<u16>, across: u32, bounds: Part2TileRectangle, count: nat)
+    -> Result<(), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(()) } else {
+        match part2_rectangle_rows(tiles, across, bounds, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => part2_rectangle_columns(tiles, across, bounds, (bounds.0 as nat + count - 1) as u32,
+                (bounds.3 as nat - bounds.1 as nat + 1) as nat),
+        }
+    }
+}
+
+pub open spec fn part2_validate_tile_rectangle(tiles: Seq<u16>, across: u32) -> Result<(), crate::DecodeError> {
+    let bounds = part2_tile_rectangle_prefix(tiles, across, tiles.len());
+    match part2_rectangle_area(bounds) {
+        Err(error) => Err(error),
+        Ok(expected) => if expected as nat > usize::MAX { Err(part1_block_placement_error(true)) }
+            else if expected as nat != tiles.len() {
+                Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::NonRectangularTileSet })
+            } else { part2_rectangle_rows(tiles, across, bounds, (bounds.2 as nat - bounds.0 as nat + 1) as nat) },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_explicit_tile_prefix(tiles: Seq<u16>, count: u64, prefix: nat)
+    -> Result<(), crate::DecodeError>
+    decreases prefix,
+{
+    if prefix == 0 { Ok(()) }
+    else {
+        match part2_explicit_tile_prefix(tiles, count, (prefix - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => {
+                let tile = tiles[prefix - 1];
+                if tile as u64 >= count {
+                    Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::TileOutOfRange })
+                } else if tiles.take((prefix - 1) as int).contains(tile) {
+                    Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::DuplicateTile })
+                } else { Ok(()) }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_selection_tile_count(size: Part2SelectionGeometry) -> Result<u64, crate::DecodeError> {
+    let count = size.8 as nat * size.9 as nat;
+    if count > u64::MAX { Err(part1_image_error(true)) } else { Ok(count as u64) }
+}
+
+pub open spec fn part2_selection_nominal(origin: u32, step: u32, index: u32) -> Result<u32, crate::DecodeError> {
+    match part1_image_checked_u32(index as int * step as int) {
+        Err(error) => Err(error),
+        Ok(offset) => part1_image_checked_u32(origin as int + offset as int),
+    }
+}
+
+pub open spec fn part2_selection_tile_bounds(size: Part2SelectionGeometry, index: u16)
+    -> Result<crate::codestream::TileBounds, crate::DecodeError>
+{
+    match part2_selection_tile_count(size) {
+        Err(error) => Err(error),
+        Ok(count) => if index as u64 >= count || size.8 == 0 { Err(part1_image_error(false)) } else {
+            match part2_selection_nominal(size.6, size.4, ((index as u32) % size.8) as u32) {
+                Err(error) => Err(error),
+                Ok(nx) => match part2_selection_nominal(size.7, size.5, ((index as u32) / size.8) as u32) {
+                    Err(error) => Err(error),
+                    Ok(ny) => match part1_image_checked_u32(size.2 as int + size.0 as int) {
+                        Err(error) => Err(error),
+                        Ok(ix) => match part1_image_checked_u32(size.3 as int + size.1 as int) {
+                            Err(error) => Err(error),
+                            Ok(iy) => match part1_image_checked_u32(nx as int + size.4 as int) {
+                                Err(error) => Err(error),
+                                Ok(nex) => match part1_image_checked_u32(ny as int + size.5 as int) {
+                                    Err(error) => Err(error),
+                                    Ok(ney) => {
+                                        let x0 = if nx >= size.2 { nx } else { size.2 };
+                                        let y0 = if ny >= size.3 { ny } else { size.3 };
+                                        let x1 = if nex <= ix { nex } else { ix };
+                                        let y1 = if ney <= iy { ney } else { iy };
+                                        if x0 >= x1 || y0 >= y1 { Err(part1_image_error(false)) }
+                                        else { Ok(crate::codestream::TileBounds { tile_index: index, x0, y0, x1, y1 }) }
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_selection_ceil(value: u32, divisor: u32) -> Result<u32, crate::DecodeError> {
+    if divisor == 0 { Err(part1_block_placement_error(false)) }
+    else {
+        let total = value as nat / divisor as nat + if value as nat % divisor as nat == 0 { 0nat } else { 1nat };
+        if total > u32::MAX { Err(part1_block_placement_error(true)) } else { Ok(total as u32) }
+    }
+}
+
+pub open spec fn part2_color_target(region: Seq<u32>, discard: u8) -> Result<Seq<u32>, crate::DecodeError> {
+    if discard >= 32 {
+        Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })
+    } else {
+        let scale = 1u32 << (discard as u32);
+        match part2_selection_ceil(region[0], scale) {
+            Err(error) => Err(error),
+            Ok(x0) => match part2_selection_ceil(region[1], scale) {
+                Err(error) => Err(error),
+                Ok(y0) => match part2_selection_ceil(region[2], scale) {
+                    Err(error) => Err(error),
+                    Ok(x1) => match part2_selection_ceil(region[3], scale) {
+                        Err(error) => Err(error), Ok(y1) => Ok(seq![x0, y0, x1, y1]),
+                    },
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part2_color_sampling_step(previous: (u32, u32), info: crate::codestream::ComponentInfo, target: Seq<u32>)
+    -> Result<(u32, u32), crate::DecodeError>
+{
+    if info.x_subsampling == 0 || info.y_subsampling == 0 { Err(part1_block_placement_error(false)) }
+    else {
+        let x = if target[0] as nat * 65536 <= info.x_registration as nat { 0nat }
+            else { (target[0] as nat * 65536 - info.x_registration as nat) as nat };
+        let y = if target[1] as nat * 65536 <= info.y_registration as nat { 0nat }
+            else { (target[1] as nat * 65536 - info.y_registration as nat) as nat };
+        Ok((
+            if x % (info.x_subsampling as nat * 65536) == 0 { previous.0 } else { if previous.0 >= info.x_subsampling as u32 { previous.0 } else { info.x_subsampling as u32 } },
+            if y % (info.y_subsampling as nat * 65536) == 0 { previous.1 } else { if previous.1 >= info.y_subsampling as u32 { previous.1 } else { info.y_subsampling as u32 } },
+        ))
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_color_sampling_prefix(components: Seq<crate::codestream::ComponentInfo>, count: u16, target: Seq<u32>, prefix: nat)
+    -> Result<(u32, u32), crate::DecodeError>
+    decreases prefix,
+{
+    if prefix == 0 { Ok((0, 0)) }
+    else {
+        match part2_color_sampling_prefix(components, count, target, (prefix - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part1_image_size_component(count, components, (prefix - 1) as u16) {
+                Err(error) => Err(error), Ok(info) => part2_color_sampling_step(previous, info, target),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_color_selection_context(
+    x_origin: u32, y_origin: u32, components: Seq<crate::codestream::ComponentInfo>, count: u16,
+    selected: Part2ValidatedSelection,
+) -> Result<(Part2DecodeSelection, Seq<u32>), crate::DecodeError> {
+    match part2_color_target(selected.1, selected.2) {
+        Err(error) => Err(error),
+        Ok(target) => match part2_color_sampling_prefix(components, count, target, count as nat) {
+            Err(error) => Err(error),
+            Ok(context) => {
+                let scale = 1u32 << (selected.2 as u32);
+                let horizontal = if context.0 as nat * scale as nat > u32::MAX { u32::MAX } else { (context.0 as nat * scale as nat) as u32 };
+                let vertical = if context.1 as nat * scale as nat > u32::MAX { u32::MAX } else { (context.1 as nat * scale as nat) as u32 };
+                let x0 = if selected.1[0] <= horizontal { 0u32 } else { (selected.1[0] - horizontal) as u32 };
+                let y0 = if selected.1[1] <= vertical { 0u32 } else { (selected.1[1] - vertical) as u32 };
+                let x0 = if x0 >= x_origin { x0 } else { x_origin };
+                let y0 = if y0 >= y_origin { y0 } else { y_origin };
+                if selected.1[2] < x0 || selected.1[3] < y0 { Err(part1_block_placement_error(true)) }
+                else {
+                    Ok(((Part2TileSelection::All, Some(crate::ImageRegion {
+                        x: x0, y: y0, width: (selected.1[2] - x0) as u32, height: (selected.1[3] - y0) as u32,
+                    }), selected.2), target))
+                }
+            },
+        },
+    }
+}
 
 pub open spec fn part2_atk_checked_isize(value: int) -> Result<isize, crate::DecodeError> {
     if value < isize::MIN || value > isize::MAX { Err(part1_transform_error(true)) } else { Ok(value as isize) }
@@ -5867,8 +6375,8 @@ pub struct Tier1LegacyFrame {
     pub plane: Tier1RawPlane,
     pub next_pass: u32,
     pub bitplane: u16,
-    pub bitplane_state: Option<crate::tier1::Tier1BitplaneState>,
-    pub mq_context_state: Option<crate::mq::MqContextState>,
+    pub bitplane_state: Option<Part1LegacyBitplane>,
+    pub mq_context_state: Option<Seq<Part1MqContext>>,
     pub reset_contexts_before_mq: bool,
     pub decoded_segments: u32,
     pub decoded_bytes: u64,
@@ -6326,8 +6834,8 @@ pub struct Tier1DecoderState {
     pub next_pass: u32,
     pub bitplane: u16,
     pub zero_bitplanes: Option<u16>,
-    pub bitplane_state: Option<crate::tier1::Tier1BitplaneState>,
-    pub mq_context_state: Option<crate::mq::MqContextState>,
+    pub bitplane_state: Option<Part1LegacyBitplane>,
+    pub mq_context_state: Option<Seq<Part1MqContext>>,
     pub reset_contexts_before_mq: bool,
     pub decoded_segments: u32,
     pub decoded_bytes: u64,
@@ -6418,7 +6926,7 @@ pub open spec fn ht_cleanup_symbols_only(
     match ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped_bitplanes, maximum_work) {
         Err(error) => (Err(error), state),
         Ok((output, cleanup, statistics, bitplanes)) => ht_store_coefficient_symbols(
-            Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state },
+            ht_clear_refinement_state(state),
             output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
     }
 }
@@ -6430,7 +6938,7 @@ pub open spec fn ht_coefficient_symbols(
     match ht_cleanup_prepare(state.plane, segments.cleanup, state.maximum_passes, maximum_u, skipped_bitplanes, maximum_work) {
         Err(error) => (Err(error), state),
         Ok((output, cleanup, statistics, bitplanes)) => {
-            let state = Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state };
+            let state = ht_clear_refinement_state(state);
             match segments.refinement {
                 None => ht_store_coefficient_symbols(state, output, cleanup, statistics, bitplanes, passes, segments.bytes, false),
                 Some(segment) => {
@@ -6458,6 +6966,10 @@ pub open spec fn ht_coefficient_symbols(
             }
         },
     }
+}
+
+pub open spec fn ht_clear_refinement_state(state: Tier1DecoderState) -> Tier1DecoderState {
+    Tier1DecoderState { ht_refinement_data: Seq::empty(), ht_refinement_passes: 0, ..state }
 }
 
 pub open spec fn ht_significant_bitplanes(maximum_passes: u32) -> Result<u16, crate::DecodeError> {
@@ -6529,6 +7041,309 @@ pub open spec fn ht_decode_segments(
             }
         }
     }
+}
+
+pub open spec fn ht_finish_refinement_contribution(
+    state: Tier1DecoderState, passes: u8, bytes: nat, next_bytes: u64,
+    statistics: crate::tier1::Tier1PassStatistics, replayed: bool,
+) -> HtDecoderResult {
+    let next = state.next_pass as nat + passes as nat;
+    if next > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else {
+        let state = Tier1DecoderState { next_pass: next as u32, ..state };
+        if state.decoded_segments == u32::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + 1) as u32, ..state };
+            let state = if replayed { Tier1DecoderState { decoded_bytes: next_bytes, ..state } } else { state };
+            if bytes > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+            else { (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, bytes: bytes as u32, statistics }), state) }
+        }
+    }
+}
+
+pub open spec fn ht_decode_refinement_contribution(
+    state: Tier1DecoderState, input: Seq<u8>, passes: u8, maximum_bytes: u64, maximum_work: u64,
+) -> HtDecoderResult {
+    let total = state.ht_refinement_passes as nat + passes as nat;
+    if !ht_block_coding_enabled(state.style.block_coding) || state.next_pass == 0
+        || !state.ht_current_set_has_cleanup || state.next_pass % 3 == 0 || passes == 0 || total > 2 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        match state.ht_cleanup_plane {
+            None => (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state),
+            Some(cleanup) => {
+                let next_bytes = state.decoded_bytes as nat + (input.len() as u64) as nat;
+                if next_bytes > u64::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+                else if next_bytes > maximum_bytes {
+                    (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlockBytes,
+                        limit: maximum_bytes, actual: next_bytes as u64 }), state)
+                } else {
+                    let data = state.ht_refinement_data + input;
+                    if data.len() > 2046 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+                    else if data.len() == 0 {
+                        ht_finish_refinement_contribution(Tier1DecoderState { ht_refinement_passes: total as u8, ..state },
+                            passes, 0, next_bytes as u64, tier1_statistics_zero(), false)
+                    } else {
+                        let segment = HtRefinementSegmentState {
+                            encoded: data,
+                            significance_propagation: HtSubstreamState { bytes: data, offset: 0, forward: true },
+                            magnitude_refinement: HtSubstreamState { bytes: data, offset: 0, forward: false },
+                        };
+                        match ht_refinement_plane(cleanup, segment, total as u8, state.ht_decoded_bitplanes,
+                            state.style.vertical_causal_context, maximum_work) {
+                            Err(error) => (Err(error), state),
+                            Ok((plane, statistics)) => ht_finish_refinement_contribution(Tier1DecoderState {
+                                plane, ht_refinement_data: data, ht_refinement_passes: total as u8, ..state },
+                                passes, input.len(), next_bytes as u64, statistics, true),
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn ht_skip_segment(state: Tier1DecoderState, passes: u8, maximum_passes: u32) -> HtDecoderResult {
+    let phase = state.next_pass % 3;
+    let next = state.next_pass as nat + passes as nat;
+    if !ht_block_coding_enabled(state.style.block_coding) || passes == 0 || passes > 2
+        || (phase == 0 && passes != 1) || (phase != 0 && passes as nat > 3 - phase as nat) {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else if next > u32::MAX { (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state) }
+    else if next > state.maximum_passes { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else if next > maximum_passes {
+        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlockPasses,
+            limit: maximum_passes as u64, actual: next as u64 }), state)
+    } else if phase == 0 {
+        if !ht_replacement_allowed(phase as nat, state.ht_current_set_has_cleanup, true)
+            || (state.ht_sets_seen > 0 && !ht_multiple_set_allowed(state.ht_sets_seen as nat, state.allow_multiple_ht_sets)) {
+            (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+        } else if state.ht_sets_seen == u16::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState {
+                ht_sets_seen: if state.ht_sets_seen > 0 { (state.ht_sets_seen + 1) as u16 } else { state.ht_sets_seen },
+                ht_current_set_has_cleanup: false, ht_refinement_data: Seq::empty(), ht_refinement_passes: 0,
+                next_pass: next as u32, ..state
+            };
+            if state.decoded_segments == u32::MAX {
+                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+            } else {
+                let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + 1) as u32, ..state };
+                (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, bytes: 0, statistics: tier1_statistics_zero() }), state)
+            }
+        }
+    } else if state.ht_current_set_has_cleanup {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        let state = Tier1DecoderState { next_pass: next as u32, ..state };
+        if state.decoded_segments == u32::MAX {
+            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            let state = Tier1DecoderState { decoded_segments: (state.decoded_segments + 1) as u32, ..state };
+            (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, bytes: 0, statistics: tier1_statistics_zero() }), state)
+        }
+    }
+}
+
+pub type HtPlaceholderRunResult = (Result<(), crate::DecodeError>, Tier1DecoderState);
+
+#[verifier::opaque]
+pub open spec fn ht_placeholder_group_run(
+    state: Tier1DecoderState, remaining: nat, maximum_passes: u32,
+) -> HtPlaceholderRunResult
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(()), state) } else {
+        let cleanup = ht_skip_segment(state, 1, maximum_passes);
+        match cleanup.0 {
+            Err(error) => (Err(error), cleanup.1),
+            Ok(_) => {
+                let refinement = ht_skip_segment(cleanup.1, 2, maximum_passes);
+                match refinement.0 {
+                    Err(error) => (Err(error), refinement.1),
+                    Ok(_) => if remaining < 3 {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), refinement.1)
+                    } else { ht_placeholder_group_run(refinement.1, (remaining - 3) as nat, maximum_passes) },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn ht_group_route(state: Tier1DecoderState) -> bool {
+    matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::HighThroughput)
+        || (matches!(state.style.block_coding, crate::tier1::Tier1BlockCoding::Mixed)
+            && state.ht_cleanup_plane.is_some())
+}
+
+pub open spec fn ht_decode_staged_group(
+    state: Tier1DecoderState, input: Seq<u8>, passes: u8,
+    maximum_passes: u32, maximum_bytes: u64, maximum_work: u64,
+) -> HtDecoderResult {
+    if passes == 0 || input.len() == 0 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else {
+        match ht_packet_pass_group(passes) {
+            Err(error) => (Err(error), state),
+            Ok(group) => if group.refinement_passes != 0 {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+            } else {
+                let skipped = ht_placeholder_group_run(state, group.placeholder_passes as nat, maximum_passes);
+                match skipped.0 {
+                    Err(error) => (Err(error), state),
+                    Ok(()) => {
+                        let decoded = ht_decode_segments(skipped.1, input, 1, None, 0,
+                            maximum_passes, maximum_bytes, maximum_work);
+                        match decoded.0 {
+                            Err(error) => (Err(error), state),
+                            Ok(result) => (Ok(crate::tier1::Tier1SegmentDecode { passes: passes as u32, ..result }), decoded.1),
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_tier1_segment(
+    state: Tier1DecoderState, input: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+) -> HtDecoderResult {
+    if passes == 0 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else if ht_group_route(state) {
+        ht_decode_staged_group(state, input, passes, pass_limit, byte_limit, work_limit)
+    } else {
+        part1_legacy_segment(state, input, passes as u32, pass_limit, byte_limit, input_limit, work_limit)
+    }
+}
+
+pub open spec fn ht_has_current_cleanup(state: Tier1DecoderState) -> bool { state.ht_current_set_has_cleanup }
+
+pub open spec fn ht_packet_segment_route(
+    state: Tier1DecoderState, body: Seq<u8>, passes: u8,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtPlaceholderRunResult {
+    let result = if state.next_pass % 3 == 0 {
+        if passes != 1 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+        else if body.len() == 0 { ht_skip_segment(state, 1, pass_limit) }
+        else { ht_decode_segments(state, body, 1, None, 0, pass_limit, byte_limit, work_limit) }
+    } else if state.ht_current_set_has_cleanup {
+        ht_decode_refinement_contribution(state, body, passes, byte_limit, work_limit)
+    } else if body.len() > 0 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state)
+    } else { ht_skip_segment(state, passes, pass_limit) };
+    (match result.0 { Err(error) => Err(error), Ok(_) => Ok(()) }, result.1)
+}
+
+pub type HtPacketSegmentResult = (Result<(), crate::DecodeError>, Tier1DecoderState, usize, u32);
+
+pub open spec fn ht_packet_segment_body(
+    state: Tier1DecoderState, segment: crate::packet::CodeBlockSegmentContribution, body: Seq<u8>,
+    offset: usize, decoded_passes: u32, pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtPacketSegmentResult {
+    let length = segment.data_length as nat;
+    let end = offset as nat + length;
+    if segment.passes == 0 || segment.passes > 2 {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state, offset, decoded_passes)
+    } else if length > usize::MAX || end > usize::MAX {
+        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state, offset, decoded_passes)
+    } else if offset > body.len() || end > body.len() {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state, offset, decoded_passes)
+    } else {
+        let result = ht_packet_segment_route(state, body.subrange(offset as int, end as int), segment.passes,
+            pass_limit, byte_limit, work_limit);
+        match result.0 {
+            Err(error) => (Err(error), result.1, offset, decoded_passes),
+            Ok(()) => if decoded_passes as nat + segment.passes as nat > u32::MAX {
+                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), result.1, offset, decoded_passes)
+            } else {
+                (Ok(()), result.1, end as usize, (decoded_passes + segment.passes) as u32)
+            },
+        }
+    }
+}
+
+pub struct HtPacketBodyProgress {
+    pub segment_index: u8,
+    pub offset: usize,
+    pub decoded_passes: u32,
+}
+
+pub type HtPacketBodyRunResult = (Result<(), crate::DecodeError>, Tier1DecoderState, HtPacketBodyProgress);
+
+#[verifier::opaque]
+pub open spec fn ht_packet_body_run(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>, progress: HtPacketBodyProgress,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtPacketBodyRunResult
+    decreases header.segment_count as nat - progress.segment_index as nat,
+{
+    if progress.segment_index >= header.segment_count { (Ok(()), state, progress) }
+    else {
+        match part1_code_block_segment(header, progress.segment_index) {
+            Err(error) => (Err(error), state, progress),
+            Ok(segment) => {
+                let step = ht_packet_segment_body(state, segment, body, progress.offset, progress.decoded_passes,
+                    pass_limit, byte_limit, work_limit);
+                let progress = HtPacketBodyProgress {
+                    offset: step.2, decoded_passes: step.3, ..progress
+                };
+                match step.0 {
+                    Err(error) => (Err(error), step.1, progress),
+                    Ok(()) => if progress.segment_index == u8::MAX {
+                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), step.1, progress)
+                    } else {
+                        ht_packet_body_run(step.1, header, body, HtPacketBodyProgress {
+                            segment_index: (progress.segment_index + 1) as u8, ..progress
+                        }, pass_limit, byte_limit, work_limit)
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub type HtCodeBlockBodyResult = (Result<crate::packet::CodeBlockBodyDecode, crate::DecodeError>, Tier1DecoderState);
+
+pub open spec fn ht_packet_body_segments(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtCodeBlockBodyResult {
+    if header.segment_count == 0 { (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), state) }
+    else {
+        let result = ht_packet_body_run(state, header, body, HtPacketBodyProgress {
+            segment_index: 0, offset: 0, decoded_passes: 0,
+        }, pass_limit, byte_limit, work_limit);
+        match result.0 {
+            Err(error) => (Err(error), result.1),
+            Ok(()) => if result.2.offset != body.len() || result.2.decoded_passes != header.new_passes {
+                (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), result.1)
+            } else {
+                (Ok(crate::packet::CodeBlockBodyDecode { segments: header.segment_count,
+                    passes: result.2.decoded_passes, bytes: header.data_length }), result.1)
+            },
+        }
+    }
+}
+
+pub open spec fn ht_packet_body_staged(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtCodeBlockBodyResult {
+    let admitted = part1_code_block_body_prepare(state, header, body);
+    match admitted.0 { Err(error) => (Err(error), admitted.1), Ok(()) =>
+        ht_packet_body_segments(admitted.1, header, body, pass_limit, byte_limit, work_limit) }
+}
+
+pub open spec fn ht_packet_body(
+    state: Tier1DecoderState, header: Part1CodeBlockContribution, body: Seq<u8>,
+    pass_limit: u32, byte_limit: u64, work_limit: u64,
+) -> HtCodeBlockBodyResult {
+    let result = ht_packet_body_staged(state, header, body, pass_limit, byte_limit, work_limit);
+    match result.0 { Err(error) => (Err(error), state), Ok(_) => result }
 }
 
 pub type HtPlaneResult = (Result<(), crate::DecodeError>, HtPlaneState);

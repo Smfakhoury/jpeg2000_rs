@@ -83,6 +83,19 @@ verus! {
         size.components
     }
 
+    pub closed spec fn selection_geometry_view(size: &ImageSize) -> crate::specs::Part2SelectionGeometry {
+        (size.width, size.height, size.x_origin, size.y_origin, size.tile_width, size.tile_height,
+            size.tile_x_origin, size.tile_y_origin, size.tiles_across, size.tiles_down)
+    }
+
+    pub(crate) proof fn selection_geometry_known_fields(size: &ImageSize)
+        ensures selection_geometry_view(size)
+            == (size.width, size.height, size.x_origin, size.y_origin, size.tile_width, size.tile_height,
+                size.tile_x_origin, size.tile_y_origin, size.tiles_across, size.tiles_down),
+    {
+        reveal(selection_geometry_view);
+    }
+
     pub closed spec fn decomposition_selector_view(style: CodingStyle) -> (u8, Seq<DecompositionDirection>) {
         (style.decomposition_levels, style.decomposition_directions@)
     }
@@ -136,11 +149,34 @@ pub struct TileComponentBounds {
     pub image_y: u32,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_error(true),
+))]
+fn selection_geometry_arithmetic() -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::ArithmeticOverflow,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_error(false),
+))]
+fn selection_geometry_invalid() -> DecodeError {
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidImageGeometry,
+    }
+}
+
 impl ImageSize {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_selection_tile_count(selection_geometry_view(&self)),
+    ))]
     pub fn tile_count(self) -> Result<u64, DecodeError> {
         u64::from(self.tiles_across)
             .checked_mul(u64::from(self.tiles_down))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))
+            .ok_or_else(selection_geometry_arithmetic)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -152,46 +188,49 @@ impl ImageSize {
         image_component_info(self, index)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_selection_tile_bounds(selection_geometry_view(self), tile_index),
+    ))]
     pub fn tile_bounds(&self, tile_index: u16) -> Result<TileBounds, DecodeError> {
         if u64::from(tile_index) >= self.tile_count()? || self.tiles_across == 0 {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
+            return Err(selection_geometry_invalid());
         }
         let column = u32::from(tile_index) % self.tiles_across;
         let row = u32::from(tile_index) / self.tiles_across;
-        let nominal_x0 = column
+        let offset_x = column
             .checked_mul(self.tile_width)
-            .and_then(|offset| self.tile_x_origin.checked_add(offset))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        let nominal_y0 = row
+            .ok_or_else(selection_geometry_arithmetic)?;
+        let nominal_x0 = self
+            .tile_x_origin
+            .checked_add(offset_x)
+            .ok_or_else(selection_geometry_arithmetic)?;
+        let offset_y = row
             .checked_mul(self.tile_height)
-            .and_then(|offset| self.tile_y_origin.checked_add(offset))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
+        let nominal_y0 = self
+            .tile_y_origin
+            .checked_add(offset_y)
+            .ok_or_else(selection_geometry_arithmetic)?;
         let image_x1 = self
             .x_origin
             .checked_add(self.width)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let image_y1 = self
             .y_origin
             .checked_add(self.height)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let x0 = crate::refinement::tile_clip_start(nominal_x0, self.x_origin);
         let y0 = crate::refinement::tile_clip_start(nominal_y0, self.y_origin);
         let nominal_x1 = nominal_x0
             .checked_add(self.tile_width)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let nominal_y1 = nominal_y0
             .checked_add(self.tile_height)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let x1 = crate::refinement::tile_clip_end(nominal_x1, image_x1);
         let y1 = crate::refinement::tile_clip_end(nominal_y1, image_y1);
         if x0 >= x1 || y0 >= y1 {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
+            return Err(selection_geometry_invalid());
         }
         Ok(TileBounds {
             tile_index,
@@ -263,7 +302,23 @@ pub struct ProgressionChange {
     pub progression_order: ProgressionOrder,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn progression_change_contains(record: ProgressionChange, layer: u16, resolution: u8, component: u16) -> bool {
+        layer < record.layer_end
+            && resolution >= record.resolution_start && resolution < record.resolution_end
+            && component >= record.component_start && component < record.component_end
+    }
+
+    pub closed spec fn progression_changes_view(changes: &ProgressionChanges) -> Seq<ProgressionChange> {
+        changes.records@
+    }
+}
+
 impl ProgressionChange {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == progression_change_contains(self, layer, resolution, component),
+    ))]
     pub const fn contains(self, layer: u16, resolution: u8, component: u16) -> bool {
         layer < self.layer_end
             && resolution >= self.resolution_start
@@ -286,6 +341,7 @@ impl ProgressionChanges {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == progression_changes_view(self),))]
     pub fn records(&self) -> &[ProgressionChange] {
         &self.records
     }
@@ -295,14 +351,17 @@ impl ProgressionChanges {
         Self { records }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (progression_changes_view(self).len() != 0),))]
     pub const fn is_present(&self) -> bool {
         !self.records.is_empty()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result as nat == progression_changes_view(self).len(),))]
     pub fn len(&self) -> usize {
         self.records.len()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (progression_changes_view(self).len() == 0),))]
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }
@@ -372,6 +431,30 @@ pub struct CodingStyle {
     pub sop_markers: bool,
     pub eph_markers: bool,
     pub precinct_exponents: [(u8, u8); 33],
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn component_coding_style_result(styles: &ComponentCodingStyles, component: u16) -> Result<CodingStyle, DecodeError> {
+        if component >= styles.components {
+            Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
+        } else if component as nat >= styles.styles@.len() {
+            Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
+        } else { Ok(styles.styles@[component as int]) }
+    }
+
+    pub closed spec fn coding_style_tier1_result(style: CodingStyle) -> Result<Tier1CodingStyle, DecodeError> {
+        crate::specs::part1_tier1_coding_style_byte(style.code_block_style)
+    }
+
+    pub closed spec fn coding_style_packet_markers(style: &CodingStyle) -> (bool, bool) {
+        (style.sop_markers, style.eph_markers)
+    }
+
+    pub proof fn coding_style_known_packet_markers(style: &CodingStyle)
+        ensures coding_style_packet_markers(style) == (style.sop_markers, style.eph_markers),
+    {
+    }
 }
 
 impl CodingStyle {
@@ -605,8 +688,11 @@ impl CodingStyle {
         count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == coding_style_tier1_result(self),
+    ))]
     pub fn tier1_coding_style(self) -> Result<Tier1CodingStyle, DecodeError> {
-        Tier1CodingStyle::from_code_block_style(self.code_block_style)
+        crate::tier1::tier1_coding_style_from_code_block_style(self.code_block_style)
     }
 
     pub fn precinct_exponents(self, resolution: u8) -> Result<(u8, u8), DecodeError> {
@@ -716,13 +802,22 @@ impl ComponentCodingStyles {
         Self::new(components, default)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == component_coding_style_result(self, component),
+    ))]
     pub fn style(&self, component: u16) -> Result<CodingStyle, DecodeError> {
         if component >= self.components {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
         match self.styles.get(usize::from(component)) {
             Some(style) => Ok(*style),
-            None => Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)),
+            None => Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            }),
         }
     }
 
@@ -2226,34 +2321,96 @@ pub struct PackedPacketHeaders<'a> {
     fragments: u16,
 }
 
-impl PackedPacketHeaders<'_> {
-    pub const fn none() -> Self {
-        Self {
-            source: PackedPacketHeaderSource::None,
-            length: 0,
-            fragments: 0,
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn packed_packet_headers_view(headers: &PackedPacketHeaders) -> crate::specs::Part1PackedHeaders {
+        crate::specs::Part1PackedHeaders {
+            source: match headers.source {
+                PackedPacketHeaderSource::None => crate::specs::Part1PackedHeaderSource::None,
+                PackedPacketHeaderSource::MarkerSegments { header, marker, logical_start } =>
+                    crate::specs::Part1PackedHeaderSource::MarkerSegments { header: header@, marker, logical_start },
+            },
+            length: headers.length, fragments: headers.fragments,
         }
     }
 
+    pub open spec fn packed_header_reassembly_outcome(result: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match result { Ok(bytes) => Ok(bytes@), Err(error) => Err(error) }
+    }
+
+    pub closed spec fn packed_packet_headers_present(headers: &PackedPacketHeaders) -> bool {
+        !matches!(headers.source, PackedPacketHeaderSource::None)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == (DecodeError::MalformedInput { offset, kind }),
+))]
+fn packet_input_error(offset: u64, kind: MalformedKind) -> DecodeError {
+    DecodeError::MalformedInput { offset, kind }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_packet_input_limit(resource, limit, actual),
+))]
+fn packet_input_limit(resource: Resource, limit: u64, actual: u64) -> DecodeError {
+    DecodeError::LimitExceeded {
+        resource,
+        limit,
+        actual,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packed_packet_headers_view(&result) == (crate::specs::Part1PackedHeaders {
+        source: crate::specs::Part1PackedHeaderSource::None, length: 0, fragments: 0 }),
+        !packed_packet_headers_present(&result),
+))]
+pub(crate) const fn packed_packet_headers_none<'a>() -> PackedPacketHeaders<'a> {
+    PackedPacketHeaders {
+        source: PackedPacketHeaderSource::None,
+        length: 0,
+        fragments: 0,
+    }
+}
+
+impl PackedPacketHeaders<'_> {
+    pub const fn none() -> Self {
+        packed_packet_headers_none()
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == packed_packet_headers_present(self),
+            result == !matches!(packed_packet_headers_view(self).source, crate::specs::Part1PackedHeaderSource::None),
+    ))]
     pub const fn is_present(&self) -> bool {
         !matches!(self.source, PackedPacketHeaderSource::None)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packed_packet_headers_view(self).length,))]
     pub const fn len(&self) -> usize {
         self.length
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (packed_packet_headers_view(self).length == 0),))]
     pub const fn is_empty(&self) -> bool {
         self.length == 0
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packed_packet_headers_view(self).fragments,))]
     pub const fn fragment_count(&self) -> u16 {
         self.fragments
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packed_header_reassembly_outcome(result) == crate::specs::part1_packed_header_reassembly(
+            packed_packet_headers_view(self), crate::limits::resource_packet_header_byte_limit(limits)),
+    ))]
     pub(crate) fn reassemble(&self, limits: &ResourceLimits) -> Result<Vec<u8>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packed_header_reassembly); }
         if self.length as u64 > limits.maximum_packet_header_bytes() {
-            return Err(DecodeError::limit(
+            return Err(packet_input_limit(
                 Resource::PacketHeaderBytes,
                 limits.maximum_packet_header_bytes(),
                 self.length as u64,
@@ -2267,85 +2424,141 @@ impl PackedPacketHeaders<'_> {
         else {
             return Ok(Vec::new());
         };
-        let logical_end = logical_start
-            .checked_add(self.length)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        let logical_end = match logical_start.checked_add(self.length) {
+            Some(end) => end,
+            None => return Err(packet_input_error(0, MalformedKind::ArithmeticOverflow)),
+        };
         let mut output = Vec::with_capacity(self.length);
         let mut position = 0_usize;
         let mut logical_position = 0_usize;
         let mut remaining_segments = header.len();
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases remaining_segments,)
+            verus_spec(
+                invariant position <= header.len(), logical_position <= position,
+                    remaining_segments <= header.len(),
+                    logical_end as int == logical_start as int + self.length as int,
+                    output@.len() == (if logical_position <= logical_start { 0int }
+                        else if logical_position < logical_end { logical_position as int - logical_start as int }
+                        else { self.length as int }),
+                    crate::specs::part1_packed_header_reassembly(packed_packet_headers_view(self), crate::limits::resource_packet_header_byte_limit(limits))
+                        == crate::specs::part1_packed_header_scan(header@, marker, logical_start, logical_end, self.length,
+                            crate::specs::Part1PackedHeaderScan { position, logical_position, remaining_segments, output: output@ }),
+                decreases remaining_segments,
+            )
         )]
         while position < header.len() {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = crate::specs::Part1PackedHeaderScan {
+            position, logical_position, remaining_segments, output: output@ }; }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_packed_header_scan); }
             if remaining_segments == 0 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidMarkerLength,
                 ));
             }
             remaining_segments -= 1;
             if header.len().saturating_sub(position) < 4 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidPackedPacketHeader,
                 ));
             }
-            let current_marker = read_u16([header[position], header[position + 1]]);
-            let segment_length =
-                usize::from(read_u16([header[position + 2], header[position + 3]]));
+            let current_marker =
+                crate::refinement::marker_value(header[position], header[position + 1]);
+            let segment_length = usize::from(crate::refinement::marker_value(
+                header[position + 2],
+                header[position + 3],
+            ));
             if segment_length < 2 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidMarkerLength,
                 ));
             }
-            let end = position
-                .checked_add(2)
-                .and_then(|value| value.checked_add(segment_length))
-                .ok_or_else(|| {
-                    DecodeError::malformed(position as u64, MalformedKind::ArithmeticOverflow)
-                })?;
+            let after_marker = match position.checked_add(2) {
+                Some(value) => value,
+                None => {
+                    return Err(packet_input_error(
+                        position as u64,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
+            let end = match after_marker.checked_add(segment_length) {
+                Some(end) => end,
+                None => {
+                    return Err(packet_input_error(
+                        position as u64,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
             if end > header.len() {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     position as u64,
                     MalformedKind::InvalidMarkerLength,
                 ));
             }
             if current_marker == marker {
-                let payload_start = position.checked_add(5).ok_or_else(|| {
-                    DecodeError::malformed(position as u64, MalformedKind::ArithmeticOverflow)
-                })?;
+                let payload_start = match position.checked_add(5) {
+                    Some(start) => start,
+                    None => {
+                        return Err(packet_input_error(
+                            position as u64,
+                            MalformedKind::ArithmeticOverflow,
+                        ));
+                    }
+                };
                 if payload_start > end {
-                    return Err(DecodeError::malformed(
+                    return Err(packet_input_error(
                         position as u64,
                         MalformedKind::InvalidMarkerLength,
                     ));
                 }
                 let fragment = &header[payload_start..end];
-                let fragment_end =
-                    logical_position
-                        .checked_add(fragment.len())
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
-                                position as u64,
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
+                let fragment_end = match logical_position.checked_add(fragment.len()) {
+                    Some(end) => end,
+                    None => {
+                        return Err(packet_input_error(
+                            position as u64,
+                            MalformedKind::ArithmeticOverflow,
+                        ));
+                    }
+                };
                 let copy_start = logical_start.max(logical_position);
                 let copy_end = logical_end.min(fragment_end);
                 if copy_start < copy_end {
                     let local_start = copy_start - logical_position;
                     let local_end = copy_end - logical_position;
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(fragment@.subrange(local_start as int, local_end as int)
+                            =~= header@.subrange(payload_start as int + local_start as int, payload_start as int + local_end as int));
+                    }
                     output.extend_from_slice(&fragment[local_start..local_end]);
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(output@ =~= before.output + header@.subrange(
+                            payload_start as int + local_start as int, payload_start as int + local_end as int));
+                    }
                 }
                 logical_position = fragment_end;
             }
             position = end;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::specs::part1_packed_header_scan(header@, marker, logical_start, logical_end, self.length, before)
+                    == crate::specs::part1_packed_header_scan(header@, marker, logical_start, logical_end, self.length,
+                        crate::specs::Part1PackedHeaderScan { position, logical_position, remaining_segments, output: output@ }));
+            }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packed_header_scan); }
         if output.len() != self.length {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 logical_position as u64,
                 MalformedKind::InvalidPackedPacketHeader,
             ));
@@ -2362,27 +2575,66 @@ pub struct PacketLengths<'a> {
     encoded_bytes: u64,
 }
 
-impl PacketLengths<'_> {
-    pub const fn none() -> Self {
-        Self {
-            source: PacketLengthSource::None,
-            packet_count: 0,
-            encoded_bytes: 0,
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn packet_length_source_view(source: PacketLengthSource<'_>) -> crate::specs::Part1PacketLengthSource {
+        match source {
+            PacketLengthSource::None => crate::specs::Part1PacketLengthSource::None,
+            PacketLengthSource::Plm(bytes) => crate::specs::Part1PacketLengthSource::Plm(bytes@),
+            PacketLengthSource::Plt(header) => crate::specs::Part1PacketLengthSource::Plt(header@),
         }
     }
 
+    pub closed spec fn packet_lengths_view(lengths: &PacketLengths) -> crate::specs::Part1PacketLengths {
+        crate::specs::Part1PacketLengths {
+            source: packet_length_source_view(lengths.source), packet_count: lengths.packet_count, encoded_bytes: lengths.encoded_bytes,
+        }
+    }
+
+    pub closed spec fn packet_length_iter_view(iter: &PacketLengthIter) -> crate::specs::Part1PacketLengthIter {
+        crate::specs::Part1PacketLengthIter {
+            source: packet_length_source_view(iter.source), position: iter.position, segment_end: iter.segment_end,
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_lengths_view(&result) == (crate::specs::Part1PacketLengths {
+        source: crate::specs::Part1PacketLengthSource::None, packet_count: 0, encoded_bytes: 0 }),
+))]
+pub(crate) const fn packet_lengths_none<'a>() -> PacketLengths<'a> {
+    PacketLengths {
+        source: PacketLengthSource::None,
+        packet_count: 0,
+        encoded_bytes: 0,
+    }
+}
+
+impl PacketLengths<'_> {
+    pub const fn none() -> Self {
+        packet_lengths_none()
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == !matches!(packet_lengths_view(self).source, crate::specs::Part1PacketLengthSource::None),
+    ))]
     pub const fn is_present(&self) -> bool {
         !matches!(self.source, PacketLengthSource::None)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_lengths_view(self).packet_count,))]
     pub const fn packet_count(&self) -> u64 {
         self.packet_count
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_lengths_view(self).encoded_bytes,))]
     pub const fn encoded_bytes(&self) -> u64 {
         self.encoded_bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packet_length_iter_view(&result) == crate::specs::part1_packet_lengths_iter(packet_lengths_view(self)),
+    ))]
     pub(crate) const fn iter(&self) -> PacketLengthIter<'_> {
         PacketLengthIter {
             source: self.source,
@@ -2399,7 +2651,16 @@ pub(crate) struct PacketLengthIter<'a> {
 }
 
 impl PacketLengthIter<'_> {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, packet_length_iter_view(final(self))) == crate::specs::part1_packet_length_next(packet_length_iter_view(old(self))),
+            match result { Ok(Some(value)) => value > 0, _ => true },
+            match result { Ok(Some(_)) => packet_length_iter_view(final(self)).position > packet_length_iter_view(old(self)).position, _ => true },
+    ))]
     pub(crate) fn next_length(&mut self) -> Result<Option<u32>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost initial = packet_length_iter_view(self); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packet_length_next); }
         match self.source {
             PacketLengthSource::None => Ok(None),
             PacketLengthSource::Plm(bytes) => {
@@ -2414,9 +2675,19 @@ impl PacketLengthIter<'_> {
             {
                 #[cfg_attr(
                     verus_keep_ghost,
-                    verus_spec(decreases header.len() as int - self.position as int,)
+                    verus_spec(
+                        invariant initial == packet_length_iter_view(old(self)),
+                            packet_length_iter_view(self).source == initial.source,
+                            initial.source == crate::specs::Part1PacketLengthSource::Plt(header@),
+                            initial.position <= self.position,
+                            crate::specs::part1_packet_length_next(initial)
+                                == crate::specs::part1_packet_length_plt(packet_length_iter_view(self)),
+                        decreases header.len() as int - self.position as int,
+                    )
                 )]
                 loop {
+                    #[cfg(verus_keep_ghost)]
+                    proof! { reveal(crate::specs::part1_packet_length_plt); }
                     let previous_position = self.position;
                     if self.position < self.segment_end {
                         let (length, next) =
@@ -2428,52 +2699,71 @@ impl PacketLengthIter<'_> {
                         return Ok(None);
                     }
                     if header.len().saturating_sub(self.position) < 4 {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             self.position as u64,
                             MalformedKind::InvalidPacketLength,
                         ));
                     }
-                    let marker = read_u16([header[self.position], header[self.position + 1]]);
-                    let marker_length = usize::from(read_u16([
+                    let marker = crate::refinement::marker_value(
+                        header[self.position],
+                        header[self.position + 1],
+                    );
+                    let marker_length = usize::from(crate::refinement::marker_value(
                         header[self.position + 2],
                         header[self.position + 3],
-                    ]));
+                    ));
                     if marker_length < 2 {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             self.position as u64,
                             MalformedKind::InvalidMarkerLength,
                         ));
                     }
-                    let end = self
-                        .position
-                        .checked_add(2)
-                        .and_then(|value| value.checked_add(marker_length))
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
+                    let after_marker = match self.position.checked_add(2) {
+                        Some(value) => value,
+                        None => {
+                            return Err(packet_input_error(
                                 self.position as u64,
                                 MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
+                            ));
+                        }
+                    };
+                    let end = match after_marker.checked_add(marker_length) {
+                        Some(end) => end,
+                        None => {
+                            return Err(packet_input_error(
+                                self.position as u64,
+                                MalformedKind::ArithmeticOverflow,
+                            ));
+                        }
+                    };
                     if end > header.len() {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             self.position as u64,
                             MalformedKind::InvalidMarkerLength,
                         ));
                     }
                     self.position = end;
                     if marker == PLT {
-                        let data_start = self
-                            .position
-                            .checked_sub(marker_length)
-                            .and_then(|value| value.checked_add(3))
-                            .ok_or_else(|| {
-                                DecodeError::malformed(
+                        let before_index = match self.position.checked_sub(marker_length) {
+                            Some(value) => value,
+                            None => {
+                                return Err(packet_input_error(
                                     self.position as u64,
                                     MalformedKind::ArithmeticOverflow,
-                                )
-                            })?;
+                                ));
+                            }
+                        };
+                        let data_start = match before_index.checked_add(3) {
+                            Some(start) => start,
+                            None => {
+                                return Err(packet_input_error(
+                                    self.position as u64,
+                                    MalformedKind::ArithmeticOverflow,
+                                ));
+                            }
+                        };
                         if data_start > end {
-                            return Err(DecodeError::malformed(
+                            return Err(packet_input_error(
                                 self.position as u64,
                                 MalformedKind::InvalidMarkerLength,
                             ));
@@ -2482,7 +2772,7 @@ impl PacketLengthIter<'_> {
                         self.segment_end = end;
                     }
                     if self.position <= previous_position || self.position > header.len() {
-                        return Err(DecodeError::malformed(
+                        return Err(packet_input_error(
                             previous_position as u64,
                             MalformedKind::InvalidPacketLength,
                         ));
@@ -8639,13 +8929,19 @@ fn signed_u32(value: u32) -> i64 {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_packet_length_decode(encoded@, start, end),
+        match result { Ok((value, next)) => value > 0 && start < next && next <= end, Err(_) => true },
+))]
 fn decode_packet_length(
     encoded: &[u8],
     start: usize,
     end: usize,
 ) -> Result<(u32, usize), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_packet_length_decode); }
     if start >= end || end > encoded.len() {
-        return Err(DecodeError::malformed(
+        return Err(packet_input_error(
             start as u64,
             MalformedKind::InvalidPacketLength,
         ));
@@ -8656,39 +8952,67 @@ fn decode_packet_length(
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant position <= end,
+            invariant start <= position, position <= end, end <= encoded.len(),
+                crate::specs::part1_packet_length_decode(encoded@, start, end)
+                    == crate::specs::part1_packet_length_groups(encoded@, start, end, position, value, groups),
             decreases end - position,
         )
     )]
     loop {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packet_length_groups); }
         if position >= end || position >= encoded.len() {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 start as u64,
                 MalformedKind::InvalidPacketLength,
             ));
         }
         let byte = encoded[position];
-        groups = groups.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(start as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        groups = match groups.checked_add(1) {
+            Some(count) => count,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
         if groups > 5 || (groups == 5 && value > 0x01ff_ffff) {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 start as u64,
                 MalformedKind::InvalidPacketLength,
             ));
         }
-        value = value
-            .checked_mul(128)
-            .and_then(|prefix| prefix.checked_add(u32::from(byte & 0x7f)))
-            .ok_or_else(|| {
-                DecodeError::malformed(start as u64, MalformedKind::InvalidPacketLength)
-            })?;
-        position = position.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(start as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        let prefix = match value.checked_mul(128) {
+            Some(prefix) => prefix,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::InvalidPacketLength,
+                ));
+            }
+        };
+        value = match prefix.checked_add(u32::from(byte & 0x7f)) {
+            Some(word) => word,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::InvalidPacketLength,
+                ));
+            }
+        };
+        position = match position.checked_add(1) {
+            Some(next) => next,
+            None => {
+                return Err(packet_input_error(
+                    start as u64,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
         if byte & 0x80 == 0 {
             if value == 0 {
-                return Err(DecodeError::malformed(
+                return Err(packet_input_error(
                     start as u64,
                     MalformedKind::InvalidPacketLength,
                 ));
@@ -8737,6 +9061,515 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn input_error_literal(offset: usize, kind: MalformedKind) -> DecodeError {
+        DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        }
+    }
+
+    fn packet_length_wide_window(
+        encoded: &[u8],
+        start: usize,
+        end: usize,
+    ) -> Result<(u32, usize), DecodeError> {
+        let invalid = input_error_literal(start, MalformedKind::InvalidPacketLength);
+        if start >= end || end > encoded.len() {
+            return Err(invalid);
+        }
+        let window = &encoded[start..end];
+        let Some(last) = window.iter().position(|byte| byte & 0x80 == 0) else {
+            return Err(invalid);
+        };
+        if last >= 5 {
+            return Err(invalid);
+        }
+        let wide: u128 = window[..=last]
+            .iter()
+            .enumerate()
+            .map(|(index, byte)| u128::from(byte & 0x7f) << (7 * (last - index)))
+            .sum();
+        if wide == 0 || wide > u128::from(u32::MAX) {
+            Err(invalid)
+        } else {
+            Ok((wide as u32, start + last + 1))
+        }
+    }
+
+    #[test]
+    fn packet_lengths_exhaustive_two_byte_windows_and_every_raw_iterator_field() {
+        for word in 0_u16..=u16::MAX {
+            let bytes = word.to_be_bytes();
+            for position in [0, 1, 2, 3, usize::MAX] {
+                for segment_end in [0, 1, 2, 3, usize::MAX] {
+                    assert_eq!(
+                        decode_packet_length(&bytes, position, segment_end),
+                        packet_length_wide_window(&bytes, position, segment_end)
+                    );
+                    for source in [
+                        PacketLengthSource::None,
+                        PacketLengthSource::Plm(&bytes),
+                        PacketLengthSource::Plt(&bytes),
+                    ] {
+                        let lengths = PacketLengths {
+                            source,
+                            packet_count: u64::MAX,
+                            encoded_bytes: u64::MAX,
+                        };
+                        assert_eq!(lengths.is_present(), source != PacketLengthSource::None);
+                        assert_eq!(lengths.packet_count(), u64::MAX);
+                        assert_eq!(lengths.encoded_bytes(), u64::MAX);
+                        let fresh = lengths.iter();
+                        assert_eq!(
+                            (fresh.source, fresh.position, fresh.segment_end),
+                            (source, 0, 0)
+                        );
+                        let mut actual = PacketLengthIter {
+                            source,
+                            position,
+                            segment_end,
+                        };
+                        let expected = match source {
+                            PacketLengthSource::None => Ok(None),
+                            PacketLengthSource::Plm(_) if position == bytes.len() => Ok(None),
+                            PacketLengthSource::Plm(_) => {
+                                packet_length_wide_window(&bytes, position, bytes.len()).map(Some)
+                            }
+                            PacketLengthSource::Plt(_) if position < segment_end => {
+                                packet_length_wide_window(&bytes, position, segment_end).map(Some)
+                            }
+                            PacketLengthSource::Plt(_) if position == bytes.len() => Ok(None),
+                            PacketLengthSource::Plt(_) => Err(input_error_literal(
+                                position,
+                                MalformedKind::InvalidPacketLength,
+                            )),
+                        };
+                        let (expected_result, expected_position) = match expected {
+                            Ok(Some((value, next))) => (Ok(Some(value)), next),
+                            Ok(None) => (Ok(None), position),
+                            Err(error) => (Err(error), position),
+                        };
+                        assert_eq!(actual.next_length(), expected_result);
+                        assert_eq!(
+                            (actual.source, actual.position, actual.segment_end),
+                            (source, expected_position, segment_end)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn packet_length_full_width_noncanonical_and_unterminated_groups_match_wide_words() {
+        let inputs: &[&[u8]] = &[
+            &[],
+            &[0],
+            &[0x80],
+            &[0x81, 0],
+            &[0x80, 0x80, 0x80, 0x80, 1],
+            &[0x8f, 0xff, 0xff, 0xff, 0x7f],
+            &[0x90, 0x80, 0x80, 0x80, 0],
+            &[0xff, 0xff, 0xff, 0xff, 0xff],
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 1],
+        ];
+        for encoded in inputs {
+            for start in (0..=encoded.len() + 1).chain([usize::MAX]) {
+                for end in (0..=encoded.len() + 1).chain([usize::MAX]) {
+                    assert_eq!(
+                        decode_packet_length(encoded, start, end),
+                        packet_length_wide_window(encoded, start, end)
+                    );
+                }
+            }
+        }
+        assert_eq!(decode_packet_length(inputs[5], 0, 5), Ok((u32::MAX, 5)));
+        assert_eq!(decode_packet_length(inputs[4], 0, 5), Ok((1, 5)));
+    }
+
+    #[test]
+    fn plt_real_marker_traversal_keeps_late_cursor_commits_and_repeated_error_states() {
+        type Fixture<'a> = (&'a [u8], Result<Option<u32>, DecodeError>, usize, usize);
+        let fixtures: &[Fixture<'_>] = &[
+            (&[], Ok(None), 0, 0),
+            (&[0xff, 0x55, 0, 2], Ok(None), 4, 0),
+            (
+                &[0xff, 0x58, 0, 2],
+                Err(input_error_literal(4, MalformedKind::InvalidMarkerLength)),
+                4,
+                0,
+            ),
+            (&[0xff, 0x58, 0, 3, 9], Ok(None), 5, 5),
+            (
+                &[0xff, 0x58, 0, 4, 9, 0],
+                Err(input_error_literal(5, MalformedKind::InvalidPacketLength)),
+                5,
+                6,
+            ),
+            (
+                &[0xff, 0x55, 0, 2, 0xff, 0x58, 0, 2],
+                Err(input_error_literal(8, MalformedKind::InvalidMarkerLength)),
+                8,
+                0,
+            ),
+            (
+                &[0xff, 0x58, 0, 7],
+                Err(input_error_literal(0, MalformedKind::InvalidMarkerLength)),
+                0,
+                0,
+            ),
+        ];
+        for (header, expected, position, end) in fixtures {
+            let source = PacketLengthSource::Plt(header);
+            let mut actual = PacketLengthIter {
+                source,
+                position: 0,
+                segment_end: 0,
+            };
+            assert_eq!(actual.next_length(), *expected);
+            assert_eq!(
+                (actual.source, actual.position, actual.segment_end),
+                (source, *position, *end)
+            );
+        }
+        let header = [
+            0xff, 0x58, 0, 5, 0, 0x81, 0, 0xff, 0x55, 0, 2, 0xff, 0x58, 0, 4, 0, 5,
+        ];
+        let mut actual = PacketLengthIter {
+            source: PacketLengthSource::Plt(&header),
+            position: 0,
+            segment_end: 0,
+        };
+        for (result, position, end) in [
+            (Ok(Some(128)), 7, 7),
+            (Ok(Some(5)), 17, 17),
+            (Ok(None), 17, 17),
+        ] {
+            assert_eq!(actual.next_length(), result);
+            assert_eq!((actual.position, actual.segment_end), (position, end));
+        }
+        let header = [0xff, 0x58, 0, 4, 0, 0];
+        let mut actual = PacketLengthIter {
+            source: PacketLengthSource::Plt(&header),
+            position: 0,
+            segment_end: 0,
+        };
+        for _ in 0..2 {
+            assert_eq!(
+                actual.next_length(),
+                Err(input_error_literal(5, MalformedKind::InvalidPacketLength))
+            );
+            assert_eq!((actual.position, actual.segment_end), (5, 6));
+        }
+    }
+
+    #[test]
+    fn packed_reassembly_literal_fragments_ranges_and_late_errors_have_exact_bytes() {
+        type Fixture<'a> = (&'a [u8], &'a [u8], Option<(usize, MalformedKind)>);
+        let fixtures: &[Fixture<'_>] = &[
+            (&[], &[], None),
+            (
+                &[0xff],
+                &[],
+                Some((0, MalformedKind::InvalidPackedPacketHeader)),
+            ),
+            (
+                &[0xff, 0x60, 0, 1],
+                &[],
+                Some((0, MalformedKind::InvalidMarkerLength)),
+            ),
+            (
+                &[0xff, 0x60, 0, 2],
+                &[],
+                Some((0, MalformedKind::InvalidMarkerLength)),
+            ),
+            (&[0xff, 0x60, 0, 3, 0], &[], None),
+            (
+                &[
+                    0xff, 0x60, 0, 5, 0, 10, 11, 0xff, 0x55, 0, 2, 0xff, 0x60, 0, 4, 9, 12,
+                ],
+                &[10, 11, 12],
+                None,
+            ),
+            (
+                &[0xff, 0x60, 0, 4, 0, 10, 0xff],
+                &[10],
+                Some((6, MalformedKind::InvalidPackedPacketHeader)),
+            ),
+            (
+                &[0xff, 0x60, 0, 4, 0],
+                &[],
+                Some((0, MalformedKind::InvalidMarkerLength)),
+            ),
+        ];
+        for (header, flat, parse_error) in fixtures {
+            for logical_start in [0, 1, 2, 3, 4, usize::MAX] {
+                for length in 0..=5 {
+                    for fragments in [0, 1, u16::MAX] {
+                        for cap in [
+                            1,
+                            2,
+                            5,
+                            ResourceLimits::default().maximum_packet_header_bytes(),
+                        ] {
+                            let limits = ResourceLimits::default()
+                                .with_maximum_packet_header_bytes(cap)
+                                .unwrap();
+                            let packed = PackedPacketHeaders {
+                                source: PackedPacketHeaderSource::MarkerSegments {
+                                    header,
+                                    marker: 0xff60,
+                                    logical_start,
+                                },
+                                length,
+                                fragments,
+                            };
+                            let expected = if length as u64 > cap {
+                                Err(DecodeError::LimitExceeded {
+                                    resource: Resource::PacketHeaderBytes,
+                                    limit: cap,
+                                    actual: length as u64,
+                                })
+                            } else if logical_start.checked_add(length).is_none() {
+                                Err(input_error_literal(0, MalformedKind::ArithmeticOverflow))
+                            } else if let Some((offset, kind)) = parse_error {
+                                Err(input_error_literal(*offset, *kind))
+                            } else if length == 0 {
+                                Ok(Vec::new())
+                            } else if let Some(bytes) =
+                                flat.get(logical_start..logical_start + length)
+                            {
+                                Ok(bytes.to_vec())
+                            } else {
+                                Err(input_error_literal(
+                                    flat.len(),
+                                    MalformedKind::InvalidPackedPacketHeader,
+                                ))
+                            };
+                            assert!(packed.is_present());
+                            assert_eq!(
+                                (packed.len(), packed.is_empty(), packed.fragment_count()),
+                                (length, length == 0, fragments)
+                            );
+                            assert_eq!(packed.reassemble(&limits), expected);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn packed_raw_source_marker_and_absent_metadata_do_not_invent_shape_invariants() {
+        let header = [0xff, 0x60, 0, 2];
+        let limits = ResourceLimits::default();
+        for marker in 0..=u16::MAX {
+            let packed = PackedPacketHeaders {
+                source: PackedPacketHeaderSource::MarkerSegments {
+                    header: &header,
+                    marker,
+                    logical_start: usize::MAX,
+                },
+                length: 0,
+                fragments: u16::MAX,
+            };
+            let expected = if marker == 0xff60 {
+                Err(input_error_literal(0, MalformedKind::InvalidMarkerLength))
+            } else {
+                Ok(Vec::new())
+            };
+            assert_eq!(packed.reassemble(&limits), expected);
+        }
+        for cap in [1, ResourceLimits::default().maximum_packet_header_bytes()] {
+            let limits = limits.with_maximum_packet_header_bytes(cap).unwrap();
+            for length in [0, 1, usize::MAX] {
+                let packed = PackedPacketHeaders {
+                    source: PackedPacketHeaderSource::None,
+                    length,
+                    fragments: u16::MAX,
+                };
+                assert!(!packed.is_present());
+                assert_eq!(
+                    (packed.len(), packed.is_empty(), packed.fragment_count()),
+                    (length, length == 0, u16::MAX)
+                );
+                let expected = if length as u64 > cap {
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::PacketHeaderBytes,
+                        limit: cap,
+                        actual: length as u64,
+                    })
+                } else {
+                    Ok(Vec::new())
+                };
+                assert_eq!(packed.reassemble(&limits), expected);
+            }
+        }
+        let packed = PackedPacketHeaders {
+            source: PackedPacketHeaderSource::MarkerSegments {
+                header: &[],
+                marker: 0,
+                logical_start: usize::MAX,
+            },
+            length: 1,
+            fragments: 0,
+        };
+        assert_eq!(
+            packed.reassemble(&limits),
+            Err(input_error_literal(0, MalformedKind::ArithmeticOverflow))
+        );
+        assert_eq!(packed_packet_headers_none(), PackedPacketHeaders::none());
+        assert_eq!(packet_lengths_none(), PacketLengths::none());
+    }
+
+    #[test]
+    fn raw_progression_owner_records_preserve_inverted_windows_duplicates_and_boundaries() {
+        let orders = [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ];
+        let mut records = Vec::new();
+        for progression_order in orders {
+            for resolution_start in [0, 1, u8::MAX] {
+                for resolution_end in [0, 1, u8::MAX] {
+                    for component_start in [0, 1, u16::MAX] {
+                        for component_end in [0, 1, u16::MAX] {
+                            for layer_end in [0, 1, u16::MAX] {
+                                let record = ProgressionChange {
+                                    resolution_start,
+                                    component_start,
+                                    layer_end,
+                                    resolution_end,
+                                    component_end,
+                                    progression_order,
+                                };
+                                for layer in [0, 1, u16::MAX] {
+                                    for resolution in [0, 1, u8::MAX] {
+                                        for component in [0, 1, u16::MAX] {
+                                            let expected = (0..layer_end).contains(&layer)
+                                                && (resolution_start..resolution_end)
+                                                    .contains(&resolution)
+                                                && (component_start..component_end)
+                                                    .contains(&component);
+                                            assert_eq!(
+                                                record.contains(layer, resolution, component),
+                                                expected
+                                            );
+                                        }
+                                    }
+                                }
+                                records.extend_from_slice(&[record, record]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let changes = ProgressionChanges::from_records(records.clone());
+        assert_eq!(changes.records(), records);
+        assert_eq!(changes.len(), records.len());
+        assert!(changes.is_present());
+        assert!(!changes.is_empty());
+        let empty = ProgressionChanges::from_records(Vec::new());
+        assert!(empty.records().is_empty());
+        assert_eq!(empty.len(), 0);
+        assert!(!empty.is_present());
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn complete_packet_style_owners_preserve_raw_counts_styles_and_header_presence() {
+        let mut style = CodingStyle {
+            progression_order: ProgressionOrder::Lrcp,
+            layers: 0,
+            multiple_component_transform: true,
+            decomposition_levels: u8::MAX,
+            decomposition_structure: Some(u8::MAX),
+            decomposition_directions: [DecompositionDirection::None; 32],
+            code_block_width: 0,
+            code_block_height: u16::MAX,
+            code_block_style: u8::MAX,
+            transform: WaveletTransform::Arbitrary(u8::MAX),
+            precincts_defined: false,
+            sop_markers: true,
+            eph_markers: true,
+            precinct_exponents: [(u8::MAX, u8::MAX); 33],
+        };
+        let styles = core::array::from_fn(|index| CodingStyle {
+            layers: u16::try_from(index).unwrap() * 999,
+            code_block_style: u8::try_from(index).unwrap(),
+            ..style
+        });
+        let mut table = ComponentCodingStyles {
+            components: 0,
+            styles,
+        };
+        for count in 0..=u16::MAX {
+            table.components = count;
+            for index in [0, 1, 63, 64, 65, u16::MAX - 1, u16::MAX] {
+                let expected = if index < count && usize::from(index) < styles.len() {
+                    Ok(styles[usize::from(index)])
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidCodingStyle,
+                    })
+                };
+                assert_eq!(table.style(index), expected);
+            }
+        }
+        for count in [0, 1, 63, 64, 65, u16::MAX] {
+            table.components = count;
+            for index in 0..=u16::MAX {
+                let expected = if index < count && usize::from(index) < styles.len() {
+                    Ok(styles[usize::from(index)])
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidCodingStyle,
+                    })
+                };
+                assert_eq!(table.style(index), expected);
+            }
+        }
+        for value in 0..=u8::MAX {
+            style.code_block_style = value;
+            assert_eq!(
+                style.tier1_coding_style(),
+                Tier1CodingStyle::from_code_block_style(value)
+            );
+        }
+        for length in [0, 1, usize::MAX] {
+            for fragments in [0, 1, u16::MAX] {
+                let absent = PackedPacketHeaders {
+                    source: PackedPacketHeaderSource::None,
+                    length,
+                    fragments,
+                };
+                assert!(!absent.is_present());
+                for bytes in [&[][..], &[0xff, 0x60][..]] {
+                    for marker in [0, u16::MAX] {
+                        for logical_start in [0, usize::MAX] {
+                            let present = PackedPacketHeaders {
+                                source: PackedPacketHeaderSource::MarkerSegments {
+                                    header: bytes,
+                                    marker,
+                                    logical_start,
+                                },
+                                length,
+                                fragments,
+                            };
+                            assert!(present.is_present());
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn raw_component_getter_covers_entire_u16_index_domain() {
