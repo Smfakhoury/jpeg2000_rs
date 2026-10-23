@@ -1,5 +1,12 @@
 # Specification audit guide
 
+`part2_normalized_component_chroma_keys` separates actual ordered descriptor/
+checked-byte-count validation from payload admission and real key assembly.
+`part2_append_component_key` preserves all original keys and offset until its
+actual slice/normalization/first-key checks succeed. Both folds derive actual
+data, not supplied outcomes; error inductions remain in proof support. This
+closes per-component raw preparation only, not opacity or F2/F4/F8.
+
 `part2_normalized_chroma_keys` names the actual raw metadata/precision/length
 admission and full key output. `part2_chroma_key_bytes` gives the big-endian
 value, while `part2_chroma_key_normalize` states masking, signed bias and exact

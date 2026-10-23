@@ -857,6 +857,19 @@ _LAYER_KEY_CONTRACTS = {
     ),
 }
 
+_LAYER_COMPONENT_KEY_CONTRACTS = {
+    ("src/jpx.rs", "normalized_chroma_keys_for_components"): (
+        "part2_normalized_component_chroma_keys", _coverage_call("crate::color::normalized_plane_result", r"\1"), None,
+        r"values\s*@\s*,\s*descriptors\s*@",
+    ),
+    ("src/jpx.rs", "append_component_chroma_key"): (
+        "part2_append_component_key", r"\1",
+        _coverage_call("final", "keys") + r"\s*@\s*,\s*\*\s*" + _coverage_call("final", "offset"),
+        r"values\s*@\s*,\s*descriptor\s*,\s*"
+        + _coverage_call("old", "keys") + r"\s*@\s*,\s*\*\s*" + _coverage_call("old", "offset"),
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1364,6 +1377,7 @@ def validate_normative_coverage(
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_TRAVERSAL_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_COMPONENT_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]
