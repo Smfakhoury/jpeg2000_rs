@@ -1,5 +1,12 @@
 # Specification audit guide
 
+`part2_copy_registered_opacity` describes the actual first-color, checked-area,
+minimum rectangle, zero-padding and final-only target update. Pixel/row models
+retain observed partial scratch state and address/read/store error order;
+the owner remains unchanged on every copy failure. All inputs are raw, source
+alpha is not substituted for its first color, and no prepared mask/read result
+is assumed. Parsed-file dispatch and F2/F4/F8 composition remain separate.
+
 `part2_apply_chroma_key_policy` distinguishes actual permissive general-layer
 nonmatches from strict opacity's missing-sample error, without normalizing
 planes or assuming coverage. `part2_set_layer_alpha_mode` preserves all raw

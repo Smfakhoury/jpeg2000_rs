@@ -32,6 +32,67 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_opacity_columns_empty(context: crate::specs::Part2OpacityCopyContext, y: u32, initial: Seq<u16>)
+    ensures crate::specs::part2_opacity_columns_prefix(context, y, initial, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part2_opacity_columns_prefix, 1);
+}
+
+pub proof fn production_opacity_columns_step(context: crate::specs::Part2OpacityCopyContext, y: u32, initial: Seq<u16>, count: nat)
+    ensures crate::specs::part2_opacity_columns_prefix(context, y, initial, count + 1) == {
+        let previous = crate::specs::part2_opacity_columns_prefix(context, y, initial, count);
+        match previous.0 { Err(_) => previous, Ok(()) => crate::specs::part2_opacity_pixel(context, count as u32, y, previous.1) }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_opacity_columns_prefix, 1);
+}
+
+pub proof fn production_opacity_columns_error(
+    context: crate::specs::Part2OpacityCopyContext, y: u32, initial: Seq<u16>, count: nat, finish: nat,
+)
+    requires count <= finish, crate::specs::part2_opacity_columns_prefix(context, y, initial, count).0.is_err(),
+    ensures crate::specs::part2_opacity_columns_prefix(context, y, initial, finish)
+        == crate::specs::part2_opacity_columns_prefix(context, y, initial, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_opacity_columns_step(context, y, initial, (finish - 1) as nat);
+        production_opacity_columns_error(context, y, initial, count, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_opacity_rows_empty(context: crate::specs::Part2OpacityCopyContext, width: u32, initial: Seq<u16>)
+    ensures crate::specs::part2_opacity_rows_prefix(context, width, initial, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part2_opacity_rows_prefix, 1);
+}
+
+pub proof fn production_opacity_rows_step(context: crate::specs::Part2OpacityCopyContext, width: u32, initial: Seq<u16>, count: nat)
+    ensures crate::specs::part2_opacity_rows_prefix(context, width, initial, count + 1) == {
+        let previous = crate::specs::part2_opacity_rows_prefix(context, width, initial, count);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => crate::specs::part2_opacity_columns_prefix(context, count as u32, previous.1, width as nat),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_opacity_rows_prefix, 1);
+}
+
+pub proof fn production_opacity_rows_error(
+    context: crate::specs::Part2OpacityCopyContext, width: u32, initial: Seq<u16>, count: nat, finish: nat,
+)
+    requires count <= finish, crate::specs::part2_opacity_rows_prefix(context, width, initial, count).0.is_err(),
+    ensures crate::specs::part2_opacity_rows_prefix(context, width, initial, finish)
+        == crate::specs::part2_opacity_rows_prefix(context, width, initial, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_opacity_rows_step(context, width, initial, (finish - 1) as nat);
+        production_opacity_rows_error(context, width, initial, count, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_chroma_cover_step(colors: Seq<Seq<u16>>, samples: nat, count: nat)
     requires count < colors.len(),
     ensures crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count + 1)
