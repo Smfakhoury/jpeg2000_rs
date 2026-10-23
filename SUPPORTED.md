@@ -32,6 +32,8 @@ The implementation contains:
 - LRCP, RLCP, RPCL, PCRL, and CPRL progression and POC windows.
 - Precincts, inclusion/zero-bitplane tag trees, coding-pass and segment lengths.
 - Main/tile COD, COC, QCD, QCC, and RGN state and precedence.
+  Main-header QCD may precede COD; its quantization parameters are validated
+  once the coding style is available, matching tile-header handling.
 - PLM/PLT packet lengths, PPM/PPT packed headers, SOP/EPH, and TLM checks.
 - The five Part 1 progression orders and POC sequencing, not additional Part 2
   progression-order extensions.

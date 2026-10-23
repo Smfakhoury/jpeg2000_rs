@@ -27,6 +27,16 @@ jobs:
       - run: cargo test --doc --locked
       - run: cargo check --release --all-targets --locked
 
+  msrv:
+    name: Minimum supported Rust (1.88.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - run: rustup toolchain install 1.88.0 --profile minimal
+      - run: cargo +1.88.0 test --no-default-features --all-targets --locked
+      - run: cargo +1.88.0 test --no-default-features --doc --locked
+      - run: cargo +1.88.0 check --no-default-features --release --all-targets --locked
+
   quality:
     name: Quality and package audit
     runs-on: ubuntu-latest
