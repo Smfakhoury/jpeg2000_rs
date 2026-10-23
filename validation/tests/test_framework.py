@@ -625,6 +625,12 @@ class FrameworkTests(WorkingFiles):
             framework._RECONSTRUCTION_CONTRACTS, 15,
         )
 
+    def test_inventory_binds_complete_native_chroma_key_owner_and_inputs(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-layer-chroma-key"},
+            framework._LAYER_STATE_CONTRACTS, 1,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

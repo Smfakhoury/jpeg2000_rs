@@ -5366,6 +5366,37 @@ pub type Part2LayerAlpha = (Seq<u16>, bool);
 pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayer = (u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>);
+
+pub open spec fn part2_chroma_key_channel_matches(
+    colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int, channel: int,
+) -> bool {
+    0 <= channel < colors.len() && 0 <= pixel < colors[channel].len()
+        && channel < keys.len() && colors[channel][pixel] == keys[channel]
+}
+
+pub open spec fn part2_chroma_key_pixel(colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int) -> u16 {
+    if forall|channel: int| 0 <= channel < colors.len() ==>
+        #[trigger] part2_chroma_key_channel_matches(colors, keys, pixel, channel) {
+        0
+    } else {
+        u16::MAX
+    }
+}
+
+pub open spec fn part2_apply_chroma_key(layer: Part2OwnedLayer, keys: Seq<u16>)
+    -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
+{
+    if keys.len() != layer.3.len() {
+        (Err(part2_composition_error(false)), layer)
+    } else {
+        match part2_layer_area(layer.0, layer.1) {
+            Err(error) => (Err(error), layer),
+            Ok(pixels) => (Ok(()), (layer.0, layer.1, layer.2, layer.3,
+                Some((Seq::new(pixels as nat, |pixel: int| part2_chroma_key_pixel(layer.3, keys, pixel)), false)))),
+        }
+    }
+}
+
 pub type Part2ConvertedImage = (u32, u32, crate::color::ConvertedColorSpace, u8, Seq<Part2LayerChannel>);
 pub type Part2ConvertedImageResult = Result<Part2ConvertedImage, crate::DecodeError>;
 pub type Part2Instruction = (usize, u32, u32, u32, u32, u32, u32, u32, u32, bool, u32);
