@@ -691,6 +691,12 @@ class FrameworkTests(WorkingFiles):
             framework._TILE_COMPONENT_GEOMETRY_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_complete_raw_resolution_styles_and_ordered_scale_traversal(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-resolution-style"},
+            framework._RESOLUTION_STYLE_CONTRACTS, 3,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

@@ -2322,3 +2322,18 @@ the pinned verifier without a new trusted standard-library adapter. Three
 finite exact-input/result recipes, all 65,536 registration words and 168,750
 independent raw tile/descriptor contexts cover both native consumers. This
 does not close packet planning, file decoder output, or whole F2/F4/F8.
+## Complete actual resolution-style traversal
+
+The original `CodingStyle::resolution_downsampling` now derives its complete
+Result from the raw level/direction array, preserving resolution admission,
+real stage lookup, ordered horizontal/vertical checked scaling and the first
+overflow or physical-array error. Its sole actual stage helper has a complete
+raw-scale Result; proved prefix steps/error absorption connect the loop.
+`precinct_exponents` returns the original raw pair or exact range/array error,
+without validating unused fields or imposing the caller's exponent limit.
+
+Three exact input/result recipes and independent all-u8 level/resolution,
+raw scale, overflow, physical-array and precinct-pair regressions bind the real
+planner/subband consumers. No normalized style, lookup/arithmetic success,
+trust adapter, termination opt-out or second executable codec is introduced.
+Complete resolution geometry, packet planning and F2/F4/F8 remain separate.

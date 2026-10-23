@@ -32,6 +32,41 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_resolution_scales_empty(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>,
+)
+    ensures crate::specs::part2_resolution_scale_prefix(levels, directions, 0) == Ok((1, 1)),
+{
+    reveal_with_fuel(crate::specs::part2_resolution_scale_prefix, 1);
+}
+
+pub proof fn production_resolution_scales_step(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, count: nat,
+)
+    ensures crate::specs::part2_resolution_scale_prefix(levels, directions, count + 1) == {
+        match crate::specs::part2_resolution_scale_prefix(levels, directions, count) {
+            Err(error) => Err(error),
+            Ok(previous) => crate::specs::part2_resolution_scale_step(levels, directions, count as u8, previous),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_resolution_scale_prefix, 1);
+}
+
+pub proof fn production_resolution_scales_error(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, count: nat, finish: nat,
+)
+    requires count <= finish, crate::specs::part2_resolution_scale_prefix(levels, directions, count).is_err(),
+    ensures crate::specs::part2_resolution_scale_prefix(levels, directions, finish)
+        == crate::specs::part2_resolution_scale_prefix(levels, directions, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_resolution_scales_step(levels, directions, (finish - 1) as nat);
+        production_resolution_scales_error(levels, directions, count, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_execution_components_empty(header: crate::specs::Part2ExecutionHeader)
     ensures crate::specs::part2_execution_components_prefix(header, 0) == Ok(()),
 {

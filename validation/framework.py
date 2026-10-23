@@ -790,6 +790,24 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_RESOLUTION_STYLE_CONTRACTS = {
+    ("src/codestream.rs", "CodingStyle::resolution_downsampling"): (
+        "part2_resolution_downsampling", r"\1", None,
+        _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
+        + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*resolution",
+    ),
+    ("src/codestream.rs", "CodingStyle::resolution_downsampling_step"): (
+        "part2_resolution_scale_step", r"\1", None,
+        _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
+        + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*stage\s*,\s*scales",
+    ),
+    ("src/codestream.rs", "CodingStyle::precinct_exponents"): (
+        "part2_precinct_exponents", r"\1", None,
+        _coverage_call("precinct_selector_view", "self") + r"\s*\.0\s*,\s*"
+        + _coverage_call("precinct_selector_view", "self") + r"\s*\.1\s*,\s*resolution",
+    ),
+}
+
 _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
     ("src/codestream.rs", "registered_ceil_div"): (
         "part2_registered_component_ceil", r"\1", None,
@@ -1460,6 +1478,7 @@ def validate_normative_coverage(
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_COMPONENT_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _RESOLUTION_STYLE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
