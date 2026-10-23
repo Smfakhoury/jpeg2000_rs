@@ -2161,3 +2161,30 @@ consumers, including adversarial rejection cases.
 This closes actual registration, not complete opacity/raw-key normalization,
 F2/F4/F8 or independent conformance. Exact frozen whole-root/native/reference/
 resource/hosted and owner-main acceptance remain required for delivery.
+## Complete actual raw chroma-key normalization
+
+The actual `normalized_chroma_keys` now refines a complete input-relative
+Result/key-vector model over raw bytes, channel count and bit-depth metadata.
+Variable metadata rejection precedes precision validation, which precedes
+exact byte cardinality. Real big-endian reads, low-bit masking, signed bias,
+rounding and complete ordered key output have no successful-read or
+pre-normalized-key premise.
+
+Native checked byte assembly is explicit. The redundant bounded mask loop
+uses the equivalent checked shift, and normalization shares the existing
+proved actual unsigned-color scalar instead of maintaining a second arithmetic
+implementation. Admitted precisions and masked values prove all scalar failure
+branches unreachable; original typed metadata/length errors remain. No solver
+budget, trust, cap or numerical-tolerance change is introduced. Loop-only
+byte bounds remain in proof support; raw-byte and signed scaling semantics
+remain auditor-facing.
+
+Independent u128 references use arithmetic signed rotation rather than the
+native XOR. They cover 23,040 depth/channel/length/pattern frontiers, every
+signed and unsigned u16 raw word, Variable metadata priority, and38-bit
+padding/high-bit cases. One finite exact result/input recipe and adversarial
+mutations require the two genuine production consumers.
+
+This closes the uniform byte-input producer including Variable rejection,
+not per-component descriptor preparation, opacity, complete F2/F4/F8 or
+independent conformance. Frozen full-root/hosted/main acceptance remain explicit.

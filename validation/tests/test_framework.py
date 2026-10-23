@@ -649,6 +649,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_TRAVERSAL_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_native_raw_chroma_key_normalization(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-chroma-normalization"},
+            framework._LAYER_KEY_CONTRACTS, 1,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

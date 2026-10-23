@@ -32,6 +32,40 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_chroma_bytes_step(values: Seq<u8>, start: nat, count: nat)
+    requires start + count < values.len(),
+    ensures crate::specs::part2_chroma_key_bytes(values, start, count + 1)
+        == crate::specs::part2_chroma_key_bytes(values, start, count) * 256 + values[(start + count) as int] as nat,
+        crate::proofs::internal_specs::part2_chroma_byte_bound(count + 1)
+            == crate::proofs::internal_specs::part2_chroma_byte_bound(count) * 256 + 255,
+{
+    reveal_with_fuel(crate::specs::part2_chroma_key_bytes, 1);
+    reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 1);
+}
+
+pub proof fn production_chroma_byte_bound(count: nat)
+    requires count <= 5,
+    ensures crate::proofs::internal_specs::part2_chroma_byte_bound(count) <= 1099511627775,
+{
+    reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 6);
+}
+
+pub proof fn production_chroma_normalization(raw: u64, bits: u8, signed: bool)
+    requires 0 < bits <= 38,
+    ensures {
+        let maximum = ((1u64 << bits) - 1) as u64;
+        let nominal = if signed { (raw & maximum) ^ (((maximum + 1) / 2) as u64) } else { raw & maximum };
+        nominal <= maximum
+            && crate::specs::color_normalize_unsigned(nominal, bits)
+                == Ok(crate::specs::part2_chroma_key_normalize(raw as nat, bits, signed))
+    },
+{
+    crate::proofs::spec_properties::color_precision_binary_bounds(bits);
+    assert((if signed { (raw & (((1u64 << bits) - 1) as u64)) ^ (((1u64 << bits) / 2) as u64) }
+        else { raw & (((1u64 << bits) - 1) as u64) })
+        <= (((1u64 << bits) - 1) as u64)) by(bit_vector) requires 0 < bits <= 38;
+}
+
 pub proof fn production_registered_columns_empty(
     context: crate::specs::Part2RegistrationContext, y: u32, source_y: u32,
     colors: Seq<Seq<u16>>, alpha: Seq<u16>,

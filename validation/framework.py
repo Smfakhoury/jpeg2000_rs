@@ -850,6 +850,13 @@ _LAYER_TRAVERSAL_CONTRACTS = {
     ),
 }
 
+_LAYER_KEY_CONTRACTS = {
+    ("src/jpx.rs", "normalized_chroma_keys"): (
+        "part2_normalized_chroma_keys", _coverage_call("crate::color::normalized_plane_result", r"\1"), None,
+        r"values\s*@\s*,\s*channels\s*,\s*bit_depth",
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1356,6 +1363,7 @@ def validate_normative_coverage(
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_TRAVERSAL_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

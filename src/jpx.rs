@@ -2679,21 +2679,34 @@ fn apply_layer_opacity(
     Ok(())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::normalized_plane_result(result)
+            == crate::specs::part2_normalized_chroma_keys(values@, channels, bit_depth),
+    )
+)]
 fn normalized_chroma_keys(
     values: &[u8],
     channels: u8,
     bit_depth: ComponentBitDepth,
 ) -> Result<Vec<u16>, DecodeError> {
     let ComponentBitDepth::Uniform { bits, signed } = bit_depth else {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::MissingRequiredStructure,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::MissingRequiredStructure,
+        });
     };
     if bits == 0 || bits > 38 {
         return Err(invalid_layer());
     }
     let bytes = usize::from(bits.saturating_add(7) / 8);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1 <= bytes <= 5);
+        assert(bytes as nat * channels as nat <= 1275) by(nonlinear_arith)
+            requires bytes <= 5, channels <= 255;
+    }
     if values.len()
         != bytes
             .checked_mul(usize::from(channels))
@@ -2703,68 +2716,103 @@ fn normalized_chroma_keys(
     }
     let mut keys = Vec::with_capacity(usize::from(channels));
     let mut channel = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1 <= bytes <= 5);
+        reveal_with_fuel(crate::specs::part2_chroma_key_bytes, 1);
+        reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 1);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant channel <= channels as usize,
+            invariant channel <= channels as usize, keys.len() == channel,
+                bit_depth == (ComponentBitDepth::Uniform { bits, signed }),
+                0 < bits <= 38, 1 <= bytes <= 5,
+                bytes as nat == (bits as nat + 7) / 8,
+                values.len() == bytes as nat * channels as nat,
+                forall|index: int| 0 <= index < channel ==> keys@[index]
+                    == crate::specs::part2_chroma_key_normalize(crate::specs::part2_chroma_key_bytes(
+                        values@, (index * bytes) as nat, bytes as nat), bits, signed),
             decreases channels as usize - channel,
         )
     )]
     while channel < usize::from(channels) {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(channel as nat * bytes as nat <= 1275) by(nonlinear_arith)
+                requires channel < channels as usize, channels <= 255, bytes <= 5;
+        }
         let start = channel.checked_mul(bytes).ok_or_else(arithmetic_overflow)?;
         let mut raw = 0_u64;
         let mut byte = 0_usize;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(start as nat + bytes as nat <= values.len()) by(nonlinear_arith)
+                requires start as nat == channel as nat * bytes as nat,
+                    channel < channels as usize, bytes > 0,
+                    values.len() == bytes as nat * channels as nat;
+            reveal_with_fuel(crate::specs::part2_chroma_key_bytes, 1);
+            reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 1);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant byte <= bytes,
+                invariant byte <= bytes, 1 <= bytes <= 5,
+                    0 < bits <= 38, bit_depth == (ComponentBitDepth::Uniform { bits, signed }),
+                    bytes as nat == (bits as nat + 7) / 8,
+                    channel < channels as usize, keys.len() == channel,
+                    values.len() == bytes as nat * channels as nat,
+                    start as nat == channel as nat * bytes as nat,
+                    start as nat + bytes as nat <= values.len(),
+                    forall|index: int| 0 <= index < channel ==> keys@[index]
+                        == crate::specs::part2_chroma_key_normalize(crate::specs::part2_chroma_key_bytes(
+                            values@, (index * bytes) as nat, bytes as nat), bits, signed),
+                    raw as nat == crate::specs::part2_chroma_key_bytes(values@, start as nat, byte as nat),
+                    raw as nat <= crate::proofs::internal_specs::part2_chroma_byte_bound(byte as nat),
                 decreases bytes - byte,
             )
         )]
         while byte < bytes {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_chroma_byte_bound(byte as nat);
+                crate::proofs::production_impl::production_chroma_bytes_step(values@, start as nat, byte as nat);
+            }
+            raw = raw.checked_mul(256).ok_or_else(arithmetic_overflow)?;
+            let position = start.checked_add(byte).ok_or_else(arithmetic_overflow)?;
+            let sample = *values.get(position).ok_or_else(arithmetic_overflow)?;
             raw = raw
-                .checked_mul(256)
-                .and_then(|value| {
-                    values
-                        .get(start.checked_add(byte)?)
-                        .and_then(|sample| value.checked_add(u64::from(*sample)))
-                })
+                .checked_add(u64::from(sample))
                 .ok_or_else(arithmetic_overflow)?;
             byte = byte.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let mut mask = 0_u64;
-        let mut mask_bit = 0_u8;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant mask_bit <= bits,
-                decreases bits - mask_bit,
-            )
-        )]
-        while mask_bit < bits {
-            mask = mask
-                .checked_mul(2)
-                .and_then(|value| value.checked_add(1))
-                .ok_or_else(arithmetic_overflow)?;
-            mask_bit = mask_bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::spec_properties::color_precision_binary_bounds(bits); }
+        let mask = (1_u64 << bits)
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?;
         if mask == 0 {
             return Err(invalid_layer());
         }
-        raw &= mask;
+        let masked = raw & mask;
         let biased = if signed {
             let sign_bit = mask.checked_add(1).ok_or_else(arithmetic_overflow)? / 2;
-            raw ^ sign_bit
+            masked ^ sign_bit
         } else {
-            raw
+            masked
         };
-        let normalized = u128::from(biased)
-            .checked_mul(u128::from(u16::MAX))
-            .and_then(|value| value.checked_add(u128::from(mask) / 2))
-            .ok_or_else(arithmetic_overflow)?
-            / u128::from(mask);
-        keys.push(u16::try_from(normalized).map_err(|_| arithmetic_overflow())?);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_chroma_normalization(raw, bits, signed);
+        }
+        keys.push(crate::color::normalize_unsigned(biased, bits)?);
         channel = channel.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(keys@ =~= Seq::new(channels as nat, |index: int|
+            crate::specs::part2_chroma_key_normalize(crate::specs::part2_chroma_key_bytes(
+                values@, (index * bytes) as nat, bytes as nat), bits, signed)));
     }
     Ok(keys)
 }
@@ -4043,6 +4091,119 @@ mod tests {
         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    fn independent_chroma_normalization(
+        values: &[u8],
+        channels: u8,
+        depth: ComponentBitDepth,
+    ) -> Result<Vec<u16>, DecodeError> {
+        let ComponentBitDepth::Uniform { bits, signed } = depth else {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::MissingRequiredStructure,
+            });
+        };
+        if bits == 0 || bits > 38 {
+            return Err(invalid_layer());
+        }
+        let bytes = usize::from(bits).div_ceil(8);
+        if values.len() != bytes * usize::from(channels) {
+            return Err(invalid_layer());
+        }
+        let modulus = 1_u128 << bits;
+        let maximum = modulus - 1;
+        Ok(values
+            .chunks_exact(bytes)
+            .map(|chunk| {
+                let raw = chunk
+                    .iter()
+                    .fold(0_u128, |value, &byte| value * 256 + u128::from(byte));
+                let residue = raw % modulus;
+                let nominal = if signed {
+                    (residue + modulus / 2) % modulus
+                } else {
+                    residue
+                };
+                u16::try_from((nominal * 65_535 + maximum / 2) / maximum).unwrap()
+            })
+            .collect())
+    }
+
+    #[test]
+    fn raw_chroma_normalization_preserves_all_depth_length_and_channel_frontiers() {
+        let mut cases = 0;
+        for bits in 0..=u8::MAX {
+            for signed in [false, true] {
+                for channels in [0, 1, 2, 3, u8::MAX] {
+                    let expected_length = usize::from(bits).div_ceil(8) * usize::from(channels);
+                    for pattern in 0..3 {
+                        for length in [
+                            expected_length.saturating_sub(1),
+                            expected_length,
+                            expected_length + 1,
+                        ] {
+                            let values = (0..length)
+                                .map(|index| match pattern {
+                                    0 => 0,
+                                    1 => u8::MAX,
+                                    _ => (index * 17 + 3) as u8,
+                                })
+                                .collect::<Vec<_>>();
+                            let depth = ComponentBitDepth::Uniform { bits, signed };
+                            assert_eq!(
+                                normalized_chroma_keys(&values, channels, depth),
+                                independent_chroma_normalization(&values, channels, depth)
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 23040);
+        for channels in [0, 1, u8::MAX] {
+            for values in [vec![], vec![0], vec![255; 3]] {
+                assert_eq!(
+                    normalized_chroma_keys(&values, channels, ComponentBitDepth::Variable),
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::MissingRequiredStructure
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn raw_chroma_normalization_matches_all_u16_words_and_38_bit_padding() {
+        for raw in 0..=u16::MAX {
+            for signed in [false, true] {
+                let values = raw.to_be_bytes();
+                let depth = ComponentBitDepth::Uniform { bits: 16, signed };
+                assert_eq!(
+                    normalized_chroma_keys(&values, 1, depth),
+                    independent_chroma_normalization(&values, 1, depth)
+                );
+            }
+        }
+        for raw in [
+            0_u64,
+            1,
+            (1 << 37) - 1,
+            1 << 37,
+            (1 << 38) - 1,
+            (1 << 40) - 1,
+        ] {
+            for signed in [false, true] {
+                let bytes = raw.to_be_bytes();
+                let depth = ComponentBitDepth::Uniform { bits: 38, signed };
+                assert_eq!(
+                    normalized_chroma_keys(&bytes[3..], 1, depth),
+                    independent_chroma_normalization(&bytes[3..], 1, depth)
+                );
+            }
+        }
+    }
 
     #[test]
     fn complete_registration_matches_independent_wide_raster_and_representation() {

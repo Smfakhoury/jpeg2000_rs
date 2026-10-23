@@ -1755,7 +1755,7 @@ fn nominal_component_at(
     verus_keep_ghost,
     verus_spec(result => ensures result == crate::specs::color_normalize_unsigned(value, precision),)
 )]
-fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
+pub(crate) fn normalize_unsigned(value: u64, precision: u8) -> Result<u16, DecodeError> {
     if precision == 0 || precision > 38 {
         return Err(invalid_color_input());
     }
