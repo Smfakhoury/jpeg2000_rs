@@ -1,5 +1,14 @@
 # Specification audit guide
 
+The four original single/multi-code-block and JPIP inner/transaction guarantees
+are now complete native Result/full-state refinements. Follow
+`part1_single_code_block_packet`, `part1_multi_code_block_packet`,
+`part1_jpip_precinct_packet_inner` and `part1_jpip_precinct_packet` to the sole
+actual header/reader/body/clone producers. The explicit local/truncation error
+policy preserves original caller offsets without changing child decoder
+errors; zero-policy legacy models remain exact specializations. Complete
+bundle fields and real transaction rollback are modeled, not supplied outcomes.
+
 ## Frozen remaining public packet/JPIP boundary profile
 
 This branch starts at unchanged `b5b0685`. The remaining native entry bodies are

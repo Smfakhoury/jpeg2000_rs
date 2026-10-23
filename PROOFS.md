@@ -804,6 +804,34 @@ remains a curated technical inventory, not exhaustive normative coverage.
 Separate public code-block/JPIP wrapper guarantees and whole F5L/F5H remain
 under implementation; no F8 image/parser or general MCT claim follows here.
 
+## Complete original packet and JPIP boundary guarantees
+
+The original single-block, multi-block, JPIP inner and JPIP transaction entries
+now have complete unconditional native Result/state contracts. Actual faithful
+subband/raw-tree cloning and the original Vec snapshots/restores establish
+whole rollback; skipped execution preserves real decoders and readonly
+identity without a supplied clone or decoder result. Multi-block execution
+shares the actual preflight/body loops with exact truncation/local error
+offset policy; genuine child decoder errors are not remapped.
+
+Fourteen finite exact boundary shapes retain every result/view/old-input/cap/
+error-policy argument. The two standalone public single/multi APIs remain
+proof-supported APIs, not fictional internal consumers; their full contracts
+are additionally checked through an explicit two-key proof-support whitelist.
+All functional contract references still require a distinct real consumer.
+No generic root/expression/implication fallback is added.
+
+The native execution bundle is recognized only for its exact existing type,
+parameter and four named mutable fields. The complete final tuple must cover
+all of them; adding a mutable field, changing the readonly context slice or
+using an unknown bundle type fails closed. Negative tests include all dotted
+old/final fields, later correct clauses masking wrong primary inputs, exact
+offset policy and all public API/consumer distinctions. The only private
+reader cleanup removes the now-unused three-line `new_prefix` delegate and its
+redundant assertion; the actual free/public reader and full-state tests remain.
+No full image/parser, general MCT, official conformance or owner-main acceptance
+is implied by these boundary proofs.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

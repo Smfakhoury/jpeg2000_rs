@@ -4,6 +4,272 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-public-packet-boundaries",
+      "topic": "Complete actual four single/multi-code-block and JPIP inner/transaction Result/full-native-state boundaries, real faithful subband/tree and original Vec clone/restore, exact error policy and skipped-decoder/identity frames. No supplied clone/header/decoder outcome, normalized shape, success or admitted-budget premise. Only internal producers claim actual consumers; the two standalone public single/multi APIs are proved API support with finite full-contract checks, not fabricated callers. No entire image/parser/conformance claim.",
+      "contract_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_jpip_precinct_packet_inner"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_jpip_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "preflight_packet_body_ranges"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_packet_body_contributions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_multi_packet_contexts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_multi_packet_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "multi_packet_body_start"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_packet_body"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_packet_payload"
+        }
+      ],
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_single_code_block_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_code_block_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_jpip_precinct_packet_inner"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_jpip_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "preflight_packet_body_ranges"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_packet_body_contributions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_multi_packet_contexts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_multi_packet_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "multi_packet_body_start"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_packet_body"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_packet_payload"
+        },
+        {
+          "path": "src/jpip.rs",
+          "symbol": "DatabinCache::build_automatic_snapshot"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_single_code_block_packet"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_code_block_packet"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_jpip_precinct_packet_inner"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_jpip_precinct_packet"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_packet_body_preflight_at"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_packet_body_execute_at"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_contexts"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_packet_admission"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_packet_prefix"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_header_slot"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_headers"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_body_start"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_body_data"
+        },
+        {
+          "path": "specs/packet_boundaries.rs",
+          "symbol": "part1_multi_payload"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_single_code_block_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_code_block_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_jpip_precinct_packet_inner"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_jpip_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "preflight_packet_body_ranges"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "execute_packet_body_contributions"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_multi_packet_contexts"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "validate_multi_packet_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_multi_packet_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "multi_packet_body_start"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_packet_body"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_multi_packet_payload"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketSubbandState"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_subband_view"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_jpip_outer_restores_all_raw_fields_and_clone_preserves_unused_tree_words"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_multi_header_slot_commits_raw_owner_state_before_count_and_storage_rejections"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "public_multi_boundary_preflights_every_body_then_keeps_prior_real_decoder_commits"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "public_multi_uses_prefix_header_budget_and_ignores_sop_sequence_values"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "public_single_boundary_keeps_whole_payload_priority_and_real_partial_header_effects"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_skipped_execution_consumes_ranges_without_decoder_shape_or_counter_changes"
+        }
+      ]
+    },
+    {
       "id": "part1-complete-native-packed-header-length-inputs",
       "topic": "Complete actual raw packed-header reassembly and packet-length iterator/scalar decode: all source enums, raw cursors/end, stored length/fragments/counters, exact returned bytes/lengths and ordered typed errors/caps. PLT cursor commits before late errors; None presence is not length. No supplied bytes/length list, normalized fragment/cursor/shape, successful trace or adequate-budget premise. Static None/owner observations are support, not independent result consumers.",
       "contract_refs": [
@@ -1287,7 +1553,7 @@
         },
         {
           "path": "src/packet.rs",
-          "symbol": "PacketBitReader::new_prefix"
+          "symbol": "read_multi_packet_prefix"
         },
         {
           "path": "src/packet.rs",
@@ -1865,7 +2131,8 @@
         {"path": "src/packet.rs", "symbol": "decode_ht_segment_body"},
         {"path": "src/packet.rs", "symbol": "decode_legacy_code_block_segment"},
         {"path": "src/packet.rs", "symbol": "decode_precinct_packet"},
-        {"path": "src/packet.rs", "symbol": "decode_multi_code_block_packet"}
+        {"path": "src/packet.rs", "symbol": "decode_multi_code_block_packet"},
+        {"path": "src/packet.rs", "symbol": "execute_packet_body_contributions"}
       ],
       "spec_refs": [
         {"path": "specs/packet.rs", "symbol": "part1_code_block_segment"},

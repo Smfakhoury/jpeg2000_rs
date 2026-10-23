@@ -590,6 +590,104 @@ def _packet_progression_contracts() -> dict[tuple[str, str], tuple[str, str, str
 _PACKET_PROGRESSION_CONTRACTS = _packet_progression_contracts()
 
 
+def _packet_wrapper_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
+    def args(*values: str) -> str:
+        return r"\s*,\s*".join(values)
+
+    def old(name: str) -> str:
+        return _coverage_call("old", re.escape(name))
+
+    def final(name: str) -> str:
+        return _coverage_call("final", re.escape(name))
+
+    def view(name: str, *values: str) -> str:
+        return _coverage_call(name, *values)
+
+    def cap(name: str, owner: str = "limits") -> str:
+        return view("crate::limits::resource_" + name + "_limit", re.escape(owner))
+
+    body_caps = args(*(cap(name) for name in ("code_block_pass", "code_block_byte", "input_byte", "work")))
+    parameter_caps = args(*(cap(name, "params.limits") for name in (
+        "code_block_pass", "code_block_byte", "input_byte", "work",
+    )))
+    single_old = view("single_packet_state_view", *(old(name) for name in (
+        "state", "inclusion_tree", "zero_bitplane_tree", "decoder",
+    )))
+    single_final = view("single_packet_state_view", *(final(name) for name in (
+        "state", "inclusion_tree", "zero_bitplane_tree", "decoder",
+    )))
+    multi_old = view("multi_packet_state_view", old("states"), old("inclusion"), old("zero"), "contexts", old("decoders"))
+    multi_final = view("multi_packet_state_view", final("states"), final("inclusion"), final("zero"), "contexts", final("decoders"))
+    bundle_old = view("multi_packet_state_view", old("execution.states"), old("execution.inclusion_tree"),
+                      old("execution.zero_bitplane_tree"), r"execution\.contexts", old("execution.decoders"))
+    bundle_final = view("multi_packet_state_view", final("execution.states"), final("execution.inclusion_tree"),
+                        final("execution.zero_bitplane_tree"), r"execution\.contexts", final("execution.decoders"))
+    header_old = view("multi_header_view", old("states"), old("inclusion"), old("zero"),
+                      r"parameters\.contexts", old("contributions"), old("reader"), old("progress"))
+    header_final = view("multi_header_view", final("states"), final("inclusion"), final("zero"),
+                        r"parameters\.contexts", final("contributions"), final("reader"), final("progress"))
+    decoder_map = (
+        r"@\s*\.map_values\s*\(\s*\|\s*decoder\s*:\s*Tier1CodeBlockDecoder\s*\|\s*"
+        + view("crate::tier1::tier1_decoder_state", r"&\s*decoder") + r"\s*\)"
+    )
+    values = {
+        "decode_single_code_block_packet": (
+            "part1_single_code_block_packet", r"\1", single_final,
+            args(single_old, "payload@", "context", cap("packet_header_byte"), body_caps)),
+        "decode_multi_code_block_packet": (
+            "part1_multi_code_block_packet", r"\1", bundle_final, args(bundle_old, "tile_part", "offset", "limits")),
+        "decode_jpip_precinct_packet_inner": (
+            "part1_jpip_precinct_packet_inner", r"\1", view("packet_precinct_view", final("precinct")),
+            args(view("packet_precinct_view", old("precinct")), "template", "data@", "expected_sop_sequence", "layer", "limits")),
+        "decode_jpip_precinct_packet": (
+            "part1_jpip_precinct_packet", r"\1", view("packet_precinct_view", final("precinct")),
+            args(view("packet_precinct_view", old("precinct")), "template", "data@", "expected_sop_sequence", "layer", "limits")),
+        "preflight_packet_body_ranges": (
+            "part1_packet_body_preflight_at", r"\1", view("packet_body_preflight_view", final("progress")),
+            args(view("packet_body_preflight_view", old("progress")), view("packet_body_contributions_view", "contributions"),
+                 "data@", r"error_offsets\.0", r"error_offsets\.1")),
+        "execute_packet_body_contributions": (
+            "part1_packet_body_execute_at", r"\1", view("packet_body_execution_view", final("decoders"), final("progress")),
+            args(view("packet_body_execution_view", old("decoders"), old("progress")),
+                 view("packet_body_contributions_view", "contributions"), "data@", r"error_offsets\.0",
+                 r"error_offsets\.1", "decode_tier1", body_caps)),
+        "validate_multi_packet_contexts": (
+            "part1_multi_contexts", r"\1", None, args("contexts@", "style", "layer", "width", "0", "offset")),
+        "validate_multi_packet_input": (
+            "part1_multi_packet_admission", view("multi_admission_outcome", r"\1"), None,
+            args(view("multi_packet_state_view", "states", "inclusion", "zero", "contexts", "decoders"),
+                 r"params\.part", r"params\.offset", cap("code_block", "params.limits"), cap("work", "params.limits"))),
+        "read_multi_packet_prefix": (
+            "part1_multi_packet_prefix", view("precinct_payload_reader_outcome", r"\1"), None,
+            args("data@", "sop", "offset", cap("packet_header_byte"), cap("work"))),
+        "read_multi_packet_header_slot": (
+            "part1_multi_header_slot", r"\1", header_final, args(header_old, r"parameters\.offset")),
+        "read_multi_packet_headers": (
+            "part1_multi_headers", r"\1", header_final, args(header_old, r"parameters\.offset")),
+        "multi_packet_body_start": (
+            "part1_multi_body_start", r"\1", None, args("data@", "sop", "header", "eph", "offset")),
+        "decode_multi_packet_body": (
+            "part1_multi_body_data", r"\1", final("decoders") + decoder_map,
+            args(old("decoders") + decoder_map, r"layout\.blocks", "data@",
+                 view("packet_body_contributions_view", "contributions"), r"layout\.present", r"layout\.count",
+                 r"layout\.header", r"layout\.start", r"params\.offset", parameter_caps)),
+        "decode_multi_packet_payload": (
+            "part1_multi_payload", r"\1", multi_final,
+            args(multi_old, "data@", view("crate::codestream::coding_style_packet_markers", r"&\s*params\.part\.coding_style") + r"\.0",
+                 view("crate::codestream::coding_style_packet_markers", r"&\s*params\.part\.coding_style") + r"\.1",
+                 r"params\.offset", cap("packet_header_byte", "params.limits"), parameter_caps)),
+    }
+    return {("src/packet.rs", name): value for name, value in values.items()}
+
+
+_PACKET_WRAPPER_CONTRACTS = _packet_wrapper_contracts()
+_PACKET_EXECUTION_BUNDLE_FIELDS = frozenset({"states", "inclusion_tree", "zero_bitplane_tree", "decoders"})
+_PACKET_PROVED_BOUNDARY_APIS = frozenset({
+    ("src/packet.rs", "decode_single_code_block_packet"),
+    ("src/packet.rs", "decode_multi_code_block_packet"),
+})
+
+
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -616,7 +714,13 @@ def validate_normative_coverage(
                         f"missing normative evidence symbol: {reference['path']}::{reference['symbol']}"
                     )
         spec_symbols = {reference["symbol"] for reference in entry["spec_refs"]}
-        for reference in entry["contract_refs"]:
+        proved_apis = [
+            reference for reference in entry["proof_refs"]
+            if (reference["path"], reference["symbol"]) in _PACKET_PROVED_BOUNDARY_APIS
+            and reference not in entry["contract_refs"]
+        ]
+        for reference in [*entry["contract_refs"], *proved_apis]:
+            claimed_consumer = reference in entry["contract_refs"]
             text = (ROOT / reference["path"]).read_text(encoding="utf-8")
             short = reference["symbol"].rsplit("::", 1)[-1]
             signature_match = _coverage_function_header(text, reference["symbol"])
@@ -634,6 +738,18 @@ def validate_normative_coverage(
             ))
             if re.search(r"&\s*(?:'\w+\s+)?mut\s+self\b", text[signature:body_start]):
                 mutable_parameters.add("self")
+            bundle = (reference["path"], reference["symbol"]) == ("src/packet.rs", "decode_multi_code_block_packet")
+            if bundle:
+                bundle_definition = re.search(r"\bstruct\s+PacketCodeBlockExecution\b[^{]*\{([^}]*)\}", text)
+                bundle_fields = set(re.findall(
+                    r"\b(\w+)\s*:\s*&\s*(?:'\w+\s+)?mut\b", bundle_definition[1],
+                )) if bundle_definition else set()
+                if (bundle_fields != _PACKET_EXECUTION_BUNDLE_FIELDS
+                        or re.search(r"\bexecution\s*:\s*PacketCodeBlockExecution\s*<\s*'_\s*>",
+                                     text[signature:body_start]) is None):
+                    raise ValueError(f"linked function lacks executable Verus contract: {short}; unknown execution bundle")
+                mutable_parameters.update("execution." + name for name in bundle_fields)
+                mutating = True
             named_prefix = r"\bverus_spec\(\s*(\w+)\s*=>\s*(?:requires\b[\s\S]*?)?ensures\s+"
             model_suffix = r"\s*==\s*crate::specs::(?P<model>\w+)\s*\("
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
@@ -1036,6 +1152,7 @@ def validate_normative_coverage(
             header_contract = (
                 _PACKET_HEADER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_PROGRESSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]
@@ -1142,7 +1259,8 @@ def validate_normative_coverage(
                     + header_contract[2] + r"\s*\))" + model_suffix, contract,
                 )
             final_parameters = set(re.findall(
-                r"\bfinal\(\s*(\w+)\s*\)", state_result["state"],
+                r"\bfinal\(\s*(\w+(?:\.\w+)?)\s*\)" if bundle else r"\bfinal\(\s*(\w+)\s*\)",
+                state_result["state"],
             )) if state_result is not None else set()
             complete_state = bool(mutable_parameters) and final_parameters == mutable_parameters
             named_result = state_result if mutating else scalar_result or projected_result or state_result
@@ -1498,7 +1616,7 @@ def validate_normative_coverage(
                 raise ValueError(f"linked function lacks executable Verus contract: {short}")
             if not any(re.search(rf"\b{re.escape(symbol)}\b", contract) for symbol in spec_symbols):
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
-            if not any(
+            if claimed_consumer and not any(
                 ref != reference
                 and (re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
                  if ref["path"] != reference["path"] else
@@ -1506,7 +1624,8 @@ def validate_normative_coverage(
                 for ref in entry["implementation_refs"]
             ):
                 raise ValueError(f"linked function is not used by claimed implementation: {short}")
-            contract_functions.add((reference["path"], reference["symbol"]))
+            if claimed_consumer:
+                contract_functions.add((reference["path"], reference["symbol"]))
     return {
         "status": "passed",
         "inventory_items": len(ids),
