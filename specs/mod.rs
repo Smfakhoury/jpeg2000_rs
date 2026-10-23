@@ -11673,6 +11673,65 @@ pub open spec fn part1_direction_detail_count(direction: crate::codestream::Deco
     }
 }
 
+pub open spec fn part2_resolution_scale_step(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, stage: u8,
+    before: (u32, u32),
+) -> Result<(u32, u32), crate::DecodeError> {
+    match part1_decomposition_direction(levels, directions, stage) {
+        Err(error) => Err(error),
+        Ok(direction) => match direction {
+            crate::codestream::DecompositionDirection::None => Ok(before),
+            crate::codestream::DecompositionDirection::Horizontal => {
+                match part1_image_checked_u32(before.0 as int * 2) {
+                    Err(error) => Err(error), Ok(horizontal) => Ok((horizontal, before.1)),
+                }
+            },
+            crate::codestream::DecompositionDirection::Vertical => {
+                match part1_image_checked_u32(before.1 as int * 2) {
+                    Err(error) => Err(error), Ok(vertical) => Ok((before.0, vertical)),
+                }
+            },
+            crate::codestream::DecompositionDirection::TwoDimensional => {
+                match part1_image_checked_u32(before.0 as int * 2) {
+                    Err(error) => Err(error),
+                    Ok(horizontal) => match part1_image_checked_u32(before.1 as int * 2) {
+                        Err(error) => Err(error), Ok(vertical) => Ok((horizontal, vertical)),
+                    },
+                }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_resolution_scale_prefix(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, completed: nat,
+) -> Result<(u32, u32), crate::DecodeError>
+    decreases completed,
+{
+    if completed == 0 { Ok((1, 1)) } else {
+        match part2_resolution_scale_prefix(levels, directions, (completed - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => part2_resolution_scale_step(levels, directions, (completed - 1) as u8, previous),
+        }
+    }
+}
+
+pub open spec fn part2_resolution_downsampling(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, resolution: u8,
+) -> Result<(u32, u32), crate::DecodeError> {
+    if resolution > levels { Err(part1_selector_error(false)) }
+    else { part2_resolution_scale_prefix(levels, directions, (levels - resolution) as nat) }
+}
+
+pub open spec fn part2_precinct_exponents(
+    levels: u8, exponents: Seq<(u8, u8)>, resolution: u8,
+) -> Result<(u8, u8), crate::DecodeError> {
+    if resolution > levels || resolution as nat >= exponents.len() {
+        Err(part1_selector_error(false))
+    } else { Ok(exponents[resolution as int]) }
+}
+
 pub open spec fn part1_subband_count_prefix(
     levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, completed: nat,
 ) -> Result<usize, crate::DecodeError>

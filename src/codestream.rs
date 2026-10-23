@@ -99,6 +99,10 @@ verus! {
     pub closed spec fn decomposition_selector_view(style: CodingStyle) -> (u8, Seq<DecompositionDirection>) {
         (style.decomposition_levels, style.decomposition_directions@)
     }
+
+    pub closed spec fn precinct_selector_view(style: CodingStyle) -> (u8, Seq<(u8, u8)>) {
+        (style.decomposition_levels, style.precinct_exponents@)
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -542,49 +546,102 @@ impl CodingStyle {
         self.decomposition_direction(stage)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_resolution_scale_step(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1, stage, scales,
+        ),
+    ))]
+    pub(crate) fn resolution_downsampling_step(
+        self,
+        stage: u8,
+        scales: (u32, u32),
+    ) -> Result<(u32, u32), DecodeError> {
+        let mut horizontal = scales.0;
+        let mut vertical = scales.1;
+        match self.decomposition_direction(stage)? {
+            DecompositionDirection::None => {}
+            DecompositionDirection::Horizontal => {
+                horizontal = horizontal
+                    .checked_mul(2)
+                    .ok_or_else(selection_geometry_arithmetic)?;
+            }
+            DecompositionDirection::Vertical => {
+                vertical = vertical
+                    .checked_mul(2)
+                    .ok_or_else(selection_geometry_arithmetic)?;
+            }
+            DecompositionDirection::TwoDimensional => {
+                horizontal = horizontal
+                    .checked_mul(2)
+                    .ok_or_else(selection_geometry_arithmetic)?;
+                vertical = vertical
+                    .checked_mul(2)
+                    .ok_or_else(selection_geometry_arithmetic)?;
+            }
+        }
+        Ok((horizontal, vertical))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_resolution_downsampling(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1, resolution,
+        ),
+    ))]
     pub fn resolution_downsampling(self, resolution: u8) -> Result<(u32, u32), DecodeError> {
         if resolution > self.decomposition_levels {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
         let discarded = self
             .decomposition_levels
             .checked_sub(resolution)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            .ok_or_else(selection_geometry_arithmetic)?;
         let mut horizontal = 1_u32;
         let mut vertical = 1_u32;
         let mut stage = 0_u8;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost selector = decomposition_selector_view(self); }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_resolution_scales_empty(selector.0, selector.1);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant stage <= discarded,
+                invariant
+                    stage <= discarded,
+                    resolution <= self.decomposition_levels,
+                    discarded == self.decomposition_levels as int - resolution as int,
+                    selector == decomposition_selector_view(self),
+                    crate::specs::part2_resolution_scale_prefix(selector.0, selector.1, stage as nat)
+                        == Ok((horizontal, vertical)),
                 decreases discarded - stage,
             )
         )]
         while stage < discarded {
-            match self.decomposition_direction(stage)? {
-                DecompositionDirection::None => {}
-                DecompositionDirection::Horizontal => {
-                    horizontal = horizontal.checked_mul(2).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                }
-                DecompositionDirection::Vertical => {
-                    vertical = vertical.checked_mul(2).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                }
-                DecompositionDirection::TwoDimensional => {
-                    horizontal = horizontal.checked_mul(2).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                    vertical = vertical.checked_mul(2).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
+            let next = self.resolution_downsampling_step(stage, (horizontal, vertical));
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_resolution_scales_step(
+                    selector.0, selector.1, stage as nat,
+                );
+                if next.is_err() {
+                    assert(crate::specs::part2_resolution_scale_prefix(
+                        selector.0, selector.1, stage as nat + 1,
+                    ) == next);
+                    crate::proofs::production_impl::production_resolution_scales_error(
+                        selector.0, selector.1, stage as nat + 1, discarded as nat,
+                    );
                 }
             }
+            let next = next?;
+            horizontal = next.0;
+            vertical = next.1;
             stage = stage
                 .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                .ok_or_else(selection_geometry_arithmetic)?;
         }
         Ok((horizontal, vertical))
     }
@@ -698,15 +755,25 @@ impl CodingStyle {
         crate::tier1::tier1_coding_style_from_code_block_style(self.code_block_style)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_precinct_exponents(
+            precinct_selector_view(self).0, precinct_selector_view(self).1, resolution,
+        ),
+    ))]
     pub fn precinct_exponents(self, resolution: u8) -> Result<(u8, u8), DecodeError> {
         if resolution > self.decomposition_levels {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
         }
-        let exponents = self
-            .precinct_exponents
-            .get(usize::from(resolution))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidCodingStyle))?;
-        Ok(*exponents)
+        match self.precinct_exponents.get(usize::from(resolution)) {
+            Some(exponents) => Ok(*exponents),
+            None => Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            }),
+        }
     }
 
     pub fn equals(self, other: Self) -> bool {
@@ -9187,6 +9254,149 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn raw_resolution_style(levels: u8, pattern: usize) -> CodingStyle {
+        use DecompositionDirection::{Horizontal, None, TwoDimensional, Vertical};
+        let directions = core::array::from_fn(|index| match pattern {
+            0 => None,
+            1 => Horizontal,
+            2 => Vertical,
+            3 => TwoDimensional,
+            4 => [Horizontal, Vertical][index % 2],
+            5 => [None, TwoDimensional][index % 2],
+            6 => [Horizontal, None, Vertical][index % 3],
+            _ => {
+                if index == 31 {
+                    TwoDimensional
+                } else {
+                    None
+                }
+            }
+        });
+        CodingStyle {
+            progression_order: ProgressionOrder::Cprl,
+            layers: 0,
+            multiple_component_transform: true,
+            decomposition_levels: levels,
+            decomposition_structure: Some(u8::MAX),
+            decomposition_directions: directions,
+            code_block_width: 0,
+            code_block_height: u16::MAX,
+            code_block_style: u8::MAX,
+            transform: WaveletTransform::Arbitrary(u8::MAX),
+            precincts_defined: false,
+            sop_markers: true,
+            eph_markers: true,
+            precinct_exponents: core::array::from_fn(|index| {
+                let index = u8::try_from(index).unwrap();
+                (index.wrapping_mul(17), u8::MAX - index.wrapping_mul(7))
+            }),
+        }
+    }
+
+    fn reference_resolution_scale_step(
+        style: CodingStyle,
+        stage: u8,
+        scales: (u32, u32),
+    ) -> Result<(u32, u32), DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        if stage >= style.decomposition_levels {
+            return Err(invalid);
+        }
+        let direction = style
+            .decomposition_directions
+            .get(usize::from(stage))
+            .ok_or(invalid)?;
+        let (horizontal, vertical) = match direction {
+            DecompositionDirection::None => (u64::from(scales.0), u64::from(scales.1)),
+            DecompositionDirection::Horizontal => (u64::from(scales.0) * 2, u64::from(scales.1)),
+            DecompositionDirection::Vertical => (u64::from(scales.0), u64::from(scales.1) * 2),
+            DecompositionDirection::TwoDimensional => {
+                (u64::from(scales.0) * 2, u64::from(scales.1) * 2)
+            }
+        };
+        Ok((
+            u32::try_from(horizontal).map_err(|_| arithmetic)?,
+            u32::try_from(vertical).map_err(|_| arithmetic)?,
+        ))
+    }
+
+    #[test]
+    fn resolution_styles_preserve_all_raw_level_resolution_and_lazy_precinct_cases() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        let mut cases = 0;
+        for pattern in 0..8 {
+            for levels in 0..=u8::MAX {
+                let style = raw_resolution_style(levels, pattern);
+                for resolution in 0..=u8::MAX {
+                    let expected = if resolution > levels {
+                        Err(invalid)
+                    } else {
+                        (0..levels - resolution).try_fold((1, 1), |scales, stage| {
+                            reference_resolution_scale_step(style, stage, scales)
+                        })
+                    };
+                    assert_eq!(style.resolution_downsampling(resolution), expected);
+                    let expected_precinct = if resolution > levels {
+                        Err(invalid)
+                    } else {
+                        style
+                            .precinct_exponents
+                            .get(usize::from(resolution))
+                            .copied()
+                            .ok_or(invalid)
+                    };
+                    assert_eq!(style.precinct_exponents(resolution), expected_precinct);
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 524_288);
+        for horizontal in 0..=u8::MAX {
+            for vertical in 0..=u8::MAX {
+                let mut style = raw_resolution_style(0, 0);
+                style.precinct_exponents[0] = (horizontal, vertical);
+                assert_eq!(style.precinct_exponents(0), Ok((horizontal, vertical)));
+            }
+        }
+    }
+
+    #[test]
+    fn resolution_scale_step_preserves_raw_scales_selector_priority_and_overflow() {
+        let scales = [0, 1, 2, (1_u32 << 31) - 1, 1_u32 << 31, u32::MAX];
+        let mut cases = 0;
+        for pattern in 0..8 {
+            for levels in [0, 1, 31, 32, 33, u8::MAX] {
+                let style = raw_resolution_style(levels, pattern);
+                for stage in 0..=u8::MAX {
+                    for horizontal in scales {
+                        for vertical in scales {
+                            assert_eq!(
+                                style.resolution_downsampling_step(stage, (horizontal, vertical)),
+                                reference_resolution_scale_step(
+                                    style,
+                                    stage,
+                                    (horizontal, vertical)
+                                ),
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 442_368);
+    }
 
     fn independent_execution_header(
         style: CodingStyle,

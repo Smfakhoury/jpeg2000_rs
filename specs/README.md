@@ -1518,3 +1518,10 @@ the typed-layout decoder's separate zero-divisor error is preserved while both c
 execute the same registered-ceiling body. No admitted geometry, normalized
 descriptor or supplied scalar outcome is a premise. Complete packet planning
 and the F2/F4/F8 file/decoder joins remain separate.
+The actual resolution-style relations `part2_resolution_downsampling`,
+`part2_resolution_scale_step`, `part2_resolution_scale_prefix` and
+`part2_precinct_exponents` retain ordered raw descriptor lookup and checked
+scaling, including early overflow versus physical-array exhaustion. Prefix
+error absorption is proved in production support. Raw precinct pairs are not
+normalized to their downstream limit, and unused fields stay unvalidated.
+No supplied lookup/scaling result or normalized style is a premise.
