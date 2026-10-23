@@ -1525,3 +1525,10 @@ scaling, including early overflow versus physical-array exhaustion. Prefix
 error absorption is proved in production support. Raw precinct pairs are not
 normalized to their downstream limit, and unused fields stay unvalidated.
 No supplied lookup/scaling result or normalized style is a premise.
+`part2_resolution_geometry` derives the full actual public/private resolution
+geometry Result from raw size/component/style/tile metadata. Component bounds,
+real downsampling, checked extents and ordered code-block/precinct grids are
+modeled without successful intermediate results as premises. Native
+whole-image registration omission and the reported nonzero-resolution
+subband value3 are preserved explicitly, not silently normalized away.
+Public-boundary and exact native-consumer recipes bind all four contracts.

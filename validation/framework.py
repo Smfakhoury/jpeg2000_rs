@@ -790,6 +790,37 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+def _resolution_geometry_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
+    size = r"\s*,\s*".join((
+        _coverage_call("codestream::selection_geometry_view", "size"),
+        _coverage_call("codestream::image_size_component_count", "size"),
+        _coverage_call("codestream::image_size_component_infos", "size"),
+    ))
+    geometry = size + r"\s*,\s*" + _coverage_call("resolution_geometry_style", "coding_style")
+    return {
+        ("src/decode.rs", "derive_component_resolution_geometry"): (
+            "part2_resolution_geometry", r"\1", None,
+            geometry + r"\s*,\s*component\s*,\s*resolution\s*,\s*None",
+        ),
+        ("src/decode.rs", "derive_component_resolution_geometry_for"): (
+            "part2_resolution_geometry", r"\1", None,
+            geometry + r"\s*,\s*component\s*,\s*resolution\s*,\s*tile_index",
+        ),
+        ("src/decode.rs", "component_coordinate_bounds"): (
+            "part2_component_coordinate_bounds", r"\1", None,
+            size + r"\s*,\s*component\s*,\s*tile_index",
+        ),
+        ("src/decode.rs", "floor_div_u32"): (
+            "part2_selection_floor", r"\1", None, r"value\s*,\s*divisor",
+        ),
+    }
+
+
+_RESOLUTION_GEOMETRY_CONTRACTS = _resolution_geometry_contracts()
+_RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS = frozenset({
+    ("src/decode.rs", "derive_component_resolution_geometry"),
+})
+
 _RESOLUTION_STYLE_CONTRACTS = {
     ("src/codestream.rs", "CodingStyle::resolution_downsampling"): (
         "part2_resolution_downsampling", r"\1", None,
@@ -1038,7 +1069,10 @@ def validate_normative_coverage(
         spec_symbols = {reference["symbol"] for reference in entry["spec_refs"]}
         proved_apis = [
             reference for reference in entry["proof_refs"]
-            if (reference["path"], reference["symbol"]) in (_PACKET_PROVED_BOUNDARY_APIS | _RECONSTRUCTION_PROVED_BOUNDARY_APIS)
+            if (reference["path"], reference["symbol"]) in (
+                _PACKET_PROVED_BOUNDARY_APIS | _RECONSTRUCTION_PROVED_BOUNDARY_APIS
+                | _RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS
+            )
             and reference not in entry["contract_refs"]
         ]
         for reference in [*entry["contract_refs"], *proved_apis]:
@@ -1479,6 +1513,7 @@ def validate_normative_coverage(
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_COMPONENT_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RESOLUTION_STYLE_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _RESOLUTION_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
