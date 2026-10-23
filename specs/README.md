@@ -1,5 +1,92 @@
 # Specification audit guide
 
+The native MCT owner views preserve every raw array field and all wavelet,
+collection and stage fields, including complete ordered input/output lists,
+None versus Some arrays/wavelets and ordered stage/collection sequences.
+Their actual getters expose these complete values without geometry, precision,
+matrix-shape or success premises. These are semantic inputs for the pending
+actual collection/dependency/wavelet composition, not proof that those
+algorithms or general MCT are already complete.
+
+`part2_mct_dependency_row` now describes the complete actual reversible and
+irreversible dependency row, including source/offset admission before matrix
+lookup, the different triangular layouts, real prior-output prefix, positive
+reversible scale and signed floor correction, and checked Q32 rescaling.
+None, row-zero and unvisited malformed coefficients retain their native bypass
+behavior; out-of-range precision is not normalized. The actual loops refine
+the shared dot-prefix denotation, not a supplied row outcome. Full mutable
+collection/stage traversal and general MCT remain separate work.
+
+The deep native mutable-component view includes each actual reference,
+geometry/subsampling field, dereferenced precision and every sample, not opaque
+borrow identity. `part2_mct_find_component` denotes the real first matching
+component, using the pinned standard-library first-index semantics. The actual
+lookup proves complete duplicate/missing/error behavior over this full view;
+malformed geometry and precision are not silently admitted as validity facts
+for later collections.
+
+The actual decorrelation sample store now refines the full deep component
+update: exactly one in-range sample changes and every metadata/precision field
+is retained; an invalid index retains all values and returns the real typed
+error. Its caller preserves original output-read-before-destination-store
+evaluation order. This is a real shared mutation boundary for pending mutable
+collection proofs, not an assumed write or a normalized component premise.
+The actual array store additionally frames every unselected component and
+all metadata/precision/sample values on a destination or sample-index error.
+
+`part2_mct_validate_layout` describes the actual readonly decorrelation
+admission phase, including empty/invalid first sources, every source then
+destination geometry/subsampling/sample-count/precision check, and reversible
+source-zero precision. Matching zero dimensions/subsampling are not silently
+rejected or treated as valid planes. The sole native phase was moved without
+new allocation or execution-order changes and is called by the real collection.
+This establishes its actual result from full raw component/index values,
+not a supplied validation outcome.
+
+The actual decorrelation work/scratch admission refines a complete result
+and work-counter model. Checked product/total overflow precedes charging;
+counter overflow retains the old value, while work-limit and subsequent
+scratch arithmetic/byte-limit errors retain the actual charged value. Original
+usize scratch arithmetic and evaluation order remain. Independent wide
+references and exact limit-minus-one/limit/limit-plus-one cases check these
+real thresholds; no adequate-budget assumption replaces admission.
+
+The actual decorrelation preparation producer now constructs its real source
+and destination indexes, validates raw layout, performs real ordered work/
+scratch admission, and gathers the actual source precision vector. Its full
+result and final work counter refine `part2_mct_prepare_decorrelation` over
+the complete original component and collection values. Ordered lookup derives
+the indexes from real component identities; no index list, valid layout,
+successful preparation or admitted budget is supplied as a premise. Native
+allocation and source-before-destination lookup order are preserved.
+`part2_mct_decorrelation_pixel` now describes the actual complete source
+snapshot, row computation and ordered destination stores, including both
+scratch vectors and all partial error states. It does not receive precomputed
+samples or supplied row results. `part2_mct_decorrelation` composes the actual
+preparation, every real pixel and final-only precision updates into one
+complete Result/components/work relation for the original native producer.
+Duplicate component references, malformed raw descriptors, zero-sample paths,
+first-error order and earlier state effects remain distinct. `part2_mct_dependency` now also closes the original actual dependency collection:
+real checked coefficient dimensions, interleaved identity resolution, both-side
+integer/layout validation, precise charged work and saturated scratch checks
+precede actual cached-precision/pixel/final-tag composition. The source/store
+loops are genuine shared production bodies, while dependency's previous-row
+recursion and explicit source count remain distinct from decorrelation.
+Wavelet intervals, interleaved source scaling, reverse actual 5/3/9/7 synthesis,
+cardinality checks and complete pixel/collection state now also compose.
+`part2_mct_transform` describes actual forward collection/reverse stage order,
+including every previous update/work counter on an error.
+
+The real owned-image and prepared-tile bridges derive their mutable inputs
+from actual owner buffers and size metadata. Checked final-field borrow
+promises reconnect actual transformed samples/tags to the original owners;
+no successful decoder or transformation result is supplied as an input.
+Prepared standard RCT/ICT similarly refines its actual full enabled/disabled
+Result and shares the existing scalar implementation. Complete actual planned
+coefficient/style/kernel preparation, optional MCT/standard transforms and
+full/selected prepared assembly now compose without supplied decoder results.
+Coherent current-main/hosted qualification and external conformance remain.
+
 The four original single/multi-code-block and JPIP inner/transaction guarantees
 are now complete native Result/full-state refinements. Follow
 `part1_single_code_block_packet`, `part1_multi_code_block_packet`,
@@ -846,6 +933,18 @@ share every earlier raw collection/placement/coverage/budget stage. Original
 standard names delegate to precisely the None case. Independent raw-context
 and arithmetic regressions supplement the full production proof; inventory
 and frozen numerical/resource qualification are not presumed from it.
+
+`part2_mct_round_shift` and `part2_mct_rescale` denote actual MCT signed
+rounding and every native precision pair; they are not the arbitrary-kernel
+lifting-bias operation. Raw MCT array views bind metadata and full values,
+including metadata contradictions the row body does not inspect.
+`part2_mct_row_initial`, `part2_mct_dot_term`, `part2_mct_dot_prefix` and
+`part2_mct_matrix_row` give complete actual reversible/scaled matrix-row
+results and first errors. Optional offset, scratch and work-charge models
+include native malformed states and exact partial counter writes. The owner
+Q32 identity is proved rather than treating the private constant as a new
+assumption. These arithmetic/row results do not establish collection/stage
+dispatch or dependency/wavelet orchestration.
 
 F6 remains open: general MCT
 paths and actual whole-decoder composition from

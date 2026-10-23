@@ -143,6 +143,155 @@ the exact owner and rejects ambiguity, foreign owners and nested functions.
 These are actual supplied-header results, not parsing/association, compressed
 decoding, target derivation or whole-F7 completion claims.
 
+## Actual native MCT dependency rows
+
+Both actual dependency row producers have complete unconditional native
+value/error contracts over full collection matrix/offset values, source
+samples, source precisions, prior output and row. The real reversible row
+preserves positive-scale admission and negative-remainder floor correction;
+the irreversible row preserves nearest-magnitude Q32 rescaling and actual
+precision overflow. Their different checked triangular indexes and lazy
+None/row-zero branches are not normalized into a common valid-matrix premise.
+Existing checked arithmetic and first-error order remain unchanged.
+
+Both loops use the already shared complete dot-prefix/error-absorption proofs.
+The positive reversible triangle bound follows from actual row-zero rejection,
+not a public precondition. Native tests compare independent Euclidean-floor
+and rational Q32 references, all256 precision tags, ignored raw metadata,
+malformed arrays and exact source/offset/late-sum error frontiers. This is a
+bounded row milestone; actual mutable collection/dependency/wavelet/stage and
+whole reconstruction composition remain open.
+
+## Actual native decorrelation row computation
+
+The real decorrelation pixel loop now calls one proved row dispatcher and one
+proved ordered row-append loop. The dispatcher includes both matrix branches
+and both lazy None branches over the complete native source/precision domains.
+It retains source-before-precision-before-offset error order, nearest-magnitude
+Q32 rescaling, checked i128 addition and final i64 conversion. The sole native
+arithmetic bodies are shared with the existing matrix-row producers.
+
+The row-loop relation includes every initial scratch value and every value
+appended before the first error. Empty row ranges perform no validation; later
+failures preserve earlier output rows. The original scratch vectors, capacity,
+clear order and all-rows-before-component-stores policy remain intact. An
+explicit early-return loop invariant retains the real old scratch sequence,
+not a supplied result or normalized input premise.
+
+Independent tests cover all256 precision tags, signed sample extremes, lazy
+None paths and partial scratch output. Actual collection regressions additionally
+check duplicate destination overwrite order, prior-pixel writes on a later
+numeric error, no current-pixel stores before every row succeeds, final-only
+precision updates and exact charged work. These tests do not replace the still
+open whole collection/dependency/wavelet/stage composition proofs or qualify
+general MCT against an independent external oracle.
+
+## Complete actual native decorrelation collection
+
+The original `apply_mct_decorrelation` now has one unconditional full
+Result/components/work relation over the original raw component/collection
+values and actual limits. It calls the real preparation producer, derives
+the real index/precision plan and charged work, then composes every actual
+pixel and the final destination precision updates. There is no supplied
+success, plan, normalized layout, admitted budget or decoder outcome premise.
+
+The real pixel body clears both original scratch vectors, gathers every
+source sample before computing any row, computes every row before starting
+destination stores, and retains the actual ordered duplicate overwrites.
+Its complete relation includes both scratch vectors and every partial
+component update on an error. A failed source read or row leaves components
+unchanged for that pixel; a later destination-store error retains prior
+stores. Earlier complete pixels remain on later failures. Final precision
+updates execute only after all pixels and retain their own ordered partial
+error states. Unselected components, geometry, metadata and samples remain
+in the full deep state relation.
+
+Independent raw pixel fixtures exhaust 972 source/destination/row/sample
+contexts, including duplicate aliases, missing components, unequal sample
+lengths, contradictory unused plan metadata and sentinel scratch data.
+Another1792 cases cover all256 destination precision values and partial
+tag errors. Existing actual collection fixtures retain late numeric errors,
+prior-pixel writes, duplicate destinations and exact work. This closes the
+native decorrelation collection producer, not the complete dependency/wavelet
+collections, stage traversal, general MCT/reconstruction or independent
+external-array qualification.
+
+## Complete actual native dependency collection
+
+The original `apply_mct_dependency` now refines a complete unconditional
+Result/components/work model. Checked triangular coefficient counts, raw
+matrix/offset shape, interleaved source-then-destination lookup, original
+per-component integer/layout validation, reversible array precision and actual
+work/saturating-scratch admission retain their original order and first errors.
+The real preparation returns actual indexes/counts without supplying a valid
+plan or adequate budget as a premise.
+
+The existing source/output/fraction scratch allocations retain their order.
+Every pixel uses the same actual source-snapshot and ordered-store bodies as
+decorrelation, with the dependency path's explicit count rather than silently
+substituting the index-list length. Its real row loop feeds all previous
+computed rows into the verified reversible floor or irreversible Q32 producer.
+All rows finish before component stores. Cached original precision values,
+duplicate references, prior-pixel writes, partial errors and final-only tags
+remain in the full relation; no trace or row outcome is supplied.
+
+Independent tests cover 22 coefficient overflow frontiers, 4320 wide admission/
+counter/cap combinations using actual hardened limits, 4608 destination-precision/
+exact-cap preparation cases, 216 whole floor/Q32 collection contexts and 972
+raw pixel/count/duplicate/error states. The initial test attempted an invalid
+above-hardened limit and failed explicitly; that log is retained, and the
+corrected test uses only the repository's real immutable caps. Wavelet
+collections, stage traversal, complete reconstruction and coherent integrated
+qualification remain separate work.
+
+## Complete wavelet, stage and real owner-buffer MCT composition
+
+The actual wavelet collection now derives its complete plan from the real
+wavelet descriptor and original component values. Signed half-ceiling,
+forward interval/parity partitions, reversed synthesis levels, real 5/3 and
+9/7 calls, source precision scaling, final cardinality checks, stores, tags,
+work and scratch errors have complete relations. The wavelet transform enum,
+not an assumed agreement with the collection's reversible flag, selects the
+actual path. Source scaling remains interleaved with reads so an earlier
+numeric failure is not masked by a later missing source.
+
+The original component coordinator now composes all three real collection
+kinds, forward collections within each stage, and stages in reverse order.
+Every subset, duplicate identity, prior mutation, charged counter and first
+failure is retained. No stage or decoder outcome is provided to the model.
+
+The owned-image API and actual prepared-tile consumer now compose through
+their real borrowed component vectors. Their recursive collectors prove
+current input values, exact partial extents and final-field alias promises;
+all mutating MCT phases preserve those promises. Prophetic specifications
+describe actual borrow endpoints, not trusted adapters or assumptions.
+Prepared-tile metadata lookup failures leave every owner buffer and the work
+counter unchanged. Static private helper bodies moved to proved free functions
+to avoid the pinned associated-static attribute inference limitation; both
+production call sites use the same sole executable bodies.
+
+Prepared standard RCT/ICT now also has complete admission/pixel/traversal
+relations and uses the already proved actual scalar component transform
+instead of a second arithmetic implementation. Disabled transforms still
+skip validation; geometry, raw fractional tags, prior successful pixels and
+all error states are preserved.
+
+The actual `reconstruct_planned_tile` now composes raw planned coefficient
+values, coding-style lookup, first-match kernel selection, ROI/quantization/
+inverse preparation, optional complete MCT and standard RCT/ICT into one
+Result/prepared-vector/work relation. Both full and selected decoder paths use
+that same body. `assemble_prepared_components`, `decode_prepared_image` and
+the public supplied-progression reconstruction API close the real borrowed
+tile/full-selected assembly joins. No decoded coefficient or transformation
+outcome is supplied to these models.
+
+Fifteen finite exact reconstruction shapes preserve all old/final owners,
+input projections, caps and selection parameters. The two standalone public
+MCT/progression APIs are checked through an explicit proof-support whitelist,
+not fabricated internal consumers. Negative mutations and all original packet
+checks remain enabled. Coherent main/hosted acceptance, independent array-MCT
+conformance and whole-project completion remain separate.
+
 ## Complete actual MQ and legacy three-pass producers
 
 The actual MQ decoder now refines [a complete state model](specs/mq.rs):
@@ -1119,6 +1268,30 @@ wrong native views/flags/counts/caps, partial or success-only results and a
 wrong primary clause followed by a correct duplicate. Whole-production
 verification and targeted inventory tests pass; complete frozen numerical,
 resource and hosted qualification remain separate acceptance gates.
+
+### Complete native MCT arithmetic and matrix-row boundary
+
+The actual MCT rounding/rescaling, optional integer/scaled offsets, scratch
+admission and nontransactional work charging now have complete native
+result/state relations. Raw array owner views and exact getters preserve all
+stored metadata/values. The owner proves the crate-private Q32 constant's value;
+clients consume that fact without revealing private representation or raising
+proof budgets. Equal source/destination precision bypasses later shift checks,
+including native precision255, exactly as the body does.
+
+The actual reversible and per-source-fraction matrix-row loops refine one
+shared declarative dot fold. Coefficient indexing, native row multiplication,
+precision/offset admission, every checked wide term/sum and final narrowing
+are ordered exactly; empty rows and malformed physical arrays are not
+normalized. Full matrix/offset/source/fraction/row inputs are bound, not
+successful-row or rectangular-matrix premises.
+
+Whole-production verification and strict Clippy pass. Independent arithmetic
+tests cover all65,536 source/destination precision pairs, full-u8 rounding and
+offset domains, native extrema, work counter partial errors and raw matrix-row
+precision/index/error frontiers. This is a local arithmetic/row milestone,
+not complete collection, dependency, wavelet, stage or general MCT execution,
+external array-MCT qualification or whole F6 completion.
 
 F6 remains open: general MCT paths and the actual
 whole-decoder composed

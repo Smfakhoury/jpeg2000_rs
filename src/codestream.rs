@@ -1502,6 +1502,14 @@ pub struct Part2Extensions {
     metadata_bytes: u64,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn part2_kernel_registry(extensions: &Part2Extensions) -> Seq<(u8, crate::specs::Part2RawKernel)> {
+        Seq::new(extensions.arbitrary_kernels@.len(), |index: int|
+            (extensions.arbitrary_kernels@[index].index, raw_kernel_view(extensions.arbitrary_kernels@[index])))
+    }
+}
+
 impl Part2Extensions {
     pub fn decomposition_structures(&self) -> &[DecompositionStructure] {
         &self.decomposition_structures
@@ -1554,10 +1562,32 @@ impl Part2Extensions {
             .find(|structure| structure.index == index)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures crate::transform::arbitrary_kernel_option(result)
+            == crate::specs::part2_kernel_registry_lookup(part2_kernel_registry(self), index),
+    ))]
     pub(crate) fn arbitrary_kernel(&self, index: u8) -> Option<&ArbitraryKernel> {
-        self.arbitrary_kernels
-            .iter()
-            .find(|kernel| kernel.index == index)
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_kernel_registry_empty(part2_kernel_registry(self), index); }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= self.arbitrary_kernels.len(),
+            crate::specs::part2_kernel_registry_prefix(part2_kernel_registry(self), index, position as nat) == None,
+            decreases self.arbitrary_kernels.len() - position,
+        ))]
+        while position < self.arbitrary_kernels.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_kernel_registry_step(part2_kernel_registry(self), index, position as nat);
+                crate::proofs::production_impl::production_kernel_registry_found(part2_kernel_registry(self), index, position as nat + 1, self.arbitrary_kernels@.len());
+            }
+            let kernel = &self.arbitrary_kernels[position];
+            if kernel.index == index {
+                return Some(kernel);
+            }
+            position += 1;
+        }
+        None
     }
 
     pub(crate) fn arbitrary_decomposition(&self, index: u8) -> Option<&ArbitraryDecomposition> {
@@ -1859,23 +1889,67 @@ pub struct MctCollection {
     wavelet: Option<MctWavelet>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) proof fn mct_fixed_precision_is_q32()
+        ensures MCT_FIXED_BITS == 32,
+    {
+    }
+
+    pub closed spec fn mct_array_view(array: &MctArray) -> crate::specs::Part2MctArray {
+        (array.index, array.kind, array.numeric_format, array.fraction_bits, array.values@)
+    }
+
+    pub open spec fn mct_array_option(value: Option<&MctArray>) -> Option<crate::specs::Part2MctArray> {
+        match value { None => None, Some(array) => Some(mct_array_view(array)) }
+    }
+
+    pub closed spec fn mct_wavelet_view(wavelet: MctWavelet) -> crate::specs::Part2MctWavelet {
+        (wavelet.transform, wavelet.levels, wavelet.component_offset)
+    }
+
+    pub open spec fn mct_wavelet_option(value: Option<MctWavelet>) -> Option<crate::specs::Part2MctWavelet> {
+        match value { None => None, Some(wavelet) => Some(mct_wavelet_view(wavelet)) }
+    }
+
+    pub closed spec fn mct_collection_view(collection: &MctCollection) -> crate::specs::Part2MctCollection {
+        (collection.reversible, collection.input_components@, collection.output_components@, collection.kind,
+            match collection.matrix { None => None, Some(array) => Some(mct_array_view(&array)) },
+            match collection.offsets { None => None, Some(array) => Some(mct_array_view(&array)) },
+            mct_wavelet_option(collection.wavelet))
+    }
+
+    pub closed spec fn mct_stage_view(stage: &MctStage) -> crate::specs::Part2MctStage {
+        (stage.index, Seq::new(stage.collections@.len(), |index: int| mct_collection_view(&stage.collections@[index])))
+    }
+
+    pub closed spec fn multiple_component_transform_view(transform: &MultipleComponentTransform) -> Seq<crate::specs::Part2MctStage> {
+        Seq::new(transform.stages@.len(), |index: int| mct_stage_view(&transform.stages@[index]))
+    }
+}
+
 impl MctArray {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).0,))]
     pub const fn index(&self) -> u8 {
         self.index
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).1,))]
     pub const fn kind(&self) -> MctArrayKind {
         self.kind
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).2,))]
     pub const fn numeric_format(&self) -> MctNumericFormat {
         self.numeric_format
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_array_view(self).3,))]
     pub const fn fraction_bits(&self) -> u8 {
         self.fraction_bits
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == mct_array_view(self).4,))]
     pub fn values(&self) -> &[i64] {
         &self.values
     }
@@ -1925,6 +1999,10 @@ impl MctArray {
 }
 
 impl MultipleComponentTransform {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures Seq::new(result@.len(), |index: int| mct_stage_view(&result@[index]))
+            == multiple_component_transform_view(self),
+    ))]
     pub fn stages(&self) -> &[MctStage] {
         &self.stages
     }
@@ -1992,10 +2070,14 @@ impl MultipleComponentTransform {
 }
 
 impl MctStage {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_stage_view(self).0,))]
     pub const fn index(&self) -> u8 {
         self.index
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures Seq::new(result@.len(), |index: int| mct_collection_view(&result@[index])) == mct_stage_view(self).1,
+    ))]
     pub fn collections(&self) -> &[MctCollection] {
         &self.collections
     }
@@ -2034,30 +2116,37 @@ impl MctStage {
 }
 
 impl MctCollection {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_collection_view(self).0,))]
     pub const fn reversible(&self) -> bool {
         self.reversible
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == mct_collection_view(self).1,))]
     pub fn input_components(&self) -> &[u16] {
         &self.input_components
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result@ == mct_collection_view(self).2,))]
     pub fn output_components(&self) -> &[u16] {
         &self.output_components
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_collection_view(self).3,))]
     pub const fn kind(&self) -> MctCollectionKind {
         self.kind
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_array_option(result) == mct_collection_view(self).4,))]
     pub const fn matrix(&self) -> Option<&MctArray> {
         self.matrix.as_ref()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_array_option(result) == mct_collection_view(self).5,))]
     pub const fn offsets(&self) -> Option<&MctArray> {
         self.offsets.as_ref()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_wavelet_option(result) == mct_collection_view(self).6,))]
     pub const fn wavelet(&self) -> Option<MctWavelet> {
         self.wavelet
     }
@@ -2145,14 +2234,17 @@ impl MctCollection {
 }
 
 impl MctWavelet {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_wavelet_view(self).0,))]
     pub const fn transform(self) -> MctWaveletType {
         self.transform
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_wavelet_view(self).1,))]
     pub const fn levels(self) -> u8 {
         self.levels
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == mct_wavelet_view(self).2,))]
     pub const fn component_offset(self) -> i32 {
         self.component_offset
     }
@@ -8999,6 +9091,48 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actual_kernel_registry_retains_first_duplicates_and_every_raw_index() {
+        let kernel = |index, reversible| ArbitraryKernel {
+            index,
+            reversible,
+            descriptor: u16::MAX,
+            coefficient_type: u8::MAX,
+            whole_sample_filter: false,
+            initial_odd: true,
+            whole_sample_extension: false,
+            scaling: None,
+            steps: Vec::new(),
+        };
+        for first in 0..=u8::MAX {
+            let extensions = Part2Extensions {
+                arbitrary_kernels: vec![
+                    kernel(first, true),
+                    kernel(first.wrapping_add(1), false),
+                    kernel(first, false),
+                ],
+                ..Part2Extensions::default()
+            };
+            for index in 0..=u8::MAX {
+                let expected = if index == first {
+                    Some(0)
+                } else if index == first.wrapping_add(1) {
+                    Some(1)
+                } else {
+                    None
+                };
+                let actual = extensions.arbitrary_kernel(index);
+                assert_eq!(actual.is_some(), expected.is_some());
+                if let Some(position) = expected {
+                    assert!(std::ptr::eq(
+                        actual.unwrap(),
+                        &extensions.arbitrary_kernels[position]
+                    ));
+                }
+            }
+        }
+    }
 
     fn input_error_literal(offset: usize, kind: MalformedKind) -> DecodeError {
         DecodeError::MalformedInput {

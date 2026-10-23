@@ -28,6 +28,1384 @@ pub use crate::proofs::internal_specs::{
 
 verus! {
 
+pub type Part2MctArray = (u8, crate::codestream::MctArrayKind, crate::codestream::MctNumericFormat, u8, Seq<i64>);
+pub type Part2MctWavelet = (crate::codestream::MctWaveletType, u8, i32);
+pub type Part2MctCollection = (
+    bool, Seq<u16>, Seq<u16>, crate::codestream::MctCollectionKind,
+    Option<Part2MctArray>, Option<Part2MctArray>, Option<Part2MctWavelet>,
+);
+pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
+pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
+pub type Part2MctDecorrelationPreparation = (Seq<usize>, Seq<usize>, Seq<u8>, usize, usize, usize);
+pub type Part2MctDependencyPreparation = (Seq<usize>, Seq<usize>, usize, usize);
+pub type Part2MctWaveletPreparation = (
+    Seq<usize>, Seq<usize>, Seq<bool>, Seq<usize>, usize, usize, usize, Part2MctWavelet, Seq<u8>,
+);
+pub type Part2MctWaveletInterval = (i64, i64, Seq<bool>, Seq<usize>);
+
+#[verifier::opaque]
+pub open spec fn part2_kernel_registry_prefix(kernels: Seq<(u8, Part2RawKernel)>, index: u8, count: nat) -> Option<Part2RawKernel>
+    decreases count,
+{
+    if count == 0 { None }
+    else {
+        let previous = part2_kernel_registry_prefix(kernels, index, (count - 1) as nat);
+        match previous {
+            Some(_) => previous,
+            None => if count - 1 >= kernels.len() { None }
+                else if kernels[count as int - 1].0 == index { Some(kernels[count as int - 1].1) } else { None },
+        }
+    }
+}
+
+pub open spec fn part2_kernel_registry_lookup(kernels: Seq<(u8, Part2RawKernel)>, index: u8) -> Option<Part2RawKernel> {
+    part2_kernel_registry_prefix(kernels, index, kernels.len())
+}
+
+pub open spec fn part2_reconstruct_component(
+    plan: Part1PreparePlan, precincts: Seq<Seq<Tier1RawPlane>>, styles: crate::codestream::ComponentCodingStyles,
+    kernels: Seq<(u8, Part2RawKernel)>, maximum_bytes: u64,
+) -> Result<Part1AssemblyTile, crate::DecodeError> {
+    match crate::codestream::component_coding_style_result(&styles, plan.component) {
+        Err(error) => Err(error),
+        Ok(style) => {
+            let kernel = match style.transform {
+                crate::codestream::WaveletTransform::Arbitrary(index) => part2_kernel_registry_lookup(kernels, index),
+                _ => None,
+            };
+            part2_prepare_component(plan, precincts, crate::decode::prepare_style_view(style), kernel, maximum_bytes)
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_reconstruct_components_prefix(
+    initial: Seq<Part1AssemblyTile>, plans: Seq<Part1PreparePlan>, precincts: Seq<Seq<Tier1RawPlane>>,
+    styles: crate::codestream::ComponentCodingStyles, kernels: Seq<(u8, Part2RawKernel)>, maximum_bytes: u64, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum_bytes, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 >= plans.len() { (Err(part1_block_placement_error(false)), previous.1) }
+                else { match part2_reconstruct_component(plans[count as int - 1], precincts, styles, kernels, maximum_bytes) {
+                    Err(error) => (Err(error), previous.1), Ok(component) => (Ok(()), previous.1.push(component)),
+                } },
+        }
+    }
+}
+
+pub open spec fn part2_finish_prepared_tile(
+    before: Seq<Part1AssemblyTile>, component_count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+    mct: Option<Seq<Part2MctStage>>, standard: (bool, bool), work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>, u64) {
+    let transformed = match mct {
+        None => (Ok(()), before, work),
+        Some(stages) => part2_mct_prepared_tiles(before, component_count, infos, stages, work, maximum_work, maximum_bytes),
+    };
+    match transformed.0 {
+        Err(_) => transformed,
+        Ok(()) => {
+            let standard_result = part1_prepared_standard_transform(transformed.1, standard);
+            (standard_result.0, standard_result.1, transformed.2)
+        },
+    }
+}
+
+pub open spec fn part2_reconstruct_planned_tile(
+    initial: Seq<Part1AssemblyTile>, plans: Seq<Part1PreparePlan>, precincts: Seq<Seq<Tier1RawPlane>>,
+    styles: crate::codestream::ComponentCodingStyles, kernels: Seq<(u8, Part2RawKernel)>,
+    component_count: u16, infos: Seq<crate::codestream::ComponentInfo>, mct: Option<Seq<Part2MctStage>>,
+    standard: (bool, bool), work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>, u64) {
+    let prepared = part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum_bytes, plans.len());
+    match prepared.0 {
+        Err(error) => (Err(error), prepared.1, work),
+        Ok(()) => {
+            let finished = part2_finish_prepared_tile(prepared.1.skip(initial.len() as int),
+                component_count, infos, mct, standard, work, maximum_work, maximum_bytes);
+            (finished.0, initial + finished.1, finished.2)
+        },
+    }
+}
+
+pub open spec fn part1_decode_prepared_image(
+    size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>, transform: crate::decode::ComponentTransform, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match part1_assemble_image(size, tiles, maximum) {
+        Err(error) => Err(error),
+        Ok(image) => {
+            let transformed = match transform {
+                crate::decode::ComponentTransform::None => (Ok(()), image),
+                crate::decode::ComponentTransform::Reversible => part1_apply_component_transform(image, false),
+                crate::decode::ComponentTransform::Irreversible => part1_apply_component_transform(image, true),
+            };
+            match transformed.0 { Err(error) => Err(error), Ok(()) => Ok(transformed.1) }
+        },
+    }
+}
+
+pub open spec fn part2_assemble_prepared(
+    size: Part1AssemblySize, prepared: Seq<Part1AssemblyTile>, selection: Option<([u32; 4], u8)>, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match selection {
+        None => part1_assemble_image(size, prepared, maximum),
+        Some((region, levels)) => part1_assemble_selected_image(size, prepared, region, levels, maximum),
+    }
+}
+
+pub open spec fn part1_progression_prepared_image(
+    size: Part1AssemblySize, plans: Seq<Part1PreparePlan>, precincts: Seq<Seq<Tier1RawPlane>>,
+    styles: crate::codestream::ComponentCodingStyles, global: crate::codestream::CodingStyle, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    let prepared = part2_reconstruct_components_prefix(Seq::empty(), plans, precincts, styles, Seq::empty(), maximum, plans.len());
+    match prepared.0 {
+        Err(error) => Err(error),
+        Ok(()) => if !global.multiple_component_transform {
+            part1_decode_prepared_image(size, prepared.1, crate::decode::ComponentTransform::None, maximum)
+        } else { match global.transform {
+            crate::codestream::WaveletTransform::Reversible5x3 =>
+                part1_decode_prepared_image(size, prepared.1, crate::decode::ComponentTransform::Reversible, maximum),
+            crate::codestream::WaveletTransform::Irreversible9x7 =>
+                part1_decode_prepared_image(size, prepared.1, crate::decode::ComponentTransform::Irreversible, maximum),
+            crate::codestream::WaveletTransform::Arbitrary(_) => Err(crate::DecodeError::MalformedInput {
+                offset: 0, kind: crate::MalformedKind::MissingRequiredStructure,
+            }),
+        } },
+    }
+}
+
+pub open spec fn part2_mct_decoded_inputs(before: Seq<Part1DecodedComponentModel>) -> Seq<Part2MctComponent> {
+    Seq::new(before.len(), |index: int| (index as u16,
+        (0u32, 0u32, before[index].0, before[index].1, before[index].2.x_subsampling, before[index].2.y_subsampling),
+        before[index].3, before[index].4))
+}
+
+pub open spec fn part2_mct_prepared_input(
+    before: Part1AssemblyTile, component_count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+) -> Result<Part2MctComponent, crate::DecodeError> {
+    match part1_image_size_component(component_count, infos, before.0) {
+        Err(error) => Err(error),
+        Ok(info) => Ok((before.0, (before.1, before.2, before.3, before.4, info.x_subsampling, info.y_subsampling),
+            before.5, before.6)),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_prepared_inputs(
+    before: Seq<Part1AssemblyTile>, component_count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases before.len(),
+{
+    if before.len() == 0 { (Ok(()), Seq::empty()) }
+    else { match part2_mct_prepared_input(before[0], component_count, infos) {
+        Err(error) => (Err(error), Seq::empty()),
+        Ok(component) => {
+            let tail = part2_mct_prepared_inputs(before.drop_first(), component_count, infos);
+            (tail.0, seq![component] + tail.1)
+        },
+    } }
+}
+
+pub open spec fn part2_mct_prepared_result(before: Seq<Part1AssemblyTile>, transformed: Seq<Part2MctComponent>)
+    -> Seq<Part1AssemblyTile> {
+    Seq::new(before.len(), |index: int| (before[index].0, before[index].1, before[index].2,
+        before[index].3, before[index].4, transformed[index].2, transformed[index].3))
+}
+
+pub open spec fn part2_mct_prepared_tiles(
+    before: Seq<Part1AssemblyTile>, component_count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+    stages: Seq<Part2MctStage>, work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>, u64) {
+    let collected = part2_mct_prepared_inputs(before, component_count, infos);
+    match collected.0 {
+        Err(error) => (Err(error), before, work),
+        Ok(()) => {
+            let transformed = part2_mct_transform(collected.1, stages, work, maximum_work, maximum_bytes);
+            (transformed.0, part2_mct_prepared_result(before, transformed.1), transformed.2)
+        },
+    }
+}
+
+pub open spec fn part1_prepared_standard_admission(before: Seq<Part1AssemblyTile>, irreversible: bool)
+    -> Result<usize, crate::DecodeError> {
+    if before.len() < 3 { Err(part1_transform_error(false)) }
+    else if (before[0].1, before[0].2, before[0].3, before[0].4) != (before[1].1, before[1].2, before[1].3, before[1].4)
+        || (before[0].1, before[0].2, before[0].3, before[0].4) != (before[2].1, before[2].2, before[2].3, before[2].4)
+        || before[0].6.len() != before[1].6.len() || before[0].6.len() != before[2].6.len()
+        || before[0].5 != before[1].5 || before[0].5 != before[2].5
+        || (!irreversible && before[0].5 != 0) || (irreversible && before[0].5 != 16) {
+        Err(part1_transform_error(false))
+    } else { Ok(before[0].6.len() as usize) }
+}
+
+pub open spec fn part1_prepared_sample(before: Seq<Part1AssemblyTile>, component: usize, index: usize)
+    -> Result<i64, crate::DecodeError> {
+    if component >= before.len() || index >= before[component as int].6.len() {
+        Err(part1_block_placement_error(false))
+    } else { Ok(before[component as int].6[index as int]) }
+}
+
+pub open spec fn part1_prepared_store_sample(before: Seq<Part1AssemblyTile>, component: usize, index: usize, value: i64)
+    -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>) {
+    if component >= before.len() || index >= before[component as int].6.len() {
+        (Err(part1_block_placement_error(false)), before)
+    } else {
+        let entry = before[component as int];
+        (Ok(()), before.update(component as int, (entry.0, entry.1, entry.2, entry.3, entry.4, entry.5, entry.6.update(index as int, value))))
+    }
+}
+
+pub open spec fn part1_prepared_standard_pixel(before: Seq<Part1AssemblyTile>, index: usize, irreversible: bool)
+    -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>) {
+    match part1_prepared_sample(before, 0, index) {
+        Err(error) => (Err(error), before),
+        Ok(y) => match part1_prepared_sample(before, 1, index) {
+            Err(error) => (Err(error), before),
+            Ok(cb) => match part1_prepared_sample(before, 2, index) {
+                Err(error) => (Err(error), before),
+                Ok(cr) => match part1_component_values(y, cb, cr, irreversible) {
+                    Err(error) => (Err(error), before),
+                    Ok((red, green, blue)) => {
+                        let r = part1_prepared_store_sample(before, 0, index, red);
+                        match r.0 { Err(_) => r, Ok(()) => {
+                            let g = part1_prepared_store_sample(r.1, 1, index, green);
+                            match g.0 { Err(_) => g, Ok(()) => part1_prepared_store_sample(g.1, 2, index, blue) }
+                        } }
+                    },
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepared_standard_prefix(before: Seq<Part1AssemblyTile>, irreversible: bool, count: nat)
+    -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part1_prepared_standard_prefix(before, irreversible, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else { part1_prepared_standard_pixel(previous.1, (count - 1) as usize, irreversible) },
+        }
+    }
+}
+
+pub open spec fn part1_prepared_standard_transform(before: Seq<Part1AssemblyTile>, transform: (bool, bool))
+    -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>) {
+    if !transform.0 { (Ok(()), before) }
+    else { match part1_prepared_standard_admission(before, transform.1) {
+        Err(error) => (Err(error), before),
+        Ok(length) => part1_prepared_standard_prefix(before, transform.1, length as nat),
+    } }
+}
+
+pub open spec fn part2_mct_decoded_result(
+    before: Part1DecodedImageModel, transformed: Seq<Part2MctComponent>,
+) -> Part1DecodedImageModel {
+    (before.0, before.1, before.2, before.3,
+        Seq::new(before.4.len(), |index: int|
+            (before.4[index].0, before.4[index].1, before.4[index].2, transformed[index].2, transformed[index].3)))
+}
+
+pub open spec fn part2_mct_decoded_image(
+    before: Part1DecodedImageModel, stages: Seq<Part2MctStage>, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Part1DecodedImageModel) {
+    if before.4.len() > u16::MAX { (Err(part1_transform_error(true)), before) }
+    else {
+        let transformed = part2_mct_transform(part2_mct_decoded_inputs(before.4), stages, 0, maximum_work, maximum_bytes);
+        (transformed.0, part2_mct_decoded_result(before, transformed.1))
+    }
+}
+
+pub open spec fn part2_mct_collection(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection, work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    match collection.3 {
+        crate::codestream::MctCollectionKind::Dependency => part2_mct_dependency(before, collection, work, maximum_work, maximum_bytes),
+        crate::codestream::MctCollectionKind::Decorrelation => part2_mct_decorrelation(before, collection, work, maximum_work, maximum_bytes),
+        crate::codestream::MctCollectionKind::Wavelet => part2_mct_wavelet(before, collection, work, maximum_work, maximum_bytes),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_stage_prefix(
+    before: Seq<Part2MctComponent>, collections: Seq<Part2MctCollection>, work: u64,
+    maximum_work: u64, maximum_bytes: u64, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before, work) }
+    else {
+        let previous = part2_mct_stage_prefix(before, collections, work, maximum_work, maximum_bytes, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 >= collections.len() { (Err(part1_transform_error(false)), previous.1, previous.2) }
+                else { part2_mct_collection(previous.1, collections[count as int - 1], previous.2, maximum_work, maximum_bytes) },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_transform_prefix(
+    before: Seq<Part2MctComponent>, stages: Seq<Part2MctStage>, work: u64,
+    maximum_work: u64, maximum_bytes: u64, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before, work) }
+    else {
+        let previous = part2_mct_transform_prefix(before, stages, work, maximum_work, maximum_bytes, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count > stages.len() { (Err(part1_transform_error(false)), previous.1, previous.2) }
+                else {
+                    let stage = stages[stages.len() - count];
+                    part2_mct_stage_prefix(previous.1, stage.1, previous.2, maximum_work, maximum_bytes, stage.1.len())
+                },
+        }
+    }
+}
+
+pub open spec fn part2_mct_transform(
+    before: Seq<Part2MctComponent>, stages: Seq<Part2MctStage>, work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    part2_mct_transform_prefix(before, stages, work, maximum_work, maximum_bytes, stages.len())
+}
+
+pub open spec fn part2_mct_wavelet_reversible(wavelet: Part2MctWavelet) -> bool {
+    matches!(wavelet.0, crate::codestream::MctWaveletType::Reversible5x3)
+}
+
+pub open spec fn part2_mct_ceil_half(value: i64) -> Result<i64, crate::DecodeError> {
+    let quotient = vstd::arithmetic::div_mod::rust_div(value as int, 2);
+    let increment = if vstd::arithmetic::div_mod::rust_rem(value as int, 2) > 0 { 1int } else { 0int };
+    let result = quotient + increment;
+    if result < i64::MIN || result > i64::MAX { Err(part1_transform_error(true)) }
+    else { Ok(result as i64) }
+}
+
+pub open spec fn part2_mct_wavelet_interval_step(
+    previous: Result<Part2MctWaveletInterval, crate::DecodeError>,
+) -> Result<Part2MctWaveletInterval, crate::DecodeError> {
+    match previous {
+        Err(error) => Err(error),
+        Ok((start, end, first, high)) => match part2_mct_ceil_half(start) {
+            Err(error) => Err(error),
+            Ok(next_start) => match part2_mct_ceil_half(end) {
+                Err(error) => Err(error),
+                Ok(next_end) => {
+                    let low = next_end as int - next_start as int;
+                    let current = end as int - start as int;
+                    if low < i64::MIN || low > i64::MAX { Err(part1_transform_error(true)) }
+                    else if low < 0 || low > usize::MAX { Err(part1_transform_error(false)) }
+                    else if current < i64::MIN || current > i64::MAX { Err(part1_transform_error(true)) }
+                    else if current < 0 || current > usize::MAX { Err(part1_transform_error(false)) }
+                    else if current < low { Err(part1_transform_error(true)) }
+                    else { Ok((next_start, next_end,
+                        first.push(vstd::arithmetic::div_mod::rust_rem(start as int, 2) == 0),
+                        high.push((current - low) as usize))) }
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_wavelet_intervals(start: i64, end: i64, count: nat)
+    -> Result<Part2MctWaveletInterval, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((start, end, Seq::empty(), Seq::empty())) }
+    else { part2_mct_wavelet_interval_step(part2_mct_wavelet_intervals(start, end, (count - 1) as nat)) }
+}
+
+pub open spec fn part2_mct_wavelet_partition(count: usize, wavelet: Part2MctWavelet)
+    -> Result<(Seq<bool>, Seq<usize>, usize), crate::DecodeError> {
+    let start = wavelet.2 as i64;
+    if count > i64::MAX { Err(part1_transform_error(true)) }
+    else {
+        let end = start as int + count as int;
+        if end < i64::MIN || end > i64::MAX { Err(part1_transform_error(true)) }
+        else { match part2_mct_wavelet_intervals(start, end as i64, wavelet.1 as nat) {
+            Err(error) => Err(error),
+            Ok((final_start, final_end, first, high)) => {
+                let low = final_end as int - final_start as int;
+                if low < i64::MIN || low > i64::MAX { Err(part1_transform_error(true)) }
+                else if low < 0 || low > usize::MAX { Err(part1_transform_error(false)) }
+                else { Ok((first, high, low as usize)) }
+            },
+        } }
+    }
+}
+
+pub open spec fn part2_mct_wavelet_admission(
+    samples: usize, count: usize, levels: u8, before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, u64) {
+    let product = (samples as u64) as nat * (count as u64) as nat;
+    let level_product = product * (levels as nat + 1);
+    if product > u64::MAX || level_product > u64::MAX || level_product * 8 > u64::MAX {
+        (Err(part1_transform_error(true)), before)
+    } else {
+        let charged = part2_mct_charge_work(before, (level_product * 8) as u64, maximum_work);
+        match charged.0 {
+            Err(error) => (Err(error), charged.1),
+            Ok(()) => {
+                let scratch = if count as nat * 3 > usize::MAX { usize::MAX as nat } else { count as nat * 3 };
+                (part1_image_byte_budget(scratch, 8, maximum_bytes), charged.1)
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_prepare_wavelet(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection, work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<Part2MctWaveletPreparation, crate::DecodeError>, u64) {
+    match collection.6 {
+        None => (Err(part1_transform_error(false)), work),
+        Some(wavelet) => if collection.1.len() == 0 || collection.1.len() != collection.2.len() {
+            (Err(part1_transform_error(false)), work)
+        } else if collection.1.len() > usize::MAX { (Err(part1_transform_error(true)), work) }
+        else {
+            let count = collection.1.len() as usize;
+            match part2_mct_component_pairs(before, collection.1, collection.2, count as nat) {
+                Err(error) => (Err(error), work),
+                Ok((source, destination)) => match part2_mct_validate_dependency_layout(before, source, destination, part2_mct_wavelet_reversible(wavelet)) {
+                    Err(error) => (Err(error), work),
+                    Ok(samples) => match part2_mct_wavelet_partition(count, wavelet) {
+                        Err(error) => (Err(error), work),
+                        Ok((first, high, low)) => {
+                            let admitted = part2_mct_wavelet_admission(samples, count, wavelet.1, work, maximum_work, maximum_bytes);
+                            match admitted.0 {
+                                Err(error) => (Err(error), admitted.1),
+                                Ok(()) => (Ok((source, destination, first, high, low, samples, count, wavelet,
+                                    Seq::new(source.len(), |index: int| before[source[index] as int].2))), admitted.1),
+                            }
+                        },
+                    },
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_mct_wavelet_source_value(
+    before: Seq<Part2MctComponent>, indexes: Seq<usize>, fractions: Seq<u8>,
+    sample: usize, index: nat, reversible: bool,
+) -> Result<i64, crate::DecodeError> {
+    if index >= indexes.len() { Err(part1_transform_error(false)) }
+    else { match part2_mct_source_sample(before, indexes[index as int], sample) {
+        Err(error) => Err(error),
+        Ok(value) => if reversible { Ok(value) }
+            else if index >= fractions.len() { Err(part1_transform_error(false)) }
+            else { match part2_mct_rescale(value as i128, fractions[index as int], 32) {
+                Err(error) => Err(error), Ok(scaled) => part1_checked_sample(scaled as int),
+            } },
+    } }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_wavelet_snapshot(
+    before: Seq<Part2MctComponent>, indexes: Seq<usize>, fractions: Seq<u8>,
+    sample: usize, reversible: bool, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), Seq::empty()) }
+    else {
+        let previous = part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => match part2_mct_wavelet_source_value(before, indexes, fractions, sample, (count - 1) as nat, reversible) {
+                Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_wavelet_reconstruction_step(
+    previous: Result<(usize, Seq<i64>), crate::DecodeError>, source: Seq<i64>, high: Seq<usize>,
+    first: Seq<bool>, reversible: bool, index: nat,
+) -> Result<(usize, Seq<i64>), crate::DecodeError> {
+    match previous {
+        Err(error) => Err(error),
+        Ok((cursor, low)) => if index >= high.len() { Err(part1_transform_error(false)) }
+            else if cursor as nat + high[index as int] as nat > usize::MAX { Err(part1_transform_error(true)) }
+            else {
+                let end = (cursor as nat + high[index as int] as nat) as usize;
+                if cursor > end || end > source.len() { Err(part1_transform_error(false)) }
+                else if index >= first.len() { Err(part1_transform_error(false)) }
+                else {
+                    let next = if reversible { part1_inverse_five_three(low, source.subrange(cursor as int, end as int), first[index as int]) }
+                        else { part1_inverse_nine_seven(low, source.subrange(cursor as int, end as int), first[index as int]) };
+                    match next { Err(error) => Err(error), Ok(values) => Ok((end, values)) }
+                }
+            },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_wavelet_reconstruction_steps(
+    source: Seq<i64>, high: Seq<usize>, first: Seq<bool>, reversible: bool, low: usize, count: nat,
+) -> Result<(usize, Seq<i64>), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 {
+        if low > source.len() { Err(part1_transform_error(false)) }
+        else { Ok((low, source.take(low as int))) }
+    } else if count > high.len() { Err(part1_transform_error(false)) }
+    else { part2_mct_wavelet_reconstruction_step(
+        part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, (count - 1) as nat),
+        source, high, first, reversible, (high.len() - count) as nat) }
+}
+
+pub open spec fn part2_mct_wavelet_reconstruction(
+    source: Seq<i64>, high: Seq<usize>, first: Seq<bool>, reversible: bool, low: usize, count: usize,
+) -> Result<Seq<i64>, crate::DecodeError> {
+    match part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, high.len()) {
+        Err(error) => Err(error),
+        Ok((cursor, values)) => if cursor != count || values.len() != count { Err(part1_transform_error(false)) }
+            else { Ok(values) },
+    }
+}
+
+pub open spec fn part2_mct_wavelet_pixel(
+    before: Seq<Part2MctComponent>, prepared: Part2MctWaveletPreparation, sample: usize,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, Seq<i64>) {
+    let snapshot = part2_mct_wavelet_snapshot(before, prepared.0, prepared.8, sample,
+        part2_mct_wavelet_reversible(prepared.7), prepared.6 as nat);
+    match snapshot.0 {
+        Err(error) => (Err(error), before, snapshot.1),
+        Ok(()) => match part2_mct_wavelet_reconstruction(snapshot.1, prepared.3, prepared.2,
+            part2_mct_wavelet_reversible(prepared.7), prepared.4, prepared.6) {
+            Err(error) => (Err(error), before, snapshot.1),
+            Ok(values) => {
+                let stored = part2_mct_store_output_rows(before, prepared.1, values, sample, prepared.6 as nat);
+                (stored.0, stored.1, snapshot.1)
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_wavelet_pixels(before: Seq<Part2MctComponent>, prepared: Part2MctWaveletPreparation, count: nat)
+    -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_wavelet_pixels(before, prepared, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else {
+                    let pixel = part2_mct_wavelet_pixel(previous.1, prepared, (count - 1) as usize);
+                    (pixel.0, pixel.1)
+                },
+        }
+    }
+}
+
+pub open spec fn part2_mct_wavelet(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection, work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    let preparation = part2_mct_prepare_wavelet(before, collection, work, maximum_work, maximum_bytes);
+    match preparation.0 {
+        Err(error) => (Err(error), before, preparation.1),
+        Ok(prepared) => {
+            let pixels = part2_mct_wavelet_pixels(before, prepared, prepared.5 as nat);
+            match pixels.0 {
+                Err(error) => (Err(error), pixels.1, preparation.1),
+                Ok(()) => {
+                    let tagged = part2_mct_destination_precisions(pixels.1, prepared.1,
+                        if part2_mct_wavelet_reversible(prepared.7) { 0 } else { 32 }, prepared.1.len());
+                    (tagged.0, tagged.1, preparation.1)
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_mct_dependency_coefficients(count: usize, reversible: bool)
+    -> Result<usize, crate::DecodeError> {
+    if reversible {
+        if count as nat + 1 > usize::MAX || count as nat * (count as nat + 1) > usize::MAX
+            || count as nat * (count as nat + 1) / 2 < 1 {
+            Err(part1_transform_error(true))
+        } else { Ok((count as nat * (count as nat + 1) / 2 - 1) as usize) }
+    } else {
+        let previous = if count == 0 { 0nat } else { (count - 1) as nat };
+        if count as nat * previous > usize::MAX { Err(part1_transform_error(true)) }
+        else { Ok((count as nat * previous / 2) as usize) }
+    }
+}
+
+pub open spec fn part2_mct_dependency_dimensions(collection: Part2MctCollection)
+    -> Result<(usize, usize), crate::DecodeError> {
+    let count = collection.1.len();
+    if count == 0 || count != collection.2.len() { Err(part1_transform_error(false)) }
+    else if count > usize::MAX { Err(part1_transform_error(true)) }
+    else { match part2_mct_dependency_coefficients(count as usize, collection.0) {
+        Err(error) => Err(error),
+        Ok(coefficients) => if (collection.4.is_some() && collection.4.unwrap().4.len() != coefficients)
+            || (collection.5.is_some() && collection.5.unwrap().4.len() != count) {
+            Err(part1_transform_error(false))
+        } else { Ok((count as usize, coefficients)) },
+    } }
+}
+
+pub open spec fn part2_mct_component_pair_step(
+    previous: Result<(Seq<usize>, Seq<usize>), crate::DecodeError>,
+    components: Seq<Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, index: nat,
+) -> Result<(Seq<usize>, Seq<usize>), crate::DecodeError> {
+    match previous {
+        Err(error) => Err(error),
+        Ok((inputs, outputs)) => if index >= source.len() { Err(part1_transform_error(false)) }
+            else { match part2_mct_find_component(components, source[index as int]) {
+                Err(error) => Err(error),
+                Ok(input) => if index >= destination.len() { Err(part1_transform_error(false)) }
+                    else { match part2_mct_find_component(components, destination[index as int]) {
+                        Err(error) => Err(error), Ok(output) => Ok((inputs.push(input), outputs.push(output))),
+                    } },
+            } },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_component_pairs(
+    components: Seq<Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, count: nat,
+) -> Result<(Seq<usize>, Seq<usize>), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), Seq::empty())) }
+    else { part2_mct_component_pair_step(
+        part2_mct_component_pairs(components, source, destination, (count - 1) as nat),
+        components, source, destination, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_dependency_layout_index_valid(
+    components: Seq<Part2MctComponent>, first: usize, index: usize, reversible: bool,
+) -> bool {
+    part2_mct_layout_index_valid(components, first, index)
+        && (!reversible || components[index as int].2 == 0)
+}
+
+pub open spec fn part2_mct_validate_dependency_layout(
+    components: Seq<Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>, reversible: bool,
+) -> Result<usize, crate::DecodeError> {
+    if source.len() == 0 || source[0] >= components.len() { Err(part1_transform_error(false)) }
+    else if !(forall |index: int| 0 <= index < source.len()
+        ==> part2_mct_dependency_layout_index_valid(components, source[0], source[index], reversible)) {
+        Err(part1_transform_error(false))
+    } else if !(forall |index: int| 0 <= index < destination.len()
+        ==> part2_mct_dependency_layout_index_valid(components, source[0], destination[index], reversible)) {
+        Err(part1_transform_error(false))
+    } else { Ok(components[source[0] as int].3.len() as usize) }
+}
+
+pub open spec fn part2_mct_dependency_admission(
+    samples: usize, coefficients: usize, count: usize, before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, u64) {
+    let twice = (coefficients as u64) as nat * 2;
+    let per_sample = twice + (count as u64) as nat;
+    let operations = (samples as u64) as nat * per_sample;
+    if twice > u64::MAX || per_sample > u64::MAX || operations > u64::MAX {
+        (Err(part1_transform_error(true)), before)
+    } else {
+        let charged = part2_mct_charge_work(before, operations as u64, maximum_work);
+        match charged.0 {
+            Err(error) => (Err(error), charged.1),
+            Ok(()) => {
+                let scratch = if count as nat * 3 > usize::MAX { usize::MAX as nat } else { count as nat * 3 };
+                (part1_image_byte_budget(scratch, 8, maximum_bytes), charged.1)
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_prepare_dependency(
+    components: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<Part2MctDependencyPreparation, crate::DecodeError>, u64) {
+    match part2_mct_dependency_dimensions(collection) {
+        Err(error) => (Err(error), before),
+        Ok((count, coefficients)) => match part2_mct_component_pairs(components, collection.1, collection.2, count as nat) {
+            Err(error) => (Err(error), before),
+            Ok((source, destination)) => match part2_mct_validate_dependency_layout(components, source, destination, collection.0) {
+                Err(error) => (Err(error), before),
+                Ok(samples) => if collection.0
+                    && ((collection.4.is_some() && collection.4.unwrap().3 != 0)
+                        || (collection.5.is_some() && collection.5.unwrap().3 != 0)) {
+                    (Err(part1_transform_error(false)), before)
+                } else {
+                    let admitted = part2_mct_dependency_admission(samples, coefficients, count, before, maximum_work, maximum_bytes);
+                    match admitted.0 {
+                        Err(error) => (Err(error), admitted.1),
+                        Ok(()) => (Ok((source, destination, samples, count)), admitted.1),
+                    }
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_dependency_rows(
+    initial: Seq<i64>, collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_mct_dependency_rows(initial, collection, source, fractions, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else { match part2_mct_dependency_row(collection.4, collection.5, source,
+                    if collection.0 { None } else { Some(fractions) }, previous.1, (count - 1) as usize) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                } },
+        }
+    }
+}
+
+pub open spec fn part2_mct_dependency_pixel(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDependencyPreparation, fractions: Seq<u8>, sample: usize,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, Seq<i64>, Seq<i64>) {
+    let snapshot = part2_mct_source_snapshot(before, prepared.0, sample, prepared.3 as nat);
+    match snapshot.0 {
+        Err(error) => (Err(error), before, snapshot.1, Seq::empty()),
+        Ok(()) => {
+            let computed = part2_mct_dependency_rows(Seq::empty(), collection, snapshot.1, fractions, prepared.3 as nat);
+            match computed.0 {
+                Err(error) => (Err(error), before, snapshot.1, computed.1),
+                Ok(()) => {
+                    let stored = part2_mct_store_output_rows(before, prepared.1, computed.1, sample, prepared.3 as nat);
+                    (stored.0, stored.1, snapshot.1, computed.1)
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_dependency_pixels(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDependencyPreparation, fractions: Seq<u8>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_dependency_pixels(before, collection, prepared, fractions, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else {
+                    let pixel = part2_mct_dependency_pixel(previous.1, collection, prepared, fractions, (count - 1) as usize);
+                    (pixel.0, pixel.1)
+                },
+        }
+    }
+}
+
+pub open spec fn part2_mct_dependency(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    let preparation = part2_mct_prepare_dependency(before, collection, work, maximum_work, maximum_bytes);
+    match preparation.0 {
+        Err(error) => (Err(error), before, preparation.1),
+        Ok(prepared) => {
+            let fractions = Seq::new(prepared.0.len(), |index: int| before[prepared.0[index] as int].2);
+            let pixels = part2_mct_dependency_pixels(before, collection, prepared, fractions, prepared.2 as nat);
+            match pixels.0 {
+                Err(error) => (Err(error), pixels.1, preparation.1),
+                Ok(()) => {
+                    let tagged = part2_mct_destination_precisions(pixels.1, prepared.1,
+                        if collection.0 { 0 } else { 32 }, prepared.1.len());
+                    (tagged.0, tagged.1, preparation.1)
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_mct_source_sample(
+    components: Seq<Part2MctComponent>, component: usize, sample: usize,
+) -> Result<i64, crate::DecodeError> {
+    if component >= components.len() || sample >= components[component as int].3.len() {
+        Err(part1_transform_error(false))
+    } else { Ok(components[component as int].3[sample as int]) }
+}
+
+pub open spec fn part2_mct_snapshot_step(
+    previous: (Result<(), crate::DecodeError>, Seq<i64>),
+    components: Seq<Part2MctComponent>, indexes: Seq<usize>, sample: usize, position: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>) {
+    match previous.0 {
+        Err(_) => previous,
+        Ok(()) => if position >= indexes.len() { (Err(part1_transform_error(false)), previous.1) }
+            else { match part2_mct_source_sample(components, indexes[position as int], sample) {
+                Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+            } },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_source_snapshot(
+    components: Seq<Part2MctComponent>, indexes: Seq<usize>, sample: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), Seq::empty()) }
+    else { part2_mct_snapshot_step(
+        part2_mct_source_snapshot(components, indexes, sample, (count - 1) as nat),
+        components, indexes, sample, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_begin_pixel(
+    components: Seq<Part2MctComponent>, indexes: Seq<usize>, sample: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>, Seq<i64>) {
+    let snapshot = part2_mct_source_snapshot(components, indexes, sample, count);
+    (snapshot.0, snapshot.1, Seq::empty())
+}
+
+pub open spec fn part2_mct_store_output_row(
+    previous: (Result<(), crate::DecodeError>, Seq<Part2MctComponent>),
+    destinations: Seq<usize>, values: Seq<i64>, sample: usize, row: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>) {
+    match previous.0 {
+        Err(_) => previous,
+        Ok(()) => if row >= destinations.len() || row >= values.len() {
+            (Err(part1_transform_error(false)), previous.1)
+        } else { part2_mct_store_sample(previous.1, destinations[row as int], sample, values[row as int]) },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_store_output_rows(
+    before: Seq<Part2MctComponent>, destinations: Seq<usize>, values: Seq<i64>, sample: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else { part2_mct_store_output_row(
+        part2_mct_store_output_rows(before, destinations, values, sample, (count - 1) as nat),
+        destinations, values, sample, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_decorrelation_pixel(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDecorrelationPreparation, sample: usize,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, Seq<i64>, Seq<i64>) {
+    let snapshot = part2_mct_source_snapshot(before, prepared.0, sample, prepared.0.len());
+    match snapshot.0 {
+        Err(error) => (Err(error), before, snapshot.1, Seq::empty()),
+        Ok(()) => {
+            let computed = part2_mct_decorrelation_rows(Seq::empty(), collection, snapshot.1, prepared.2, prepared.4 as nat);
+            match computed.0 {
+                Err(error) => (Err(error), before, snapshot.1, computed.1),
+                Ok(()) => {
+                    let stored = part2_mct_store_output_rows(before, prepared.1, computed.1, sample, prepared.4 as nat);
+                    (stored.0, stored.1, snapshot.1, computed.1)
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_decorrelation_pixels(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDecorrelationPreparation, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_decorrelation_pixels(before, collection, prepared, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else {
+                    let pixel = part2_mct_decorrelation_pixel(previous.1, collection, prepared, (count - 1) as usize);
+                    (pixel.0, pixel.1)
+                },
+        }
+    }
+}
+
+pub open spec fn part2_mct_component_precision(before: Part2MctComponent, precision: u8) -> Part2MctComponent {
+    (before.0, before.1, precision, before.3)
+}
+
+pub open spec fn part2_mct_set_precision(
+    before: Seq<Part2MctComponent>, destination: usize, precision: u8,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>) {
+    if destination >= before.len() { (Err(part1_transform_error(false)), before) }
+    else { (Ok(()), before.update(destination as int, part2_mct_component_precision(before[destination as int], precision))) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_destination_precisions(
+    before: Seq<Part2MctComponent>, destinations: Seq<usize>, precision: u8, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_destination_precisions(before, destinations, precision, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 >= destinations.len() { (Err(part1_transform_error(false)), previous.1) }
+                else { part2_mct_set_precision(previous.1, destinations[count as int - 1], precision) },
+        }
+    }
+}
+
+pub open spec fn part2_mct_decorrelation(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    let preparation = part2_mct_prepare_decorrelation(before, collection, work, maximum_work, maximum_bytes);
+    match preparation.0 {
+        Err(error) => (Err(error), before, preparation.1),
+        Ok(prepared) => {
+            let pixels = part2_mct_decorrelation_pixels(before, collection, prepared, prepared.3 as nat);
+            match pixels.0 {
+                Err(error) => (Err(error), pixels.1, preparation.1),
+                Ok(()) => {
+                    let tagged = part2_mct_destination_precisions(pixels.1, prepared.1,
+                        if collection.0 { 0 } else { 32 }, prepared.1.len());
+                    (tagged.0, tagged.1, preparation.1)
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_mct_decorrelation_row(
+    collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, row: usize,
+) -> Result<i64, crate::DecodeError> {
+    match collection.4 {
+        Some(matrix) => part2_mct_matrix_row(
+            matrix, collection.5, source, if collection.0 { None } else { Some(fractions) }, row),
+        None => if row >= source.len() { Err(part1_transform_error(false)) }
+        else if collection.0 {
+            match part2_mct_offset(collection.5, row) {
+                Err(error) => Err(error),
+                Ok(offset) => part1_checked_sample(source[row as int] as int + offset as int),
+            }
+        } else if row >= fractions.len() { Err(part1_transform_error(false)) }
+        else {
+            match part2_mct_rescale(source[row as int] as i128, fractions[row as int], 32) {
+                Err(error) => Err(error),
+                Ok(value) => match part2_mct_offset_scaled(collection.5, row) {
+                    Err(error) => Err(error),
+                    Ok(offset) => match part2_atk_checked_i128(value as int + offset as int) {
+                        Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                    },
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_decorrelation_rows(
+    initial: Seq<i64>, collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_mct_decorrelation_rows(initial, collection, source, fractions, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else { match part2_mct_decorrelation_row(collection, source, fractions, (count - 1) as usize) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                } },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_component_indices(
+    components: Seq<Part2MctComponent>, references: Seq<u16>,
+) -> Result<Seq<usize>, crate::DecodeError>
+    decreases references.len(),
+{
+    if references.len() == 0 { Ok(Seq::empty()) }
+    else {
+        match part2_mct_component_indices(components, references.drop_last()) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_mct_find_component(components, references.last()) {
+                Err(error) => Err(error), Ok(index) => Ok(previous.push(index)),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_decorrelation_dimensions(collection: Part2MctCollection)
+    -> Result<(usize, usize), crate::DecodeError> {
+    let rows = collection.1.len();
+    let columns = collection.2.len();
+    if rows == 0 || rows != columns { Err(part1_transform_error(false)) }
+    else if rows > usize::MAX || columns > usize::MAX
+        || (collection.4.is_some() && rows * columns > usize::MAX) {
+        Err(part1_transform_error(true))
+    } else if match collection.4 { None => false, Some(matrix) => matrix.4.len() != rows * columns } {
+        Err(part1_transform_error(false))
+    } else if match collection.5 { None => false, Some(offsets) => offsets.4.len() != rows } {
+        Err(part1_transform_error(false))
+    } else { Ok((rows as usize, columns as usize)) }
+}
+
+pub open spec fn part2_mct_prepare_decorrelation(
+    components: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<Part2MctDecorrelationPreparation, crate::DecodeError>, u64) {
+    match part2_mct_decorrelation_dimensions(collection) {
+        Err(error) => (Err(error), before),
+        Ok((rows, columns)) => match part2_mct_component_indices(components, collection.2) {
+            Err(error) => (Err(error), before),
+            Ok(source) => match part2_mct_component_indices(components, collection.1) {
+                Err(error) => (Err(error), before),
+                Ok(destination) => match part2_mct_validate_layout(components, source, destination, collection.0) {
+                    Err(error) => (Err(error), before),
+                    Ok(samples) => {
+                        let admitted = part2_mct_decorrelation_admission(
+                            samples, rows as usize, columns as usize, before, maximum_work, maximum_bytes);
+                        match admitted.0 {
+                            Err(error) => (Err(error), admitted.1),
+                            Ok(()) => (Ok((source, destination,
+                                Seq::new(source.len(), |index: int| components[source[index] as int].2),
+                                samples, rows as usize, columns as usize)), admitted.1),
+                        }
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_mct_decorrelation_admission(
+    samples: usize, rows: usize, columns: usize, before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, u64) {
+    let sample_rows = (samples as u64) as nat * (rows as u64) as nat;
+    let products = sample_rows * (columns as u64) as nat;
+    if sample_rows > u64::MAX || products > u64::MAX || products + sample_rows > u64::MAX {
+        (Err(part1_transform_error(true)), before)
+    } else {
+        let charged = part2_mct_charge_work(before, (products + sample_rows) as u64, maximum_work);
+        match charged.0 {
+            Err(error) => (Err(error), charged.1),
+            Ok(()) => if rows as nat + columns as nat > usize::MAX
+                || (rows as nat + columns as nat) * 8 > usize::MAX {
+                (Err(part1_transform_error(true)), charged.1)
+            } else {
+                let bytes = ((rows as nat + columns as nat) * 8) as u64;
+                (if bytes > maximum_bytes { Err(crate::DecodeError::LimitExceeded {
+                    resource: crate::Resource::DecodedBytes, limit: maximum_bytes, actual: bytes,
+                }) } else { Ok(()) }, charged.1)
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_layout_index_valid(
+    components: Seq<Part2MctComponent>, first: usize, index: usize,
+) -> bool {
+    if first >= components.len() || index >= components.len() { false }
+    else { components[index as int].1 == components[first as int].1
+        && components[index as int].3.len() == components[first as int].3.len()
+        && components[index as int].2 <= 32 }
+}
+
+pub open spec fn part2_mct_validate_layout(
+    components: Seq<Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>, reversible: bool,
+) -> Result<usize, crate::DecodeError> {
+    if source.len() == 0 { Err(part1_transform_error(false)) }
+    else if source[0] >= components.len() { Err(part1_transform_error(false)) }
+    else {
+        let first = source[0];
+        if !(forall |position: int| 0 <= position < source.len()
+            ==> part2_mct_layout_index_valid(components, first, source[position])) {
+            Err(part1_transform_error(false))
+        } else if !(forall |position: int| 0 <= position < destination.len()
+            ==> part2_mct_layout_index_valid(components, first, destination[position])) {
+            Err(part1_transform_error(false))
+        } else if reversible && !(forall |position: int| 0 <= position < source.len()
+            ==> components[source[position] as int].2 == 0) {
+            Err(part1_transform_error(false))
+        } else { Ok(components[first as int].3.len() as usize) }
+    }
+}
+
+pub open spec fn part2_mct_store_component_sample(
+    before: Part2MctComponent, index: usize, value: i64,
+) -> (Result<(), crate::DecodeError>, Part2MctComponent) {
+    if index >= before.3.len() { (Err(part1_transform_error(false)), before) }
+    else { (Ok(()), (before.0, before.1, before.2, before.3.update(index as int, value))) }
+}
+
+pub open spec fn part2_mct_store_sample(
+    before: Seq<Part2MctComponent>, component: usize, index: usize, value: i64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>) {
+    if component >= before.len() { (Err(part1_transform_error(false)), before) }
+    else {
+        let stored = part2_mct_store_component_sample(before[component as int], index, value);
+        (stored.0, before.update(component as int, stored.1))
+    }
+}
+
+pub open spec fn part2_mct_component_tags(components: Seq<Part2MctComponent>) -> Seq<u16> {
+    Seq::new(components.len(), |index: int| components[index].0)
+}
+
+pub open spec fn part2_mct_find_component(components: Seq<Part2MctComponent>, reference: u16)
+    -> Result<usize, crate::DecodeError>
+{
+    match part2_mct_component_tags(components).index_of_first(reference) {
+        None => Err(part1_transform_error(false)),
+        Some(index) => if index < 0 || index > usize::MAX { Err(part1_transform_error(true)) }
+            else { Ok(index as usize) },
+    }
+}
+
+pub open spec fn part2_mct_dependency_initial(
+    offsets: Option<Part2MctArray>, source: Seq<i64>, fractions: Option<Seq<u8>>, row: usize,
+) -> Result<i128, crate::DecodeError> {
+    if row >= source.len() { Err(part1_transform_error(false)) }
+    else {
+        match fractions {
+            None => match part2_mct_offset(offsets, row) {
+                Err(error) => Err(error),
+                Ok(offset) => match part1_checked_sample(source[row as int] as int + offset as int) {
+                    Err(error) => Err(error), Ok(base) => Ok(base as i128),
+                },
+            },
+            Some(bits) => if row >= bits.len() { Err(part1_transform_error(false)) } else {
+                match part2_mct_rescale(source[row as int] as i128, bits[row as int], 32) {
+                    Err(error) => Err(error),
+                    Ok(base) => match part2_mct_offset_scaled(offsets, row) {
+                        Err(error) => Err(error), Ok(offset) => part2_atk_checked_i128(base as int + offset as int),
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_dependency_row(
+    matrix: Option<Part2MctArray>, offsets: Option<Part2MctArray>, source: Seq<i64>,
+    fractions: Option<Seq<u8>>, output: Seq<i64>, row: usize,
+) -> Result<i64, crate::DecodeError> {
+    match part2_mct_dependency_initial(offsets, source, fractions, row) {
+        Err(error) => Err(error),
+        Ok(base) => match matrix {
+            None => part1_checked_sample(base as int),
+            Some(matrix) => match fractions {
+                None => {
+                    if row == 0 { part1_checked_sample(base as int) }
+                    else if row as nat + 1 > usize::MAX || row as nat * (row as nat + 1) > usize::MAX {
+                        Err(part1_transform_error(true))
+                    } else {
+                        let start = (row as nat * (row as nat + 1) / 2 - 1) as usize;
+                        if start as nat + row as nat > usize::MAX { Err(part1_transform_error(true)) }
+                        else if start as nat + row as nat >= matrix.4.len() { Err(part1_transform_error(false)) }
+                        else {
+                            let scale = matrix.4[start as int + row as int];
+                            if scale <= 0 { Err(part1_transform_error(false)) }
+                            else {
+                                match part2_mct_dot_prefix((scale / 2) as i128, matrix, output, None, start, row as nat) {
+                                    Err(error) => Err(error),
+                                    Ok(prediction) => {
+                                        let quotient = vstd::arithmetic::div_mod::rust_div(prediction as int, scale as int);
+                                        let predicted = if vstd::arithmetic::div_mod::rust_rem(prediction as int, scale as int) < 0 {
+                                            part2_atk_checked_i128(quotient - 1)
+                                        } else { Ok(quotient as i128) };
+                                        match predicted {
+                                            Err(error) => Err(error),
+                                            Ok(predicted) => match part2_atk_checked_i128(base as int + predicted as int) {
+                                                Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                                            },
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                Some(_) => {
+                    let previous = if row == 0 { 0nat } else { (row - 1) as nat };
+                    if row as nat * previous > usize::MAX { Err(part1_transform_error(true)) }
+                    else {
+                        match part2_mct_dot_prefix(base, matrix, output, Some(Seq::new(output.len(), |index: int| 32u8)),
+                            (row as nat * previous / 2) as usize, row as nat) {
+                            Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                        }
+                    }
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_mct_row_initial(
+    matrix: Part2MctArray, offsets: Option<Part2MctArray>, width: nat,
+    fractions: Option<Seq<u8>>, row: usize,
+) -> Result<i128, crate::DecodeError> {
+    match fractions {
+        None => {
+            if matrix.3 != 0 || match offsets { None => false, Some(array) => array.3 != 0 } {
+                Err(part1_transform_error(false))
+            } else {
+                match part2_mct_offset(offsets, row) {
+                    Err(error) => Err(error), Ok(value) => Ok(value as i128),
+                }
+            }
+        },
+        Some(bits) => {
+            if width != bits.len() || matrix.3 > 32
+                || match offsets { None => false, Some(array) => array.3 > 32 } {
+                Err(part1_transform_error(false))
+            } else { part2_mct_offset_scaled(offsets, row) }
+        },
+    }
+}
+
+pub open spec fn part2_mct_dot_term(
+    matrix: Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>,
+    start: usize, column: usize,
+) -> Result<i128, crate::DecodeError> {
+    if start as nat + column as nat > usize::MAX { Err(part1_transform_error(true)) }
+    else if start as nat + column as nat >= matrix.4.len() || column >= source.len() { Err(part1_transform_error(false)) }
+    else {
+        let coefficient = matrix.4[start as int + column as int];
+        let sample = source[column as int];
+        match fractions {
+            None => part2_atk_checked_i128(coefficient as int * sample as int),
+            Some(bits) => {
+                if column >= bits.len() { Err(part1_transform_error(false)) }
+                else if matrix.3 as nat + bits[column as int] as nat > u8::MAX { Err(part1_transform_error(true)) }
+                else {
+                    match part2_atk_checked_i128(coefficient as int * sample as int) {
+                        Err(error) => Err(error),
+                        Ok(product) => part2_mct_rescale(product, (matrix.3 + bits[column as int]) as u8, 32),
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_dot_prefix(
+    initial: i128, matrix: Part2MctArray, source: Seq<i64>, fractions: Option<Seq<u8>>,
+    start: usize, count: nat,
+) -> Result<i128, crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(initial) }
+    else {
+        match part2_mct_dot_prefix(initial, matrix, source, fractions, start, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_mct_dot_term(matrix, source, fractions, start, (count - 1) as usize) {
+                Err(error) => Err(error),
+                Ok(product) => part2_atk_checked_i128(previous as int + product as int),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_matrix_row(
+    matrix: Part2MctArray, offsets: Option<Part2MctArray>, source: Seq<i64>,
+    fractions: Option<Seq<u8>>, row: usize,
+) -> Result<i64, crate::DecodeError> {
+    match part2_mct_row_initial(matrix, offsets, source.len(), fractions, row) {
+        Err(error) => Err(error),
+        Ok(initial) => {
+            if row as nat * source.len() > usize::MAX { Err(part1_transform_error(true)) }
+            else {
+                match part2_mct_dot_prefix(initial, matrix, source, fractions, (row as nat * source.len()) as usize, source.len()) {
+                    Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part2_mct_round_shift(value: i128, bits: u8) -> Result<i128, crate::DecodeError> {
+    if bits == 0 { Ok(value) }
+    else if bits > 126 { Err(part1_transform_error(true)) }
+    else {
+        let half = 1i128 << ((bits - 1) as u32);
+        let divisor = 1i128 << (bits as u32);
+        if divisor == 0 || divisor == -1 { Err(part1_transform_error(true)) }
+        else if value < 0 {
+            match part2_atk_checked_i128(-(value as int)) {
+                Err(error) => Err(error),
+                Ok(magnitude) => match part2_atk_checked_i128(magnitude as int + half as int) {
+                    Err(error) => Err(error),
+                    Ok(biased) => part2_atk_checked_i128(-((biased / divisor) as int)),
+                },
+            }
+        } else {
+            match part2_atk_checked_i128(value as int + half as int) {
+                Err(error) => Err(error), Ok(biased) => Ok((biased / divisor) as i128),
+            }
+        }
+    }
+}
+
+pub open spec fn part2_mct_rescale(value: i128, from_bits: u8, to_bits: u8) -> Result<i128, crate::DecodeError> {
+    if from_bits == to_bits { Ok(value) }
+    else if from_bits < to_bits {
+        let shift = (to_bits - from_bits) as u8;
+        if shift > 126 { Err(part1_transform_error(true)) }
+        else { part2_atk_checked_i128(value as int * (1i128 << (shift as u32)) as int) }
+    } else { part2_mct_round_shift(value, (from_bits - to_bits) as u8) }
+}
+
+pub open spec fn part2_mct_offset(offsets: Option<Part2MctArray>, row: usize) -> Result<i64, crate::DecodeError> {
+    match offsets {
+        None => Ok(0),
+        Some(array) => if array.3 != 0 || row >= array.4.len() { Err(part1_transform_error(false)) }
+            else { Ok(array.4[row as int]) },
+    }
+}
+
+pub open spec fn part2_mct_offset_scaled(offsets: Option<Part2MctArray>, row: usize) -> Result<i128, crate::DecodeError> {
+    match offsets {
+        None => Ok(0),
+        Some(array) => if array.3 > 32 || row >= array.4.len() { Err(part1_transform_error(false)) }
+            else { part2_mct_rescale(array.4[row as int] as i128, array.3, 32) },
+    }
+}
+
+pub open spec fn part2_mct_charge_work(before: u64, operations: u64, maximum: u64)
+    -> (Result<(), crate::DecodeError>, u64)
+{
+    if before as nat + operations as nat > u64::MAX { (Err(part1_transform_error(true)), before) }
+    else {
+        let next = (before as nat + operations as nat) as u64;
+        (if next > maximum { Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::WorkUnits, limit: maximum, actual: next,
+        }) } else { Ok(()) }, next)
+    }
+}
+
 pub open spec fn part1_tier1_block_coding_byte(value: u8) -> Result<crate::tier1::Tier1BlockCoding, crate::DecodeError> {
     match value >> 6 {
         0 => Ok(crate::tier1::Tier1BlockCoding::Legacy),

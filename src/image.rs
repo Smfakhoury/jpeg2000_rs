@@ -2,7 +2,7 @@ use crate::{
     DecodeError, MalformedKind, Resource, ResourceLimits,
     codestream::{
         ComponentInfo, ImageSize, MCT_FIXED_BITS, MctArray, MctCollection, MctCollectionKind,
-        MctWaveletType, MultipleComponentTransform, NonlinearPointTransform,
+        MctStage, MctWavelet, MctWaveletType, MultipleComponentTransform, NonlinearPointTransform,
     },
     transform::{inverse_5_3, inverse_9_7},
 };
@@ -25,6 +25,165 @@ pub(crate) struct TransformComponentMut<'a> {
     pub y_subsampling: u8,
     pub fraction_bits: &'a mut u8,
     pub samples: &'a mut [i64],
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) open spec fn transform_component_mut_view(component: &TransformComponentMut) -> crate::specs::Part2MctComponent {
+        (component.component, (component.x, component.y, component.width, component.height,
+            component.x_subsampling, component.y_subsampling), *component.fraction_bits, component.samples@)
+    }
+
+    pub(crate) open spec fn transform_components_view(components: &[TransformComponentMut]) -> Seq<crate::specs::Part2MctComponent> {
+        Seq::new(components@.len(), |index: int| transform_component_mut_view(&components@[index]))
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_component_final_samples(component: &TransformComponentMut) -> Seq<i64> {
+        final(component.samples)@
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_component_final_precision(component: &TransformComponentMut) -> u8 {
+        *final(component.fraction_bits)
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_component_borrow_frame(before: TransformComponentMut, after: TransformComponentMut) -> bool {
+        transform_component_final_samples(&before) == transform_component_final_samples(&after)
+            && transform_component_final_precision(&before) == transform_component_final_precision(&after)
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_components_borrow_frame(before: Seq<TransformComponentMut>, after: Seq<TransformComponentMut>) -> bool {
+        before.len() == after.len()
+            && forall |index: int| 0 <= index < before.len() ==> transform_component_borrow_frame(before[index], after[index])
+    }
+
+    spec fn mct_component_pairs_outcome(result: Result<(Vec<usize>, Vec<usize>), DecodeError>)
+        -> Result<(Seq<usize>, Seq<usize>), DecodeError> {
+        match result { Ok((source, destination)) => Ok((source@, destination@)), Err(error) => Err(error) }
+    }
+
+    spec fn mct_wavelet_partition_outcome(result: Result<(Vec<bool>, Vec<usize>, usize), DecodeError>)
+        -> Result<(Seq<bool>, Seq<usize>, usize), DecodeError> {
+        match result { Ok((first, high, low)) => Ok((first@, high@, low)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_source_sample(transform_components_view(components), component, index),
+))]
+fn read_transform_sample(
+    components: &[TransformComponentMut<'_>],
+    component: usize,
+    index: usize,
+) -> Result<i64, DecodeError> {
+    let component = components.get(component).ok_or_else(invalid_transform)?;
+    Ok(*component.samples.get(index).ok_or_else(invalid_transform)?)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_component_mut_view(final(component))) == crate::specs::part2_mct_store_component_sample(
+        transform_component_mut_view(old(component)), index, value,
+    ),
+    transform_component_borrow_frame(*old(component), *final(component)),
+))]
+fn store_transform_component_sample(
+    component: &mut TransformComponentMut<'_>,
+    index: usize,
+    value: i64,
+) -> Result<(), DecodeError> {
+    let sample = component
+        .samples
+        .get_mut(index)
+        .ok_or_else(invalid_transform)?;
+    *sample = value;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_store_sample(
+        transform_components_view(old(components)), destination, index, value,
+    ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn store_transform_sample(
+    components: &mut [TransformComponentMut<'_>],
+    destination: usize,
+    index: usize,
+    value: i64,
+) -> Result<(), DecodeError> {
+    let component = components
+        .get_mut(destination)
+        .ok_or_else(invalid_transform)?;
+    store_transform_component_sample(component, index, value)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures transform_component_mut_view(final(component)) == crate::specs::part2_mct_component_precision(
+        transform_component_mut_view(old(component)), precision,
+    ),
+    transform_component_borrow_frame(*old(component), *final(component)),
+))]
+fn set_transform_component_precision(component: &mut TransformComponentMut<'_>, precision: u8) {
+    *component.fraction_bits = precision;
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_set_precision(
+        transform_components_view(old(components)), destination, precision,
+    ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn set_transform_precision(
+    components: &mut [TransformComponentMut<'_>],
+    destination: usize,
+    precision: u8,
+) -> Result<(), DecodeError> {
+    let component = components
+        .get_mut(destination)
+        .ok_or_else(invalid_transform)?;
+    set_transform_component_precision(component, precision);
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_destination_precisions(
+        transform_components_view(old(components)), destinations@, precision, destinations@.len(),
+    ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_destination_precisions(
+    components: &mut [TransformComponentMut<'_>],
+    destinations: &[usize],
+    precision: u8,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_precisions_empty(before, destinations@, precision); }
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= destinations.len(),
+        before == transform_components_view(old(components)),
+        transform_components_borrow_frame(old(components)@, components@),
+        crate::specs::part2_mct_destination_precisions(before, destinations@, precision, index as nat)
+            == (Ok(()), transform_components_view(components)),
+        decreases destinations.len() - index,
+    ))]
+    while index < destinations.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_precisions_step(before, destinations@, precision, index as nat);
+            crate::proofs::production_impl::production_mct_precisions_error(
+                before, destinations@, precision, index as nat + 1, destinations@.len());
+        }
+        let destination = *destinations.get(index).ok_or_else(invalid_transform)?;
+        set_transform_precision(components, destination, precision)?;
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -82,7 +241,7 @@ verus! {
     impl View for DecodedImage {
         type V = crate::specs::Part1DecodedImageModel;
 
-        closed spec fn view(&self) -> Self::V {
+        open spec fn view(&self) -> Self::V {
             decoded_image_view(*self)
         }
     }
@@ -2068,7 +2227,7 @@ fn apply_component_pixel(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_component_values(y, cb, cr, irreversible),
 ))]
-fn inverse_component_values(
+pub(crate) fn inverse_component_values(
     y: i64,
     cb: i64,
     cr: i64,
@@ -2101,26 +2260,92 @@ fn inverse_component_values(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, decoded_image_view(*final(image))) == crate::specs::part2_mct_decoded_image(
+        decoded_image_view(*old(image)), crate::codestream::multiple_component_transform_view(transform),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn apply_multiple_component_transform(
     image: &mut DecodedImage,
     transform: &MultipleComponentTransform,
     limits: &ResourceLimits,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = decoded_image_view(*image); }
     let mut components = Vec::with_capacity(image.components.len());
     collect_decoded_transform_components(&mut image.components, 0, &mut components)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(Seq::new(components@.len(), |index: int| transform_component_mut_view(&components@[index]))
+            =~= crate::specs::part2_mct_decoded_inputs(before.4));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost collected = components@; }
     let mut work = 0_u64;
-    apply_multiple_component_transform_components(&mut components, transform, limits, &mut work)
+    let result = apply_multiple_component_transform_components(
+        &mut components,
+        transform,
+        limits,
+        &mut work,
+    );
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall |index: int| 0 <= index < components@.len() implies
+            transform_component_final_samples(&components@[index]) == transform_component_mut_view(&components@[index]).3
+                && transform_component_final_precision(&components@[index]) == transform_component_mut_view(&components@[index]).2 by {}
+        assert forall |index: int| 0 <= index < components@.len() implies
+            transform_component_final_samples(&collected[index]) == transform_component_final_samples(&components@[index])
+                && transform_component_final_precision(&collected[index]) == transform_component_final_precision(&components@[index]) by {}
+        assert(decoded_image_view(*final(image)).4.len() == before.4.len());
+        assert(decoded_image_view(*final(image)).4 =~= Seq::new(before.4.len(), |index: int|
+            (before.4[index].0, before.4[index].1, before.4[index].2,
+                transform_component_mut_view(&components@[index]).2,
+                transform_component_mut_view(&components@[index]).3)));
+    }
+    result
 }
 
-#[cfg_attr(verus_keep_ghost, verus_spec(decreases decoded.len(),))]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures
+        result == if component_index as nat + old(decoded)@.len() > u16::MAX {
+            Err(crate::specs::part1_transform_error(true))
+        } else { Ok(()) },
+        final(decoded)@.len() == old(decoded)@.len(),
+        final(components)@.len() == old(components)@.len()
+            + if old(decoded)@.len() > u16::MAX as nat - component_index as nat {
+                (u16::MAX as nat - component_index as nat + 1) as nat
+            } else { old(decoded)@.len() },
+        final(components)@.take(old(components)@.len() as int) == old(components)@,
+        forall |position: int| 0 <= position < final(components)@.len() - old(components)@.len() ==>
+            transform_component_mut_view(&final(components)@[old(components)@.len() as int + position])
+                == ((component_index as nat + position) as u16,
+                    (0u32, 0u32, old(decoded)@[position].width, old(decoded)@[position].height,
+                        old(decoded)@[position].info.x_subsampling, old(decoded)@[position].info.y_subsampling),
+                    old(decoded)@[position].fraction_bits, old(decoded)@[position].samples@),
+        forall |position: int| 0 <= position < old(decoded)@.len() ==>
+            decoded_component_view(final(decoded)@[position])
+                == if position < final(components)@.len() - old(components)@.len() {
+                    (old(decoded)@[position].width, old(decoded)@[position].height, old(decoded)@[position].info,
+                        transform_component_final_precision(&final(components)@[old(components)@.len() as int + position]),
+                        transform_component_final_samples(&final(components)@[old(components)@.len() as int + position]))
+                } else { decoded_component_view(old(decoded)@[position]) },
+    decreases decoded.len(),
+))]
 fn collect_decoded_transform_components<'a>(
     decoded: &'a mut [DecodedComponent],
     component_index: u16,
     components: &mut Vec<TransformComponentMut<'a>>,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost original_decoded = decoded@;
+        let ghost original_components = components@;
+    }
     let Some((component, remaining)) = decoded.split_first_mut() else {
         return Ok(());
     };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost remaining_before = remaining@; }
     let info = component.info;
     components.push(TransformComponentMut {
         component: component_index,
@@ -2133,56 +2358,154 @@ fn collect_decoded_transform_components<'a>(
         fraction_bits: &mut component.fraction_bits,
         samples: &mut component.samples,
     });
-    collect_decoded_transform_components(
-        remaining,
-        component_index
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?,
-        components,
-    )
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost added = components@[original_components.len() as int]; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(transform_component_mut_view(&added) == (component_index,
+            (0u32, 0u32, original_decoded[0].width, original_decoded[0].height,
+                original_decoded[0].info.x_subsampling, original_decoded[0].info.y_subsampling),
+            original_decoded[0].fraction_bits, original_decoded[0].samples@));
+    }
+    let next_index = component_index
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let result = collect_decoded_transform_components(remaining, next_index, components);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(components@[original_components.len() as int] == added);
+        assert forall |position: int| 0 <= position < components@.len() - original_components.len() implies
+            transform_component_mut_view(&components@[original_components.len() as int + position])
+                == ((component_index as nat + position) as u16,
+                    (0u32, 0u32, original_decoded[position].width, original_decoded[position].height,
+                        original_decoded[position].info.x_subsampling, original_decoded[position].info.y_subsampling),
+                    original_decoded[position].fraction_bits, original_decoded[position].samples@) by {
+            if position > 0 {
+                assert(remaining_before[position - 1].width == original_decoded[position].width);
+            }
+        }
+    }
+    result
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_transform(
+        transform_components_view(old(components)), crate::codestream::multiple_component_transform_view(transform), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
 pub(crate) fn apply_multiple_component_transform_components(
     components: &mut [TransformComponentMut<'_>],
     transform: &MultipleComponentTransform,
     limits: &ResourceLimits,
     work: &mut u64,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost stages = crate::codestream::multiple_component_transform_view(transform);
+        let ghost initial_work = *work;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_transform_empty(before, stages, initial_work,
+    crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)); }
     let mut stage_index = transform.stages().len();
-    #[cfg_attr(verus_keep_ghost, verus_spec(decreases stage_index,))]
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant stage_index <= stages.len(),
+        stages == crate::codestream::multiple_component_transform_view(transform),
+        before == transform_components_view(old(components)),
+        initial_work == *old(work),
+        transform_components_borrow_frame(old(components)@, components@),
+        crate::specs::part2_mct_transform_prefix(before, stages, initial_work,
+            crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+            (stages.len() - stage_index) as nat) == (Ok(()), transform_components_view(components), *work),
+        decreases stage_index,
+    ))]
     while stage_index != 0 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_transform_step(before, stages, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+                (stages.len() - stage_index) as nat);
+            crate::proofs::production_impl::production_mct_transform_error(before, stages, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+                (stages.len() - stage_index + 1) as nat, stages.len());
+        }
         stage_index = crate::refinement::mct_reverse_stage(stage_index);
         let stage = transform
             .stages()
             .get(stage_index)
             .ok_or_else(invalid_transform)?;
-        let collection_count = stage.collections().len();
-        let mut collection_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant collection_index <= collection_count,
-                decreases collection_count - collection_index,
-            )
-        )]
-        while collection_index < collection_count {
-            apply_mct_collection(
-                components,
-                stage
-                    .collections()
-                    .get(collection_index)
-                    .ok_or_else(invalid_transform)?,
-                limits,
-                work,
-            )?;
-            collection_index = collection_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
+        apply_mct_stage(components, stage, limits, work)?;
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_stage_prefix(
+        transform_components_view(old(components)), crate::codestream::mct_stage_view(stage).1, *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+        crate::codestream::mct_stage_view(stage).1.len()),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_stage(
+    components: &mut [TransformComponentMut<'_>],
+    stage: &MctStage,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost collections = crate::codestream::mct_stage_view(stage).1;
+        let ghost initial_work = *work;
+    }
+    let collection_count = stage.collections().len();
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_stage_empty(before, collections, initial_work,
+    crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)); }
+    let mut collection_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant collection_index <= collection_count, collection_count == collections.len(),
+        collections == crate::codestream::mct_stage_view(stage).1,
+        before == transform_components_view(old(components)), initial_work == *old(work),
+        transform_components_borrow_frame(old(components)@, components@),
+        crate::specs::part2_mct_stage_prefix(before, collections, initial_work,
+            crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+            collection_index as nat) == (Ok(()), transform_components_view(components), *work),
+        decreases collection_count - collection_index,
+    ))]
+    while collection_index < collection_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_stage_step(before, collections, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits), collection_index as nat);
+            crate::proofs::production_impl::production_mct_stage_error(before, collections, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+                collection_index as nat + 1, collections.len());
+        }
+        apply_mct_collection(
+            components,
+            stage
+                .collections()
+                .get(collection_index)
+                .ok_or_else(invalid_transform)?,
+            limits,
+            work,
+        )?;
+        collection_index = collection_index
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_collection(
+        transform_components_view(old(components)), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
 fn apply_mct_collection(
     components: &mut [TransformComponentMut<'_>],
     collection: &MctCollection,
@@ -2198,69 +2521,21 @@ fn apply_mct_collection(
     }
 }
 
-fn apply_mct_decorrelation(
-    components: &mut [TransformComponentMut<'_>],
-    collection: &MctCollection,
-    limits: &ResourceLimits,
-    work: &mut u64,
-) -> Result<(), DecodeError> {
-    let rows = collection.input_components().len();
-    let columns = collection.output_components().len();
-    let matrix = collection.matrix();
-    let invalid_offset_dimensions = match collection.offsets() {
-        Some(offsets) => offsets.values().len() != rows,
-        None => false,
-    };
-    if rows == 0
-        || rows != columns
-        || matches!(
-            matrix,
-            Some(matrix)
-                if matrix.values().len()
-                    != rows.checked_mul(columns).ok_or_else(arithmetic_overflow)?
-        )
-        || invalid_offset_dimensions
-    {
-        return Err(invalid_transform());
-    }
-    let mut source_indexes = Vec::with_capacity(columns);
-    let mut destination_indexes = Vec::with_capacity(rows);
-    let mut column = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant column <= columns,
-            decreases columns - column,
-        )
-    )]
-    while column < columns {
-        source_indexes.push(find_transform_component(
-            components,
-            *collection
-                .output_components()
-                .get(column)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    let mut row = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant row <= rows,
-            decreases rows - row,
-        )
-    )]
-    while row < rows {
-        destination_indexes.push(find_transform_component(
-            components,
-            *collection
-                .input_components()
-                .get(row)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_validate_layout(
+        transform_components_view(components), source_indexes@, destination_indexes@, reversible,
+    ),
+))]
+fn validate_mct_components_layout(
+    components: &[TransformComponentMut<'_>],
+    source_indexes: &[usize],
+    destination_indexes: &[usize],
+    reversible: bool,
+) -> Result<usize, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
     let first_index = *source_indexes.first().ok_or_else(invalid_transform)?;
     let first = components.get(first_index).ok_or_else(invalid_transform)?;
     let sample_count = first.samples.len();
@@ -2275,20 +2550,44 @@ fn apply_mct_decorrelation(
         verus_keep_ghost,
         verus_spec(
             invariant list <= 2,
+            MCT_FIXED_BITS == 32,
+            before == transform_components_view(components),
+            source_indexes@.len() > 0,
+            source_indexes@[0] == first_index,
+            first_index < before.len(),
+            before[first_index as int].1 == (x, y, width, height, x_subsampling, y_subsampling),
+            before[first_index as int].3.len() == sample_count,
+            list > 0 ==> forall |position: int| 0 <= position < source_indexes@.len()
+                ==> crate::specs::part2_mct_layout_index_valid(before, first_index, source_indexes@[position]),
+            list > 1 ==> forall |position: int| 0 <= position < destination_indexes@.len()
+                ==> crate::specs::part2_mct_layout_index_valid(before, first_index, destination_indexes@[position]),
             decreases 2 - list,
         )
     )]
     while list < 2 {
         let indexes = if list == 0 {
-            &source_indexes
+            source_indexes
         } else {
-            &destination_indexes
+            destination_indexes
         };
         let mut index_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index_index <= indexes.len(),
+                list < 2,
+                MCT_FIXED_BITS == 32,
+                before == transform_components_view(components),
+                source_indexes@.len() > 0,
+                source_indexes@[0] == first_index,
+                first_index < before.len(),
+                before[first_index as int].1 == (x, y, width, height, x_subsampling, y_subsampling),
+                before[first_index as int].3.len() == sample_count,
+                indexes@ == if list == 0 { source_indexes@ } else { destination_indexes@ },
+                list > 0 ==> forall |position: int| 0 <= position < source_indexes@.len()
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, source_indexes@[position]),
+                forall |position: int| 0 <= position < index_index
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, indexes@[position]),
                 decreases indexes.len() - index_index,
             )
         )]
@@ -2310,12 +2609,24 @@ fn apply_mct_decorrelation(
         }
         list = list.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if collection.reversible() {
+    if reversible {
         let mut index_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant index_index <= source_indexes.len(),
+                reversible,
+                before == transform_components_view(components),
+                source_indexes@.len() > 0,
+                source_indexes@[0] == first_index,
+                first_index < before.len(),
+                before[first_index as int].3.len() == sample_count,
+                forall |position: int| 0 <= position < source_indexes@.len()
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, source_indexes@[position]),
+                forall |position: int| 0 <= position < destination_indexes@.len()
+                    ==> crate::specs::part2_mct_layout_index_valid(before, first_index, destination_indexes@[position]),
+                forall |position: int| 0 <= position < index_index
+                    ==> before[source_indexes@[position] as int].2 == 0,
                 decreases source_indexes.len() - index_index,
             )
         )]
@@ -2334,38 +2645,215 @@ fn apply_mct_decorrelation(
             index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
     }
-    let operations = (sample_count as u64)
+    Ok(sample_count)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_decorrelation_admission(
+        sample_count, rows, columns, *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn admit_mct_decorrelation(
+    sample_count: usize,
+    rows: usize,
+    columns: usize,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    let sample_rows = (sample_count as u64)
         .checked_mul(rows as u64)
-        .and_then(|value| value.checked_mul(columns as u64))
-        .and_then(|value| value.checked_add((sample_count as u64).checked_mul(rows as u64)?))
         .ok_or_else(arithmetic_overflow)?;
-    *work = work
-        .checked_add(operations)
+    let products = sample_rows
+        .checked_mul(columns as u64)
         .ok_or_else(arithmetic_overflow)?;
-    if *work > limits.maximum_work_units() {
-        return Err(DecodeError::limit(
-            Resource::WorkUnits,
-            limits.maximum_work_units(),
-            *work,
-        ));
-    }
-    let scratch_bytes = rows
-        .checked_add(columns)
-        .and_then(|value| value.checked_mul(core::mem::size_of::<i64>()))
+    let repeated_sample_rows = (sample_count as u64)
+        .checked_mul(rows as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let operations = products
+        .checked_add(repeated_sample_rows)
+        .ok_or_else(arithmetic_overflow)?;
+    charge_mct_work(work, operations, limits)?;
+    let values = rows.checked_add(columns).ok_or_else(arithmetic_overflow)?;
+    let scratch_bytes = values
+        .checked_mul(core::mem::size_of::<i64>())
         .ok_or_else(arithmetic_overflow)? as u64;
     if scratch_bytes > limits.maximum_decoded_bytes() {
-        return Err(DecodeError::limit(
-            Resource::DecodedBytes,
-            limits.maximum_decoded_bytes(),
-            scratch_bytes,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: limits.maximum_decoded_bytes(),
+            actual: scratch_bytes,
+        });
     }
+    Ok(())
+}
+
+struct MctDecorrelationPreparation {
+    source_indexes: Vec<usize>,
+    destination_indexes: Vec<usize>,
+    source_fraction_bits: Vec<u8>,
+    sample_count: usize,
+    rows: usize,
+    columns: usize,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn mct_decorrelation_preparation_view(value: &MctDecorrelationPreparation) -> crate::specs::Part2MctDecorrelationPreparation {
+        (value.source_indexes@, value.destination_indexes@, value.source_fraction_bits@,
+            value.sample_count, value.rows, value.columns)
+    }
+
+    spec fn mct_decorrelation_preparation_outcome(value: Result<MctDecorrelationPreparation, DecodeError>)
+        -> Result<crate::specs::Part2MctDecorrelationPreparation, DecodeError> {
+        match value { Ok(prepared) => Ok(mct_decorrelation_preparation_view(&prepared)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (mct_decorrelation_preparation_outcome(result), *final(work)) == crate::specs::part2_mct_prepare_decorrelation(
+        transform_components_view(components), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn prepare_mct_decorrelation(
+    components: &[TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<MctDecorrelationPreparation, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    let rows = collection.input_components().len();
+    let columns = collection.output_components().len();
+    let matrix = collection.matrix();
+    let invalid_offset_dimensions = match collection.offsets() {
+        Some(offsets) => offsets.values().len() != rows,
+        None => false,
+    };
+    if rows == 0
+        || rows != columns
+        || matches!(
+            matrix,
+            Some(matrix)
+                if matrix.values().len()
+                    != rows.checked_mul(columns).ok_or_else(arithmetic_overflow)?
+        )
+        || invalid_offset_dimensions
+    {
+        return Err(invalid_transform());
+    }
+    let mut source_indexes = Vec::with_capacity(columns);
+    let mut destination_indexes = Vec::with_capacity(rows);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_indices_empty(before);
+        assert(style.2.take(0) =~= Seq::empty());
+        assert(source_indexes@ == Seq::empty());
+    }
+    let mut column = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant column <= columns,
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            rows == style.1.len(), columns == style.2.len(),
+            crate::specs::part2_mct_decorrelation_dimensions(style) == Ok((rows, columns)),
+            *work == initial_work,
+            source_indexes@.len() == column,
+            destination_indexes@.len() == 0,
+            crate::specs::part2_mct_component_indices(before, style.2.take(column as int)) == Ok(source_indexes@),
+            decreases columns - column,
+        )
+    )]
+    while column < columns {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_indices_step(before, style.2, column as nat);
+            crate::proofs::production_impl::production_mct_indices_error(before, style.2, column as nat + 1, columns as nat);
+            assert(style.2.take(columns as int) =~= style.2);
+        }
+        source_indexes.push(find_transform_component(
+            components,
+            *collection
+                .output_components()
+                .get(column)
+                .ok_or_else(invalid_transform)?,
+        )?);
+        column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(style.2.take(columns as int) =~= style.2);
+        crate::proofs::production_impl::production_mct_indices_empty(before);
+        assert(style.1.take(0) =~= Seq::empty());
+        assert(destination_indexes@ == Seq::empty());
+    }
+    let mut row = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant row <= rows,
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            rows == style.1.len(), columns == style.2.len(),
+            crate::specs::part2_mct_decorrelation_dimensions(style) == Ok((rows, columns)),
+            *work == initial_work,
+            source_indexes@.len() == columns,
+            destination_indexes@.len() == row,
+            crate::specs::part2_mct_component_indices(before, style.2) == Ok(source_indexes@),
+            crate::specs::part2_mct_component_indices(before, style.1.take(row as int)) == Ok(destination_indexes@),
+            decreases rows - row,
+        )
+    )]
+    while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_indices_step(before, style.1, row as nat);
+            crate::proofs::production_impl::production_mct_indices_error(before, style.1, row as nat + 1, rows as nat);
+            assert(style.1.take(rows as int) =~= style.1);
+        }
+        destination_indexes.push(find_transform_component(
+            components,
+            *collection
+                .input_components()
+                .get(row)
+                .ok_or_else(invalid_transform)?,
+        )?);
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(style.1.take(rows as int) =~= style.1); }
+    let sample_count = validate_mct_components_layout(
+        components,
+        &source_indexes,
+        &destination_indexes,
+        collection.reversible(),
+    )?;
+    admit_mct_decorrelation(sample_count, rows, columns, limits, work)?;
     let mut source_fraction_bits = Vec::with_capacity(source_indexes.len());
     let mut index_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index_index <= source_indexes.len(),
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            rows == style.1.len(), columns == style.2.len(),
+            crate::specs::part2_mct_decorrelation_dimensions(style) == Ok((rows, columns)),
+            crate::specs::part2_mct_component_indices(before, style.2) == Ok(source_indexes@),
+            crate::specs::part2_mct_component_indices(before, style.1) == Ok(destination_indexes@),
+            crate::specs::part2_mct_validate_layout(before, source_indexes@, destination_indexes@, style.0) == Ok(sample_count),
+            crate::specs::part2_mct_decorrelation_admission(sample_count, rows, columns, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)) == (Ok(()), *work),
+            forall |position: int| 0 <= position < source_indexes@.len()
+                ==> source_indexes@[position] < before.len(),
+            source_fraction_bits@ == Seq::new(index_index as nat, |position: int| before[source_indexes@[position] as int].2),
             decreases source_indexes.len() - index_index,
         )
     )]
@@ -2379,96 +2867,315 @@ fn apply_mct_decorrelation(
                 .ok_or_else(invalid_transform)?
                 .fraction_bits,
         );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(source_fraction_bits@ =~= Seq::new(index_index as nat + 1,
+                |position: int| before[source_indexes@[position] as int].2));
+        }
         index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    let mut source = Vec::with_capacity(columns);
-    let mut output = Vec::with_capacity(rows);
+    Ok(MctDecorrelationPreparation {
+        source_indexes,
+        destination_indexes,
+        source_fraction_bits,
+        sample_count,
+        rows,
+        columns,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_decorrelation_row(
+        crate::codestream::mct_collection_view(collection), source@, source_fraction_bits@, row,
+    ),
+))]
+fn decorrelation_mct_row(
+    collection: &MctCollection,
+    source: &[i64],
+    source_fraction_bits: &[u8],
+    row: usize,
+) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let matrix = collection.matrix();
+    if collection.reversible() {
+        if let Some(matrix) = matrix {
+            reversible_mct_row(matrix, collection.offsets(), source, row)
+        } else {
+            (*source.get(row).ok_or_else(invalid_transform)?)
+                .checked_add(offset_value(collection.offsets(), row)?)
+                .ok_or_else(arithmetic_overflow)
+        }
+    } else if let Some(matrix) = matrix {
+        fixed_mct_row_scaled(
+            matrix,
+            collection.offsets(),
+            source,
+            source_fraction_bits,
+            row,
+        )
+    } else {
+        let scaled = rescale_i128(
+            i128::from(*source.get(row).ok_or_else(invalid_transform)?),
+            *source_fraction_bits
+                .get(row)
+                .ok_or_else(invalid_transform)?,
+            MCT_FIXED_BITS,
+        )?;
+        let sum = scaled
+            .checked_add(offset_value_scaled(collection.offsets(), row)?)
+            .ok_or_else(arithmetic_overflow)?;
+        match i64::try_from(sum) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(arithmetic_overflow()),
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@) == crate::specs::part2_mct_decorrelation_rows(
+        old(output)@, crate::codestream::mct_collection_view(collection), source@, source_fraction_bits@, rows as nat,
+    ),
+))]
+fn append_mct_decorrelation_rows(
+    output: &mut Vec<i64>,
+    collection: &MctCollection,
+    source: &[i64],
+    source_fraction_bits: &[u8],
+    rows: usize,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = output@;
+        let ghost style = crate::codestream::mct_collection_view(collection);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_rows_empty(initial, style, source@, source_fraction_bits@);
+    }
+    let mut row = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant row <= rows,
+            initial == old(output)@,
+            style == crate::codestream::mct_collection_view(collection),
+            crate::specs::part2_mct_decorrelation_rows(initial, style, source@, source_fraction_bits@, row as nat)
+                == (Ok(()), output@),
+            decreases rows - row,
+        )
+    )]
+    while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_rows_step(initial, style, source@, source_fraction_bits@, row as nat);
+        }
+        let value = match decorrelation_mct_row(collection, source, source_fraction_bits, row) {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(crate::specs::part2_mct_decorrelation_rows(initial, style, source@, source_fraction_bits@, row as nat + 1)
+                        == (Err(error), output@));
+                    crate::proofs::production_impl::production_mct_rows_error(initial, style, source@, source_fraction_bits@, row as nat + 1, rows as nat);
+                }
+                return Err(error);
+            }
+        };
+        output.push(value);
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(source)@, final(output)@) == crate::specs::part2_mct_begin_pixel(
+        transform_components_view(components), indexes@, sample_index, count as nat,
+    ),
+))]
+fn begin_mct_pixel(
+    components: &[TransformComponentMut<'_>],
+    indexes: &[usize],
+    count: usize,
+    sample_index: usize,
+    source: &mut Vec<i64>,
+    output: &mut Vec<i64>,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    source.clear();
+    output.clear();
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_snapshot_empty(before, indexes@, sample_index);
+    }
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= count,
+        before == transform_components_view(components),
+        output@ == Seq::<i64>::empty(),
+        crate::specs::part2_mct_source_snapshot(before, indexes@, sample_index, index as nat) == (Ok(()), source@),
+        decreases count - index,
+    ))]
+    while index < count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_snapshot_step(before, indexes@, sample_index, index as nat);
+            crate::proofs::production_impl::production_mct_snapshot_error(
+                before, indexes@, sample_index, index as nat + 1, count as nat);
+        }
+        let component = *indexes.get(index).ok_or_else(invalid_transform)?;
+        let value = read_transform_sample(components, component, sample_index)?;
+        source.push(value);
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_store_output_rows(
+        transform_components_view(old(components)), destinations@, output@, sample_index, rows as nat,
+    ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn store_mct_output_rows(
+    components: &mut [TransformComponentMut<'_>],
+    destinations: &[usize],
+    output: &[i64],
+    sample_index: usize,
+    rows: usize,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_store_rows_empty(before, destinations@, output@, sample_index);
+    }
+    let mut row = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant row <= rows,
+        before == transform_components_view(old(components)),
+        transform_components_borrow_frame(old(components)@, components@),
+        crate::specs::part2_mct_store_output_rows(before, destinations@, output@, sample_index, row as nat)
+            == (Ok(()), transform_components_view(components)),
+        decreases rows - row,
+    ))]
+    while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_store_rows_step(before, destinations@, output@, sample_index, row as nat);
+            crate::proofs::production_impl::production_mct_store_rows_error(
+                before, destinations@, output@, sample_index, row as nat + 1, rows as nat);
+        }
+        let destination = *destinations.get(row).ok_or_else(invalid_transform)?;
+        let value = *output.get(row).ok_or_else(invalid_transform)?;
+        store_transform_sample(components, destination, sample_index, value)?;
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), final(source)@, final(output)@)
+        == crate::specs::part2_mct_decorrelation_pixel(
+            transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
+            mct_decorrelation_preparation_view(prepared), sample_index,
+        ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_decorrelation_pixel(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    prepared: &MctDecorrelationPreparation,
+    sample_index: usize,
+    source: &mut Vec<i64>,
+    output: &mut Vec<i64>,
+) -> Result<(), DecodeError> {
+    begin_mct_pixel(
+        components,
+        &prepared.source_indexes,
+        prepared.source_indexes.len(),
+        sample_index,
+        source,
+        output,
+    )?;
+    append_mct_decorrelation_rows(
+        output,
+        collection,
+        source,
+        &prepared.source_fraction_bits,
+        prepared.rows,
+    )?;
+    store_mct_output_rows(
+        components,
+        &prepared.destination_indexes,
+        output,
+        sample_index,
+        prepared.rows,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_decorrelation(
+        transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
+        *old(work), crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_decorrelation(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let prepared = prepare_mct_decorrelation(components, collection, limits, work)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost plan = mct_decorrelation_preparation_view(&prepared); }
+    let mut source = Vec::with_capacity(prepared.columns);
+    let mut output = Vec::with_capacity(prepared.rows);
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_pixels_empty(before, style, plan); }
     let mut sample_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant sample_index <= sample_count,
-            decreases sample_count - sample_index,
+            invariant sample_index <= prepared.sample_count,
+            before == transform_components_view(old(components)),
+            transform_components_borrow_frame(old(components)@, components@),
+            style == crate::codestream::mct_collection_view(collection),
+            plan == mct_decorrelation_preparation_view(&prepared),
+            initial_work == *old(work),
+            (Ok(plan), *work) == crate::specs::part2_mct_prepare_decorrelation(
+                before, style, initial_work, crate::limits::resource_work_limit(limits),
+                crate::limits::resource_decoded_bytes_limit(limits)),
+            crate::specs::part2_mct_decorrelation_pixels(before, style, plan, sample_index as nat)
+                == (Ok(()), transform_components_view(components)),
+            decreases prepared.sample_count - sample_index,
         )
     )]
-    while sample_index < sample_count {
-        source.clear();
-        output.clear();
-        index_index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index_index <= source_indexes.len(),
-                decreases source_indexes.len() - index_index,
-            )
-        )]
-        while index_index < source_indexes.len() {
-            let index = *source_indexes
-                .get(index_index)
-                .ok_or_else(invalid_transform)?;
-            source.push(
-                *components
-                    .get(index)
-                    .and_then(|component| component.samples.get(sample_index))
-                    .ok_or_else(invalid_transform)?,
-            );
-            index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    while sample_index < prepared.sample_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_pixels_step(before, style, plan, sample_index as nat);
+            crate::proofs::production_impl::production_mct_pixels_error(
+                before, style, plan, sample_index as nat + 1, plan.3 as nat);
         }
-        row = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant row <= rows,
-                decreases rows - row,
-            )
-        )]
-        while row < rows {
-            output.push(if collection.reversible() {
-                if let Some(matrix) = matrix {
-                    reversible_mct_row(matrix, collection.offsets(), &source, row)?
-                } else {
-                    (*source.get(row).ok_or_else(invalid_transform)?)
-                        .checked_add(offset_value(collection.offsets(), row)?)
-                        .ok_or_else(arithmetic_overflow)?
-                }
-            } else if let Some(matrix) = matrix {
-                fixed_mct_row_scaled(
-                    matrix,
-                    collection.offsets(),
-                    &source,
-                    &source_fraction_bits,
-                    row,
-                )?
-            } else {
-                rescale_i128(
-                    i128::from(*source.get(row).ok_or_else(invalid_transform)?),
-                    *source_fraction_bits
-                        .get(row)
-                        .ok_or_else(invalid_transform)?,
-                    MCT_FIXED_BITS,
-                )?
-                .checked_add(offset_value_scaled(collection.offsets(), row)?)
-                .and_then(|value| i64::try_from(value).ok())
-                .ok_or_else(arithmetic_overflow)?
-            });
-            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        row = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant row <= rows,
-                decreases rows - row,
-            )
-        )]
-        while row < rows {
-            let destination = *destination_indexes.get(row).ok_or_else(invalid_transform)?;
-            *components
-                .get_mut(destination)
-                .and_then(|component| component.samples.get_mut(sample_index))
-                .ok_or_else(invalid_transform)? = *output.get(row).ok_or_else(invalid_transform)?;
-            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        apply_mct_decorrelation_pixel(
+            components,
+            collection,
+            &prepared,
+            sample_index,
+            &mut source,
+            &mut output,
+        )?;
         sample_index = sample_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
@@ -2478,85 +3185,117 @@ fn apply_mct_decorrelation(
     } else {
         MCT_FIXED_BITS
     };
-    index_index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index_index <= destination_indexes.len(),
-            decreases destination_indexes.len() - index_index,
-        )
-    )]
-    while index_index < destination_indexes.len() {
-        let index = *destination_indexes
-            .get(index_index)
-            .ok_or_else(invalid_transform)?;
-        *components
-            .get_mut(index)
-            .ok_or_else(invalid_transform)?
-            .fraction_bits = output_fraction_bits;
-        index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    Ok(())
+    apply_mct_destination_precisions(
+        components,
+        &prepared.destination_indexes,
+        output_fraction_bits,
+    )
 }
 
-fn apply_mct_dependency(
-    components: &mut [TransformComponentMut<'_>],
-    collection: &MctCollection,
-    limits: &ResourceLimits,
-    work: &mut u64,
-) -> Result<(), DecodeError> {
-    let count = collection.input_components().len();
-    if count == 0 || count != collection.output_components().len() {
-        return Err(invalid_transform());
-    }
-    let expected_coefficients = if collection.reversible() {
-        count
-            .checked_mul(count.checked_add(1).ok_or_else(arithmetic_overflow)?)
-            .and_then(|value| value.checked_div(2))
-            .and_then(|value| value.checked_sub(1))
-            .ok_or_else(arithmetic_overflow)?
-    } else {
-        count
-            .checked_mul(count.saturating_sub(1))
-            .and_then(|value| value.checked_div(2))
-            .ok_or_else(arithmetic_overflow)?
-    };
-    if matches!(
-        collection.matrix(),
-        Some(coefficients) if coefficients.values().len() != expected_coefficients
-    ) || matches!(
-        collection.offsets(),
-        Some(offsets) if offsets.values().len() != count
-    ) {
-        return Err(invalid_transform());
-    }
-    let mut source_indexes = Vec::with_capacity(count);
-    let mut destination_indexes = Vec::with_capacity(count);
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures mct_component_pairs_outcome(result) == crate::specs::part2_mct_component_pairs(
+        transform_components_view(components), inputs@, outputs@, count as nat,
+    ),
+))]
+fn mct_component_pair_indexes(
+    components: &[TransformComponentMut<'_>],
+    inputs: &[u16],
+    outputs: &[u16],
+    count: usize,
+) -> Result<(Vec<usize>, Vec<usize>), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    let mut source = Vec::with_capacity(count);
+    let mut destination = Vec::with_capacity(count);
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_pairs_empty(before, inputs@, outputs@); }
     let mut index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= count,
-            decreases count - index,
-        )
-    )]
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= count,
+        before == transform_components_view(components),
+        source@.len() == index, destination@.len() == index,
+        crate::specs::part2_mct_component_pairs(before, inputs@, outputs@, index as nat) == Ok((source@, destination@)),
+        decreases count - index,
+    ))]
     while index < count {
-        source_indexes.push(find_transform_component(
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_pairs_step(before, inputs@, outputs@, index as nat);
+            crate::proofs::production_impl::production_mct_pairs_error(before, inputs@, outputs@, index as nat + 1, count as nat);
+        }
+        source.push(find_transform_component(
             components,
-            *collection
-                .input_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
+            *inputs.get(index).ok_or_else(invalid_transform)?,
         )?);
-        destination_indexes.push(find_transform_component(
+        destination.push(find_transform_component(
             components,
-            *collection
-                .output_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
+            *outputs.get(index).ok_or_else(invalid_transform)?,
         )?);
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    Ok((source, destination))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_dependency_coefficients(count, reversible),
+))]
+fn mct_dependency_coefficient_count(count: usize, reversible: bool) -> Result<usize, DecodeError> {
+    if reversible {
+        let following = count.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        let product = count
+            .checked_mul(following)
+            .ok_or_else(arithmetic_overflow)?;
+        let half = product.checked_div(2).ok_or_else(arithmetic_overflow)?;
+        half.checked_sub(1).ok_or_else(arithmetic_overflow)
+    } else {
+        let product = count
+            .checked_mul(count.saturating_sub(1))
+            .ok_or_else(arithmetic_overflow)?;
+        product.checked_div(2).ok_or_else(arithmetic_overflow)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_dependency_admission(
+        sample_count, expected_coefficients, count, *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn admit_mct_dependency(
+    sample_count: usize,
+    expected_coefficients: usize,
+    count: usize,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    let twice = (expected_coefficients as u64)
+        .checked_mul(2)
+        .ok_or_else(arithmetic_overflow)?;
+    let per_sample = twice
+        .checked_add(count as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let operations = (sample_count as u64)
+        .checked_mul(per_sample)
+        .ok_or_else(arithmetic_overflow)?;
+    charge_mct_work(work, operations, limits)?;
+    check_mct_scratch(count.saturating_mul(3), limits)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_validate_dependency_layout(
+        transform_components_view(components), source_indexes@, destination_indexes@, reversible,
+    ),
+))]
+fn validate_mct_dependency_layout(
+    components: &[TransformComponentMut<'_>],
+    source_indexes: &[usize],
+    destination_indexes: &[usize],
+    reversible: bool,
+) -> Result<usize, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
     let first_index = *source_indexes.first().ok_or_else(invalid_transform)?;
     let first = components.get(first_index).ok_or_else(invalid_transform)?;
     let sample_count = first.samples.len();
@@ -2573,31 +3312,63 @@ fn apply_mct_dependency(
         verus_keep_ghost,
         verus_spec(
             invariant list <= 2,
+            MCT_FIXED_BITS == 32,
+            before == transform_components_view(components),
+            source_indexes@.len() > 0,
+            source_indexes@[0] == first_index,
+            first_index < before.len(),
+            before[first_index as int].1 == (geometry.2, geometry.3, geometry.0, geometry.1, geometry.4, geometry.5),
+            before[first_index as int].3.len() == sample_count,
+            list > 0 ==> forall |position: int| 0 <= position < source_indexes@.len()
+                ==> crate::specs::part2_mct_dependency_layout_index_valid(before, first_index, source_indexes@[position], reversible),
+            list > 1 ==> forall |position: int| 0 <= position < destination_indexes@.len()
+                ==> crate::specs::part2_mct_dependency_layout_index_valid(before, first_index, destination_indexes@[position], reversible),
             decreases 2 - list,
         )
     )]
     while list < 2 {
         let indexes = if list == 0 {
-            &source_indexes
+            source_indexes
         } else {
-            &destination_indexes
+            destination_indexes
         };
         let mut component_position = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant component_position <= indexes.len(),
+                list < 2,
+                MCT_FIXED_BITS == 32,
+                before == transform_components_view(components),
+                source_indexes@.len() > 0,
+                source_indexes@[0] == first_index,
+                first_index < before.len(),
+                before[first_index as int].1 == (geometry.2, geometry.3, geometry.0, geometry.1, geometry.4, geometry.5),
+                before[first_index as int].3.len() == sample_count,
+                indexes@ == if list == 0 { source_indexes@ } else { destination_indexes@ },
+                list > 0 ==> forall |position: int| 0 <= position < source_indexes@.len()
+                    ==> crate::specs::part2_mct_dependency_layout_index_valid(before, first_index, source_indexes@[position], reversible),
+                forall |position: int| 0 <= position < component_position
+                    ==> crate::specs::part2_mct_dependency_layout_index_valid(before, first_index, indexes@[position], reversible),
                 decreases indexes.len() - component_position,
             )
         )]
         while component_position < indexes.len() {
-            let component = components
-                .get(
-                    *indexes
-                        .get(component_position)
-                        .ok_or_else(invalid_transform)?,
-                )
+            let index = *indexes
+                .get(component_position)
                 .ok_or_else(invalid_transform)?;
+            let component = match components.get(index) {
+                Some(component) => component,
+                None => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(!crate::specs::part2_mct_dependency_layout_index_valid(before, first_index, index, reversible));
+                        crate::proofs::production_impl::production_mct_dependency_layout_rejects(
+                            before, source_indexes@, destination_indexes@, reversible, list == 0, component_position as nat);
+                    }
+                    return Err(invalid_transform());
+                }
+            };
             if (
                 component.width,
                 component.height,
@@ -2608,8 +3379,14 @@ fn apply_mct_dependency(
             ) != geometry
                 || component.samples.len() != sample_count
                 || *component.fraction_bits > MCT_FIXED_BITS
-                || (collection.reversible() && *component.fraction_bits != 0)
+                || (reversible && *component.fraction_bits != 0)
             {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(!crate::specs::part2_mct_dependency_layout_index_valid(before, first_index, index, reversible));
+                    crate::proofs::production_impl::production_mct_dependency_layout_rejects(
+                        before, source_indexes@, destination_indexes@, reversible, list == 0, component_position as nat);
+                }
                 return Err(invalid_transform());
             }
             component_position = component_position
@@ -2618,6 +3395,69 @@ fn apply_mct_dependency(
         }
         list = list.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    Ok(sample_count)
+}
+
+struct MctDependencyPreparation {
+    source_indexes: Vec<usize>,
+    destination_indexes: Vec<usize>,
+    sample_count: usize,
+    count: usize,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn mct_dependency_preparation_view(prepared: &MctDependencyPreparation)
+        -> crate::specs::Part2MctDependencyPreparation {
+        (prepared.source_indexes@, prepared.destination_indexes@, prepared.sample_count, prepared.count)
+    }
+
+    spec fn mct_dependency_preparation_outcome(prepared: Result<MctDependencyPreparation, DecodeError>)
+        -> Result<crate::specs::Part2MctDependencyPreparation, DecodeError> {
+        match prepared { Ok(value) => Ok(mct_dependency_preparation_view(&value)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (mct_dependency_preparation_outcome(result), *final(work)) == crate::specs::part2_mct_prepare_dependency(
+        transform_components_view(components), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn prepare_mct_dependency(
+    components: &[TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<MctDependencyPreparation, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    let count = collection.input_components().len();
+    if count == 0 || count != collection.output_components().len() {
+        return Err(invalid_transform());
+    }
+    let expected_coefficients = mct_dependency_coefficient_count(count, collection.reversible())?;
+    if matches!(collection.matrix(), Some(coefficients) if coefficients.values().len() != expected_coefficients)
+        || matches!(collection.offsets(), Some(offsets) if offsets.values().len() != count)
+    {
+        return Err(invalid_transform());
+    }
+    let (source_indexes, destination_indexes) = mct_component_pair_indexes(
+        components,
+        collection.input_components(),
+        collection.output_components(),
+        count,
+    )?;
+    let sample_count = validate_mct_dependency_layout(
+        components,
+        &source_indexes,
+        &destination_indexes,
+        collection.reversible(),
+    )?;
     if collection.reversible()
         && (matches!(
             collection.matrix(),
@@ -2629,136 +3469,238 @@ fn apply_mct_dependency(
     {
         return Err(invalid_transform());
     }
-    let operations = (sample_count as u64)
-        .checked_mul(
-            (expected_coefficients as u64)
-                .checked_mul(2)
-                .and_then(|value| value.checked_add(count as u64))
-                .ok_or_else(arithmetic_overflow)?,
-        )
-        .ok_or_else(arithmetic_overflow)?;
-    charge_mct_work(work, operations, limits)?;
-    check_mct_scratch(count.saturating_mul(3), limits)?;
+    admit_mct_dependency(sample_count, expected_coefficients, count, limits, work)?;
+    Ok(MctDependencyPreparation {
+        source_indexes,
+        destination_indexes,
+        sample_count,
+        count,
+    })
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@) == crate::specs::part2_mct_dependency_rows(
+        old(output)@, crate::codestream::mct_collection_view(collection), source@, source_fraction_bits@, count as nat,
+    ),
+))]
+fn append_mct_dependency_rows(
+    output: &mut Vec<i64>,
+    collection: &MctCollection,
+    source: &[i64],
+    source_fraction_bits: &[u8],
+    count: usize,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = output@;
+        let ghost style = crate::codestream::mct_collection_view(collection);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_dependency_rows_empty(initial, style, source@, source_fraction_bits@); }
+    let mut row = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant row <= count,
+        initial == old(output)@,
+        style == crate::codestream::mct_collection_view(collection),
+        crate::specs::part2_mct_dependency_rows(initial, style, source@, source_fraction_bits@, row as nat) == (Ok(()), output@),
+        decreases count - row,
+    ))]
+    while row < count {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_mct_dependency_rows_step(initial, style, source@, source_fraction_bits@, row as nat); }
+        let computed = if collection.reversible() {
+            reversible_dependency_row(collection, source, output, row)
+        } else {
+            irreversible_dependency_row(collection, source, source_fraction_bits, output, row)
+        };
+        let value = match computed {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! { crate::proofs::production_impl::production_mct_dependency_rows_error(initial, style, source@, source_fraction_bits@, row as nat + 1, count as nat); }
+                return Err(error);
+            }
+        };
+        output.push(value);
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), final(source)@, final(output)@)
+        == crate::specs::part2_mct_dependency_pixel(
+            transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
+            mct_dependency_preparation_view(prepared), source_fraction_bits@, sample_index,
+        ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_dependency_pixel(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    prepared: &MctDependencyPreparation,
+    source_fraction_bits: &[u8],
+    sample_index: usize,
+    source: &mut Vec<i64>,
+    output: &mut Vec<i64>,
+) -> Result<(), DecodeError> {
+    begin_mct_pixel(
+        components,
+        &prepared.source_indexes,
+        prepared.count,
+        sample_index,
+        source,
+        output,
+    )?;
+    append_mct_dependency_rows(
+        output,
+        collection,
+        source,
+        source_fraction_bits,
+        prepared.count,
+    )?;
+    store_mct_output_rows(
+        components,
+        &prepared.destination_indexes,
+        output,
+        sample_index,
+        prepared.count,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_dependency(
+        transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
+        *old(work), crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_dependency(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let prepared = prepare_mct_dependency(components, collection, limits, work)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost plan = mct_dependency_preparation_view(&prepared); }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_pairs_lengths(before, style.1, style.2, plan.3 as nat, plan.0, plan.1);
+        crate::proofs::production_impl::production_mct_dependency_layout_bounds(before, plan.0, plan.1, style.0, plan.2);
+    }
+    let count = prepared.count;
+    let sample_count = prepared.sample_count;
     let mut source = Vec::with_capacity(count);
     let mut output = Vec::with_capacity(count);
     let mut source_fraction_bits = Vec::with_capacity(count);
-    index = 0;
+    let mut index = 0;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= count,
+            before == transform_components_view(old(components)),
+            transform_components_borrow_frame(old(components)@, components@),
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            plan == mct_dependency_preparation_view(&prepared),
+            count == plan.3, sample_count == plan.2,
+            initial_work == *old(work),
+            (Ok(plan), *work) == crate::specs::part2_mct_prepare_dependency(
+                before, style, initial_work, crate::limits::resource_work_limit(limits),
+                crate::limits::resource_decoded_bytes_limit(limits)),
+            plan.0.len() == count, plan.1.len() == count,
+            forall |position: int| 0 <= position < plan.0.len() ==> plan.0[position] < before.len(),
+            source_fraction_bits@ == Seq::new(index as nat, |position: int| before[plan.0[position] as int].2),
             decreases count - index,
         )
     )]
     while index < count {
         source_fraction_bits.push(
             *components
-                .get(*source_indexes.get(index).ok_or_else(invalid_transform)?)
+                .get(
+                    *prepared
+                        .source_indexes
+                        .get(index)
+                        .ok_or_else(invalid_transform)?,
+                )
                 .ok_or_else(invalid_transform)?
                 .fraction_bits,
         );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(source_fraction_bits@ =~= Seq::new(index as nat + 1, |position: int| before[plan.0[position] as int].2));
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dependency_pixels_empty(before, style, plan, source_fraction_bits@);
     }
     let mut sample_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant sample_index <= sample_count,
+            before == transform_components_view(old(components)),
+            transform_components_borrow_frame(old(components)@, components@),
+            style == crate::codestream::mct_collection_view(collection),
+            plan == mct_dependency_preparation_view(&prepared),
+            count == plan.3, sample_count == plan.2,
+            initial_work == *old(work),
+            (Ok(plan), *work) == crate::specs::part2_mct_prepare_dependency(
+                before, style, initial_work, crate::limits::resource_work_limit(limits),
+                crate::limits::resource_decoded_bytes_limit(limits)),
+            source_fraction_bits@ == Seq::new(plan.0.len(), |position: int| before[plan.0[position] as int].2),
+            crate::specs::part2_mct_dependency_pixels(before, style, plan, source_fraction_bits@, sample_index as nat)
+                == (Ok(()), transform_components_view(components)),
             decreases sample_count - sample_index,
         )
     )]
     while sample_index < sample_count {
-        source.clear();
-        output.clear();
-        index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= count,
-                decreases count - index,
-            )
-        )]
-        while index < count {
-            source.push(
-                *components
-                    .get(*source_indexes.get(index).ok_or_else(invalid_transform)?)
-                    .and_then(|component| component.samples.get(sample_index))
-                    .ok_or_else(invalid_transform)?,
-            );
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dependency_pixels_step(before, style, plan, source_fraction_bits@, sample_index as nat);
+            crate::proofs::production_impl::production_mct_dependency_pixels_error(before, style, plan, source_fraction_bits@, sample_index as nat + 1, sample_count as nat);
         }
-        let mut row = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant row <= count,
-                decreases count - row,
-            )
-        )]
-        while row < count {
-            let value = if collection.reversible() {
-                reversible_dependency_row(collection, &source, &output, row)?
-            } else {
-                irreversible_dependency_row(
-                    collection,
-                    &source,
-                    &source_fraction_bits,
-                    &output,
-                    row,
-                )?
-            };
-            output.push(value);
-            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= count,
-                decreases count - index,
-            )
-        )]
-        while index < count {
-            let destination = *destination_indexes
-                .get(index)
-                .ok_or_else(invalid_transform)?;
-            *components
-                .get_mut(destination)
-                .and_then(|component| component.samples.get_mut(sample_index))
-                .ok_or_else(invalid_transform)? =
-                *output.get(index).ok_or_else(invalid_transform)?;
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        apply_mct_dependency_pixel(
+            components,
+            collection,
+            &prepared,
+            &source_fraction_bits,
+            sample_index,
+            &mut source,
+            &mut output,
+        )?;
         sample_index = sample_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
-    index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= destination_indexes.len(),
-            decreases destination_indexes.len() - index,
-        )
-    )]
-    while index < destination_indexes.len() {
-        let destination = *destination_indexes
-            .get(index)
-            .ok_or_else(invalid_transform)?;
-        *components
-            .get_mut(destination)
-            .ok_or_else(invalid_transform)?
-            .fraction_bits = if collection.reversible() {
+    apply_mct_destination_precisions(
+        components,
+        &prepared.destination_indexes,
+        if collection.reversible() {
             0
         } else {
             MCT_FIXED_BITS
-        };
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    Ok(())
+        },
+    )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_dependency_row(
+        crate::codestream::mct_collection_view(collection).4, crate::codestream::mct_collection_view(collection).5,
+        source@, None, output@, row,
+    ),
+))]
 fn reversible_dependency_row(
     collection: &MctCollection,
     source: &[i64],
@@ -2774,11 +3716,16 @@ fn reversible_dependency_row(
     if row == 0 {
         return Ok(base);
     }
-    let row_start = row
-        .checked_mul(row.checked_add(1).ok_or_else(arithmetic_overflow)?)
-        .and_then(|value| value.checked_div(2))
-        .and_then(|value| value.checked_sub(1))
-        .ok_or_else(arithmetic_overflow)?;
+    let next_row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    let triangle = row.checked_mul(next_row).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(triangle >= 2) by (nonlinear_arith)
+            requires row > 0, next_row as int == row as int + 1,
+                triangle as int == row as int * next_row as int;
+    }
+    let half = triangle.checked_div(2).ok_or_else(arithmetic_overflow)?;
+    let row_start = half.checked_sub(1).ok_or_else(arithmetic_overflow)?;
     let scale = *coefficients
         .values()
         .get(row_start.checked_add(row).ok_or_else(arithmetic_overflow)?)
@@ -2787,15 +3734,38 @@ fn reversible_dependency_row(
         return Err(invalid_transform());
     }
     let mut prediction = i128::from(scale / 2);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = prediction; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= row,
+            row > 0,
+            crate::specs::part2_mct_dependency_initial(crate::codestream::mct_collection_view(collection).5, source@, None, row) == Ok(base as i128),
+            crate::codestream::mct_collection_view(collection).4 == Some(crate::codestream::mct_array_view(coefficients)),
+            row as nat + 1 <= usize::MAX,
+            row as nat * (row as nat + 1) <= usize::MAX,
+            row_start as nat == row as nat * (row as nat + 1) / 2 - 1,
+            (row_start as nat + row as nat) < crate::codestream::mct_array_view(coefficients).4.len(),
+            row_start as nat + row as nat <= usize::MAX,
+            crate::codestream::mct_array_view(coefficients).4[row_start as int + row as int] == scale,
+            scale > 0,
+            initial == (scale / 2) as i128,
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start, column as nat) == Ok(prediction),
             decreases row - column,
         )
     )]
     while column < row {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(coefficients), output@, None, row_start, column as nat + 1, row as nat);
+        }
         let coefficient = *coefficients
             .values()
             .get(
@@ -2821,14 +3791,22 @@ fn reversible_dependency_row(
     } else {
         quotient
     };
-    i64::try_from(
+    match i64::try_from(
         i128::from(base)
             .checked_add(predicted)
             .ok_or_else(arithmetic_overflow)?,
-    )
-    .map_err(|_| arithmetic_overflow())
+    ) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_dependency_row(
+        crate::codestream::mct_collection_view(collection).4, crate::codestream::mct_collection_view(collection).5,
+        source@, Some(source_fraction_bits@), output@, row,
+    ),
+))]
 fn irreversible_dependency_row(
     collection: &MctCollection,
     source: &[i64],
@@ -2836,6 +3814,8 @@ fn irreversible_dependency_row(
     output: &[i64],
     row: usize,
 ) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
     let mut sum = rescale_i128(
         i128::from(*source.get(row).ok_or_else(invalid_transform)?),
         *source_fraction_bits
@@ -2846,21 +3826,41 @@ fn irreversible_dependency_row(
     .checked_add(offset_value_scaled(collection.offsets(), row)?)
     .ok_or_else(arithmetic_overflow)?;
     let Some(coefficients) = collection.matrix() else {
-        return i64::try_from(sum).map_err(|_| arithmetic_overflow());
+        return match i64::try_from(sum) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(arithmetic_overflow()),
+        };
     };
-    let row_start = row
-        .checked_mul(row.saturating_sub(1))
-        .and_then(|value| value.checked_div(2))
-        .ok_or_else(arithmetic_overflow)?;
+    let previous = row.saturating_sub(1);
+    let triangle = row.checked_mul(previous).ok_or_else(arithmetic_overflow)?;
+    let row_start = triangle.checked_div(2).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = sum; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= row,
+            MCT_FIXED_BITS == 32,
+            crate::specs::part2_mct_dependency_initial(crate::codestream::mct_collection_view(collection).5, source@, Some(source_fraction_bits@), row) == Ok(initial),
+            crate::codestream::mct_collection_view(collection).4 == Some(crate::codestream::mct_array_view(coefficients)),
+            previous as nat == if row == 0 { 0nat } else { (row - 1) as nat },
+            row as nat * previous as nat <= usize::MAX,
+            row_start as nat == row as nat * previous as nat / 2,
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start, column as nat) == Ok(sum),
             decreases row - column,
         )
     )]
     while column < row {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(coefficients), output@, Some(Seq::new(output@.len(), |index: int| 32u8)), row_start, column as nat + 1, row as nat);
+        }
         let coefficient = *coefficients
             .values()
             .get(
@@ -2886,137 +3886,74 @@ fn irreversible_dependency_row(
             .ok_or_else(arithmetic_overflow)?;
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    i64::try_from(sum).map_err(|_| arithmetic_overflow())
+    match i64::try_from(sum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
-fn apply_mct_wavelet(
-    components: &mut [TransformComponentMut<'_>],
-    collection: &MctCollection,
-    limits: &ResourceLimits,
-    work: &mut u64,
-) -> Result<(), DecodeError> {
-    let wavelet = collection.wavelet().ok_or_else(invalid_transform)?;
-    let count = collection.input_components().len();
-    if count == 0 || count != collection.output_components().len() {
-        return Err(invalid_transform());
-    }
-    let mut source_indexes = Vec::with_capacity(count);
-    let mut destination_indexes = Vec::with_capacity(count);
-    let mut index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= count,
-            decreases count - index,
-        )
-    )]
-    while index < count {
-        source_indexes.push(find_transform_component(
-            components,
-            *collection
-                .input_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        destination_indexes.push(find_transform_component(
-            components,
-            *collection
-                .output_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    let first = components
-        .get(*source_indexes.first().ok_or_else(invalid_transform)?)
-        .ok_or_else(invalid_transform)?;
-    let sample_count = first.samples.len();
-    let geometry = (
-        first.width,
-        first.height,
-        first.x,
-        first.y,
-        first.x_subsampling,
-        first.y_subsampling,
-    );
-    let mut list = 0_u8;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant list <= 2,
-            decreases 2 - list,
-        )
-    )]
-    while list < 2 {
-        let indexes = if list == 0 {
-            &source_indexes
-        } else {
-            &destination_indexes
-        };
-        let mut component_position = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component_position <= indexes.len(),
-                decreases indexes.len() - component_position,
-            )
-        )]
-        while component_position < indexes.len() {
-            let component = components
-                .get(
-                    *indexes
-                        .get(component_position)
-                        .ok_or_else(invalid_transform)?,
-                )
-                .ok_or_else(invalid_transform)?;
-            if (
-                component.width,
-                component.height,
-                component.x,
-                component.y,
-                component.x_subsampling,
-                component.y_subsampling,
-            ) != geometry
-                || component.samples.len() != sample_count
-                || *component.fraction_bits > MCT_FIXED_BITS
-                || (matches!(wavelet.transform(), MctWaveletType::Reversible5x3)
-                    && *component.fraction_bits != 0)
-            {
-                return Err(invalid_transform());
-            }
-            component_position = component_position
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        list = list.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures mct_wavelet_partition_outcome(result) == crate::specs::part2_mct_wavelet_partition(
+        count, crate::codestream::mct_wavelet_view(wavelet)),
+))]
+fn prepare_mct_wavelet_partition(
+    count: usize,
+    wavelet: MctWavelet,
+) -> Result<(Vec<bool>, Vec<usize>, usize), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost style = crate::codestream::mct_wavelet_view(wavelet); }
     let mut low_first = Vec::with_capacity(usize::from(wavelet.levels()));
     let mut high_lengths = Vec::with_capacity(usize::from(wavelet.levels()));
     let mut canvas_start = i64::from(wavelet.component_offset());
+    let signed_count = match i64::try_from(count) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
     let mut canvas_end = canvas_start
-        .checked_add(i64::try_from(count).map_err(|_| arithmetic_overflow())?)
+        .checked_add(signed_count)
         .ok_or_else(arithmetic_overflow)?;
     let level_count = wavelet.levels();
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial_start = canvas_start; let ghost initial_end = canvas_end; }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_wavelet_intervals_empty(initial_start, initial_end); }
     let mut level = 0_u8;
     #[cfg_attr(
         verus_keep_ghost,
-        verus_spec(decreases level_count - level,)
+        verus_spec(
+            invariant level <= level_count,
+            style == crate::codestream::mct_wavelet_view(wavelet),
+            level_count == style.1,
+            count <= i64::MAX,
+            initial_start == style.2 as i64,
+            initial_end as int == initial_start as int + count as int,
+            crate::specs::part2_mct_wavelet_intervals(initial_start, initial_end, level as nat)
+                == Ok((canvas_start, canvas_end, low_first@, high_lengths@)),
+            decreases level_count - level,
+        )
     )]
     while level < level_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_intervals_step(initial_start, initial_end, level as nat);
+            crate::proofs::production_impl::production_mct_wavelet_intervals_error(initial_start, initial_end, level as nat + 1, level_count as nat);
+        }
         let next_start = ceil_divide_by_two(canvas_start)?;
         let next_end = ceil_divide_by_two(canvas_end)?;
-        let low_length = usize::try_from(
-            next_end
-                .checked_sub(next_start)
-                .ok_or_else(arithmetic_overflow)?,
-        )
-        .map_err(|_| invalid_transform())?;
-        let current_length = usize::try_from(
-            canvas_end
-                .checked_sub(canvas_start)
-                .ok_or_else(arithmetic_overflow)?,
-        )
-        .map_err(|_| invalid_transform())?;
+        let low_difference = next_end
+            .checked_sub(next_start)
+            .ok_or_else(arithmetic_overflow)?;
+        let low_length = match usize::try_from(low_difference) {
+            Ok(value) => value,
+            Err(_) => return Err(invalid_transform()),
+        };
+        let current_difference = canvas_end
+            .checked_sub(canvas_start)
+            .ok_or_else(arithmetic_overflow)?;
+        let current_length = match usize::try_from(current_difference) {
+            Ok(value) => value,
+            Err(_) => return Err(invalid_transform()),
+        };
         low_first.push(canvas_start % 2 == 0);
         high_lengths.push(
             current_length
@@ -3027,26 +3964,125 @@ fn apply_mct_wavelet(
         canvas_end = next_end;
         level = level.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    let low_length = usize::try_from(
-        canvas_end
-            .checked_sub(canvas_start)
-            .ok_or_else(arithmetic_overflow)?,
-    )
-    .map_err(|_| invalid_transform())?;
-    let operations = (sample_count as u64)
-        .checked_mul(count as u64)
-        .and_then(|value| value.checked_mul(u64::from(wavelet.levels()).saturating_add(1)))
-        .and_then(|value| value.checked_mul(8))
+    let low_difference = canvas_end
+        .checked_sub(canvas_start)
         .ok_or_else(arithmetic_overflow)?;
-    charge_mct_work(work, operations, limits)?;
-    check_mct_scratch(count.saturating_mul(3), limits)?;
+    let low_length = match usize::try_from(low_difference) {
+        Ok(value) => value,
+        Err(_) => return Err(invalid_transform()),
+    };
+    Ok((low_first, high_lengths, low_length))
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_wavelet_admission(
+        sample_count, count, levels, *old(work), crate::limits::resource_work_limit(limits),
+        crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn admit_mct_wavelet(
+    sample_count: usize,
+    count: usize,
+    levels: u8,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    let products = (sample_count as u64)
+        .checked_mul(count as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let stages = products
+        .checked_mul(u64::from(levels).saturating_add(1))
+        .ok_or_else(arithmetic_overflow)?;
+    let operations = stages.checked_mul(8).ok_or_else(arithmetic_overflow)?;
+    charge_mct_work(work, operations, limits)?;
+    check_mct_scratch(count.saturating_mul(3), limits)
+}
+
+struct MctWaveletPreparation {
+    source_indexes: Vec<usize>,
+    destination_indexes: Vec<usize>,
+    low_first: Vec<bool>,
+    high_lengths: Vec<usize>,
+    low_length: usize,
+    sample_count: usize,
+    count: usize,
+    wavelet: MctWavelet,
+    source_fraction_bits: Vec<u8>,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn mct_wavelet_preparation_view(value: &MctWaveletPreparation) -> crate::specs::Part2MctWaveletPreparation {
+        (value.source_indexes@, value.destination_indexes@, value.low_first@, value.high_lengths@,
+            value.low_length, value.sample_count, value.count, crate::codestream::mct_wavelet_view(value.wavelet),
+            value.source_fraction_bits@)
+    }
+
+    spec fn mct_wavelet_preparation_outcome(result: Result<MctWaveletPreparation, DecodeError>)
+        -> Result<crate::specs::Part2MctWaveletPreparation, DecodeError> {
+        match result { Ok(value) => Ok(mct_wavelet_preparation_view(&value)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (mct_wavelet_preparation_outcome(result), *final(work)) == crate::specs::part2_mct_prepare_wavelet(
+        transform_components_view(components), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn prepare_mct_wavelet(
+    components: &[TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<MctWaveletPreparation, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    let wavelet = collection.wavelet().ok_or_else(invalid_transform)?;
+    let count = collection.input_components().len();
+    if count == 0 || count != collection.output_components().len() {
+        return Err(invalid_transform());
+    }
+    let (source_indexes, destination_indexes) = mct_component_pair_indexes(
+        components,
+        collection.input_components(),
+        collection.output_components(),
+        count,
+    )?;
+    let reversible = matches!(wavelet.transform(), MctWaveletType::Reversible5x3);
+    let sample_count = validate_mct_dependency_layout(
+        components,
+        &source_indexes,
+        &destination_indexes,
+        reversible,
+    )?;
+    let (low_first, high_lengths, low_length) = prepare_mct_wavelet_partition(count, wavelet)?;
+    admit_mct_wavelet(sample_count, count, wavelet.levels(), limits, work)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dependency_layout_bounds(
+            before, source_indexes@, destination_indexes@, reversible, sample_count);
+    }
     let mut source_fraction_bits = Vec::with_capacity(count);
-    index = 0;
+    let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= source_indexes.len(),
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            style.6 == Some(crate::codestream::mct_wavelet_view(wavelet)),
+            count > 0, count == style.1.len(), count == style.2.len(),
+            crate::specs::part2_mct_component_pairs(before, style.1, style.2, count as nat) == Ok((source_indexes@, destination_indexes@)),
+            crate::specs::part2_mct_validate_dependency_layout(before, source_indexes@, destination_indexes@, reversible) == Ok(sample_count),
+            reversible == crate::specs::part2_mct_wavelet_reversible(crate::codestream::mct_wavelet_view(wavelet)),
+            crate::specs::part2_mct_wavelet_partition(count, crate::codestream::mct_wavelet_view(wavelet)) == Ok((low_first@, high_lengths@, low_length)),
+            crate::specs::part2_mct_wavelet_admission(sample_count, count, crate::codestream::mct_wavelet_view(wavelet).1,
+                initial_work, crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)) == (Ok(()), *work),
+            forall |position: int| 0 <= position < source_indexes@.len() ==> source_indexes@[position] < before.len(),
+            source_fraction_bits@ == Seq::new(index as nat, |position: int| before[source_indexes@[position] as int].2),
             decreases source_indexes.len() - index,
         )
     )]
@@ -3058,129 +4094,262 @@ fn apply_mct_wavelet(
                 .ok_or_else(invalid_transform)?
                 .fraction_bits,
         );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(source_fraction_bits@ =~= Seq::new(index as nat + 1, |position: int| before[source_indexes@[position] as int].2));
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    let mut source = Vec::with_capacity(count);
-    let mut sample_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant sample_index <= sample_count,
-            decreases sample_count - sample_index,
-        )
-    )]
-    while sample_index < sample_count {
-        source.clear();
-        index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= count,
-                decreases count - index,
-            )
-        )]
-        while index < count {
-            let value = *components
-                .get(*source_indexes.get(index).ok_or_else(invalid_transform)?)
-                .and_then(|component| component.samples.get(sample_index))
-                .ok_or_else(invalid_transform)?;
-            source.push(
-                if matches!(wavelet.transform(), MctWaveletType::Reversible5x3) {
-                    value
-                } else {
-                    i64::try_from(rescale_i128(
-                        i128::from(value),
-                        *source_fraction_bits
-                            .get(index)
-                            .ok_or_else(invalid_transform)?,
-                        MCT_FIXED_BITS,
-                    )?)
-                    .map_err(|_| arithmetic_overflow())?
-                },
-            );
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    Ok(MctWaveletPreparation {
+        source_indexes,
+        destination_indexes,
+        low_first,
+        high_lengths,
+        low_length,
+        sample_count,
+        count,
+        wavelet,
+        source_fraction_bits,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_wavelet_source_value(
+        transform_components_view(components), indexes@, fractions@, sample, index as nat, reversible),
+))]
+fn read_mct_wavelet_source(
+    components: &[TransformComponentMut<'_>],
+    indexes: &[usize],
+    fractions: &[u8],
+    sample: usize,
+    index: usize,
+    reversible: bool,
+) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let component = *indexes.get(index).ok_or_else(invalid_transform)?;
+    let value = read_transform_sample(components, component, sample)?;
+    if reversible {
+        Ok(value)
+    } else {
+        let scaled = rescale_i128(
+            i128::from(value),
+            *fractions.get(index).ok_or_else(invalid_transform)?,
+            MCT_FIXED_BITS,
+        )?;
+        match i64::try_from(scaled) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(arithmetic_overflow()),
         }
-        let mut cursor = low_length;
-        let mut reconstructed = Vec::with_capacity(low_length);
-        reconstructed.extend_from_slice(source.get(..low_length).ok_or_else(invalid_transform)?);
-        let mut level_index = high_lengths.len();
-        #[cfg_attr(verus_keep_ghost, verus_spec(decreases level_index,))]
-        while level_index != 0 {
-            level_index = level_index.checked_sub(1).ok_or_else(arithmetic_overflow)?;
-            let high_length = *high_lengths
-                .get(level_index)
-                .ok_or_else(invalid_transform)?;
-            let high_end = cursor
-                .checked_add(high_length)
-                .ok_or_else(arithmetic_overflow)?;
-            let high = source.get(cursor..high_end).ok_or_else(invalid_transform)?;
-            reconstructed = if matches!(wavelet.transform(), MctWaveletType::Reversible5x3) {
-                inverse_5_3(
-                    &reconstructed,
-                    high,
-                    *low_first.get(level_index).ok_or_else(invalid_transform)?,
-                )?
-            } else {
-                inverse_9_7(
-                    &reconstructed,
-                    high,
-                    *low_first.get(level_index).ok_or_else(invalid_transform)?,
-                )?
-            };
-            cursor = high_end;
-        }
-        if cursor != count || reconstructed.len() != count {
-            return Err(invalid_transform());
-        }
-        index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= count,
-                decreases count - index,
-            )
-        )]
-        while index < count {
-            *components
-                .get_mut(
-                    *destination_indexes
-                        .get(index)
-                        .ok_or_else(invalid_transform)?,
-                )
-                .and_then(|component| component.samples.get_mut(sample_index))
-                .ok_or_else(invalid_transform)? =
-                *reconstructed.get(index).ok_or_else(invalid_transform)?;
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        sample_index = sample_index
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?;
     }
-    index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= destination_indexes.len(),
-            decreases destination_indexes.len() - index,
-        )
-    )]
-    while index < destination_indexes.len() {
-        let destination = *destination_indexes
-            .get(index)
-            .ok_or_else(invalid_transform)?;
-        *components
-            .get_mut(destination)
-            .ok_or_else(invalid_transform)?
-            .fraction_bits = if matches!(wavelet.transform(), MctWaveletType::Reversible5x3) {
-            0
-        } else {
-            MCT_FIXED_BITS
-        };
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(source)@) == crate::specs::part2_mct_wavelet_snapshot(
+        transform_components_view(components), indexes@, fractions@, sample, reversible, count as nat),
+))]
+fn begin_mct_wavelet_pixel(
+    source: &mut Vec<i64>,
+    components: &[TransformComponentMut<'_>],
+    indexes: &[usize],
+    fractions: &[u8],
+    sample: usize,
+    count: usize,
+    reversible: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    source.clear();
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_wavelet_snapshot_empty(before, indexes@, fractions@, sample, reversible); }
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= count, before == transform_components_view(components),
+        crate::specs::part2_mct_wavelet_snapshot(before, indexes@, fractions@, sample, reversible, index as nat) == (Ok(()), source@),
+        decreases count - index,
+    ))]
+    while index < count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_snapshot_step(before, indexes@, fractions@, sample, reversible, index as nat);
+            crate::proofs::production_impl::production_mct_wavelet_snapshot_error(before, indexes@, fractions@, sample, reversible, index as nat + 1, count as nat);
+        }
+        let value =
+            read_mct_wavelet_source(components, indexes, fractions, sample, index, reversible)?;
+        source.push(value);
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::transform::sequence_outcome(result) == crate::specs::part2_mct_wavelet_reconstruction(
+        source@, high_lengths@, low_first@, reversible, low_length, count),
+))]
+fn reconstruct_mct_wavelet(
+    source: &[i64],
+    high_lengths: &[usize],
+    low_first: &[bool],
+    reversible: bool,
+    low_length: usize,
+    count: usize,
+) -> Result<Vec<i64>, DecodeError> {
+    let mut cursor = low_length;
+    let mut reconstructed = Vec::with_capacity(low_length);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_wavelet_reconstruction_empty(source@, high_lengths@, low_first@, reversible, low_length);
+        crate::proofs::production_impl::production_mct_wavelet_reconstruction_error(source@, high_lengths@, low_first@, reversible, low_length, 0, high_lengths@.len());
+    }
+    reconstructed.extend_from_slice(source.get(..low_length).ok_or_else(invalid_transform)?);
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(reconstructed@ =~= source@.take(low_length as int)); }
+    let mut level_index = high_lengths.len();
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant level_index <= high_lengths.len(),
+        crate::specs::part2_mct_wavelet_reconstruction_steps(source@, high_lengths@, low_first@, reversible, low_length,
+            (high_lengths.len() - level_index) as nat) == Ok((cursor, reconstructed@)),
+        decreases level_index,
+    ))]
+    while level_index != 0 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_reconstruction_step(
+                source@, high_lengths@, low_first@, reversible, low_length, (high_lengths.len() - level_index) as nat);
+            crate::proofs::production_impl::production_mct_wavelet_reconstruction_error(
+                source@, high_lengths@, low_first@, reversible, low_length, (high_lengths.len() - level_index + 1) as nat, high_lengths@.len());
+        }
+        level_index = level_index.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+        let high_length = *high_lengths
+            .get(level_index)
+            .ok_or_else(invalid_transform)?;
+        let high_end = cursor
+            .checked_add(high_length)
+            .ok_or_else(arithmetic_overflow)?;
+        let high = source.get(cursor..high_end).ok_or_else(invalid_transform)?;
+        reconstructed = if reversible {
+            inverse_5_3(
+                &reconstructed,
+                high,
+                *low_first.get(level_index).ok_or_else(invalid_transform)?,
+            )?
+        } else {
+            inverse_9_7(
+                &reconstructed,
+                high,
+                *low_first.get(level_index).ok_or_else(invalid_transform)?,
+            )?
+        };
+        cursor = high_end;
+    }
+    if cursor != count || reconstructed.len() != count {
+        return Err(invalid_transform());
+    }
+    Ok(reconstructed)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), final(source)@) == crate::specs::part2_mct_wavelet_pixel(
+        transform_components_view(old(components)), mct_wavelet_preparation_view(prepared), sample_index),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_wavelet_pixel(
+    components: &mut [TransformComponentMut<'_>],
+    prepared: &MctWaveletPreparation,
+    sample_index: usize,
+    source: &mut Vec<i64>,
+) -> Result<(), DecodeError> {
+    let reversible = matches!(prepared.wavelet.transform(), MctWaveletType::Reversible5x3);
+    begin_mct_wavelet_pixel(
+        source,
+        components,
+        &prepared.source_indexes,
+        &prepared.source_fraction_bits,
+        sample_index,
+        prepared.count,
+        reversible,
+    )?;
+    let reconstructed = reconstruct_mct_wavelet(
+        source,
+        &prepared.high_lengths,
+        &prepared.low_first,
+        reversible,
+        prepared.low_length,
+        prepared.count,
+    )?;
+    store_mct_output_rows(
+        components,
+        &prepared.destination_indexes,
+        &reconstructed,
+        sample_index,
+        prepared.count,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_wavelet(
+        transform_components_view(old(components)), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_wavelet(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let prepared = prepare_mct_wavelet(components, collection, limits, work)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost plan = mct_wavelet_preparation_view(&prepared); }
+    let mut source = Vec::with_capacity(prepared.count);
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_wavelet_pixels_empty(before, plan); }
+    let mut sample_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant sample_index <= prepared.sample_count,
+        before == transform_components_view(old(components)),
+        transform_components_borrow_frame(old(components)@, components@),
+        style == crate::codestream::mct_collection_view(collection),
+        plan == mct_wavelet_preparation_view(&prepared),
+        initial_work == *old(work),
+        (Ok(plan), *work) == crate::specs::part2_mct_prepare_wavelet(
+            before, style, initial_work, crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+        crate::specs::part2_mct_wavelet_pixels(before, plan, sample_index as nat) == (Ok(()), transform_components_view(components)),
+        decreases prepared.sample_count - sample_index,
+    ))]
+    while sample_index < prepared.sample_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_pixels_step(before, plan, sample_index as nat);
+            crate::proofs::production_impl::production_mct_wavelet_pixels_error(before, plan, sample_index as nat + 1, plan.5 as nat);
+        }
+        apply_mct_wavelet_pixel(components, &prepared, sample_index, &mut source)?;
+        sample_index = sample_index
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    apply_mct_destination_precisions(
+        components,
+        &prepared.destination_indexes,
+        if matches!(prepared.wavelet.transform(), MctWaveletType::Reversible5x3) {
+            0
+        } else {
+            MCT_FIXED_BITS
+        },
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_offset(crate::codestream::mct_array_option(offsets), row),
+))]
 fn offset_value(offsets: Option<&MctArray>, row: usize) -> Result<i64, DecodeError> {
     match offsets {
         Some(offsets) if offsets.fraction_bits() == 0 => {
@@ -3191,7 +4360,15 @@ fn offset_value(offsets: Option<&MctArray>, row: usize) -> Result<i64, DecodeErr
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_offset_scaled(crate::codestream::mct_array_option(offsets), row),
+))]
 fn offset_value_scaled(offsets: Option<&MctArray>, row: usize) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::codestream::mct_fixed_precision_is_q32();
+        reveal(crate::specs::part2_mct_offset_scaled);
+    }
     match offsets {
         Some(offsets) if offsets.fraction_bits() <= MCT_FIXED_BITS => rescale_i128(
             i128::from(*offsets.values().get(row).ok_or_else(invalid_transform)?),
@@ -3203,6 +4380,11 @@ fn offset_value_scaled(offsets: Option<&MctArray>, row: usize) -> Result<i128, D
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_charge_work(
+        *old(work), operations, crate::limits::resource_work_limit(limits),
+    ),
+))]
 fn charge_mct_work(
     work: &mut u64,
     operations: u64,
@@ -3212,29 +4394,35 @@ fn charge_mct_work(
         .checked_add(operations)
         .ok_or_else(arithmetic_overflow)?;
     if *work > limits.maximum_work_units() {
-        return Err(DecodeError::limit(
-            Resource::WorkUnits,
-            limits.maximum_work_units(),
-            *work,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: limits.maximum_work_units(),
+            actual: *work,
+        });
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_byte_budget(values as nat, 8, crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 fn check_mct_scratch(values: usize, limits: &ResourceLimits) -> Result<(), DecodeError> {
     let bytes = (values as u64)
         .checked_mul(core::mem::size_of::<i64>() as u64)
         .ok_or_else(arithmetic_overflow)?;
     if bytes > limits.maximum_decoded_bytes() {
-        return Err(DecodeError::limit(
-            Resource::DecodedBytes,
-            limits.maximum_decoded_bytes(),
-            bytes,
-        ));
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: limits.maximum_decoded_bytes(),
+            actual: bytes,
+        });
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_ceil_half(value),
+))]
 fn ceil_divide_by_two(value: i64) -> Result<i64, DecodeError> {
     let quotient = value / 2;
     quotient
@@ -3242,6 +4430,9 @@ fn ceil_divide_by_two(value: i64) -> Result<i64, DecodeError> {
         .ok_or_else(arithmetic_overflow)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_find_component(transform_components_view(components), reference),
+))]
 fn find_transform_component(
     components: &[TransformComponentMut<'_>],
     reference: u16,
@@ -3251,6 +4442,7 @@ fn find_transform_component(
         verus_keep_ghost,
         verus_spec(
             invariant index <= components.len(),
+            forall |earlier: int| 0 <= earlier < index ==> transform_components_view(components)[earlier].0 != reference,
             decreases components.len() - index,
         )
     )]
@@ -3260,9 +4452,24 @@ fn find_transform_component(
             None => false,
         };
         if matches {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_mct_component_found(transform_components_view(components), reference, index);
+            }
             return Ok(index);
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert forall |earlier: int| 0 <= earlier < index + 1 implies
+                transform_components_view(components)[earlier].0 != reference by {
+                if earlier == index { assert(transform_components_view(components)[earlier].0 != reference); }
+            }
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_component_missing(transform_components_view(components), reference);
     }
     Err(invalid_transform())
 }
@@ -3388,6 +4595,11 @@ fn apply_multiple_component_transform_legacy(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_matrix_row(
+        crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), source@, None, row,
+    ),
+))]
 fn reversible_mct_row(
     matrix: &MctArray,
     offsets: Option<&MctArray>,
@@ -3407,15 +4619,30 @@ fn reversible_mct_row(
     };
     let width = source.len();
     let row_start = row.checked_mul(width).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = sum; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= width,
+            width == source.len(),
+            row_start as nat == row as nat * width as nat,
+            crate::specs::part2_mct_row_initial(crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), width as nat, None, row) == Ok(initial),
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start, column as nat) == Ok(sum),
             decreases width - column,
         )
     )]
     while column < width {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(matrix), source@, None, row_start, column as nat + 1, width as nat);
+        }
         let coefficient = *matrix
             .values()
             .get(
@@ -3432,9 +4659,17 @@ fn reversible_mct_row(
         sum = sum.checked_add(product).ok_or_else(arithmetic_overflow)?;
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    i64::try_from(sum).map_err(|_| arithmetic_overflow())
+    match i64::try_from(sum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_matrix_row(
+        crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), source@, Some(source_fraction_bits@), row,
+    ),
+))]
 fn fixed_mct_row_scaled(
     matrix: &MctArray,
     offsets: Option<&MctArray>,
@@ -3442,6 +4677,8 @@ fn fixed_mct_row_scaled(
     source_fraction_bits: &[u8],
     row: usize,
 ) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
     let invalid_offset_precision = match offsets {
         Some(array) => array.fraction_bits() > MCT_FIXED_BITS,
         None => false,
@@ -3462,15 +4699,31 @@ fn fixed_mct_row_scaled(
     };
     let width = source.len();
     let row_start = row.checked_mul(width).ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = sum; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dot_empty(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start);
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= width,
+            width == source.len(),
+            row_start as nat == row as nat * width as nat,
+            crate::specs::part2_mct_row_initial(crate::codestream::mct_array_view(matrix), crate::codestream::mct_array_option(offsets), width as nat, Some(source_fraction_bits@), row) == Ok(initial),
+            crate::specs::part2_mct_dot_prefix(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start, column as nat) == Ok(sum),
             decreases width - column,
         )
     )]
     while column < width {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::codestream::mct_fixed_precision_is_q32();
+            crate::proofs::production_impl::production_mct_dot_step(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start, column as nat);
+            crate::proofs::production_impl::production_mct_dot_error_guard(initial, crate::codestream::mct_array_view(matrix), source@, Some(source_fraction_bits@), row_start, column as nat + 1, width as nat);
+        }
         let coefficient = *matrix
             .values()
             .get(
@@ -3500,9 +4753,15 @@ fn fixed_mct_row_scaled(
             .ok_or_else(arithmetic_overflow)?;
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    i64::try_from(sum).map_err(|_| arithmetic_overflow())
+    match i64::try_from(sum) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_rescale(value, from_bits, to_bits),
+))]
 fn rescale_i128(value: i128, from_bits: u8, to_bits: u8) -> Result<i128, DecodeError> {
     if from_bits == to_bits {
         return Ok(value);
@@ -3589,6 +4848,9 @@ fn fixed_array_value(array: &MctArray, index: usize) -> Result<i64, DecodeError>
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_round_shift(value, bits),
+))]
 fn rounded_shift_i128(value: i128, bits: u8) -> Result<i128, DecodeError> {
     if bits == 0 {
         return Ok(value);
@@ -3601,10 +4863,17 @@ fn rounded_shift_i128(value: i128, bits: u8) -> Result<i128, DecodeError> {
     if divisor == 0 || divisor == -1 {
         return Err(arithmetic_overflow());
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((1i128 << (bits as u32)) > 0) by (bit_vector)
+            requires bits > 0, bits <= 126;
+        assert((1i128 << ((bits - 1) as u32)) > 0) by (bit_vector)
+            requires bits > 0, bits <= 126;
+    }
     if value < 0 {
-        let magnitude = 0_i128
-            .checked_sub(value)
-            .and_then(|magnitude| magnitude.checked_add(half))
+        let magnitude = 0_i128.checked_sub(value).ok_or_else(arithmetic_overflow)?;
+        let magnitude = magnitude
+            .checked_add(half)
             .ok_or_else(arithmetic_overflow)?;
         let rounded = magnitude / divisor;
         0_i128.checked_sub(rounded).ok_or_else(arithmetic_overflow)
@@ -4213,8 +5482,14 @@ fn invalid_image() -> DecodeError {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_transform_error(false),
+))]
 fn invalid_transform() -> DecodeError {
-    DecodeError::malformed(0, MalformedKind::InvalidTransform)
+    DecodeError::MalformedInput {
+        offset: 0,
+        kind: MalformedKind::InvalidTransform,
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4230,6 +5505,1963 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_wavelet_partitions_match_signed_integer_intervals() {
+        for value in [
+            i64::MIN,
+            i64::MIN + 1,
+            -257,
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3,
+            257,
+            i64::MAX - 1,
+            i64::MAX,
+        ] {
+            assert_eq!(
+                ceil_divide_by_two(value),
+                Ok(((i128::from(value) + 1).div_euclid(2)) as i64)
+            );
+        }
+        for transform in [
+            MctWaveletType::Reversible5x3,
+            MctWaveletType::Irreversible9x7,
+        ] {
+            for offset in [i32::MIN, -33, -2, -1, 0, 1, 2, 33, i32::MAX] {
+                for levels in [0, 1, 2, 3, 8, 31, u8::MAX] {
+                    let collection =
+                        MctCollection::from_wavelet(vec![], vec![], transform, levels, offset);
+                    let wavelet = collection.wavelet().unwrap();
+                    for count in [0, 1, 2, 3, 4, 7, 11, 65535, i64::MAX as usize, usize::MAX] {
+                        let expected =
+                            (|| -> Result<(Vec<bool>, Vec<usize>, usize), DecodeError> {
+                                let overflow = DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                };
+                                if count as u128 > i64::MAX as u128 {
+                                    return Err(overflow);
+                                }
+                                let mut start = i128::from(offset);
+                                let mut end = start + count as i128;
+                                if end > i128::from(i64::MAX) {
+                                    return Err(overflow);
+                                }
+                                let mut first = Vec::new();
+                                let mut high = Vec::new();
+                                for _ in 0..levels {
+                                    let next_start = (start + 1).div_euclid(2);
+                                    let next_end = (end + 1).div_euclid(2);
+                                    first.push(start.rem_euclid(2) == 0);
+                                    high.push(
+                                        usize::try_from(end - start - (next_end - next_start))
+                                            .unwrap(),
+                                    );
+                                    start = next_start;
+                                    end = next_end;
+                                }
+                                Ok((first, high, usize::try_from(end - start).unwrap()))
+                            })();
+                        assert_eq!(prepare_mct_wavelet_partition(count, wavelet), expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_wavelet_scaled_snapshot_keeps_full_precision_and_error_priority() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for reversible in [false, true] {
+            for bits in 0..=u8::MAX {
+                for value in [i64::MIN, -7, 0, 7, i64::MAX] {
+                    let expected = if reversible {
+                        Ok(value)
+                    } else if bits <= 32 {
+                        i64::try_from(i128::from(value) * (1_i128 << (32 - bits)))
+                            .map_err(|_| overflow)
+                    } else if bits - 32 > 126 {
+                        Err(overflow)
+                    } else {
+                        let shift = bits - 32;
+                        let rounded =
+                            (i128::from(value).abs() + (1_i128 << (shift - 1))) / (1_i128 << shift);
+                        Ok(if value < 0 {
+                            -rounded as i64
+                        } else {
+                            rounded as i64
+                        })
+                    };
+                    let mut samples = [value];
+                    let mut precision = u8::MAX;
+                    let components = [TransformComponentMut {
+                        component: 0,
+                        x: 0,
+                        y: 0,
+                        width: 0,
+                        height: 0,
+                        x_subsampling: 0,
+                        y_subsampling: 0,
+                        fraction_bits: &mut precision,
+                        samples: &mut samples,
+                    }];
+                    let mut source = vec![123];
+                    let result = begin_mct_wavelet_pixel(
+                        &mut source,
+                        &components,
+                        &[0, 2],
+                        &[bits],
+                        0,
+                        2,
+                        reversible,
+                    );
+                    assert_eq!(
+                        result,
+                        match expected {
+                            Err(error) => Err(error),
+                            Ok(_) => Err(invalid),
+                        }
+                    );
+                    assert_eq!(
+                        source,
+                        match expected {
+                            Ok(value) => vec![value],
+                            Err(_) => vec![],
+                        }
+                    );
+                    let mut source = vec![123];
+                    assert_eq!(
+                        begin_mct_wavelet_pixel(
+                            &mut source,
+                            &components,
+                            &[2],
+                            &[],
+                            0,
+                            0,
+                            reversible
+                        ),
+                        Ok(())
+                    );
+                    assert!(source.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_wavelet_reversible_collection_matches_independent_synthesis() {
+        fn inverse(low: &[i64], high: &[i64], first: bool) -> Vec<i64> {
+            let mut values = Vec::new();
+            for index in 0..low.len() + high.len() {
+                values.push(if (index % 2 == 0) == first {
+                    low[index / 2]
+                } else {
+                    high[index / 2]
+                });
+            }
+            if values.len() == 1 && !first {
+                values[0] = values[0].div_euclid(2);
+                return values;
+            }
+            if values.len() < 2 {
+                return values;
+            }
+            for index in 0..values.len() {
+                if (index % 2 == 0) == first {
+                    let left = values[if index == 0 { 1 } else { index - 1 }];
+                    let right = values[if index + 1 == values.len() {
+                        index - 1
+                    } else {
+                        index + 1
+                    }];
+                    values[index] -= (left + right + 2).div_euclid(4);
+                }
+            }
+            for index in 0..values.len() {
+                if (index % 2 == 0) != first {
+                    let left = values[if index == 0 { 1 } else { index - 1 }];
+                    let right = values[if index + 1 == values.len() {
+                        index - 1
+                    } else {
+                        index + 1
+                    }];
+                    values[index] += (left + right).div_euclid(2);
+                }
+            }
+            values
+        }
+        for count in 1..=6 {
+            for offset in -3_i32..=3 {
+                for levels in 0..=4 {
+                    let original = [-2, 3, 0, 7, -5, 2][..count].to_vec();
+                    let mut start = i64::from(offset);
+                    let mut end = start + count as i64;
+                    let mut partitions = Vec::new();
+                    for _ in 0..levels {
+                        let next_start = (start + 1).div_euclid(2);
+                        let next_end = (end + 1).div_euclid(2);
+                        partitions.push((
+                            start.rem_euclid(2) == 0,
+                            (end - start - (next_end - next_start)) as usize,
+                        ));
+                        start = next_start;
+                        end = next_end;
+                    }
+                    let mut cursor = (end - start) as usize;
+                    let mut expected = original[..cursor].to_vec();
+                    for &(first, length) in partitions.iter().rev() {
+                        expected = inverse(&expected, &original[cursor..cursor + length], first);
+                        cursor += length;
+                    }
+                    assert_eq!(cursor, count);
+                    let mut samples: Vec<_> = original.iter().map(|&value| vec![value]).collect();
+                    let mut fractions = vec![0; count];
+                    let mut components: Vec<_> = samples
+                        .iter_mut()
+                        .zip(fractions.iter_mut())
+                        .enumerate()
+                        .map(
+                            |(component, (samples, fraction_bits))| TransformComponentMut {
+                                component: component as u16,
+                                x: 0,
+                                y: 0,
+                                width: 1,
+                                height: 1,
+                                x_subsampling: 1,
+                                y_subsampling: 1,
+                                fraction_bits,
+                                samples,
+                            },
+                        )
+                        .collect();
+                    let references: Vec<_> = (0..count).map(|index| index as u16).collect();
+                    let collection = MctCollection::from_wavelet(
+                        references.clone(),
+                        references,
+                        MctWaveletType::Reversible5x3,
+                        levels,
+                        offset,
+                    );
+                    let mut work = 7;
+                    assert_eq!(
+                        apply_mct_wavelet(
+                            &mut components,
+                            &collection,
+                            &ResourceLimits::default(),
+                            &mut work
+                        ),
+                        Ok(())
+                    );
+                    assert_eq!(work, 7 + count as u64 * (u64::from(levels) + 1) * 8);
+                    drop(components);
+                    assert_eq!(
+                        samples.iter().map(|value| value[0]).collect::<Vec<_>>(),
+                        expected
+                    );
+                    assert_eq!(fractions, vec![0; count]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_dependency_counts_and_admission_match_wide_thresholds() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let square_root = usize::MAX.isqrt();
+        let counts = [
+            0,
+            1,
+            2,
+            3,
+            7,
+            square_root.saturating_sub(1),
+            square_root,
+            square_root.saturating_add(1),
+            usize::MAX / 2,
+            usize::MAX - 1,
+            usize::MAX,
+        ];
+        for reversible in [false, true] {
+            for count in counts {
+                let n = count as u128;
+                let following = if reversible {
+                    n + 1
+                } else {
+                    n.saturating_sub(1)
+                };
+                let product = n * following;
+                let expected = if (reversible
+                    && (following > usize::MAX as u128 || product / 2 == 0))
+                    || product > usize::MAX as u128
+                {
+                    Err(overflow)
+                } else {
+                    Ok((product / 2 - u128::from(reversible)) as usize)
+                };
+                assert_eq!(
+                    mct_dependency_coefficient_count(count, reversible),
+                    expected
+                );
+            }
+        }
+        for count in [0, 1, 2, 7, usize::MAX / 3, usize::MAX] {
+            for coefficients in [0, 1, 2, usize::MAX / 2, usize::MAX] {
+                for samples in [0, 1, 2, usize::MAX] {
+                    for before in [0, 7, u64::MAX - 1, u64::MAX] {
+                        for maximum_work in [1, 16, ResourceLimits::HARDENED.maximum_work_units()] {
+                            for maximum_bytes in
+                                [1, 48, ResourceLimits::HARDENED.maximum_decoded_bytes()]
+                            {
+                                let expected = (|| -> (Result<(), DecodeError>, u64) {
+                                    let twice = u128::from(coefficients as u64) * 2;
+                                    let per_sample = twice + u128::from(count as u64);
+                                    if twice > u128::from(u64::MAX)
+                                        || per_sample > u128::from(u64::MAX)
+                                    {
+                                        return (Err(overflow), before);
+                                    }
+                                    let operations = u128::from(samples as u64) * per_sample;
+                                    if operations > u128::from(u64::MAX)
+                                        || u128::from(before) + operations > u128::from(u64::MAX)
+                                    {
+                                        return (Err(overflow), before);
+                                    }
+                                    let charged = (u128::from(before) + operations) as u64;
+                                    if charged > maximum_work {
+                                        return (
+                                            Err(DecodeError::LimitExceeded {
+                                                resource: Resource::WorkUnits,
+                                                limit: maximum_work,
+                                                actual: charged,
+                                            }),
+                                            charged,
+                                        );
+                                    }
+                                    let scratch =
+                                        (count as u128 * 3).min(usize::MAX as u128) as u64;
+                                    let bytes = u128::from(scratch) * 8;
+                                    if bytes > u128::from(u64::MAX) {
+                                        return (Err(overflow), charged);
+                                    }
+                                    if bytes > u128::from(maximum_bytes) {
+                                        return (
+                                            Err(DecodeError::LimitExceeded {
+                                                resource: Resource::DecodedBytes,
+                                                limit: maximum_bytes,
+                                                actual: bytes as u64,
+                                            }),
+                                            charged,
+                                        );
+                                    }
+                                    (Ok(()), charged)
+                                })();
+                                let limits = ResourceLimits::default()
+                                    .with_maximum_work_units(maximum_work)
+                                    .unwrap()
+                                    .with_maximum_decoded_bytes(maximum_bytes)
+                                    .unwrap();
+                                let mut work = before;
+                                let result = admit_mct_dependency(
+                                    samples,
+                                    coefficients,
+                                    count,
+                                    &limits,
+                                    &mut work,
+                                );
+                                assert_eq!((result, work), expected);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_dependency_preparation_checks_destination_precision_and_exact_caps() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for reversible in [false, true] {
+            for precision in 0..=u8::MAX {
+                let mut samples = [vec![3], vec![7]];
+                let mut fractions = [0, precision];
+                let components: Vec<_> = samples
+                    .iter_mut()
+                    .zip(fractions.iter_mut())
+                    .zip([0, 1])
+                    .map(
+                        |((samples, fraction_bits), component)| TransformComponentMut {
+                            component,
+                            x: 0,
+                            y: 0,
+                            width: 0,
+                            height: 0,
+                            x_subsampling: 0,
+                            y_subsampling: 0,
+                            fraction_bits,
+                            samples,
+                        },
+                    )
+                    .collect();
+                let collection = MctCollection::from_wavelet(
+                    vec![0],
+                    vec![1],
+                    if reversible {
+                        MctWaveletType::Reversible5x3
+                    } else {
+                        MctWaveletType::Irreversible9x7
+                    },
+                    u8::MAX,
+                    i32::MIN,
+                );
+                for maximum_work in [7, 8, 9] {
+                    for maximum_bytes in [23, 24, 25] {
+                        let expected_error = if precision > 32 || (reversible && precision != 0) {
+                            Some(invalid)
+                        } else if maximum_work < 8 {
+                            Some(DecodeError::LimitExceeded {
+                                resource: Resource::WorkUnits,
+                                limit: maximum_work,
+                                actual: 8,
+                            })
+                        } else if maximum_bytes < 24 {
+                            Some(DecodeError::LimitExceeded {
+                                resource: Resource::DecodedBytes,
+                                limit: maximum_bytes,
+                                actual: 24,
+                            })
+                        } else {
+                            None
+                        };
+                        let limits = ResourceLimits::default()
+                            .with_maximum_work_units(maximum_work)
+                            .unwrap()
+                            .with_maximum_decoded_bytes(maximum_bytes)
+                            .unwrap();
+                        let mut work = 7;
+                        let result =
+                            prepare_mct_dependency(&components, &collection, &limits, &mut work);
+                        assert_eq!(result.as_ref().err().copied(), expected_error);
+                        assert_eq!(
+                            work,
+                            if precision > 32 || (reversible && precision != 0) {
+                                7
+                            } else {
+                                8
+                            }
+                        );
+                        if let Ok(prepared) = result {
+                            assert_eq!(prepared.source_indexes, [0]);
+                            assert_eq!(prepared.destination_indexes, [1]);
+                            assert_eq!((prepared.sample_count, prepared.count), (1, 1));
+                        }
+                    }
+                }
+                drop(components);
+                assert_eq!(samples, [vec![3], vec![7]]);
+                assert_eq!(fractions, [0, precision]);
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_dependency_collection_matches_floor_and_q32_composition() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        for reversible in [false, true] {
+            for coefficient in [-2_i64, 0, 3] {
+                for scale in [1_i64, 2, 3, 7] {
+                    for first in [-3_i64, 0, 4] {
+                        for second in [-5_i64, 1, 7] {
+                            let mut samples = [vec![first, second], vec![second, first], vec![123]];
+                            let mut expected = samples.clone();
+                            for index in 0..2 {
+                                let base = i128::from(samples[1][index]);
+                                let previous = i128::from(samples[0][index]);
+                                let value = if reversible {
+                                    base + (i128::from(scale / 2)
+                                        + i128::from(coefficient) * previous)
+                                        .div_euclid(i128::from(scale))
+                                } else {
+                                    (base + i128::from(coefficient) * previous) * (1_i128 << 32)
+                                };
+                                expected[0][index] = if reversible {
+                                    samples[0][index]
+                                } else {
+                                    samples[0][index] * (1_i64 << 32)
+                                };
+                                expected[1][index] = i64::try_from(value).unwrap();
+                            }
+                            let mut fractions = [0, 0, u8::MAX];
+                            let mut components: Vec<_> = samples
+                                .iter_mut()
+                                .zip(fractions.iter_mut())
+                                .zip([0, 1, 99])
+                                .map(|((samples, fraction_bits), component)| {
+                                    TransformComponentMut {
+                                        component,
+                                        x: 0,
+                                        y: 0,
+                                        width: 2,
+                                        height: 1,
+                                        x_subsampling: 1,
+                                        y_subsampling: 1,
+                                        fraction_bits,
+                                        samples,
+                                    }
+                                })
+                                .collect();
+                            let values = if reversible {
+                                vec![coefficient, scale]
+                            } else {
+                                vec![coefficient]
+                            };
+                            let collection = MctCollection::from_dependency(
+                                reversible,
+                                vec![0, 1],
+                                Some(MctArray::from_values(
+                                    u8::MAX,
+                                    MctArrayKind::Offset,
+                                    MctNumericFormat::Float64,
+                                    0,
+                                    values,
+                                )),
+                                None,
+                            );
+                            let mut work = 5;
+                            assert_eq!(
+                                apply_mct_dependency(
+                                    &mut components,
+                                    &collection,
+                                    &ResourceLimits::default(),
+                                    &mut work
+                                ),
+                                Ok(())
+                            );
+                            assert_eq!(work, if reversible { 17 } else { 13 });
+                            drop(components);
+                            assert_eq!(samples, expected);
+                            assert_eq!(
+                                fractions,
+                                if reversible {
+                                    [0, 0, u8::MAX]
+                                } else {
+                                    [32, 32, u8::MAX]
+                                }
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_dependency_pixel_uses_exact_count_and_preserves_duplicate_store_errors() {
+        let indexes: &[&[usize]] = &[
+            &[],
+            &[0],
+            &[1],
+            &[0, 0],
+            &[0, 1],
+            &[1, 0],
+            &[0, 2],
+            &[2, 0],
+            &[2],
+        ];
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let collection = MctCollection::from_dependency(true, vec![u16::MAX], None, None);
+        for source_indexes in indexes {
+            for destinations in indexes {
+                for count in 0..=3 {
+                    for sample in 0..=2 {
+                        let mut samples = [vec![3, 5], vec![7]];
+                        let mut expected_samples = samples.clone();
+                        let mut expected_source = Vec::new();
+                        let mut expected_output = Vec::new();
+                        let expected = (|| -> Result<(), DecodeError> {
+                            for position in 0..count {
+                                let component = *source_indexes.get(position).ok_or(invalid)?;
+                                expected_source.push(
+                                    *samples
+                                        .get(component)
+                                        .ok_or(invalid)?
+                                        .get(sample)
+                                        .ok_or(invalid)?,
+                                );
+                            }
+                            expected_output.extend_from_slice(&expected_source);
+                            for (row, &value) in expected_output.iter().enumerate() {
+                                let destination = *destinations.get(row).ok_or(invalid)?;
+                                *expected_samples
+                                    .get_mut(destination)
+                                    .ok_or(invalid)?
+                                    .get_mut(sample)
+                                    .ok_or(invalid)? = value;
+                            }
+                            Ok(())
+                        })();
+                        let mut fractions = [u8::MAX, 1];
+                        let mut components: Vec<_> = samples
+                            .iter_mut()
+                            .zip(fractions.iter_mut())
+                            .zip([0, 1])
+                            .map(
+                                |((samples, fraction_bits), component)| TransformComponentMut {
+                                    component,
+                                    x: 0,
+                                    y: 0,
+                                    width: 0,
+                                    height: 0,
+                                    x_subsampling: 0,
+                                    y_subsampling: 0,
+                                    fraction_bits,
+                                    samples,
+                                },
+                            )
+                            .collect();
+                        let prepared = MctDependencyPreparation {
+                            source_indexes: source_indexes.to_vec(),
+                            destination_indexes: destinations.to_vec(),
+                            sample_count: usize::MAX,
+                            count,
+                        };
+                        let mut source = vec![-9];
+                        let mut output = vec![42];
+                        assert_eq!(
+                            apply_mct_dependency_pixel(
+                                &mut components,
+                                &collection,
+                                &prepared,
+                                &[u8::MAX],
+                                sample,
+                                &mut source,
+                                &mut output,
+                            ),
+                            expected
+                        );
+                        assert_eq!(source, expected_source);
+                        assert_eq!(output, expected_output);
+                        drop(components);
+                        assert_eq!(samples, expected_samples);
+                        assert_eq!(fractions, [u8::MAX, 1]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_pixel_transition_preserves_raw_snapshot_and_store_error_frontiers() {
+        let indexes: &[&[usize]] = &[
+            &[],
+            &[0],
+            &[1],
+            &[0, 0],
+            &[0, 1],
+            &[1, 0],
+            &[0, 2],
+            &[2, 0],
+            &[2],
+        ];
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let collection = MctCollection::from_dependency(true, vec![u16::MAX], None, None);
+        for source_indexes in indexes {
+            for destinations in indexes {
+                for rows in 0..=3 {
+                    for sample in 0..=2 {
+                        let mut samples = [vec![3, 5], vec![7]];
+                        let mut expected_samples = samples.clone();
+                        let mut expected_source = Vec::new();
+                        let mut expected_output = Vec::new();
+                        let expected = (|| -> Result<(), DecodeError> {
+                            for &index in source_indexes.iter() {
+                                expected_source.push(
+                                    *samples
+                                        .get(index)
+                                        .ok_or(invalid)?
+                                        .get(sample)
+                                        .ok_or(invalid)?,
+                                );
+                            }
+                            for row in 0..rows {
+                                expected_output.push(*expected_source.get(row).ok_or(invalid)?);
+                            }
+                            for (row, &value) in expected_output.iter().enumerate() {
+                                let destination = *destinations.get(row).ok_or(invalid)?;
+                                *expected_samples
+                                    .get_mut(destination)
+                                    .ok_or(invalid)?
+                                    .get_mut(sample)
+                                    .ok_or(invalid)? = value;
+                            }
+                            Ok(())
+                        })();
+                        let mut fractions = [u8::MAX, 1];
+                        let mut components: Vec<_> = samples
+                            .iter_mut()
+                            .zip(fractions.iter_mut())
+                            .zip([0, 1])
+                            .map(
+                                |((samples, fraction_bits), component)| TransformComponentMut {
+                                    component,
+                                    x: component as u32,
+                                    y: u32::MAX,
+                                    width: 0,
+                                    height: 7,
+                                    x_subsampling: 0,
+                                    y_subsampling: u8::MAX,
+                                    fraction_bits,
+                                    samples,
+                                },
+                            )
+                            .collect();
+                        let metadata: Vec<_> = components
+                            .iter()
+                            .map(|component| {
+                                (
+                                    component.component,
+                                    component.x,
+                                    component.y,
+                                    component.width,
+                                    component.height,
+                                    component.x_subsampling,
+                                    component.y_subsampling,
+                                )
+                            })
+                            .collect();
+                        let prepared = MctDecorrelationPreparation {
+                            source_indexes: source_indexes.to_vec(),
+                            destination_indexes: destinations.to_vec(),
+                            source_fraction_bits: vec![u8::MAX; source_indexes.len()],
+                            sample_count: usize::MAX,
+                            rows,
+                            columns: 0,
+                        };
+                        let mut source = vec![-9, 123];
+                        let mut output = vec![42, -7];
+                        assert_eq!(
+                            apply_mct_decorrelation_pixel(
+                                &mut components,
+                                &collection,
+                                &prepared,
+                                sample,
+                                &mut source,
+                                &mut output,
+                            ),
+                            expected
+                        );
+                        assert_eq!(source, expected_source);
+                        assert_eq!(output, expected_output);
+                        assert_eq!(
+                            components
+                                .iter()
+                                .map(|component| (
+                                    component.component,
+                                    component.x,
+                                    component.y,
+                                    component.width,
+                                    component.height,
+                                    component.x_subsampling,
+                                    component.y_subsampling
+                                ))
+                                .collect::<Vec<_>>(),
+                            metadata
+                        );
+                        drop(components);
+                        assert_eq!(samples, expected_samples);
+                        assert_eq!(fractions, [u8::MAX, 1]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_destination_precision_preserves_all_tags_and_partial_error_order() {
+        for precision in 0..=u8::MAX {
+            for destinations in [
+                &[][..],
+                &[0][..],
+                &[1][..],
+                &[0, 0][..],
+                &[1, 0][..],
+                &[0, 2][..],
+                &[2, 0][..],
+            ] {
+                let mut expected = [1, u8::MAX];
+                let expected_result = (|| -> Result<(), DecodeError> {
+                    for &destination in destinations {
+                        let tag =
+                            expected
+                                .get_mut(destination)
+                                .ok_or(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::InvalidTransform,
+                                })?;
+                        *tag = precision;
+                    }
+                    Ok(())
+                })();
+                let mut samples = [vec![3, 5], vec![7]];
+                let original = samples.clone();
+                let mut fractions = [1, u8::MAX];
+                let mut components: Vec<_> = samples
+                    .iter_mut()
+                    .zip(fractions.iter_mut())
+                    .zip([0, 1])
+                    .map(
+                        |((samples, fraction_bits), component)| TransformComponentMut {
+                            component,
+                            x: 0,
+                            y: 0,
+                            width: 0,
+                            height: 0,
+                            x_subsampling: 0,
+                            y_subsampling: 0,
+                            fraction_bits,
+                            samples,
+                        },
+                    )
+                    .collect();
+                assert_eq!(
+                    apply_mct_destination_precisions(&mut components, destinations, precision),
+                    expected_result
+                );
+                drop(components);
+                assert_eq!(fractions, expected);
+                assert_eq!(samples, original);
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_decorrelation_rows_preserve_lazy_precision_domains_and_partial_output() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for reversible in [false, true] {
+            let collection = MctCollection::from_dependency(reversible, vec![u16::MAX], None, None);
+            for bits in 0..=u8::MAX {
+                for sample in [i64::MIN, -7, 0, 7, i64::MAX] {
+                    let expected = if reversible {
+                        Ok(sample)
+                    } else if bits <= 32 {
+                        i64::try_from(i128::from(sample) * (1_i128 << (32 - bits)))
+                            .map_err(|_| overflow)
+                    } else if bits - 32 > 126 {
+                        Err(overflow)
+                    } else {
+                        let magnitude = i128::from(sample).abs();
+                        let shift = bits - 32;
+                        let rounded = (magnitude + (1_i128 << (shift - 1))) / (1_i128 << shift);
+                        Ok(if sample < 0 {
+                            -rounded as i64
+                        } else {
+                            rounded as i64
+                        })
+                    };
+                    assert_eq!(
+                        decorrelation_mct_row(&collection, &[sample], &[bits], 0),
+                        expected
+                    );
+                    for rows in 0..=2 {
+                        let mut output = vec![42, -99];
+                        let result = append_mct_decorrelation_rows(
+                            &mut output,
+                            &collection,
+                            &[sample],
+                            &[bits],
+                            rows,
+                        );
+                        let expected_result = if rows == 0 {
+                            Ok(())
+                        } else {
+                            match expected {
+                                Err(error) => Err(error),
+                                Ok(value) => {
+                                    assert_eq!(output, [42, -99, value]);
+                                    if rows == 1 { Ok(()) } else { Err(invalid) }
+                                }
+                            }
+                        };
+                        assert_eq!(result, expected_result);
+                        if rows == 0 || expected.is_err() {
+                            assert_eq!(output, [42, -99]);
+                        }
+                    }
+                }
+            }
+            assert_eq!(
+                decorrelation_mct_row(&collection, &[], &[], 0),
+                Err(invalid)
+            );
+            assert_eq!(
+                decorrelation_mct_row(&collection, &[1], &[], 0),
+                if reversible { Ok(1) } else { Err(invalid) }
+            );
+        }
+    }
+
+    #[test]
+    fn native_mct_decorrelation_dispatch_preserves_partial_matrix_rows() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        for reversible in [false, true] {
+            let array = |values| {
+                MctArray::from_values(
+                    u8::MAX,
+                    MctArrayKind::Offset,
+                    MctNumericFormat::Float64,
+                    0,
+                    values,
+                )
+            };
+            let collection = MctCollection::from_arrays(
+                reversible,
+                vec![0, 1],
+                vec![0, 1],
+                array(vec![2, 3, 4, 5]),
+                Some(array(vec![1, -1])),
+            );
+            let scale = if reversible { 1 } else { 1_i64 << 32 };
+            let mut output = vec![123];
+            assert_eq!(
+                append_mct_decorrelation_rows(&mut output, &collection, &[7, -2], &[0, 0], 3),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidTransform,
+                })
+            );
+            assert_eq!(output, [123, 9 * scale, 17 * scale]);
+        }
+    }
+
+    #[test]
+    fn native_mct_decorrelation_keeps_pixel_transactions_and_duplicate_destinations() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        for duplicates in [false, true] {
+            let mut samples = [vec![1, 2], vec![3, if duplicates { 4 } else { i64::MAX }]];
+            let mut fractions = [0, 0];
+            let mut components: Vec<_> = samples
+                .iter_mut()
+                .zip(fractions.iter_mut())
+                .zip([0, 1])
+                .map(
+                    |((samples, fraction_bits), component)| TransformComponentMut {
+                        component,
+                        x: 7,
+                        y: 9,
+                        width: 2,
+                        height: 1,
+                        x_subsampling: 1,
+                        y_subsampling: 1,
+                        fraction_bits,
+                        samples,
+                    },
+                )
+                .collect();
+            let collection = MctCollection::from_arrays(
+                false,
+                vec![0, if duplicates { 0 } else { 1 }],
+                vec![0, 1],
+                MctArray::from_values(
+                    0,
+                    MctArrayKind::Offset,
+                    MctNumericFormat::Float64,
+                    0,
+                    vec![1, 0, 0, 1],
+                ),
+                None,
+            );
+            let mut work = 5;
+            assert_eq!(
+                apply_mct_decorrelation(
+                    &mut components,
+                    &collection,
+                    &ResourceLimits::default(),
+                    &mut work,
+                ),
+                if duplicates {
+                    Ok(())
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::ArithmeticOverflow,
+                    })
+                }
+            );
+            assert_eq!(work, 17);
+            drop(components);
+            if duplicates {
+                assert_eq!(samples, [vec![3_i64 << 32, 4_i64 << 32], vec![3, 4]]);
+                assert_eq!(fractions, [32, 0]);
+            } else {
+                assert_eq!(samples, [vec![1_i64 << 32, 2], vec![3_i64 << 32, i64::MAX]]);
+                assert_eq!(fractions, [0, 0]);
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_preparation_derives_real_ordered_indexes_fractions_and_late_work_errors() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let matrix = || {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float64,
+                u8::MAX,
+                vec![1, 0, 0, 1],
+            )
+        };
+        let collection = MctCollection::from_arrays(true, vec![17, 0], vec![0, 17], matrix(), None);
+        let mut samples = [vec![1, 2], vec![3, 4]];
+        let before_samples = samples.clone();
+        let mut fractions = [0, 0];
+        let components: Vec<_> = samples
+            .iter_mut()
+            .zip(fractions.iter_mut())
+            .zip([0, 17])
+            .map(
+                |((samples, fraction_bits), component)| TransformComponentMut {
+                    component,
+                    x: u32::MAX,
+                    y: 0,
+                    width: 0,
+                    height: u32::MAX,
+                    x_subsampling: 0,
+                    y_subsampling: u8::MAX,
+                    fraction_bits,
+                    samples,
+                },
+            )
+            .collect();
+        let mut work = 7;
+        let prepared = prepare_mct_decorrelation(
+            &components,
+            &collection,
+            &ResourceLimits::default(),
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(prepared.source_indexes, [0, 1]);
+        assert_eq!(prepared.destination_indexes, [1, 0]);
+        assert_eq!(prepared.source_fraction_bits, [0, 0]);
+        assert_eq!(
+            (prepared.sample_count, prepared.rows, prepared.columns, work),
+            (2, 2, 2, 19)
+        );
+        for maximum_work in [18, 19, 20] {
+            for maximum_bytes in [31, 32, 33] {
+                let limits = ResourceLimits::default()
+                    .with_maximum_work_units(maximum_work)
+                    .unwrap()
+                    .with_maximum_decoded_bytes(maximum_bytes)
+                    .unwrap();
+                let expected_error = if maximum_work < 19 {
+                    Some(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: maximum_work,
+                        actual: 19,
+                    })
+                } else if maximum_bytes < 32 {
+                    Some(DecodeError::LimitExceeded {
+                        resource: Resource::DecodedBytes,
+                        limit: maximum_bytes,
+                        actual: 32,
+                    })
+                } else {
+                    None
+                };
+                let mut work = 7;
+                assert_eq!(
+                    prepare_mct_decorrelation(&components, &collection, &limits, &mut work).err(),
+                    expected_error
+                );
+                assert_eq!(work, 19);
+            }
+        }
+        let missing = MctCollection::from_arrays(true, vec![17, 0], vec![999, 17], matrix(), None);
+        let mut work = 7;
+        assert_eq!(
+            prepare_mct_decorrelation(&components, &missing, &ResourceLimits::default(), &mut work)
+                .err(),
+            Some(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidTransform
+            })
+        );
+        assert_eq!(work, 7);
+        drop(components);
+        assert_eq!(samples, before_samples);
+        assert_eq!(fractions, [0, 0]);
+    }
+
+    #[test]
+    fn native_mct_decorrelation_admission_keeps_every_overflow_limit_and_counter_frontier() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for maximum_work in [1, 37, 1000] {
+            for maximum_bytes in [1, 56, 1000] {
+                let limits = ResourceLimits::default()
+                    .with_maximum_work_units(maximum_work)
+                    .unwrap()
+                    .with_maximum_decoded_bytes(maximum_bytes)
+                    .unwrap();
+                for samples in [0, 1, 2, 3, 17, usize::MAX] {
+                    for rows in [0, 1, 2, 3, 17, usize::MAX] {
+                        for columns in [0, 1, 2, 3, 17, usize::MAX] {
+                            for before in [0, 1, 7, u64::MAX - 1, u64::MAX] {
+                                let sample_rows = samples as u128 * rows as u128;
+                                let operations = if sample_rows > u128::from(u64::MAX) {
+                                    None
+                                } else {
+                                    let products = sample_rows * columns as u128;
+                                    if products > u128::from(u64::MAX)
+                                        || products + sample_rows > u128::from(u64::MAX)
+                                    {
+                                        None
+                                    } else {
+                                        Some(products + sample_rows)
+                                    }
+                                };
+                                let expected = match operations {
+                                    None => (Err(overflow), before),
+                                    Some(operations)
+                                        if operations + u128::from(before)
+                                            > u128::from(u64::MAX) =>
+                                    {
+                                        (Err(overflow), before)
+                                    }
+                                    Some(operations) => {
+                                        let charged =
+                                            u64::try_from(operations + u128::from(before)).unwrap();
+                                        if charged > maximum_work {
+                                            (
+                                                Err(DecodeError::LimitExceeded {
+                                                    resource: Resource::WorkUnits,
+                                                    limit: maximum_work,
+                                                    actual: charged,
+                                                }),
+                                                charged,
+                                            )
+                                        } else {
+                                            let values = rows as u128 + columns as u128;
+                                            let bytes = values * 8;
+                                            if values > usize::MAX as u128
+                                                || bytes > usize::MAX as u128
+                                            {
+                                                (Err(overflow), charged)
+                                            } else if bytes > u128::from(maximum_bytes) {
+                                                (
+                                                    Err(DecodeError::LimitExceeded {
+                                                        resource: Resource::DecodedBytes,
+                                                        limit: maximum_bytes,
+                                                        actual: u64::try_from(bytes).unwrap(),
+                                                    }),
+                                                    charged,
+                                                )
+                                            } else {
+                                                (Ok(()), charged)
+                                            }
+                                        }
+                                    }
+                                };
+                                let mut work = before;
+                                let result = admit_mct_decorrelation(
+                                    samples, rows, columns, &limits, &mut work,
+                                );
+                                assert_eq!((result, work), expected);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for maximum_work in [36, 37, 38] {
+            for maximum_bytes in [55, 56, 57] {
+                let limits = ResourceLimits::default()
+                    .with_maximum_work_units(maximum_work)
+                    .unwrap()
+                    .with_maximum_decoded_bytes(maximum_bytes)
+                    .unwrap();
+                let mut work = 7;
+                let expected = if maximum_work < 37 {
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: maximum_work,
+                        actual: 37,
+                    })
+                } else if maximum_bytes < 56 {
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::DecodedBytes,
+                        limit: maximum_bytes,
+                        actual: 56,
+                    })
+                } else {
+                    Ok(())
+                };
+                assert_eq!(
+                    admit_mct_decorrelation(2, 3, 4, &limits, &mut work),
+                    expected
+                );
+                assert_eq!(work, 37);
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_layout_matches_raw_geometry_precision_and_index_reference() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let base = (u32::MAX, 0_u32, 0_u32, u32::MAX, 0_u8, u8::MAX);
+        let sources = [
+            vec![],
+            vec![0],
+            vec![1],
+            vec![0, 1],
+            vec![1, 0],
+            vec![2, 2],
+            vec![3],
+            vec![usize::MAX],
+        ];
+        let destinations = [vec![], vec![0], vec![1, 2], vec![0, 3], vec![usize::MAX]];
+        for perturbation in 0..9 {
+            let mut geometry = [base; 3];
+            let mut lengths = [2, 2, 2];
+            match perturbation {
+                1 => geometry[1].0 = 0,
+                2 => geometry[1].1 = u32::MAX,
+                3 => geometry[1].2 = 1,
+                4 => geometry[1].3 = 0,
+                5 => geometry[1].4 = 1,
+                6 => geometry[1].5 = 0,
+                7 => lengths[1] = 1,
+                8 => lengths[0] = 0,
+                _ => {}
+            }
+            for first_bits in [0, 1, 32, 33, u8::MAX] {
+                for second_bits in [0, 1, 32, 33, u8::MAX] {
+                    for third_bits in [0, 32, u8::MAX] {
+                        for source in &sources {
+                            for destination in &destinations {
+                                for reversible in [false, true] {
+                                    let mut fractions = [first_bits, second_bits, third_bits];
+                                    let before_fractions = fractions;
+                                    let expected = source
+                                        .first()
+                                        .and_then(|first| {
+                                            let first_geometry = geometry.get(*first)?;
+                                            let valid = source
+                                                .iter()
+                                                .chain(destination.iter())
+                                                .all(|index| {
+                                                    geometry.get(*index).is_some_and(|candidate| {
+                                                        candidate == first_geometry
+                                                            && lengths[*index] == lengths[*first]
+                                                            && fractions[*index] <= 32
+                                                    })
+                                                });
+                                            (valid
+                                                && (!reversible
+                                                    || source
+                                                        .iter()
+                                                        .all(|index| fractions[*index] == 0)))
+                                            .then_some(lengths[*first])
+                                        })
+                                        .ok_or(invalid);
+                                    let mut samples = lengths.map(|length| vec![i64::MIN; length]);
+                                    let before_samples = samples.clone();
+                                    let components: Vec<_> = samples
+                                        .iter_mut()
+                                        .zip(fractions.iter_mut())
+                                        .zip(geometry)
+                                        .map(
+                                            |(
+                                                (samples, fraction_bits),
+                                                (x, y, width, height, x_subsampling, y_subsampling),
+                                            )| {
+                                                TransformComponentMut {
+                                                    component: u16::MAX,
+                                                    x,
+                                                    y,
+                                                    width,
+                                                    height,
+                                                    x_subsampling,
+                                                    y_subsampling,
+                                                    fraction_bits,
+                                                    samples,
+                                                }
+                                            },
+                                        )
+                                        .collect();
+                                    assert_eq!(
+                                        validate_mct_components_layout(
+                                            &components,
+                                            source,
+                                            destination,
+                                            reversible
+                                        ),
+                                        expected
+                                    );
+                                    drop(components);
+                                    assert_eq!(samples, before_samples);
+                                    assert_eq!(fractions, before_fractions);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_array_store_frames_every_unselected_component_and_error() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for destination in [0, 1, 2, 3, usize::MAX] {
+            for index in [0, 1, 2, usize::MAX] {
+                for value in [i64::MIN, 0, i64::MAX] {
+                    let mut samples = [vec![], vec![7], vec![-3, 9]];
+                    let mut expected = samples.clone();
+                    let expected_result = match expected
+                        .get_mut(destination)
+                        .and_then(|samples| samples.get_mut(index))
+                    {
+                        Some(sample) => {
+                            *sample = value;
+                            Ok(())
+                        }
+                        None => Err(invalid),
+                    };
+                    let mut fractions = [u8::MAX, 32, 0];
+                    let before_fractions = fractions;
+                    let mut components: Vec<_> = samples
+                        .iter_mut()
+                        .zip(fractions.iter_mut())
+                        .zip([0, 17, u16::MAX])
+                        .map(
+                            |((samples, fraction_bits), component)| TransformComponentMut {
+                                component,
+                                x: u32::MAX,
+                                y: 1,
+                                width: 0,
+                                height: u32::MAX,
+                                x_subsampling: 0,
+                                y_subsampling: u8::MAX,
+                                fraction_bits,
+                                samples,
+                            },
+                        )
+                        .collect();
+                    assert_eq!(
+                        store_transform_sample(&mut components, destination, index, value),
+                        expected_result
+                    );
+                    for component in &components {
+                        assert_eq!(
+                            (
+                                component.x,
+                                component.y,
+                                component.width,
+                                component.height,
+                                component.x_subsampling,
+                                component.y_subsampling
+                            ),
+                            (u32::MAX, 1, 0, u32::MAX, 0, u8::MAX)
+                        );
+                    }
+                    drop(components);
+                    assert_eq!(samples, expected);
+                    assert_eq!(fractions, before_fractions);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_sample_store_preserves_all_metadata_and_failure_samples() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for length in 0..=4 {
+            for index in [0, 1, 3, 4, 5, usize::MAX] {
+                for value in [i64::MIN, -1, 0, i64::MAX] {
+                    let mut samples: Vec<_> =
+                        (0..length).map(|sample| i64::from(sample) - 2).collect();
+                    let mut expected = samples.clone();
+                    let result = match expected.get_mut(index) {
+                        Some(sample) => {
+                            *sample = value;
+                            Ok(())
+                        }
+                        None => Err(invalid),
+                    };
+                    let mut fraction_bits = u8::MAX;
+                    let mut component = TransformComponentMut {
+                        component: u16::MAX,
+                        x: u32::MAX,
+                        y: 1,
+                        width: 0,
+                        height: u32::MAX,
+                        x_subsampling: 0,
+                        y_subsampling: u8::MAX,
+                        fraction_bits: &mut fraction_bits,
+                        samples: &mut samples,
+                    };
+                    assert_eq!(
+                        store_transform_component_sample(&mut component, index, value),
+                        result
+                    );
+                    assert_eq!(
+                        (
+                            component.component,
+                            component.x,
+                            component.y,
+                            component.width,
+                            component.height,
+                            component.x_subsampling,
+                            component.y_subsampling,
+                            *component.fraction_bits
+                        ),
+                        (u16::MAX, u32::MAX, 1, 0, u32::MAX, 0, u8::MAX, u8::MAX)
+                    );
+                    assert_eq!(component.samples, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_component_lookup_keeps_first_duplicate_and_all_raw_mutable_values() {
+        let references = [0, u16::MAX, 17, 0];
+        let mut samples = [vec![], vec![i64::MIN], vec![i64::MAX, 0], vec![3, -9, 1]];
+        let mut fractions = [u8::MAX, 0, 32, 1];
+        let before_samples = samples.clone();
+        let before_fractions = fractions;
+        let components: Vec<_> = samples
+            .iter_mut()
+            .zip(fractions.iter_mut())
+            .zip(references)
+            .map(
+                |((samples, fraction_bits), component)| TransformComponentMut {
+                    component,
+                    x: u32::MAX,
+                    y: 0,
+                    width: 0,
+                    height: u32::MAX,
+                    x_subsampling: 0,
+                    y_subsampling: u8::MAX,
+                    fraction_bits,
+                    samples,
+                },
+            )
+            .collect();
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        for reference in 0..=u16::MAX {
+            let expected = references
+                .iter()
+                .position(|value| *value == reference)
+                .ok_or(invalid);
+            assert_eq!(find_transform_component(&components, reference), expected);
+        }
+        assert_eq!(find_transform_component(&[], 0), Err(invalid));
+        drop(components);
+        assert_eq!(samples, before_samples);
+        assert_eq!(fractions, before_fractions);
+    }
+
+    #[test]
+    fn native_mct_dependency_rows_match_independent_floor_and_rational_references() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let array = |fraction, values| {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float64,
+                fraction,
+                values,
+            )
+        };
+        let source = [10, -20, 30, -40];
+        let offsets = [1, -2, 3, -4];
+        for declared_reversible in [false, true] {
+            for fraction in [0, 32, u8::MAX] {
+                for coefficient in -2..=2 {
+                    for scale in [1, 2, 3, 7] {
+                        let mut matrix = vec![coefficient; 9];
+                        for index in [1, 4, 8] {
+                            matrix[index] = scale;
+                        }
+                        let collection = MctCollection::from_dependency(
+                            declared_reversible,
+                            vec![u16::MAX, 0, 0],
+                            Some(array(fraction, matrix)),
+                            Some(array(0, offsets.to_vec())),
+                        );
+                        for value in -5..=5 {
+                            let output = [value, -value - 1, 2 * value];
+                            for row in 0..4 {
+                                let prediction = if row == 0 {
+                                    0
+                                } else {
+                                    let dot: i128 = output
+                                        .iter()
+                                        .take(row)
+                                        .map(|sample| i128::from(coefficient) * i128::from(*sample))
+                                        .sum();
+                                    (i128::from(scale / 2) + dot).div_euclid(i128::from(scale))
+                                };
+                                let expected =
+                                    i128::from(source[row]) + i128::from(offsets[row]) + prediction;
+                                assert_eq!(
+                                    reversible_dependency_row(&collection, &source, &output, row),
+                                    Ok(i64::try_from(expected).unwrap())
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let nearest = |value: i128, bits: u8| {
+            if bits == 0 {
+                value
+            } else {
+                let divisor = 1_i128 << bits;
+                let magnitude = (value.abs() + divisor / 2) / divisor;
+                if value < 0 { -magnitude } else { magnitude }
+            }
+        };
+        let output = [-7, 11, -13];
+        for declared_reversible in [false, true] {
+            for coefficient in -3..=3 {
+                for coefficient_bits in [0, 1, 4] {
+                    for offset_bits in [0, 1, 4] {
+                        for source_bits in [0, 1, 4, 32] {
+                            let collection = MctCollection::from_dependency(
+                                declared_reversible,
+                                vec![],
+                                Some(array(coefficient_bits, vec![coefficient; 6])),
+                                Some(array(offset_bits, offsets.to_vec())),
+                            );
+                            for row in 0..4 {
+                                let initial = i128::from(source[row])
+                                    * (1_i128 << (32 - source_bits))
+                                    + i128::from(offsets[row]) * (1_i128 << (32 - offset_bits));
+                                let expected = initial
+                                    + output
+                                        .iter()
+                                        .take(row)
+                                        .map(|sample| {
+                                            nearest(
+                                                i128::from(coefficient) * i128::from(*sample),
+                                                coefficient_bits,
+                                            )
+                                        })
+                                        .sum::<i128>();
+                                assert_eq!(
+                                    irreversible_dependency_row(
+                                        &collection,
+                                        &source,
+                                        &[source_bits; 4],
+                                        &output,
+                                        row
+                                    ),
+                                    Ok(i64::try_from(expected).unwrap())
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_dependency_rows_preserve_lazy_raw_precision_and_first_error_frontiers() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let array = |fraction, values| {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float32,
+                fraction,
+                values,
+            )
+        };
+        let collection =
+            |matrix, offsets| MctCollection::from_dependency(false, vec![], matrix, offsets);
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for precision in 0..=u8::MAX {
+            let empty = collection(Some(array(precision, vec![])), None);
+            assert_eq!(reversible_dependency_row(&empty, &[7], &[], 0), Ok(7));
+            assert_eq!(
+                irreversible_dependency_row(&empty, &[7], &[32], &[], 0),
+                Ok(7)
+            );
+            let reversible = collection(Some(array(precision, vec![0, 1])), None);
+            assert_eq!(
+                reversible_dependency_row(&reversible, &[0, 0], &[0], 1),
+                Ok(0)
+            );
+            let irreversible = collection(Some(array(precision, vec![0])), None);
+            assert_eq!(
+                irreversible_dependency_row(&irreversible, &[0, 0], &[0, 0], &[0], 1),
+                if precision <= 126 {
+                    Ok(0)
+                } else {
+                    Err(overflow)
+                }
+            );
+            let no_matrix = collection(None, None);
+            assert_eq!(
+                irreversible_dependency_row(&no_matrix, &[0], &[precision], &[], 0),
+                if precision <= 158 {
+                    Ok(0)
+                } else {
+                    Err(overflow)
+                }
+            );
+            let offsets = collection(None, Some(array(precision, vec![0])));
+            assert_eq!(
+                irreversible_dependency_row(&offsets, &[0], &[32], &[], 0),
+                if precision <= 32 { Ok(0) } else { Err(invalid) }
+            );
+            assert_eq!(
+                reversible_dependency_row(&offsets, &[0], &[], 0),
+                if precision == 0 { Ok(0) } else { Err(invalid) }
+            );
+        }
+        let malformed = collection(Some(array(u8::MAX, vec![])), Some(array(u8::MAX, vec![])));
+        assert_eq!(
+            reversible_dependency_row(&malformed, &[], &[], usize::MAX),
+            Err(invalid)
+        );
+        assert_eq!(
+            irreversible_dependency_row(&malformed, &[0], &[159], &[], 0),
+            Err(overflow)
+        );
+        let missing = collection(None, None);
+        assert_eq!(
+            irreversible_dependency_row(&missing, &[0], &[], &[], 0),
+            Err(invalid)
+        );
+        let late = collection(Some(array(0, vec![0, 1, i64::MIN, i64::MIN, 1])), None);
+        assert_eq!(
+            reversible_dependency_row(&late, &[0, 0, 0], &[i64::MIN; 2], 2),
+            Err(overflow)
+        );
+        let base = collection(Some(array(0, vec![])), Some(array(0, vec![1])));
+        assert_eq!(
+            reversible_dependency_row(&base, &[i64::MAX], &[], 0),
+            Err(overflow)
+        );
+        let floor = collection(Some(array(0, vec![-1, 2])), None);
+        assert_eq!(reversible_dependency_row(&floor, &[0, 0], &[4], 1), Ok(-2));
+        let nearest = collection(Some(array(1, vec![-1])), None);
+        assert_eq!(
+            irreversible_dependency_row(&nearest, &[0, 0], &[32, 32], &[1], 1),
+            Ok(-1)
+        );
+    }
+
+    #[test]
+    fn native_mct_matrix_rows_preserve_numeric_values_raw_precision_domains_and_error_order() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let array = |fraction, values| {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float64,
+                fraction,
+                values,
+            )
+        };
+        let matrix = array(0, vec![2, -3, 4]);
+        let offset = array(0, vec![1]);
+        assert_eq!(
+            reversible_mct_row(&matrix, Some(&offset), &[5, 7], 0),
+            Ok(-10)
+        );
+        assert_eq!(
+            fixed_mct_row_scaled(&matrix, Some(&offset), &[5, 7], &[0, 0], 0),
+            Ok(-10_i64 << 32)
+        );
+        let fixed = array(32, vec![2_i64 << 32, -(3_i64 << 32)]);
+        let offset = array(16, vec![1_i64 << 16]);
+        assert_eq!(
+            fixed_mct_row_scaled(
+                &fixed,
+                Some(&offset),
+                &[5_i64 << 32, 7_i64 << 32],
+                &[32, 32],
+                0
+            ),
+            Ok(-10_i64 << 32)
+        );
+        let one = array(32, vec![1]);
+        assert_eq!(fixed_mct_row_scaled(&one, None, &[1], &[1], 0), Ok(1));
+        assert_eq!(fixed_mct_row_scaled(&one, None, &[-1], &[1], 0), Ok(-1));
+        let empty = array(0, vec![]);
+        assert_eq!(reversible_mct_row(&empty, None, &[], usize::MAX), Ok(0));
+        assert_eq!(
+            fixed_mct_row_scaled(&empty, None, &[], &[], usize::MAX),
+            Ok(0)
+        );
+        assert_eq!(reversible_mct_row(&empty, None, &[1], 0), Err(invalid));
+        assert_eq!(
+            reversible_mct_row(&matrix, None, &[1, 2], usize::MAX),
+            Err(overflow)
+        );
+        assert_eq!(
+            reversible_mct_row(&matrix, Some(&empty), &[1, 2], usize::MAX),
+            Err(invalid)
+        );
+        assert_eq!(
+            fixed_mct_row_scaled(&one, Some(&empty), &[1], &[], usize::MAX),
+            Err(invalid)
+        );
+        let wide = array(0, vec![i64::MAX; 3]);
+        assert_eq!(
+            reversible_mct_row(&wide, None, &[i64::MAX; 3], 0),
+            Err(overflow)
+        );
+        let short = array(32, vec![]);
+        assert_eq!(
+            fixed_mct_row_scaled(&short, None, &[1], &[u8::MAX], 0),
+            Err(invalid)
+        );
+        assert_eq!(
+            fixed_mct_row_scaled(&one, None, &[1], &[u8::MAX], 0),
+            Err(overflow)
+        );
+        for precision in 0..=u8::MAX {
+            let zero = array(precision, vec![]);
+            assert_eq!(
+                reversible_mct_row(&zero, None, &[], usize::MAX),
+                if precision == 0 { Ok(0) } else { Err(invalid) }
+            );
+            assert_eq!(
+                fixed_mct_row_scaled(&zero, None, &[], &[], usize::MAX),
+                if precision <= 32 { Ok(0) } else { Err(invalid) }
+            );
+            let zero = array(0, vec![0]);
+            assert_eq!(
+                fixed_mct_row_scaled(&zero, None, &[0], &[precision], 0),
+                if precision <= 158 {
+                    Ok(0)
+                } else {
+                    Err(overflow)
+                }
+            );
+            let offsets = array(precision, vec![0]);
+            assert_eq!(
+                fixed_mct_row_scaled(&zero, Some(&offsets), &[0], &[0], 0),
+                if precision <= 32 { Ok(0) } else { Err(invalid) }
+            );
+        }
+    }
+
+    #[test]
+    fn native_mct_round_rescale_offsets_and_work_match_wide_reference_and_full_u8_domains() {
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let round = |value: i128, bits: u8| {
+            if bits == 0 {
+                return Ok(value);
+            }
+            if bits > 126 {
+                return Err(overflow);
+            }
+            let magnitude = value.checked_abs().ok_or(overflow)?;
+            let half = 2_i128.pow(u32::from(bits - 1));
+            if magnitude > i128::MAX - half {
+                return Err(overflow);
+            }
+            let divisor = 2_i128.pow(u32::from(bits));
+            let rounded = magnitude / divisor + i128::from(magnitude % divisor >= half);
+            Ok(if value < 0 { -rounded } else { rounded })
+        };
+        let values = [
+            i128::MIN,
+            i128::MIN + 1,
+            -(1_i128 << 126),
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3,
+            1_i128 << 126,
+            i128::MAX - 1,
+            i128::MAX,
+        ];
+        for bits in 0..=u8::MAX {
+            for value in values {
+                assert_eq!(rounded_shift_i128(value, bits), round(value, bits));
+            }
+            assert_eq!(rescale_i128(i128::MIN, bits, bits), Ok(i128::MIN));
+        }
+        for from in 0..=u8::MAX {
+            for to in 0..=u8::MAX {
+                for value in [-3_i128, -1, 0, 1, 3] {
+                    let expected = if from == to {
+                        Ok(value)
+                    } else if from > to {
+                        round(value, from - to)
+                    } else if to - from > 126 {
+                        Err(overflow)
+                    } else {
+                        value
+                            .checked_mul(2_i128.pow(u32::from(to - from)))
+                            .ok_or(overflow)
+                    };
+                    assert_eq!(
+                        rescale_i128(value, from, to),
+                        expected,
+                        "value={value} from={from} to={to}"
+                    );
+                }
+            }
+        }
+        let samples = vec![i64::MIN, -3, 0, 3, i64::MAX];
+        for fraction in 0..=u8::MAX {
+            let array = MctArray::from_values(
+                u8::MAX,
+                crate::codestream::MctArrayKind::Dependency,
+                crate::codestream::MctNumericFormat::Float64,
+                fraction,
+                samples.clone(),
+            );
+            for row in [0, 1, 4, 5, usize::MAX] {
+                let direct = if fraction != 0 {
+                    Err(invalid)
+                } else {
+                    samples.get(row).copied().ok_or(invalid)
+                };
+                assert_eq!(offset_value(Some(&array), row), direct);
+                let scaled = if fraction > 32 {
+                    Err(invalid)
+                } else {
+                    samples
+                        .get(row)
+                        .map(|value| i128::from(*value) * 2_i128.pow(u32::from(32 - fraction)))
+                        .ok_or(invalid)
+                };
+                assert_eq!(offset_value_scaled(Some(&array), row), scaled);
+                assert_eq!(offset_value(None, row), Ok(0));
+                assert_eq!(offset_value_scaled(None, row), Ok(0));
+            }
+        }
+        let limits = ResourceLimits::default();
+        let maximum = limits.maximum_work_units();
+        for before in [0, maximum, maximum + 1, u64::MAX] {
+            for operations in [0, 1, 2, u64::MAX] {
+                let mut work = before;
+                let expected = match before.checked_add(operations) {
+                    None => (Err(overflow), before),
+                    Some(after) => (
+                        if after > maximum {
+                            Err(DecodeError::LimitExceeded {
+                                resource: Resource::WorkUnits,
+                                limit: maximum,
+                                actual: after,
+                            })
+                        } else {
+                            Ok(())
+                        },
+                        after,
+                    ),
+                };
+                assert_eq!(
+                    (charge_mct_work(&mut work, operations, &limits), work),
+                    expected
+                );
+            }
+        }
+        for count in [
+            0,
+            1,
+            limits.maximum_decoded_bytes() as usize / 8,
+            limits.maximum_decoded_bytes() as usize / 8 + 1,
+            usize::MAX,
+        ] {
+            let bytes = count as u128 * 8;
+            let expected = if bytes > u128::from(u64::MAX) {
+                Err(overflow)
+            } else if bytes > u128::from(limits.maximum_decoded_bytes()) {
+                Err(DecodeError::LimitExceeded {
+                    resource: Resource::DecodedBytes,
+                    limit: limits.maximum_decoded_bytes(),
+                    actual: bytes as u64,
+                })
+            } else {
+                Ok(())
+            };
+            assert_eq!(check_mct_scratch(count, &limits), expected);
+        }
+    }
 
     #[test]
     fn typed_image_admission_preserves_native_count_origin_shape_and_error_priority() {
