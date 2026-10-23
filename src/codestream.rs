@@ -3006,7 +3006,7 @@ impl<'a> Parser<'a> {
         let main_header_start = parser.position;
         let mut main_header_segments = 1_u64;
         let mut coding_style = None;
-        let mut quantization = None;
+        let mut qcd_segment = None;
         let mut coc_segments = [None; MAX_COMPONENTS];
         let mut qcc_segments = [None; MAX_COMPONENTS];
         let mut roi_shifts = RoiShifts::none();
@@ -3113,21 +3113,13 @@ impl<'a> Parser<'a> {
                     }
                     *slot = Some(segment);
                 }
-                QCD if quantization.is_some() => {
+                QCD if qcd_segment.is_some() => {
                     return Err(DecodeError::malformed(
                         parser.offset(segment.offset),
                         MalformedKind::InvalidMarkerOrder,
                     ));
                 }
-                QCD => {
-                    let style = coding_style.ok_or_else(|| {
-                        DecodeError::malformed(
-                            parser.offset(segment.offset),
-                            MalformedKind::InvalidMarkerOrder,
-                        )
-                    })?;
-                    quantization = Some(parser.parse_qcd(segment, style)?);
-                }
+                QCD => qcd_segment = Some(segment),
                 QCC => {
                     let (component, _) = parser.parse_component_index(
                         segment,
@@ -3289,8 +3281,9 @@ impl<'a> Parser<'a> {
 
         let coding_style = coding_style
             .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
-        let quantization = quantization
+        let qcd_segment = qcd_segment
             .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
+        let quantization = parser.parse_qcd(qcd_segment, coding_style)?;
         let mut component_coding_styles =
             ComponentCodingStyles::new(image_size.components, coding_style)?;
         let mut component = 0_u16;
@@ -9871,6 +9864,39 @@ mod tests {
             segment(COD, &[0, 0, 0, 1, 0, 0, 2, 2, 0, 1]),
             segment(QCD, &[0, 0]),
         ]
+    }
+
+    #[test]
+    fn main_header_quantization_may_precede_coding_style() {
+        let [cod, qcd] = baseline_headers();
+        let canonical = codestream_with_headers(1, &[cod.clone(), qcd.clone()], &[], &[]);
+        let reordered = codestream_with_headers(1, &[qcd, cod], &[], &[]);
+        let limits = ResourceLimits::default();
+        let canonical = parse_layout(&canonical, &limits).unwrap();
+        let reordered = parse_layout(&reordered, &limits).unwrap();
+        assert_eq!(reordered.info.coding_style, canonical.info.coding_style);
+        assert_eq!(reordered.info.quantization, canonical.info.quantization);
+    }
+
+    #[test]
+    fn reordered_main_header_quantization_is_still_validated() {
+        let [cod, qcd] = baseline_headers();
+        let duplicate = codestream_with_headers(1, &[qcd.clone(), cod.clone(), qcd], &[], &[]);
+        assert!(matches!(
+            parse_layout(&duplicate, &ResourceLimits::default()),
+            Err(DecodeError::MalformedInput {
+                kind: MalformedKind::InvalidMarkerOrder,
+                ..
+            })
+        ));
+        let malformed = codestream_with_headers(1, &[segment(QCD, &[0]), cod], &[], &[]);
+        assert!(matches!(
+            parse_layout(&malformed, &ResourceLimits::default()),
+            Err(DecodeError::MalformedInput {
+                kind: MalformedKind::InvalidMarkerLength,
+                ..
+            })
+        ));
     }
 
     #[test]
