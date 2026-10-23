@@ -1,5 +1,13 @@
 # Specification audit guide
 
+`part2_normalized_chroma_keys` names the actual raw metadata/precision/length
+admission and full key output. `part2_chroma_key_bytes` gives the big-endian
+value, while `part2_chroma_key_normalize` states masking, signed bias and exact
+rounded normalized units. The actual code shares the proved unsigned-color
+scalar; its failures are excluded by derived native admission/masking facts,
+not a caller-supplied validity premise. Loop-only byte bounds remain in proof
+support. Per-component descriptor preparation and opacity are separate work.
+
 `part2_register_layer` derives the actual geometry and zero initialization,
 then composes ordered row/column sampling through the actual pixel semantics.
 The complete source owner/descriptor/grids determine every error, output plane

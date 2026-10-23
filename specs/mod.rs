@@ -5560,6 +5560,44 @@ pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2La
 pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayer = (u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>);
 
+#[verifier::opaque]
+pub open spec fn part2_chroma_key_bytes(values: Seq<u8>, start: nat, count: nat) -> nat
+    recommends start + count <= values.len(),
+    decreases count,
+{
+    if count == 0 { 0 }
+    else { part2_chroma_key_bytes(values, start, (count - 1) as nat) * 256 + values[(start + count - 1) as int] as nat }
+}
+
+pub open spec fn part2_chroma_key_normalize(raw: nat, bits: u8, signed: bool) -> u16
+    recommends 0 < bits <= 38,
+{
+    let maximum = ((1u64 << bits) - 1) as u64;
+    let nominal = if signed {
+        ((raw as u64) & maximum) ^ (((maximum + 1) / 2) as u64)
+    } else { (raw as u64) & maximum };
+    (((nominal as nat) * 65535 + maximum as nat / 2) / maximum as nat) as u16
+}
+
+pub open spec fn part2_normalized_chroma_keys(values: Seq<u8>, channels: u8, depth: crate::jp2::ComponentBitDepth)
+    -> Result<Seq<u16>, crate::DecodeError>
+{
+    match depth {
+        crate::jp2::ComponentBitDepth::Variable => Err(crate::DecodeError::MalformedInput {
+            offset: 0, kind: crate::MalformedKind::MissingRequiredStructure,
+        }),
+        crate::jp2::ComponentBitDepth::Uniform { bits, signed } => {
+            if bits == 0 || bits > 38 { Err(part2_composition_error(false)) }
+            else {
+                let bytes = (bits as nat + 7) / 8;
+                if values.len() != bytes * channels as nat { Err(part2_composition_error(false)) }
+                else { Ok(Seq::new(channels as nat, |channel: int|
+                    part2_chroma_key_normalize(part2_chroma_key_bytes(values, (channel * bytes) as nat, bytes), bits, signed))) }
+            }
+        },
+    }
+}
+
 pub open spec fn part2_chroma_key_channel_matches(
     colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int, channel: int,
 ) -> bool {
