@@ -1267,11 +1267,16 @@ verus! {
     }
 
     #[verifier::inline]
+    spec fn owned_layer_view(layer: &OwnedLayer) -> crate::specs::Part2OwnedLayer {
+        (layer.width, layer.height, layer.color_space,
+            crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha))
+    }
+
+    #[verifier::inline]
     spec fn owned_layer_outcome(result: Result<OwnedLayer, DecodeError>) -> crate::specs::Part2OwnedLayerResult {
         match result {
             Err(error) => Err(error),
-            Ok(layer) => Ok((layer.width, layer.height, layer.color_space,
-                crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha))),
+            Ok(layer) => Ok(owned_layer_view(&layer)),
         }
     }
 
@@ -2042,7 +2047,16 @@ fn normalized_chroma_keys_for_components(
     Ok(keys)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, owned_layer_view(final(owned)))
+            == crate::specs::part2_apply_chroma_key(owned_layer_view(old(owned)), keys@),
+    )
+)]
 fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = owned_layer_view(owned); }
     if keys.len() != owned.colors.len() {
         return Err(invalid_layer());
     }
@@ -2052,7 +2066,13 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant pixel <= pixels,
+            invariant pixel <= pixels, alpha.len() == pixels,
+                owned_layer_view(owned) == input,
+                input == owned_layer_view(old(owned)),
+                keys.len() == input.3.len(),
+                crate::specs::part2_layer_area(input.0, input.1) == Ok(pixels),
+                forall|index: int| 0 <= index < pixel ==>
+                    alpha@[index] == crate::specs::part2_chroma_key_pixel(input.3, keys@, index),
             decreases pixels - pixel,
         )
     )]
@@ -2063,23 +2083,62 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
             verus_keep_ghost,
             verus_spec(
                 invariant color <= owned.colors.len(),
+                    owned_layer_view(owned) == input,
+                    keys.len() == input.3.len(),
+                    matches == crate::proofs::internal_specs::part2_chroma_key_prefix_matches(
+                        input.3, keys@, pixel as int, color as nat),
                 decreases owned.colors.len() - color,
             )
         )]
         while color < owned.colors.len() {
-            if owned
-                .colors
-                .get(color)
-                .and_then(|samples| samples.get(pixel))
-                != keys.get(color)
-            {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost previous = matches; }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(color < input.3.len());
+                assert(owned.colors@[color as int]@ == input.3[color as int]);
+            }
+            let sample = match owned.colors.get(color) {
+                Some(samples) => samples.get(pixel),
+                None => None,
+            };
+            let key = keys.get(color);
+            let matches_key = match (sample, key) {
+                (Some(sample), Some(key)) => *sample == *key,
+                (None, None) => true,
+                _ => false,
+            };
+            if !matches_key {
                 matches = false;
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(key.is_some());
+                if let Some(value) = key { assert(*value == keys@[color as int]); }
+                assert(sample.is_some() == (pixel < input.3[color as int].len()));
+                if let Some(value) = sample { assert(*value == input.3[color as int][pixel as int]); }
+                assert(matches_key == (pixel < input.3[color as int].len()
+                    && input.3[color as int][pixel as int] == keys@[color as int]));
+                assert(matches == (previous && matches_key));
+                crate::proofs::production_impl::production_chroma_key_prefix_step(
+                    input.3, keys@, pixel as int, color as nat);
+            }
             color = color.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_chroma_key_prefix_complete(input.3, keys@, pixel as int);
+            assert(crate::specs::part2_chroma_key_pixel(input.3, keys@, pixel as int)
+                == crate::specs::part2_chroma_key_alpha(matches));
         }
         *alpha.get_mut(pixel).ok_or_else(invalid_layer)? =
             crate::refinement::chroma_key_alpha(matches);
         pixel = pixel.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(alpha@ =~= Seq::new(pixels as nat, |index: int|
+            crate::specs::part2_chroma_key_pixel(input.3, keys@, index)));
     }
     owned.alpha = Some((alpha, false));
     Ok(())
@@ -3697,6 +3756,110 @@ mod tests {
         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    #[test]
+    fn chroma_key_preserves_raw_planes_and_replaces_alpha_at_exact_matches() {
+        let mut cases = 0;
+        for space in [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb] {
+            for width in 0..=2 {
+                for height in 0..=2 {
+                    let pixels = usize::try_from(width * height).unwrap();
+                    for channels in 0..=3 {
+                        for missing in 0..=channels {
+                            let colors = (0..channels)
+                                .map(|channel| {
+                                    (0..pixels.saturating_sub(usize::from(channel < missing)))
+                                        .map(|pixel| if pixel % 2 == 0 { 17 } else { u16::MAX })
+                                        .collect::<Vec<_>>()
+                                })
+                                .collect::<Vec<_>>();
+                            for key in [0, 17, u16::MAX] {
+                                for key_count in 0..=channels + 1 {
+                                    let keys = vec![key; key_count];
+                                    for prior_alpha in [
+                                        None,
+                                        Some((vec![], false)),
+                                        Some((vec![123, 456, 789], true)),
+                                    ] {
+                                        let mut layer = OwnedLayer {
+                                            width,
+                                            height,
+                                            color_space: space,
+                                            colors: colors.clone(),
+                                            alpha: prior_alpha.clone(),
+                                        };
+                                        let result = apply_chroma_key(&mut layer, &keys);
+                                        assert_eq!(layer.width, width);
+                                        assert_eq!(layer.height, height);
+                                        assert_eq!(layer.color_space, space);
+                                        assert_eq!(layer.colors, colors);
+                                        if key_count != channels {
+                                            assert_eq!(result, Err(invalid_layer()));
+                                            assert_eq!(layer.alpha, prior_alpha);
+                                        } else {
+                                            result.unwrap();
+                                            let transparent = (0..pixels)
+                                                .filter(|&pixel| {
+                                                    colors
+                                                        .iter()
+                                                        .all(|plane| plane.get(pixel) == Some(&key))
+                                                })
+                                                .collect::<std::collections::BTreeSet<_>>();
+                                            let expected = (0..pixels)
+                                                .map(|pixel| {
+                                                    if transparent.contains(&pixel) {
+                                                        0
+                                                    } else {
+                                                        u16::MAX
+                                                    }
+                                                })
+                                                .collect::<Vec<_>>();
+                                            assert_eq!(layer.alpha, Some((expected, false)));
+                                        }
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 6480);
+    }
+
+    #[test]
+    fn chroma_key_retains_zero_geometry_and_all_u16_key_values() {
+        for sample in 0..=u16::MAX {
+            for key in [sample, sample.wrapping_add(1)] {
+                let mut layer = OwnedLayer {
+                    width: 1,
+                    height: 1,
+                    color_space: ConvertedColorSpace::Srgb,
+                    colors: vec![vec![sample]],
+                    alpha: Some((vec![42], true)),
+                };
+                apply_chroma_key(&mut layer, &[key]).unwrap();
+                assert_eq!(
+                    layer.alpha,
+                    Some((vec![if sample == key { 0 } else { u16::MAX }], false))
+                );
+                assert_eq!(layer.colors, vec![vec![sample]]);
+            }
+        }
+        let mut layer = OwnedLayer {
+            width: u32::MAX,
+            height: 0,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![vec![]],
+            alpha: Some((vec![1, 2], true)),
+        };
+        apply_chroma_key(&mut layer, &[0]).unwrap();
+        assert_eq!(layer.alpha, Some((vec![], false)));
+        layer.height = u32::MAX;
+        assert_eq!(apply_chroma_key(&mut layer, &[]), Err(invalid_layer()));
+        assert_eq!(layer.alpha, Some((vec![], false)));
+    }
 
     fn visit_channel_permutations(
         order: &mut [usize],

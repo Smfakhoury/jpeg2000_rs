@@ -2054,3 +2054,32 @@ contracts remain part of the trusted computing base.
 - Run the exact-root verifier and ordinary Rust tests.
 - Review [supported-profile limitations](SUPPORTED.md) before strengthening
   public claims.
+## Complete native general-layer chroma-key state
+
+The actual `apply_chroma_key` producer now has an unconditional Result and
+whole `OwnedLayer` relation to `part2_apply_chroma_key`. Key-count rejection
+precedes checked area and preserves every input field. Success preserves
+geometry, color space and every raw color plane, replacing any prior alpha
+with the exact key-match mask and a straight-alpha flag. Ragged or missing
+samples are nonmatches, zero channels match vacuously and zero-area layers
+retain their native behavior; no normalized-layer premise is introduced.
+
+The real source lookup and value comparison use explicit matches so their
+semantics are visible to the pinned verifier without a new trusted adapter.
+They preserve the original optional-value comparison. Loop-prefix predicates
+live in proof support, while the auditable model describes per-channel and
+whole-pixel meaning. Both directions of the quantified prefix relation are
+proved with shared explicit triggers.
+
+Independent native tests cover 6,480 raw layer/key/old-alpha contexts,
+131,072 all-u16 matching/nonmatching sample-key pairs, zero geometry and
+key-count-before-large-allocation rejection. One finite exact inventory recipe
+binds the complete final owner, original owner and actual keys; adversarial
+mutations retain all existing rejection checks and require the real
+`decode_general_compositing_layer` consumer.
+
+This is one bounded F2 producer. The separate opacity chroma-key path rejects
+missing samples rather than treating them as nonmatches; it is not silently
+changed or included here. Raw-key normalization, registration/sampling,
+opacity and complete F2/F4/F8 composition remain separate work. Whole-root
+and hosted qualification must match the delivered source before acceptance.

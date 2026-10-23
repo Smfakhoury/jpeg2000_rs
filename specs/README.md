@@ -1,5 +1,14 @@
 # Specification audit guide
 
+The F2 `part2_apply_chroma_key` model describes the actual general-layer
+producer over the complete raw owner, not a supplied normalized image:
+exact key cardinality, checked native area, per-channel equality and final-only
+straight-alpha replacement. Missing samples are nonmatches; empty channel sets
+match vacuously. The distinct strict opacity path is not claimed here.
+Loop-prefix quantifiers and their inductions remain in proof support rather
+than the auditor-facing semantics. Registration, raw-key normalization and
+opacity composition remain open F2 work.
+
 The native MCT owner views preserve every raw array field and all wavelet,
 collection and stage fields, including complete ordered input/output lists,
 None versus Some arrays/wavelets and ordered stage/collection sequences.

@@ -4,6 +4,13 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn part2_chroma_key_prefix_matches(
+    colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int, count: nat,
+) -> bool {
+    forall|channel: int| 0 <= channel < count ==>
+        #[trigger] crate::specs::part2_chroma_key_channel_matches(colors, keys, pixel, channel)
+}
+
 pub open spec fn color_crop_ready(
     image: crate::specs::ColorImageModel, x: u32, y: u32, width: u32, height: u32, x1: u32, y1: u32, count: usize,
 ) -> bool {

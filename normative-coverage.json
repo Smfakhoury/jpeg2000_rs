@@ -4,6 +4,30 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-layer-chroma-key",
+      "topic": "Complete actual general compositing-layer chroma-key Result and whole raw OwnedLayer state: exact key-count rejection, checked area, ragged/missing color samples as nonmatches, vacuous zero-channel matches, zero-area behavior, original metadata/colors and final-only replacement of prior alpha with straight alpha. This is the actual apply_chroma_key producer consumed by decode_general_compositing_layer, not the distinct strict opacity path, raw-key normalization, registration, all F2, F4 or F8.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "decode_general_compositing_layer"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_apply_chroma_key"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_key_channel_matches"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_key_pixel"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "apply_chroma_key"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "owned_layer_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_key_prefix_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_key_prefix_complete"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "chroma_key_preserves_raw_planes_and_replaces_alpha_at_exact_matches"},
+        {"path": "src/jpx.rs", "symbol": "chroma_key_retains_zero_geometry_and_all_u16_key_values"}
+      ]
+    },
+    {
       "id": "part2-complete-native-coefficient-component-reconstruction",
       "topic": "Complete actual supplied-coefficient reconstruction: raw plan/style/first-match kernel lookup, ROI/quantization and standard/arbitrary inverse preparation, all actual MCT collection kinds and reverse stages, owner-buffer alias joins, standard RCT/ICT, and full/selected assembly. Complete Result/deep mutable state/work/native-limit relations have no supplied plan-success, normalized-layout, adequate-budget, trace or decoder-outcome premise. Public standalone APIs are explicit proof support, not fabricated internal consumers. Computational selected native scope, not compressed parser-to-pixel or normative/official-vector conformance.",
       "implementation_refs": [

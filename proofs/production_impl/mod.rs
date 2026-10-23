@@ -32,6 +32,49 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_chroma_key_prefix_step(
+    colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int, count: nat,
+)
+    requires count < colors.len(),
+    ensures crate::proofs::internal_specs::part2_chroma_key_prefix_matches(colors, keys, pixel, count + 1)
+        == (crate::proofs::internal_specs::part2_chroma_key_prefix_matches(colors, keys, pixel, count)
+            && 0 <= pixel < colors[count as int].len() && count < keys.len()
+            && colors[count as int][pixel] == keys[count as int]),
+{
+    reveal(crate::proofs::internal_specs::part2_chroma_key_prefix_matches);
+    let prefix = crate::proofs::internal_specs::part2_chroma_key_prefix_matches(colors, keys, pixel, count);
+    let next = crate::proofs::internal_specs::part2_chroma_key_prefix_matches(colors, keys, pixel, count + 1);
+    let current = crate::specs::part2_chroma_key_channel_matches(colors, keys, pixel, count as int);
+    if prefix && current {
+        assert forall|channel: int| 0 <= channel < count + 1 implies
+            #[trigger] crate::specs::part2_chroma_key_channel_matches(colors, keys, pixel, channel) by {
+            if channel < count {
+                assert(crate::specs::part2_chroma_key_channel_matches(colors, keys, pixel, channel));
+            } else {
+                assert(channel == count);
+            }
+        }
+    } else if next {
+        assert forall|channel: int| 0 <= channel < count implies
+            #[trigger] crate::specs::part2_chroma_key_channel_matches(colors, keys, pixel, channel) by {
+            assert(0 <= channel < count + 1);
+        }
+        assert(prefix);
+        assert(current);
+        assert(false);
+    }
+}
+
+pub proof fn production_chroma_key_prefix_complete(colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int)
+    ensures crate::specs::part2_chroma_key_pixel(colors, keys, pixel)
+        == if crate::proofs::internal_specs::part2_chroma_key_prefix_matches(colors, keys, pixel, colors.len()) {
+            0u16
+        } else { u16::MAX },
+{
+    reveal(crate::proofs::internal_specs::part2_chroma_key_prefix_matches);
+    reveal(crate::specs::part2_chroma_key_pixel);
+}
+
 pub proof fn production_reconstruct_components_empty(
     initial: Seq<crate::specs::Part1AssemblyTile>, plans: Seq<crate::specs::Part1PreparePlan>,
     precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, styles: crate::codestream::ComponentCodingStyles,

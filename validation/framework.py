@@ -782,6 +782,14 @@ _RECONSTRUCTION_PROVED_BOUNDARY_APIS = frozenset({
     ("src/decode.rs", "decode_progression_prepared_image"),
 })
 
+_LAYER_STATE_CONTRACTS = {
+    ("src/jpx.rs", "apply_chroma_key"): (
+        "part2_apply_chroma_key", r"\1",
+        _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
+        _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*keys\s*@",
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1284,6 +1292,7 @@ def validate_normative_coverage(
                 or _PACKET_PROGRESSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]
