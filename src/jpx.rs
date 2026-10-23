@@ -2011,21 +2011,68 @@ fn register_samples(
     Ok(output)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, final(keys)@, *final(offset)) == crate::specs::part2_append_component_key(
+            values@, descriptor, old(keys)@, *old(offset)),
+    )
+)]
+fn append_component_chroma_key(
+    values: &[u8],
+    descriptor: (u8, bool),
+    keys: &mut Vec<u16>,
+    offset: &mut usize,
+) -> Result<(), DecodeError> {
+    let (bits, signed) = descriptor;
+    let bytes = usize::from(bits.saturating_add(7) / 8);
+    let end = offset.checked_add(bytes).ok_or_else(arithmetic_overflow)?;
+    let key = normalized_chroma_keys(
+        values.get(*offset..end).ok_or_else(invalid_layer)?,
+        1,
+        ComponentBitDepth::Uniform { bits, signed },
+    )?;
+    keys.push(*key.first().ok_or_else(invalid_layer)?);
+    *offset = end;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::normalized_plane_result(result)
+            == crate::specs::part2_normalized_component_chroma_keys(values@, descriptors@),
+    )
+)]
 fn normalized_chroma_keys_for_components(
     values: &[u8],
     descriptors: &[(u8, bool)],
 ) -> Result<Vec<u16>, DecodeError> {
     let mut expected = 0_usize;
     let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_chroma_descriptors_empty(descriptors@); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= descriptors.len(),
+                crate::specs::part2_chroma_descriptor_bytes(descriptors@, index as nat) == Ok(expected),
             decreases descriptors.len() - index,
         )
     )]
     while index < descriptors.len() {
         let bits = descriptors.get(index).ok_or_else(invalid_layer)?.0;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_chroma_descriptors_step(descriptors@, index as nat);
+            if bits == 0 || bits > 38 {
+                crate::proofs::production_impl::production_chroma_descriptors_error(
+                    descriptors@, index as nat + 1, descriptors@.len());
+            } else if expected as nat + (bits as nat + 7) / 8 > usize::MAX as nat {
+                crate::proofs::production_impl::production_chroma_descriptors_error(
+                    descriptors@, index as nat + 1, descriptors@.len());
+            }
+        }
         if bits == 0 || bits > 38 {
             return Err(invalid_layer());
         }
@@ -2040,24 +2087,36 @@ fn normalized_chroma_keys_for_components(
     let mut keys = Vec::with_capacity(descriptors.len());
     let mut offset = 0_usize;
     index = 0;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_component_keys_empty(values@, descriptors@); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= descriptors.len(),
+                crate::specs::part2_chroma_descriptor_bytes(descriptors@, descriptors@.len()) == Ok(expected),
+                values.len() == expected,
+                crate::specs::part2_component_keys_prefix(values@, descriptors@, index as nat)
+                    == (Ok(()), keys@, offset),
             decreases descriptors.len() - index,
         )
     )]
     while index < descriptors.len() {
-        let (bits, signed) = *descriptors.get(index).ok_or_else(invalid_layer)?;
-        let bytes = usize::from(bits.saturating_add(7) / 8);
-        let end = offset.checked_add(bytes).ok_or_else(arithmetic_overflow)?;
-        let key = normalized_chroma_keys(
-            values.get(offset..end).ok_or_else(invalid_layer)?,
-            1,
-            ComponentBitDepth::Uniform { bits, signed },
-        )?;
-        keys.push(*key.first().ok_or_else(invalid_layer)?);
-        offset = end;
+        let descriptor = *descriptors.get(index).ok_or_else(invalid_layer)?;
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_component_keys_step(values@, descriptors@, index as nat); }
+        let result = append_component_chroma_key(values, descriptor, &mut keys, &mut offset);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_component_keys_prefix(values@, descriptors@, index as nat + 1)
+                    == (Err(error), keys@, offset));
+                crate::proofs::production_impl::production_component_keys_error(
+                    values@, descriptors@, index as nat + 1, descriptors@.len());
+            } else {
+                crate::proofs::production_impl::production_mct_unit_result(result);
+            }
+        }
+        result?;
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(keys)
@@ -2071,6 +2130,21 @@ fn normalized_chroma_keys_for_components(
     )
 )]
 fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeError> {
+    apply_chroma_key_with_policy(owned, keys, false)
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, owned_layer_view(final(owned)))
+            == crate::specs::part2_apply_chroma_key_policy(owned_layer_view(old(owned)), keys@, reject_missing),
+    )
+)]
+fn apply_chroma_key_with_policy(
+    owned: &mut OwnedLayer,
+    keys: &[u16],
+    reject_missing: bool,
+) -> Result<(), DecodeError> {
     #[cfg(verus_keep_ghost)]
     proof_decl! { let ghost input = owned_layer_view(owned); }
     if keys.len() != owned.colors.len() {
@@ -2087,6 +2161,7 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
                 input == owned_layer_view(old(owned)),
                 keys.len() == input.3.len(),
                 crate::specs::part2_layer_area(input.0, input.1) == Ok(pixels),
+                reject_missing ==> crate::specs::part2_chroma_sources_cover(input.3, pixel as nat),
                 forall|index: int| 0 <= index < pixel ==>
                     alpha@[index] == crate::specs::part2_chroma_key_pixel(input.3, keys@, index),
             decreases pixels - pixel,
@@ -2100,7 +2175,12 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
             verus_spec(
                 invariant color <= owned.colors.len(),
                     owned_layer_view(owned) == input,
+                    input == owned_layer_view(old(owned)),
                     keys.len() == input.3.len(),
+                    pixel < pixels,
+                    crate::specs::part2_layer_area(input.0, input.1) == Ok(pixels),
+                    reject_missing ==> crate::proofs::internal_specs::part2_chroma_cover_prefix(
+                        input.3, pixel as nat + 1, color as nat),
                     matches == crate::proofs::internal_specs::part2_chroma_key_prefix_matches(
                         input.3, keys@, pixel as int, color as nat),
                 decreases owned.colors.len() - color,
@@ -2119,6 +2199,22 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
                 None => None,
             };
             let key = keys.get(color);
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(key.is_some());
+                assert(sample.is_some() == (pixel < input.3[color as int].len()));
+            }
+            if reject_missing && sample.is_none() {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(!crate::specs::part2_chroma_plane_has_samples(input.3[color as int], pixels as nat));
+                    if crate::specs::part2_chroma_sources_cover(input.3, pixels as nat) {
+                        assert(crate::specs::part2_chroma_plane_has_samples(input.3[color as int], pixels as nat));
+                        assert(false);
+                    }
+                }
+                return Err(invalid_layer());
+            }
             let matches_key = match (sample, key) {
                 (Some(sample), Some(key)) => *sample == *key,
                 (None, None) => true,
@@ -2138,12 +2234,19 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
                 assert(matches == (previous && matches_key));
                 crate::proofs::production_impl::production_chroma_key_prefix_step(
                     input.3, keys@, pixel as int, color as nat);
+                if reject_missing {
+                    assert(crate::specs::part2_chroma_plane_has_samples(input.3[color as int], pixel as nat + 1));
+                    crate::proofs::production_impl::production_chroma_cover_step(input.3, pixel as nat + 1, color as nat);
+                }
             }
             color = color.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         #[cfg(verus_keep_ghost)]
         proof! {
             crate::proofs::production_impl::production_chroma_key_prefix_complete(input.3, keys@, pixel as int);
+            if reject_missing {
+                crate::proofs::production_impl::production_chroma_cover_complete(input.3, pixel as nat + 1);
+            }
             assert(crate::specs::part2_chroma_key_pixel(input.3, keys@, pixel as int)
                 == crate::specs::part2_chroma_key_alpha(matches));
         }
@@ -2556,6 +2659,30 @@ fn register_layer(
     })
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, owned_layer_view(final(owned))) == crate::specs::part2_set_layer_alpha_mode(
+            owned_layer_view(old(owned)), premultiplied, offset),
+    )
+)]
+fn set_layer_alpha_mode(
+    owned: &mut OwnedLayer,
+    premultiplied: bool,
+    offset: u64,
+) -> Result<(), DecodeError> {
+    match owned.alpha.as_mut() {
+        Some(alpha) => {
+            alpha.1 = premultiplied;
+            Ok(())
+        }
+        None => Err(DecodeError::MalformedInput {
+            offset,
+            kind: MalformedKind::MissingRequiredStructure,
+        }),
+    }
+}
+
 fn apply_layer_opacity(
     file: &Jp2File<'_>,
     layer: &CompositingLayer<'_>,
@@ -2615,13 +2742,8 @@ fn apply_layer_opacity(
                     y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
                 }
                 owned.alpha = Some((alpha, premultiplied));
-            } else if let Some(alpha) = owned.alpha.as_mut() {
-                alpha.1 = premultiplied;
             } else {
-                return Err(DecodeError::malformed(
-                    layer.box_header().offset(),
-                    MalformedKind::MissingRequiredStructure,
-                ));
+                set_layer_alpha_mode(owned, premultiplied, layer.box_header().offset())?;
             }
         }
         LayerOpacity::ChromaKey { channels, values } => {
@@ -2637,63 +2759,40 @@ fn apply_layer_opacity(
                 .and_then(|association| association.parsed_header())
                 .unwrap_or(file.header());
             let keys = normalized_chroma_keys(values, *channels, header.image.bit_depth)?;
-            let pixels = checked_area(owned.width, owned.height)?;
-            let mut alpha = vec![u16::MAX; pixels];
-            let mut pixel = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant pixel <= pixels,
-                    decreases pixels - pixel,
-                )
-            )]
-            while pixel < pixels {
-                let mut matches = true;
-                let mut color = 0_usize;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant color <= owned.colors.len(),
-                        decreases owned.colors.len() - color,
-                    )
-                )]
-                while color < owned.colors.len() {
-                    let sample = owned
-                        .colors
-                        .get(color)
-                        .and_then(|samples| samples.get(pixel))
-                        .ok_or_else(invalid_layer)?;
-                    let key = keys.get(color).ok_or_else(invalid_layer)?;
-                    if sample != key {
-                        matches = false;
-                    }
-                    color = color.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                *alpha.get_mut(pixel).ok_or_else(invalid_layer)? =
-                    crate::refinement::chroma_key_alpha(matches);
-                pixel = pixel.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            owned.alpha = Some((alpha, false));
+            apply_chroma_key_with_policy(owned, &keys, true)?;
         }
     }
     Ok(())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::normalized_plane_result(result)
+            == crate::specs::part2_normalized_chroma_keys(values@, channels, bit_depth),
+    )
+)]
 fn normalized_chroma_keys(
     values: &[u8],
     channels: u8,
     bit_depth: ComponentBitDepth,
 ) -> Result<Vec<u16>, DecodeError> {
     let ComponentBitDepth::Uniform { bits, signed } = bit_depth else {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::MissingRequiredStructure,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::MissingRequiredStructure,
+        });
     };
     if bits == 0 || bits > 38 {
         return Err(invalid_layer());
     }
     let bytes = usize::from(bits.saturating_add(7) / 8);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1 <= bytes <= 5);
+        assert(bytes as nat * channels as nat <= 1275) by(nonlinear_arith)
+            requires bytes <= 5, channels <= 255;
+    }
     if values.len()
         != bytes
             .checked_mul(usize::from(channels))
@@ -2703,68 +2802,103 @@ fn normalized_chroma_keys(
     }
     let mut keys = Vec::with_capacity(usize::from(channels));
     let mut channel = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1 <= bytes <= 5);
+        reveal_with_fuel(crate::specs::part2_chroma_key_bytes, 1);
+        reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 1);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant channel <= channels as usize,
+            invariant channel <= channels as usize, keys.len() == channel,
+                bit_depth == (ComponentBitDepth::Uniform { bits, signed }),
+                0 < bits <= 38, 1 <= bytes <= 5,
+                bytes as nat == (bits as nat + 7) / 8,
+                values.len() == bytes as nat * channels as nat,
+                forall|index: int| 0 <= index < channel ==> keys@[index]
+                    == crate::specs::part2_chroma_key_normalize(crate::specs::part2_chroma_key_bytes(
+                        values@, (index * bytes) as nat, bytes as nat), bits, signed),
             decreases channels as usize - channel,
         )
     )]
     while channel < usize::from(channels) {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(channel as nat * bytes as nat <= 1275) by(nonlinear_arith)
+                requires channel < channels as usize, channels <= 255, bytes <= 5;
+        }
         let start = channel.checked_mul(bytes).ok_or_else(arithmetic_overflow)?;
         let mut raw = 0_u64;
         let mut byte = 0_usize;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(start as nat + bytes as nat <= values.len()) by(nonlinear_arith)
+                requires start as nat == channel as nat * bytes as nat,
+                    channel < channels as usize, bytes > 0,
+                    values.len() == bytes as nat * channels as nat;
+            reveal_with_fuel(crate::specs::part2_chroma_key_bytes, 1);
+            reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 1);
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant byte <= bytes,
+                invariant byte <= bytes, 1 <= bytes <= 5,
+                    0 < bits <= 38, bit_depth == (ComponentBitDepth::Uniform { bits, signed }),
+                    bytes as nat == (bits as nat + 7) / 8,
+                    channel < channels as usize, keys.len() == channel,
+                    values.len() == bytes as nat * channels as nat,
+                    start as nat == channel as nat * bytes as nat,
+                    start as nat + bytes as nat <= values.len(),
+                    forall|index: int| 0 <= index < channel ==> keys@[index]
+                        == crate::specs::part2_chroma_key_normalize(crate::specs::part2_chroma_key_bytes(
+                            values@, (index * bytes) as nat, bytes as nat), bits, signed),
+                    raw as nat == crate::specs::part2_chroma_key_bytes(values@, start as nat, byte as nat),
+                    raw as nat <= crate::proofs::internal_specs::part2_chroma_byte_bound(byte as nat),
                 decreases bytes - byte,
             )
         )]
         while byte < bytes {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_chroma_byte_bound(byte as nat);
+                crate::proofs::production_impl::production_chroma_bytes_step(values@, start as nat, byte as nat);
+            }
+            raw = raw.checked_mul(256).ok_or_else(arithmetic_overflow)?;
+            let position = start.checked_add(byte).ok_or_else(arithmetic_overflow)?;
+            let sample = *values.get(position).ok_or_else(arithmetic_overflow)?;
             raw = raw
-                .checked_mul(256)
-                .and_then(|value| {
-                    values
-                        .get(start.checked_add(byte)?)
-                        .and_then(|sample| value.checked_add(u64::from(*sample)))
-                })
+                .checked_add(u64::from(sample))
                 .ok_or_else(arithmetic_overflow)?;
             byte = byte.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let mut mask = 0_u64;
-        let mut mask_bit = 0_u8;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant mask_bit <= bits,
-                decreases bits - mask_bit,
-            )
-        )]
-        while mask_bit < bits {
-            mask = mask
-                .checked_mul(2)
-                .and_then(|value| value.checked_add(1))
-                .ok_or_else(arithmetic_overflow)?;
-            mask_bit = mask_bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::spec_properties::color_precision_binary_bounds(bits); }
+        let mask = (1_u64 << bits)
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?;
         if mask == 0 {
             return Err(invalid_layer());
         }
-        raw &= mask;
+        let masked = raw & mask;
         let biased = if signed {
             let sign_bit = mask.checked_add(1).ok_or_else(arithmetic_overflow)? / 2;
-            raw ^ sign_bit
+            masked ^ sign_bit
         } else {
-            raw
+            masked
         };
-        let normalized = u128::from(biased)
-            .checked_mul(u128::from(u16::MAX))
-            .and_then(|value| value.checked_add(u128::from(mask) / 2))
-            .ok_or_else(arithmetic_overflow)?
-            / u128::from(mask);
-        keys.push(u16::try_from(normalized).map_err(|_| arithmetic_overflow())?);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_chroma_normalization(raw, bits, signed);
+        }
+        keys.push(crate::color::normalize_unsigned(biased, bits)?);
         channel = channel.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(keys@ =~= Seq::new(channels as nat, |index: int|
+            crate::specs::part2_chroma_key_normalize(crate::specs::part2_chroma_key_bytes(
+                values@, (index * bytes) as nat, bytes as nat), bits, signed)));
     }
     Ok(keys)
 }
@@ -4043,6 +4177,387 @@ mod tests {
         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    fn independent_chroma_normalization(
+        values: &[u8],
+        channels: u8,
+        depth: ComponentBitDepth,
+    ) -> Result<Vec<u16>, DecodeError> {
+        let ComponentBitDepth::Uniform { bits, signed } = depth else {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::MissingRequiredStructure,
+            });
+        };
+        if bits == 0 || bits > 38 {
+            return Err(invalid_layer());
+        }
+        let bytes = usize::from(bits).div_ceil(8);
+        if values.len() != bytes * usize::from(channels) {
+            return Err(invalid_layer());
+        }
+        let modulus = 1_u128 << bits;
+        let maximum = modulus - 1;
+        Ok(values
+            .chunks_exact(bytes)
+            .map(|chunk| {
+                let raw = chunk
+                    .iter()
+                    .fold(0_u128, |value, &byte| value * 256 + u128::from(byte));
+                let residue = raw % modulus;
+                let nominal = if signed {
+                    (residue + modulus / 2) % modulus
+                } else {
+                    residue
+                };
+                u16::try_from((nominal * 65_535 + maximum / 2) / maximum).unwrap()
+            })
+            .collect())
+    }
+
+    #[test]
+    fn opacity_chroma_policy_preserves_strict_rejection_and_general_nonmatches() {
+        let mut cases = 0;
+        for space in [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb] {
+            for width in 0..=2 {
+                for height in 0..=2 {
+                    let pixels = usize::try_from(width * height).unwrap();
+                    for channels in 0..=3 {
+                        for missing in 0..=channels {
+                            let colors = (0..channels)
+                                .map(|channel| {
+                                    (0..pixels.saturating_sub(usize::from(channel < missing)))
+                                        .map(|pixel| if pixel % 2 == 0 { 17 } else { u16::MAX })
+                                        .collect::<Vec<_>>()
+                                })
+                                .collect::<Vec<_>>();
+                            for key in [0, 17, u16::MAX] {
+                                for key_count in 0..=channels + 1 {
+                                    let keys = vec![key; key_count];
+                                    for prior_alpha in
+                                        [None, Some((vec![], false)), Some((vec![123, 456], true))]
+                                    {
+                                        for reject_missing in [false, true] {
+                                            let mut layer = OwnedLayer {
+                                                width,
+                                                height,
+                                                color_space: space,
+                                                colors: colors.clone(),
+                                                alpha: prior_alpha.clone(),
+                                            };
+                                            let expected_error = key_count != channels
+                                                || (reject_missing
+                                                    && colors
+                                                        .iter()
+                                                        .any(|plane| plane.len() < pixels));
+                                            let result = apply_chroma_key_with_policy(
+                                                &mut layer,
+                                                &keys,
+                                                reject_missing,
+                                            );
+                                            assert_eq!(
+                                                (layer.width, layer.height, layer.color_space),
+                                                (width, height, space)
+                                            );
+                                            assert_eq!(layer.colors, colors);
+                                            if expected_error {
+                                                assert_eq!(result, Err(invalid_layer()));
+                                                assert_eq!(layer.alpha, prior_alpha);
+                                            } else {
+                                                result.unwrap();
+                                                let expected = (0..pixels)
+                                                    .map(|pixel| {
+                                                        if colors.iter().all(|plane| {
+                                                            plane.get(pixel) == Some(&key)
+                                                        }) {
+                                                            0
+                                                        } else {
+                                                            u16::MAX
+                                                        }
+                                                    })
+                                                    .collect::<Vec<_>>();
+                                                assert_eq!(layer.alpha, Some((expected, false)));
+                                            }
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 12960);
+        let mut layer = OwnedLayer {
+            width: 1,
+            height: 1,
+            color_space: ConvertedColorSpace::Srgb,
+            colors: vec![vec![17], vec![]],
+            alpha: Some((vec![19], true)),
+        };
+        assert_eq!(
+            apply_chroma_key_with_policy(&mut layer, &[0, 0], true),
+            Err(invalid_layer())
+        );
+        assert_eq!(layer.alpha, Some((vec![19], true)));
+    }
+
+    #[test]
+    fn local_alpha_mode_changes_only_representation_or_reports_actual_offset() {
+        let colors = [
+            vec![],
+            vec![vec![]],
+            vec![vec![7], vec![11, 13], vec![], vec![17]],
+        ];
+        let mut cases = 0;
+        for width in [0, 1, u32::MAX] {
+            for height in [0, 2, u32::MAX] {
+                for space in [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb] {
+                    for planes in &colors {
+                        for prior_alpha in [
+                            None,
+                            Some((vec![], false)),
+                            Some((vec![1, u16::MAX], false)),
+                            Some((vec![3, 5, 7], true)),
+                        ] {
+                            for premultiplied in [false, true] {
+                                for offset in [0, 7, u64::MAX] {
+                                    let mut layer = OwnedLayer {
+                                        width,
+                                        height,
+                                        color_space: space,
+                                        colors: planes.clone(),
+                                        alpha: prior_alpha.clone(),
+                                    };
+                                    let result =
+                                        set_layer_alpha_mode(&mut layer, premultiplied, offset);
+                                    assert_eq!(
+                                        (layer.width, layer.height, layer.color_space),
+                                        (width, height, space)
+                                    );
+                                    assert_eq!(layer.colors, *planes);
+                                    match &prior_alpha {
+                                        None => {
+                                            assert_eq!(
+                                                result,
+                                                Err(DecodeError::MalformedInput {
+                                                    offset,
+                                                    kind: MalformedKind::MissingRequiredStructure
+                                                })
+                                            );
+                                            assert_eq!(layer.alpha, None);
+                                        }
+                                        Some((samples, _)) => {
+                                            result.unwrap();
+                                            assert_eq!(
+                                                layer.alpha,
+                                                Some((samples.clone(), premultiplied))
+                                            );
+                                        }
+                                    }
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1296);
+    }
+
+    #[test]
+    fn component_chroma_preparation_preserves_descriptor_before_payload_validation() {
+        let choices = [0, 1, 7, 8, 9, 16, 31, 32, 38, 39, u8::MAX]
+            .into_iter()
+            .flat_map(|bits| [(bits, false), (bits, true)])
+            .collect::<Vec<_>>();
+        let mut descriptors = vec![vec![]];
+        for &first in &choices {
+            descriptors.push(vec![first]);
+            for &second in &choices {
+                descriptors.push(vec![first, second]);
+            }
+        }
+        let mut cases = 0;
+        for description in descriptors {
+            let expected_length = description
+                .iter()
+                .map(|&(bits, _)| usize::from(bits).div_ceil(8))
+                .sum::<usize>();
+            for pattern in 0..3 {
+                for length in [
+                    0,
+                    expected_length.saturating_sub(1),
+                    expected_length,
+                    expected_length + 1,
+                ] {
+                    let values = (0..length)
+                        .map(|index| match pattern {
+                            0 => 0,
+                            1 => u8::MAX,
+                            _ => (index * 19 + 5) as u8,
+                        })
+                        .collect::<Vec<_>>();
+                    let expected = (|| -> Result<Vec<u16>, DecodeError> {
+                        if description.iter().any(|&(bits, _)| bits == 0 || bits > 38) {
+                            return Err(invalid_layer());
+                        }
+                        if length != expected_length {
+                            return Err(invalid_layer());
+                        }
+                        let mut result = vec![];
+                        let mut cursor = 0;
+                        for &(bits, signed) in &description {
+                            let end = cursor + usize::from(bits).div_ceil(8);
+                            let keys = independent_chroma_normalization(
+                                &values[cursor..end],
+                                1,
+                                ComponentBitDepth::Uniform { bits, signed },
+                            )?;
+                            result.extend(keys);
+                            cursor = end;
+                        }
+                        Ok(result)
+                    })();
+                    assert_eq!(
+                        normalized_chroma_keys_for_components(&values, &description),
+                        expected
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 6084);
+    }
+
+    #[test]
+    fn component_chroma_append_keeps_keys_and_offset_on_every_first_error() {
+        let mut cases = 0;
+        for length in 0..=6 {
+            let values = (0..length)
+                .map(|index| (index * 13 + 7) as u8)
+                .collect::<Vec<_>>();
+            for bits in [0, 1, 8, 9, 38, 39, u8::MAX] {
+                for signed in [false, true] {
+                    for initial_offset in [0, 1, 2, usize::MAX - 1, usize::MAX] {
+                        for initial_keys in [vec![], vec![17], vec![19, 23]] {
+                            let mut expected_keys = initial_keys.clone();
+                            let mut expected_offset = initial_offset;
+                            let expected = (|| {
+                                let bytes = usize::from(bits.saturating_add(7) / 8);
+                                let end = initial_offset
+                                    .checked_add(bytes)
+                                    .ok_or_else(arithmetic_overflow)?;
+                                let data =
+                                    values.get(initial_offset..end).ok_or_else(invalid_layer)?;
+                                let normalized = independent_chroma_normalization(
+                                    data,
+                                    1,
+                                    ComponentBitDepth::Uniform { bits, signed },
+                                )?;
+                                expected_keys.push(*normalized.first().ok_or_else(invalid_layer)?);
+                                expected_offset = end;
+                                Ok(())
+                            })();
+                            let mut keys = initial_keys;
+                            let mut offset = initial_offset;
+                            assert_eq!(
+                                append_component_chroma_key(
+                                    &values,
+                                    (bits, signed),
+                                    &mut keys,
+                                    &mut offset
+                                ),
+                                expected
+                            );
+                            assert_eq!(keys, expected_keys);
+                            assert_eq!(offset, expected_offset);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1470);
+    }
+
+    #[test]
+    fn raw_chroma_normalization_preserves_all_depth_length_and_channel_frontiers() {
+        let mut cases = 0;
+        for bits in 0..=u8::MAX {
+            for signed in [false, true] {
+                for channels in [0, 1, 2, 3, u8::MAX] {
+                    let expected_length = usize::from(bits).div_ceil(8) * usize::from(channels);
+                    for pattern in 0..3 {
+                        for length in [
+                            expected_length.saturating_sub(1),
+                            expected_length,
+                            expected_length + 1,
+                        ] {
+                            let values = (0..length)
+                                .map(|index| match pattern {
+                                    0 => 0,
+                                    1 => u8::MAX,
+                                    _ => (index * 17 + 3) as u8,
+                                })
+                                .collect::<Vec<_>>();
+                            let depth = ComponentBitDepth::Uniform { bits, signed };
+                            assert_eq!(
+                                normalized_chroma_keys(&values, channels, depth),
+                                independent_chroma_normalization(&values, channels, depth)
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 23040);
+        for channels in [0, 1, u8::MAX] {
+            for values in [vec![], vec![0], vec![255; 3]] {
+                assert_eq!(
+                    normalized_chroma_keys(&values, channels, ComponentBitDepth::Variable),
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::MissingRequiredStructure
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn raw_chroma_normalization_matches_all_u16_words_and_38_bit_padding() {
+        for raw in 0..=u16::MAX {
+            for signed in [false, true] {
+                let values = raw.to_be_bytes();
+                let depth = ComponentBitDepth::Uniform { bits: 16, signed };
+                assert_eq!(
+                    normalized_chroma_keys(&values, 1, depth),
+                    independent_chroma_normalization(&values, 1, depth)
+                );
+            }
+        }
+        for raw in [
+            0_u64,
+            1,
+            (1 << 37) - 1,
+            1 << 37,
+            (1 << 38) - 1,
+            (1 << 40) - 1,
+        ] {
+            for signed in [false, true] {
+                let bytes = raw.to_be_bytes();
+                let depth = ComponentBitDepth::Uniform { bits: 38, signed };
+                assert_eq!(
+                    normalized_chroma_keys(&bytes[3..], 1, depth),
+                    independent_chroma_normalization(&bytes[3..], 1, depth)
+                );
+            }
+        }
+    }
 
     #[test]
     fn complete_registration_matches_independent_wide_raster_and_representation() {

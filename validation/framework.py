@@ -850,6 +850,39 @@ _LAYER_TRAVERSAL_CONTRACTS = {
     ),
 }
 
+_LAYER_KEY_CONTRACTS = {
+    ("src/jpx.rs", "normalized_chroma_keys"): (
+        "part2_normalized_chroma_keys", _coverage_call("crate::color::normalized_plane_result", r"\1"), None,
+        r"values\s*@\s*,\s*channels\s*,\s*bit_depth",
+    ),
+}
+
+_LAYER_COMPONENT_KEY_CONTRACTS = {
+    ("src/jpx.rs", "normalized_chroma_keys_for_components"): (
+        "part2_normalized_component_chroma_keys", _coverage_call("crate::color::normalized_plane_result", r"\1"), None,
+        r"values\s*@\s*,\s*descriptors\s*@",
+    ),
+    ("src/jpx.rs", "append_component_chroma_key"): (
+        "part2_append_component_key", r"\1",
+        _coverage_call("final", "keys") + r"\s*@\s*,\s*\*\s*" + _coverage_call("final", "offset"),
+        r"values\s*@\s*,\s*descriptor\s*,\s*"
+        + _coverage_call("old", "keys") + r"\s*@\s*,\s*\*\s*" + _coverage_call("old", "offset"),
+    ),
+}
+
+_LAYER_OPACITY_CONTRACTS = {
+    ("src/jpx.rs", "apply_chroma_key_with_policy"): (
+        "part2_apply_chroma_key_policy", r"\1",
+        _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
+        _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*keys\s*@\s*,\s*reject_missing",
+    ),
+    ("src/jpx.rs", "set_layer_alpha_mode"): (
+        "part2_set_layer_alpha_mode", r"\1",
+        _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
+        _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*premultiplied\s*,\s*offset",
+    ),
+}
+
 
 _DECODER_ADMISSION_CONTRACTS = {
     ("src/decode.rs", "validate_part2_coding_style"): (
@@ -1370,6 +1403,9 @@ def validate_normative_coverage(
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_TRAVERSAL_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_COMPONENT_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_OPACITY_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

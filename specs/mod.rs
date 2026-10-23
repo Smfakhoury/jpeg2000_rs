@@ -5583,6 +5583,119 @@ pub type Part2LayerAlpha = (Seq<u16>, bool);
 pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayer = (u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>);
+pub type Part2ComponentKeyAssembly = (Result<(), crate::DecodeError>, Seq<u16>, usize);
+
+#[verifier::opaque]
+pub open spec fn part2_chroma_descriptor_bytes(descriptors: Seq<(u8, bool)>, count: nat)
+    -> Result<usize, crate::DecodeError>
+    recommends count <= descriptors.len(),
+    decreases count,
+{
+    if count == 0 { Ok(0) }
+    else {
+        match part2_chroma_descriptor_bytes(descriptors, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let bits = descriptors[(count - 1) as int].0;
+                if bits == 0 || bits > 38 { Err(part2_composition_error(false)) }
+                else {
+                    let bytes = (bits as nat + 7) / 8;
+                    if previous as nat + bytes > usize::MAX as nat { Err(part2_composition_error(true)) }
+                    else { Ok((previous as nat + bytes) as usize) }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_append_component_key(
+    values: Seq<u8>, descriptor: (u8, bool), keys: Seq<u16>, offset: usize,
+) -> Part2ComponentKeyAssembly {
+    let sum = descriptor.0 as nat + 7;
+    let bytes = (if sum > 255 { 255nat } else { sum }) / 8;
+    if offset as nat + bytes > usize::MAX as nat {
+        (Err(part2_composition_error(true)), keys, offset)
+    } else {
+        let end = (offset as nat + bytes) as usize;
+        if end > values.len() { (Err(part2_composition_error(false)), keys, offset) }
+        else {
+            let normalized = part2_normalized_chroma_keys(values.subrange(offset as int, end as int), 1,
+                crate::jp2::ComponentBitDepth::Uniform { bits: descriptor.0, signed: descriptor.1 });
+            match normalized {
+                Err(error) => (Err(error), keys, offset),
+                Ok(new_keys) => if new_keys.len() == 0 { (Err(part2_composition_error(false)), keys, offset) }
+                    else { (Ok(()), keys.push(new_keys[0]), end) },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_component_keys_prefix(values: Seq<u8>, descriptors: Seq<(u8, bool)>, count: nat)
+    -> Part2ComponentKeyAssembly
+    recommends count <= descriptors.len(),
+    decreases count,
+{
+    if count == 0 { (Ok(()), Seq::empty(), 0) }
+    else {
+        let previous = part2_component_keys_prefix(values, descriptors, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_append_component_key(values, descriptors[(count - 1) as int], previous.1, previous.2),
+        }
+    }
+}
+
+pub open spec fn part2_normalized_component_chroma_keys(values: Seq<u8>, descriptors: Seq<(u8, bool)>)
+    -> Result<Seq<u16>, crate::DecodeError>
+{
+    match part2_chroma_descriptor_bytes(descriptors, descriptors.len()) {
+        Err(error) => Err(error),
+        Ok(expected) => if values.len() != expected { Err(part2_composition_error(false)) }
+            else {
+                let assembled = part2_component_keys_prefix(values, descriptors, descriptors.len());
+                match assembled.0 { Err(error) => Err(error), Ok(()) => Ok(assembled.1) }
+            },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_chroma_key_bytes(values: Seq<u8>, start: nat, count: nat) -> nat
+    recommends start + count <= values.len(),
+    decreases count,
+{
+    if count == 0 { 0 }
+    else { part2_chroma_key_bytes(values, start, (count - 1) as nat) * 256 + values[(start + count - 1) as int] as nat }
+}
+
+pub open spec fn part2_chroma_key_normalize(raw: nat, bits: u8, signed: bool) -> u16
+    recommends 0 < bits <= 38,
+{
+    let maximum = ((1u64 << bits) - 1) as u64;
+    let nominal = if signed {
+        ((raw as u64) & maximum) ^ (((maximum + 1) / 2) as u64)
+    } else { (raw as u64) & maximum };
+    (((nominal as nat) * 65535 + maximum as nat / 2) / maximum as nat) as u16
+}
+
+pub open spec fn part2_normalized_chroma_keys(values: Seq<u8>, channels: u8, depth: crate::jp2::ComponentBitDepth)
+    -> Result<Seq<u16>, crate::DecodeError>
+{
+    match depth {
+        crate::jp2::ComponentBitDepth::Variable => Err(crate::DecodeError::MalformedInput {
+            offset: 0, kind: crate::MalformedKind::MissingRequiredStructure,
+        }),
+        crate::jp2::ComponentBitDepth::Uniform { bits, signed } => {
+            if bits == 0 || bits > 38 { Err(part2_composition_error(false)) }
+            else {
+                let bytes = (bits as nat + 7) / 8;
+                if values.len() != bytes * channels as nat { Err(part2_composition_error(false)) }
+                else { Ok(Seq::new(channels as nat, |channel: int|
+                    part2_chroma_key_normalize(part2_chroma_key_bytes(values, (channel * bytes) as nat, bytes), bits, signed))) }
+            }
+        },
+    }
+}
 
 pub open spec fn part2_chroma_key_channel_matches(
     colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int, channel: int,
@@ -5597,6 +5710,38 @@ pub open spec fn part2_chroma_key_pixel(colors: Seq<Seq<u16>>, keys: Seq<u16>, p
         0
     } else {
         u16::MAX
+    }
+}
+
+pub open spec fn part2_chroma_plane_has_samples(samples: Seq<u16>, count: nat) -> bool {
+    samples.len() >= count
+}
+
+pub open spec fn part2_chroma_sources_cover(colors: Seq<Seq<u16>>, count: nat) -> bool {
+    forall|channel: int| 0 <= channel < colors.len() ==>
+        #[trigger] part2_chroma_plane_has_samples(colors[channel], count)
+}
+
+pub open spec fn part2_apply_chroma_key_policy(layer: Part2OwnedLayer, keys: Seq<u16>, reject_missing: bool)
+    -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
+{
+    if !reject_missing || keys.len() != layer.3.len() {
+        part2_apply_chroma_key(layer, keys)
+    } else {
+        match part2_layer_area(layer.0, layer.1) {
+            Err(_) => part2_apply_chroma_key(layer, keys),
+            Ok(pixels) => if part2_chroma_sources_cover(layer.3, pixels as nat) { part2_apply_chroma_key(layer, keys) }
+                else { (Err(part2_composition_error(false)), layer) },
+        }
+    }
+}
+
+pub open spec fn part2_set_layer_alpha_mode(layer: Part2OwnedLayer, premultiplied: bool, offset: u64)
+    -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
+{
+    match layer.4 {
+        None => (Err(crate::DecodeError::MalformedInput { offset, kind: crate::MalformedKind::MissingRequiredStructure }), layer),
+        Some((samples, _)) => (Ok(()), (layer.0, layer.1, layer.2, layer.3, Some((samples, premultiplied)))),
     }
 }
 

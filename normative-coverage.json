@@ -33,6 +33,90 @@
       ]
     },
     {
+      "id": "part2-complete-native-local-opacity",
+      "topic": "Complete actual local opacity Result/full OwnedLayer relations: shared real chroma-key traversal with explicit general permissive versus opacity strict missing-sample policy, final-only straight alpha replacement and exact flag-only premultiplied/straight retag or missing-alpha error at actual caller offset. Raw geometry/planes/old alpha/keys/flags/offsets are not normalized; no successful source/key/alpha premise. Actual opacity consumers preserve metadata admission order. External-alpha copy, complete file preparation and F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "apply_chroma_key"},
+        {"path": "src/jpx.rs", "symbol": "apply_layer_opacity"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_apply_chroma_key_policy"},
+        {"path": "specs/mod.rs", "symbol": "part2_set_layer_alpha_mode"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_sources_cover"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "apply_chroma_key_with_policy"},
+        {"path": "src/jpx.rs", "symbol": "set_layer_alpha_mode"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "owned_layer_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_cover_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_cover_complete"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "opacity_chroma_policy_preserves_strict_rejection_and_general_nonmatches"},
+        {"path": "src/jpx.rs", "symbol": "local_alpha_mode_changes_only_representation_or_reports_actual_offset"}
+      ]
+    },
+    {
+      "id": "part2-complete-native-component-chroma-preparation",
+      "topic": "Complete actual per-component raw chroma-key preparation Result and actual append/key-vector/offset state. Global ordered precision/sign-descriptor validation and checked byte sum precede payload-length admission; real slices, one-channel normalization, first-key lookup, append and final offset commit derive from original values/descriptors. No normalized descriptor/key/read/store outcome premise. Native overflow/first-error and unchanged keys/offset on append failure are retained; opacity and F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "decode_general_compositing_layer"},
+        {"path": "src/jpx.rs", "symbol": "normalized_chroma_keys_for_components"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_normalized_component_chroma_keys"},
+        {"path": "specs/mod.rs", "symbol": "part2_append_component_key"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_descriptor_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_keys_prefix"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "normalized_chroma_keys_for_components"},
+        {"path": "src/jpx.rs", "symbol": "append_component_chroma_key"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_descriptors_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_descriptors_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_descriptors_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_component_keys_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_component_keys_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_component_keys_error"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "component_chroma_preparation_preserves_descriptor_before_payload_validation"},
+        {"path": "src/jpx.rs", "symbol": "component_chroma_append_keeps_keys_and_offset_on_every_first_error"}
+      ]
+    },
+    {
+      "id": "part2-complete-native-raw-chroma-normalization",
+      "topic": "Complete actual normalized_chroma_keys Result from original raw bytes/channels/ComponentBitDepth. Exact Variable/precision/length rejection order, bounded big-endian reads, low-bit masking, signed bias and deterministic rounded u16 keys derive from native inputs and the shared actual proved color scalar, with no success or pre-normalized key premise. Per-component descriptor preparation, opacity and complete F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "normalized_chroma_keys_for_components"},
+        {"path": "src/jpx.rs", "symbol": "append_component_chroma_key"},
+        {"path": "src/jpx.rs", "symbol": "apply_layer_opacity"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_normalized_chroma_keys"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_key_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_key_normalize"},
+        {"path": "specs/mod.rs", "symbol": "color_normalize_unsigned"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "normalized_chroma_keys"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_bytes_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_byte_bound"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_normalization"},
+        {"path": "src/color.rs", "symbol": "normalize_unsigned"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "raw_chroma_normalization_preserves_all_depth_length_and_channel_frontiers"},
+        {"path": "src/jpx.rs", "symbol": "raw_chroma_normalization_matches_all_u16_words_and_38_bit_padding"}
+      ]
+    },
+    {
       "id": "part2-complete-native-registration-raster",
       "topic": "Complete actual register_layer and actual row producer: derive native geometry and real zero initialization, checked row/column coordinates, skipped/outside samples, original ordered pixel/color/alpha stores, late errors and final source-alpha representation. Complete raw-owner/descriptor/grid Result and row-buffer state relations have no supplied geometry, decoder/read/store outcome, normalized source or adequate-budget premise. Full opacity/raw-key normalization and F2/F4/F8 remain separate.",
       "implementation_refs": [

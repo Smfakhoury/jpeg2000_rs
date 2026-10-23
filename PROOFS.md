@@ -2161,6 +2161,79 @@ consumers, including adversarial rejection cases.
 This closes actual registration, not complete opacity/raw-key normalization,
 F2/F4/F8 or independent conformance. Exact frozen whole-root/native/reference/
 resource/hosted and owner-main acceptance remain required for delivery.
+## Complete actual raw chroma-key normalization
+
+The actual `normalized_chroma_keys` now refines a complete input-relative
+Result/key-vector model over raw bytes, channel count and bit-depth metadata.
+Variable metadata rejection precedes precision validation, which precedes
+exact byte cardinality. Real big-endian reads, low-bit masking, signed bias,
+rounding and complete ordered key output have no successful-read or
+pre-normalized-key premise.
+
+Native checked byte assembly is explicit. The redundant bounded mask loop
+uses the equivalent checked shift, and normalization shares the existing
+proved actual unsigned-color scalar instead of maintaining a second arithmetic
+implementation. Admitted precisions and masked values prove all scalar failure
+branches unreachable; original typed metadata/length errors remain. No solver
+budget, trust, cap or numerical-tolerance change is introduced. Loop-only
+byte bounds remain in proof support; raw-byte and signed scaling semantics
+remain auditor-facing.
+
+Independent u128 references use arithmetic signed rotation rather than the
+native XOR. They cover 23,040 depth/channel/length/pattern frontiers, every
+signed and unsigned u16 raw word, Variable metadata priority, and38-bit
+padding/high-bit cases. One finite exact result/input recipe and adversarial
+mutations require the two genuine production consumers.
+
+This closes the uniform byte-input producer including Variable rejection,
+not per-component descriptor preparation, opacity, complete F2/F4/F8 or
+independent conformance. Frozen full-root/hosted/main acceptance remain explicit.
+## Complete actual per-component chroma-key preparation
+
+The actual `normalized_chroma_keys_for_components` now derives its complete
+Result from original bytes and ordered native precision/sign descriptors.
+Every descriptor is validated and its byte count charged to the checked sum
+before payload-length admission. The second traversal executes actual slices,
+the proved one-channel normalizer, first-key lookup, append and final offset
+commit. No successful descriptor/normalization/read result is supplied.
+
+Its genuine append body has a complete Result/key-vector/offset relation for
+raw descriptors, keys and offsets, including usize overflow and all first
+errors. Failures preserve both owners; success appends before offset commit.
+Validation and assembly folds/error absorption live in the model and proof
+support respectively. Consumer links follow the actual moved normalizer edge.
+
+Independent integer references cover 6,084 descriptor/payload cases and1,470
+raw append/prefix/offset cases, including invalid precision before malformed
+payload and maximum-offset overflow. Two finite exact recipes reject partial
+owners, wrong primary inputs, guarded results and invented consumers.
+
+This completes the raw per-component input producer, not opacity, complete
+F2/F4/F8 or independent conformance. Frozen full-root/MSRV/local/hosted and
+owner-main acceptance remain explicit delivery gates.
+## Complete actual local opacity state and strict chroma policy
+
+General-layer and opacity chroma-key updates now share one real traversal
+with an explicit native policy. General missing samples remain nonmatches;
+strict opacity still rejects any visited missing sample, including after an
+earlier color mismatch. Both complete Result/whole-owner relations preserve
+all original values on error and update only final straight alpha on success.
+Strict source coverage is derived from actual reads, not a caller premise.
+
+The actual flag-only opacity update now has a complete raw-owner relation:
+existing alpha samples and all geometry/color values are preserved, only the
+representation flag changes, and missing alpha reports the actual supplied
+box offset without mutation. The original file-level branch executes these
+same sole producers and retains its metadata/channel/header/key ordering.
+
+Independent matrices cover 12,960 policy/raw-owner contexts and1,296 flag/
+offset cases, including malformed geometry/planes, empty channels, mismatches
+before missing samples and maximum offsets. Two finite exact recipes require
+complete owners, all original keys/policy/flag/offset bindings and real callers.
+
+This closes local opacity mutations, not external decoded/registered-alpha
+copy, complete file preparation or F2/F4/F8. Every frozen full-root/MSRV/
+native/reference/resource/hosted/main delivery gate remains explicit.
 ## Actual decoder Part2 style admission and raw depth observations
 
 The actual `validate_part2_coding_style` now has a complete native Result model

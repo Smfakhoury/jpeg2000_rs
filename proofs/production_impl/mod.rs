@@ -32,6 +32,144 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_chroma_cover_step(colors: Seq<Seq<u16>>, samples: nat, count: nat)
+    requires count < colors.len(),
+    ensures crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count + 1)
+        == (crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count)
+            && crate::specs::part2_chroma_plane_has_samples(colors[count as int], samples)),
+{
+    let prefix = crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count);
+    let next = crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count + 1);
+    let current = crate::specs::part2_chroma_plane_has_samples(colors[count as int], samples);
+    if prefix && current {
+        assert forall|channel: int| 0 <= channel < count + 1 implies
+            #[trigger] crate::specs::part2_chroma_plane_has_samples(colors[channel], samples) by {
+            if channel < count {
+                assert(crate::specs::part2_chroma_plane_has_samples(colors[channel], samples));
+            } else { assert(channel == count); }
+        }
+    } else if next {
+        assert forall|channel: int| 0 <= channel < count implies
+            #[trigger] crate::specs::part2_chroma_plane_has_samples(colors[channel], samples) by {
+            assert(0 <= channel < count + 1);
+        }
+        assert(prefix);
+        assert(current);
+        assert(false);
+    }
+}
+
+pub proof fn production_chroma_cover_complete(colors: Seq<Seq<u16>>, samples: nat)
+    ensures crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, colors.len())
+        == crate::specs::part2_chroma_sources_cover(colors, samples),
+{
+}
+
+pub proof fn production_chroma_descriptors_empty(descriptors: Seq<(u8, bool)>)
+    ensures crate::specs::part2_chroma_descriptor_bytes(descriptors, 0) == Ok(0),
+{
+    reveal_with_fuel(crate::specs::part2_chroma_descriptor_bytes, 1);
+}
+
+pub proof fn production_chroma_descriptors_step(descriptors: Seq<(u8, bool)>, count: nat)
+    requires count < descriptors.len(),
+    ensures crate::specs::part2_chroma_descriptor_bytes(descriptors, count + 1) == {
+        match crate::specs::part2_chroma_descriptor_bytes(descriptors, count) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let bits = descriptors[count as int].0;
+                if bits == 0 || bits > 38 { Err(crate::specs::part2_composition_error(false)) }
+                else {
+                    let bytes = (bits as nat + 7) / 8;
+                    if previous as nat + bytes > usize::MAX as nat { Err(crate::specs::part2_composition_error(true)) }
+                    else { Ok((previous as nat + bytes) as usize) }
+                }
+            },
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_chroma_descriptor_bytes, 1);
+}
+
+pub proof fn production_chroma_descriptors_error(descriptors: Seq<(u8, bool)>, count: nat, finish: nat)
+    requires count <= finish <= descriptors.len(),
+        crate::specs::part2_chroma_descriptor_bytes(descriptors, count).is_err(),
+    ensures crate::specs::part2_chroma_descriptor_bytes(descriptors, finish)
+        == crate::specs::part2_chroma_descriptor_bytes(descriptors, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_chroma_descriptors_step(descriptors, (finish - 1) as nat);
+        production_chroma_descriptors_error(descriptors, count, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_component_keys_empty(values: Seq<u8>, descriptors: Seq<(u8, bool)>)
+    ensures crate::specs::part2_component_keys_prefix(values, descriptors, 0) == (Ok(()), Seq::<u16>::empty(), 0usize),
+{
+    reveal_with_fuel(crate::specs::part2_component_keys_prefix, 1);
+}
+
+pub proof fn production_component_keys_step(values: Seq<u8>, descriptors: Seq<(u8, bool)>, count: nat)
+    requires count < descriptors.len(),
+    ensures crate::specs::part2_component_keys_prefix(values, descriptors, count + 1) == {
+        let previous = crate::specs::part2_component_keys_prefix(values, descriptors, count);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => crate::specs::part2_append_component_key(values, descriptors[count as int], previous.1, previous.2),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_component_keys_prefix, 1);
+}
+
+pub proof fn production_component_keys_error(values: Seq<u8>, descriptors: Seq<(u8, bool)>, count: nat, finish: nat)
+    requires count <= finish <= descriptors.len(),
+        crate::specs::part2_component_keys_prefix(values, descriptors, count).0.is_err(),
+    ensures crate::specs::part2_component_keys_prefix(values, descriptors, finish)
+        == crate::specs::part2_component_keys_prefix(values, descriptors, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_component_keys_step(values, descriptors, (finish - 1) as nat);
+        production_component_keys_error(values, descriptors, count, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_chroma_bytes_step(values: Seq<u8>, start: nat, count: nat)
+    requires start + count < values.len(),
+    ensures crate::specs::part2_chroma_key_bytes(values, start, count + 1)
+        == crate::specs::part2_chroma_key_bytes(values, start, count) * 256 + values[(start + count) as int] as nat,
+        crate::proofs::internal_specs::part2_chroma_byte_bound(count + 1)
+            == crate::proofs::internal_specs::part2_chroma_byte_bound(count) * 256 + 255,
+{
+    reveal_with_fuel(crate::specs::part2_chroma_key_bytes, 1);
+    reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 1);
+}
+
+pub proof fn production_chroma_byte_bound(count: nat)
+    requires count <= 5,
+    ensures crate::proofs::internal_specs::part2_chroma_byte_bound(count) <= 1099511627775,
+{
+    reveal_with_fuel(crate::proofs::internal_specs::part2_chroma_byte_bound, 6);
+}
+
+pub proof fn production_chroma_normalization(raw: u64, bits: u8, signed: bool)
+    requires 0 < bits <= 38,
+    ensures {
+        let maximum = ((1u64 << bits) - 1) as u64;
+        let nominal = if signed { (raw & maximum) ^ (((maximum + 1) / 2) as u64) } else { raw & maximum };
+        nominal <= maximum
+            && crate::specs::color_normalize_unsigned(nominal, bits)
+                == Ok(crate::specs::part2_chroma_key_normalize(raw as nat, bits, signed))
+    },
+{
+    crate::proofs::spec_properties::color_precision_binary_bounds(bits);
+    assert((if signed { (raw & (((1u64 << bits) - 1) as u64)) ^ (((1u64 << bits) / 2) as u64) }
+        else { raw & (((1u64 << bits) - 1) as u64) })
+        <= (((1u64 << bits) - 1) as u64)) by(bit_vector) requires 0 < bits <= 38;
+}
+
 pub proof fn production_registered_columns_empty(
     context: crate::specs::Part2RegistrationContext, y: u32, source_y: u32,
     colors: Seq<Seq<u16>>, alpha: Seq<u16>,

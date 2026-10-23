@@ -7,6 +7,29 @@ is exact ordered precision/sign equality, not a valid-precision premise.
 Actual registry-presence and getter observations are proved support. Whole
 layout/decoder results and F2/F4/F8 file/frame joins remain separate.
 
+`part2_apply_chroma_key_policy` distinguishes actual permissive general-layer
+nonmatches from strict opacity's missing-sample error, without normalizing
+planes or assuming coverage. `part2_set_layer_alpha_mode` preserves all raw
+metadata/colors/samples and changes only the existing alpha representation,
+or returns the caller's missing-structure offset unchanged. Actual source
+coverage and prefix proofs establish the strict path. External-alpha copying,
+file preparation and complete F2/F4/F8 remain separate.
+
+`part2_normalized_component_chroma_keys` separates actual ordered descriptor/
+checked-byte-count validation from payload admission and real key assembly.
+`part2_append_component_key` preserves all original keys and offset until its
+actual slice/normalization/first-key checks succeed. Both folds derive actual
+data, not supplied outcomes; error inductions remain in proof support. This
+closes per-component raw preparation only, not opacity or F2/F4/F8.
+
+`part2_normalized_chroma_keys` names the actual raw metadata/precision/length
+admission and full key output. `part2_chroma_key_bytes` gives the big-endian
+value, while `part2_chroma_key_normalize` states masking, signed bias and exact
+rounded normalized units. The actual code shares the proved unsigned-color
+scalar; its failures are excluded by derived native admission/masking facts,
+not a caller-supplied validity premise. Loop-only byte bounds remain in proof
+support. Per-component descriptor preparation and opacity are separate work.
+
 `part2_register_layer` derives the actual geometry and zero initialization,
 then composes ordered row/column sampling through the actual pixel semantics.
 The complete source owner/descriptor/grids determine every error, output plane

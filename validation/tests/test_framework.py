@@ -649,6 +649,24 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_TRAVERSAL_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_native_raw_chroma_key_normalization(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-chroma-normalization"},
+            framework._LAYER_KEY_CONTRACTS, 1,
+        )
+
+    def test_inventory_binds_complete_native_component_key_preparation_and_mutable_offsets(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-component-chroma-preparation"},
+            framework._LAYER_COMPONENT_KEY_CONTRACTS, 2,
+        )
+
+    def test_inventory_binds_complete_native_local_opacity_and_missing_sample_policy(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-local-opacity"},
+            framework._LAYER_OPACITY_CONTRACTS, 2,
+        )
+
     def test_inventory_binds_actual_decoder_style_and_component_depth_admission(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-decoder-style-admission"},
