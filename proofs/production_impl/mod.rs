@@ -32,6 +32,48 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_mct_rows_empty(
+    initial: Seq<i64>, collection: crate::specs::Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>,
+)
+    ensures crate::specs::part2_mct_decorrelation_rows(initial, collection, source, fractions, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part2_mct_decorrelation_rows, 1);
+}
+
+pub proof fn production_mct_rows_step(
+    initial: Seq<i64>, collection: crate::specs::Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat,
+)
+    requires count <= usize::MAX,
+    ensures crate::specs::part2_mct_decorrelation_rows(initial, collection, source, fractions, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_decorrelation_rows(initial, collection, source, fractions, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => match crate::specs::part2_mct_decorrelation_row(collection, source, fractions, count as usize) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_decorrelation_rows, 1);
+}
+
+pub proof fn production_mct_rows_error(
+    initial: Seq<i64>, collection: crate::specs::Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>,
+    count: nat, end: nat,
+)
+    requires count <= end <= usize::MAX,
+    ensures crate::specs::part2_mct_decorrelation_rows(initial, collection, source, fractions, count).0.is_err()
+        ==> crate::specs::part2_mct_decorrelation_rows(initial, collection, source, fractions, end)
+            == crate::specs::part2_mct_decorrelation_rows(initial, collection, source, fractions, count),
+    decreases end - count,
+{
+    if count < end {
+        production_mct_rows_error(initial, collection, source, fractions, count, (end - 1) as nat);
+        production_mct_rows_step(initial, collection, source, fractions, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_mct_indices_empty(components: Seq<crate::specs::Part2MctComponent>)
     ensures crate::specs::part2_mct_component_indices(components, Seq::empty()) == Ok(Seq::empty()),
 {

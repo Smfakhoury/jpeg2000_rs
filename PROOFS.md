@@ -135,6 +135,30 @@ malformed arrays and exact source/offset/late-sum error frontiers. This is a
 bounded row milestone; actual mutable collection/dependency/wavelet/stage and
 whole reconstruction composition remain open.
 
+## Actual native decorrelation row computation
+
+The real decorrelation pixel loop now calls one proved row dispatcher and one
+proved ordered row-append loop. The dispatcher includes both matrix branches
+and both lazy None branches over the complete native source/precision domains.
+It retains source-before-precision-before-offset error order, nearest-magnitude
+Q32 rescaling, checked i128 addition and final i64 conversion. The sole native
+arithmetic bodies are shared with the existing matrix-row producers.
+
+The row-loop relation includes every initial scratch value and every value
+appended before the first error. Empty row ranges perform no validation; later
+failures preserve earlier output rows. The original scratch vectors, capacity,
+clear order and all-rows-before-component-stores policy remain intact. An
+explicit early-return loop invariant retains the real old scratch sequence,
+not a supplied result or normalized input premise.
+
+Independent tests cover all256 precision tags, signed sample extremes, lazy
+None paths and partial scratch output. Actual collection regressions additionally
+check duplicate destination overwrite order, prior-pixel writes on a later
+numeric error, no current-pixel stores before every row succeeds, final-only
+precision updates and exact charged work. These tests do not replace the still
+open whole collection/dependency/wavelet/stage composition proofs or qualify
+general MCT against an independent external oracle.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

@@ -2608,6 +2608,110 @@ fn prepare_mct_decorrelation(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_decorrelation_row(
+        crate::codestream::mct_collection_view(collection), source@, source_fraction_bits@, row,
+    ),
+))]
+fn decorrelation_mct_row(
+    collection: &MctCollection,
+    source: &[i64],
+    source_fraction_bits: &[u8],
+    row: usize,
+) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let matrix = collection.matrix();
+    if collection.reversible() {
+        if let Some(matrix) = matrix {
+            reversible_mct_row(matrix, collection.offsets(), source, row)
+        } else {
+            (*source.get(row).ok_or_else(invalid_transform)?)
+                .checked_add(offset_value(collection.offsets(), row)?)
+                .ok_or_else(arithmetic_overflow)
+        }
+    } else if let Some(matrix) = matrix {
+        fixed_mct_row_scaled(
+            matrix,
+            collection.offsets(),
+            source,
+            source_fraction_bits,
+            row,
+        )
+    } else {
+        let scaled = rescale_i128(
+            i128::from(*source.get(row).ok_or_else(invalid_transform)?),
+            *source_fraction_bits
+                .get(row)
+                .ok_or_else(invalid_transform)?,
+            MCT_FIXED_BITS,
+        )?;
+        let sum = scaled
+            .checked_add(offset_value_scaled(collection.offsets(), row)?)
+            .ok_or_else(arithmetic_overflow)?;
+        match i64::try_from(sum) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(arithmetic_overflow()),
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(output)@) == crate::specs::part2_mct_decorrelation_rows(
+        old(output)@, crate::codestream::mct_collection_view(collection), source@, source_fraction_bits@, rows as nat,
+    ),
+))]
+fn append_mct_decorrelation_rows(
+    output: &mut Vec<i64>,
+    collection: &MctCollection,
+    source: &[i64],
+    source_fraction_bits: &[u8],
+    rows: usize,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = output@;
+        let ghost style = crate::codestream::mct_collection_view(collection);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_rows_empty(initial, style, source@, source_fraction_bits@);
+    }
+    let mut row = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant row <= rows,
+            initial == old(output)@,
+            style == crate::codestream::mct_collection_view(collection),
+            crate::specs::part2_mct_decorrelation_rows(initial, style, source@, source_fraction_bits@, row as nat)
+                == (Ok(()), output@),
+            decreases rows - row,
+        )
+    )]
+    while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_rows_step(initial, style, source@, source_fraction_bits@, row as nat);
+        }
+        let value = match decorrelation_mct_row(collection, source, source_fraction_bits, row) {
+            Ok(value) => value,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(crate::specs::part2_mct_decorrelation_rows(initial, style, source@, source_fraction_bits@, row as nat + 1)
+                        == (Err(error), output@));
+                    crate::proofs::production_impl::production_mct_rows_error(initial, style, source@, source_fraction_bits@, row as nat + 1, rows as nat);
+                }
+                return Err(error);
+            }
+        };
+        output.push(value);
+        row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
 fn apply_mct_decorrelation(
     components: &mut [TransformComponentMut<'_>],
     collection: &MctCollection,
@@ -2623,8 +2727,6 @@ fn apply_mct_decorrelation(
         rows,
         columns,
     } = prepared;
-    let matrix = collection.matrix();
-    let mut row;
     let mut index_index;
     let mut source = Vec::with_capacity(columns);
     let mut output = Vec::with_capacity(rows);
@@ -2659,46 +2761,14 @@ fn apply_mct_decorrelation(
             );
             index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        row = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant row <= rows,
-                decreases rows - row,
-            )
-        )]
-        while row < rows {
-            output.push(if collection.reversible() {
-                if let Some(matrix) = matrix {
-                    reversible_mct_row(matrix, collection.offsets(), &source, row)?
-                } else {
-                    (*source.get(row).ok_or_else(invalid_transform)?)
-                        .checked_add(offset_value(collection.offsets(), row)?)
-                        .ok_or_else(arithmetic_overflow)?
-                }
-            } else if let Some(matrix) = matrix {
-                fixed_mct_row_scaled(
-                    matrix,
-                    collection.offsets(),
-                    &source,
-                    &source_fraction_bits,
-                    row,
-                )?
-            } else {
-                rescale_i128(
-                    i128::from(*source.get(row).ok_or_else(invalid_transform)?),
-                    *source_fraction_bits
-                        .get(row)
-                        .ok_or_else(invalid_transform)?,
-                    MCT_FIXED_BITS,
-                )?
-                .checked_add(offset_value_scaled(collection.offsets(), row)?)
-                .and_then(|value| i64::try_from(value).ok())
-                .ok_or_else(arithmetic_overflow)?
-            });
-            row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
-        row = 0;
+        append_mct_decorrelation_rows(
+            &mut output,
+            collection,
+            &source,
+            &source_fraction_bits,
+            rows,
+        )?;
+        let mut row = 0;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
@@ -4646,6 +4716,178 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_decorrelation_rows_preserve_lazy_precision_domains_and_partial_output() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for reversible in [false, true] {
+            let collection = MctCollection::from_dependency(reversible, vec![u16::MAX], None, None);
+            for bits in 0..=u8::MAX {
+                for sample in [i64::MIN, -7, 0, 7, i64::MAX] {
+                    let expected = if reversible {
+                        Ok(sample)
+                    } else if bits <= 32 {
+                        i64::try_from(i128::from(sample) * (1_i128 << (32 - bits)))
+                            .map_err(|_| overflow)
+                    } else if bits - 32 > 126 {
+                        Err(overflow)
+                    } else {
+                        let magnitude = i128::from(sample).abs();
+                        let shift = bits - 32;
+                        let rounded = (magnitude + (1_i128 << (shift - 1))) / (1_i128 << shift);
+                        Ok(if sample < 0 {
+                            -rounded as i64
+                        } else {
+                            rounded as i64
+                        })
+                    };
+                    assert_eq!(
+                        decorrelation_mct_row(&collection, &[sample], &[bits], 0),
+                        expected
+                    );
+                    for rows in 0..=2 {
+                        let mut output = vec![42, -99];
+                        let result = append_mct_decorrelation_rows(
+                            &mut output,
+                            &collection,
+                            &[sample],
+                            &[bits],
+                            rows,
+                        );
+                        let expected_result = if rows == 0 {
+                            Ok(())
+                        } else {
+                            match expected {
+                                Err(error) => Err(error),
+                                Ok(value) => {
+                                    assert_eq!(output, [42, -99, value]);
+                                    if rows == 1 { Ok(()) } else { Err(invalid) }
+                                }
+                            }
+                        };
+                        assert_eq!(result, expected_result);
+                        if rows == 0 || expected.is_err() {
+                            assert_eq!(output, [42, -99]);
+                        }
+                    }
+                }
+            }
+            assert_eq!(
+                decorrelation_mct_row(&collection, &[], &[], 0),
+                Err(invalid)
+            );
+            assert_eq!(
+                decorrelation_mct_row(&collection, &[1], &[], 0),
+                if reversible { Ok(1) } else { Err(invalid) }
+            );
+        }
+    }
+
+    #[test]
+    fn native_mct_decorrelation_dispatch_preserves_partial_matrix_rows() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        for reversible in [false, true] {
+            let array = |values| {
+                MctArray::from_values(
+                    u8::MAX,
+                    MctArrayKind::Offset,
+                    MctNumericFormat::Float64,
+                    0,
+                    values,
+                )
+            };
+            let collection = MctCollection::from_arrays(
+                reversible,
+                vec![0, 1],
+                vec![0, 1],
+                array(vec![2, 3, 4, 5]),
+                Some(array(vec![1, -1])),
+            );
+            let scale = if reversible { 1 } else { 1_i64 << 32 };
+            let mut output = vec![123];
+            assert_eq!(
+                append_mct_decorrelation_rows(&mut output, &collection, &[7, -2], &[0, 0], 3),
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidTransform,
+                })
+            );
+            assert_eq!(output, [123, 9 * scale, 17 * scale]);
+        }
+    }
+
+    #[test]
+    fn native_mct_decorrelation_keeps_pixel_transactions_and_duplicate_destinations() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        for duplicates in [false, true] {
+            let mut samples = [vec![1, 2], vec![3, if duplicates { 4 } else { i64::MAX }]];
+            let mut fractions = [0, 0];
+            let mut components: Vec<_> = samples
+                .iter_mut()
+                .zip(fractions.iter_mut())
+                .zip([0, 1])
+                .map(
+                    |((samples, fraction_bits), component)| TransformComponentMut {
+                        component,
+                        x: 7,
+                        y: 9,
+                        width: 2,
+                        height: 1,
+                        x_subsampling: 1,
+                        y_subsampling: 1,
+                        fraction_bits,
+                        samples,
+                    },
+                )
+                .collect();
+            let collection = MctCollection::from_arrays(
+                false,
+                vec![0, if duplicates { 0 } else { 1 }],
+                vec![0, 1],
+                MctArray::from_values(
+                    0,
+                    MctArrayKind::Offset,
+                    MctNumericFormat::Float64,
+                    0,
+                    vec![1, 0, 0, 1],
+                ),
+                None,
+            );
+            let mut work = 5;
+            assert_eq!(
+                apply_mct_decorrelation(
+                    &mut components,
+                    &collection,
+                    &ResourceLimits::default(),
+                    &mut work,
+                ),
+                if duplicates {
+                    Ok(())
+                } else {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::ArithmeticOverflow,
+                    })
+                }
+            );
+            assert_eq!(work, 17);
+            drop(components);
+            if duplicates {
+                assert_eq!(samples, [vec![3_i64 << 32, 4_i64 << 32], vec![3, 4]]);
+                assert_eq!(fractions, [32, 0]);
+            } else {
+                assert_eq!(samples, [vec![1_i64 << 32, 2], vec![3_i64 << 32, i64::MAX]]);
+                assert_eq!(fractions, [0, 0]);
+            }
+        }
+    }
 
     #[test]
     fn native_mct_preparation_derives_real_ordered_indexes_fractions_and_late_work_errors() {

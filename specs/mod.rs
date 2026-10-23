@@ -17,6 +17,52 @@ pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
 pub type Part2MctDecorrelationPreparation = (Seq<usize>, Seq<usize>, Seq<u8>, usize, usize, usize);
 
+pub open spec fn part2_mct_decorrelation_row(
+    collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, row: usize,
+) -> Result<i64, crate::DecodeError> {
+    match collection.4 {
+        Some(matrix) => part2_mct_matrix_row(
+            matrix, collection.5, source, if collection.0 { None } else { Some(fractions) }, row),
+        None => if row >= source.len() { Err(part1_transform_error(false)) }
+        else if collection.0 {
+            match part2_mct_offset(collection.5, row) {
+                Err(error) => Err(error),
+                Ok(offset) => part1_checked_sample(source[row as int] as int + offset as int),
+            }
+        } else if row >= fractions.len() { Err(part1_transform_error(false)) }
+        else {
+            match part2_mct_rescale(source[row as int] as i128, fractions[row as int], 32) {
+                Err(error) => Err(error),
+                Ok(value) => match part2_mct_offset_scaled(collection.5, row) {
+                    Err(error) => Err(error),
+                    Ok(offset) => match part2_atk_checked_i128(value as int + offset as int) {
+                        Err(error) => Err(error), Ok(sum) => part1_checked_sample(sum as int),
+                    },
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_decorrelation_rows(
+    initial: Seq<i64>, collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_mct_decorrelation_rows(initial, collection, source, fractions, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else { match part2_mct_decorrelation_row(collection, source, fractions, (count - 1) as usize) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                } },
+        }
+    }
+}
+
 #[verifier::opaque]
 pub open spec fn part2_mct_component_indices(
     components: Seq<Part2MctComponent>, references: Seq<u16>,
