@@ -10,6 +10,8 @@ import uuid
 from pathlib import Path
 from unittest import mock
 
+from jsonschema import SchemaError
+
 VALIDATION = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(VALIDATION))
 
@@ -95,6 +97,48 @@ class WorkingFiles(unittest.TestCase):
 
 
 class FrameworkTests(WorkingFiles):
+    def test_inventory_source_indexes_are_fresh_per_call_and_preserve_const_functions(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage["requirements"] = coverage["requirements"][:1]
+        entry = coverage["requirements"][0]
+        reference = {**entry["proof_refs"][0], "symbol": "coverage_cache_overlap"}
+        entry["proof_refs"].append(reference)
+        source = (framework.ROOT / reference["path"]).resolve()
+        original = source.read_text()
+        read_text = Path.read_text
+        current = original + "\npub const fn coverage_cache_overlap() -> bool { true }\n"
+        reads = []
+
+        def altered(path, *args, **kwargs):
+            if path == source:
+                reads.append(path)
+                return current
+            return read_text(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", altered):
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            self.assertEqual(len(reads), 1)
+            current = original + "\npub const fn coverage_cache_overlap_suffix() -> bool { true }\n"
+            with self.assertRaisesRegex(ValueError, "missing normative evidence symbol"):
+                framework.validate_normative_coverage(coverage)
+            current = original + "\npub const fn coverage_cache_overlap() -> bool { true }\n"
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            self.assertEqual(len(reads), 3)
+
+    def test_schema_cache_is_content_bound_and_validates_every_instance(self):
+        schema = self.work / "changing.schema.json"
+        schema.write_text(json.dumps({"type": "integer"}))
+        framework.validate_schema(schema, 7)
+        with self.assertRaises(ValueError):
+            framework.validate_schema(schema, "not-an-integer")
+        schema.write_text(json.dumps({"type": "string"}))
+        framework.validate_schema(schema, "now-a-string")
+        with self.assertRaises(ValueError):
+            framework.validate_schema(schema, 7)
+        schema.write_text(json.dumps({"type": "invalid-schema-type"}))
+        with self.assertRaises(SchemaError):
+            framework.validate_schema(schema, 7)
+
     def test_generation_is_deterministic_and_complete(self):
         first = framework.build_manifest(framework.generated_cases())
         self.assertEqual(first, framework.build_manifest(framework.generated_cases()))

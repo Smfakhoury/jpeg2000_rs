@@ -904,6 +904,16 @@ RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
 Module-only results are not accepted by the whole-crate collector. CI
 explicitly exercises that rejection before its complete verification.
 
+Reuse a dedicated scratch target for iterative debugging rather than rebuilding
+the verifier dependencies into a new target for every edit. Batch related
+functions in one focus run to share whole-crate Rust/VIR frontend work. For
+one function, use `--verify-only-module image --verify-function function_name`;
+`--time --output-json` separates frontend and solver costs. Check that the
+intended function actually ran and produced nonzero verification results.
+These scratch results remain debugging evidence only: final acceptance still
+requires a fresh complete production-root run and the fail-closed collector.
+Keep raw proof reports separate from disposable compiled scratch profiles.
+
 ## Current lifetime-analysis limitation
 
 The pinned released verifier requires `--no-lifetime` for verified-module

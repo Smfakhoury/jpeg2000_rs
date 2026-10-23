@@ -19,6 +19,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlsplit
@@ -92,11 +93,17 @@ def write_json(path: Path, value: Any) -> None:
     path.write_bytes(json.dumps(value, indent=2, sort_keys=True).encode() + b"\n")
 
 
-def validate_schema(schema_path: Path, value: Any) -> None:
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+@lru_cache(maxsize=32)
+def _checked_schema(schema_text: str) -> Draft202012Validator:
+    schema = json.loads(schema_text)
     Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema, format_checker=FORMAT_CHECKER)
+
+
+def validate_schema(schema_path: Path, value: Any) -> None:
+    validator = _checked_schema(schema_path.read_text(encoding="utf-8"))
     try:
-        Draft202012Validator(schema, format_checker=FORMAT_CHECKER).validate(value)
+        validator.validate(value)
     except ValidationError as error:
         raise ValueError(f"{schema_path.name}: {error.message}") from error
     if isinstance(value, dict) and "provenance" in value:
@@ -196,11 +203,11 @@ def validate_evidence_schemas(output_dir: Path | None = None) -> dict[str, Any]:
     return {"status": "passed", "schemas": checked, "reports": reports}
 
 
-def _coverage_symbol_present(path: Path, symbol: str) -> bool:
+def _coverage_symbol_present(path: Path, symbol: str, *, text: str | None = None) -> bool:
     short = re.escape(symbol.rsplit("::", 1)[-1])
     return bool(re.search(
         rf"\b(?:fn|struct|enum|type|const|trait)\s+{short}\b",
-        path.read_text(encoding="utf-8"),
+        text if text is not None else path.read_text(encoding="utf-8"),
     ))
 
 
@@ -239,24 +246,26 @@ def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
     return pattern.search(text)
 
 
-def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
-    """Check another formatted function body, not the callee declaration."""
-    short = caller.rsplit("::", 1)[-1]
-    if short == callee:
-        return False
-    header = _coverage_function_header(text, caller)
+def _coverage_function_body(text: str, header: re.Match[str] | None) -> str | None:
     if header is None:
-        return False
+        return None
     body_start = text.find("{", header.end())
     if body_start < 0:
-        return False
+        return None
     closing = re.search(
         rf"(?m)^{re.escape(header[1])}\}}[ \t]*(?://[^\n]*)?$", text[body_start + 1:],
     )
     if closing is None:
+        return None
+    return text[body_start + 1:body_start + 1 + closing.start()]
+
+
+def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
+    """Check another formatted function body, not the callee declaration."""
+    if caller.rsplit("::", 1)[-1] == callee:
         return False
-    body = text[body_start + 1:body_start + 1 + closing.start()]
-    return re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+    body = _coverage_function_body(text, _coverage_function_header(text, caller))
+    return body is not None and re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
 
 
 def _coverage_result_arguments(
@@ -695,6 +704,31 @@ def validate_normative_coverage(
     if coverage is None:
         coverage = json.loads((ROOT / "normative-coverage.json").read_text())
     validate_schema(ROOT / "normative-coverage.schema.json", coverage)
+    texts: dict[Path, str] = {}
+    symbols: dict[Path, set[str]] = {}
+    headers: dict[tuple[Path, str], re.Match[str] | None] = {}
+    bodies: dict[tuple[Path, str], str | None] = {}
+
+    def source_text(path: Path) -> str:
+        if path not in texts:
+            texts[path] = path.read_text(encoding="utf-8")
+        return texts[path]
+
+    def function_header(path: Path, symbol: str) -> re.Match[str] | None:
+        key = (path, symbol)
+        if key not in headers:
+            headers[key] = _coverage_function_header(source_text(path), symbol)
+        return headers[key]
+
+    def same_file_call(path: Path, caller: str, callee: str) -> bool:
+        if caller.rsplit("::", 1)[-1] == callee:
+            return False
+        key = (path, caller)
+        if key not in bodies:
+            bodies[key] = _coverage_function_body(source_text(path), function_header(path, caller))
+        body = bodies[key]
+        return body is not None and re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+
     ids: set[str] = set()
     contract_functions: set[tuple[str, str]] = set()
     for entry in coverage["requirements"]:
@@ -709,7 +743,16 @@ def validate_normative_coverage(
                 path = (ROOT / reference["path"]).resolve()
                 if not path.is_relative_to(ROOT.resolve()) or not path.is_file():
                     raise ValueError(f"missing normative evidence path: {reference['path']}")
-                if not _coverage_symbol_present(path, reference["symbol"]):
+                if path not in symbols:
+                    # Look ahead so `const fn name` indexes both overlapping declarations.
+                    symbols[path] = set(re.findall(
+                        r"\b(?:fn|struct|enum|type|const|trait)\s+(?=([A-Za-z_][A-Za-z0-9_]*)\b)",
+                        source_text(path),
+                    ))
+                short = reference["symbol"].rsplit("::", 1)[-1]
+                present = (short in symbols[path] if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", short)
+                           else _coverage_symbol_present(path, reference["symbol"], text=source_text(path)))
+                if not present:
                     raise ValueError(
                         f"missing normative evidence symbol: {reference['path']}::{reference['symbol']}"
                     )
@@ -721,9 +764,10 @@ def validate_normative_coverage(
         ]
         for reference in [*entry["contract_refs"], *proved_apis]:
             claimed_consumer = reference in entry["contract_refs"]
-            text = (ROOT / reference["path"]).read_text(encoding="utf-8")
+            path = (ROOT / reference["path"]).resolve()
+            text = source_text(path)
             short = reference["symbol"].rsplit("::", 1)[-1]
-            signature_match = _coverage_function_header(text, reference["symbol"])
+            signature_match = function_header(path, reference["symbol"])
             if signature_match is None:
                 raise ValueError(f"missing linked contract function: {short}")
             signature = text.find("fn", signature_match.start(), signature_match.end())
@@ -1618,9 +1662,9 @@ def validate_normative_coverage(
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if claimed_consumer and not any(
                 ref != reference
-                and (re.search(rf"\b{re.escape(short)}\s*\(", (ROOT / ref["path"]).read_text())
+                and (re.search(rf"\b{re.escape(short)}\s*\(", source_text((ROOT / ref["path"]).resolve()))
                  if ref["path"] != reference["path"] else
-                 _coverage_same_file_call(text, ref["symbol"], short))
+                 same_file_call(path, ref["symbol"], short))
                 for ref in entry["implementation_refs"]
             ):
                 raise ValueError(f"linked function is not used by claimed implementation: {short}")

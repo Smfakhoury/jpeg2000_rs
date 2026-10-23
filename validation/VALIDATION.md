@@ -840,6 +840,16 @@ this conservative check; it is not a full Rust parser.
 It does not assert exhaustive standards-clause coverage, exact progress
 counts, phase completion, or conformance.
 
+Each inventory validation reads a fresh source snapshot. Declaration,
+owner-qualified header and caller-body indexes are shared only within that
+invocation and discarded afterwards; source text is never cached across
+validations by filename or modification time. Schema text is also read on
+every call. A bounded 32-entry cache avoids repeating meta-schema checks only
+for identical schema contents; every supplied instance is still validated,
+and changed or invalid schema contents are checked afresh. Mutation tests
+retain all existing contract/input/state/consumer rejection cases and
+explicitly check same-process source and schema changes.
+
 ## External official vectors
 
 Assets remain in an authorized, externally managed directory and are never
