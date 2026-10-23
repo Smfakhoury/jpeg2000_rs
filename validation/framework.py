@@ -827,6 +827,29 @@ _LAYER_SAMPLING_CONTRACTS = {
     ),
 }
 
+_LAYER_TRAVERSAL_CONTRACTS = {
+    ("src/jpx.rs", "register_layer"): (
+        "part2_register_layer", _coverage_call("owned_layer_outcome", r"\1"), None,
+        r"\s*,\s*".join((
+            _coverage_call("owned_layer_view", "source"),
+            _coverage_call("layer_registration_view", "registration"),
+            "horizontal_grid_size", "vertical_grid_size",
+        )),
+    ),
+    ("src/jpx.rs", "copy_registered_row"): (
+        "part2_registered_row", r"\1",
+        _coverage_call("crate::specs::part2_composition_planes", _coverage_call("final", "colors") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("final", "alpha") + r"\s*@",
+        r"\(\s*" + r"\s*,\s*".join((
+            _coverage_call("owned_layer_view", "source"),
+            _coverage_call("layer_registration_view", "registration"),
+            "grids", r"destination\.0",
+        )) + r"\s*\)\s*,\s*destination\.1\s*,\s*"
+        + _coverage_call("crate::specs::part2_composition_planes", _coverage_call("old", "colors") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("old", "alpha") + r"\s*@",
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1332,6 +1355,7 @@ def validate_normative_coverage(
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_TRAVERSAL_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

@@ -4,10 +4,44 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-registration-raster",
+      "topic": "Complete actual register_layer and actual row producer: derive native geometry and real zero initialization, checked row/column coordinates, skipped/outside samples, original ordered pixel/color/alpha stores, late errors and final source-alpha representation. Complete raw-owner/descriptor/grid Result and row-buffer state relations have no supplied geometry, decoder/read/store outcome, normalized source or adequate-budget premise. Full opacity/raw-key normalization and F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "register_layer"},
+        {"path": "src/jpx.rs", "symbol": "decode_compositing_layer"},
+        {"path": "src/jpx.rs", "symbol": "apply_layer_opacity"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_register_layer"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_row"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_rows_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_columns_prefix"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "register_layer"},
+        {"path": "src/jpx.rs", "symbol": "copy_registered_row"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "owned_layer_view"},
+        {"path": "src/jpx.rs", "symbol": "layer_registration_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_columns_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_columns_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_columns_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_rows_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_rows_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_rows_error"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "complete_registration_matches_independent_wide_raster_and_representation"},
+        {"path": "src/jpx.rs", "symbol": "registered_row_preserves_prior_alpha_before_late_coordinate_overflow"}
+      ]
+    },
+    {
       "id": "part2-complete-native-registration-pixel",
       "topic": "Complete actual registered color and alpha pixel-copy Result/full mutable buffer relations over raw coordinates, raw source owner and raw destination planes. Checked source then destination index, ordered per-color source/destination failures, preserved earlier stores, alpha read/store after all colors and opaque default alpha derive from the sole actual producer. No normalized coordinate/plane/alpha premise or supplied read/store result. Full outer registration traversal, opacity and F4/F8 remain separate.",
       "implementation_refs": [
         {"path": "src/jpx.rs", "symbol": "register_layer"},
+        {"path": "src/jpx.rs", "symbol": "copy_registered_row"},
         {"path": "src/jpx.rs", "symbol": "copy_registered_pixel"}
       ],
       "spec_refs": [

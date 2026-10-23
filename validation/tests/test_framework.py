@@ -643,6 +643,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_SAMPLING_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_native_registration_rows_and_whole_producer(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-registration-raster"},
+            framework._LAYER_TRAVERSAL_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

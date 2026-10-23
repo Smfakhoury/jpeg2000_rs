@@ -2316,16 +2316,140 @@ fn copy_registered_color(
     Ok(())
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, crate::specs::part2_composition_planes(final(colors)@), final(alpha)@)
+            == crate::specs::part2_registered_row(
+                (owned_layer_view(source), layer_registration_view(registration), grids, destination.0),
+                destination.1, crate::specs::part2_composition_planes(old(colors)@), old(alpha)@),
+    )
+)]
+fn copy_registered_row(
+    source: &OwnedLayer,
+    registration: &jp2::CodestreamRegistration,
+    grids: (u16, u16),
+    destination: (u32, u32),
+    colors: &mut [Vec<u16>],
+    alpha: &mut [u16],
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost context = (owned_layer_view(source), layer_registration_view(registration), grids, destination.0);
+        let ghost initial_colors = crate::specs::part2_composition_planes(colors@);
+        let ghost initial_alpha = alpha@;
+    }
+    let (width, y) = destination;
+    let horizontal_subsampling = u32::from(registration.horizontal_subsampling);
+    let vertical_subsampling = u32::from(registration.vertical_subsampling);
+    let horizontal_grid = u32::from(grids.0);
+    let vertical_grid = u32::from(grids.1);
+    if vertical_subsampling == 0 {
+        return Err(invalid_layer());
+    }
+    let source_y_numerator = y
+        .checked_mul(vertical_grid)
+        .ok_or_else(arithmetic_overflow)?;
+    if source_y_numerator >= registration.vertical_offset {
+        let source_y = crate::refinement::registered_source_coordinate(
+            source_y_numerator,
+            registration.vertical_offset,
+            vertical_subsampling,
+        );
+        if source_y < source.height {
+            if horizontal_subsampling == 0 {
+                return Err(invalid_layer());
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_registered_columns_empty(
+                    context, y, source_y, initial_colors, initial_alpha);
+                assert(crate::specs::part2_registered_row(context, y, initial_colors, initial_alpha)
+                    == crate::specs::part2_registered_columns_prefix(
+                        context, y, source_y, initial_colors, initial_alpha, width as nat));
+            }
+            let mut x = 0_u32;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant x <= width, horizontal_subsampling > 0,
+                        context == (owned_layer_view(source), layer_registration_view(registration), grids, destination.0),
+                        destination == (width, y),
+                        horizontal_subsampling == context.1.1 as u32,
+                        horizontal_grid == context.2.0 as u32,
+                        initial_colors == crate::specs::part2_composition_planes(old(colors)@),
+                        initial_alpha == old(alpha)@,
+                        crate::specs::part2_registered_row(context, y, initial_colors, initial_alpha)
+                            == crate::specs::part2_registered_columns_prefix(
+                                context, y, source_y, initial_colors, initial_alpha, width as nat),
+                        crate::specs::part2_registered_columns_prefix(context, y, source_y,
+                            initial_colors, initial_alpha, x as nat)
+                            == (Ok(()), crate::specs::part2_composition_planes(colors@), alpha@),
+                    decreases width - x,
+                )
+            )]
+            while x < width {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_registered_columns_step(
+                        context, y, source_y, initial_colors, initial_alpha, x as nat);
+                    if (x as nat) * (horizontal_grid as nat) > u32::MAX as nat {
+                        crate::proofs::production_impl::production_registered_columns_error(
+                            context, y, source_y, initial_colors, initial_alpha, x as nat + 1, width as nat);
+                    }
+                }
+                let source_x_numerator = x
+                    .checked_mul(horizontal_grid)
+                    .ok_or_else(arithmetic_overflow)?;
+                if source_x_numerator >= registration.horizontal_offset {
+                    let source_x = crate::refinement::registered_source_coordinate(
+                        source_x_numerator,
+                        registration.horizontal_offset,
+                        horizontal_subsampling,
+                    );
+                    if source_x < source.width {
+                        let result = copy_registered_pixel(
+                            source,
+                            (source_x, source_y),
+                            (width, x, y),
+                            colors,
+                            alpha,
+                        );
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            if let Err(error) = result {
+                                assert(crate::specs::part2_registered_columns_prefix(context, y, source_y,
+                                    initial_colors, initial_alpha, x as nat + 1)
+                                    == (Err(error), crate::specs::part2_composition_planes(colors@), alpha@));
+                                crate::proofs::production_impl::production_registered_columns_error(
+                                    context, y, source_y, initial_colors, initial_alpha, x as nat + 1, width as nat);
+                            } else {
+                                crate::proofs::production_impl::production_mct_unit_result(result);
+                            }
+                        }
+                        result?;
+                    }
+                }
+                x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures owned_layer_outcome(result) == crate::specs::part2_register_layer(
+            owned_layer_view(source), layer_registration_view(registration), horizontal_grid_size, vertical_grid_size),
+    )
+)]
 fn register_layer(
     source: &OwnedLayer,
     registration: &jp2::CodestreamRegistration,
     horizontal_grid_size: u16,
     vertical_grid_size: u16,
 ) -> Result<OwnedLayer, DecodeError> {
-    let horizontal_subsampling = u32::from(registration.horizontal_subsampling);
-    let vertical_subsampling = u32::from(registration.vertical_subsampling);
-    let horizontal_grid = u32::from(horizontal_grid_size);
-    let vertical_grid = u32::from(vertical_grid_size);
     let (width, height, pixels) = registered_layer_geometry(
         source.width,
         source.height,
@@ -2333,62 +2457,88 @@ fn register_layer(
         horizontal_grid_size,
         vertical_grid_size,
     )?;
-    let mut colors = vec![vec![0_u16; pixels]; source.colors.len()];
+    let samples = vec![0_u16; pixels];
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost seed = samples; }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(seed@ =~= Seq::new(pixels as nat, |_pixel: int| 0u16)); }
+    let mut colors = vec![samples; source.colors.len()];
     let mut alpha = vec![0_u16; pixels];
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost input = owned_layer_view(source);
+        let ghost descriptor = layer_registration_view(registration);
+        let ghost context = (input, descriptor, (horizontal_grid_size, vertical_grid_size), width);
+        let ghost initial_colors = crate::specs::part2_composition_planes(colors@);
+        let ghost initial_alpha = alpha@;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall|channel: int| 0 <= channel < colors.len() implies
+            colors@[channel]@ == seed@ by {
+            assert(vstd::pervasive::cloned(seed, colors@[channel]));
+            if seed != colors@[channel] {
+                assert(vstd::pervasive::strictly_cloned(seed, colors@[channel]));
+                assert(colors@[channel]@.len() == seed@.len());
+                assert forall|index: int| 0 <= index < pixels implies
+                    colors@[channel]@[index] == seed@[index] by {
+                    assert(vstd::pervasive::cloned(seed@[index], colors@[channel]@[index]));
+                }
+                assert(colors@[channel]@ =~= seed@);
+            }
+        }
+        assert forall|channel: int| 0 <= channel < initial_colors.len() implies
+            initial_colors[channel] == Seq::new(pixels as nat, |_pixel: int| 0u16) by {
+            assert(initial_colors[channel] == colors@[channel]@);
+            assert(colors@[channel]@ == seed@);
+            assert(seed@ =~= Seq::new(pixels as nat, |_pixel: int| 0u16));
+        }
+        assert(initial_colors =~= Seq::new(input.3.len(), |_channel: int| Seq::new(pixels as nat, |_pixel: int| 0u16)));
+        assert(initial_alpha =~= Seq::new(pixels as nat, |_pixel: int| 0u16));
+        crate::proofs::production_impl::production_registered_rows_empty(context, initial_colors, initial_alpha);
+    }
     let mut y = 0_u32;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant y <= height && vertical_subsampling > 0,
+            invariant y <= height,
+                input == owned_layer_view(source), descriptor == layer_registration_view(registration),
+                context == (input, descriptor, (horizontal_grid_size, vertical_grid_size), width),
+                crate::specs::part2_registered_layer_geometry(input.0, input.1, descriptor,
+                    horizontal_grid_size, vertical_grid_size) == Ok((width, height, pixels)),
+                initial_colors == Seq::new(input.3.len(), |_channel: int| Seq::new(pixels as nat, |_pixel: int| 0u16)),
+                initial_alpha == Seq::new(pixels as nat, |_pixel: int| 0u16),
+                crate::specs::part2_registered_rows_prefix(context, initial_colors, initial_alpha, y as nat)
+                    == (Ok(()), crate::specs::part2_composition_planes(colors@), alpha@),
             decreases height - y,
         )
     )]
     while y < height {
-        let source_y_numerator = y
-            .checked_mul(vertical_grid)
-            .ok_or_else(arithmetic_overflow)?;
-        if source_y_numerator >= registration.vertical_offset {
-            let source_y = crate::refinement::registered_source_coordinate(
-                source_y_numerator,
-                registration.vertical_offset,
-                vertical_subsampling,
-            );
-            if source_y < source.height {
-                let mut x = 0_u32;
-                if horizontal_subsampling == 0 {
-                    return Err(invalid_layer());
-                }
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant x <= width && horizontal_subsampling > 0,
-                        decreases width - x,
-                    )
-                )]
-                while x < width {
-                    let source_x_numerator = x
-                        .checked_mul(horizontal_grid)
-                        .ok_or_else(arithmetic_overflow)?;
-                    if source_x_numerator >= registration.horizontal_offset {
-                        let source_x = crate::refinement::registered_source_coordinate(
-                            source_x_numerator,
-                            registration.horizontal_offset,
-                            horizontal_subsampling,
-                        );
-                        if source_x < source.width {
-                            copy_registered_pixel(
-                                source,
-                                (source_x, source_y),
-                                (width, x, y),
-                                &mut colors,
-                                &mut alpha,
-                            )?;
-                        }
-                    }
-                    x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_registered_rows_step(
+                context, initial_colors, initial_alpha, y as nat);
+        }
+        let result = copy_registered_row(
+            source,
+            registration,
+            (horizontal_grid_size, vertical_grid_size),
+            (width, y),
+            &mut colors,
+            &mut alpha,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_registered_rows_prefix(context, initial_colors, initial_alpha, y as nat + 1)
+                    == (Err(error), crate::specs::part2_composition_planes(colors@), alpha@));
+                crate::proofs::production_impl::production_registered_rows_error(
+                    context, initial_colors, initial_alpha, y as nat + 1, height as nat);
+            } else {
+                crate::proofs::production_impl::production_mct_unit_result(result);
             }
         }
+        result?;
         y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(OwnedLayer {
@@ -3893,6 +4043,256 @@ mod tests {
         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    #[test]
+    fn complete_registration_matches_independent_wide_raster_and_representation() {
+        let mut cases = 0;
+        for width in 0..=2 {
+            for height in 0..=2 {
+                let source_pixels = usize::try_from(width * height).unwrap();
+                for horizontal_subsampling in 0..=2 {
+                    for vertical_subsampling in 0..=2 {
+                        for horizontal_grid in 0..=3 {
+                            for vertical_grid in 0..=3 {
+                                for horizontal_offset in [0, 1, 3] {
+                                    for vertical_offset in [0, 1, 3] {
+                                        for channels in [0, 1, 4] {
+                                            for space in [
+                                                ConvertedColorSpace::Grayscale,
+                                                ConvertedColorSpace::Srgb,
+                                            ] {
+                                                for alpha_kind in 0..3 {
+                                                    let colors = (0..channels)
+                                                        .map(|channel| {
+                                                            (0..source_pixels)
+                                                                .map(|pixel| {
+                                                                    u16::try_from(
+                                                                        17 * channel
+                                                                            + 3 * pixel
+                                                                            + 1,
+                                                                    )
+                                                                    .unwrap()
+                                                                })
+                                                                .collect::<Vec<_>>()
+                                                        })
+                                                        .collect::<Vec<_>>();
+                                                    let alpha = match alpha_kind {
+                                                        0 => None,
+                                                        1 => Some((
+                                                            vec![32_768; source_pixels],
+                                                            false,
+                                                        )),
+                                                        _ => Some((vec![], true)),
+                                                    };
+                                                    let source = OwnedLayer {
+                                                        width,
+                                                        height,
+                                                        color_space: space,
+                                                        colors,
+                                                        alpha,
+                                                    };
+                                                    let registration =
+                                                        jp2::CodestreamRegistration {
+                                                            codestream_index: u16::MAX,
+                                                            horizontal_subsampling,
+                                                            vertical_subsampling,
+                                                            horizontal_offset,
+                                                            vertical_offset,
+                                                        };
+                                                    let expected = (|| {
+                                                        if horizontal_subsampling == 0
+                                                            || vertical_subsampling == 0
+                                                            || horizontal_grid == 0
+                                                            || vertical_grid == 0
+                                                        {
+                                                            return Err(invalid_layer());
+                                                        }
+                                                        let output_width =
+                                                            independent_registered_extent(
+                                                                width,
+                                                                u32::from(horizontal_subsampling),
+                                                                u32::from(horizontal_grid),
+                                                                horizontal_offset,
+                                                            )?;
+                                                        let output_height =
+                                                            independent_registered_extent(
+                                                                height,
+                                                                u32::from(vertical_subsampling),
+                                                                u32::from(vertical_grid),
+                                                                vertical_offset,
+                                                            )?;
+                                                        let count = usize::try_from(
+                                                            u128::from(output_width)
+                                                                * u128::from(output_height),
+                                                        )
+                                                        .map_err(|_| arithmetic_overflow())?;
+                                                        let mut output =
+                                                            vec![vec![0; count]; channels];
+                                                        let mut output_alpha = vec![0; count];
+                                                        for y in 0..output_height {
+                                                            let numerator_y = u128::from(y)
+                                                                * u128::from(vertical_grid);
+                                                            if numerator_y > u128::from(u32::MAX) {
+                                                                return Err(arithmetic_overflow());
+                                                            }
+                                                            if numerator_y
+                                                                < u128::from(vertical_offset)
+                                                            {
+                                                                continue;
+                                                            }
+                                                            let source_y = (numerator_y
+                                                                - u128::from(vertical_offset))
+                                                                / u128::from(vertical_subsampling);
+                                                            if source_y >= u128::from(height) {
+                                                                continue;
+                                                            }
+                                                            for x in 0..output_width {
+                                                                let numerator_x = u128::from(x)
+                                                                    * u128::from(horizontal_grid);
+                                                                if numerator_x
+                                                                    > u128::from(u32::MAX)
+                                                                {
+                                                                    return Err(
+                                                                        arithmetic_overflow(),
+                                                                    );
+                                                                }
+                                                                if numerator_x
+                                                                    < u128::from(horizontal_offset)
+                                                                {
+                                                                    continue;
+                                                                }
+                                                                let source_x = (numerator_x
+                                                                    - u128::from(
+                                                                        horizontal_offset,
+                                                                    ))
+                                                                    / u128::from(
+                                                                        horizontal_subsampling,
+                                                                    );
+                                                                if source_x >= u128::from(width) {
+                                                                    continue;
+                                                                }
+                                                                let input_index = usize::try_from(
+                                                                    source_y * u128::from(width)
+                                                                        + source_x,
+                                                                )
+                                                                .unwrap();
+                                                                let output_index = usize::try_from(
+                                                                    u128::from(y)
+                                                                        * u128::from(output_width)
+                                                                        + u128::from(x),
+                                                                )
+                                                                .unwrap();
+                                                                for (channel, samples) in
+                                                                    output.iter_mut().enumerate()
+                                                                {
+                                                                    samples[output_index] = *source
+                                                                        .colors[channel]
+                                                                        .get(input_index)
+                                                                        .ok_or_else(
+                                                                            invalid_layer,
+                                                                        )?;
+                                                                }
+                                                                output_alpha[output_index] =
+                                                                    match &source.alpha {
+                                                                        None => u16::MAX,
+                                                                        Some((samples, _)) => {
+                                                                            *samples
+                                                                                .get(input_index)
+                                                                                .ok_or_else(
+                                                                                    invalid_layer,
+                                                                                )?
+                                                                        }
+                                                                    };
+                                                            }
+                                                        }
+                                                        let premultiplied = source
+                                                            .alpha
+                                                            .as_ref()
+                                                            .is_some_and(|(_, flag)| *flag);
+                                                        Ok((
+                                                            output_width,
+                                                            output_height,
+                                                            space,
+                                                            output,
+                                                            Some((output_alpha, premultiplied)),
+                                                        ))
+                                                    })(
+                                                    );
+                                                    let actual = register_layer(
+                                                        &source,
+                                                        &registration,
+                                                        horizontal_grid,
+                                                        vertical_grid,
+                                                    )
+                                                    .map(|layer| {
+                                                        (
+                                                            layer.width,
+                                                            layer.height,
+                                                            layer.color_space,
+                                                            layer.colors,
+                                                            layer.alpha,
+                                                        )
+                                                    });
+                                                    assert_eq!(actual, expected);
+                                                    cases += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 209_952);
+    }
+
+    #[test]
+    fn registered_row_preserves_prior_alpha_before_late_coordinate_overflow() {
+        let source = OwnedLayer {
+            width: 1,
+            height: 1,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![],
+            alpha: None,
+        };
+        let registration = jp2::CodestreamRegistration {
+            codestream_index: 0,
+            horizontal_subsampling: 1,
+            vertical_subsampling: 1,
+            horizontal_offset: 0,
+            vertical_offset: 0,
+        };
+        let mut colors = vec![];
+        let mut alpha = vec![7];
+        assert_eq!(
+            copy_registered_row(
+                &source,
+                &registration,
+                (u16::MAX, 1),
+                (u32::MAX, 0),
+                &mut colors,
+                &mut alpha
+            ),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(alpha, vec![u16::MAX]);
+        alpha[0] = 11;
+        assert_eq!(
+            copy_registered_row(
+                &source,
+                &registration,
+                (1, 2),
+                (1, u32::MAX),
+                &mut colors,
+                &mut alpha
+            ),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(alpha, vec![11]);
+    }
 
     #[test]
     fn registered_pixel_preserves_ordered_partial_colors_and_alpha_errors() {
