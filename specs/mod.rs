@@ -7,12 +7,44 @@ mod legacy;
 pub use legacy::*;
 mod packet;
 pub use packet::*;
+mod packet_orchestration;
+pub use packet_orchestration::*;
+mod header;
+pub use header::*;
+mod tag_tree;
+pub use tag_tree::*;
 
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,
 };
 
 verus! {
+
+pub open spec fn part1_tier1_block_coding_byte(value: u8) -> Result<crate::tier1::Tier1BlockCoding, crate::DecodeError> {
+    match value >> 6 {
+        0 => Ok(crate::tier1::Tier1BlockCoding::Legacy),
+        1 if value & 0x37 == 0 => Ok(crate::tier1::Tier1BlockCoding::HighThroughput),
+        1 | 2 => Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+        3 if value & 0x05 == 0 => Ok(crate::tier1::Tier1BlockCoding::Mixed),
+        _ => Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)),
+    }
+}
+
+pub open spec fn part1_tier1_coding_style_byte(value: u8) -> Result<crate::tier1::Tier1CodingStyle, crate::DecodeError> {
+    match part1_tier1_block_coding_byte(value) {
+        Err(error) => Err(error),
+        Ok(block_coding) => Ok(crate::tier1::Tier1CodingStyle {
+            block_coding,
+            force_high_throughput: matches!(block_coding, crate::tier1::Tier1BlockCoding::HighThroughput),
+            selective_arithmetic_coding_bypass: value & 0x01 != 0,
+            reset_contexts: value & 0x02 != 0,
+            terminate_all_passes: value & 0x04 != 0,
+            vertical_causal_context: value & 0x08 != 0,
+            predictable_termination: value & 0x10 != 0,
+            segmentation_symbols: value & 0x20 != 0,
+        }),
+    }
+}
 
 pub type Part2RawKernelCoefficient = (Seq<u8>, u8);
 pub type Part2RawKernelStep = (i8, u8, Option<Part2RawKernelCoefficient>, Seq<Part2RawKernelCoefficient>);

@@ -1,5 +1,157 @@
 # Specification audit guide
 
+The complete actual native header/reader/raw-tree and single-precinct chain is
+now bound by39 finite qualified whole-result/input recipes. Start at
+`part1_packet_header_decode`, then `part1_precinct_headers` and
+`part1_precinct_packet`: raw native metadata and actual bytes flow through
+real style selection, SOP/prefix parsing, every mutable header association,
+alignment/EPH, whole preflight, actual mixed coefficient execution and final
+packed/inline accounting. Only packet state is restored on a header error;
+tree/reader and later coefficient/counter effects retain their exact native
+order. There is no supplied outcome/trace, normalized descriptor/window or
+adequate-budget premise. Full progression/reassembly remain separate.
+
+The actual component-style owner returns its complete native style/error with
+logical-count rejection before physical-array lookup, including contradictory
+counts. The complete native Tier1 byte parser preserves every flag, the exact
+HT/mixed rejection masks and all256 input bytes. Public static APIs and the
+actual codestream caller share one executable parser body. Closed owner
+observations expose actual SOP/EPH fields and packed-header source presence;
+presence is not inferred from byte length or fragment count. These facts feed
+the actual tile/precinct composition and pending progression join, not a supplied style
+or header outcome.
+
+## Frozen actual precinct/progression orchestration contract
+
+The composition boundary is the actual `decode_precinct_packet` and its
+remaining progression caller, not a supplied header/result bank. F5L owns the sole complete
+packet reader, raw tag-tree and header producer interfaces; this work consumes
+those actual contracts without editing their algorithms or duplicating views.
+F5H owns precinct/progression associations, native local progress and full
+state/error/coefficient effects.
+
+The precinct profile admits arbitrary stored states, contexts, decoder and
+subband vectors; malformed geometry, overlapping raw subband ranges and absent
+storage are not normalized away. It preserves original shape/cap/style and
+SOP/packed-header selection checks, ordered actual per-block header calls,
+alignment/EPH effects, complete body preflight before any coefficient execution,
+and then actual selected mixed body transactions. Skipped Tier-1 execution
+still consumes/checks real body ranges while preserving decoder state. All
+native offsets, segment/pass/contribution counters, first errors and the final
+packet-length check are included. This caller is not globally transactional:
+earlier header/tree/decoder changes may survive a later error.
+
+The first executable substage is the existing precinct body preflight and
+execution loops, moved rather than copied when needed for complete loop
+contracts. Their descriptor vectors are the caller's real native arrays;
+closing the entire precinct contract must additionally derive them through the
+actual F5L header producer, never assume their correctness or supply an outcome.
+
+This body-loop substage now has unconditional executable relations to
+`packet_orchestration.rs`: `part1_packet_body_preflight` and
+`part1_packet_body_execute`, with complete raw local progress and the entire
+decoder-state sequence. Its descriptor-slice view delegates the sole
+`code_block_contribution_option_view`. A scoped actual mutable decoder borrow
+and explicit nested-vector frame preserve all untouched elements and exact
+late-error coefficient/counter effects. Its properties retain raw finished
+cursors, advanced-end truncation and all skipped-execution decoders/counters.
+
+The progression profile must additionally preserve actual coordinate iteration,
+tile-part/packed-header/packet-length cursors, duplicate suppression, context
+layer writes, resolution selection, earlier packet effects and all late checked
+aggregate/consumption errors. Actual external owner interfaces are prerequisites,
+not assumed successful traces. The intermediate body and association stages
+alone do not close this boundary; the precinct join below now closes the
+single-packet caller, while progression and whole F5H remain open.
+
+The actual precinct header association stages now refine
+`part1_precinct_header_slot`, `part1_precinct_header_members` and
+`part1_precinct_headers`. They invoke the actual `part1_packet_header_decode`
+on each actual selected packet state/context/tree pair and carry every result
+into the real descriptor slot. Raw overlapping subband ranges are retained:
+the contribution count need not equal the number of final occupied slots.
+Readonly admission precedes the scoped mutable header borrow; complete vector
+length, untouched-element and selected-subband metadata frames are explicit.
+Native force-bit omission in style equality is part of the actual policy,
+not replaced by whole-struct equality.
+
+### Complete actual TilePartPayload precinct composition
+
+The original `decode_precinct_packet` now has an unconditional complete
+Result/full-precinct relation to `part1_precinct_packet`. Its semantic input is
+the actual `TilePartPayload`, not a bank of style, header or decoder outcomes.
+Actual owner contracts derive component-style count/physical-array errors,
+all byte-parser results, SOP/EPH fields and packed source presence. The real
+shape, code-block/work caps and data-offset checks retain their original order.
+
+Three actual production phases isolate marker/reader admission, native header
+association, and alignment/EPH/body/accounting. Their code is moved, never
+duplicated; descriptor allocation still occurs once, after the packet-present
+bit. Prefix relations include the complete returned reader and original
+borrowed byte slice. All helper contracts admit arbitrary raw metadata, state,
+descriptors and cap values without success or budget premises.
+
+The full join derives descriptors through the sole F5L header producer, then
+preflights every body range before actual mixed legacy/HT execution. Packed and
+inline paths preserve distinct physical cursors but common logical length;
+SOP/EPH overhead, skipped execution and all final conversions are included.
+Header/tree commits survive later EPH/preflight failures; decoder commits also
+survive a later packet-length mismatch. Independent literal MQ and HT streams,
+including nonzero HT coefficients, exercise these effects without using the
+model or subject decoder as an expected-output oracle.
+
+This closes this actual single-precinct packet boundary, not packet progression,
+tile-part reassembly, packet-length iteration, JPIP outer transactions, general
+codestream correctness or the F5H epic.
+
+## Native packet reader and raw tag-tree ownership
+
+The actual typed factories `packet_reader_new`, `packet_reader_prefix` and
+`tag_tree_new` obtain their caps from the sole `ResourceLimits` owner getters.
+Their complete contracts use those closed owner projections, not caller-supplied
+outcomes or assumed numeric caps. Existing associated constructors delegate to
+these production factories; checked and prefix reader admission remain distinct.
+
+[header.rs](header.rs) observes all eight packet-reader fields and its actual
+load/read/word/admission effects, including header-cap-before-truncation,
+stuffing checks before advancement and consumed-bit-before-work-limit failure.
+Validated construction rejects an oversized input; actual prefix construction
+does not. Alignment retains stuffing history. No initialized-reader or adequate
+budget condition is a premise of any actual read operation.
+
+[tag_tree.rs](tag_tree.rs) observes every raw level and node. The real public
+decode uses its actual guarded path builder, node loop and reverse traversal;
+the path is not an input to its public theorem. Empty storage, mismatched level
+rectangles, duplicate/overlapping offsets, 64/65-level boundaries and arbitrary
+low/value order remain native cases. Inherited-low stores precede a failing
+read, and arithmetic address errors retain offset zero while path/node errors
+use the actual reader cursor. Constructor limits and faithful raw cloning have
+their own complete relations, without a validated-tree premise.
+
+The packet-state projection preserves all five fields. The sole public Option
+and Result contribution projections retain `None` versus `Some(empty)` and all
+164 descriptor slots. These actual primitive producers are prerequisites for
+the full header/probe/rollback relation below, not a supplied header or
+successful decoder outcome.
+
+The continuing actual header join is now complete as
+`part1_packet_header_decode`: the production entry feeds real reader and raw
+TagTree results into its real pass/Lblock/length grammar, Mixed probe and final
+packet-state commit. Local next-state updates are not silently treated as public
+commits. Public errors preserve packet state while retaining exact reader/tree
+partial effects. Probe errors retain the already-read main cursor; only actual
+legacy selection commits the probe. Every optional result contains complete
+physical descriptor arrays, including unvisited storage.
+
+The descriptor-fold bound comes from its actual 164-element arrays and first
+failing check. It is not a normalized-count, sufficient-resource or supplied
+trace condition on the native entry. Native header context/state fields remain
+arbitrary; the model uses the real supported-bitplane/pass constants where the
+actual producer checks them. Raw helper count165 and final conversion cases are
+not erased. Precinct/progression callers must consume this actual producer
+relation; their larger rollback and association claims do not follow merely
+from this header result.
+
 ## Complete actual mixed native body and segment dispatch
 
 `part1_code_block_body_staged` consumes the sole full native contribution view,

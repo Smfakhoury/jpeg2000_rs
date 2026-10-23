@@ -2264,4 +2264,166 @@ pub proof fn mixed_tier1_dispatch_retains_actual_native_route_order(
 {
 }
 
+pub proof fn packet_body_finished_preflight_preserves_raw_cursor(
+    state: crate::specs::Part1PacketBodyPreflight,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+)
+    ensures state.index >= contributions.len() ==>
+        crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset) == (Ok(()), state),
+{
+    reveal(crate::specs::part1_packet_body_preflight);
+}
+
+pub proof fn packet_body_preflight_truncation_retains_advanced_end_before_index(
+    state: crate::specs::Part1PacketBodyPreflight,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+)
+    ensures if state.index < contributions.len() {
+        match contributions[state.index as int] {
+            None => true,
+            Some(contribution) => contribution.data_length as nat <= usize::MAX
+                && state.end as nat + contribution.data_length as nat <= usize::MAX
+                && state.end as nat + contribution.data_length as nat > data.len()
+                ==> crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset)
+                    == (Err(crate::DecodeError::MalformedInput {
+                        offset: error_offset as u64, kind: crate::MalformedKind::Truncated,
+                    }), crate::specs::Part1PacketBodyPreflight {
+                        end: (state.end + contribution.data_length) as usize, ..state
+                    }),
+        }
+    } else { true },
+{
+    reveal(crate::specs::part1_packet_body_preflight);
+}
+
+pub proof fn packet_body_skipped_execution_preserves_all_decoders_and_counts(
+    state: crate::specs::Part1PacketBodyExecution,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>, error_offset: usize,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.decoders == state.decoders,
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.segments == state.segments,
+        crate::specs::part1_packet_body_execute(state, contributions, data, error_offset, false,
+            pass_limit, byte_limit, input_limit, work_limit).1.passes == state.passes,
+    decreases contributions.len() - state.index as nat,
+{
+    reveal(crate::specs::part1_packet_body_execute);
+    if state.index < contributions.len() {
+        let step = match contributions[state.index as int] {
+            None => (Ok(()), state),
+            Some(contribution) => crate::specs::part1_packet_body_execute_slot(
+                state, contribution, data, error_offset, false, pass_limit, byte_limit, input_limit, work_limit),
+        };
+        if step.0.is_ok() && step.1.index != usize::MAX {
+            packet_body_skipped_execution_preserves_all_decoders_and_counts(
+                crate::specs::Part1PacketBodyExecution { index: (step.1.index + 1) as usize, ..step.1 },
+                contributions, data, error_offset, pass_limit, byte_limit, input_limit, work_limit,
+            );
+        }
+    }
+}
+
+pub proof fn precinct_finished_raw_header_cursor_preserves_every_owner(
+    state: crate::specs::Part1PrecinctHeaderState,
+    contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16, style: crate::tier1::Tier1CodingStyle,
+)
+    ensures state.subband_index >= state.subbands.len() ==>
+        crate::specs::part1_precinct_headers(state, contexts, layer, style) == (Ok(()), state),
+{
+    reveal(crate::specs::part1_precinct_headers_run);
+}
+
+pub proof fn precinct_header_slot_preserves_all_physical_storage_lengths(
+    state: crate::specs::Part1PrecinctHeaderState,
+    contexts: Seq<crate::packet::CodeBlockPacketContext>, layer: u16, style: crate::tier1::Tier1CodingStyle,
+)
+    ensures
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.states.len() == state.states.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.subbands.len() == state.subbands.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.contributions.len()
+            == state.contributions.len(),
+        crate::specs::part1_precinct_header_slot(state, contexts, layer, style).1.subband_index == state.subband_index,
+{
+    reveal(crate::specs::part1_precinct_header_slot);
+}
+
+pub proof fn precinct_style_comparison_retains_native_force_flag_policy(
+    style: crate::tier1::Tier1CodingStyle, required: bool,
+)
+    ensures crate::specs::part1_packet_styles_equal(
+        style, crate::tier1::Tier1CodingStyle { force_high_throughput: required, ..style }),
+{
+}
+
+pub proof fn precinct_sop_truncation_precedes_packed_offsets_and_reader_budgets(
+    data: Seq<u8>, packed: Seq<u8>, parameters: crate::specs::Part1PrecinctPayloadParameters,
+    header_limit: u64, work_limit: u64,
+)
+    ensures parameters.sop && data.len() < 4 ==>
+        crate::specs::part1_precinct_payload_prefix(data, packed, parameters, header_limit, work_limit)
+            == Err(crate::specs::part1_packet_reader_error(parameters.error_offset, crate::MalformedKind::Truncated)),
+{
+}
+
+pub proof fn precinct_malformed_sop_precedes_missing_sequence_and_reader_budgets(
+    data: Seq<u8>, packed: Seq<u8>, parameters: crate::specs::Part1PrecinctPayloadParameters,
+    header_limit: u64, work_limit: u64,
+)
+    ensures parameters.sop && data.len() >= 4
+        && !crate::specs::part1_sop_valid(data[0], data[1], data[2], data[3]) ==>
+        crate::specs::part1_precinct_payload_prefix(data, packed, parameters, header_limit, work_limit)
+            == Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidPacketHeader)),
+{
+}
+
+pub proof fn precinct_payload_preserves_readonly_identity_and_every_context(
+    state: crate::specs::Part1PacketPrecinctState, data: Seq<u8>, packed: Seq<u8>,
+    parameters: crate::specs::Part1PrecinctPayloadParameters,
+    header_limit: u64, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.component == state.component,
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.resolution == state.resolution,
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.precinct == state.precinct,
+        crate::specs::part1_precinct_payload(state, data, packed, parameters, header_limit,
+            pass_limit, byte_limit, input_limit, work_limit).1.contexts == state.contexts,
+{
+    reveal(crate::specs::part1_precinct_payload_headers);
+    reveal(crate::specs::part1_precinct_payload_after_headers);
+    reveal(crate::specs::part1_precinct_payload_body);
+}
+
+pub proof fn precinct_payload_preflight_failure_precedes_every_coefficient_execution(
+    state: crate::specs::Part1PacketPrecinctState,
+    contributions: Seq<Option<crate::specs::Part1CodeBlockContribution>>, data: Seq<u8>,
+    parameters: crate::specs::Part1PrecinctPayloadParameters, present: bool, contribution_count: u32,
+    header_bytes: usize, body_start: usize, packed_consumed: usize,
+    pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
+)
+    ensures crate::specs::part1_packet_body_preflight(
+        crate::specs::Part1PacketBodyPreflight { index: 0, end: body_start },
+        contributions, data, parameters.error_offset).0.is_err() ==>
+        crate::specs::part1_precinct_payload_body(state, contributions, data, parameters,
+            present, contribution_count, header_bytes, body_start, packed_consumed,
+            pass_limit, byte_limit, input_limit, work_limit).1 == state,
+{
+    reveal(crate::specs::part1_precinct_payload_body);
+}
+
+pub proof fn precinct_final_accounting_preserves_every_prior_effect_even_on_error(
+    state: crate::specs::Part1PacketPrecinctState, parameters: crate::specs::Part1PrecinctPayloadParameters,
+    present: bool, contribution_count: u32, segments: u32, passes: u32,
+    header_bytes: usize, body_start: usize, tile_offset: usize, packed_consumed: usize,
+)
+    ensures crate::specs::part1_precinct_payload_finish(state, parameters, present, contribution_count,
+        segments, passes, header_bytes, body_start, tile_offset, packed_consumed).1 == state,
+{
+}
+
 }

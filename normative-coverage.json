@@ -4,6 +4,762 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-header-tree-producers",
+      "topic": "Complete actual raw packet reader, full TagTree/packet-state/header segment traversal, all-byte Tier1 style parsing and scalar admission producers. Full returned errors/values and every final mutable owner are bound to actual old native inputs and typed caps. Header errors restore only packet state, not reader/trees. No normalized native shape/count, success, adequate-budget or supplied-result premise. Static wrappers/observational helpers are support, not independent result claims; not progression or normative conformance.",
+      "contract_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_error"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_limit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_prefix_from_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_from_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bits"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::load_byte"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "code_block_packet_state_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "header_segments_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segment_length"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segments"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segment"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "commit_header_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_zero_bitplanes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_new_passes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_lblock"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "floor_log2"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::leaf_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode_path"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode_path_nodes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_tag_tree_node"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "tag_tree_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "tag_tree_from_dimensions"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::admit_legacy_contribution"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "legacy_contribution_work"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier1_coding_style_from_code_block_style"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier1_block_coding_from_code_block_style"
+        }
+      ],
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_error"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_limit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_prefix_from_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_from_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bits"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::load_byte"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "code_block_packet_state_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "header_segments_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segment_length"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segments"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segment"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "commit_header_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_zero_bitplanes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_new_passes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_lblock"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "floor_log2"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::leaf_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode_path"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode_path_nodes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_tag_tree_node"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "tag_tree_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "tag_tree_from_dimensions"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::admit_legacy_contribution"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "legacy_contribution_work"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier1_coding_style_from_code_block_style"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier1_block_coding_from_code_block_style"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_members"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_contribution_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_after_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::new_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "CodeBlockPacketState::new"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::decode_legacy_contribution"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "CodingStyle::tier1_coding_style"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_error"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_limit"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_prefix"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_initial"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_read"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_read_bits"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_reader_load"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_code_block_packet_initial"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_segments_initial"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_segment_length"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_prefix"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_packet_header_decode"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_segments"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_segment_step"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_commit"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_zero_loop"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_new_passes"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_lblock"
+        },
+        {
+          "path": "specs/header.rs",
+          "symbol": "part1_header_floor_log2"
+        },
+        {
+          "path": "specs/tag_tree.rs",
+          "symbol": "part1_tag_leaf_count"
+        },
+        {
+          "path": "specs/tag_tree.rs",
+          "symbol": "part1_tag_path"
+        },
+        {
+          "path": "specs/tag_tree.rs",
+          "symbol": "part1_tag_reverse"
+        },
+        {
+          "path": "specs/tag_tree.rs",
+          "symbol": "part1_tag_tree_decode"
+        },
+        {
+          "path": "specs/tag_tree.rs",
+          "symbol": "part1_tag_node_decode"
+        },
+        {
+          "path": "specs/tag_tree.rs",
+          "symbol": "part1_tag_initial"
+        },
+        {
+          "path": "specs/legacy.rs",
+          "symbol": "part1_legacy_contribution_admission"
+        },
+        {
+          "path": "specs/legacy.rs",
+          "symbol": "part1_legacy_contribution_work"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_coding_style_byte"
+        },
+        {
+          "path": "specs/mod.rs",
+          "symbol": "part1_tier1_block_coding_byte"
+        }
+      ],
+      "proof_refs": [
+        {"path": "src/packet.rs", "symbol": "PacketBitReader::bits_read"},
+        {"path": "src/packet.rs", "symbol": "PacketBitReader::bytes_consumed"},
+        {"path": "src/packet.rs", "symbol": "PacketBitReader::is_byte_aligned"},
+        {"path": "src/packet.rs", "symbol": "PacketBitReader::align_to_byte"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockPacketState::included"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockPacketState::zero_bitplanes"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockPacketState::lblock"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockPacketState::total_passes"},
+        {"path": "src/packet.rs", "symbol": "CodeBlockPacketState::high_throughput"},
+        {"path": "src/packet.rs", "symbol": "TagTree::node_count"},
+        {"path": "src/packet.rs", "symbol": "TagTree"},
+        {"path": "src/packet.rs", "symbol": "ceil_div_two"},
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_error"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_limit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_prefix_from_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_from_input"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "packet_reader_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bit"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::read_bits"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "PacketBitReader::load_byte"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "code_block_packet_state_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "header_segments_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segment_length"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_code_block_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segments"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_segment"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "commit_header_contribution"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_zero_bitplanes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_new_passes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "read_header_lblock"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "floor_log2"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::leaf_count"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode_path"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode_path_nodes"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "TagTree::decode"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_tag_tree_node"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "tag_tree_new"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "tag_tree_from_dimensions"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "Tier1CodeBlockDecoder::admit_legacy_contribution"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "legacy_contribution_work"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier1_coding_style_from_code_block_style"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "tier1_block_coding_from_code_block_style"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_payload_prefix_checks_actual_markers_before_packed_ranges_and_budgets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_payload_literal_inline_and_packed_streams_account_for_markers_and_real_coefficients"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_payload_errors_retain_exact_header_and_late_coefficient_effects"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_precinct_wrapper_preserves_shape_cap_offset_and_component_error_priority"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_precinct_wrapper_commits_literal_ht_cleanup_before_late_length_mismatch"
+        },
+        {
+          "path": "src/tier1.rs",
+          "symbol": "complete_style_byte_parser_matches_all_native_bytes_and_flags"
+        },
+        {
+          "path": "src/codestream.rs",
+          "symbol": "complete_packet_style_owners_preserve_raw_counts_styles_and_header_presence"
+        }
+      ]
+    },
+    {
+      "id": "part1-complete-native-precinct-composition",
+      "topic": "Complete actual TilePartPayload to single-precinct Result/full-state composition through raw metadata/style admission, actual SOP/prefix reader, header/overlapping subband-slot associations, alignment/EPH, full body preflight, real mixed coefficients and final inline/packed accounting. Complete readonly contexts and every final mutable owner, all native errors/caps/raw lengths/offsets. No supplied header/decoder outcome, normalized shape/count/window, trace or budget premise. Whole progression/reassembly and full F5L/F5H remain separate.",
+      "contract_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_members"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_contribution_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_after_headers"
+        }
+      ],
+      "implementation_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_members"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_contribution_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_after_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_progression_tile_packets_selected"
+        }
+      ],
+      "spec_refs": [
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_header_slot"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_header_members"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_headers"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_packet"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_payload_prefix"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_payload"
+        },
+        {
+          "path": "specs/packet_orchestration.rs",
+          "symbol": "part1_precinct_payload_after_headers"
+        }
+      ],
+      "proof_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_slot"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_header_members"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_contribution_headers"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_prefix"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "decode_precinct_packet_payload_after_headers"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_payload_prefix_checks_actual_markers_before_packed_ranges_and_budgets"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_payload_literal_inline_and_packed_streams_account_for_markers_and_real_coefficients"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "precinct_payload_errors_retain_exact_header_and_late_coefficient_effects"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_precinct_wrapper_preserves_shape_cap_offset_and_component_error_priority"
+        },
+        {
+          "path": "src/packet.rs",
+          "symbol": "actual_precinct_wrapper_commits_literal_ht_cleanup_before_late_length_mismatch"
+        }
+      ]
+    },
+    {
       "id": "part2-complete-native-arbitrary-kernel-preparation",
       "topic": "Complete actual native reversible/irreversible arbitrary inverse, all integer/binary32/64/128 coefficients and Q32 rounding, every target/step partial buffer, H/V/2D levels and None/Some component preparation. Native contradictory styles/flags/shapes/width hints, singleton/unvisited bypass and first errors remain modeled; private target bounds derive from actual loop guards. No normalized/success/budget/trace premise; general MCT/whole decoder and external normative adjudication remain separate.",
       "contract_refs": [

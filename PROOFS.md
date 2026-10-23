@@ -363,6 +363,161 @@ header parsing, retained packet associations and complete precinct/packet
 orchestration still require their own complete producer contracts. It is not
 normative endorsement or whole-epic completion.
 
+## Complete native header primitive boundaries
+
+The continuing native header thread supplies complete packet-reader and raw
+TagTree producer relations before closing header parsing. `packet_bit_reader_view`
+observes all eight fields, including both actual caps and stuffing history.
+The real validated constructor and unchecked-prefix constructor remain distinct:
+the latter admits the entire packet storage but checks the header-byte cap at
+each actual load. Reads preserve exact error priority and partial consumption.
+Zero-width words still succeed on otherwise invalid native reader states.
+
+`tag_tree_view` observes every raw level and node without topology, offset,
+monotonicity or normalized-value premises. Actual path construction retains its
+64-level/address guards; node and reverse traversal use the actual reader and
+preserve inherited-low writes on later read failure. Duplicate node addresses,
+empty/malformed levels and `low > value` remain admitted by the full native
+Result models. The actual constructor preserves ordered level/node admission.
+A faithful raw Clone supplies the real higher JPIP rollback copy, not a validated
+tree replacement. Reader/tree/packet-state constructor APIs delegate to one actual free
+producer body under the pinned static-impl-contract frontend limitation.
+
+Packet-state owner/getter contracts preserve all five native fields. One public
+Option/Result projection maps actual contribution storage while keeping `None`
+and `Some(empty)` distinct. Independent tests cover all two-byte inputs and
+complete final reader fields, raw threshold/budget states, duplicate 64/65-level
+paths, address-error priority, constructor rectangle/cap boundaries and every
+native Lblock byte. These primitive boundaries alone are not a full header claim;
+their actual header/probe/rollback composition follows below.
+
+## Actual full native code-block header production
+
+`decode_code_block_contribution` now has an unconditional complete
+`part1_packet_header_decode` relation. It observes the full packet state, both
+raw TagTrees and all eight reader fields, and maps the entire optional native
+contribution through the sole owner projection. It runs the real inclusion and
+zero-bitplane trees, pass grammar, Lblock flags, descriptor reads and final
+commit. No valid header, normalized tree/packet state, supplied descriptor or
+successful/sufficient-budget trace is a premise.
+
+The actual Mixed probe forks the complete native reader before the first length
+read. A failing probe returns its real error while retaining the main reader's
+already-read HT prefix. Successful unselected probes do not charge or advance
+that main reader. A selected legacy probe is committed only after the actual
+accounted-pass check; all packet-state and routing effects retain their order.
+The descriptor loop keeps all 164 physical slots. Its mathematical attempt bound
+is derived from those actual slots plus the first failing capacity check, not a
+new native count restriction or proof-budget change. Raw private 164/165-count
+and post-commit conversion cases remain explicit.
+
+The public packet state is unchanged on every header error, as proved from the
+actual local state copy and guarded final conversion. Tree/reader changes before
+the error are deliberately retained. A first unincluded header returning `None`
+differs from an already-included empty contribution. Existing malformed zero
+tags and all Lblock bytes are admitted until an actual executed guard rejects
+them; unvisited trees are not invented validation obligations.
+
+Independent whole-result/owner-state fixtures cover literal encoded headers,
+every budget cutoff, both real probe choices and discarded probe failures,
+all stored Lblock bytes, empty/unvisited raw trees, late pass admission,
+physical descriptor-capacity priority and final state-commit/conversion order.
+This completes the actual header producer boundary, not precinct/progression,
+header-to-codestream association or all F5L/F5H.
+
+### Actual precinct body preflight and coefficient execution
+
+The actual `decode_precinct_packet` body-range and coefficient-execution loops
+now run through `preflight_packet_body_ranges` and
+`execute_packet_body_contributions`. They are moved production loops, not
+duplicate executors. Both have unconditional complete Result/state relations
+over the caller's actual optional descriptor slice, raw progress, body bytes,
+decoder slice, execution flag, error offset and real owner caps.
+
+`part1_packet_body_preflight` retains the checked end before a truncation error
+and does not advance its index on that error. `part1_packet_body_execute` includes
+every decoder and all local counters. The actual per-block mixed transaction
+commits before segment accounting, which precedes pass accounting and offset/
+index advancement. Late failures preserve exactly those earlier effects.
+Skipped execution still validates and consumes byte ranges; it need not have
+matching decoder storage and preserves every decoder and decoded counter.
+
+The logical descriptor sequence delegates F5L's sole optional contribution view.
+The actual mutable slice borrow is closed before proving the complete nested
+decoder-vector frame. There are no header-validity, shape, success, adequate
+budget, supplied decoder outcome or supplied expected trace premises.
+Independent literal-byte tests exercise skipped malformed storage, full native
+cursor domains, truncation/address priority, prior coefficients and both late
+counter-overflow positions.
+
+These close the actual body-loop substage only. The enclosing precinct caller
+still must derive the descriptors and reader/tree/state effects from the real
+header producer. No complete header, precinct, progression or F5H theorem is
+inferred from this intermediate result.
+
+### Actual precinct header association traversal
+
+`decode_precinct_contribution_headers`, its real member loop and its real slot
+operation now compose the complete native header producer directly. Their
+unconditional relations retain all packet-state entries, all subband metadata
+and both complete raw trees per subband, the full optional descriptor sequence,
+reader state and all traversal/count fields. No header outcome is supplied.
+
+Geometry, physical storage, context/layer/style and checked address failures
+precede each actual header operation. Native style comparison deliberately
+ignores the force-selection bit; its exact historical policy is preserved.
+Mutable packet-state and tree borrows are scoped only around the actual header
+call, with explicit nested-vector and selected-subband metadata frames.
+Count overflow occurs after the actual header commits, before descriptor-slot
+lookup/storage; local and subband index advancement follow in order.
+
+Independent literal `c2` and `c3 00` headers exercise normal association,
+overlapping raw subband ranges (two counted contributions overwriting one
+slot), unused second-subband trees, late count overflow and missing descriptor
+storage after real reader/tree/packet-state effects. These cases are not
+excluded by normalized geometry, storage, header or budget premises.
+
+Those stages alone close header association and body loops. The following join
+additionally closes the complete single-packet `TilePartPayload` precinct caller;
+progression and reassembly remain separate.
+
+### Complete actual single-precinct packet caller
+
+The original `decode_precinct_packet` unconditionally refines
+`part1_precinct_packet`, with its actual `TilePartPayload`, bytes, offsets,
+expected SOP sequence/packet length, execution selector and typed owner caps.
+The post relates the complete native Result and all precinct identity, contexts,
+packet states, raw subbands/trees and entire decoder states. There are no
+shape, valid-style/header, successful-decode, adequate-budget or trace premises.
+
+The real component-style lookup and Tier1 byte parser now supply their owner
+results directly. Exact owner SOP/EPH observations and packed source presence
+select the real path; neither a style result nor a header result is supplied.
+The `5972cc2` owner limit views are consumed through the actual getters and
+typed packet-reader factory, including original code-block/work cap priority.
+
+Marker/prefix admission, header association, and post-header execution are
+actual production phases, not executable proof copies. Their separation keeps
+the complete proofs within unchanged default limits. Explicit equivalent
+matches expose real first-error branches rather than relying on unspecified
+higher-order error closures. Prior failed monolithic proof attempts remain
+private evidence; no proof limit, arithmetic domain or primary pin is changed.
+
+Complete SOP sequence and packed-range ordering precede the actual prefix
+reader and packet-present bit. Actual descriptors are allocated and produced
+through F5L's sole reader/tree/header algorithms. Alignment and EPH precede
+whole-body preflight; actual mixed body execution then precedes final logical
+length and numeric conversion checks. Packed and inline physical offsets remain
+distinct. This precinct operation is deliberately not globally transactional:
+early header/tree effects and later decoder commits survive appropriate errors.
+
+Independent literal marker/MQ/HT fixtures cover packed/inline accounting, skipped
+execution, actual nonzero HT output, malformed/truncated markers, shape/cap/
+offset/component priority and late length mismatch after decoder effects.
+Proved properties preserve readonly identity/contexts, first-error priority,
+preflight-before-coefficients and every prior state effect at final accounting.
+This is not progression, tile-part/header reassembly, packet-length iteration,
+JPIP outer-transaction or whole-F5H completion.
 ## Exact retained HT and selected group acceptance
 
 Four finite result/model/complete-state/input recipes bind the actual retained
@@ -445,6 +600,27 @@ F8, not a supplied decoded outcome assumed by these producers. Independent
 normative endorsement, official vectors and full publication remain separate.
 Conservative tests, both whole roots and all frozen/hosted gates must still
 qualify the exact delivery before it is counted integrated.
+
+## Conservative complete header and precinct acceptance
+
+Thirty-nine finite owner-qualified producer/model/result/input recipes bind
+the actual reader/raw-tree/header, byte-style and scalar-admission producers,
+all three real slot/member/subband association traversals, and the four actual
+single-precinct prefix/header/body/accounting callers. Heterogeneous whole
+result tuples have explicit finite projection/state patterns, not a general
+expression or implication matcher. Every actual mutable parameter must occur
+in the complete final tuple; primary old-input/cap matching is anchored at the
+same full-result model occurrence. Complete native producers reject newly
+inserted validity/success/budget preconditions.
+
+Owner observations, alignment, static APIs and raw-tree clone support remain
+whole-root-proved support rather than invented independent result consumers.
+Tests mutate every registered result/model/native input/cap/state/old-final
+projection, guarded post and fabricated caller, including later correct clauses
+that must not mask a wrong primary relation. The conservative index is still a
+curated technical reference inventory, not exhaustive normative conformance.
+Full progression, packed reassembly, length iteration, JPIP transaction and
+whole F5L/F5H closure remain separate from this actual single-precinct stage.
 
 ## Reproduce verification
 
