@@ -1,5 +1,52 @@
 # Specification audit guide
 
+## Frozen remaining public packet/JPIP boundary profile
+
+This branch starts at unchanged `b5b0685`. The remaining native entry bodies are
+`decode_single_code_block_packet`, `decode_multi_code_block_packet`,
+`decode_jpip_precinct_packet_inner` and its actual
+`decode_jpip_precinct_packet` transaction. These complete the original F5L/F5H
+packet boundaries above the already-proved sole reader/tree/header, mixed body
+and progression producers, not an image/parser theorem or normative endorsement.
+
+Single-block admission uses the validated whole-payload reader (not prefix
+admission), exact absent-packet trailing-data rejection, real header/tree state
+and actual transactional mixed body decoding. It does not roll back prior
+header/tree commits on a later body error. Multi-block admission retains raw
+shared trees, physical arrays, all contexts, native marker differences, whole
+body preflight and every earlier block's effects; its local arithmetic/header
+errors use the caller offset, unlike the precinct helpers' zero-offset policy.
+SOP presence there does not validate its sequence number.
+
+JPIP writes all actual context layers and constructs its real inline packet
+input. Its outer transaction clones/restores only states, contexts and subbands;
+complete decoder preservation must follow from the real skipped-body path,
+not a supplied clone/decoder result or an assumed rollback. All raw metadata,
+malformed vectors/trees/retained decoder states, flags, caps and first-error
+effects are admitted without normalization, success, budget or trace premises.
+Faithful native subband cloning must preserve every scalar and both complete
+raw tag trees. Unobserved readonly template metadata is not decoder output.
+
+The four named actual entry bodies now refine `packet_boundaries.rs` without
+input premises. The complete single and multi posts observe actual results,
+every packet state/shared tree and entire decoder state/vector. Multi's real
+header loop carries all partial reader/tree/state/count/storage effects.
+Precinct and multi body paths now share the same executable preflight and
+execution loops with an explicit pair of truncation/local error offsets;
+decoder-origin errors are never remapped. Existing zero-offset relations remain
+proved specializations, not widened assumptions.
+
+The JPIP inner relation derives actual inline bytes, real context layers and
+the native absent packed-header source, using the tiny actual constructor
+observation from `85697b6`. Only relevant raw readonly fields are projected
+into the shared precinct admission relation; no foreign clone outcome is
+provided. Actual faithful subband `Clone` follows original field/allocation
+order and preserves unused raw tree words. The original outer Vec clones and
+restore statements prove full rollback through actual skipped-decoder and
+identity frames, while retaining complete inner Result/state semantics.
+This closes these named packet/JPIP entry guarantees, not an entire image/parser
+theorem, normative endorsement or an automatic whole-epic/project claim.
+
 Start the complete actual multi-tile-part chain at
 `part1_progression_tile_decode`, then follow actual native grid/iterator
 construction, raw packed/length input, boundary scan, context-layer writes,

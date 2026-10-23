@@ -18,15 +18,24 @@ pub open spec fn part1_packet_body_preflight(
     state: Part1PacketBodyPreflight, contributions: Seq<Option<Part1CodeBlockContribution>>,
     data: Seq<u8>, error_offset: usize,
 ) -> Part1PacketBodyPreflightResult
+{
+    part1_packet_body_preflight_at(state,contributions,data,error_offset,0)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packet_body_preflight_at(
+    state:Part1PacketBodyPreflight,contributions:Seq<Option<Part1CodeBlockContribution>>,
+    data:Seq<u8>,error_offset:usize,local_offset:usize,
+) ->Part1PacketBodyPreflightResult
     decreases contributions.len() - state.index as nat,
 {
     if state.index >= contributions.len() { (Ok(()), state) } else {
         let checked = match contributions[state.index as int] {
             None => (Ok(()), state),
             Some(contribution) => if contribution.data_length as nat > usize::MAX {
-                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+                (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), state)
             } else if state.end as nat + contribution.data_length as nat > usize::MAX {
-                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+                (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), state)
             } else {
                 let state = Part1PacketBodyPreflight {
                     end: (state.end + contribution.data_length) as usize, ..state
@@ -41,11 +50,11 @@ pub open spec fn part1_packet_body_preflight(
         match checked.0 {
             Err(_) => checked,
             Ok(()) => if checked.1.index == usize::MAX {
-                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), checked.1)
+                (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), checked.1)
             } else {
-                part1_packet_body_preflight(Part1PacketBodyPreflight {
+                part1_packet_body_preflight_at(Part1PacketBodyPreflight {
                     index: (checked.1.index + 1) as usize, ..checked.1
-                }, contributions, data, error_offset)
+                }, contributions, data, error_offset,local_offset)
             },
         }
     }
@@ -281,6 +290,19 @@ pub open spec fn part1_precinct_packet(
     expected_packet_length: Option<u32>, expected_sop_sequence: u16, decode_tier1: bool,
     code_block_limit: u64, header_limit: u64, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
 ) -> Part1PrecinctPayloadResult {
+    part1_precinct_packet_fields(state,tile_part.data@,&tile_part.component_coding_styles,&tile_part.coding_style,
+        crate::codestream::packed_packet_headers_present(&tile_part.packed_packet_headers),
+        offset,packed_headers,packed_offset,expected_packet_length,expected_sop_sequence,decode_tier1,
+        code_block_limit,header_limit,pass_limit,byte_limit,input_limit,work_limit)
+}
+
+pub open spec fn part1_precinct_packet_fields(
+    state:Part1PacketPrecinctState,data:Seq<u8>,component_styles:&crate::codestream::ComponentCodingStyles,
+    coding_style:&crate::codestream::CodingStyle,packed_present:bool,
+    offset:usize,packed_headers:Seq<u8>,packed_offset:usize,
+    expected_packet_length:Option<u32>,expected_sop_sequence:u16,decode_tier1:bool,
+    code_block_limit:u64,header_limit:u64,pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+) ->Part1PrecinctPayloadResult {
     if state.states.len() != state.contexts.len() || state.states.len() != state.decoders.len()
         || (state.states.len() == 0) != (state.subbands.len() == 0) {
         (Err(ht_reader_error(crate::MalformedKind::InvalidPacketHeader)), state)
@@ -290,20 +312,20 @@ pub open spec fn part1_precinct_packet(
     } else if state.states.len() as u64 > work_limit {
         (Err(super::part1_packet_reader_limit(crate::Resource::WorkUnits,
             work_limit, state.states.len() as u64)), state)
-    } else if offset > tile_part.data@.len() {
+    } else if offset > data.len() {
         (Err(super::part1_packet_reader_error(offset, crate::MalformedKind::InvalidPacketLength)), state)
     } else {
-        match crate::codestream::component_coding_style_result(&tile_part.component_coding_styles, state.component) {
+        match crate::codestream::component_coding_style_result(component_styles, state.component) {
             Err(error) => (Err(error), state),
             Ok(style) => match crate::codestream::coding_style_tier1_result(style) {
                 Err(error) => (Err(error), state),
                 Ok(tier1_style) => {
-                    let markers = crate::codestream::coding_style_packet_markers(&tile_part.coding_style);
-                    part1_precinct_payload(state, tile_part.data@.subrange(offset as int, tile_part.data@.len() as int),
+                    let markers = crate::codestream::coding_style_packet_markers(coding_style);
+                    part1_precinct_payload(state, data.subrange(offset as int, data.len() as int),
                         packed_headers, Part1PrecinctPayloadParameters {
                             error_offset: offset, packed_offset, expected_packet_length, expected_sop_sequence,
                             style: tier1_style, sop: markers.0, eph: markers.1,
-                            packed: crate::codestream::packed_packet_headers_present(&tile_part.packed_packet_headers), decode_tier1,
+                            packed: packed_present, decode_tier1,
                         }, header_limit, pass_limit, byte_limit, input_limit, work_limit)
                 },
             },
@@ -488,9 +510,18 @@ pub open spec fn part1_packet_body_execute_slot(
     error_offset: usize, decode_tier1: bool,
     pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
 ) -> Part1PacketBodyExecutionResult {
+    part1_packet_body_execute_slot_at(state,contribution,data,error_offset,0,decode_tier1,
+        pass_limit,byte_limit,input_limit,work_limit)
+}
+
+pub open spec fn part1_packet_body_execute_slot_at(
+    state:Part1PacketBodyExecution,contribution:Part1CodeBlockContribution,data:Seq<u8>,
+    error_offset:usize,local_offset:usize,decode_tier1:bool,
+    pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+) ->Part1PacketBodyExecutionResult {
     if contribution.data_length as nat > usize::MAX
         || state.offset as nat + contribution.data_length as nat > usize::MAX {
-        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+        (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), state)
     } else {
         let end = (state.offset + contribution.data_length) as usize;
         if state.offset > end || end > data.len() {
@@ -500,7 +531,7 @@ pub open spec fn part1_packet_body_execute_slot(
         } else {
             let decoded = if !decode_tier1 { (Ok(()), state) }
             else if state.index >= state.decoders.len() {
-                (Err(ht_reader_error(crate::MalformedKind::InvalidPacketHeader)), state)
+                (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::InvalidPacketHeader)), state)
             } else {
                 let result = part1_code_block_body_transaction(state.decoders[state.index as int],
                     contribution, data.subrange(state.offset as int, end as int),
@@ -511,13 +542,13 @@ pub open spec fn part1_packet_body_execute_slot(
                 match result.0 {
                     Err(error) => (Err(error), state),
                     Ok(value) => if state.segments as nat + value.segments as nat > u32::MAX {
-                        (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+                        (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), state)
                     } else {
                         let state = Part1PacketBodyExecution {
                             segments: (state.segments + value.segments) as u32, ..state
                         };
                         if state.passes as nat + value.passes as nat > u32::MAX {
-                            (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), state)
+                            (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), state)
                         } else {
                             (Ok(()), Part1PacketBodyExecution {
                                 passes: (state.passes + value.passes) as u32, ..state
@@ -540,22 +571,33 @@ pub open spec fn part1_packet_body_execute(
     data: Seq<u8>, error_offset: usize, decode_tier1: bool,
     pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
 ) -> Part1PacketBodyExecutionResult
+{
+    part1_packet_body_execute_at(state,contributions,data,error_offset,0,decode_tier1,
+        pass_limit,byte_limit,input_limit,work_limit)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_packet_body_execute_at(
+    state:Part1PacketBodyExecution,contributions:Seq<Option<Part1CodeBlockContribution>>,data:Seq<u8>,
+    error_offset:usize,local_offset:usize,decode_tier1:bool,
+    pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+) ->Part1PacketBodyExecutionResult
     decreases contributions.len() - state.index as nat,
 {
     if state.index >= contributions.len() { (Ok(()), state) } else {
         let step = match contributions[state.index as int] {
             None => (Ok(()), state),
-            Some(contribution) => part1_packet_body_execute_slot(state, contribution, data,
-                error_offset, decode_tier1, pass_limit, byte_limit, input_limit, work_limit),
+            Some(contribution) => part1_packet_body_execute_slot_at(state, contribution, data,
+                error_offset, local_offset,decode_tier1, pass_limit, byte_limit, input_limit, work_limit),
         };
         match step.0 {
             Err(_) => step,
             Ok(()) => if step.1.index == usize::MAX {
-                (Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow)), step.1)
+                (Err(super::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)), step.1)
             } else {
-                part1_packet_body_execute(Part1PacketBodyExecution {
+                part1_packet_body_execute_at(Part1PacketBodyExecution {
                     index: (step.1.index + 1) as usize, ..step.1
-                }, contributions, data, error_offset, decode_tier1,
+                }, contributions, data, error_offset,local_offset,decode_tier1,
                     pass_limit, byte_limit, input_limit, work_limit)
             },
         }

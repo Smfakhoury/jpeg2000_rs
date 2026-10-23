@@ -2272,6 +2272,7 @@ pub proof fn packet_body_finished_preflight_preserves_raw_cursor(
         crate::specs::part1_packet_body_preflight(state, contributions, data, error_offset) == (Ok(()), state),
 {
     reveal(crate::specs::part1_packet_body_preflight);
+    reveal(crate::specs::part1_packet_body_preflight_at);
 }
 
 pub proof fn packet_body_preflight_truncation_retains_advanced_end_before_index(
@@ -2294,6 +2295,7 @@ pub proof fn packet_body_preflight_truncation_retains_advanced_end_before_index(
     } else { true },
 {
     reveal(crate::specs::part1_packet_body_preflight);
+    reveal(crate::specs::part1_packet_body_preflight_at);
 }
 
 pub proof fn packet_body_skipped_execution_preserves_all_decoders_and_counts(
@@ -2311,6 +2313,7 @@ pub proof fn packet_body_skipped_execution_preserves_all_decoders_and_counts(
     decreases contributions.len() - state.index as nat,
 {
     reveal(crate::specs::part1_packet_body_execute);
+    reveal(crate::specs::part1_packet_body_execute_at);
     if state.index < contributions.len() {
         let step = match contributions[state.index as int] {
             None => (Ok(()), state),
@@ -2517,6 +2520,69 @@ pub proof fn actual_missing_packed_storage_rejects_after_complete_layer_writes(
         crate::specs::part1_tile_precinct_packet(params,part,p,coordinate,expected,precinct)
             ==(Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidTilePart)),
                 crate::specs::part1_precinct_context_layer(precinct,coordinate.layer)),
+{
+}
+
+pub proof fn single_whole_payload_cap_precedes_all_tree_and_decoder_effects(
+    s:crate::specs::Part1SinglePacketState,data:Seq<u8>,context:crate::packet::CodeBlockPacketContext,
+    header_limit:u64,pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+)
+    ensures data.len() as u64>header_limit ==>
+        crate::specs::part1_single_code_block_packet(s,data,context,header_limit,pass_limit,byte_limit,input_limit,work_limit)
+            ==(Err(crate::specs::part1_packet_reader_limit(crate::Resource::PacketHeaderBytes,header_limit,data.len() as u64)),s),
+{
+}
+
+pub proof fn multi_sop_sequence_bytes_are_not_a_sequence_validation_premise(
+    first_hi:u8,first_lo:u8,second_hi:u8,second_lo:u8,tail:Seq<u8>,offset:usize,header_limit:u64,work_limit:u64,
+)
+    ensures crate::specs::part1_multi_packet_prefix(seq![255u8,145u8,0u8,4u8,first_hi,first_lo]+tail,true,offset,header_limit,work_limit)
+        ==crate::specs::part1_multi_packet_prefix(seq![255u8,145u8,0u8,4u8,second_hi,second_lo]+tail,true,offset,header_limit,work_limit),
+{
+    assert((seq![255u8,145u8,0u8,4u8,first_hi,first_lo]+tail).subrange(6,(6+tail.len()) as int) =~= tail);
+    assert((seq![255u8,145u8,0u8,4u8,second_hi,second_lo]+tail).subrange(6,(6+tail.len()) as int) =~= tail);
+}
+
+pub proof fn common_preflight_overflow_retains_real_progress_and_caller_offset(
+    s:crate::specs::Part1PacketBodyPreflight,contributions:Seq<Option<crate::specs::Part1CodeBlockContribution>>,
+    data:Seq<u8>,truncated_offset:usize,local_offset:usize,
+)
+    ensures s.end==usize::MAX && s.index<contributions.len() && contributions[s.index as int].is_some()
+        && contributions[s.index as int].unwrap().data_length>0 ==>
+        crate::specs::part1_packet_body_preflight_at(s,contributions,data,truncated_offset,local_offset)
+            ==(Err(crate::specs::part1_packet_reader_error(local_offset,crate::MalformedKind::ArithmeticOverflow)),s),
+{
+    reveal(crate::specs::part1_packet_body_preflight_at);
+}
+
+pub proof fn multi_complete_preflight_failure_precedes_every_coefficient_effect(
+    s:crate::specs::Part1MultiPacketState,data:Seq<u8>,contributions:Seq<Option<crate::specs::Part1CodeBlockContribution>>,
+    present:bool,count:u32,header:usize,start:usize,offset:usize,pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+)
+    ensures crate::specs::part1_packet_body_preflight_at(crate::specs::Part1PacketBodyPreflight {index:0,end:start},
+        contributions,data,offset,offset).0.is_err() ==>
+        crate::specs::part1_multi_body(s,data,contributions,present,count,header,start,offset,pass_limit,byte_limit,input_limit,work_limit).1==s,
+{
+    reveal(crate::specs::part1_multi_body);
+}
+
+pub proof fn jpip_actual_layer_writes_precede_raw_shape_rejection(
+    s:crate::specs::Part1PacketPrecinctState,template:&crate::codestream::TilePartPayload<'_>,
+    data:Seq<u8>,sequence:u16,layer:u16,limits:&crate::ResourceLimits,
+)
+    ensures s.states.len()!=s.contexts.len() ==>
+        crate::specs::part1_jpip_precinct_packet_inner(s,template,data,sequence,layer,limits)
+            ==(Err(crate::specs::ht_reader_error(crate::MalformedKind::InvalidPacketHeader)),
+                crate::specs::part1_precinct_context_layer(s,layer)),
+{
+}
+
+pub proof fn jpip_actual_transaction_preserves_every_owner_on_any_error(
+    s:crate::specs::Part1PacketPrecinctState,template:&crate::codestream::TilePartPayload<'_>,
+    data:Seq<u8>,sequence:u16,layer:u16,limits:&crate::ResourceLimits,
+)
+    ensures crate::specs::part1_jpip_precinct_packet(s,template,data,sequence,layer,limits).0.is_err() ==>
+        crate::specs::part1_jpip_precinct_packet(s,template,data,sequence,layer,limits).1==s,
 {
 }
 

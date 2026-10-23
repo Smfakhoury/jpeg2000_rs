@@ -141,10 +141,6 @@ impl<'a> PacketBitReader<'a> {
         packet_reader_new(input, limits)
     }
 
-    fn new_prefix(input: &'a [u8], limits: &ResourceLimits) -> Self {
-        packet_reader_prefix(input, limits)
-    }
-
     #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_bit_reader_view(self).bits_read,))]
     pub const fn bits_read(&self) -> u64 {
         self.bits_read
@@ -944,6 +940,11 @@ impl PacketGrid {
     }
 }
 
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,packet_precinct_view(final(precinct)))==crate::specs::part1_jpip_precinct_packet(
+        packet_precinct_view(old(precinct)),template,data@,expected_sop_sequence,layer,limits),
+        result.is_err() ==> packet_precinct_view(final(precinct))==packet_precinct_view(old(precinct)),
+))]
 pub(crate) fn decode_jpip_precinct_packet(
     template: &TilePartPayload<'_>,
     data: &[u8],
@@ -952,9 +953,17 @@ pub(crate) fn decode_jpip_precinct_packet(
     precinct: &mut PacketPrecinctDecoder,
     limits: &ResourceLimits,
 ) -> Result<usize, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {let ghost initial=packet_precinct_view(precinct);}
     let states = precinct.states.clone();
     let contexts = precinct.contexts.clone();
     let subbands = precinct.subbands.clone();
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(states@.map_values(|state:CodeBlockPacketState|code_block_packet_state_view(&state))==initial.states);
+        assert(contexts@==initial.contexts);
+        assert(subbands@.map_values(|subband:PacketSubbandState|packet_subband_view(&subband))==initial.subbands);
+    }
     let result = decode_jpip_precinct_packet_inner(
         template,
         data,
@@ -971,6 +980,13 @@ pub(crate) fn decode_jpip_precinct_packet(
     result
 }
 
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,packet_precinct_view(final(precinct)))==crate::specs::part1_jpip_precinct_packet_inner(
+        packet_precinct_view(old(precinct)),template,data@,expected_sop_sequence,layer,limits),
+        final(precinct).decoders@==old(precinct).decoders@,
+        (final(precinct).component,final(precinct).resolution,final(precinct).precinct)
+            ==(old(precinct).component,old(precinct).resolution,old(precinct).precinct),
+))]
 fn decode_jpip_precinct_packet_inner(
     template: &TilePartPayload<'_>,
     data: &[u8],
@@ -979,24 +995,7 @@ fn decode_jpip_precinct_packet_inner(
     precinct: &mut PacketPrecinctDecoder,
     limits: &ResourceLimits,
 ) -> Result<usize, DecodeError> {
-    let mut context_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant context_index <= precinct.contexts.len(),
-            decreases precinct.contexts.len() - context_index,
-        )
-    )]
-    while context_index < precinct.contexts.len() {
-        let context = precinct
-            .contexts
-            .get_mut(context_index)
-            .ok_or_else(invalid_packet_header)?;
-        context.layer = layer;
-        context_index = context_index
-            .checked_add(1)
-            .ok_or_else(packet_arithmetic_overflow)?;
-    }
+    set_progression_context_layer(&mut precinct.contexts, layer)?;
     let inline = TilePartPayload {
         tile_index: template.tile_index,
         tile_part_index: 0,
@@ -1009,8 +1008,8 @@ fn decode_jpip_precinct_packet_inner(
         progression_changes: template.progression_changes.clone(),
         multiple_component_transform: template.multiple_component_transform.clone(),
         part2_extensions: template.part2_extensions.clone(),
-        packet_lengths: crate::codestream::PacketLengths::none(),
-        packed_packet_headers: crate::codestream::PackedPacketHeaders::none(),
+        packet_lengths: crate::codestream::packet_lengths_none(),
+        packed_packet_headers: crate::codestream::packed_packet_headers_none(),
         has_functional_header_marker: template.has_functional_header_marker,
         has_roi_marker: template.has_roi_marker,
         data,
@@ -1026,15 +1025,15 @@ fn decode_jpip_precinct_packet_inner(
         false,
         limits,
     )?;
-    if packed != 0
-        || consumed
-            != usize::try_from(decoded.bytes_consumed)
-                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?
-    {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::InvalidPacketLength,
-        ));
+    if packed != 0 {
+        return Err(packet_reader_error(0, MalformedKind::InvalidPacketLength));
+    }
+    let logical = match usize::try_from(decoded.bytes_consumed) {
+        Ok(logical) => logical,
+        Err(_) => return Err(packet_arithmetic_overflow()),
+    };
+    if consumed != logical {
+        return Err(packet_reader_error(0, MalformedKind::InvalidPacketLength));
     }
     Ok(consumed)
 }
@@ -1847,7 +1846,6 @@ pub struct PacketSubbandExecution {
     pub decoders: Vec<Tier1CodeBlockDecoder>,
 }
 
-#[derive(Clone)]
 struct PacketSubbandState {
     orientation: SubbandOrientation,
     first_decoder: usize,
@@ -1856,6 +1854,23 @@ struct PacketSubbandState {
     code_blocks_down: u32,
     inclusion_tree: TagTree,
     zero_bitplane_tree: TagTree,
+}
+
+impl Clone for PacketSubbandState {
+    #[cfg_attr(verus_keep_ghost,verus_spec(result =>
+        ensures packet_subband_view(&result)==packet_subband_view(self),
+    ))]
+    fn clone(&self) -> Self {
+        Self {
+            orientation: self.orientation,
+            first_decoder: self.first_decoder,
+            decoder_count: self.decoder_count,
+            code_blocks_across: self.code_blocks_across,
+            code_blocks_down: self.code_blocks_down,
+            inclusion_tree: self.inclusion_tree.clone(),
+            zero_bitplane_tree: self.zero_bitplane_tree.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -3147,98 +3162,182 @@ verus! {
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-    ensures (result, packet_body_preflight_view(final(progress))) == crate::specs::part1_packet_body_preflight(
-        packet_body_preflight_view(old(progress)), packet_body_contributions_view(contributions), data@, error_offset),
+    ensures (result, packet_body_preflight_view(final(progress))) == crate::specs::part1_packet_body_preflight_at(
+        packet_body_preflight_view(old(progress)), packet_body_contributions_view(contributions), data@, error_offsets.0,error_offsets.1),
+        error_offsets.1==0 ==> (result,packet_body_preflight_view(final(progress)))==crate::specs::part1_packet_body_preflight(
+            packet_body_preflight_view(old(progress)),packet_body_contributions_view(contributions),data@,error_offsets.0),
 ))]
 fn preflight_packet_body_ranges(
     contributions: &[Option<CodeBlockContribution>],
     data: &[u8],
     progress: &mut PacketBodyPreflight,
-    error_offset: usize,
+    error_offsets: (usize, usize),
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial=packet_body_preflight_view(progress);
+        let ghost expected=crate::specs::part1_packet_body_preflight_at(initial,packet_body_contributions_view(contributions),data@,error_offsets.0,error_offsets.1);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(initial==packet_body_preflight_view(old(progress)));}
+    let error_offset = error_offsets.0;
+    let local_offset = error_offsets.1;
     let slots = contributions.len();
     #[cfg(verus_keep_ghost)]
-    proof! { reveal(crate::specs::part1_packet_body_preflight); }
+    proof! { reveal(crate::specs::part1_packet_body_preflight); reveal(crate::specs::part1_packet_body_preflight_at); }
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant
             slots == contributions.len(),
-            crate::specs::part1_packet_body_preflight(packet_body_preflight_view(old(progress)),
-                packet_body_contributions_view(contributions), data@, error_offset)
-            == crate::specs::part1_packet_body_preflight(packet_body_preflight_view(progress),
-                packet_body_contributions_view(contributions), data@, error_offset),
+            initial==packet_body_preflight_view(old(progress)),
+            expected==crate::specs::part1_packet_body_preflight_at(initial,
+                packet_body_contributions_view(contributions),data@,error_offsets.0,error_offsets.1),
+            error_offset==error_offsets.0,local_offset==error_offsets.1,
+            expected == crate::specs::part1_packet_body_preflight_at(packet_body_preflight_view(progress),
+                packet_body_contributions_view(contributions), data@, error_offsets.0,error_offsets.1),
         decreases slots as int - progress.index as int,
     ))]
     while progress.index < slots {
         #[cfg(verus_keep_ghost)]
-        proof! { reveal(crate::specs::part1_packet_body_preflight); }
+        proof_decl! {let ghost prior=packet_body_preflight_view(progress);}
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packet_body_preflight); reveal(crate::specs::part1_packet_body_preflight_at); }
         if let Some(contribution) = contributions[progress.index] {
-            progress.end = progress
-                .end
-                .checked_add(
-                    usize::try_from(contribution.data_length)
-                        .map_err(|_| packet_arithmetic_overflow())?,
-                )
-                .ok_or_else(packet_arithmetic_overflow)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(packet_body_contributions_view(contributions)[prior.index as int]==
+                    Some(code_block_contribution_view(&contribution)));
+            }
+            let length = match usize::try_from(contribution.data_length) {
+                Ok(length) => length,
+                Err(_) => {
+                    return Err(packet_reader_error(
+                        local_offset,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
+            progress.end = match progress.end.checked_add(length) {
+                Some(end) => end,
+                None => {
+                    let error =
+                        packet_reader_error(local_offset, MalformedKind::ArithmeticOverflow);
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(packet_body_preflight_view(progress)==prior);
+                        assert(crate::specs::part1_packet_body_preflight_at(prior,
+                            packet_body_contributions_view(contributions),data@,error_offset,local_offset)
+                            ==(Err(crate::specs::part1_packet_reader_error(local_offset,MalformedKind::ArithmeticOverflow)),prior));
+                        assert(expected==(Err(error),packet_body_preflight_view(progress)));
+                        assert(crate::specs::part1_packet_body_preflight_at(packet_body_preflight_view(old(progress)),
+                            packet_body_contributions_view(contributions),data@,error_offsets.0,error_offsets.1)==expected);
+                    }
+                    return Err(error);
+                }
+            };
             if progress.end > data.len() {
-                return Err(DecodeError::MalformedInput {
-                    offset: error_offset as u64,
-                    kind: MalformedKind::Truncated,
-                });
+                let error = packet_reader_error(error_offset, MalformedKind::Truncated);
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(crate::specs::part1_packet_body_preflight_at(prior,
+                        packet_body_contributions_view(contributions),data@,error_offset,local_offset)
+                        ==(Err(crate::specs::part1_packet_reader_error(error_offset,MalformedKind::Truncated)),packet_body_preflight_view(progress)));
+                    assert(expected==(Err(error),packet_body_preflight_view(progress)));
+                    assert(crate::specs::part1_packet_body_preflight_at(packet_body_preflight_view(old(progress)),
+                        packet_body_contributions_view(contributions),data@,error_offsets.0,error_offsets.1)==expected);
+                }
+                return Err(error);
             }
         }
-        progress.index = progress
-            .index
-            .checked_add(1)
-            .ok_or_else(packet_arithmetic_overflow)?;
+        progress.index = match progress.index.checked_add(1) {
+            Some(index) => index,
+            None => {
+                return Err(packet_reader_error(
+                    local_offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
     }
     #[cfg(verus_keep_ghost)]
-    proof! { reveal(crate::specs::part1_packet_body_preflight); }
+    proof! { reveal(crate::specs::part1_packet_body_preflight); reveal(crate::specs::part1_packet_body_preflight_at); }
     Ok(())
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures (result, packet_body_execution_view(final(decoders), final(progress)))
-        == crate::specs::part1_packet_body_execute(packet_body_execution_view(old(decoders), old(progress)),
-            packet_body_contributions_view(contributions), data@, error_offset, decode_tier1,
+        == crate::specs::part1_packet_body_execute_at(packet_body_execution_view(old(decoders), old(progress)),
+            packet_body_contributions_view(contributions), data@, error_offsets.0,error_offsets.1,decode_tier1,
             crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
             crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        error_offsets.1==0 ==> (result,packet_body_execution_view(final(decoders),final(progress)))
+            ==crate::specs::part1_packet_body_execute(packet_body_execution_view(old(decoders),old(progress)),
+                packet_body_contributions_view(contributions),data@,error_offsets.0,decode_tier1,
+                crate::limits::resource_code_block_pass_limit(limits),crate::limits::resource_code_block_byte_limit(limits),
+                crate::limits::resource_input_byte_limit(limits),crate::limits::resource_work_limit(limits)),
+        !decode_tier1 ==> final(decoders)@==old(decoders)@,
 ))]
 fn execute_packet_body_contributions(
     decoders: &mut [Tier1CodeBlockDecoder],
     contributions: &[Option<CodeBlockContribution>],
     data: &[u8],
     progress: &mut PacketBodyExecutionProgress,
-    error_offset: usize,
+    error_offsets: (usize, usize),
     decode_tier1: bool,
     limits: &ResourceLimits,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial=packet_body_execution_view(decoders,progress);
+        let ghost expected=crate::specs::part1_packet_body_execute_at(initial,
+            packet_body_contributions_view(contributions),data@,error_offsets.0,error_offsets.1,decode_tier1,
+            crate::limits::resource_code_block_pass_limit(limits),crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits),crate::limits::resource_work_limit(limits));
+    }
+    let error_offset = error_offsets.0;
+    let local_offset = error_offsets.1;
     let slots = contributions.len();
     #[cfg(verus_keep_ghost)]
-    proof! { reveal(crate::specs::part1_packet_body_execute); }
+    proof! { reveal(crate::specs::part1_packet_body_execute); reveal(crate::specs::part1_packet_body_execute_at); }
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant
             slots == contributions.len(),
-            crate::specs::part1_packet_body_execute(packet_body_execution_view(old(decoders), old(progress)),
-                packet_body_contributions_view(contributions), data@, error_offset, decode_tier1,
+            !decode_tier1 ==> decoders@==old(decoders)@,
+            initial==packet_body_execution_view(old(decoders),old(progress)),
+            expected==crate::specs::part1_packet_body_execute_at(initial,
+                packet_body_contributions_view(contributions),data@,error_offsets.0,error_offsets.1,decode_tier1,
                 crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
-                crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits))
-            == crate::specs::part1_packet_body_execute(packet_body_execution_view(decoders, progress),
-                packet_body_contributions_view(contributions), data@, error_offset, decode_tier1,
+                crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+            error_offset==error_offsets.0,local_offset==error_offsets.1,
+            expected == crate::specs::part1_packet_body_execute_at(packet_body_execution_view(decoders, progress),
+                packet_body_contributions_view(contributions), data@, error_offsets.0,error_offsets.1,decode_tier1,
                 crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
                 crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
         decreases slots as int - progress.index as int,
     ))]
     while progress.index < slots {
         #[cfg(verus_keep_ghost)]
-        proof! { reveal(crate::specs::part1_packet_body_execute); }
+        proof_decl! {let ghost prior=packet_body_execution_view(decoders,progress);}
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_packet_body_execute); reveal(crate::specs::part1_packet_body_execute_at); }
         if let Some(contribution) = contributions[progress.index] {
-            let body_end = progress
-                .offset
-                .checked_add(
-                    usize::try_from(contribution.data_length)
-                        .map_err(|_| packet_arithmetic_overflow())?,
-                )
-                .ok_or_else(packet_arithmetic_overflow)?;
+            let length = match usize::try_from(contribution.data_length) {
+                Ok(length) => length,
+                Err(_) => {
+                    return Err(packet_reader_error(
+                        local_offset,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
+            let body_end = match progress.offset.checked_add(length) {
+                Some(end) => end,
+                None => {
+                    return Err(packet_reader_error(
+                        local_offset,
+                        MalformedKind::ArithmeticOverflow,
+                    ));
+                }
+            };
             let body = data
                 .get(progress.offset..body_end)
                 .ok_or(DecodeError::MalformedInput {
@@ -3253,9 +3352,15 @@ fn execute_packet_body_contributions(
                     let ghost selected_index = progress.index;
                 }
                 let decoded_result = {
-                    let decoder = decoders
-                        .get_mut(progress.index)
-                        .ok_or_else(invalid_packet_header)?;
+                    let decoder = match decoders.get_mut(progress.index) {
+                        Some(decoder) => decoder,
+                        None => {
+                            return Err(packet_reader_error(
+                                local_offset,
+                                MalformedKind::InvalidPacketHeader,
+                            ));
+                        }
+                    };
                     decode_code_block_contribution_body(decoder, &contribution, body, limits)
                 };
                 #[cfg(verus_keep_ghost)]
@@ -3268,24 +3373,40 @@ fn execute_packet_body_contributions(
                             crate::tier1::tier1_decoder_state(&decoders@[selected_index as int])));
                 }
                 let decoded = decoded_result?;
-                progress.segments = progress
-                    .segments
-                    .checked_add(u32::from(decoded.segments))
-                    .ok_or_else(packet_arithmetic_overflow)?;
-                progress.passes = progress
-                    .passes
-                    .checked_add(decoded.passes)
-                    .ok_or_else(packet_arithmetic_overflow)?;
+                progress.segments = match progress.segments.checked_add(u32::from(decoded.segments))
+                {
+                    Some(total) => total,
+                    None => {
+                        return Err(packet_reader_error(
+                            local_offset,
+                            MalformedKind::ArithmeticOverflow,
+                        ));
+                    }
+                };
+                progress.passes = match progress.passes.checked_add(decoded.passes) {
+                    Some(total) => total,
+                    None => {
+                        return Err(packet_reader_error(
+                            local_offset,
+                            MalformedKind::ArithmeticOverflow,
+                        ));
+                    }
+                };
             }
             progress.offset = body_end;
         }
-        progress.index = progress
-            .index
-            .checked_add(1)
-            .ok_or_else(packet_arithmetic_overflow)?;
+        progress.index = match progress.index.checked_add(1) {
+            Some(index) => index,
+            None => {
+                return Err(packet_reader_error(
+                    local_offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
     }
     #[cfg(verus_keep_ghost)]
-    proof! { reveal(crate::specs::part1_packet_body_execute); }
+    proof! { reveal(crate::specs::part1_packet_body_execute); reveal(crate::specs::part1_packet_body_execute_at); }
     Ok(())
 }
 
@@ -3559,6 +3680,9 @@ fn decode_precinct_contribution_headers(
         crate::limits::resource_code_block_limit(limits), crate::limits::resource_packet_header_byte_limit(limits),
         crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
         crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        !decode_tier1 ==> final(precinct).decoders@==old(precinct).decoders@,
+        (final(precinct).component,final(precinct).resolution,final(precinct).precinct)
+            ==(old(precinct).component,old(precinct).resolution,old(precinct).precinct),
 ))]
 fn decode_precinct_packet(
     tile_part: &TilePartPayload<'_>,
@@ -3693,6 +3817,9 @@ fn decode_precinct_packet_payload_prefix<'a>(
         crate::limits::resource_packet_header_byte_limit(limits),
         crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
         crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        !parameters.decode_tier1 ==> final(precinct).decoders@==old(precinct).decoders@,
+        (final(precinct).component,final(precinct).resolution,final(precinct).precinct)
+            ==(old(precinct).component,old(precinct).resolution,old(precinct).precinct),
 ))]
 fn decode_precinct_packet_payload(
     data: &[u8],
@@ -3796,6 +3923,9 @@ fn decode_precinct_packet_payload(
         precinct_payload_header_view(header).0.present, precinct_payload_header_view(header).0.sop_bytes,
         crate::limits::resource_code_block_pass_limit(limits), crate::limits::resource_code_block_byte_limit(limits),
         crate::limits::resource_input_byte_limit(limits), crate::limits::resource_work_limit(limits)),
+        !parameters.decode_tier1 ==> final(precinct).decoders@==old(precinct).decoders@,
+        (final(precinct).component,final(precinct).resolution,final(precinct).precinct)
+            ==(old(precinct).component,old(precinct).resolution,old(precinct).precinct),
 ))]
 fn decode_precinct_packet_payload_after_headers(
     data: &[u8],
@@ -3858,7 +3988,7 @@ fn decode_precinct_packet_payload_after_headers(
         index: 0,
         end: tile_offset,
     };
-    preflight_packet_body_ranges(&contributions, data, &mut preflight, offset)?;
+    preflight_packet_body_ranges(&contributions, data, &mut preflight, (offset, 0))?;
     tile_offset = preflight.end;
     let mut execution = PacketBodyExecutionProgress {
         index: 0,
@@ -3871,7 +4001,7 @@ fn decode_precinct_packet_payload_after_headers(
         &contributions,
         data,
         &mut execution,
-        offset,
+        (offset, 0),
         decode_tier1,
         limits,
     )?;
@@ -3927,6 +4057,621 @@ fn decode_precinct_packet_payload_after_headers(
     ))
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn multi_packet_state_view(
+        states:&[CodeBlockPacketState],inclusion:&TagTree,zero:&TagTree,contexts:&[CodeBlockPacketContext],
+        decoders:&[Tier1CodeBlockDecoder],
+    )->crate::specs::Part1MultiPacketState {
+        crate::specs::Part1MultiPacketState {
+            states:states@.map_values(|state:CodeBlockPacketState|code_block_packet_state_view(&state)),
+            inclusion:tag_tree_view(inclusion),zero:tag_tree_view(zero),contexts:contexts@,
+            decoders:decoders@.map_values(|decoder:Tier1CodeBlockDecoder|crate::tier1::tier1_decoder_state(&decoder)),
+        }
+    }
+}
+
+struct MultiPacketParameters<'a, 'data> {
+    part: &'a TilePartPayload<'data>,
+    offset: usize,
+    limits: &'a ResourceLimits,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn multi_admission_outcome(value:Result<&[u8],DecodeError>)
+        ->Result<Seq<u8>,DecodeError> {
+        match value {Ok(value)=>Ok(value@),Err(error)=>Err(error)}
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures result==crate::specs::part1_multi_contexts(contexts@,style,layer,width,0,offset),
+))]
+fn validate_multi_packet_contexts(
+    contexts: &[CodeBlockPacketContext],
+    style: Tier1CodingStyle,
+    layer: u16,
+    width: u32,
+    offset: usize,
+) -> Result<(), DecodeError> {
+    let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_multi_contexts);}
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant index<=contexts@.len(),
+            crate::specs::part1_multi_contexts(contexts@,style,layer,width,0,offset)
+                ==crate::specs::part1_multi_contexts(contexts@,style,layer,width,index,offset),
+        decreases contexts@.len()-index,
+    ))]
+    while index < contexts.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_multi_contexts);}
+        let context = match contexts.get(index) {
+            Some(context) => context,
+            None => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::InvalidPacketHeader,
+                ));
+            }
+        };
+        let linear = match u32::try_from(index) {
+            Ok(index) => index,
+            Err(_) => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
+        let x = match linear.checked_rem(width) {
+            Some(x) => x,
+            None => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
+        let y = match linear.checked_div(width) {
+            Some(y) => y,
+            None => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
+        if context.layer != layer
+            || context.leaf_x != x
+            || context.leaf_y != y
+            || !tier1_styles_equal(context.tier1_style, style)
+        {
+            return Err(packet_reader_error(
+                offset,
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+        index = match index.checked_add(1) {
+            Some(index) => index,
+            None => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_multi_contexts);}
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures multi_admission_outcome(result)==crate::specs::part1_multi_packet_admission(
+        multi_packet_state_view(states,inclusion,zero,contexts,decoders),params.part,params.offset,
+        crate::limits::resource_code_block_limit(params.limits),crate::limits::resource_work_limit(params.limits)),
+))]
+fn validate_multi_packet_input<'a, 'data>(
+    params: &MultiPacketParameters<'a, 'data>,
+    states: &[CodeBlockPacketState],
+    inclusion: &TagTree,
+    zero: &TagTree,
+    contexts: &[CodeBlockPacketContext],
+    decoders: &[Tier1CodeBlockDecoder],
+) -> Result<&'a [u8], DecodeError> {
+    let offset = params.offset;
+    if states.is_empty() || states.len() != contexts.len() || states.len() != decoders.len() {
+        return Err(packet_reader_error(
+            offset,
+            MalformedKind::InvalidPacketHeader,
+        ));
+    }
+    let count = states.len() as u64;
+    if count > params.limits.maximum_code_blocks() {
+        return Err(packet_reader_limit(
+            Resource::CodeBlocks,
+            params.limits.maximum_code_blocks(),
+            count,
+        ));
+    }
+    if count > params.limits.maximum_work_units() {
+        return Err(packet_reader_limit(
+            Resource::WorkUnits,
+            params.limits.maximum_work_units(),
+            count,
+        ));
+    }
+    let leaves = match inclusion.levels.first() {
+        Some(leaves) => leaves,
+        None => return Err(packet_reader_error(offset, MalformedKind::InvalidTagTree)),
+    };
+    let zleaves = match zero.levels.first() {
+        Some(leaves) => leaves,
+        None => return Err(packet_reader_error(offset, MalformedKind::InvalidTagTree)),
+    };
+    let width = leaves.width;
+    let height = leaves.height;
+    if width == 0 || height == 0 {
+        return Err(packet_reader_error(offset, MalformedKind::InvalidTagTree));
+    }
+    if inclusion.leaf_count()? != count
+        || zero.leaf_count()? != count
+        || width != zleaves.width
+        || height != zleaves.height
+    {
+        return Err(packet_reader_error(offset, MalformedKind::InvalidTagTree));
+    }
+    let data = match params.part.data.get(offset..) {
+        Some(data) => data,
+        None => return Err(packet_reader_error(offset, MalformedKind::Truncated)),
+    };
+    let style = params.part.coding_style.tier1_coding_style()?;
+    let layer = match contexts.first() {
+        Some(context) => context.layer,
+        None => {
+            return Err(packet_reader_error(
+                offset,
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+    };
+    validate_multi_packet_contexts(contexts, style, layer, width, offset)?;
+    Ok(data)
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures precinct_payload_reader_outcome(result)==crate::specs::part1_multi_packet_prefix(
+        data@,sop,offset,crate::limits::resource_packet_header_byte_limit(limits),crate::limits::resource_work_limit(limits)),
+))]
+fn read_multi_packet_prefix<'a>(
+    data: &'a [u8],
+    sop: bool,
+    offset: usize,
+    limits: &ResourceLimits,
+) -> Result<PrecinctPayloadReader<'a>, DecodeError> {
+    let mut skip = 0_usize;
+    if sop {
+        let marker = match data.get(0..2) {
+            Some(marker) => marker,
+            None => return Err(packet_reader_error(offset, MalformedKind::Truncated)),
+        };
+        let length = match data.get(2..4) {
+            Some(length) => length,
+            None => return Err(packet_reader_error(offset, MalformedKind::Truncated)),
+        };
+        if marker[0] != SOP_MARKER[0]
+            || marker[1] != SOP_MARKER[1]
+            || length[0] != 0
+            || length[1] != 4
+        {
+            return Err(packet_reader_error(
+                offset,
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+        match data.get(4..6) {
+            Some(_) => {}
+            None => return Err(packet_reader_error(offset, MalformedKind::Truncated)),
+        }
+        skip = 6;
+    }
+    let packet_data = match data.get(skip..) {
+        Some(data) => data,
+        None => return Err(packet_reader_error(offset, MalformedKind::Truncated)),
+    };
+    let mut reader = packet_reader_prefix(packet_data, limits);
+    let present = reader.read_bit()?;
+    Ok(PrecinctPayloadReader {
+        reader,
+        packet_data,
+        present,
+        sop_bytes: skip,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct MultiHeaderProgress {
+    index: usize,
+    count: u32,
+}
+
+#[derive(Clone, Copy)]
+struct MultiHeaderParameters<'a> {
+    contexts: &'a [CodeBlockPacketContext],
+    offset: usize,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn multi_header_view(
+        states:&[CodeBlockPacketState],inclusion:&TagTree,zero:&TagTree,contexts:&[CodeBlockPacketContext],
+        contributions:&[Option<CodeBlockContribution>],reader:&PacketBitReader<'_>,progress:&MultiHeaderProgress,
+    )->crate::specs::Part1MultiPacketHeader {
+        crate::specs::Part1MultiPacketHeader {
+            states:states@.map_values(|state:CodeBlockPacketState|code_block_packet_state_view(&state)),
+            inclusion:tag_tree_view(inclusion),zero:tag_tree_view(zero),contexts:contexts@,
+            contributions:packet_body_contributions_view(contributions),reader:packet_bit_reader_view(reader),
+            index:progress.index,count:progress.count,
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,multi_header_view(final(states),final(inclusion),final(zero),parameters.contexts,
+        final(contributions),final(reader),final(progress)))==crate::specs::part1_multi_header_slot(
+            multi_header_view(old(states),old(inclusion),old(zero),parameters.contexts,old(contributions),old(reader),old(progress)),parameters.offset),
+        final(states)@.len()==old(states)@.len(),final(contributions)@.len()==old(contributions)@.len(),
+))]
+fn read_multi_packet_header_slot(
+    states: &mut [CodeBlockPacketState],
+    inclusion: &mut TagTree,
+    zero: &mut TagTree,
+    parameters: MultiHeaderParameters<'_>,
+    contributions: &mut [Option<CodeBlockContribution>],
+    reader: &mut PacketBitReader<'_>,
+    progress: &mut MultiHeaderProgress,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial=multi_header_view(states,inclusion,zero,parameters.contexts,contributions,reader,progress);
+        let ghost prior_states=states@;
+        let ghost index=progress.index;
+    }
+    let context = match parameters.contexts.get(progress.index) {
+        Some(context) => *context,
+        None => {
+            return Err(packet_reader_error(
+                parameters.offset,
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+    };
+    if progress.index >= states.len() {
+        return Err(packet_reader_error(
+            parameters.offset,
+            MalformedKind::InvalidPacketHeader,
+        ));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {let ghost header=crate::specs::part1_packet_header_decode(
+    initial.states[index as int],initial.inclusion,initial.zero,context,initial.reader);}
+    let result = {
+        let state = &mut states[progress.index];
+        decode_code_block_contribution(state, inclusion, zero, context, reader)
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall|i:int|0<=i<states@.len() && i!=index as int implies states@[i]==prior_states[i] by {}
+        assert(states@.map_values(|state:CodeBlockPacketState|code_block_packet_state_view(&state))
+            =~= initial.states.update(index as int,header.1));
+    }
+    let contribution = result?;
+    if contribution.is_some() {
+        progress.count = match progress.count.checked_add(1) {
+            Some(count) => count,
+            None => {
+                return Err(packet_reader_error(
+                    parameters.offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        };
+    }
+    {
+        let slot = match contributions.get_mut(progress.index) {
+            Some(slot) => slot,
+            None => {
+                return Err(packet_reader_error(
+                    parameters.offset,
+                    MalformedKind::InvalidPacketHeader,
+                ));
+            }
+        };
+        *slot = contribution;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(packet_body_contributions_view(contributions) =~=
+    initial.contributions.update(index as int,code_block_contribution_option_view(contribution)));}
+    progress.index = match progress.index.checked_add(1) {
+        Some(index) => index,
+        None => {
+            return Err(packet_reader_error(
+                parameters.offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+    };
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,multi_header_view(final(states),final(inclusion),final(zero),parameters.contexts,
+        final(contributions),final(reader),final(progress)))==crate::specs::part1_multi_headers(
+            multi_header_view(old(states),old(inclusion),old(zero),parameters.contexts,old(contributions),old(reader),old(progress)),parameters.offset),
+        final(states)@.len()==old(states)@.len(),final(contributions)@.len()==old(contributions)@.len(),
+))]
+fn read_multi_packet_headers(
+    states: &mut [CodeBlockPacketState],
+    inclusion: &mut TagTree,
+    zero: &mut TagTree,
+    parameters: MultiHeaderParameters<'_>,
+    contributions: &mut [Option<CodeBlockContribution>],
+    reader: &mut PacketBitReader<'_>,
+    progress: &mut MultiHeaderProgress,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_multi_headers);}
+    #[cfg_attr(verus_keep_ghost,verus_spec(
+        invariant states@.len()==old(states)@.len(),contributions@.len()==old(contributions)@.len(),
+            crate::specs::part1_multi_headers(multi_header_view(old(states),old(inclusion),old(zero),
+                parameters.contexts,old(contributions),old(reader),old(progress)),parameters.offset)
+            ==crate::specs::part1_multi_headers(multi_header_view(states,inclusion,zero,parameters.contexts,contributions,reader,progress),parameters.offset),
+        decreases parameters.contexts@.len()-progress.index,
+    ))]
+    while progress.index < parameters.contexts.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {reveal(crate::specs::part1_multi_headers);}
+        read_multi_packet_header_slot(
+            states,
+            inclusion,
+            zero,
+            parameters,
+            contributions,
+            reader,
+            progress,
+        )?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {reveal(crate::specs::part1_multi_headers);}
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct MultiPacketLayout {
+    blocks: u64,
+    present: bool,
+    count: u32,
+    header: usize,
+    start: usize,
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures result==crate::specs::part1_multi_body_start(data@,sop,header,eph,offset),
+))]
+fn multi_packet_body_start(
+    data: &[u8],
+    sop: usize,
+    header: usize,
+    eph: bool,
+    offset: usize,
+) -> Result<usize, DecodeError> {
+    let start = match sop.checked_add(header) {
+        Some(start) => start,
+        None => {
+            return Err(packet_reader_error(
+                offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+    };
+    if !eph {
+        return Ok(start);
+    }
+    let end = match start.checked_add(2) {
+        Some(end) => end,
+        None => {
+            return Err(packet_reader_error(
+                offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+    };
+    let marker = match data.get(start..end) {
+        Some(marker) => marker,
+        None => return Err(packet_reader_error(offset, MalformedKind::Truncated)),
+    };
+    if marker[0] != EPH_MARKER[0] || marker[1] != EPH_MARKER[1] {
+        return Err(packet_reader_error(
+            offset,
+            MalformedKind::InvalidPacketHeader,
+        ));
+    }
+    Ok(end)
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,final(decoders)@.map_values(|decoder:Tier1CodeBlockDecoder|crate::tier1::tier1_decoder_state(&decoder)))
+        ==crate::specs::part1_multi_body_data(
+            old(decoders)@.map_values(|decoder:Tier1CodeBlockDecoder|crate::tier1::tier1_decoder_state(&decoder)),
+            layout.blocks,data@,packet_body_contributions_view(contributions),layout.present,layout.count,layout.header,layout.start,params.offset,
+            crate::limits::resource_code_block_pass_limit(params.limits),crate::limits::resource_code_block_byte_limit(params.limits),
+            crate::limits::resource_input_byte_limit(params.limits),crate::limits::resource_work_limit(params.limits)),
+))]
+fn decode_multi_packet_body(
+    params: &MultiPacketParameters<'_, '_>,
+    data: &[u8],
+    contributions: &[Option<CodeBlockContribution>],
+    layout: MultiPacketLayout,
+    decoders: &mut [Tier1CodeBlockDecoder],
+) -> Result<PacketBodyDecode, DecodeError> {
+    let offset = params.offset;
+    let mut preflight = PacketBodyPreflight {
+        index: 0,
+        end: layout.start,
+    };
+    preflight_packet_body_ranges(contributions, data, &mut preflight, (offset, offset))?;
+    let mut execution = PacketBodyExecutionProgress {
+        index: 0,
+        offset: layout.start,
+        segments: 0,
+        passes: 0,
+    };
+    execute_packet_body_contributions(
+        decoders,
+        contributions,
+        data,
+        &mut execution,
+        (offset, offset),
+        true,
+        params.limits,
+    )?;
+    let bytes = match preflight.end.checked_sub(layout.start) {
+        Some(bytes) => bytes,
+        None => {
+            return Err(packet_reader_error(
+                offset,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+    };
+    Ok(PacketBodyDecode {
+        present: layout.present,
+        code_blocks: match u32::try_from(layout.blocks) {
+            Ok(n) => n,
+            Err(_) => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        },
+        contributions: layout.count,
+        segments: execution.segments,
+        passes: execution.passes,
+        header_bytes: match u32::try_from(layout.header) {
+            Ok(n) => n,
+            Err(_) => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        },
+        body_bytes: match u32::try_from(bytes) {
+            Ok(n) => n,
+            Err(_) => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        },
+        bytes_consumed: match u32::try_from(preflight.end) {
+            Ok(n) => n,
+            Err(_) => {
+                return Err(packet_reader_error(
+                    offset,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+        },
+    })
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,multi_packet_state_view(final(states),final(inclusion),final(zero),contexts,final(decoders)))
+        ==crate::specs::part1_multi_payload(multi_packet_state_view(old(states),old(inclusion),old(zero),contexts,old(decoders)),
+            data@,crate::codestream::coding_style_packet_markers(&params.part.coding_style).0,
+            crate::codestream::coding_style_packet_markers(&params.part.coding_style).1,params.offset,
+            crate::limits::resource_packet_header_byte_limit(params.limits),
+            crate::limits::resource_code_block_pass_limit(params.limits),crate::limits::resource_code_block_byte_limit(params.limits),
+            crate::limits::resource_input_byte_limit(params.limits),crate::limits::resource_work_limit(params.limits)),
+        final(states)@.len()==old(states)@.len(),
+))]
+fn decode_multi_packet_payload(
+    params: &MultiPacketParameters<'_, '_>,
+    data: &[u8],
+    states: &mut [CodeBlockPacketState],
+    inclusion: &mut TagTree,
+    zero: &mut TagTree,
+    contexts: &[CodeBlockPacketContext],
+    decoders: &mut [Tier1CodeBlockDecoder],
+) -> Result<PacketBodyDecode, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part1_multi_payload);reveal(crate::specs::part1_multi_body);
+        crate::codestream::coding_style_known_packet_markers(&params.part.coding_style);
+    }
+    let blocks = states.len() as u64;
+    let prefix = read_multi_packet_prefix(
+        data,
+        params.part.coding_style.sop_markers,
+        params.offset,
+        params.limits,
+    )?;
+    let present = prefix.present;
+    let mut reader = prefix.reader;
+    let mut contributions = vec![None; states.len()];
+    #[cfg(verus_keep_ghost)]
+    proof! {assert(contributions@.map_values(|c:Option<CodeBlockContribution>|code_block_contribution_option_view(c))
+    =~= Seq::new(states@.len(),|i:int|None));}
+    let mut progress = MultiHeaderProgress { index: 0, count: 0 };
+    if present {
+        read_multi_packet_headers(
+            states,
+            inclusion,
+            zero,
+            MultiHeaderParameters {
+                contexts,
+                offset: params.offset,
+            },
+            &mut contributions,
+            &mut reader,
+            &mut progress,
+        )?;
+    }
+    reader.align_to_byte();
+    let header = reader.bytes_consumed();
+    let start = multi_packet_body_start(
+        data,
+        prefix.sop_bytes,
+        header,
+        params.part.coding_style.eph_markers,
+        params.offset,
+    )?;
+    decode_multi_packet_body(
+        params,
+        data,
+        &contributions,
+        MultiPacketLayout {
+            blocks,
+            present,
+            count: progress.count,
+            header,
+            start,
+        },
+        decoders,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,multi_packet_state_view(final(execution.states),final(execution.inclusion_tree),final(execution.zero_bitplane_tree),
+        execution.contexts,final(execution.decoders)))==crate::specs::part1_multi_code_block_packet(
+            multi_packet_state_view(old(execution.states),old(execution.inclusion_tree),old(execution.zero_bitplane_tree),
+                execution.contexts,old(execution.decoders)),tile_part,offset,limits),
+))]
 pub fn decode_multi_code_block_packet(
     tile_part: &TilePartPayload<'_>,
     offset: usize,
@@ -3938,283 +4683,50 @@ pub fn decode_multi_code_block_packet(
     let zero_bitplane_tree = execution.zero_bitplane_tree;
     let contexts = execution.contexts;
     let decoders = execution.decoders;
-    if states.is_empty() || states.len() != contexts.len() || states.len() != decoders.len() {
-        return Err(DecodeError::malformed(
-            offset as u64,
-            MalformedKind::InvalidPacketHeader,
-        ));
-    }
-    let code_blocks = states.len() as u64;
-    if code_blocks > limits.maximum_code_blocks() {
-        return Err(DecodeError::limit(
-            Resource::CodeBlocks,
-            limits.maximum_code_blocks(),
-            code_blocks,
-        ));
-    }
-    if code_blocks > limits.maximum_work_units() {
-        return Err(DecodeError::limit(
-            Resource::WorkUnits,
-            limits.maximum_work_units(),
-            code_blocks,
-        ));
-    }
-    let inclusion_leaves = inclusion_tree
-        .levels
-        .first()
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::InvalidTagTree))?;
-    let zero_bitplane_leaves = zero_bitplane_tree
-        .levels
-        .first()
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::InvalidTagTree))?;
-    let inclusion_width = inclusion_leaves.width;
-    let inclusion_height = inclusion_leaves.height;
-    if inclusion_width == 0 || inclusion_height == 0 {
-        return Err(DecodeError::malformed(
-            offset as u64,
-            MalformedKind::InvalidTagTree,
-        ));
-    }
-    if inclusion_tree.leaf_count()? != code_blocks
-        || zero_bitplane_tree.leaf_count()? != code_blocks
-        || inclusion_width != zero_bitplane_leaves.width
-        || inclusion_height != zero_bitplane_leaves.height
-    {
-        return Err(DecodeError::malformed(
-            offset as u64,
-            MalformedKind::InvalidTagTree,
-        ));
-    }
-    let data = tile_part
-        .data
-        .get(offset..)
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-    let tier1_style = tile_part.coding_style.tier1_coding_style()?;
-    let layer = contexts
-        .first()
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader))?
-        .layer;
-    let block_count = contexts.len();
-    let mut context_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant context_index <= block_count,
-            decreases block_count - context_index,
-        )
-    )]
-    while context_index < block_count {
-        let context = contexts.get(context_index).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-        })?;
-        let linear_index = u32::try_from(context_index).map_err(|_| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-        let expected_x = linear_index.checked_rem(inclusion_width).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-        let expected_y = linear_index.checked_div(inclusion_width).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-        if context.layer != layer
-            || context.leaf_x != expected_x
-            || context.leaf_y != expected_y
-            || !tier1_styles_equal(context.tier1_style, tier1_style)
-        {
-            return Err(DecodeError::malformed(
-                offset as u64,
-                MalformedKind::InvalidPacketHeader,
-            ));
-        }
-        context_index = context_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-    }
-    let mut packet_offset = 0_usize;
-    if tile_part.coding_style.sop_markers {
-        let marker = data
-            .get(0..2)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-        let marker_length = data
-            .get(2..4)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-        if marker[0] != SOP_MARKER[0]
-            || marker[1] != SOP_MARKER[1]
-            || marker_length[0] != 0
-            || marker_length[1] != 4
-        {
-            return Err(DecodeError::malformed(
-                offset as u64,
-                MalformedKind::InvalidPacketHeader,
-            ));
-        }
-        data.get(4..6)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-        packet_offset = 6;
-    }
-    let packet_data = data
-        .get(packet_offset..)
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-    let mut reader = PacketBitReader::new_prefix(packet_data, limits);
-    let packet_present = reader.read_bit()?;
-    let mut contributions = vec![None; states.len()];
-    let mut contribution_count = 0_u32;
-    if packet_present {
-        let mut block_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant block_index <= block_count,
-                block_count == contributions.len(),
-                decreases block_count - block_index,
-            )
-        )]
-        while block_index < block_count {
-            let context = contexts.get(block_index).ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-            })?;
-            let state = states.get_mut(block_index).ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-            })?;
-            let contribution = decode_code_block_contribution(
-                state,
-                inclusion_tree,
-                zero_bitplane_tree,
-                *context,
-                &mut reader,
-            )?;
-            if contribution.is_some() {
-                contribution_count = contribution_count.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-                })?;
-            }
-            let slot = contributions.get_mut(block_index).ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-            })?;
-            *slot = contribution;
-            block_index = block_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-            })?;
-        }
-    }
-    reader.align_to_byte();
-    let header_bytes = reader.bytes_consumed();
-    packet_offset = packet_offset
-        .checked_add(header_bytes)
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow))?;
-    if tile_part.coding_style.eph_markers {
-        let marker_end = packet_offset.checked_add(2).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-        let marker = data
-            .get(packet_offset..marker_end)
-            .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-        if marker[0] != EPH_MARKER[0] || marker[1] != EPH_MARKER[1] {
-            return Err(DecodeError::malformed(
-                offset as u64,
-                MalformedKind::InvalidPacketHeader,
-            ));
-        }
-        packet_offset = marker_end;
-    }
-
-    let body_start = packet_offset;
-    let mut block_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant block_index <= block_count,
-            block_count == contributions.len(),
-            decreases block_count - block_index,
-        )
-    )]
-    while block_index < block_count {
-        if let Some(contribution) = contributions[block_index] {
-            packet_offset = packet_offset
-                .checked_add(usize::try_from(contribution.data_length).map_err(|_| {
-                    DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-                })?)
-                .ok_or_else(|| {
-                    DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-                })?;
-            if packet_offset > data.len() {
-                return Err(DecodeError::malformed(
-                    offset as u64,
-                    MalformedKind::Truncated,
-                ));
-            }
-        }
-        block_index = block_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-    }
-
-    let mut body_offset = body_start;
-    let mut decoded_segments = 0_u32;
-    let mut decoded_passes = 0_u32;
-    block_index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant block_index <= block_count,
-            block_count == contributions.len(),
-            decreases block_count - block_index,
-        )
-    )]
-    while block_index < block_count {
-        if let Some(contribution) = contributions[block_index] {
-            let body_end = body_offset
-                .checked_add(usize::try_from(contribution.data_length).map_err(|_| {
-                    DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-                })?)
-                .ok_or_else(|| {
-                    DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-                })?;
-            let body = data
-                .get(body_offset..body_end)
-                .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::Truncated))?;
-            let decoder = decoders.get_mut(block_index).ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::InvalidPacketHeader)
-            })?;
-            let decoded =
-                decode_code_block_contribution_body(decoder, &contribution, body, limits)?;
-            decoded_segments = decoded_segments
-                .checked_add(u32::from(decoded.segments))
-                .ok_or_else(|| {
-                    DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-                })?;
-            decoded_passes = decoded_passes.checked_add(decoded.passes).ok_or_else(|| {
-                DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-            })?;
-            body_offset = body_end;
-        }
-        block_index = block_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-    }
-    let body_bytes = packet_offset
-        .checked_sub(body_start)
-        .ok_or_else(|| DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow))?;
-    Ok(PacketBodyDecode {
-        present: packet_present,
-        code_blocks: u32::try_from(code_blocks).map_err(|_| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?,
-        contributions: contribution_count,
-        segments: decoded_segments,
-        passes: decoded_passes,
-        header_bytes: u32::try_from(header_bytes).map_err(|_| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?,
-        body_bytes: u32::try_from(body_bytes).map_err(|_| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?,
-        bytes_consumed: u32::try_from(packet_offset).map_err(|_| {
-            DecodeError::malformed(offset as u64, MalformedKind::ArithmeticOverflow)
-        })?,
-    })
+    let params = MultiPacketParameters {
+        part: tile_part,
+        offset,
+        limits,
+    };
+    let data = validate_multi_packet_input(
+        &params,
+        states,
+        inclusion_tree,
+        zero_bitplane_tree,
+        contexts,
+        decoders,
+    )?;
+    decode_multi_packet_payload(
+        &params,
+        data,
+        states,
+        inclusion_tree,
+        zero_bitplane_tree,
+        contexts,
+        decoders,
+    )
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn single_packet_state_view(
+        state:&CodeBlockPacketState,inclusion:&TagTree,zero:&TagTree,decoder:&Tier1CodeBlockDecoder,
+    )->crate::specs::Part1SinglePacketState {
+        crate::specs::Part1SinglePacketState {
+            state:code_block_packet_state_view(state),inclusion:tag_tree_view(inclusion),zero:tag_tree_view(zero),
+            decoder:crate::tier1::tier1_decoder_state(decoder),
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost,verus_spec(result =>
+    ensures (result,single_packet_state_view(final(state),final(inclusion_tree),final(zero_bitplane_tree),final(decoder)))
+        ==crate::specs::part1_single_code_block_packet(
+            single_packet_state_view(old(state),old(inclusion_tree),old(zero_bitplane_tree),old(decoder)),
+            payload@,context,crate::limits::resource_packet_header_byte_limit(limits),
+            crate::limits::resource_code_block_pass_limit(limits),crate::limits::resource_code_block_byte_limit(limits),
+            crate::limits::resource_input_byte_limit(limits),crate::limits::resource_work_limit(limits)),
+))]
 pub fn decode_single_code_block_packet(
     payload: &[u8],
     state: &mut CodeBlockPacketState,
@@ -4224,35 +4736,38 @@ pub fn decode_single_code_block_packet(
     decoder: &mut Tier1CodeBlockDecoder,
     limits: &ResourceLimits,
 ) -> Result<Option<CodeBlockBodyDecode>, DecodeError> {
-    let mut reader = PacketBitReader::new(payload, limits)?;
+    let mut reader = packet_reader_new(payload, limits)?;
     if !reader.read_bit()? {
         reader.align_to_byte();
         if reader.bytes_consumed() != payload.len() {
-            return Err(DecodeError::malformed(
-                reader.bytes_consumed() as u64,
+            return Err(packet_reader_error(
+                reader.bytes_consumed(),
                 MalformedKind::TrailingData,
             ));
         }
         return Ok(None);
     }
-    let contribution = decode_code_block_contribution(
+    let contribution = match decode_code_block_contribution(
         state,
         inclusion_tree,
         zero_bitplane_tree,
         context,
         &mut reader,
-    )?
-    .ok_or_else(|| {
-        DecodeError::malformed(
-            reader.bytes_consumed() as u64,
-            MalformedKind::InvalidPacketHeader,
-        )
-    })?;
+    )? {
+        Some(contribution) => contribution,
+        None => {
+            return Err(packet_reader_error(
+                reader.bytes_consumed(),
+                MalformedKind::InvalidPacketHeader,
+            ));
+        }
+    };
     reader.align_to_byte();
     let body_offset = reader.bytes_consumed();
-    let body = payload
-        .get(body_offset..)
-        .ok_or_else(|| DecodeError::malformed(body_offset as u64, MalformedKind::Truncated))?;
+    let body = match payload.get(body_offset..) {
+        Some(body) => body,
+        None => return Err(packet_reader_error(body_offset, MalformedKind::Truncated)),
+    };
     Ok(Some(decode_code_block_contribution_body(
         decoder,
         &contribution,
@@ -5924,7 +6439,6 @@ mod tests {
             maximum_header_bytes: 1,
         };
         assert_eq!(packet_reader_prefix(&[0, 0], &limits), expected);
-        assert_eq!(PacketBitReader::new_prefix(&[0, 0], &limits), expected);
         assert_eq!(
             tag_tree_new(u32::MAX, u32::MAX, &limits),
             Err(DecodeError::LimitExceeded {
@@ -7168,6 +7682,395 @@ mod tests {
         }
     }
 
+    fn exact_packet_precinct_snapshot(value: &PacketPrecinctDecoder) -> String {
+        let subbands = value
+            .subbands
+            .iter()
+            .map(|s| {
+                (
+                    s.orientation,
+                    s.first_decoder,
+                    s.decoder_count,
+                    s.code_blocks_across,
+                    s.code_blocks_down,
+                    &s.inclusion_tree,
+                    &s.zero_bitplane_tree,
+                )
+            })
+            .collect::<Vec<_>>();
+        format!(
+            "{:?}",
+            (
+                value.component,
+                value.resolution,
+                value.precinct,
+                &value.states,
+                &value.contexts,
+                &value.decoders,
+                subbands
+            )
+        )
+    }
+
+    #[test]
+    fn public_single_boundary_keeps_whole_payload_priority_and_real_partial_header_effects() {
+        let base = ResourceLimits::default();
+        for (payload, limited, error, included, passes, low) in [
+            (
+                &[0, 0][..],
+                true,
+                DecodeError::LimitExceeded {
+                    resource: Resource::PacketHeaderBytes,
+                    limit: 1,
+                    actual: 2,
+                },
+                false,
+                0,
+                0,
+            ),
+            (
+                &[0, 0][..],
+                false,
+                packet_reader_error(1, MalformedKind::TrailingData),
+                false,
+                0,
+                0,
+            ),
+            (
+                &[0x80][..],
+                false,
+                packet_reader_error(1, MalformedKind::InvalidPacketHeader),
+                false,
+                0,
+                1,
+            ),
+            (&[0xe1][..], false, packet_invalid_code_block(), true, 1, 0),
+        ] {
+            let limits = if limited {
+                base.with_maximum_packet_header_bytes(1).unwrap()
+            } else {
+                base
+            };
+            let mut state = code_block_packet_state_new();
+            let mut inclusion = tag_tree_new(1, 1, &base).unwrap();
+            let mut zero = tag_tree_new(1, 1, &base).unwrap();
+            let mut decoder = one_bit_legacy_decoder(false);
+            let before = format!("{decoder:?}");
+            assert_eq!(
+                decode_single_code_block_packet(
+                    payload,
+                    &mut state,
+                    &mut inclusion,
+                    &mut zero,
+                    literal_precinct_header_context(),
+                    &mut decoder,
+                    &limits
+                ),
+                Err(error)
+            );
+            assert_eq!(
+                (
+                    state.included(),
+                    state.total_passes(),
+                    inclusion.nodes[0].low
+                ),
+                (included, passes, low)
+            );
+            assert_eq!(format!("{decoder:?}"), before);
+            if included {
+                assert_eq!(zero.nodes[0].value, 0);
+            }
+        }
+        let mut state = code_block_packet_state_new();
+        let mut inclusion = tag_tree_new(1, 1, &base).unwrap();
+        let mut zero = tag_tree_new(1, 1, &base).unwrap();
+        let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
+        let mut context = literal_precinct_header_context();
+        context.tier1_style = style;
+        let mut decoder =
+            Tier1CodeBlockDecoder::new(1, 1, 1, SubbandOrientation::Ll, style).unwrap();
+        assert_eq!(
+            decode_single_code_block_packet(
+                &[0xe3, 0, 0x63, 0],
+                &mut state,
+                &mut inclusion,
+                &mut zero,
+                context,
+                &mut decoder,
+                &base
+            ),
+            Ok(Some(CodeBlockBodyDecode {
+                segments: 1,
+                passes: 1,
+                bytes: 3
+            }))
+        );
+        assert_eq!(decoder.plane().signed_coefficient(0, 0).unwrap(), -1);
+    }
+
+    #[test]
+    fn public_multi_boundary_preflights_every_body_then_keeps_prior_real_decoder_commits() {
+        let limits = ResourceLimits::default();
+        for late in [false, true] {
+            let mut bytes = vec![0x55; 9];
+            bytes.extend_from_slice(&[0xf8, 0xb1, 0, 0x01, 0xae]);
+            if late {
+                bytes.extend_from_slice(&[0x01, 0xae]);
+            }
+            let style = coding_style(false, false);
+            let tile = TilePartPayload::uniform_for_packet_decoding(
+                0,
+                0,
+                1,
+                1,
+                style,
+                crate::codestream::RoiShifts::none(),
+                &bytes,
+            )
+            .unwrap();
+            let mut states = [code_block_packet_state_new(); 2];
+            let mut inclusion = tag_tree_new(2, 1, &limits).unwrap();
+            let mut zero = tag_tree_new(2, 1, &limits).unwrap();
+            let mut first = literal_precinct_header_context();
+            first.maximum_zero_bitplanes = 1;
+            let contexts = [first, CodeBlockPacketContext { leaf_x: 1, ..first }];
+            let mut decoders = [one_bit_legacy_decoder(false), one_bit_legacy_decoder(late)];
+            let before = [format!("{:?}", decoders[0]), format!("{:?}", decoders[1])];
+            assert_eq!(
+                decode_multi_code_block_packet(
+                    &tile,
+                    9,
+                    PacketCodeBlockExecution {
+                        states: &mut states,
+                        inclusion_tree: &mut inclusion,
+                        zero_bitplane_tree: &mut zero,
+                        contexts: &contexts,
+                        decoders: &mut decoders,
+                    },
+                    &limits
+                ),
+                Err(if late {
+                    packet_invalid_code_block()
+                } else {
+                    packet_reader_error(9, MalformedKind::Truncated)
+                })
+            );
+            assert!(states.iter().all(|s| s.included() && s.total_passes() == 1));
+            assert_eq!(format!("{:?}", decoders[1]), before[1]);
+            if late {
+                assert_eq!(
+                    (
+                        decoders[0].next_pass(),
+                        decoders[0].decoded_segments(),
+                        decoders[0].decoded_bytes()
+                    ),
+                    (1, 1, 2)
+                );
+            } else {
+                assert_eq!(format!("{:?}", decoders[0]), before[0]);
+            }
+        }
+    }
+
+    #[test]
+    fn public_multi_uses_prefix_header_budget_and_ignores_sop_sequence_values() {
+        let limits = ResourceLimits::default()
+            .with_maximum_packet_header_bytes(1)
+            .unwrap();
+        for sequence in [[0, 0], [0xff, 0xff], [0x12, 0x35]] {
+            let data = [0xff, 0x91, 0, 4, sequence[0], sequence[1], 0, 0xff];
+            let tile = TilePartPayload::uniform_for_packet_decoding(
+                0,
+                0,
+                1,
+                1,
+                coding_style(true, false),
+                crate::codestream::RoiShifts::none(),
+                &data,
+            )
+            .unwrap();
+            let mut states = [code_block_packet_state_new()];
+            let mut inclusion = tag_tree_new(1, 1, &ResourceLimits::default()).unwrap();
+            let mut zero = tag_tree_new(1, 1, &ResourceLimits::default()).unwrap();
+            let contexts = [literal_precinct_header_context()];
+            let mut decoders = [one_bit_legacy_decoder(false)];
+            assert_eq!(
+                decode_multi_code_block_packet(
+                    &tile,
+                    0,
+                    PacketCodeBlockExecution {
+                        states: &mut states,
+                        inclusion_tree: &mut inclusion,
+                        zero_bitplane_tree: &mut zero,
+                        contexts: &contexts,
+                        decoders: &mut decoders,
+                    },
+                    &limits
+                ),
+                Ok(PacketBodyDecode {
+                    present: false,
+                    code_blocks: 1,
+                    contributions: 0,
+                    segments: 0,
+                    passes: 0,
+                    header_bytes: 1,
+                    body_bytes: 0,
+                    bytes_consumed: 7
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn real_shared_body_policy_retains_nonzero_local_errors_without_remapping_child_errors() {
+        let contribution = one_ff_legacy_contribution();
+        let mut cursor = PacketBodyPreflight {
+            index: 0,
+            end: usize::MAX,
+        };
+        assert_eq!(
+            preflight_packet_body_ranges(&[Some(contribution)], &[], &mut cursor, (71, 29)),
+            Err(packet_reader_error(29, MalformedKind::ArithmeticOverflow))
+        );
+        assert_eq!((cursor.index, cursor.end), (0, usize::MAX));
+        let mut execution = PacketBodyExecutionProgress {
+            index: 0,
+            offset: 0,
+            segments: 0,
+            passes: 0,
+        };
+        assert_eq!(
+            execute_packet_body_contributions(
+                &mut [],
+                &[Some(contribution)],
+                &[0xff],
+                &mut execution,
+                (71, 29),
+                true,
+                &ResourceLimits::default()
+            ),
+            Err(packet_reader_error(29, MalformedKind::InvalidPacketHeader))
+        );
+        let mut decoder = [one_bit_legacy_decoder(true)];
+        let before = format!("{:?}", decoder[0]);
+        assert_eq!(
+            execute_packet_body_contributions(
+                &mut decoder,
+                &[Some(contribution)],
+                &[0xff],
+                &mut execution,
+                (71, 29),
+                true,
+                &ResourceLimits::default()
+            ),
+            Err(packet_invalid_code_block())
+        );
+        assert_eq!(format!("{:?}", decoder[0]), before);
+    }
+
+    #[test]
+    fn actual_multi_header_slot_commits_raw_owner_state_before_count_and_storage_rejections() {
+        let limits = ResourceLimits::default();
+        for overflow in [false, true] {
+            let mut states = [code_block_packet_state_new()];
+            let mut inclusion = tag_tree_new(1, 1, &limits).unwrap();
+            let mut zero = tag_tree_new(1, 1, &limits).unwrap();
+            let contexts = [literal_precinct_header_context()];
+            let mut reader = packet_reader_prefix(&[0xc2], &limits);
+            let mut contributions = if overflow { vec![None] } else { Vec::new() };
+            let mut progress = MultiHeaderProgress {
+                index: 0,
+                count: if overflow { u32::MAX } else { 0 },
+            };
+            assert_eq!(
+                read_multi_packet_header_slot(
+                    &mut states,
+                    &mut inclusion,
+                    &mut zero,
+                    MultiHeaderParameters {
+                        contexts: &contexts,
+                        offset: 23
+                    },
+                    &mut contributions,
+                    &mut reader,
+                    &mut progress
+                ),
+                Err(packet_reader_error(
+                    23,
+                    if overflow {
+                        MalformedKind::ArithmeticOverflow
+                    } else {
+                        MalformedKind::InvalidPacketHeader
+                    }
+                ))
+            );
+            assert_eq!((states[0].included(), states[0].total_passes()), (true, 1));
+            assert_eq!(
+                (reader.byte_index, reader.bits_remaining, reader.bits_read),
+                (1, 1, 7)
+            );
+            assert_eq!(
+                (progress.index, progress.count),
+                (0, if overflow { u32::MAX } else { 1 })
+            );
+            assert!(contributions.iter().all(Option::is_none));
+            assert_eq!(inclusion.nodes[0], TagTreeNode { low: 0, value: 0 });
+            assert_eq!(zero.nodes[0], TagTreeNode { low: 0, value: 0 });
+        }
+    }
+
+    #[test]
+    fn actual_jpip_outer_restores_all_raw_fields_and_clone_preserves_unused_tree_words() {
+        let limits = ResourceLimits::default();
+        let template = literal_progression_tile(&[], 1, 0, 0, 1);
+        for empty_states in [false, true] {
+            let mut precinct = literal_ht_progression_precinct(0);
+            precinct.contexts[0].layer = 7;
+            precinct.subbands[0].inclusion_tree.nodes.push(TagTreeNode {
+                low: 19,
+                value: u32::MAX,
+            });
+            precinct.subbands[0]
+                .zero_bitplane_tree
+                .nodes
+                .push(TagTreeNode {
+                    low: u32::MAX,
+                    value: 23,
+                });
+            if empty_states {
+                precinct.states.clear();
+            }
+            let before = exact_packet_precinct_snapshot(&precinct);
+            let data: &[u8] = if empty_states { &[] } else { &[0xe3] };
+            assert!(
+                decode_jpip_precinct_packet(&template, data, 0, 0, &mut precinct, &limits).is_err()
+            );
+            assert_eq!(exact_packet_precinct_snapshot(&precinct), before);
+            assert_eq!(
+                precinct.subbands[0].inclusion_tree.nodes[1],
+                TagTreeNode {
+                    low: 19,
+                    value: u32::MAX
+                }
+            );
+            assert_eq!(
+                precinct.subbands[0].zero_bitplane_tree.nodes[1],
+                TagTreeNode {
+                    low: u32::MAX,
+                    value: 23
+                }
+            );
+        }
+        let mut inner = literal_ht_progression_precinct(0);
+        inner.states.clear();
+        inner.contexts[0].layer = 7;
+        assert_eq!(
+            decode_jpip_precinct_packet_inner(&template, &[], 0, 0, &mut inner, &limits),
+            Err(invalid_packet_header())
+        );
+        assert_eq!(inner.contexts[0].layer, 0);
+    }
+
     fn literal_ht_progression_precinct(resolution: u8) -> PacketPrecinctDecoder {
         let style = Tier1CodingStyle::from_code_block_style(0x40).unwrap();
         let mut precinct = literal_packet_precinct();
@@ -7478,6 +8381,22 @@ mod tests {
                 .unwrap(),
             0
         );
+        let template = &layout.tile_parts[0];
+        let template_before = format!("{template:?}");
+        let mut inline = literal_packet_precinct();
+        inline.contexts[0].layer = 9;
+        let decoder_before = format!("{:?}", inline.decoders[0]);
+        assert_eq!(
+            decode_jpip_precinct_packet(template, &[0xe1, 0xff], 0, 0, &mut inline, &limits),
+            Ok(2)
+        );
+        assert!(inline.states[0].included());
+        assert_eq!(
+            (inline.states[0].total_passes(), inline.contexts[0].layer),
+            (1, 0)
+        );
+        assert_eq!(format!("{:?}", inline.decoders[0]), decoder_before);
+        assert_eq!(format!("{template:?}"), template_before);
     }
 
     fn raw_iterator_grid() -> PacketGrid {
@@ -8342,7 +9261,7 @@ mod tests {
         ] {
             let mut cursor = PacketBodyPreflight { index: 0, end: 0 };
             assert_eq!(
-                preflight_packet_body_ranges(&contributions, data, &mut cursor, 71),
+                preflight_packet_body_ranges(&contributions, data, &mut cursor, (71, 0)),
                 expected_result
             );
             assert_eq!((cursor.index, cursor.end), (expected_index, expected_end));
@@ -8352,7 +9271,7 @@ mod tests {
             end: usize::MAX,
         };
         assert_eq!(
-            preflight_packet_body_ranges(&contributions, &[], &mut cursor, 71),
+            preflight_packet_body_ranges(&contributions, &[], &mut cursor, (71, 0)),
             Err(packet_arithmetic_overflow())
         );
         assert_eq!((cursor.index, cursor.end), (0, usize::MAX));
@@ -8361,7 +9280,7 @@ mod tests {
             end: 19,
         };
         assert_eq!(
-            preflight_packet_body_ranges(&contributions, &[], &mut cursor, 71),
+            preflight_packet_body_ranges(&contributions, &[], &mut cursor, (71, 0)),
             Ok(())
         );
         assert_eq!((cursor.index, cursor.end), (usize::MAX, 19));
@@ -8394,7 +9313,7 @@ mod tests {
                     &contributions,
                     data,
                     &mut progress,
-                    71,
+                    (71, 0),
                     false,
                     &ResourceLimits::default(),
                 ),
@@ -8432,7 +9351,7 @@ mod tests {
                 &contributions,
                 &data,
                 &mut progress,
-                71,
+                (71, 0),
                 true,
                 &ResourceLimits::default(),
             ),
@@ -8466,7 +9385,7 @@ mod tests {
                     &contributions,
                     &data,
                     &mut progress,
-                    71,
+                    (71, 0),
                     true,
                     &ResourceLimits::default(),
                 ),

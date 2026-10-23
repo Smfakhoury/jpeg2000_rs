@@ -729,6 +729,55 @@ outputs. This closes the named actual progression producer scope, not every
 single/multi-code-block or JPIP outer wrapper, normative endorsement, the whole
 F5H epic or project completion.
 
+### Complete actual public packet and JPIP boundaries
+
+The original `decode_single_code_block_packet` and
+`decode_multi_code_block_packet` now have unconditional complete Result and
+whole packet-state/tree/decoder relations to `packet_boundaries.rs`.
+`PacketCodeBlockExecution`'s actual mutable bundle fields appear in the public
+multi post; no separate successful execution object is supplied.
+
+Single uses the real validated whole-payload factory, exact absent-packet
+trailing-data policy and real header producer before actual mixed body
+transaction. Later body failure can retain earlier header/tree commits.
+Multi retains its raw shared-tree admission and complete context validation,
+native SOP policy (including deliberately unchecked sequence values), exact
+EPH placement, real descriptor generation and whole-body preflight before
+any coefficient execution. Its result reports a prefix, not assumed complete
+tile-part consumption.
+
+Both real body paths now share one executable preflight and one executable
+contribution loop. Explicit truncation/local-error offsets preserve the
+historical precinct-zero versus multi-caller-offset distinction; actual
+decoder-origin errors retain their own source offsets. Existing zero-offset
+models remain exact proved specializations of the shared raw relations.
+Full entry-expression and nested-vector frames, not stronger input domains
+or raised limits, establish every first-error partial state.
+
+The actual `decode_jpip_precinct_packet_inner` composes real context-layer
+writes, original inline metadata construction, the actual absent source
+constructor and actual skipped-body precinct decode. Its result and complete
+state hold for malformed contexts/trees/decoder state and arbitrary bytes/caps.
+Unobserved cloned template metadata is not treated as a supplied decoder or
+clone result. Relevant readonly fields come from actual native copies;
+`85697b6` exposes only the real packed-none constructor observation.
+
+The actual subband Clone copies every scalar and faithfully clones both
+complete raw trees in original order, retaining unused nodes and levels.
+The original outer Vec clones/restores prove exact state/context/subband
+snapshots. Decoder and identity preservation follow from the actual skipped
+execution path, separately proved through the production bodies. Thus the
+original outer JPIP transaction has a complete Result/whole-precinct relation
+and full rollback on every error, not an assumed clone or frame-only claim.
+
+Independent fixtures cover single cap/trailing/no-contribution/body errors and
+nonzero HT output; multi late shared-header/count/storage and prior-decoder
+effects, real local-versus-child offsets and sequence/prefix policies; actual
+JPIP raw rollback and inline decoding despite genuine template PPT/PLT metadata.
+This closes the four named original packet boundary guarantees. It does not
+claim an entire image/parser theorem, human normative endorsement or automatic
+epic/project completion.
+
 ## Conservative complete progression and raw input acceptance
 
 The exact native progression/input registry admits only42 finite qualified
