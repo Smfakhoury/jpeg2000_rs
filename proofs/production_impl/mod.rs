@@ -32,6 +32,298 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_prepared_standard_empty(before: Seq<crate::specs::Part1AssemblyTile>, irreversible: bool)
+    ensures crate::specs::part1_prepared_standard_prefix(before, irreversible, 0) == (Ok(()), before),
+{
+    reveal_with_fuel(crate::specs::part1_prepared_standard_prefix, 1);
+}
+
+pub proof fn production_prepared_standard_step(before: Seq<crate::specs::Part1AssemblyTile>, irreversible: bool, count: nat)
+    requires count <= usize::MAX,
+    ensures crate::specs::part1_prepared_standard_prefix(before, irreversible, count + 1)
+        == {
+            let previous = crate::specs::part1_prepared_standard_prefix(before, irreversible, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => crate::specs::part1_prepared_standard_pixel(previous.1, count as usize, irreversible),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part1_prepared_standard_prefix, 1);
+}
+
+pub proof fn production_prepared_standard_error(before: Seq<crate::specs::Part1AssemblyTile>, irreversible: bool, count: nat, finish: nat)
+    requires count <= finish <= usize::MAX,
+    ensures crate::specs::part1_prepared_standard_prefix(before, irreversible, count).0.is_err()
+        ==> crate::specs::part1_prepared_standard_prefix(before, irreversible, finish)
+            == crate::specs::part1_prepared_standard_prefix(before, irreversible, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_prepared_standard_error(before, irreversible, count, (finish - 1) as nat);
+        production_prepared_standard_step(before, irreversible, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_unit_result(result: Result<(), crate::DecodeError>)
+    requires result.is_ok(),
+    ensures result == Ok(()),
+{
+    match result { Ok(value) => { assert(value == ()); }, Err(_) => {} }
+}
+
+pub proof fn production_mct_prepared_inputs_shape(
+    before: Seq<crate::specs::Part1AssemblyTile>, count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+)
+    ensures
+        crate::specs::part2_mct_prepared_inputs(before, count, infos).1.len() <= before.len(),
+        crate::specs::part2_mct_prepared_inputs(before, count, infos).0.is_ok()
+            ==> crate::specs::part2_mct_prepared_inputs(before, count, infos).1.len() == before.len(),
+        forall |index: int| 0 <= index < crate::specs::part2_mct_prepared_inputs(before, count, infos).1.len() ==>
+            crate::specs::part2_mct_prepared_inputs(before, count, infos).1[index].2 == before[index].5
+                && crate::specs::part2_mct_prepared_inputs(before, count, infos).1[index].3 == before[index].6,
+    decreases before.len(),
+{
+    reveal_with_fuel(crate::specs::part2_mct_prepared_inputs, 1);
+    if before.len() > 0 {
+        production_mct_prepared_inputs_shape(before.drop_first(), count, infos);
+        assert forall |index: int| 0 <= index < crate::specs::part2_mct_prepared_inputs(before, count, infos).1.len() implies
+            crate::specs::part2_mct_prepared_inputs(before, count, infos).1[index].2 == before[index].5
+                && crate::specs::part2_mct_prepared_inputs(before, count, infos).1[index].3 == before[index].6 by {
+            if index > 0 {
+                assert(before.drop_first()[index - 1] == before[index]);
+            }
+        }
+    }
+}
+
+pub proof fn production_mct_stage_empty(
+    before: Seq<crate::specs::Part2MctComponent>, collections: Seq<crate::specs::Part2MctCollection>, work: u64, max_work: u64, max_bytes: u64,
+)
+    ensures crate::specs::part2_mct_stage_prefix(before, collections, work, max_work, max_bytes, 0) == (Ok(()), before, work),
+{
+    reveal_with_fuel(crate::specs::part2_mct_stage_prefix, 1);
+}
+
+pub proof fn production_mct_stage_step(
+    before: Seq<crate::specs::Part2MctComponent>, collections: Seq<crate::specs::Part2MctCollection>, work: u64, max_work: u64, max_bytes: u64, count: nat,
+)
+    requires count < collections.len(),
+    ensures crate::specs::part2_mct_stage_prefix(before, collections, work, max_work, max_bytes, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_stage_prefix(before, collections, work, max_work, max_bytes, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => crate::specs::part2_mct_collection(previous.1, collections[count as int], previous.2, max_work, max_bytes),
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_stage_prefix, 1);
+}
+
+pub proof fn production_mct_stage_error(
+    before: Seq<crate::specs::Part2MctComponent>, collections: Seq<crate::specs::Part2MctCollection>, work: u64, max_work: u64, max_bytes: u64, count: nat, finish: nat,
+)
+    requires count <= finish <= collections.len(),
+    ensures crate::specs::part2_mct_stage_prefix(before, collections, work, max_work, max_bytes, count).0.is_err()
+        ==> crate::specs::part2_mct_stage_prefix(before, collections, work, max_work, max_bytes, finish)
+            == crate::specs::part2_mct_stage_prefix(before, collections, work, max_work, max_bytes, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_mct_stage_error(before, collections, work, max_work, max_bytes, count, (finish - 1) as nat);
+        production_mct_stage_step(before, collections, work, max_work, max_bytes, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_transform_empty(
+    before: Seq<crate::specs::Part2MctComponent>, stages: Seq<crate::specs::Part2MctStage>, work: u64, max_work: u64, max_bytes: u64,
+)
+    ensures crate::specs::part2_mct_transform_prefix(before, stages, work, max_work, max_bytes, 0) == (Ok(()), before, work),
+{
+    reveal_with_fuel(crate::specs::part2_mct_transform_prefix, 1);
+}
+
+pub proof fn production_mct_transform_step(
+    before: Seq<crate::specs::Part2MctComponent>, stages: Seq<crate::specs::Part2MctStage>, work: u64, max_work: u64, max_bytes: u64, count: nat,
+)
+    requires count < stages.len(),
+    ensures crate::specs::part2_mct_transform_prefix(before, stages, work, max_work, max_bytes, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_transform_prefix(before, stages, work, max_work, max_bytes, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => {
+                    let stage = stages[stages.len() - count - 1];
+                    crate::specs::part2_mct_stage_prefix(previous.1, stage.1, previous.2, max_work, max_bytes, stage.1.len())
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_transform_prefix, 1);
+}
+
+pub proof fn production_mct_transform_error(
+    before: Seq<crate::specs::Part2MctComponent>, stages: Seq<crate::specs::Part2MctStage>, work: u64, max_work: u64, max_bytes: u64, count: nat, finish: nat,
+)
+    requires count <= finish <= stages.len(),
+    ensures crate::specs::part2_mct_transform_prefix(before, stages, work, max_work, max_bytes, count).0.is_err()
+        ==> crate::specs::part2_mct_transform_prefix(before, stages, work, max_work, max_bytes, finish)
+            == crate::specs::part2_mct_transform_prefix(before, stages, work, max_work, max_bytes, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_mct_transform_error(before, stages, work, max_work, max_bytes, count, (finish - 1) as nat);
+        production_mct_transform_step(before, stages, work, max_work, max_bytes, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_wavelet_intervals_empty(start: i64, end: i64)
+    ensures crate::specs::part2_mct_wavelet_intervals(start, end, 0) == Ok((start, end, Seq::empty(), Seq::empty())),
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_intervals, 1);
+}
+
+pub proof fn production_mct_wavelet_intervals_step(start: i64, end: i64, count: nat)
+    ensures crate::specs::part2_mct_wavelet_intervals(start, end, count + 1)
+        == crate::specs::part2_mct_wavelet_interval_step(crate::specs::part2_mct_wavelet_intervals(start, end, count)),
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_intervals, 1);
+}
+
+pub proof fn production_mct_wavelet_intervals_error(start: i64, end: i64, count: nat, finish: nat)
+    requires count <= finish,
+    ensures crate::specs::part2_mct_wavelet_intervals(start, end, count).is_err()
+        ==> crate::specs::part2_mct_wavelet_intervals(start, end, finish)
+            == crate::specs::part2_mct_wavelet_intervals(start, end, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_mct_wavelet_intervals_error(start, end, count, (finish - 1) as nat);
+        production_mct_wavelet_intervals_step(start, end, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_wavelet_snapshot_empty(
+    before: Seq<crate::specs::Part2MctComponent>, indexes: Seq<usize>, fractions: Seq<u8>, sample: usize, reversible: bool,
+)
+    ensures crate::specs::part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, 0) == (Ok(()), Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_snapshot, 1);
+}
+
+pub proof fn production_mct_wavelet_snapshot_step(
+    before: Seq<crate::specs::Part2MctComponent>, indexes: Seq<usize>, fractions: Seq<u8>, sample: usize, reversible: bool, count: nat,
+)
+    ensures crate::specs::part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => match crate::specs::part2_mct_wavelet_source_value(before, indexes, fractions, sample, count, reversible) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_snapshot, 1);
+}
+
+pub proof fn production_mct_wavelet_snapshot_error(
+    before: Seq<crate::specs::Part2MctComponent>, indexes: Seq<usize>, fractions: Seq<u8>, sample: usize, reversible: bool,
+    count: nat, finish: nat,
+)
+    requires count <= finish,
+    ensures crate::specs::part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, count).0.is_err()
+        ==> crate::specs::part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, finish)
+            == crate::specs::part2_mct_wavelet_snapshot(before, indexes, fractions, sample, reversible, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_mct_wavelet_snapshot_error(before, indexes, fractions, sample, reversible, count, (finish - 1) as nat);
+        production_mct_wavelet_snapshot_step(before, indexes, fractions, sample, reversible, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_wavelet_reconstruction_empty(
+    source: Seq<i64>, high: Seq<usize>, first: Seq<bool>, reversible: bool, low: usize,
+)
+    ensures crate::specs::part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, 0)
+        == if low > source.len() { Err(crate::specs::part1_transform_error(false)) }
+            else { Ok((low, source.take(low as int))) },
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_reconstruction_steps, 1);
+}
+
+pub proof fn production_mct_wavelet_reconstruction_step(
+    source: Seq<i64>, high: Seq<usize>, first: Seq<bool>, reversible: bool, low: usize, count: nat,
+)
+    requires count < high.len(),
+    ensures crate::specs::part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, count + 1)
+        == crate::specs::part2_mct_wavelet_reconstruction_step(
+            crate::specs::part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, count),
+            source, high, first, reversible, (high.len() - count - 1) as nat),
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_reconstruction_steps, 1);
+}
+
+pub proof fn production_mct_wavelet_reconstruction_error(
+    source: Seq<i64>, high: Seq<usize>, first: Seq<bool>, reversible: bool, low: usize, count: nat, finish: nat,
+)
+    requires count <= finish <= high.len(),
+    ensures crate::specs::part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, count).is_err()
+        ==> crate::specs::part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, finish)
+            == crate::specs::part2_mct_wavelet_reconstruction_steps(source, high, first, reversible, low, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_mct_wavelet_reconstruction_error(source, high, first, reversible, low, count, (finish - 1) as nat);
+        production_mct_wavelet_reconstruction_step(source, high, first, reversible, low, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_wavelet_pixels_empty(
+    before: Seq<crate::specs::Part2MctComponent>, prepared: crate::specs::Part2MctWaveletPreparation,
+)
+    ensures crate::specs::part2_mct_wavelet_pixels(before, prepared, 0) == (Ok(()), before),
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_pixels, 1);
+}
+
+pub proof fn production_mct_wavelet_pixels_step(
+    before: Seq<crate::specs::Part2MctComponent>, prepared: crate::specs::Part2MctWaveletPreparation, count: nat,
+)
+    requires count <= usize::MAX,
+    ensures crate::specs::part2_mct_wavelet_pixels(before, prepared, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_wavelet_pixels(before, prepared, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => {
+                    let pixel = crate::specs::part2_mct_wavelet_pixel(previous.1, prepared, count as usize);
+                    (pixel.0, pixel.1)
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_wavelet_pixels, 1);
+}
+
+pub proof fn production_mct_wavelet_pixels_error(
+    before: Seq<crate::specs::Part2MctComponent>, prepared: crate::specs::Part2MctWaveletPreparation, count: nat, finish: nat,
+)
+    requires count <= finish <= usize::MAX,
+    ensures crate::specs::part2_mct_wavelet_pixels(before, prepared, count).0.is_err()
+        ==> crate::specs::part2_mct_wavelet_pixels(before, prepared, finish)
+            == crate::specs::part2_mct_wavelet_pixels(before, prepared, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_mct_wavelet_pixels_error(before, prepared, count, (finish - 1) as nat);
+        production_mct_wavelet_pixels_step(before, prepared, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_mct_dependency_layout_rejects(
     components: Seq<crate::specs::Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>,
     reversible: bool, source_list: bool, position: nat,

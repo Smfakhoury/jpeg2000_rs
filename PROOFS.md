@@ -217,6 +217,40 @@ corrected test uses only the repository's real immutable caps. Wavelet
 collections, stage traversal, complete reconstruction and coherent integrated
 qualification remain separate work.
 
+## Complete wavelet, stage and real owner-buffer MCT composition
+
+The actual wavelet collection now derives its complete plan from the real
+wavelet descriptor and original component values. Signed half-ceiling,
+forward interval/parity partitions, reversed synthesis levels, real 5/3 and
+9/7 calls, source precision scaling, final cardinality checks, stores, tags,
+work and scratch errors have complete relations. The wavelet transform enum,
+not an assumed agreement with the collection's reversible flag, selects the
+actual path. Source scaling remains interleaved with reads so an earlier
+numeric failure is not masked by a later missing source.
+
+The original component coordinator now composes all three real collection
+kinds, forward collections within each stage, and stages in reverse order.
+Every subset, duplicate identity, prior mutation, charged counter and first
+failure is retained. No stage or decoder outcome is provided to the model.
+
+The owned-image API and actual prepared-tile consumer now compose through
+their real borrowed component vectors. Their recursive collectors prove
+current input values, exact partial extents and final-field alias promises;
+all mutating MCT phases preserve those promises. Prophetic specifications
+describe actual borrow endpoints, not trusted adapters or assumptions.
+Prepared-tile metadata lookup failures leave every owner buffer and the work
+counter unchanged. Static private helper bodies moved to proved free functions
+to avoid the pinned associated-static attribute inference limitation; both
+production call sites use the same sole executable bodies.
+
+Prepared standard RCT/ICT now also has complete admission/pixel/traversal
+relations and uses the already proved actual scalar component transform
+instead of a second arithmetic implementation. Disabled transforms still
+skip validation; geometry, raw fractional tags, prior successful pixels and
+all error states are preserved. These producer joins remain distinct from
+coherent current-main acceptance, a complete coefficient-to-image coordinator,
+independent array-MCT conformance and whole-project completion.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

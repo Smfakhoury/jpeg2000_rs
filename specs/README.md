@@ -72,8 +72,18 @@ integer/layout validation, precise charged work and saturated scratch checks
 precede actual cached-precision/pixel/final-tag composition. The source/store
 loops are genuine shared production bodies, while dependency's previous-row
 recursion and explicit source count remain distinct from decorrelation.
-Wavelet collections, stage traversal and general MCT/reconstruction joins
-remain separate work.
+Wavelet intervals, interleaved source scaling, reverse actual 5/3/9/7 synthesis,
+cardinality checks and complete pixel/collection state now also compose.
+`part2_mct_transform` describes actual forward collection/reverse stage order,
+including every previous update/work counter on an error.
+
+The real owned-image and prepared-tile bridges derive their mutable inputs
+from actual owner buffers and size metadata. Checked final-field borrow
+promises reconnect actual transformed samples/tags to the original owners;
+no successful decoder or transformation result is supplied as an input.
+Prepared standard RCT/ICT similarly refines its actual full enabled/disabled
+Result and shares the existing scalar implementation. Coherent current-main
+qualification and the complete coefficient-to-image coordinator remain.
 
 ## Frozen full F5H refinement-plane profile
 

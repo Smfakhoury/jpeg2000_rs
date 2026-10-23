@@ -517,47 +517,8 @@ impl PreparedTileComponent {
         }
     }
 
-    fn apply_tile_multiple_component_transform(
-        prepared: &mut [PreparedTileComponent],
-        size: &ImageSize,
-        transform: &codestream::MultipleComponentTransform,
-        limits: &ResourceLimits,
-        work: &mut u64,
-    ) -> Result<(), DecodeError> {
-        let mut components = Vec::with_capacity(prepared.len());
-        Self::collect_prepared_transform_components(prepared, size, &mut components)?;
-        apply_multiple_component_transform_components(&mut components, transform, limits, work)
-    }
-
     pub const fn width(&self) -> u32 {
         self.width
-    }
-
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(decreases prepared.len(),)
-    )]
-    fn collect_prepared_transform_components<'a>(
-        prepared: &'a mut [PreparedTileComponent],
-        size: &ImageSize,
-        components: &mut Vec<TransformComponentMut<'a>>,
-    ) -> Result<(), DecodeError> {
-        let Some((component, remaining)) = prepared.split_first_mut() else {
-            return Ok(());
-        };
-        let info = size.component(component.component)?;
-        components.push(TransformComponentMut {
-            component: component.component,
-            x: component.x,
-            y: component.y,
-            width: component.width,
-            height: component.height,
-            x_subsampling: info.x_subsampling,
-            y_subsampling: info.y_subsampling,
-            fraction_bits: &mut component.fraction_bits,
-            samples: &mut component.samples,
-        });
-        Self::collect_prepared_transform_components(remaining, size, components)
     }
 
     pub const fn height(&self) -> u32 {
@@ -586,6 +547,163 @@ impl PreparedTileComponent {
             samples: &self.samples,
         }
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures
+        (result, Seq::new((final(components)@.len() - old(components)@.len()) as nat, |index: int|
+            crate::image::transform_component_mut_view(&final(components)@[old(components)@.len() as int + index])))
+            == crate::specs::part2_mct_prepared_inputs(
+                Seq::new(old(prepared)@.len(), |index: int| prepared_component_view(old(prepared)@[index])),
+                codestream::image_size_component_count(size), codestream::image_size_component_infos(size)),
+        final(components)@.len() == old(components)@.len()
+            + crate::specs::part2_mct_prepared_inputs(
+                Seq::new(old(prepared)@.len(), |index: int| prepared_component_view(old(prepared)@[index])),
+                codestream::image_size_component_count(size), codestream::image_size_component_infos(size)).1.len(),
+        final(components)@.take(old(components)@.len() as int) == old(components)@,
+        final(prepared)@.len() == old(prepared)@.len(),
+        forall |index: int| 0 <= index < old(prepared)@.len() ==>
+            prepared_component_view(final(prepared)@[index])
+                == if index < final(components)@.len() - old(components)@.len() {
+                    (old(prepared)@[index].component, old(prepared)@[index].x, old(prepared)@[index].y,
+                        old(prepared)@[index].width, old(prepared)@[index].height,
+                        crate::image::transform_component_final_precision(&final(components)@[old(components)@.len() as int + index]),
+                        crate::image::transform_component_final_samples(&final(components)@[old(components)@.len() as int + index]))
+                } else { prepared_component_view(old(prepared)@[index]) },
+    decreases prepared.len(),
+))]
+fn collect_prepared_transform_components<'a>(
+    prepared: &'a mut [PreparedTileComponent],
+    size: &ImageSize,
+    components: &mut Vec<TransformComponentMut<'a>>,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = prepared@; let ghost prefix = components@; }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = Seq::new(original.len(), |index: int| prepared_component_view(original[index])); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_mct_prepared_inputs, 1); }
+    let Some((component, remaining)) = prepared.split_first_mut() else {
+        return Ok(());
+    };
+    let info = size.component(component.component)?;
+    components.push(TransformComponentMut {
+        component: component.component,
+        x: component.x,
+        y: component.y,
+        width: component.width,
+        height: component.height,
+        x_subsampling: info.x_subsampling,
+        y_subsampling: info.y_subsampling,
+        fraction_bits: &mut component.fraction_bits,
+        samples: &mut component.samples,
+    });
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost added = components@[prefix.len() as int]; }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost added_view = crate::image::transform_component_mut_view(&added);
+        let ghost tail_input = Seq::new(remaining@.len(), |index: int| prepared_component_view(remaining@[index]));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(input.drop_first() =~= tail_input);
+        assert(crate::specs::part2_mct_prepared_input(input[0], codestream::image_size_component_count(size),
+            codestream::image_size_component_infos(size)) == Ok(added_view));
+    }
+    let result = collect_prepared_transform_components(remaining, size, components);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(components@[prefix.len() as int] == added);
+        assert(components@.take(prefix.len() as int) =~= prefix);
+        let tail = crate::specs::part2_mct_prepared_inputs(tail_input, codestream::image_size_component_count(size),
+            codestream::image_size_component_infos(size));
+        assert(components@.len() == prefix.len() + 1 + tail.1.len());
+        assert(Seq::new((components@.len() - prefix.len()) as nat, |index: int|
+            crate::image::transform_component_mut_view(&components@[prefix.len() as int + index]))
+            =~= seq![added_view] + tail.1);
+    }
+    result
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result,
+        Seq::new(final(prepared)@.len(), |index: int| prepared_component_view(final(prepared)@[index])),
+        *final(work)) == crate::specs::part2_mct_prepared_tiles(
+            Seq::new(old(prepared)@.len(), |index: int| prepared_component_view(old(prepared)@[index])),
+            codestream::image_size_component_count(size), codestream::image_size_component_infos(size),
+            codestream::multiple_component_transform_view(transform), *old(work),
+            crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn apply_tile_multiple_component_transform(
+    prepared: &mut [PreparedTileComponent],
+    size: &ImageSize,
+    transform: &codestream::MultipleComponentTransform,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = Seq::new(prepared@.len(), |index: int| prepared_component_view(prepared@[index]));
+        let ghost initial_work = *work;
+    }
+    let mut components = Vec::with_capacity(prepared.len());
+    let collected_result = collect_prepared_transform_components(prepared, size, &mut components);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_prepared_inputs_shape(
+            before, codestream::image_size_component_count(size), codestream::image_size_component_infos(size));
+    }
+    match collected_result {
+        Ok(()) => {}
+        Err(error) => {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert forall |index: int| 0 <= index < components@.len() implies
+                    crate::image::transform_component_final_samples(&components@[index])
+                        == crate::image::transform_component_mut_view(&components@[index]).3
+                        && crate::image::transform_component_final_precision(&components@[index])
+                            == crate::image::transform_component_mut_view(&components@[index]).2 by {}
+                assert(Seq::new(final(prepared)@.len(), |index: int| prepared_component_view(final(prepared)@[index])) =~= before);
+            }
+            return Err(error);
+        }
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(components@.len() == before.len()); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost collected = components@;
+        let ghost input = Seq::new(components@.len(), |index: int| crate::image::transform_component_mut_view(&components@[index]));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_unit_result(collected_result);
+        assert(collected_result == Result::<(), DecodeError>::Ok(()));
+        assert(crate::specs::part2_mct_prepared_inputs(before,
+            codestream::image_size_component_count(size), codestream::image_size_component_infos(size)).0 == collected_result);
+        assert(input =~= crate::specs::part2_mct_prepared_inputs(before,
+            codestream::image_size_component_count(size), codestream::image_size_component_infos(size)).1);
+        assert(crate::specs::part2_mct_prepared_inputs(before,
+            codestream::image_size_component_count(size), codestream::image_size_component_infos(size)) == (Result::<(), DecodeError>::Ok(()), input));
+    }
+    let result =
+        apply_multiple_component_transform_components(&mut components, transform, limits, work);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert((result, Seq::new(components@.len(), |index: int| crate::image::transform_component_mut_view(&components@[index])), *work)
+            == crate::specs::part2_mct_transform(input, codestream::multiple_component_transform_view(transform),
+                initial_work, crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)));
+        assert forall |index: int| 0 <= index < components@.len() implies
+            crate::image::transform_component_final_samples(&collected[index])
+                == crate::image::transform_component_mut_view(&components@[index]).3
+                && crate::image::transform_component_final_precision(&collected[index])
+                    == crate::image::transform_component_mut_view(&components@[index]).2 by {}
+        assert(Seq::new(final(prepared)@.len(), |index: int| prepared_component_view(final(prepared)@[index]))
+            =~= crate::specs::part2_mct_prepared_result(before,
+                Seq::new(components@.len(), |index: int| crate::image::transform_component_mut_view(&components@[index]))));
+    }
+    result
 }
 
 pub fn quantization_step_for_subband(
@@ -1278,6 +1396,10 @@ verus! {
 
     pub closed spec fn prepared_component_view(value: PreparedTileComponent) -> crate::specs::Part1AssemblyTile {
         (value.component, value.x, value.y, value.width, value.height, value.fraction_bits, value.samples@)
+    }
+
+    pub open spec fn prepared_components_view(values: Seq<PreparedTileComponent>) -> Seq<crate::specs::Part1AssemblyTile> {
+        Seq::new(values.len(), |index: int| prepared_component_view(values[index]))
     }
 
     pub open spec fn prepared_component_outcome(result: Result<PreparedTileComponent, DecodeError>)
@@ -3954,7 +4076,7 @@ fn decode_layout_selected(
                 .ok_or_else(arithmetic_overflow)?;
         }
         if let Some(mct) = &first.multiple_component_transform {
-            PreparedTileComponent::apply_tile_multiple_component_transform(
+            apply_tile_multiple_component_transform(
                 prepared
                     .get_mut(prepared_start..)
                     .ok_or_else(invalid_decode)?,
@@ -4003,72 +4125,121 @@ fn decode_layout_selected(
     Ok(image)
 }
 
-fn apply_prepared_component_transform(
-    prepared: &mut [PreparedTileComponent],
-    transform: (bool, bool),
-) -> Result<(), DecodeError> {
-    if !transform.0 {
-        return Ok(());
-    }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_prepared_standard_admission(prepared_components_view(prepared@), irreversible),
+))]
+fn validate_prepared_standard_components(
+    prepared: &[PreparedTileComponent],
+    irreversible: bool,
+) -> Result<usize, DecodeError> {
     if prepared.len() < 3 {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        });
     }
-    let (red, rest) = prepared.split_first_mut().ok_or_else(invalid_decode)?;
-    let (green, rest) = rest.split_first_mut().ok_or_else(invalid_decode)?;
-    let blue = rest.first_mut().ok_or_else(invalid_decode)?;
+    let (red, rest) = prepared.split_first().ok_or_else(invalid_decode)?;
+    let (green, rest) = rest.split_first().ok_or_else(invalid_decode)?;
+    let blue = rest.first().ok_or_else(invalid_decode)?;
     if (red.x, red.y, red.width, red.height) != (green.x, green.y, green.width, green.height)
         || (red.x, red.y, red.width, red.height) != (blue.x, blue.y, blue.width, blue.height)
         || red.samples.len() != green.samples.len()
         || red.samples.len() != blue.samples.len()
         || red.fraction_bits != green.fraction_bits
         || red.fraction_bits != blue.fraction_bits
-        || (!transform.1 && red.fraction_bits != 0)
-        || (transform.1 && red.fraction_bits != 16)
+        || (!irreversible && red.fraction_bits != 0)
+        || (irreversible && red.fraction_bits != 16)
     {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        });
     }
+    Ok(red.samples.len())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_prepared_sample(prepared_components_view(prepared@), component, index),
+))]
+fn prepared_sample(
+    prepared: &[PreparedTileComponent],
+    component: usize,
+    index: usize,
+) -> Result<i64, DecodeError> {
+    let component = prepared.get(component).ok_or_else(invalid_decode)?;
+    Ok(*component.samples.get(index).ok_or_else(invalid_decode)?)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, prepared_components_view(final(prepared)@)) == crate::specs::part1_prepared_store_sample(
+        prepared_components_view(old(prepared)@), component, index, value),
+))]
+fn store_prepared_sample(
+    prepared: &mut [PreparedTileComponent],
+    component: usize,
+    index: usize,
+    value: i64,
+) -> Result<(), DecodeError> {
+    let component = prepared.get_mut(component).ok_or_else(invalid_decode)?;
+    *component
+        .samples
+        .get_mut(index)
+        .ok_or_else(invalid_decode)? = value;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, prepared_components_view(final(prepared)@)) == crate::specs::part1_prepared_standard_pixel(
+        prepared_components_view(old(prepared)@), index, irreversible),
+))]
+fn apply_prepared_standard_pixel(
+    prepared: &mut [PreparedTileComponent],
+    index: usize,
+    irreversible: bool,
+) -> Result<(), DecodeError> {
+    let y = prepared_sample(prepared, 0, index)?;
+    let cb = prepared_sample(prepared, 1, index)?;
+    let cr = prepared_sample(prepared, 2, index)?;
+    let (red, green, blue) = crate::image::inverse_component_values(y, cb, cr, irreversible)?;
+    store_prepared_sample(prepared, 0, index, red)?;
+    store_prepared_sample(prepared, 1, index, green)?;
+    store_prepared_sample(prepared, 2, index, blue)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, prepared_components_view(final(prepared)@)) == crate::specs::part1_prepared_standard_transform(
+        prepared_components_view(old(prepared)@), transform),
+))]
+fn apply_prepared_component_transform(
+    prepared: &mut [PreparedTileComponent],
+    transform: (bool, bool),
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = prepared_components_view(prepared@); }
+    if !transform.0 {
+        return Ok(());
+    }
+    let length = validate_prepared_standard_components(prepared, transform.1)?;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_prepared_standard_empty(before, transform.1); }
     let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant index <= red.samples.len(),
-            decreases red.samples.len() - index,
+            invariant index <= length, transform.0,
+            before == prepared_components_view(old(prepared)@),
+            crate::specs::part1_prepared_standard_admission(before, transform.1) == Ok(length),
+            crate::specs::part1_prepared_standard_prefix(before, transform.1, index as nat) == (Ok(()), prepared_components_view(prepared@)),
+            decreases length - index,
         )
     )]
-    while index < red.samples.len() {
-        let y = *red.samples.get(index).ok_or_else(invalid_decode)?;
-        let cb = *green.samples.get(index).ok_or_else(invalid_decode)?;
-        let cr = *blue.samples.get(index).ok_or_else(invalid_decode)?;
-        let (r, g, b) = if transform.1 {
-            let fixed_mul = |value: i64, factor: i64| -> Result<i64, DecodeError> {
-                Ok(value
-                    .checked_mul(factor)
-                    .and_then(|product| product.checked_add(1 << 15))
-                    .ok_or_else(arithmetic_overflow)?
-                    >> 16)
-            };
-            (
-                y.checked_add(fixed_mul(cr, 91_881)?)
-                    .ok_or_else(arithmetic_overflow)?,
-                y.checked_sub(fixed_mul(cb, 22_553)?)
-                    .and_then(|value| value.checked_sub(fixed_mul(cr, 46_797).ok()?))
-                    .ok_or_else(arithmetic_overflow)?,
-                y.checked_add(fixed_mul(cb, 116_130)?)
-                    .ok_or_else(arithmetic_overflow)?,
-            )
-        } else {
-            let g = y
-                .checked_sub(cb.checked_add(cr).ok_or_else(arithmetic_overflow)? >> 2)
-                .ok_or_else(arithmetic_overflow)?;
-            (
-                cr.checked_add(g).ok_or_else(arithmetic_overflow)?,
-                g,
-                cb.checked_add(g).ok_or_else(arithmetic_overflow)?,
-            )
-        };
-        *red.samples.get_mut(index).ok_or_else(invalid_decode)? = r;
-        *green.samples.get_mut(index).ok_or_else(invalid_decode)? = g;
-        *blue.samples.get_mut(index).ok_or_else(invalid_decode)? = b;
+    while index < length {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_prepared_standard_step(before, transform.1, index as nat);
+            crate::proofs::production_impl::production_prepared_standard_error(before, transform.1, index as nat + 1, length as nat);
+        }
+        apply_prepared_standard_pixel(prepared, index, transform.1)?;
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(())
@@ -4352,7 +4523,7 @@ fn decode_layout(
                 .ok_or_else(arithmetic_overflow)?;
         }
         if let Some(transform) = &first.multiple_component_transform {
-            PreparedTileComponent::apply_tile_multiple_component_transform(
+            apply_tile_multiple_component_transform(
                 prepared
                     .get_mut(prepared_start..)
                     .ok_or_else(invalid_decode)?,

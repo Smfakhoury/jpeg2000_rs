@@ -2,7 +2,7 @@ use crate::{
     DecodeError, MalformedKind, Resource, ResourceLimits,
     codestream::{
         ComponentInfo, ImageSize, MCT_FIXED_BITS, MctArray, MctCollection, MctCollectionKind,
-        MctWaveletType, MultipleComponentTransform, NonlinearPointTransform,
+        MctStage, MctWavelet, MctWaveletType, MultipleComponentTransform, NonlinearPointTransform,
     },
     transform::{inverse_5_3, inverse_9_7},
 };
@@ -29,13 +29,45 @@ pub(crate) struct TransformComponentMut<'a> {
 
 #[cfg(verus_keep_ghost)]
 verus! {
-    pub(crate) closed spec fn transform_component_mut_view(component: &TransformComponentMut) -> crate::specs::Part2MctComponent {
+    pub(crate) open spec fn transform_component_mut_view(component: &TransformComponentMut) -> crate::specs::Part2MctComponent {
         (component.component, (component.x, component.y, component.width, component.height,
             component.x_subsampling, component.y_subsampling), *component.fraction_bits, component.samples@)
     }
 
-    pub(crate) closed spec fn transform_components_view(components: &[TransformComponentMut]) -> Seq<crate::specs::Part2MctComponent> {
+    pub(crate) open spec fn transform_components_view(components: &[TransformComponentMut]) -> Seq<crate::specs::Part2MctComponent> {
         Seq::new(components@.len(), |index: int| transform_component_mut_view(&components@[index]))
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_component_final_samples(component: &TransformComponentMut) -> Seq<i64> {
+        final(component.samples)@
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_component_final_precision(component: &TransformComponentMut) -> u8 {
+        *final(component.fraction_bits)
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_component_borrow_frame(before: TransformComponentMut, after: TransformComponentMut) -> bool {
+        transform_component_final_samples(&before) == transform_component_final_samples(&after)
+            && transform_component_final_precision(&before) == transform_component_final_precision(&after)
+    }
+
+    #[verifier::prophetic]
+    pub(crate) open spec fn transform_components_borrow_frame(before: Seq<TransformComponentMut>, after: Seq<TransformComponentMut>) -> bool {
+        before.len() == after.len()
+            && forall |index: int| 0 <= index < before.len() ==> transform_component_borrow_frame(before[index], after[index])
+    }
+
+    spec fn mct_component_pairs_outcome(result: Result<(Vec<usize>, Vec<usize>), DecodeError>)
+        -> Result<(Seq<usize>, Seq<usize>), DecodeError> {
+        match result { Ok((source, destination)) => Ok((source@, destination@)), Err(error) => Err(error) }
+    }
+
+    spec fn mct_wavelet_partition_outcome(result: Result<(Vec<bool>, Vec<usize>, usize), DecodeError>)
+        -> Result<(Seq<bool>, Seq<usize>, usize), DecodeError> {
+        match result { Ok((first, high, low)) => Ok((first@, high@, low)), Err(error) => Err(error) }
     }
 }
 
@@ -55,6 +87,7 @@ fn read_transform_sample(
     ensures (result, transform_component_mut_view(final(component))) == crate::specs::part2_mct_store_component_sample(
         transform_component_mut_view(old(component)), index, value,
     ),
+    transform_component_borrow_frame(*old(component), *final(component)),
 ))]
 fn store_transform_component_sample(
     component: &mut TransformComponentMut<'_>,
@@ -73,6 +106,7 @@ fn store_transform_component_sample(
     ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_store_sample(
         transform_components_view(old(components)), destination, index, value,
     ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn store_transform_sample(
     components: &mut [TransformComponentMut<'_>],
@@ -90,6 +124,7 @@ fn store_transform_sample(
     ensures transform_component_mut_view(final(component)) == crate::specs::part2_mct_component_precision(
         transform_component_mut_view(old(component)), precision,
     ),
+    transform_component_borrow_frame(*old(component), *final(component)),
 ))]
 fn set_transform_component_precision(component: &mut TransformComponentMut<'_>, precision: u8) {
     *component.fraction_bits = precision;
@@ -99,6 +134,7 @@ fn set_transform_component_precision(component: &mut TransformComponentMut<'_>, 
     ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_set_precision(
         transform_components_view(old(components)), destination, precision,
     ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn set_transform_precision(
     components: &mut [TransformComponentMut<'_>],
@@ -116,6 +152,7 @@ fn set_transform_precision(
     ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_destination_precisions(
         transform_components_view(old(components)), destinations@, precision, destinations@.len(),
     ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn apply_mct_destination_precisions(
     components: &mut [TransformComponentMut<'_>],
@@ -130,6 +167,7 @@ fn apply_mct_destination_precisions(
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant index <= destinations.len(),
         before == transform_components_view(old(components)),
+        transform_components_borrow_frame(old(components)@, components@),
         crate::specs::part2_mct_destination_precisions(before, destinations@, precision, index as nat)
             == (Ok(()), transform_components_view(components)),
         decreases destinations.len() - index,
@@ -2189,7 +2227,7 @@ fn apply_component_pixel(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_component_values(y, cb, cr, irreversible),
 ))]
-fn inverse_component_values(
+pub(crate) fn inverse_component_values(
     y: i64,
     cb: i64,
     cr: i64,
@@ -2222,26 +2260,92 @@ fn inverse_component_values(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, decoded_image_view(*final(image))) == crate::specs::part2_mct_decoded_image(
+        decoded_image_view(*old(image)), crate::codestream::multiple_component_transform_view(transform),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn apply_multiple_component_transform(
     image: &mut DecodedImage,
     transform: &MultipleComponentTransform,
     limits: &ResourceLimits,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = decoded_image_view(*image); }
     let mut components = Vec::with_capacity(image.components.len());
     collect_decoded_transform_components(&mut image.components, 0, &mut components)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(Seq::new(components@.len(), |index: int| transform_component_mut_view(&components@[index]))
+            =~= crate::specs::part2_mct_decoded_inputs(before.4));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost collected = components@; }
     let mut work = 0_u64;
-    apply_multiple_component_transform_components(&mut components, transform, limits, &mut work)
+    let result = apply_multiple_component_transform_components(
+        &mut components,
+        transform,
+        limits,
+        &mut work,
+    );
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert forall |index: int| 0 <= index < components@.len() implies
+            transform_component_final_samples(&components@[index]) == transform_component_mut_view(&components@[index]).3
+                && transform_component_final_precision(&components@[index]) == transform_component_mut_view(&components@[index]).2 by {}
+        assert forall |index: int| 0 <= index < components@.len() implies
+            transform_component_final_samples(&collected[index]) == transform_component_final_samples(&components@[index])
+                && transform_component_final_precision(&collected[index]) == transform_component_final_precision(&components@[index]) by {}
+        assert(decoded_image_view(*final(image)).4.len() == before.4.len());
+        assert(decoded_image_view(*final(image)).4 =~= Seq::new(before.4.len(), |index: int|
+            (before.4[index].0, before.4[index].1, before.4[index].2,
+                transform_component_mut_view(&components@[index]).2,
+                transform_component_mut_view(&components@[index]).3)));
+    }
+    result
 }
 
-#[cfg_attr(verus_keep_ghost, verus_spec(decreases decoded.len(),))]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures
+        result == if component_index as nat + old(decoded)@.len() > u16::MAX {
+            Err(crate::specs::part1_transform_error(true))
+        } else { Ok(()) },
+        final(decoded)@.len() == old(decoded)@.len(),
+        final(components)@.len() == old(components)@.len()
+            + if old(decoded)@.len() > u16::MAX as nat - component_index as nat {
+                (u16::MAX as nat - component_index as nat + 1) as nat
+            } else { old(decoded)@.len() },
+        final(components)@.take(old(components)@.len() as int) == old(components)@,
+        forall |position: int| 0 <= position < final(components)@.len() - old(components)@.len() ==>
+            transform_component_mut_view(&final(components)@[old(components)@.len() as int + position])
+                == ((component_index as nat + position) as u16,
+                    (0u32, 0u32, old(decoded)@[position].width, old(decoded)@[position].height,
+                        old(decoded)@[position].info.x_subsampling, old(decoded)@[position].info.y_subsampling),
+                    old(decoded)@[position].fraction_bits, old(decoded)@[position].samples@),
+        forall |position: int| 0 <= position < old(decoded)@.len() ==>
+            decoded_component_view(final(decoded)@[position])
+                == if position < final(components)@.len() - old(components)@.len() {
+                    (old(decoded)@[position].width, old(decoded)@[position].height, old(decoded)@[position].info,
+                        transform_component_final_precision(&final(components)@[old(components)@.len() as int + position]),
+                        transform_component_final_samples(&final(components)@[old(components)@.len() as int + position]))
+                } else { decoded_component_view(old(decoded)@[position]) },
+    decreases decoded.len(),
+))]
 fn collect_decoded_transform_components<'a>(
     decoded: &'a mut [DecodedComponent],
     component_index: u16,
     components: &mut Vec<TransformComponentMut<'a>>,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost original_decoded = decoded@;
+        let ghost original_components = components@;
+    }
     let Some((component, remaining)) = decoded.split_first_mut() else {
         return Ok(());
     };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost remaining_before = remaining@; }
     let info = component.info;
     components.push(TransformComponentMut {
         component: component_index,
@@ -2254,56 +2358,154 @@ fn collect_decoded_transform_components<'a>(
         fraction_bits: &mut component.fraction_bits,
         samples: &mut component.samples,
     });
-    collect_decoded_transform_components(
-        remaining,
-        component_index
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?,
-        components,
-    )
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost added = components@[original_components.len() as int]; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(transform_component_mut_view(&added) == (component_index,
+            (0u32, 0u32, original_decoded[0].width, original_decoded[0].height,
+                original_decoded[0].info.x_subsampling, original_decoded[0].info.y_subsampling),
+            original_decoded[0].fraction_bits, original_decoded[0].samples@));
+    }
+    let next_index = component_index
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let result = collect_decoded_transform_components(remaining, next_index, components);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(components@[original_components.len() as int] == added);
+        assert forall |position: int| 0 <= position < components@.len() - original_components.len() implies
+            transform_component_mut_view(&components@[original_components.len() as int + position])
+                == ((component_index as nat + position) as u16,
+                    (0u32, 0u32, original_decoded[position].width, original_decoded[position].height,
+                        original_decoded[position].info.x_subsampling, original_decoded[position].info.y_subsampling),
+                    original_decoded[position].fraction_bits, original_decoded[position].samples@) by {
+            if position > 0 {
+                assert(remaining_before[position - 1].width == original_decoded[position].width);
+            }
+        }
+    }
+    result
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_transform(
+        transform_components_view(old(components)), crate::codestream::multiple_component_transform_view(transform), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
 pub(crate) fn apply_multiple_component_transform_components(
     components: &mut [TransformComponentMut<'_>],
     transform: &MultipleComponentTransform,
     limits: &ResourceLimits,
     work: &mut u64,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost stages = crate::codestream::multiple_component_transform_view(transform);
+        let ghost initial_work = *work;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_transform_empty(before, stages, initial_work,
+    crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)); }
     let mut stage_index = transform.stages().len();
-    #[cfg_attr(verus_keep_ghost, verus_spec(decreases stage_index,))]
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant stage_index <= stages.len(),
+        stages == crate::codestream::multiple_component_transform_view(transform),
+        before == transform_components_view(old(components)),
+        initial_work == *old(work),
+        transform_components_borrow_frame(old(components)@, components@),
+        crate::specs::part2_mct_transform_prefix(before, stages, initial_work,
+            crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+            (stages.len() - stage_index) as nat) == (Ok(()), transform_components_view(components), *work),
+        decreases stage_index,
+    ))]
     while stage_index != 0 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_transform_step(before, stages, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+                (stages.len() - stage_index) as nat);
+            crate::proofs::production_impl::production_mct_transform_error(before, stages, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+                (stages.len() - stage_index + 1) as nat, stages.len());
+        }
         stage_index = crate::refinement::mct_reverse_stage(stage_index);
         let stage = transform
             .stages()
             .get(stage_index)
             .ok_or_else(invalid_transform)?;
-        let collection_count = stage.collections().len();
-        let mut collection_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant collection_index <= collection_count,
-                decreases collection_count - collection_index,
-            )
-        )]
-        while collection_index < collection_count {
-            apply_mct_collection(
-                components,
-                stage
-                    .collections()
-                    .get(collection_index)
-                    .ok_or_else(invalid_transform)?,
-                limits,
-                work,
-            )?;
-            collection_index = collection_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
+        apply_mct_stage(components, stage, limits, work)?;
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_stage_prefix(
+        transform_components_view(old(components)), crate::codestream::mct_stage_view(stage).1, *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+        crate::codestream::mct_stage_view(stage).1.len()),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_stage(
+    components: &mut [TransformComponentMut<'_>],
+    stage: &MctStage,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost collections = crate::codestream::mct_stage_view(stage).1;
+        let ghost initial_work = *work;
+    }
+    let collection_count = stage.collections().len();
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_stage_empty(before, collections, initial_work,
+    crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)); }
+    let mut collection_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant collection_index <= collection_count, collection_count == collections.len(),
+        collections == crate::codestream::mct_stage_view(stage).1,
+        before == transform_components_view(old(components)), initial_work == *old(work),
+        transform_components_borrow_frame(old(components)@, components@),
+        crate::specs::part2_mct_stage_prefix(before, collections, initial_work,
+            crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+            collection_index as nat) == (Ok(()), transform_components_view(components), *work),
+        decreases collection_count - collection_index,
+    ))]
+    while collection_index < collection_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_stage_step(before, collections, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits), collection_index as nat);
+            crate::proofs::production_impl::production_mct_stage_error(before, collections, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+                collection_index as nat + 1, collections.len());
+        }
+        apply_mct_collection(
+            components,
+            stage
+                .collections()
+                .get(collection_index)
+                .ok_or_else(invalid_transform)?,
+            limits,
+            work,
+        )?;
+        collection_index = collection_index
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_collection(
+        transform_components_view(old(components)), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
 fn apply_mct_collection(
     components: &mut [TransformComponentMut<'_>],
     collection: &MctCollection,
@@ -2834,6 +3036,7 @@ fn begin_mct_pixel(
     ensures (result, transform_components_view(final(components))) == crate::specs::part2_mct_store_output_rows(
         transform_components_view(old(components)), destinations@, output@, sample_index, rows as nat,
     ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn store_mct_output_rows(
     components: &mut [TransformComponentMut<'_>],
@@ -2852,6 +3055,7 @@ fn store_mct_output_rows(
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant row <= rows,
         before == transform_components_view(old(components)),
+        transform_components_borrow_frame(old(components)@, components@),
         crate::specs::part2_mct_store_output_rows(before, destinations@, output@, sample_index, row as nat)
             == (Ok(()), transform_components_view(components)),
         decreases rows - row,
@@ -2877,6 +3081,7 @@ fn store_mct_output_rows(
             transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
             mct_decorrelation_preparation_view(prepared), sample_index,
         ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn apply_mct_decorrelation_pixel(
     components: &mut [TransformComponentMut<'_>],
@@ -2915,6 +3120,7 @@ fn apply_mct_decorrelation_pixel(
         transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
         *old(work), crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
     ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn apply_mct_decorrelation(
     components: &mut [TransformComponentMut<'_>],
@@ -2943,6 +3149,7 @@ fn apply_mct_decorrelation(
         verus_spec(
             invariant sample_index <= prepared.sample_count,
             before == transform_components_view(old(components)),
+            transform_components_borrow_frame(old(components)@, components@),
             style == crate::codestream::mct_collection_view(collection),
             plan == mct_decorrelation_preparation_view(&prepared),
             initial_work == *old(work),
@@ -2983,6 +3190,50 @@ fn apply_mct_decorrelation(
         &prepared.destination_indexes,
         output_fraction_bits,
     )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures mct_component_pairs_outcome(result) == crate::specs::part2_mct_component_pairs(
+        transform_components_view(components), inputs@, outputs@, count as nat,
+    ),
+))]
+fn mct_component_pair_indexes(
+    components: &[TransformComponentMut<'_>],
+    inputs: &[u16],
+    outputs: &[u16],
+    count: usize,
+) -> Result<(Vec<usize>, Vec<usize>), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    let mut source = Vec::with_capacity(count);
+    let mut destination = Vec::with_capacity(count);
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_pairs_empty(before, inputs@, outputs@); }
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= count,
+        before == transform_components_view(components),
+        source@.len() == index, destination@.len() == index,
+        crate::specs::part2_mct_component_pairs(before, inputs@, outputs@, index as nat) == Ok((source@, destination@)),
+        decreases count - index,
+    ))]
+    while index < count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_pairs_step(before, inputs@, outputs@, index as nat);
+            crate::proofs::production_impl::production_mct_pairs_error(before, inputs@, outputs@, index as nat + 1, count as nat);
+        }
+        source.push(find_transform_component(
+            components,
+            *inputs.get(index).ok_or_else(invalid_transform)?,
+        )?);
+        destination.push(find_transform_component(
+            components,
+            *outputs.get(index).ok_or_else(invalid_transform)?,
+        )?);
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok((source, destination))
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -3195,45 +3446,12 @@ fn prepare_mct_dependency(
     {
         return Err(invalid_transform());
     }
-    let mut source_indexes = Vec::with_capacity(count);
-    let mut destination_indexes = Vec::with_capacity(count);
-    #[cfg(verus_keep_ghost)]
-    proof! { crate::proofs::production_impl::production_mct_pairs_empty(before, style.1, style.2); }
-    let mut index = 0_usize;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant index <= count,
-        before == transform_components_view(components),
-        style == crate::codestream::mct_collection_view(collection),
-        *work == initial_work,
-        count == style.1.len(), count == style.2.len(),
-        crate::specs::part2_mct_dependency_dimensions(style) == Ok((count, expected_coefficients)),
-        source_indexes@.len() == index, destination_indexes@.len() == index,
-        crate::specs::part2_mct_component_pairs(before, style.1, style.2, index as nat)
-            == Ok((source_indexes@, destination_indexes@)),
-        decreases count - index,
-    ))]
-    while index < count {
-        #[cfg(verus_keep_ghost)]
-        proof! {
-            crate::proofs::production_impl::production_mct_pairs_step(before, style.1, style.2, index as nat);
-            crate::proofs::production_impl::production_mct_pairs_error(before, style.1, style.2, index as nat + 1, count as nat);
-        }
-        source_indexes.push(find_transform_component(
-            components,
-            *collection
-                .input_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        destination_indexes.push(find_transform_component(
-            components,
-            *collection
-                .output_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+    let (source_indexes, destination_indexes) = mct_component_pair_indexes(
+        components,
+        collection.input_components(),
+        collection.output_components(),
+        count,
+    )?;
     let sample_count = validate_mct_dependency_layout(
         components,
         &source_indexes,
@@ -3315,6 +3533,7 @@ fn append_mct_dependency_rows(
             transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
             mct_dependency_preparation_view(prepared), source_fraction_bits@, sample_index,
         ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn apply_mct_dependency_pixel(
     components: &mut [TransformComponentMut<'_>],
@@ -3354,6 +3573,7 @@ fn apply_mct_dependency_pixel(
         transform_components_view(old(components)), crate::codestream::mct_collection_view(collection),
         *old(work), crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
     ),
+    transform_components_borrow_frame(old(components)@, final(components)@),
 ))]
 fn apply_mct_dependency(
     components: &mut [TransformComponentMut<'_>],
@@ -3388,6 +3608,7 @@ fn apply_mct_dependency(
         verus_spec(
             invariant index <= count,
             before == transform_components_view(old(components)),
+            transform_components_borrow_frame(old(components)@, components@),
             before == transform_components_view(components),
             style == crate::codestream::mct_collection_view(collection),
             plan == mct_dependency_preparation_view(&prepared),
@@ -3430,6 +3651,7 @@ fn apply_mct_dependency(
         verus_spec(
             invariant sample_index <= sample_count,
             before == transform_components_view(old(components)),
+            transform_components_borrow_frame(old(components)@, components@),
             style == crate::codestream::mct_collection_view(collection),
             plan == mct_dependency_preparation_view(&prepared),
             count == plan.3, sample_count == plan.2,
@@ -3670,134 +3892,68 @@ fn irreversible_dependency_row(
     }
 }
 
-fn apply_mct_wavelet(
-    components: &mut [TransformComponentMut<'_>],
-    collection: &MctCollection,
-    limits: &ResourceLimits,
-    work: &mut u64,
-) -> Result<(), DecodeError> {
-    let wavelet = collection.wavelet().ok_or_else(invalid_transform)?;
-    let count = collection.input_components().len();
-    if count == 0 || count != collection.output_components().len() {
-        return Err(invalid_transform());
-    }
-    let mut source_indexes = Vec::with_capacity(count);
-    let mut destination_indexes = Vec::with_capacity(count);
-    let mut index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= count,
-            decreases count - index,
-        )
-    )]
-    while index < count {
-        source_indexes.push(find_transform_component(
-            components,
-            *collection
-                .input_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        destination_indexes.push(find_transform_component(
-            components,
-            *collection
-                .output_components()
-                .get(index)
-                .ok_or_else(invalid_transform)?,
-        )?);
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    let first = components
-        .get(*source_indexes.first().ok_or_else(invalid_transform)?)
-        .ok_or_else(invalid_transform)?;
-    let sample_count = first.samples.len();
-    let geometry = (
-        first.width,
-        first.height,
-        first.x,
-        first.y,
-        first.x_subsampling,
-        first.y_subsampling,
-    );
-    let mut list = 0_u8;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant list <= 2,
-            decreases 2 - list,
-        )
-    )]
-    while list < 2 {
-        let indexes = if list == 0 {
-            &source_indexes
-        } else {
-            &destination_indexes
-        };
-        let mut component_position = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component_position <= indexes.len(),
-                decreases indexes.len() - component_position,
-            )
-        )]
-        while component_position < indexes.len() {
-            let component = components
-                .get(
-                    *indexes
-                        .get(component_position)
-                        .ok_or_else(invalid_transform)?,
-                )
-                .ok_or_else(invalid_transform)?;
-            if (
-                component.width,
-                component.height,
-                component.x,
-                component.y,
-                component.x_subsampling,
-                component.y_subsampling,
-            ) != geometry
-                || component.samples.len() != sample_count
-                || *component.fraction_bits > MCT_FIXED_BITS
-                || (matches!(wavelet.transform(), MctWaveletType::Reversible5x3)
-                    && *component.fraction_bits != 0)
-            {
-                return Err(invalid_transform());
-            }
-            component_position = component_position
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        list = list.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures mct_wavelet_partition_outcome(result) == crate::specs::part2_mct_wavelet_partition(
+        count, crate::codestream::mct_wavelet_view(wavelet)),
+))]
+fn prepare_mct_wavelet_partition(
+    count: usize,
+    wavelet: MctWavelet,
+) -> Result<(Vec<bool>, Vec<usize>, usize), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost style = crate::codestream::mct_wavelet_view(wavelet); }
     let mut low_first = Vec::with_capacity(usize::from(wavelet.levels()));
     let mut high_lengths = Vec::with_capacity(usize::from(wavelet.levels()));
     let mut canvas_start = i64::from(wavelet.component_offset());
+    let signed_count = match i64::try_from(count) {
+        Ok(value) => value,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
     let mut canvas_end = canvas_start
-        .checked_add(i64::try_from(count).map_err(|_| arithmetic_overflow())?)
+        .checked_add(signed_count)
         .ok_or_else(arithmetic_overflow)?;
     let level_count = wavelet.levels();
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial_start = canvas_start; let ghost initial_end = canvas_end; }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_wavelet_intervals_empty(initial_start, initial_end); }
     let mut level = 0_u8;
     #[cfg_attr(
         verus_keep_ghost,
-        verus_spec(decreases level_count - level,)
+        verus_spec(
+            invariant level <= level_count,
+            style == crate::codestream::mct_wavelet_view(wavelet),
+            level_count == style.1,
+            count <= i64::MAX,
+            initial_start == style.2 as i64,
+            initial_end as int == initial_start as int + count as int,
+            crate::specs::part2_mct_wavelet_intervals(initial_start, initial_end, level as nat)
+                == Ok((canvas_start, canvas_end, low_first@, high_lengths@)),
+            decreases level_count - level,
+        )
     )]
     while level < level_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_intervals_step(initial_start, initial_end, level as nat);
+            crate::proofs::production_impl::production_mct_wavelet_intervals_error(initial_start, initial_end, level as nat + 1, level_count as nat);
+        }
         let next_start = ceil_divide_by_two(canvas_start)?;
         let next_end = ceil_divide_by_two(canvas_end)?;
-        let low_length = usize::try_from(
-            next_end
-                .checked_sub(next_start)
-                .ok_or_else(arithmetic_overflow)?,
-        )
-        .map_err(|_| invalid_transform())?;
-        let current_length = usize::try_from(
-            canvas_end
-                .checked_sub(canvas_start)
-                .ok_or_else(arithmetic_overflow)?,
-        )
-        .map_err(|_| invalid_transform())?;
+        let low_difference = next_end
+            .checked_sub(next_start)
+            .ok_or_else(arithmetic_overflow)?;
+        let low_length = match usize::try_from(low_difference) {
+            Ok(value) => value,
+            Err(_) => return Err(invalid_transform()),
+        };
+        let current_difference = canvas_end
+            .checked_sub(canvas_start)
+            .ok_or_else(arithmetic_overflow)?;
+        let current_length = match usize::try_from(current_difference) {
+            Ok(value) => value,
+            Err(_) => return Err(invalid_transform()),
+        };
         low_first.push(canvas_start % 2 == 0);
         high_lengths.push(
             current_length
@@ -3808,26 +3964,125 @@ fn apply_mct_wavelet(
         canvas_end = next_end;
         level = level.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    let low_length = usize::try_from(
-        canvas_end
-            .checked_sub(canvas_start)
-            .ok_or_else(arithmetic_overflow)?,
-    )
-    .map_err(|_| invalid_transform())?;
-    let operations = (sample_count as u64)
-        .checked_mul(count as u64)
-        .and_then(|value| value.checked_mul(u64::from(wavelet.levels()).saturating_add(1)))
-        .and_then(|value| value.checked_mul(8))
+    let low_difference = canvas_end
+        .checked_sub(canvas_start)
         .ok_or_else(arithmetic_overflow)?;
-    charge_mct_work(work, operations, limits)?;
-    check_mct_scratch(count.saturating_mul(3), limits)?;
+    let low_length = match usize::try_from(low_difference) {
+        Ok(value) => value,
+        Err(_) => return Err(invalid_transform()),
+    };
+    Ok((low_first, high_lengths, low_length))
+}
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(work)) == crate::specs::part2_mct_wavelet_admission(
+        sample_count, count, levels, *old(work), crate::limits::resource_work_limit(limits),
+        crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn admit_mct_wavelet(
+    sample_count: usize,
+    count: usize,
+    levels: u8,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    let products = (sample_count as u64)
+        .checked_mul(count as u64)
+        .ok_or_else(arithmetic_overflow)?;
+    let stages = products
+        .checked_mul(u64::from(levels).saturating_add(1))
+        .ok_or_else(arithmetic_overflow)?;
+    let operations = stages.checked_mul(8).ok_or_else(arithmetic_overflow)?;
+    charge_mct_work(work, operations, limits)?;
+    check_mct_scratch(count.saturating_mul(3), limits)
+}
+
+struct MctWaveletPreparation {
+    source_indexes: Vec<usize>,
+    destination_indexes: Vec<usize>,
+    low_first: Vec<bool>,
+    high_lengths: Vec<usize>,
+    low_length: usize,
+    sample_count: usize,
+    count: usize,
+    wavelet: MctWavelet,
+    source_fraction_bits: Vec<u8>,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn mct_wavelet_preparation_view(value: &MctWaveletPreparation) -> crate::specs::Part2MctWaveletPreparation {
+        (value.source_indexes@, value.destination_indexes@, value.low_first@, value.high_lengths@,
+            value.low_length, value.sample_count, value.count, crate::codestream::mct_wavelet_view(value.wavelet),
+            value.source_fraction_bits@)
+    }
+
+    spec fn mct_wavelet_preparation_outcome(result: Result<MctWaveletPreparation, DecodeError>)
+        -> Result<crate::specs::Part2MctWaveletPreparation, DecodeError> {
+        match result { Ok(value) => Ok(mct_wavelet_preparation_view(&value)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (mct_wavelet_preparation_outcome(result), *final(work)) == crate::specs::part2_mct_prepare_wavelet(
+        transform_components_view(components), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn prepare_mct_wavelet(
+    components: &[TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<MctWaveletPreparation, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    let wavelet = collection.wavelet().ok_or_else(invalid_transform)?;
+    let count = collection.input_components().len();
+    if count == 0 || count != collection.output_components().len() {
+        return Err(invalid_transform());
+    }
+    let (source_indexes, destination_indexes) = mct_component_pair_indexes(
+        components,
+        collection.input_components(),
+        collection.output_components(),
+        count,
+    )?;
+    let reversible = matches!(wavelet.transform(), MctWaveletType::Reversible5x3);
+    let sample_count = validate_mct_dependency_layout(
+        components,
+        &source_indexes,
+        &destination_indexes,
+        reversible,
+    )?;
+    let (low_first, high_lengths, low_length) = prepare_mct_wavelet_partition(count, wavelet)?;
+    admit_mct_wavelet(sample_count, count, wavelet.levels(), limits, work)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_dependency_layout_bounds(
+            before, source_indexes@, destination_indexes@, reversible, sample_count);
+    }
     let mut source_fraction_bits = Vec::with_capacity(count);
-    index = 0;
+    let mut index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= source_indexes.len(),
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            style.6 == Some(crate::codestream::mct_wavelet_view(wavelet)),
+            count > 0, count == style.1.len(), count == style.2.len(),
+            crate::specs::part2_mct_component_pairs(before, style.1, style.2, count as nat) == Ok((source_indexes@, destination_indexes@)),
+            crate::specs::part2_mct_validate_dependency_layout(before, source_indexes@, destination_indexes@, reversible) == Ok(sample_count),
+            reversible == crate::specs::part2_mct_wavelet_reversible(crate::codestream::mct_wavelet_view(wavelet)),
+            crate::specs::part2_mct_wavelet_partition(count, crate::codestream::mct_wavelet_view(wavelet)) == Ok((low_first@, high_lengths@, low_length)),
+            crate::specs::part2_mct_wavelet_admission(sample_count, count, crate::codestream::mct_wavelet_view(wavelet).1,
+                initial_work, crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)) == (Ok(()), *work),
+            forall |position: int| 0 <= position < source_indexes@.len() ==> source_indexes@[position] < before.len(),
+            source_fraction_bits@ == Seq::new(index as nat, |position: int| before[source_indexes@[position] as int].2),
             decreases source_indexes.len() - index,
         )
     )]
@@ -3839,127 +4094,257 @@ fn apply_mct_wavelet(
                 .ok_or_else(invalid_transform)?
                 .fraction_bits,
         );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(source_fraction_bits@ =~= Seq::new(index as nat + 1, |position: int| before[source_indexes@[position] as int].2));
+        }
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    let mut source = Vec::with_capacity(count);
+    Ok(MctWaveletPreparation {
+        source_indexes,
+        destination_indexes,
+        low_first,
+        high_lengths,
+        low_length,
+        sample_count,
+        count,
+        wavelet,
+        source_fraction_bits,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_wavelet_source_value(
+        transform_components_view(components), indexes@, fractions@, sample, index as nat, reversible),
+))]
+fn read_mct_wavelet_source(
+    components: &[TransformComponentMut<'_>],
+    indexes: &[usize],
+    fractions: &[u8],
+    sample: usize,
+    index: usize,
+    reversible: bool,
+) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let component = *indexes.get(index).ok_or_else(invalid_transform)?;
+    let value = read_transform_sample(components, component, sample)?;
+    if reversible {
+        Ok(value)
+    } else {
+        let scaled = rescale_i128(
+            i128::from(value),
+            *fractions.get(index).ok_or_else(invalid_transform)?,
+            MCT_FIXED_BITS,
+        )?;
+        match i64::try_from(scaled) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(arithmetic_overflow()),
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(source)@) == crate::specs::part2_mct_wavelet_snapshot(
+        transform_components_view(components), indexes@, fractions@, sample, reversible, count as nat),
+))]
+fn begin_mct_wavelet_pixel(
+    source: &mut Vec<i64>,
+    components: &[TransformComponentMut<'_>],
+    indexes: &[usize],
+    fractions: &[u8],
+    sample: usize,
+    count: usize,
+    reversible: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = transform_components_view(components); }
+    source.clear();
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_wavelet_snapshot_empty(before, indexes@, fractions@, sample, reversible); }
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= count, before == transform_components_view(components),
+        crate::specs::part2_mct_wavelet_snapshot(before, indexes@, fractions@, sample, reversible, index as nat) == (Ok(()), source@),
+        decreases count - index,
+    ))]
+    while index < count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_snapshot_step(before, indexes@, fractions@, sample, reversible, index as nat);
+            crate::proofs::production_impl::production_mct_wavelet_snapshot_error(before, indexes@, fractions@, sample, reversible, index as nat + 1, count as nat);
+        }
+        let value =
+            read_mct_wavelet_source(components, indexes, fractions, sample, index, reversible)?;
+        source.push(value);
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::transform::sequence_outcome(result) == crate::specs::part2_mct_wavelet_reconstruction(
+        source@, high_lengths@, low_first@, reversible, low_length, count),
+))]
+fn reconstruct_mct_wavelet(
+    source: &[i64],
+    high_lengths: &[usize],
+    low_first: &[bool],
+    reversible: bool,
+    low_length: usize,
+    count: usize,
+) -> Result<Vec<i64>, DecodeError> {
+    let mut cursor = low_length;
+    let mut reconstructed = Vec::with_capacity(low_length);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_wavelet_reconstruction_empty(source@, high_lengths@, low_first@, reversible, low_length);
+        crate::proofs::production_impl::production_mct_wavelet_reconstruction_error(source@, high_lengths@, low_first@, reversible, low_length, 0, high_lengths@.len());
+    }
+    reconstructed.extend_from_slice(source.get(..low_length).ok_or_else(invalid_transform)?);
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(reconstructed@ =~= source@.take(low_length as int)); }
+    let mut level_index = high_lengths.len();
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant level_index <= high_lengths.len(),
+        crate::specs::part2_mct_wavelet_reconstruction_steps(source@, high_lengths@, low_first@, reversible, low_length,
+            (high_lengths.len() - level_index) as nat) == Ok((cursor, reconstructed@)),
+        decreases level_index,
+    ))]
+    while level_index != 0 {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_reconstruction_step(
+                source@, high_lengths@, low_first@, reversible, low_length, (high_lengths.len() - level_index) as nat);
+            crate::proofs::production_impl::production_mct_wavelet_reconstruction_error(
+                source@, high_lengths@, low_first@, reversible, low_length, (high_lengths.len() - level_index + 1) as nat, high_lengths@.len());
+        }
+        level_index = level_index.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+        let high_length = *high_lengths
+            .get(level_index)
+            .ok_or_else(invalid_transform)?;
+        let high_end = cursor
+            .checked_add(high_length)
+            .ok_or_else(arithmetic_overflow)?;
+        let high = source.get(cursor..high_end).ok_or_else(invalid_transform)?;
+        reconstructed = if reversible {
+            inverse_5_3(
+                &reconstructed,
+                high,
+                *low_first.get(level_index).ok_or_else(invalid_transform)?,
+            )?
+        } else {
+            inverse_9_7(
+                &reconstructed,
+                high,
+                *low_first.get(level_index).ok_or_else(invalid_transform)?,
+            )?
+        };
+        cursor = high_end;
+    }
+    if cursor != count || reconstructed.len() != count {
+        return Err(invalid_transform());
+    }
+    Ok(reconstructed)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), final(source)@) == crate::specs::part2_mct_wavelet_pixel(
+        transform_components_view(old(components)), mct_wavelet_preparation_view(prepared), sample_index),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_wavelet_pixel(
+    components: &mut [TransformComponentMut<'_>],
+    prepared: &MctWaveletPreparation,
+    sample_index: usize,
+    source: &mut Vec<i64>,
+) -> Result<(), DecodeError> {
+    let reversible = matches!(prepared.wavelet.transform(), MctWaveletType::Reversible5x3);
+    begin_mct_wavelet_pixel(
+        source,
+        components,
+        &prepared.source_indexes,
+        &prepared.source_fraction_bits,
+        sample_index,
+        prepared.count,
+        reversible,
+    )?;
+    let reconstructed = reconstruct_mct_wavelet(
+        source,
+        &prepared.high_lengths,
+        &prepared.low_first,
+        reversible,
+        prepared.low_length,
+        prepared.count,
+    )?;
+    store_mct_output_rows(
+        components,
+        &prepared.destination_indexes,
+        &reconstructed,
+        sample_index,
+        prepared.count,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, transform_components_view(final(components)), *final(work)) == crate::specs::part2_mct_wavelet(
+        transform_components_view(old(components)), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+    transform_components_borrow_frame(old(components)@, final(components)@),
+))]
+fn apply_mct_wavelet(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::codestream::mct_fixed_precision_is_q32(); }
+    let prepared = prepare_mct_wavelet(components, collection, limits, work)?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost plan = mct_wavelet_preparation_view(&prepared); }
+    let mut source = Vec::with_capacity(prepared.count);
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_mct_wavelet_pixels_empty(before, plan); }
     let mut sample_index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant sample_index <= sample_count,
-            decreases sample_count - sample_index,
-        )
-    )]
-    while sample_index < sample_count {
-        source.clear();
-        index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= count,
-                decreases count - index,
-            )
-        )]
-        while index < count {
-            let value = *components
-                .get(*source_indexes.get(index).ok_or_else(invalid_transform)?)
-                .and_then(|component| component.samples.get(sample_index))
-                .ok_or_else(invalid_transform)?;
-            source.push(
-                if matches!(wavelet.transform(), MctWaveletType::Reversible5x3) {
-                    value
-                } else {
-                    i64::try_from(rescale_i128(
-                        i128::from(value),
-                        *source_fraction_bits
-                            .get(index)
-                            .ok_or_else(invalid_transform)?,
-                        MCT_FIXED_BITS,
-                    )?)
-                    .map_err(|_| arithmetic_overflow())?
-                },
-            );
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant sample_index <= prepared.sample_count,
+        before == transform_components_view(old(components)),
+        transform_components_borrow_frame(old(components)@, components@),
+        style == crate::codestream::mct_collection_view(collection),
+        plan == mct_wavelet_preparation_view(&prepared),
+        initial_work == *old(work),
+        (Ok(plan), *work) == crate::specs::part2_mct_prepare_wavelet(
+            before, style, initial_work, crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+        crate::specs::part2_mct_wavelet_pixels(before, plan, sample_index as nat) == (Ok(()), transform_components_view(components)),
+        decreases prepared.sample_count - sample_index,
+    ))]
+    while sample_index < prepared.sample_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_wavelet_pixels_step(before, plan, sample_index as nat);
+            crate::proofs::production_impl::production_mct_wavelet_pixels_error(before, plan, sample_index as nat + 1, plan.5 as nat);
         }
-        let mut cursor = low_length;
-        let mut reconstructed = Vec::with_capacity(low_length);
-        reconstructed.extend_from_slice(source.get(..low_length).ok_or_else(invalid_transform)?);
-        let mut level_index = high_lengths.len();
-        #[cfg_attr(verus_keep_ghost, verus_spec(decreases level_index,))]
-        while level_index != 0 {
-            level_index = level_index.checked_sub(1).ok_or_else(arithmetic_overflow)?;
-            let high_length = *high_lengths
-                .get(level_index)
-                .ok_or_else(invalid_transform)?;
-            let high_end = cursor
-                .checked_add(high_length)
-                .ok_or_else(arithmetic_overflow)?;
-            let high = source.get(cursor..high_end).ok_or_else(invalid_transform)?;
-            reconstructed = if matches!(wavelet.transform(), MctWaveletType::Reversible5x3) {
-                inverse_5_3(
-                    &reconstructed,
-                    high,
-                    *low_first.get(level_index).ok_or_else(invalid_transform)?,
-                )?
-            } else {
-                inverse_9_7(
-                    &reconstructed,
-                    high,
-                    *low_first.get(level_index).ok_or_else(invalid_transform)?,
-                )?
-            };
-            cursor = high_end;
-        }
-        if cursor != count || reconstructed.len() != count {
-            return Err(invalid_transform());
-        }
-        index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant index <= count,
-                decreases count - index,
-            )
-        )]
-        while index < count {
-            *components
-                .get_mut(
-                    *destination_indexes
-                        .get(index)
-                        .ok_or_else(invalid_transform)?,
-                )
-                .and_then(|component| component.samples.get_mut(sample_index))
-                .ok_or_else(invalid_transform)? =
-                *reconstructed.get(index).ok_or_else(invalid_transform)?;
-            index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        apply_mct_wavelet_pixel(components, &prepared, sample_index, &mut source)?;
         sample_index = sample_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
-    index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= destination_indexes.len(),
-            decreases destination_indexes.len() - index,
-        )
-    )]
-    while index < destination_indexes.len() {
-        let destination = *destination_indexes
-            .get(index)
-            .ok_or_else(invalid_transform)?;
-        *components
-            .get_mut(destination)
-            .ok_or_else(invalid_transform)?
-            .fraction_bits = if matches!(wavelet.transform(), MctWaveletType::Reversible5x3) {
+    apply_mct_destination_precisions(
+        components,
+        &prepared.destination_indexes,
+        if matches!(prepared.wavelet.transform(), MctWaveletType::Reversible5x3) {
             0
         } else {
             MCT_FIXED_BITS
-        };
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    Ok(())
+        },
+    )
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4035,6 +4420,9 @@ fn check_mct_scratch(values: usize, limits: &ResourceLimits) -> Result<(), Decod
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_mct_ceil_half(value),
+))]
 fn ceil_divide_by_two(value: i64) -> Result<i64, DecodeError> {
     let quotient = value / 2;
     quotient
@@ -5117,6 +5505,276 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_wavelet_partitions_match_signed_integer_intervals() {
+        for value in [
+            i64::MIN,
+            i64::MIN + 1,
+            -257,
+            -3,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            3,
+            257,
+            i64::MAX - 1,
+            i64::MAX,
+        ] {
+            assert_eq!(
+                ceil_divide_by_two(value),
+                Ok(((i128::from(value) + 1).div_euclid(2)) as i64)
+            );
+        }
+        for transform in [
+            MctWaveletType::Reversible5x3,
+            MctWaveletType::Irreversible9x7,
+        ] {
+            for offset in [i32::MIN, -33, -2, -1, 0, 1, 2, 33, i32::MAX] {
+                for levels in [0, 1, 2, 3, 8, 31, u8::MAX] {
+                    let collection =
+                        MctCollection::from_wavelet(vec![], vec![], transform, levels, offset);
+                    let wavelet = collection.wavelet().unwrap();
+                    for count in [0, 1, 2, 3, 4, 7, 11, 65535, i64::MAX as usize, usize::MAX] {
+                        let expected =
+                            (|| -> Result<(Vec<bool>, Vec<usize>, usize), DecodeError> {
+                                let overflow = DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                };
+                                if count as u128 > i64::MAX as u128 {
+                                    return Err(overflow);
+                                }
+                                let mut start = i128::from(offset);
+                                let mut end = start + count as i128;
+                                if end > i128::from(i64::MAX) {
+                                    return Err(overflow);
+                                }
+                                let mut first = Vec::new();
+                                let mut high = Vec::new();
+                                for _ in 0..levels {
+                                    let next_start = (start + 1).div_euclid(2);
+                                    let next_end = (end + 1).div_euclid(2);
+                                    first.push(start.rem_euclid(2) == 0);
+                                    high.push(
+                                        usize::try_from(end - start - (next_end - next_start))
+                                            .unwrap(),
+                                    );
+                                    start = next_start;
+                                    end = next_end;
+                                }
+                                Ok((first, high, usize::try_from(end - start).unwrap()))
+                            })();
+                        assert_eq!(prepare_mct_wavelet_partition(count, wavelet), expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_wavelet_scaled_snapshot_keeps_full_precision_and_error_priority() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let overflow = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for reversible in [false, true] {
+            for bits in 0..=u8::MAX {
+                for value in [i64::MIN, -7, 0, 7, i64::MAX] {
+                    let expected = if reversible {
+                        Ok(value)
+                    } else if bits <= 32 {
+                        i64::try_from(i128::from(value) * (1_i128 << (32 - bits)))
+                            .map_err(|_| overflow)
+                    } else if bits - 32 > 126 {
+                        Err(overflow)
+                    } else {
+                        let shift = bits - 32;
+                        let rounded =
+                            (i128::from(value).abs() + (1_i128 << (shift - 1))) / (1_i128 << shift);
+                        Ok(if value < 0 {
+                            -rounded as i64
+                        } else {
+                            rounded as i64
+                        })
+                    };
+                    let mut samples = [value];
+                    let mut precision = u8::MAX;
+                    let components = [TransformComponentMut {
+                        component: 0,
+                        x: 0,
+                        y: 0,
+                        width: 0,
+                        height: 0,
+                        x_subsampling: 0,
+                        y_subsampling: 0,
+                        fraction_bits: &mut precision,
+                        samples: &mut samples,
+                    }];
+                    let mut source = vec![123];
+                    let result = begin_mct_wavelet_pixel(
+                        &mut source,
+                        &components,
+                        &[0, 2],
+                        &[bits],
+                        0,
+                        2,
+                        reversible,
+                    );
+                    assert_eq!(
+                        result,
+                        match expected {
+                            Err(error) => Err(error),
+                            Ok(_) => Err(invalid),
+                        }
+                    );
+                    assert_eq!(
+                        source,
+                        match expected {
+                            Ok(value) => vec![value],
+                            Err(_) => vec![],
+                        }
+                    );
+                    let mut source = vec![123];
+                    assert_eq!(
+                        begin_mct_wavelet_pixel(
+                            &mut source,
+                            &components,
+                            &[2],
+                            &[],
+                            0,
+                            0,
+                            reversible
+                        ),
+                        Ok(())
+                    );
+                    assert!(source.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_mct_wavelet_reversible_collection_matches_independent_synthesis() {
+        fn inverse(low: &[i64], high: &[i64], first: bool) -> Vec<i64> {
+            let mut values = Vec::new();
+            for index in 0..low.len() + high.len() {
+                values.push(if (index % 2 == 0) == first {
+                    low[index / 2]
+                } else {
+                    high[index / 2]
+                });
+            }
+            if values.len() == 1 && !first {
+                values[0] = values[0].div_euclid(2);
+                return values;
+            }
+            if values.len() < 2 {
+                return values;
+            }
+            for index in 0..values.len() {
+                if (index % 2 == 0) == first {
+                    let left = values[if index == 0 { 1 } else { index - 1 }];
+                    let right = values[if index + 1 == values.len() {
+                        index - 1
+                    } else {
+                        index + 1
+                    }];
+                    values[index] -= (left + right + 2).div_euclid(4);
+                }
+            }
+            for index in 0..values.len() {
+                if (index % 2 == 0) != first {
+                    let left = values[if index == 0 { 1 } else { index - 1 }];
+                    let right = values[if index + 1 == values.len() {
+                        index - 1
+                    } else {
+                        index + 1
+                    }];
+                    values[index] += (left + right).div_euclid(2);
+                }
+            }
+            values
+        }
+        for count in 1..=6 {
+            for offset in -3_i32..=3 {
+                for levels in 0..=4 {
+                    let original = [-2, 3, 0, 7, -5, 2][..count].to_vec();
+                    let mut start = i64::from(offset);
+                    let mut end = start + count as i64;
+                    let mut partitions = Vec::new();
+                    for _ in 0..levels {
+                        let next_start = (start + 1).div_euclid(2);
+                        let next_end = (end + 1).div_euclid(2);
+                        partitions.push((
+                            start.rem_euclid(2) == 0,
+                            (end - start - (next_end - next_start)) as usize,
+                        ));
+                        start = next_start;
+                        end = next_end;
+                    }
+                    let mut cursor = (end - start) as usize;
+                    let mut expected = original[..cursor].to_vec();
+                    for &(first, length) in partitions.iter().rev() {
+                        expected = inverse(&expected, &original[cursor..cursor + length], first);
+                        cursor += length;
+                    }
+                    assert_eq!(cursor, count);
+                    let mut samples: Vec<_> = original.iter().map(|&value| vec![value]).collect();
+                    let mut fractions = vec![0; count];
+                    let mut components: Vec<_> = samples
+                        .iter_mut()
+                        .zip(fractions.iter_mut())
+                        .enumerate()
+                        .map(
+                            |(component, (samples, fraction_bits))| TransformComponentMut {
+                                component: component as u16,
+                                x: 0,
+                                y: 0,
+                                width: 1,
+                                height: 1,
+                                x_subsampling: 1,
+                                y_subsampling: 1,
+                                fraction_bits,
+                                samples,
+                            },
+                        )
+                        .collect();
+                    let references: Vec<_> = (0..count).map(|index| index as u16).collect();
+                    let collection = MctCollection::from_wavelet(
+                        references.clone(),
+                        references,
+                        MctWaveletType::Reversible5x3,
+                        levels,
+                        offset,
+                    );
+                    let mut work = 7;
+                    assert_eq!(
+                        apply_mct_wavelet(
+                            &mut components,
+                            &collection,
+                            &ResourceLimits::default(),
+                            &mut work
+                        ),
+                        Ok(())
+                    );
+                    assert_eq!(work, 7 + count as u64 * (u64::from(levels) + 1) * 8);
+                    drop(components);
+                    assert_eq!(
+                        samples.iter().map(|value| value[0]).collect::<Vec<_>>(),
+                        expected
+                    );
+                    assert_eq!(fractions, vec![0; count]);
+                }
+            }
+        }
+    }
 
     #[test]
     fn native_mct_dependency_counts_and_admission_match_wide_thresholds() {
