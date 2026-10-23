@@ -5113,6 +5113,7 @@ fn run_ht_contribution_segments(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures (result, crate::tier1::tier1_decoder_state(final(decoder)), *final(offset), *final(decoded_passes))
         == crate::specs::ht_packet_segment_body(crate::tier1::tier1_decoder_state(old(decoder)), segment, body@,

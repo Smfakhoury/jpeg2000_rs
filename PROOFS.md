@@ -801,8 +801,9 @@ The existing header/precinct families remain intact. Full raw source/owner
 observations and static None APIs are supported without claiming separately
 bound constructor results that the pinned frontend cannot express. This
 remains a curated technical inventory, not exhaustive normative coverage.
-Separate public code-block/JPIP wrapper guarantees and whole F5L/F5H remain
-under implementation; no F8 image/parser or general MCT claim follows here.
+The separate public code-block/JPIP wrapper guarantees are described below;
+whole F5L/F5H delivery acceptance remains separate. No F8 image/parser or
+general MCT claim follows from these progression references.
 
 ## Complete original packet and JPIP boundary guarantees
 
@@ -831,6 +832,10 @@ reader cleanup removes the now-unused three-line `new_prefix` delegate and its
 redundant assertion; the actual free/public reader and full-state tests remain.
 No full image/parser, general MCT, official conformance or owner-main acceptance
 is implied by these boundary proofs.
+
+The unchanged HT segment body uses a fresh solver context (`spinoff_prover`)
+to avoid accumulated whole-root solver-state sensitivity after composition.
+Its complete Result/state relation, native body and resource budget are unchanged.
 
 ## Reproduce verification
 
