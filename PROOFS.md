@@ -2211,3 +2211,26 @@ owners, wrong primary inputs, guarded results and invented consumers.
 This completes the raw per-component input producer, not opacity, complete
 F2/F4/F8 or independent conformance. Frozen full-root/MSRV/local/hosted and
 owner-main acceptance remain explicit delivery gates.
+## Complete actual local opacity state and strict chroma policy
+
+General-layer and opacity chroma-key updates now share one real traversal
+with an explicit native policy. General missing samples remain nonmatches;
+strict opacity still rejects any visited missing sample, including after an
+earlier color mismatch. Both complete Result/whole-owner relations preserve
+all original values on error and update only final straight alpha on success.
+Strict source coverage is derived from actual reads, not a caller premise.
+
+The actual flag-only opacity update now has a complete raw-owner relation:
+existing alpha samples and all geometry/color values are preserved, only the
+representation flag changes, and missing alpha reports the actual supplied
+box offset without mutation. The original file-level branch executes these
+same sole producers and retains its metadata/channel/header/key ordering.
+
+Independent matrices cover 12,960 policy/raw-owner contexts and1,296 flag/
+offset cases, including malformed geometry/planes, empty channels, mismatches
+before missing samples and maximum offsets. Two finite exact recipes require
+complete owners, all original keys/policy/flag/offset bindings and real callers.
+
+This closes local opacity mutations, not external decoded/registered-alpha
+copy, complete file preparation or F2/F4/F8. Every frozen full-root/MSRV/
+native/reference/resource/hosted/main delivery gate remains explicit.

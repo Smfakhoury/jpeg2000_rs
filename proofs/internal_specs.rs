@@ -4,6 +4,11 @@ use crate::specs::{Part2CompositionGeometry, part2_composition_canvas_prefix};
 
 verus! {
 
+pub open spec fn part2_chroma_cover_prefix(colors: Seq<Seq<u16>>, samples: nat, count: nat) -> bool {
+    forall|channel: int| 0 <= channel < count ==>
+        #[trigger] crate::specs::part2_chroma_plane_has_samples(colors[channel], samples)
+}
+
 #[verifier::opaque]
 pub open spec fn part2_chroma_byte_bound(count: nat) -> nat
     decreases count,

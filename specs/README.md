@@ -1,5 +1,13 @@
 # Specification audit guide
 
+`part2_apply_chroma_key_policy` distinguishes actual permissive general-layer
+nonmatches from strict opacity's missing-sample error, without normalizing
+planes or assuming coverage. `part2_set_layer_alpha_mode` preserves all raw
+metadata/colors/samples and changes only the existing alpha representation,
+or returns the caller's missing-structure offset unchanged. Actual source
+coverage and prefix proofs establish the strict path. External-alpha copying,
+file preparation and complete F2/F4/F8 remain separate.
+
 `part2_normalized_component_chroma_keys` separates actual ordered descriptor/
 checked-byte-count validation from payload admission and real key assembly.
 `part2_append_component_key` preserves all original keys and offset until its

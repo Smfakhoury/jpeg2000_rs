@@ -5689,6 +5689,38 @@ pub open spec fn part2_chroma_key_pixel(colors: Seq<Seq<u16>>, keys: Seq<u16>, p
     }
 }
 
+pub open spec fn part2_chroma_plane_has_samples(samples: Seq<u16>, count: nat) -> bool {
+    samples.len() >= count
+}
+
+pub open spec fn part2_chroma_sources_cover(colors: Seq<Seq<u16>>, count: nat) -> bool {
+    forall|channel: int| 0 <= channel < colors.len() ==>
+        #[trigger] part2_chroma_plane_has_samples(colors[channel], count)
+}
+
+pub open spec fn part2_apply_chroma_key_policy(layer: Part2OwnedLayer, keys: Seq<u16>, reject_missing: bool)
+    -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
+{
+    if !reject_missing || keys.len() != layer.3.len() {
+        part2_apply_chroma_key(layer, keys)
+    } else {
+        match part2_layer_area(layer.0, layer.1) {
+            Err(_) => part2_apply_chroma_key(layer, keys),
+            Ok(pixels) => if part2_chroma_sources_cover(layer.3, pixels as nat) { part2_apply_chroma_key(layer, keys) }
+                else { (Err(part2_composition_error(false)), layer) },
+        }
+    }
+}
+
+pub open spec fn part2_set_layer_alpha_mode(layer: Part2OwnedLayer, premultiplied: bool, offset: u64)
+    -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
+{
+    match layer.4 {
+        None => (Err(crate::DecodeError::MalformedInput { offset, kind: crate::MalformedKind::MissingRequiredStructure }), layer),
+        Some((samples, _)) => (Ok(()), (layer.0, layer.1, layer.2, layer.3, Some((samples, premultiplied)))),
+    }
+}
+
 pub open spec fn part2_apply_chroma_key(layer: Part2OwnedLayer, keys: Seq<u16>)
     -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
 {
