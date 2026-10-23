@@ -803,6 +803,30 @@ _LAYER_REGISTRATION_CONTRACTS = {
     ),
 }
 
+_LAYER_SAMPLING_CONTRACTS = {
+    ("src/jpx.rs", "copy_registered_color"): (
+        "part2_registered_color_store", r"\1",
+        _coverage_call("crate::specs::part2_composition_planes", _coverage_call("final", "colors") + r"\s*@"),
+        r"\s*,\s*".join((
+            _coverage_call("crate::specs::part2_composition_planes", _coverage_call("old", "colors") + r"\s*@"),
+            _coverage_call("owned_layer_view", "source") + r"\s*\.3",
+            r"color\s+as\s+nat", "source_index", "destination",
+        )),
+    ),
+    ("src/jpx.rs", "copy_registered_pixel"): (
+        "part2_registered_pixel", r"\1",
+        _coverage_call("crate::specs::part2_composition_planes", _coverage_call("final", "colors") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("final", "alpha") + r"\s*@",
+        r"\s*,\s*".join((
+            _coverage_call("owned_layer_view", "source"),
+            _coverage_call("crate::specs::part2_composition_planes", _coverage_call("old", "colors") + r"\s*@"),
+            _coverage_call("old", "alpha") + r"\s*@",
+            r"source_position\.0", r"source_position\.1",
+            r"destination_position\.0", r"destination_position\.1", r"destination_position\.2",
+        )),
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1307,6 +1331,7 @@ def validate_normative_coverage(
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

@@ -1,5 +1,13 @@
 # Specification audit guide
 
+`part2_registered_pixel` composes actual checked row-major addresses,
+ordered color stores and final alpha read/store from the raw owner and
+destination buffers. Its complete error result retains earlier color updates.
+Missing alpha supplies the native opaque value; malformed alpha is not
+normalized. The color-prefix denotation describes observable partial states,
+while its inductions remain in proof support. Outer registration traversal
+and full F2/F4/F8 composition are not implied by this pixel boundary.
+
 `part2_native_registered_extent` names the raw native product, offset, rounding
 headroom and typed result policy. `part2_registered_layer_geometry` composes
 the real ratio/grid admission, ordered width/height and checked area. The

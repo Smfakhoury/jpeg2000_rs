@@ -2107,3 +2107,31 @@ mutations bind every actual input and result to genuine production consumers.
 This closes geometry preparation only. Complete registered color/alpha raster
 sampling, raw-key normalization and opacity remain open F2 work; F4/F8 and
 independent conformance are not implied.
+## Complete native registered pixel sampling and partial buffers
+
+The actual registration raster now calls the sole `copy_registered_pixel`
+producer, whose full Result/color-buffer/alpha-buffer relation holds for raw
+source owners, coordinates and destination planes. Source index precedes
+destination index; every color copy precedes alpha lookup/storage. Missing
+source or destination words preserve all earlier color stores and leave alpha
+unchanged; later alpha failure retains the complete copied color state.
+Absent source alpha produces the native opaque value. No source/target shape,
+normalized-coordinate, successful-read or admitted-budget premise is supplied.
+
+The shared real color-store helper preserves the complete nested-vector
+state and slice extent. Ordered prefix composition and error absorption are
+proved in proof support. The loop retains real checked-address and original
+alpha facts, and reuses the existing proved structural unit-Result lemma.
+Explicit optional lookup replaces only the original opaque closure call,
+without new allocations or changed native evaluation/error policy.
+
+Independent wide-index replay covers 24,000 raw source/destination/alpha/
+coordinate contexts, including empty/ragged planes, more than three channels,
+partial prior-color stores, default and malformed alpha, zero width and maximum
+coordinates. Two finite exact recipes bind every mutable buffer, complete
+final state and actual input; fabricated consumers and partial/guarded/wrong
+bindings remain rejected.
+
+This closes the actual pixel producer, not all outer registration traversal,
+opacity, raw-key normalization or F2/F4/F8. Frozen whole-root/local/hosted
+qualification and owner-main acceptance remain explicit.

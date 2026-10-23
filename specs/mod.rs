@@ -5316,6 +5316,65 @@ pub open spec fn part2_registered_extent(numerator: u64, grid: u64) -> u64
 
 pub type Part2LayerRegistration = (u16, u8, u8, u32, u32);
 
+pub open spec fn part2_registered_color_store(
+    colors: Seq<Seq<u16>>, source: Seq<Seq<u16>>, color: nat, source_index: usize, destination: usize,
+) -> (Result<(), crate::DecodeError>, Seq<Seq<u16>>) {
+    if color >= colors.len() || color >= source.len() || source_index >= source[color as int].len()
+        || destination >= colors[color as int].len() {
+        (Err(part2_composition_error(false)), colors)
+    } else {
+        (Ok(()), colors.update(color as int,
+            colors[color as int].update(destination as int, source[color as int][source_index as int])))
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_registered_colors_prefix(
+    initial: Seq<Seq<u16>>, source: Seq<Seq<u16>>, source_index: usize, destination: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Seq<u16>>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_registered_colors_prefix(initial, source, source_index, destination, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_registered_color_store(previous.1, source, (count - 1) as nat, source_index, destination),
+        }
+    }
+}
+
+pub open spec fn part2_registered_pixel(
+    source: Part2OwnedLayer, colors: Seq<Seq<u16>>, alpha: Seq<u16>,
+    source_x: u32, source_y: u32, width: u32, x: u32, y: u32,
+) -> (Result<(), crate::DecodeError>, Seq<Seq<u16>>, Seq<u16>) {
+    match part2_composition_pixel_index(source.0, source_x, source_y) {
+        None => (Err(part2_composition_error(true)), colors, alpha),
+        Some(source_index) => match part2_composition_pixel_index(width, x, y) {
+            None => (Err(part2_composition_error(true)), colors, alpha),
+            Some(destination) => {
+                let copied = part2_registered_colors_prefix(colors, source.3, source_index, destination, colors.len());
+                match copied.0 {
+                    Err(error) => (Err(error), copied.1, alpha),
+                    Ok(()) => {
+                        let sample = match source.4 {
+                            None => Ok(u16::MAX),
+                            Some((samples, _)) => if source_index < samples.len() { Ok(samples[source_index as int]) }
+                                else { Err(part2_composition_error(false)) },
+                        };
+                        match sample {
+                            Err(error) => (Err(error), copied.1, alpha),
+                            Ok(value) => if destination >= alpha.len() {
+                                (Err(part2_composition_error(false)), copied.1, alpha)
+                            } else { (Ok(()), copied.1, alpha.update(destination as int, value)) },
+                        }
+                    },
+                }
+            },
+        },
+    }
+}
+
 pub open spec fn part2_native_registered_extent(samples: u32, subsampling: u32, grid: u32, offset: u32)
     -> Result<u32, crate::DecodeError>
 {
