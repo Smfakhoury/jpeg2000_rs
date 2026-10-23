@@ -4347,8 +4347,7 @@ mod tests {
                                                         width: source_width,
                                                         height: source_height,
                                                         color_space: ConvertedColorSpace::Srgb,
-                                                        colors:
-                                                            vec![
+                                                        colors: vec![
                                                                 (0..source_length)
                                                                     .map(|index| (index * 31 + 7)
                                                                         as u16)
