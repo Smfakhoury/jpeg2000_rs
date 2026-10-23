@@ -2083,3 +2083,27 @@ missing samples rather than treating them as nonmatches; it is not silently
 changed or included here. Raw-key normalization, registration/sampling,
 opacity and complete F2/F4/F8 composition remain separate work. Whole-root
 and hosted qualification must match the delivered source before acceptance.
+## Complete native registration extent and geometry admission
+
+The real `registered_extent` now refines its complete typed-result model over
+all four native u32 inputs, including zero grid, checked arithmetic, rounding
+headroom and u32 result conversion. Explicit checked stages and the real
+conversion match preserve the original evaluation/error order without a
+trusted closure adapter.
+
+The real registration producer now shares one `registered_layer_geometry`
+preparation body. It derives ratio/grid admission, horizontal then vertical
+extent and native checked area from the original dimensions and full raw
+registration descriptor. Codestream identity remains unobserved by this
+geometry operation. No normalized shape, successful preparation or adequate
+allocation premise is supplied; existing registration raster loops use the
+actual result and preserve their behavior.
+
+Independent u128 ceiling references cover 4,096 full native extent frontiers
+and 16,384 registration combinations, including zero ratios, maximum offsets,
+typed overflow and zero area. Two finite exact contract recipes and negative
+mutations bind every actual input and result to genuine production consumers.
+
+This closes geometry preparation only. Complete registered color/alpha raster
+sampling, raw-key normalization and opacity remain open F2 work; F4/F8 and
+independent conformance are not implied.
