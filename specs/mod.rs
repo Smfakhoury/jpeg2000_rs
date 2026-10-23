@@ -28,6 +28,30 @@ pub use crate::proofs::internal_specs::{
 
 verus! {
 
+pub open spec fn part2_validate_execution_style(
+    style: crate::codestream::CodingStyle, decompositions: (Seq<u8>, Seq<u8>), kernels: Seq<(u8, Part2RawKernel)>,
+) -> Result<(), crate::DecodeError> {
+    let missing = match style.decomposition_structure {
+        None => false,
+        Some(index) => !decompositions.0.contains(index) && !decompositions.1.contains(index),
+    };
+    if missing {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::MissingRequiredStructure })
+    } else {
+        match style.transform {
+            crate::codestream::WaveletTransform::Arbitrary(index) => match part2_kernel_registry_lookup(kernels, index) {
+                None => Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::MissingRequiredStructure }),
+                Some(_) => Ok(()),
+            },
+            _ => Ok(()),
+        }
+    }
+}
+
+pub open spec fn part2_component_depths_equal(left: Seq<(u8, bool)>, right: Seq<(u8, bool)>) -> bool {
+    left == right
+}
+
 pub type Part2MctArray = (u8, crate::codestream::MctArrayKind, crate::codestream::MctNumericFormat, u8, Seq<i64>);
 pub type Part2MctWavelet = (crate::codestream::MctWaveletType, u8, i32);
 pub type Part2MctCollection = (
