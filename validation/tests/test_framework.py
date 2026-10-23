@@ -661,6 +661,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_COMPONENT_KEY_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_native_local_opacity_and_missing_sample_policy(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-local-opacity"},
+            framework._LAYER_OPACITY_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

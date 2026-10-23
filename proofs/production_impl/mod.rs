@@ -32,6 +32,39 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_chroma_cover_step(colors: Seq<Seq<u16>>, samples: nat, count: nat)
+    requires count < colors.len(),
+    ensures crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count + 1)
+        == (crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count)
+            && crate::specs::part2_chroma_plane_has_samples(colors[count as int], samples)),
+{
+    let prefix = crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count);
+    let next = crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, count + 1);
+    let current = crate::specs::part2_chroma_plane_has_samples(colors[count as int], samples);
+    if prefix && current {
+        assert forall|channel: int| 0 <= channel < count + 1 implies
+            #[trigger] crate::specs::part2_chroma_plane_has_samples(colors[channel], samples) by {
+            if channel < count {
+                assert(crate::specs::part2_chroma_plane_has_samples(colors[channel], samples));
+            } else { assert(channel == count); }
+        }
+    } else if next {
+        assert forall|channel: int| 0 <= channel < count implies
+            #[trigger] crate::specs::part2_chroma_plane_has_samples(colors[channel], samples) by {
+            assert(0 <= channel < count + 1);
+        }
+        assert(prefix);
+        assert(current);
+        assert(false);
+    }
+}
+
+pub proof fn production_chroma_cover_complete(colors: Seq<Seq<u16>>, samples: nat)
+    ensures crate::proofs::internal_specs::part2_chroma_cover_prefix(colors, samples, colors.len())
+        == crate::specs::part2_chroma_sources_cover(colors, samples),
+{
+}
+
 pub proof fn production_chroma_descriptors_empty(descriptors: Seq<(u8, bool)>)
     ensures crate::specs::part2_chroma_descriptor_bytes(descriptors, 0) == Ok(0),
 {

@@ -870,6 +870,19 @@ _LAYER_COMPONENT_KEY_CONTRACTS = {
     ),
 }
 
+_LAYER_OPACITY_CONTRACTS = {
+    ("src/jpx.rs", "apply_chroma_key_with_policy"): (
+        "part2_apply_chroma_key_policy", r"\1",
+        _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
+        _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*keys\s*@\s*,\s*reject_missing",
+    ),
+    ("src/jpx.rs", "set_layer_alpha_mode"): (
+        "part2_set_layer_alpha_mode", r"\1",
+        _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
+        _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*premultiplied\s*,\s*offset",
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1378,6 +1391,7 @@ def validate_normative_coverage(
                 or _LAYER_TRAVERSAL_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_COMPONENT_KEY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_OPACITY_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

@@ -4,6 +4,32 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-local-opacity",
+      "topic": "Complete actual local opacity Result/full OwnedLayer relations: shared real chroma-key traversal with explicit general permissive versus opacity strict missing-sample policy, final-only straight alpha replacement and exact flag-only premultiplied/straight retag or missing-alpha error at actual caller offset. Raw geometry/planes/old alpha/keys/flags/offsets are not normalized; no successful source/key/alpha premise. Actual opacity consumers preserve metadata admission order. External-alpha copy, complete file preparation and F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "apply_chroma_key"},
+        {"path": "src/jpx.rs", "symbol": "apply_layer_opacity"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_apply_chroma_key_policy"},
+        {"path": "specs/mod.rs", "symbol": "part2_set_layer_alpha_mode"},
+        {"path": "specs/mod.rs", "symbol": "part2_chroma_sources_cover"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "apply_chroma_key_with_policy"},
+        {"path": "src/jpx.rs", "symbol": "set_layer_alpha_mode"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "owned_layer_view"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_cover_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_cover_complete"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "opacity_chroma_policy_preserves_strict_rejection_and_general_nonmatches"},
+        {"path": "src/jpx.rs", "symbol": "local_alpha_mode_changes_only_representation_or_reports_actual_offset"}
+      ]
+    },
+    {
       "id": "part2-complete-native-component-chroma-preparation",
       "topic": "Complete actual per-component raw chroma-key preparation Result and actual append/key-vector/offset state. Global ordered precision/sign-descriptor validation and checked byte sum precede payload-length admission; real slices, one-channel normalization, first-key lookup, append and final offset commit derive from original values/descriptors. No normalized descriptor/key/read/store outcome premise. Native overflow/first-error and unchanged keys/offset on append failure are retained; opacity and F2/F4/F8 remain separate.",
       "implementation_refs": [
