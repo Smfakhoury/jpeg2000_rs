@@ -27,6 +27,26 @@ effects are admitted without normalization, success, budget or trace premises.
 Faithful native subband cloning must preserve every scalar and both complete
 raw tag trees. Unobserved readonly template metadata is not decoder output.
 
+The four named actual entry bodies now refine `packet_boundaries.rs` without
+input premises. The complete single and multi posts observe actual results,
+every packet state/shared tree and entire decoder state/vector. Multi's real
+header loop carries all partial reader/tree/state/count/storage effects.
+Precinct and multi body paths now share the same executable preflight and
+execution loops with an explicit pair of truncation/local error offsets;
+decoder-origin errors are never remapped. Existing zero-offset relations remain
+proved specializations, not widened assumptions.
+
+The JPIP inner relation derives actual inline bytes, real context layers and
+the native absent packed-header source, using the tiny actual constructor
+observation from `85697b6`. Only relevant raw readonly fields are projected
+into the shared precinct admission relation; no foreign clone outcome is
+provided. Actual faithful subband `Clone` follows original field/allocation
+order and preserves unused raw tree words. The original outer Vec clones and
+restore statements prove full rollback through actual skipped-decoder and
+identity frames, while retaining complete inner Result/state semantics.
+This closes these named packet/JPIP entry guarantees, not an entire image/parser
+theorem, normative endorsement or an automatic whole-epic/project claim.
+
 ## Frozen remaining actual progression profile
 
 The next actual producers are `PacketGrid` construction/indexing,
