@@ -25,6 +25,33 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native packed-header and packet-length input producers
+
+The actual `PackedPacketHeaders::reassemble` refines
+`part1_packed_header_reassembly` over its complete raw source, stored length and
+fragment count. The model preserves cap-before-None admission, all marker and
+slice checks, the exact selected bytes, late malformed markers even after the
+requested bytes were copied, and final output-length errors. Fragment count is
+metadata, not an assumed physical-segment count.
+
+The actual `PacketLengths` getters and iterator constructor retain the full raw
+None/PLM/PLT source and both stored counters. `PacketLengthIter::next_length`
+refines `part1_packet_length_next` on every raw cursor/end pair. Its PLT scan
+commits the segment end before validating the payload start, and a later decode
+failure retains earlier marker/cursor commits. The actual base-128
+`decode_packet_length` has a complete Result contract, including zero,
+noncanonical leading groups, truncation, five-group overflow and invalid windows.
+Successful native iterator results additionally prove a positive value and a
+strictly advanced cursor.
+
+These are real production operations, not supplied byte vectors, length lists or
+traces. The loops, allocation points, arithmetic order and typed caps remain
+unchanged; explicit checked-result matches expose the existing first errors.
+Marker words reuse the same production `refinement::marker_value` primitive.
+Independent exhaustive two-byte/window/raw-iterator fixtures, closed wide-word
+oracles and literal segmented inputs check whole results and partial-state order.
+This does not complete the consuming progression/reassembly orchestration.
+
 ## Complete native palette lookup boundary
 
 The actual `jp2::Palette::value` returns exactly `part2_palette_value` on its
@@ -622,6 +649,194 @@ curated technical reference inventory, not exhaustive normative conformance.
 Full progression, packed reassembly, length iteration, JPIP transaction and
 whole F5L/F5H closure remain separate from this actual single-precinct stage.
 
+### Actual raw packet and progression iterators
+
+`packet_progression.rs` and the actual `PacketGrid` lookup/selected-count
+methods admit all nine stored grid fields, including inconsistent physical
+arrays, totals and offsets. Actual `unravel`, candidate decoding, packet
+iteration, POC candidate counts and offset decoding have complete typed results.
+Inverted component spans deliberately have different count/decode behavior.
+
+Both actual iterator constructors share one verified production free factory
+with their preserved public static wrappers. The complete packet iterator
+relation retains grid/order and both counters. The complete progression
+relation additionally observes every raw POC record, all three window cursors,
+outer emission and the entire optional nested default iterator. Default errors
+retain nested cursor/emission changes without synchronizing outer emission.
+POC errors retain candidate advancement, late emission rejection and ordered
+window advancement before a failing next-window count.
+
+Actual prior-window membership, one candidate step and window advancement are
+production phases, not proof-only decoder copies or supplied coordinate traces.
+Native fixtures cover physical lookup boundaries, skipped candidates, saturated
+counts, duplicate-window work charging/suppression and exact late-error frames.
+
+The actual component/selected grid factories now additionally refine
+`part1_packet_grid_new`, observing all nine returned fields and every error.
+Their sole executable body derives the maximum resolution, complete raw
+count/offset summary and selected count through real production phases, then
+performs the actual typed cap/product checks in order. Native offsets, full
+stored packet totals and candidate work are not replaced by selected totals.
+Public static wrappers preserve their API and share this verified free
+implementation; internal proof callers use the actual free API rather than an
+unsupported static-`Self` specification binding. Parent's actual typed limit
+getters provide the caps. No successful factory outcome or normalized input
+shape is supplied.
+
+### Complete actual multi-tile-part progression caller
+
+The actual selected `decode_progression_tile_packets_selected` and public
+`decode_progression_tile_packets` now have unconditional Result/full-precinct-
+vector relations to `part1_progression_tile_decode`. Inputs are the actual raw
+`TilePartPayload` sequence, complete raw grid, complete initial precincts,
+actual optional resolution counts and real `ResourceLimits`. There is no
+supplied coordinate sequence, reassembled-byte/length bank, header/decoder
+outcome, valid-shape, normalized-metadata, success or adequate-budget premise.
+
+Real production preparation composes component-style lookup, typed tile-part
+caps, selection admission, F5L's sole actual packed-byte reassembly, raw length
+metadata and complete precinct-grid association. It preserves per-part and
+aggregate checks and ignores no contradictory native source/count fields.
+Actual packet/progression factories and `next_packet` produce coordinates;
+actual `PacketLengthIter` initialization/advancement produces expected lengths.
+Neither is replaced by a caller-supplied list.
+
+The real progress record observes both full iterators, tile-part and length
+owners, both byte offsets, every packet/statistic counter, the complete seen
+vector and remaining work. The iterator advances before the real work guard.
+Tile-part transitions can discard that coordinate, reset to the next part's
+actual POC/default order and then suppress duplicates. Length consumption still
+precedes seen checks. Complete context-layer writes precede selection/packed
+lookup and actual single-precinct decoding; scoped native borrows frame every
+untouched precinct and every nested owner.
+
+Ordered accounting preserves the new tile offset on later packed-offset error,
+packet-count commit before seen storage, and seen storage before later statistic
+overflows. Its ordinary input is the actual returned packet decode, bound by the
+complete producer relation. An explicit equivalent Boolean-to-word expression
+exposes the real 0/1 value rather than assuming a missing standard-library
+conversion specification. The boundary scanner separately proves its entire
+state and unchanged-owner frame; those fields are not postulated unchanged.
+Trailing data, excess/truncated lengths, missing packets and final conversions
+retain original error order and all earlier precinct/coefficient effects.
+
+Independent full API fixtures include literal nonzero HT cleanup, selected
+higher-resolution body consumption without coefficient execution, tile-part
+iterator restart/duplicate effects, late trailing data after real coefficients,
+actual PPT reassembly plus PLT iteration with zero physical tile-body bytes,
+and exact work/ordered-overflow states. These are not model-generated expected
+outputs. This closes the named actual progression producer scope, not every
+single/multi-code-block or JPIP outer wrapper, normative endorsement, the whole
+F5H epic or project completion.
+
+### Complete actual public packet and JPIP boundaries
+
+The original `decode_single_code_block_packet` and
+`decode_multi_code_block_packet` now have unconditional complete Result and
+whole packet-state/tree/decoder relations to `packet_boundaries.rs`.
+`PacketCodeBlockExecution`'s actual mutable bundle fields appear in the public
+multi post; no separate successful execution object is supplied.
+
+Single uses the real validated whole-payload factory, exact absent-packet
+trailing-data policy and real header producer before actual mixed body
+transaction. Later body failure can retain earlier header/tree commits.
+Multi retains its raw shared-tree admission and complete context validation,
+native SOP policy (including deliberately unchecked sequence values), exact
+EPH placement, real descriptor generation and whole-body preflight before
+any coefficient execution. Its result reports a prefix, not assumed complete
+tile-part consumption.
+
+Both real body paths now share one executable preflight and one executable
+contribution loop. Explicit truncation/local-error offsets preserve the
+historical precinct-zero versus multi-caller-offset distinction; actual
+decoder-origin errors retain their own source offsets. Existing zero-offset
+models remain exact proved specializations of the shared raw relations.
+Full entry-expression and nested-vector frames, not stronger input domains
+or raised limits, establish every first-error partial state.
+
+The actual `decode_jpip_precinct_packet_inner` composes real context-layer
+writes, original inline metadata construction, the actual absent source
+constructor and actual skipped-body precinct decode. Its result and complete
+state hold for malformed contexts/trees/decoder state and arbitrary bytes/caps.
+Unobserved cloned template metadata is not treated as a supplied decoder or
+clone result. Relevant readonly fields come from actual native copies;
+`85697b6` exposes only the real packed-none constructor observation.
+
+The actual subband Clone copies every scalar and faithfully clones both
+complete raw trees in original order, retaining unused nodes and levels.
+The original outer Vec clones/restores prove exact state/context/subband
+snapshots. Decoder and identity preservation follow from the actual skipped
+execution path, separately proved through the production bodies. Thus the
+original outer JPIP transaction has a complete Result/whole-precinct relation
+and full rollback on every error, not an assumed clone or frame-only claim.
+
+Independent fixtures cover single cap/trailing/no-contribution/body errors and
+nonzero HT output; multi late shared-header/count/storage and prior-decoder
+effects, real local-versus-child offsets and sequence/prefix policies; actual
+JPIP raw rollback and inline decoding despite genuine template PPT/PLT metadata.
+This closes the four named original packet boundary guarantees. It does not
+claim an entire image/parser theorem, human normative endorsement or automatic
+epic/project completion.
+
+## Conservative complete progression and raw input acceptance
+
+The exact native progression/input registry admits only42 finite qualified
+result/model/full-state/input shapes: the real packed reassembly/length
+producers, grid factories/lookups, both nested iterators and the actual
+multi-tile-part preparation/boundary/context/precinct/accounting/run/finish
+chain. Forty have genuine internal callers and are curated as functional
+contract links. The public selected-count and unselected delegation APIs
+remain proved API support rather than invented internal consumers.
+
+The real iterator factory and full context-layer update use explicit complete
+semantic functions equivalent to their original literal/map posts; native
+execution bodies are unchanged. Every mutable parameter must occur in the
+complete final relation, and every real old input/selection/cursor/cap binds
+the primary model clause. New premises, guarded or partial state, wrong
+constants/views/inputs/caps and later correct clauses masking a wrong primary
+are rejected. A producer cannot name itself as its own claimed consumer,
+including a same-spelled call to a different receiver type.
+
+The existing header/precinct families remain intact. Full raw source/owner
+observations and static None APIs are supported without claiming separately
+bound constructor results that the pinned frontend cannot express. This
+remains a curated technical inventory, not exhaustive normative coverage.
+The separate public code-block/JPIP wrapper guarantees are described below;
+whole F5L/F5H delivery acceptance remains separate. No F8 image/parser or
+general MCT claim follows from these progression references.
+
+## Complete original packet and JPIP boundary guarantees
+
+The original single-block, multi-block, JPIP inner and JPIP transaction entries
+now have complete unconditional native Result/state contracts. Actual faithful
+subband/raw-tree cloning and the original Vec snapshots/restores establish
+whole rollback; skipped execution preserves real decoders and readonly
+identity without a supplied clone or decoder result. Multi-block execution
+shares the actual preflight/body loops with exact truncation/local error
+offset policy; genuine child decoder errors are not remapped.
+
+Fourteen finite exact boundary shapes retain every result/view/old-input/cap/
+error-policy argument. The two standalone public single/multi APIs remain
+proof-supported APIs, not fictional internal consumers; their full contracts
+are additionally checked through an explicit two-key proof-support whitelist.
+All functional contract references still require a distinct real consumer.
+No generic root/expression/implication fallback is added.
+
+The native execution bundle is recognized only for its exact existing type,
+parameter and four named mutable fields. The complete final tuple must cover
+all of them; adding a mutable field, changing the readonly context slice or
+using an unknown bundle type fails closed. Negative tests include all dotted
+old/final fields, later correct clauses masking wrong primary inputs, exact
+offset policy and all public API/consumer distinctions. The only private
+reader cleanup removes the now-unused three-line `new_prefix` delegate and its
+redundant assertion; the actual free/public reader and full-state tests remain.
+No full image/parser, general MCT, official conformance or owner-main acceptance
+is implied by these boundary proofs.
+
+The unchanged HT segment body uses a fresh solver context (`spinoff_prover`)
+to avoid accumulated whole-root solver-state sensitivity after composition.
+Its complete Result/state relation, native body and resource budget are unchanged.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
@@ -688,6 +903,16 @@ RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
 
 Module-only results are not accepted by the whole-crate collector. CI
 explicitly exercises that rejection before its complete verification.
+
+Reuse a dedicated scratch target for iterative debugging rather than rebuilding
+the verifier dependencies into a new target for every edit. Batch related
+functions in one focus run to share whole-crate Rust/VIR frontend work. For
+one function, use `--verify-only-module image --verify-function function_name`;
+`--time --output-json` separates frontend and solver costs. Check that the
+intended function actually ran and produced nonzero verification results.
+These scratch results remain debugging evidence only: final acceptance still
+requires a fresh complete production-root run and the fail-closed collector.
+Keep raw proof reports separate from disposable compiled scratch profiles.
 
 ## Current lifetime-analysis limitation
 

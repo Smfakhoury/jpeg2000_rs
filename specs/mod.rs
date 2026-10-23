@@ -9,10 +9,18 @@ mod packet;
 pub use packet::*;
 mod packet_orchestration;
 pub use packet_orchestration::*;
+mod packet_progression;
+pub use packet_progression::*;
+mod packet_tile;
+pub use packet_tile::*;
+mod packet_boundaries;
+pub use packet_boundaries::*;
 mod header;
 pub use header::*;
 mod tag_tree;
 pub use tag_tree::*;
+mod packet_input;
+pub use packet_input::*;
 
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,

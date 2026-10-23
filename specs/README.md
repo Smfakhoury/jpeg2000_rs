@@ -1,5 +1,113 @@
 # Specification audit guide
 
+The four original single/multi-code-block and JPIP inner/transaction guarantees
+are now complete native Result/full-state refinements. Follow
+`part1_single_code_block_packet`, `part1_multi_code_block_packet`,
+`part1_jpip_precinct_packet_inner` and `part1_jpip_precinct_packet` to the sole
+actual header/reader/body/clone producers. The explicit local/truncation error
+policy preserves original caller offsets without changing child decoder
+errors; zero-policy legacy models remain exact specializations. Complete
+bundle fields and real transaction rollback are modeled, not supplied outcomes.
+
+## Frozen remaining public packet/JPIP boundary profile
+
+This branch starts at unchanged `b5b0685`. The remaining native entry bodies are
+`decode_single_code_block_packet`, `decode_multi_code_block_packet`,
+`decode_jpip_precinct_packet_inner` and its actual
+`decode_jpip_precinct_packet` transaction. These complete the original F5L/F5H
+packet boundaries above the already-proved sole reader/tree/header, mixed body
+and progression producers, not an image/parser theorem or normative endorsement.
+
+Single-block admission uses the validated whole-payload reader (not prefix
+admission), exact absent-packet trailing-data rejection, real header/tree state
+and actual transactional mixed body decoding. It does not roll back prior
+header/tree commits on a later body error. Multi-block admission retains raw
+shared trees, physical arrays, all contexts, native marker differences, whole
+body preflight and every earlier block's effects; its local arithmetic/header
+errors use the caller offset, unlike the precinct helpers' zero-offset policy.
+SOP presence there does not validate its sequence number.
+
+JPIP writes all actual context layers and constructs its real inline packet
+input. Its outer transaction clones/restores only states, contexts and subbands;
+complete decoder preservation must follow from the real skipped-body path,
+not a supplied clone/decoder result or an assumed rollback. All raw metadata,
+malformed vectors/trees/retained decoder states, flags, caps and first-error
+effects are admitted without normalization, success, budget or trace premises.
+Faithful native subband cloning must preserve every scalar and both complete
+raw tag trees. Unobserved readonly template metadata is not decoder output.
+
+The four named actual entry bodies now refine `packet_boundaries.rs` without
+input premises. The complete single and multi posts observe actual results,
+every packet state/shared tree and entire decoder state/vector. Multi's real
+header loop carries all partial reader/tree/state/count/storage effects.
+Precinct and multi body paths now share the same executable preflight and
+execution loops with an explicit pair of truncation/local error offsets;
+decoder-origin errors are never remapped. Existing zero-offset relations remain
+proved specializations, not widened assumptions.
+
+The JPIP inner relation derives actual inline bytes, real context layers and
+the native absent packed-header source, using the tiny actual constructor
+observation from `85697b6`. Only relevant raw readonly fields are projected
+into the shared precinct admission relation; no foreign clone outcome is
+provided. Actual faithful subband `Clone` follows original field/allocation
+order and preserves unused raw tree words. The original outer Vec clones and
+restore statements prove full rollback through actual skipped-decoder and
+identity frames, while retaining complete inner Result/state semantics.
+This closes these named packet/JPIP entry guarantees, not an entire image/parser
+theorem, normative endorsement or an automatic whole-epic/project claim.
+
+Start the complete actual multi-tile-part chain at
+`part1_progression_tile_decode`, then follow actual native grid/iterator
+construction, raw packed/length input, boundary scan, context-layer writes,
+real precinct/header/mixed coefficients, ordered accounting and finish.
+`part1_packet_iterator_initial` and `part1_packet_context_layers` expose the
+complete actual constructor/update values without changing execution.
+The finite registry binds42 exact shapes, with40 real internal-consumer
+contracts and honest standalone public API support. No trace/list/outcome
+bank, normalized POC/grid/cursor or successful-budget premise is introduced.
+
+## Frozen remaining actual progression profile
+
+The next actual producers are `PacketGrid` construction/indexing,
+`PacketIterator` construction/candidate decoding/iteration,
+`ProgressionPacketIterator` construction/window/duplicate iteration, and
+`decode_progression_tile_packets_selected`. Their contracts admit every raw
+stored grid count/vector/offset, iterator cursor and nested default iterator;
+stored candidate/packet totals are not assumed consistent with physical arrays.
+Candidate advancement precedes decoding failures. Emission advancement precedes
+late stored-total rejection. POC window advancement and duplicate suppression,
+actual packed-byte reassembly and packet-length iteration, context-layer writes,
+complete precinct-vector effects and late offsets/aggregates retain native order.
+All first errors and partial state are observed without validity, normalization,
+success, adequate-budget or supplied outcome/coordinate traces.
+
+F5H owns only actual packet/grid/iterator/orchestration implementations and their
+specifications/proofs. F5L owns the sole actual raw packed-header and packet-length
+producer chain; Parent owns POC observations and typed limit getter facts.
+Frozen `0da8f58` remains unchanged while this separate progression branch
+continues. Completing a raw lookup/iterator stage alone is not full progression
+or F5H completion.
+
+The complete named actual grid/iterator and multi-tile-part caller join is now
+in `packet_progression.rs` and `packet_tile.rs`. Native raw constructors,
+lookups and both complete iterators feed the actual selected/public tile
+packet caller. Its preparation derives packed bytes and expected lengths
+through the sole real owner producers, not supplied results. Every progress
+field, nested default/length cursor, context-layer write, seen value, statistic,
+restart and late error is retained. Its complete post observes the real
+`TilePacketDecode`/error and entire final precinct vector, without shape,
+normalization, successful-decode, budget or coordinate/header trace premises.
+This named producer closure does not assert the separate remaining public
+single/multi-code-block/JPIP wrappers or complete F5H/normative/project scope.
+
+Actual POC records are exposed as their complete ordered native values,
+including duplicate/inverted/empty windows and progression-order tags.
+Actual membership preserves its layer-end, resolution and component
+comparisons without normalized-window premises. The existing typed
+tile-part/component/resolution/layer cap getters expose only their real
+fields; defaults, limits, API and execution are unchanged. These owner
+facts feed the pending real progression iterator and packet caller, not a
+supplied coordinate or outcome bank.
 The complete actual native header/reader/raw-tree and single-precinct chain is
 now bound by39 finite qualified whole-result/input recipes. Start at
 `part1_packet_header_decode`, then `part1_precinct_headers` and
@@ -103,6 +211,30 @@ model or subject decoder as an expected-output oracle.
 This closes this actual single-precinct packet boundary, not packet progression,
 tile-part reassembly, packet-length iteration, JPIP outer transactions, general
 codestream correctness or the F5H epic.
+
+## Raw packed-header and packet-length inputs
+
+[packet_input.rs](packet_input.rs) is the denotation for the actual packed
+reassembly and packet-length input producers. `Part1PackedHeaders` includes the
+entire source (None or raw marker storage, marker word and logical start), length
+and fragments. `Part1PacketLengths` includes the entire None/PLM/PLT source and
+both metadata counters; `Part1PacketLengthIter` includes that source and both raw
+cursor/end values. No topology, valid marker, canonical integer, normalized
+metadata, successful outcome or sufficient-budget hypothesis is required.
+
+The source owner supplies closed `packed_packet_headers_view`,
+`packet_lengths_view` and `packet_length_iter_view`; only the Result<Vec<u8>>
+projection `packed_header_reassembly_outcome` is open. Reassembly consumes the
+existing typed header-byte cap. Its private whole-scan record includes every
+output byte, both positions and the actual remaining-segment counter. All scan
+and byte-group recursion decreases come from the native traversal/guards.
+
+The actual native `next_length` model retains early PLT cursor commits on late
+errors, preserves arbitrary cursors for None, and never substitutes the stored
+packet count for the actual encoded source. The metadata getters do not assert
+that those independent fields agree. Existing associated `none` APIs delegate
+the actual free constructors `packed_packet_headers_none` and
+`packet_lengths_none`, avoiding an invented static-method proof binding.
 
 ## Native packet reader and raw tag-tree ownership
 
