@@ -2307,3 +2307,18 @@ This closes parsed-layout admission, not actual packet planning, decoder
 components, file normalization/opacity, frame output or complete F2/F4/F8.
 Frozen full-root/MSRV/native/reference/resource/hosted/main acceptance remain
 required, with no normative/conformance claim.
+## Complete actual tile-component geometry
+
+The original `ImageSize::tile_component_bounds` now has a complete raw-input
+Result relation: actual tile clipping/checked geometry, ordered logical and
+physical component admission, six registered ceilings, nonempty extents and
+relative image coordinates. Raw descriptor precision/sign remain unused;
+registration/subsampling and contradictory counts are not normalized away.
+
+The existing registered-ceiling computation is shared with the native decoder
+typed-layout output-region helper, retaining its distinct zero-divisor error kind.
+An explicit zero/one rounding branch exposes the same boolean conversion to
+the pinned verifier without a new trusted standard-library adapter. Three
+finite exact-input/result recipes, all 65,536 registration words and 168,750
+independent raw tile/descriptor contexts cover both native consumers. This
+does not close packet planning, file decoder output, or whole F2/F4/F8.
