@@ -2201,6 +2201,121 @@ fn registered_layer_geometry(
     Ok((width, height, pixels))
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, crate::specs::part2_composition_planes(final(colors)@), final(alpha)@)
+            == crate::specs::part2_registered_pixel(owned_layer_view(source),
+                crate::specs::part2_composition_planes(old(colors)@), old(alpha)@,
+                source_position.0, source_position.1,
+                destination_position.0, destination_position.1, destination_position.2),
+    )
+)]
+fn copy_registered_pixel(
+    source: &OwnedLayer,
+    source_position: (u32, u32),
+    destination_position: (u32, u32, u32),
+    colors: &mut [Vec<u16>],
+    alpha: &mut [u16],
+) -> Result<(), DecodeError> {
+    let (source_x, source_y) = source_position;
+    let (width, x, y) = destination_position;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost initial = crate::specs::part2_composition_planes(colors@); }
+    let source_index = index_of(source.width, source_x, source_y)?;
+    let destination = index_of(width, x, y)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_registered_colors_empty(
+            initial, owned_layer_view(source).3, source_index, destination);
+    }
+    let mut color = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant color <= colors.len(), initial.len() == colors.len(),
+                initial == crate::specs::part2_composition_planes(old(colors)@),
+                alpha@ == old(alpha)@,
+                crate::specs::part2_composition_pixel_index(owned_layer_view(source).0,
+                    source_position.0, source_position.1) == Some(source_index),
+                crate::specs::part2_composition_pixel_index(destination_position.0,
+                    destination_position.1, destination_position.2) == Some(destination),
+                crate::specs::part2_registered_colors_prefix(
+                    initial, owned_layer_view(source).3, source_index, destination, color as nat)
+                    == (Ok(()), crate::specs::part2_composition_planes(colors@)),
+            decreases colors.len() - color,
+        )
+    )]
+    while color < colors.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_registered_colors_step(
+                initial, owned_layer_view(source).3, source_index, destination, color as nat);
+        }
+        let result = copy_registered_color(source, color, source_index, destination, colors);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_registered_colors_prefix(
+                    initial, owned_layer_view(source).3, source_index, destination, color as nat + 1)
+                    == (Err(error), crate::specs::part2_composition_planes(colors@)));
+                crate::proofs::production_impl::production_registered_colors_error(
+                    initial, owned_layer_view(source).3, source_index, destination, color as nat + 1, initial.len());
+                assert(crate::specs::part2_registered_pixel(owned_layer_view(source), initial, old(alpha)@,
+                    source_position.0, source_position.1,
+                    destination_position.0, destination_position.1, destination_position.2)
+                    == (Err(error), crate::specs::part2_composition_planes(colors@), alpha@));
+            } else {
+                crate::proofs::production_impl::production_mct_unit_result(result);
+            }
+        }
+        result?;
+        color = color.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    *alpha.get_mut(destination).ok_or_else(invalid_layer)? = match source.alpha.as_ref() {
+        Some(value) => *value.0.get(source_index).ok_or_else(invalid_layer)?,
+        None => u16::MAX,
+    };
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, crate::specs::part2_composition_planes(final(colors)@))
+            == crate::specs::part2_registered_color_store(
+                crate::specs::part2_composition_planes(old(colors)@), owned_layer_view(source).3,
+                color as nat, source_index, destination),
+            final(colors)@.len() == old(colors)@.len(),
+    )
+)]
+fn copy_registered_color(
+    source: &OwnedLayer,
+    color: usize,
+    source_index: usize,
+    destination: usize,
+    colors: &mut [Vec<u16>],
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = colors@; }
+    let destination_samples = colors.get_mut(color).ok_or_else(invalid_layer)?;
+    let sample = match source.colors.get(color) {
+        Some(samples) => samples.get(source_index),
+        None => None,
+    }
+    .ok_or_else(invalid_layer)?;
+    *destination_samples
+        .get_mut(destination)
+        .ok_or_else(invalid_layer)? = *sample;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part2_composition_planes(colors@) =~=
+            crate::specs::part2_composition_planes(before).update(color as int,
+                before[color as int]@.update(destination as int, *sample)));
+    }
+    Ok(())
+}
+
 fn register_layer(
     source: &OwnedLayer,
     registration: &jp2::CodestreamRegistration,
@@ -2261,35 +2376,13 @@ fn register_layer(
                             horizontal_subsampling,
                         );
                         if source_x < source.width {
-                            let source_index = index_of(source.width, source_x, source_y)?;
-                            let destination = index_of(width, x, y)?;
-                            let mut color = 0_usize;
-                            #[cfg_attr(
-                                verus_keep_ghost,
-                                verus_spec(
-                                    invariant color <= colors.len(),
-                                    decreases colors.len() - color,
-                                )
-                            )]
-                            while color < colors.len() {
-                                let destination_samples =
-                                    colors.get_mut(color).ok_or_else(invalid_layer)?;
-                                *destination_samples
-                                    .get_mut(destination)
-                                    .ok_or_else(invalid_layer)? = *source
-                                    .colors
-                                    .get(color)
-                                    .and_then(|samples| samples.get(source_index))
-                                    .ok_or_else(invalid_layer)?;
-                                color = color.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                            }
-                            *alpha.get_mut(destination).ok_or_else(invalid_layer)? =
-                                match source.alpha.as_ref() {
-                                    Some(value) => {
-                                        *value.0.get(source_index).ok_or_else(invalid_layer)?
-                                    }
-                                    None => u16::MAX,
-                                };
+                            copy_registered_pixel(
+                                source,
+                                (source_x, source_y),
+                                (width, x, y),
+                                &mut colors,
+                                &mut alpha,
+                            )?;
                         }
                     }
                     x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -3800,6 +3893,111 @@ mod tests {
         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    #[test]
+    fn registered_pixel_preserves_ordered_partial_colors_and_alpha_errors() {
+        let sources = [
+            vec![],
+            vec![vec![]],
+            vec![vec![7, 11], vec![13]],
+            vec![vec![17, 19, 23, 29]; 4],
+        ];
+        let destinations = [
+            vec![],
+            vec![vec![]],
+            vec![vec![101]],
+            vec![vec![103, 107], vec![]],
+            vec![vec![109, 113, 127]; 4],
+        ];
+        let mut cases = 0;
+        for source_width in [0, 1, 2, u32::MAX] {
+            for source_position in [(0, 0), (1, 0), (0, 1), (2, 1), (u32::MAX, u32::MAX)] {
+                for destination_position in [
+                    (0, 0, 0),
+                    (1, 0, 0),
+                    (2, 1, 0),
+                    (2, 0, 1),
+                    (u32::MAX, u32::MAX, u32::MAX),
+                ] {
+                    for source_colors in &sources {
+                        for initial_colors in &destinations {
+                            for source_alpha in [
+                                None,
+                                Some((vec![], false)),
+                                Some((vec![0, 31, 37, u16::MAX], false)),
+                                Some((vec![41, 43, 47, 53], true)),
+                            ] {
+                                for initial_alpha in [vec![], vec![131], vec![137, 139, 149]] {
+                                    let source = OwnedLayer {
+                                        width: source_width,
+                                        height: 1,
+                                        color_space: ConvertedColorSpace::Srgb,
+                                        colors: source_colors.clone(),
+                                        alpha: source_alpha.clone(),
+                                    };
+                                    let mut expected_colors = initial_colors.clone();
+                                    let mut expected_alpha = initial_alpha.clone();
+                                    let expected = (|| -> Result<(), DecodeError> {
+                                        let source_index = usize::try_from(
+                                            u128::from(source_position.1)
+                                                * u128::from(source_width)
+                                                + u128::from(source_position.0),
+                                        )
+                                        .map_err(|_| arithmetic_overflow())?;
+                                        let destination = usize::try_from(
+                                            u128::from(destination_position.2)
+                                                * u128::from(destination_position.0)
+                                                + u128::from(destination_position.1),
+                                        )
+                                        .map_err(|_| arithmetic_overflow())?;
+                                        for (channel, output) in
+                                            expected_colors.iter_mut().enumerate()
+                                        {
+                                            let value = source_colors
+                                                .get(channel)
+                                                .and_then(|samples| samples.get(source_index))
+                                                .ok_or_else(invalid_layer)?;
+                                            *output
+                                                .get_mut(destination)
+                                                .ok_or_else(invalid_layer)? = *value;
+                                        }
+                                        let value = match &source_alpha {
+                                            None => u16::MAX,
+                                            Some((samples, _)) => *samples
+                                                .get(source_index)
+                                                .ok_or_else(invalid_layer)?,
+                                        };
+                                        *expected_alpha
+                                            .get_mut(destination)
+                                            .ok_or_else(invalid_layer)? = value;
+                                        Ok(())
+                                    })();
+                                    let mut colors = initial_colors.clone();
+                                    let mut alpha = initial_alpha;
+                                    assert_eq!(
+                                        copy_registered_pixel(
+                                            &source,
+                                            source_position,
+                                            destination_position,
+                                            &mut colors,
+                                            &mut alpha
+                                        ),
+                                        expected
+                                    );
+                                    assert_eq!(colors, expected_colors);
+                                    assert_eq!(alpha, expected_alpha);
+                                    assert_eq!(source.colors, *source_colors);
+                                    assert_eq!(source.alpha, source_alpha);
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 24000);
+    }
 
     fn independent_registered_extent(
         samples: u32,

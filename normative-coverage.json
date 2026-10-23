@@ -4,6 +4,34 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-registration-pixel",
+      "topic": "Complete actual registered color and alpha pixel-copy Result/full mutable buffer relations over raw coordinates, raw source owner and raw destination planes. Checked source then destination index, ordered per-color source/destination failures, preserved earlier stores, alpha read/store after all colors and opaque default alpha derive from the sole actual producer. No normalized coordinate/plane/alpha premise or supplied read/store result. Full outer registration traversal, opacity and F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "register_layer"},
+        {"path": "src/jpx.rs", "symbol": "copy_registered_pixel"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_registered_color_store"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_pixel"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_colors_prefix"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "copy_registered_color"},
+        {"path": "src/jpx.rs", "symbol": "copy_registered_pixel"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "owned_layer_view"},
+        {"path": "src/jpx.rs", "symbol": "index_of"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_colors_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_colors_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_registered_colors_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_mct_unit_result"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "registered_pixel_preserves_ordered_partial_colors_and_alpha_errors"}
+      ]
+    },
+    {
       "id": "part2-complete-native-registration-geometry",
       "topic": "Complete actual raw registered extent and registration geometry admission: zero-grid/ratio rejection, checked products/offset/rounding/typed width and height, axis error ordering and native area conversion. The register_layer consumer executes the shared real preparation; no successful extent, normalized geometry or admitted allocation premise. Source samples and registration raster output remain separate F2 work.",
       "implementation_refs": [

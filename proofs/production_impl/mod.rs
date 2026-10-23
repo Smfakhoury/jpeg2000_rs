@@ -32,6 +32,44 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_registered_colors_empty(
+    initial: Seq<Seq<u16>>, source: Seq<Seq<u16>>, source_index: usize, destination: usize,
+)
+    ensures crate::specs::part2_registered_colors_prefix(initial, source, source_index, destination, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part2_registered_colors_prefix, 1);
+}
+
+pub proof fn production_registered_colors_step(
+    initial: Seq<Seq<u16>>, source: Seq<Seq<u16>>, source_index: usize, destination: usize, count: nat,
+)
+    ensures crate::specs::part2_registered_colors_prefix(initial, source, source_index, destination, count + 1) == {
+        let previous = crate::specs::part2_registered_colors_prefix(initial, source, source_index, destination, count);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => crate::specs::part2_registered_color_store(previous.1, source, count, source_index, destination),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_registered_colors_prefix, 1);
+}
+
+pub proof fn production_registered_colors_error(
+    initial: Seq<Seq<u16>>, source: Seq<Seq<u16>>, source_index: usize, destination: usize,
+    count: nat, finish: nat,
+)
+    requires count <= finish,
+        crate::specs::part2_registered_colors_prefix(initial, source, source_index, destination, count).0.is_err(),
+    ensures crate::specs::part2_registered_colors_prefix(initial, source, source_index, destination, finish)
+        == crate::specs::part2_registered_colors_prefix(initial, source, source_index, destination, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_registered_colors_step(initial, source, source_index, destination, (finish - 1) as nat);
+        production_registered_colors_error(initial, source, source_index, destination, count, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_chroma_key_prefix_step(
     colors: Seq<Seq<u16>>, keys: Seq<u16>, pixel: int, count: nat,
 )
