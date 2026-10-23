@@ -667,6 +667,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_OPACITY_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_native_external_alpha_and_all_scratch_state(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-external-alpha"},
+            framework._LAYER_EXTERNAL_ALPHA_CONTRACTS, 3,
+        )
+
     def test_inventory_binds_actual_decoder_style_and_component_depth_admission(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-decoder-style-admission"},

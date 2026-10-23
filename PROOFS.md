@@ -2234,6 +2234,30 @@ complete owners, all original keys/policy/flag/offset bindings and real callers.
 This closes local opacity mutations, not external decoded/registered-alpha
 copy, complete file preparation or F2/F4/F8. Every frozen full-root/MSRV/
 native/reference/resource/hosted/main delivery gate remains explicit.
+## Complete actual external-alpha copy and scratch state
+
+The real external-opacity path now executes one complete
+`copy_registered_layer_opacity` producer. Its Result/whole-owner model derives
+first-color admission before target area, zero initialization, minimum copy
+rectangle, all actual pixel/row stores and final-only alpha/representation
+commit from the raw target and registered source. Source alpha and later
+color planes remain deliberately unobserved. No normalized source, prepared
+mask, successful read/store or budget premise is supplied.
+
+The sole pixel/row bodies preserve target-before-source checked-address
+ordering and source-read-before-destination-store behavior. Their full scratch
+relations retain prior stores on later failure, while the target owner remains
+unchanged until the whole copy succeeds. Column/row error absorption is proved
+separately and bound to real input/output state.
+
+Independent wide-index references cover 31,104 raw target/source/rectangle/
+representation cases and4,096 pixel/index/plane cases, plus a late-row partial
+scratch regression and first-color-before-huge-area rejection. Three finite
+exact recipes require all original owners/coordinates and complete final state.
+
+This closes actual external-alpha copying, not the complete parsed-file
+opacity preparation/dispatch or F2/F4/F8 joins. Full-root/MSRV/local/hosted
+and actual owner-main acceptance remain separate delivery gates.
 ## Actual decoder Part2 style admission and raw depth observations
 
 The actual `validate_part2_coding_style` now has a complete native Result model

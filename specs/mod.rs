@@ -5647,6 +5647,75 @@ pub type Part2LayerAlpha = (Seq<u16>, bool);
 pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayer = (u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>);
+pub type Part2OpacityCopyContext = (Seq<u16>, u32, u32);
+
+pub open spec fn part2_opacity_pixel(
+    context: Part2OpacityCopyContext, x: u32, y: u32, alpha: Seq<u16>,
+) -> (Result<(), crate::DecodeError>, Seq<u16>) {
+    match part2_composition_pixel_index(context.2, x, y) {
+        None => (Err(part2_composition_error(true)), alpha),
+        Some(destination) => match part2_composition_pixel_index(context.1, x, y) {
+            None => (Err(part2_composition_error(true)), alpha),
+            Some(source) => if source >= context.0.len() || destination >= alpha.len() {
+                (Err(part2_composition_error(false)), alpha)
+            } else { (Ok(()), alpha.update(destination as int, context.0[source as int])) },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_opacity_columns_prefix(
+    context: Part2OpacityCopyContext, y: u32, initial: Seq<u16>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<u16>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_opacity_columns_prefix(context, y, initial, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_opacity_pixel(context, (count - 1) as u32, y, previous.1),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_opacity_rows_prefix(
+    context: Part2OpacityCopyContext, width: u32, initial: Seq<u16>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<u16>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_opacity_rows_prefix(context, width, initial, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_opacity_columns_prefix(context, (count - 1) as u32, previous.1, width as nat),
+        }
+    }
+}
+
+pub open spec fn part2_copy_registered_opacity(owned: Part2OwnedLayer, source: Part2OwnedLayer, premultiplied: bool)
+    -> (Result<(), crate::DecodeError>, Part2OwnedLayer)
+{
+    if source.3.len() == 0 { (Err(part2_composition_error(false)), owned) }
+    else {
+        match part2_layer_area(owned.0, owned.1) {
+            Err(error) => (Err(error), owned),
+            Ok(pixels) => {
+                let width = if owned.0 < source.0 { owned.0 } else { source.0 };
+                let height = if owned.1 < source.1 { owned.1 } else { source.1 };
+                let initial = Seq::new(pixels as nat, |_index: int| 0u16);
+                let copied = part2_opacity_rows_prefix((source.3[0], source.0, owned.0), width, initial, height as nat);
+                match copied.0 {
+                    Err(error) => (Err(error), owned),
+                    Ok(()) => (Ok(()), (owned.0, owned.1, owned.2, owned.3, Some((copied.1, premultiplied)))),
+                }
+            },
+        }
+    }
+}
+
 pub type Part2ComponentKeyAssembly = (Result<(), crate::DecodeError>, Seq<u16>, usize);
 
 #[verifier::opaque]
