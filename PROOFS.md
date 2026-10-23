@@ -274,9 +274,23 @@ Prepared standard RCT/ICT now also has complete admission/pixel/traversal
 relations and uses the already proved actual scalar component transform
 instead of a second arithmetic implementation. Disabled transforms still
 skip validation; geometry, raw fractional tags, prior successful pixels and
-all error states are preserved. These producer joins remain distinct from
-coherent current-main acceptance, a complete coefficient-to-image coordinator,
-independent array-MCT conformance and whole-project completion.
+all error states are preserved.
+
+The actual `reconstruct_planned_tile` now composes raw planned coefficient
+values, coding-style lookup, first-match kernel selection, ROI/quantization/
+inverse preparation, optional complete MCT and standard RCT/ICT into one
+Result/prepared-vector/work relation. Both full and selected decoder paths use
+that same body. `assemble_prepared_components`, `decode_prepared_image` and
+the public supplied-progression reconstruction API close the real borrowed
+tile/full-selected assembly joins. No decoded coefficient or transformation
+outcome is supplied to these models.
+
+Fifteen finite exact reconstruction shapes preserve all old/final owners,
+input projections, caps and selection parameters. The two standalone public
+MCT/progression APIs are checked through an explicit proof-support whitelist,
+not fabricated internal consumers. Negative mutations and all original packet
+checks remain enabled. Coherent main/hosted acceptance, independent array-MCT
+conformance and whole-project completion remain separate.
 
 ## Complete actual MQ and legacy three-pass producers
 

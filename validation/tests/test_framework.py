@@ -619,6 +619,12 @@ class FrameworkTests(WorkingFiles):
             "part1-complete-native-public-packet-boundaries",
         }, framework._PACKET_WRAPPER_CONTRACTS, 14)
 
+    def test_inventory_binds_complete_coefficient_reconstruction_and_real_mct_owners(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-coefficient-component-reconstruction"},
+            framework._RECONSTRUCTION_CONTRACTS, 15,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
@@ -658,6 +664,7 @@ class FrameworkTests(WorkingFiles):
                 if caller["path"] != reference["path"] else framework._coverage_same_file_call(
                     original, caller["symbol"], reference["symbol"].rsplit("::", 1)[-1],
                 )
+
             )]
             isolated = coverage["requirements"][0]
             if claimed_consumer:

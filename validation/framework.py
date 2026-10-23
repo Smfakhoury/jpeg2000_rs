@@ -696,6 +696,92 @@ _PACKET_PROVED_BOUNDARY_APIS = frozenset({
     ("src/packet.rs", "decode_multi_code_block_packet"),
 })
 
+def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
+    def args(*values: str) -> str:
+        return r"\s*,\s*".join(values)
+
+    def old(name: str) -> str:
+        return _coverage_call("old", re.escape(name))
+
+    def final(name: str) -> str:
+        return _coverage_call("final", re.escape(name))
+
+    def view(name: str, *values: str) -> str:
+        return _coverage_call(name, *values)
+
+    def cap(name: str) -> str:
+        return view("crate::limits::resource_" + name + "_limit", "limits")
+
+    caps = args(cap("work"), cap("decoded_bytes"))
+    components_old = view("transform_components_view", old("components"))
+    components_final = args(view("transform_components_view", final("components")), r"\*\s*" + final("work"))
+    work_old = r"\*\s*" + old("work")
+    collection = view("crate::codestream::mct_collection_view", "collection")
+    stage = view("crate::codestream::mct_stage_view", "stage") + r"\s*\.1"
+    stages = view("crate::codestream::multiple_component_transform_view", "transform")
+    prepared_old = view("prepared_components_view", old("prepared") + r"\s*@")
+    prepared_final = view("prepared_components_view", final("prepared") + r"\s*@")
+    size = args(view("codestream::image_size_component_count", "size"), view("codestream::image_size_component_infos", "size"))
+    owner_array = r"\s*@\s*\.len\s*\(\s*\)"
+    prepared_map_old = view("Seq::new", old("prepared") + owner_array,
+        r"\|\s*index\s*:\s*int\s*\|\s*" + view("prepared_component_view", old("prepared") + r"\s*@\s*\[\s*index\s*\]"))
+    prepared_map_final = view("Seq::new", final("prepared") + owner_array,
+        r"\|\s*index\s*:\s*int\s*\|\s*" + view("prepared_component_view", final("prepared") + r"\s*@\s*\[\s*index\s*\]"))
+    image_contracts = {
+        **{name: (model, r"\1", components_final, args(components_old, collection, work_old, caps))
+           for name, model in (
+               ("apply_mct_dependency", "part2_mct_dependency"),
+               ("apply_mct_decorrelation", "part2_mct_decorrelation"),
+               ("apply_mct_wavelet", "part2_mct_wavelet"),
+               ("apply_mct_collection", "part2_mct_collection"),
+           )},
+        "apply_mct_stage": ("part2_mct_stage_prefix", r"\1", components_final,
+            args(components_old, stage, work_old, caps, stage + r"\s*\.len\s*\(\s*\)")),
+        "apply_multiple_component_transform_components": ("part2_mct_transform", r"\1", components_final,
+            args(components_old, stages, work_old, caps)),
+        "apply_multiple_component_transform": ("part2_mct_decoded_image", r"\1",
+            view("decoded_image_view", r"\*\s*" + final("image")),
+            args(view("decoded_image_view", r"\*\s*" + old("image")), stages, caps)),
+    }
+    decode_contracts = {
+        "apply_tile_multiple_component_transform": ("part2_mct_prepared_tiles", r"\1",
+            args(prepared_map_final, r"\*\s*" + final("work")), args(prepared_map_old, size,
+                view("codestream::multiple_component_transform_view", "transform"), work_old, caps)),
+        "finish_prepared_tile": ("part2_finish_prepared_tile", r"\1",
+            args(prepared_final, r"\*\s*" + final("work")),
+            args(prepared_old, size, view("tile_mct_option", "mct"), "standard", work_old, caps)),
+        "reconstruct_planned_tile": ("part2_reconstruct_planned_tile", r"\1",
+            args(prepared_final, r"\*\s*" + final("work")),
+            args(prepared_old, view("planned_components_view", "plan"), view("prepare_precincts_view", r"plan\.precincts@"),
+                 r"first\.component_coding_styles", view("codestream::part2_kernel_registry", r"&\s*first\.part2_extensions"),
+                 size, view("tile_part_mct_view", "first"), "standard", work_old, caps)),
+        "apply_prepared_component_transform": ("part1_prepared_standard_transform", r"\1", prepared_final,
+            args(prepared_old, "transform")),
+        "assemble_prepared_components": ("part2_assemble_prepared", view("crate::image::decoded_image_outcome", r"\1"), None,
+            args(view("crate::image::assembly_size_view", "size"), view("prepared_components_view", "prepared@"), "selection", cap("decoded_bytes"))),
+        "decode_prepared_image": ("part1_decode_prepared_image", view("crate::image::decoded_image_outcome", r"\1"), None,
+            args(view("crate::image::assembly_size_view", "size"), view("crate::image::assembly_tiles_view", "tile_components@"),
+                 "component_transform", cap("decoded_bytes"))),
+        "decode_progression_prepared_image": ("part1_progression_prepared_image", view("crate::image::decoded_image_outcome", r"\1"), None,
+            args(view("crate::image::assembly_size_view", "size"),
+                 *(view("progression_reconstruction_view", "plan") + rf"\s*\.{index}" for index in range(4)),
+                 cap("decoded_bytes"))),
+    }
+    return {
+        **{("src/image.rs", name): recipe for name, recipe in image_contracts.items()},
+        **{("src/decode.rs", name): recipe for name, recipe in decode_contracts.items()},
+        ("src/codestream.rs", "Part2Extensions::arbitrary_kernel"): (
+            "part2_kernel_registry_lookup", view("crate::transform::arbitrary_kernel_option", r"\1"), None,
+            args(view("part2_kernel_registry", "self"), "index")),
+    }
+
+
+_RECONSTRUCTION_CONTRACTS = _reconstruction_contracts()
+_RECONSTRUCTION_PROVED_BOUNDARY_APIS = frozenset({
+    ("src/image.rs", "apply_multiple_component_transform"),
+    ("src/decode.rs", "decode_progression_prepared_image"),
+})
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -759,7 +845,7 @@ def validate_normative_coverage(
         spec_symbols = {reference["symbol"] for reference in entry["spec_refs"]}
         proved_apis = [
             reference for reference in entry["proof_refs"]
-            if (reference["path"], reference["symbol"]) in _PACKET_PROVED_BOUNDARY_APIS
+            if (reference["path"], reference["symbol"]) in (_PACKET_PROVED_BOUNDARY_APIS | _RECONSTRUCTION_PROVED_BOUNDARY_APIS)
             and reference not in entry["contract_refs"]
         ]
         for reference in [*entry["contract_refs"], *proved_apis]:
@@ -1197,6 +1283,7 @@ def validate_normative_coverage(
                 _PACKET_HEADER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_PROGRESSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]

@@ -32,6 +32,83 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_reconstruct_components_empty(
+    initial: Seq<crate::specs::Part1AssemblyTile>, plans: Seq<crate::specs::Part1PreparePlan>,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, styles: crate::codestream::ComponentCodingStyles,
+    kernels: Seq<(u8, crate::specs::Part2RawKernel)>, maximum: u64,
+)
+    ensures crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part2_reconstruct_components_prefix, 1);
+}
+
+pub proof fn production_reconstruct_components_step(
+    initial: Seq<crate::specs::Part1AssemblyTile>, plans: Seq<crate::specs::Part1PreparePlan>,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, styles: crate::codestream::ComponentCodingStyles,
+    kernels: Seq<(u8, crate::specs::Part2RawKernel)>, maximum: u64, count: nat,
+)
+    requires count < plans.len(),
+    ensures crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum, count + 1)
+        == {
+            let previous = crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => match crate::specs::part2_reconstruct_component(plans[count as int], precincts, styles, kernels, maximum) {
+                    Err(error) => (Err(error), previous.1), Ok(component) => (Ok(()), previous.1.push(component)),
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_reconstruct_components_prefix, 1);
+}
+
+pub proof fn production_reconstruct_components_error(
+    initial: Seq<crate::specs::Part1AssemblyTile>, plans: Seq<crate::specs::Part1PreparePlan>,
+    precincts: Seq<Seq<crate::specs::Tier1RawPlane>>, styles: crate::codestream::ComponentCodingStyles,
+    kernels: Seq<(u8, crate::specs::Part2RawKernel)>, maximum: u64, count: nat, finish: nat,
+)
+    requires count <= finish <= plans.len(),
+    ensures crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum, count).0.is_err()
+        ==> crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum, finish)
+            == crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_reconstruct_components_error(initial, plans, precincts, styles, kernels, maximum, count, (finish - 1) as nat);
+        production_reconstruct_components_step(initial, plans, precincts, styles, kernels, maximum, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_kernel_registry_empty(kernels: Seq<(u8, crate::specs::Part2RawKernel)>, index: u8)
+    ensures crate::specs::part2_kernel_registry_prefix(kernels, index, 0) == None,
+{
+    reveal_with_fuel(crate::specs::part2_kernel_registry_prefix, 1);
+}
+
+pub proof fn production_kernel_registry_step(kernels: Seq<(u8, crate::specs::Part2RawKernel)>, index: u8, count: nat)
+    requires count < kernels.len(),
+    ensures crate::specs::part2_kernel_registry_prefix(kernels, index, count + 1)
+        == match crate::specs::part2_kernel_registry_prefix(kernels, index, count) {
+            Some(value) => Some(value),
+            None => if kernels[count as int].0 == index { Some(kernels[count as int].1) } else { None },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_kernel_registry_prefix, 1);
+}
+
+pub proof fn production_kernel_registry_found(kernels: Seq<(u8, crate::specs::Part2RawKernel)>, index: u8, count: nat, finish: nat)
+    requires count <= finish <= kernels.len(),
+    ensures crate::specs::part2_kernel_registry_prefix(kernels, index, count).is_some()
+        ==> crate::specs::part2_kernel_registry_prefix(kernels, index, finish)
+            == crate::specs::part2_kernel_registry_prefix(kernels, index, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_kernel_registry_found(kernels, index, count, (finish - 1) as nat);
+        production_kernel_registry_step(kernels, index, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_prepared_standard_empty(before: Seq<crate::specs::Part1AssemblyTile>, irreversible: bool)
     ensures crate::specs::part1_prepared_standard_prefix(before, irreversible, 0) == (Ok(()), before),
 {

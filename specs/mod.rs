@@ -43,6 +43,141 @@ pub type Part2MctWaveletPreparation = (
 );
 pub type Part2MctWaveletInterval = (i64, i64, Seq<bool>, Seq<usize>);
 
+#[verifier::opaque]
+pub open spec fn part2_kernel_registry_prefix(kernels: Seq<(u8, Part2RawKernel)>, index: u8, count: nat) -> Option<Part2RawKernel>
+    decreases count,
+{
+    if count == 0 { None }
+    else {
+        let previous = part2_kernel_registry_prefix(kernels, index, (count - 1) as nat);
+        match previous {
+            Some(_) => previous,
+            None => if count - 1 >= kernels.len() { None }
+                else if kernels[count as int - 1].0 == index { Some(kernels[count as int - 1].1) } else { None },
+        }
+    }
+}
+
+pub open spec fn part2_kernel_registry_lookup(kernels: Seq<(u8, Part2RawKernel)>, index: u8) -> Option<Part2RawKernel> {
+    part2_kernel_registry_prefix(kernels, index, kernels.len())
+}
+
+pub open spec fn part2_reconstruct_component(
+    plan: Part1PreparePlan, precincts: Seq<Seq<Tier1RawPlane>>, styles: crate::codestream::ComponentCodingStyles,
+    kernels: Seq<(u8, Part2RawKernel)>, maximum_bytes: u64,
+) -> Result<Part1AssemblyTile, crate::DecodeError> {
+    match crate::codestream::component_coding_style_result(&styles, plan.component) {
+        Err(error) => Err(error),
+        Ok(style) => {
+            let kernel = match style.transform {
+                crate::codestream::WaveletTransform::Arbitrary(index) => part2_kernel_registry_lookup(kernels, index),
+                _ => None,
+            };
+            part2_prepare_component(plan, precincts, crate::decode::prepare_style_view(style), kernel, maximum_bytes)
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_reconstruct_components_prefix(
+    initial: Seq<Part1AssemblyTile>, plans: Seq<Part1PreparePlan>, precincts: Seq<Seq<Tier1RawPlane>>,
+    styles: crate::codestream::ComponentCodingStyles, kernels: Seq<(u8, Part2RawKernel)>, maximum_bytes: u64, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum_bytes, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 >= plans.len() { (Err(part1_block_placement_error(false)), previous.1) }
+                else { match part2_reconstruct_component(plans[count as int - 1], precincts, styles, kernels, maximum_bytes) {
+                    Err(error) => (Err(error), previous.1), Ok(component) => (Ok(()), previous.1.push(component)),
+                } },
+        }
+    }
+}
+
+pub open spec fn part2_finish_prepared_tile(
+    before: Seq<Part1AssemblyTile>, component_count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+    mct: Option<Seq<Part2MctStage>>, standard: (bool, bool), work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>, u64) {
+    let transformed = match mct {
+        None => (Ok(()), before, work),
+        Some(stages) => part2_mct_prepared_tiles(before, component_count, infos, stages, work, maximum_work, maximum_bytes),
+    };
+    match transformed.0 {
+        Err(_) => transformed,
+        Ok(()) => {
+            let standard_result = part1_prepared_standard_transform(transformed.1, standard);
+            (standard_result.0, standard_result.1, transformed.2)
+        },
+    }
+}
+
+pub open spec fn part2_reconstruct_planned_tile(
+    initial: Seq<Part1AssemblyTile>, plans: Seq<Part1PreparePlan>, precincts: Seq<Seq<Tier1RawPlane>>,
+    styles: crate::codestream::ComponentCodingStyles, kernels: Seq<(u8, Part2RawKernel)>,
+    component_count: u16, infos: Seq<crate::codestream::ComponentInfo>, mct: Option<Seq<Part2MctStage>>,
+    standard: (bool, bool), work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part1AssemblyTile>, u64) {
+    let prepared = part2_reconstruct_components_prefix(initial, plans, precincts, styles, kernels, maximum_bytes, plans.len());
+    match prepared.0 {
+        Err(error) => (Err(error), prepared.1, work),
+        Ok(()) => {
+            let finished = part2_finish_prepared_tile(prepared.1.skip(initial.len() as int),
+                component_count, infos, mct, standard, work, maximum_work, maximum_bytes);
+            (finished.0, initial + finished.1, finished.2)
+        },
+    }
+}
+
+pub open spec fn part1_decode_prepared_image(
+    size: Part1AssemblySize, tiles: Seq<Part1AssemblyTile>, transform: crate::decode::ComponentTransform, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match part1_assemble_image(size, tiles, maximum) {
+        Err(error) => Err(error),
+        Ok(image) => {
+            let transformed = match transform {
+                crate::decode::ComponentTransform::None => (Ok(()), image),
+                crate::decode::ComponentTransform::Reversible => part1_apply_component_transform(image, false),
+                crate::decode::ComponentTransform::Irreversible => part1_apply_component_transform(image, true),
+            };
+            match transformed.0 { Err(error) => Err(error), Ok(()) => Ok(transformed.1) }
+        },
+    }
+}
+
+pub open spec fn part2_assemble_prepared(
+    size: Part1AssemblySize, prepared: Seq<Part1AssemblyTile>, selection: Option<([u32; 4], u8)>, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match selection {
+        None => part1_assemble_image(size, prepared, maximum),
+        Some((region, levels)) => part1_assemble_selected_image(size, prepared, region, levels, maximum),
+    }
+}
+
+pub open spec fn part1_progression_prepared_image(
+    size: Part1AssemblySize, plans: Seq<Part1PreparePlan>, precincts: Seq<Seq<Tier1RawPlane>>,
+    styles: crate::codestream::ComponentCodingStyles, global: crate::codestream::CodingStyle, maximum: u64,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    let prepared = part2_reconstruct_components_prefix(Seq::empty(), plans, precincts, styles, Seq::empty(), maximum, plans.len());
+    match prepared.0 {
+        Err(error) => Err(error),
+        Ok(()) => if !global.multiple_component_transform {
+            part1_decode_prepared_image(size, prepared.1, crate::decode::ComponentTransform::None, maximum)
+        } else { match global.transform {
+            crate::codestream::WaveletTransform::Reversible5x3 =>
+                part1_decode_prepared_image(size, prepared.1, crate::decode::ComponentTransform::Reversible, maximum),
+            crate::codestream::WaveletTransform::Irreversible9x7 =>
+                part1_decode_prepared_image(size, prepared.1, crate::decode::ComponentTransform::Irreversible, maximum),
+            crate::codestream::WaveletTransform::Arbitrary(_) => Err(crate::DecodeError::MalformedInput {
+                offset: 0, kind: crate::MalformedKind::MissingRequiredStructure,
+            }),
+        } },
+    }
+}
+
 pub open spec fn part2_mct_decoded_inputs(before: Seq<Part1DecodedComponentModel>) -> Seq<Part2MctComponent> {
     Seq::new(before.len(), |index: int| (index as u16,
         (0u32, 0u32, before[index].0, before[index].1, before[index].2.x_subsampling, before[index].2.y_subsampling),

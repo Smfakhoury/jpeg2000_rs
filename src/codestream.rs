@@ -1502,6 +1502,14 @@ pub struct Part2Extensions {
     metadata_bytes: u64,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn part2_kernel_registry(extensions: &Part2Extensions) -> Seq<(u8, crate::specs::Part2RawKernel)> {
+        Seq::new(extensions.arbitrary_kernels@.len(), |index: int|
+            (extensions.arbitrary_kernels@[index].index, raw_kernel_view(extensions.arbitrary_kernels@[index])))
+    }
+}
+
 impl Part2Extensions {
     pub fn decomposition_structures(&self) -> &[DecompositionStructure] {
         &self.decomposition_structures
@@ -1554,10 +1562,32 @@ impl Part2Extensions {
             .find(|structure| structure.index == index)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures crate::transform::arbitrary_kernel_option(result)
+            == crate::specs::part2_kernel_registry_lookup(part2_kernel_registry(self), index),
+    ))]
     pub(crate) fn arbitrary_kernel(&self, index: u8) -> Option<&ArbitraryKernel> {
-        self.arbitrary_kernels
-            .iter()
-            .find(|kernel| kernel.index == index)
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_kernel_registry_empty(part2_kernel_registry(self), index); }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= self.arbitrary_kernels.len(),
+            crate::specs::part2_kernel_registry_prefix(part2_kernel_registry(self), index, position as nat) == None,
+            decreases self.arbitrary_kernels.len() - position,
+        ))]
+        while position < self.arbitrary_kernels.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                crate::proofs::production_impl::production_kernel_registry_step(part2_kernel_registry(self), index, position as nat);
+                crate::proofs::production_impl::production_kernel_registry_found(part2_kernel_registry(self), index, position as nat + 1, self.arbitrary_kernels@.len());
+            }
+            let kernel = &self.arbitrary_kernels[position];
+            if kernel.index == index {
+                return Some(kernel);
+            }
+            position += 1;
+        }
+        None
     }
 
     pub(crate) fn arbitrary_decomposition(&self, index: u8) -> Option<&ArbitraryDecomposition> {
@@ -9061,6 +9091,48 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actual_kernel_registry_retains_first_duplicates_and_every_raw_index() {
+        let kernel = |index, reversible| ArbitraryKernel {
+            index,
+            reversible,
+            descriptor: u16::MAX,
+            coefficient_type: u8::MAX,
+            whole_sample_filter: false,
+            initial_odd: true,
+            whole_sample_extension: false,
+            scaling: None,
+            steps: Vec::new(),
+        };
+        for first in 0..=u8::MAX {
+            let extensions = Part2Extensions {
+                arbitrary_kernels: vec![
+                    kernel(first, true),
+                    kernel(first.wrapping_add(1), false),
+                    kernel(first, false),
+                ],
+                ..Part2Extensions::default()
+            };
+            for index in 0..=u8::MAX {
+                let expected = if index == first {
+                    Some(0)
+                } else if index == first.wrapping_add(1) {
+                    Some(1)
+                } else {
+                    None
+                };
+                let actual = extensions.arbitrary_kernel(index);
+                assert_eq!(actual.is_some(), expected.is_some());
+                if let Some(position) = expected {
+                    assert!(std::ptr::eq(
+                        actual.unwrap(),
+                        &extensions.arbitrary_kernels[position]
+                    ));
+                }
+            }
+        }
+    }
 
     fn input_error_literal(offset: usize, kind: MalformedKind) -> DecodeError {
         DecodeError::MalformedInput {

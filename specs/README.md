@@ -82,8 +82,10 @@ from actual owner buffers and size metadata. Checked final-field borrow
 promises reconnect actual transformed samples/tags to the original owners;
 no successful decoder or transformation result is supplied as an input.
 Prepared standard RCT/ICT similarly refines its actual full enabled/disabled
-Result and shares the existing scalar implementation. Coherent current-main
-qualification and the complete coefficient-to-image coordinator remain.
+Result and shares the existing scalar implementation. Complete actual planned
+coefficient/style/kernel preparation, optional MCT/standard transforms and
+full/selected prepared assembly now compose without supplied decoder results.
+Coherent current-main/hosted qualification and external conformance remain.
 
 The four original single/multi-code-block and JPIP inner/transaction guarantees
 are now complete native Result/full-state refinements. Follow

@@ -1402,6 +1402,31 @@ verus! {
         Seq::new(values.len(), |index: int| prepared_component_view(values[index]))
     }
 
+    pub open spec fn tile_mct_option(value: Option<&codestream::MultipleComponentTransform>) -> Option<Seq<crate::specs::Part2MctStage>> {
+        match value { None => None, Some(transform) => Some(codestream::multiple_component_transform_view(transform)) }
+    }
+
+    pub open spec fn tile_part_mct_view(first: &TilePartPayload) -> Option<Seq<crate::specs::Part2MctStage>> {
+        match first.multiple_component_transform {
+            None => None,
+            Some(transform) => Some(codestream::multiple_component_transform_view(&transform)),
+        }
+    }
+
+    pub closed spec fn planned_components_view(plan: &ProgressionTilePlan) -> Seq<crate::specs::Part1PreparePlan> {
+        Seq::new(plan.components@.len(), |index: int| prepare_plan_view(&plan.components@[index]))
+    }
+
+    pub closed spec fn progression_reconstruction_view(plan: &ProgressionTilePlan)
+        -> (Seq<crate::specs::Part1PreparePlan>, Seq<Seq<crate::specs::Tier1RawPlane>>, ComponentCodingStyles, CodingStyle) {
+        (planned_components_view(plan), prepare_precincts_view(plan.precincts@), plan.component_coding_styles, plan.coding_style)
+    }
+
+    spec fn prepared_tiles_outcome(result: Result<Vec<TileComponent<'_>>, DecodeError>)
+        -> Result<Seq<crate::specs::Part1AssemblyTile>, DecodeError> {
+        match result { Ok(tiles) => Ok(crate::image::assembly_tiles_view(tiles@)), Err(error) => Err(error) }
+    }
+
     pub open spec fn prepared_component_outcome(result: Result<PreparedTileComponent, DecodeError>)
         -> Result<crate::specs::Part1AssemblyTile, DecodeError>
     {
@@ -1662,6 +1687,9 @@ fn make_subband_geometry(
         prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style),
         crate::limits::resource_decoded_bytes_limit(limits),
     ),
+    prepared_component_outcome(result) == crate::specs::part2_prepare_component(
+        prepare_plan_view(plan), prepare_precincts_view(precincts@), prepare_style_view(coding_style), None,
+        crate::limits::resource_decoded_bytes_limit(limits)),
 ))]
 pub fn prepare_tile_component(
     plan: &PlannedTileComponent,
@@ -2424,55 +2452,117 @@ fn finish_prepared_component(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures prepared_tiles_outcome(result) == Ok(prepared_components_view(prepared@)),
+))]
+fn prepared_tile_views<'a>(
+    prepared: &'a [PreparedTileComponent],
+) -> Result<Vec<TileComponent<'a>>, DecodeError> {
+    let mut tiles = Vec::with_capacity(prepared.len());
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= prepared.len(),
+        tiles@.len() == index,
+        crate::image::assembly_tiles_view(tiles@) == prepared_components_view(prepared@).take(index as int),
+        decreases prepared.len() - index,
+    ))]
+    while index < prepared.len() {
+        let tile = prepared
+            .get(index)
+            .ok_or_else(invalid_decode)?
+            .as_tile_component();
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(crate::image::assembly_tile_view(tile) == prepared_components_view(prepared@)[index as int]); }
+        tiles.push(tile);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::image::assembly_tiles_view(tiles@) =~= prepared_components_view(prepared@).take(index as int + 1));
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(prepared_components_view(prepared@).take(prepared@.len() as int) =~= prepared_components_view(prepared@)); }
+    Ok(tiles)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_image_outcome(result) == crate::specs::part2_assemble_prepared(
+        crate::image::assembly_size_view(size), prepared_components_view(prepared@), selection,
+        crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn assemble_prepared_components(
+    size: &ImageSize,
+    prepared: &[PreparedTileComponent],
+    selection: Option<([u32; 4], u8)>,
+    limits: &ResourceLimits,
+) -> Result<DecodedImage, DecodeError> {
+    let tiles = prepared_tile_views(prepared)?;
+    match selection {
+        None => assemble_image(size, &tiles, limits),
+        Some((region, levels)) => assemble_selected_image(size, &tiles, region, levels, limits),
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_image_outcome(result) == crate::specs::part1_progression_prepared_image(
+        crate::image::assembly_size_view(size), progression_reconstruction_view(plan).0, progression_reconstruction_view(plan).1,
+        progression_reconstruction_view(plan).2, progression_reconstruction_view(plan).3, crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn decode_progression_prepared_image(
     size: &ImageSize,
     plan: &ProgressionTilePlan,
     limits: &ResourceLimits,
 ) -> Result<DecodedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost plans = planned_components_view(plan); let ghost precincts = prepare_precincts_view(plan.precincts@); }
     let mut prepared = Vec::with_capacity(plan.components.len());
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_reconstruct_components_empty(Seq::empty(), plans, precincts,
+            plan.component_coding_styles, Seq::empty(), crate::limits::resource_decoded_bytes_limit(limits));
+    }
     let mut component_index = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component_index <= plan.components.len(),
+            plans == planned_components_view(plan), precincts == prepare_precincts_view(plan.precincts@),
+            crate::specs::part2_reconstruct_components_prefix(Seq::empty(), plans, precincts, plan.component_coding_styles,
+                Seq::empty(), crate::limits::resource_decoded_bytes_limit(limits), component_index as nat)
+                    == (Ok(()), prepared_components_view(prepared@)),
             decreases plan.components.len() - component_index,
         )
     )]
     while component_index < plan.components.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_reconstruct_components_step(Seq::empty(), plans, precincts, plan.component_coding_styles,
+                Seq::empty(), crate::limits::resource_decoded_bytes_limit(limits), component_index as nat);
+            crate::proofs::production_impl::production_reconstruct_components_error(Seq::empty(), plans, precincts, plan.component_coding_styles,
+                Seq::empty(), crate::limits::resource_decoded_bytes_limit(limits), component_index as nat + 1, plans.len());
+        }
         let component = plan
             .components
             .get(component_index)
             .ok_or_else(invalid_decode)?;
+        let style = plan.component_coding_styles.style(component.component)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let WaveletTransform::Arbitrary(index) = style.transform {
+                crate::proofs::production_impl::production_kernel_registry_empty(Seq::empty(), index);
+            }
+        }
         prepared.push(prepare_tile_component(
             component,
             &plan.precincts,
-            plan.component_coding_styles.style(component.component)?,
+            style,
             limits,
         )?);
         component_index = component_index
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
-    let mut tile_components = Vec::with_capacity(prepared.len());
-    component_index = 0;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant component_index <= prepared.len(),
-            decreases prepared.len() - component_index,
-        )
-    )]
-    while component_index < prepared.len() {
-        tile_components.push(
-            prepared
-                .get(component_index)
-                .ok_or_else(invalid_decode)?
-                .as_tile_component(),
-        );
-        component_index = component_index
-            .checked_add(1)
-            .ok_or_else(arithmetic_overflow)?;
-    }
+    let tile_components = prepared_tile_views(&prepared)?;
     let component_transform = if !plan.coding_style.multiple_component_transform {
         ComponentTransform::None
     } else {
@@ -2480,10 +2570,10 @@ pub fn decode_progression_prepared_image(
             WaveletTransform::Reversible5x3 => ComponentTransform::Reversible,
             WaveletTransform::Irreversible9x7 => ComponentTransform::Irreversible,
             WaveletTransform::Arbitrary(_) => {
-                return Err(DecodeError::malformed(
-                    0,
-                    MalformedKind::MissingRequiredStructure,
-                ));
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::MissingRequiredStructure,
+                });
             }
         }
     };
@@ -4257,7 +4347,6 @@ fn decode_layout_selected(
         }) {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
         }
-        let prepared_start = prepared.len();
         let coding_style = first.coding_style;
         let component_coding_styles = first.component_coding_styles;
         let component_quantizations = &first.component_quantizations;
@@ -4407,85 +4496,26 @@ fn decode_layout_selected(
             Some(&resolution_counts),
             limits,
         )?;
-        component_index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component_index <= plan.components.len(),
-                decreases plan.components.len() - component_index,
-            )
-        )]
-        while component_index < plan.components.len() {
-            let planned = plan
-                .components
-                .get(component_index)
-                .ok_or_else(invalid_decode)?;
-            let style = component_coding_styles.style(planned.component)?;
-            let kernel = match style.transform {
-                WaveletTransform::Arbitrary(index) => {
-                    first.part2_extensions.arbitrary_kernel(index)
-                }
-                _ => None,
-            };
-            prepared.push(prepare_tile_component_with_kernel(
-                planned,
-                &plan.precincts,
-                style,
-                kernel,
-                limits,
-            )?);
-            component_index = component_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        if let Some(mct) = &first.multiple_component_transform {
-            apply_tile_multiple_component_transform(
-                prepared
-                    .get_mut(prepared_start..)
-                    .ok_or_else(invalid_decode)?,
-                &layout.info.image_size,
-                mct,
-                limits,
-                &mut total_mct_work,
-            )?;
-        }
-        apply_prepared_component_transform(
-            prepared
-                .get_mut(prepared_start..)
-                .ok_or_else(invalid_decode)?,
+        reconstruct_planned_tile(
+            &plan,
+            first,
+            &layout.info.image_size,
             transform,
+            limits,
+            &mut prepared,
+            &mut total_mct_work,
         )?;
         selected_tile = selected_tile
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
 
-    let mut tile_components = Vec::with_capacity(prepared.len());
-    let mut index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= prepared.len(),
-            decreases prepared.len() - index,
-        )
-    )]
-    while index < prepared.len() {
-        tile_components.push(
-            prepared
-                .get(index)
-                .ok_or_else(invalid_decode)?
-                .as_tile_component(),
-        );
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    let image = assemble_selected_image(
+    assemble_prepared_components(
         &layout.info.image_size,
-        &tile_components,
-        selection.region,
-        selection.discard_levels,
+        &prepared,
+        Some((selection.region, selection.discard_levels)),
         limits,
-    )?;
-    Ok(image)
+    )
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4567,6 +4597,125 @@ fn apply_prepared_standard_pixel(
     store_prepared_sample(prepared, 0, index, red)?;
     store_prepared_sample(prepared, 1, index, green)?;
     store_prepared_sample(prepared, 2, index, blue)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, prepared_components_view(final(prepared)@), *final(work)) == crate::specs::part2_finish_prepared_tile(
+        prepared_components_view(old(prepared)@), codestream::image_size_component_count(size), codestream::image_size_component_infos(size),
+        tile_mct_option(mct), standard, *old(work), crate::limits::resource_work_limit(limits),
+        crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn finish_prepared_tile(
+    prepared: &mut [PreparedTileComponent],
+    size: &ImageSize,
+    mct: Option<&codestream::MultipleComponentTransform>,
+    standard: (bool, bool),
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    if let Some(transform) = mct {
+        apply_tile_multiple_component_transform(prepared, size, transform, limits, work)?;
+    }
+    apply_prepared_component_transform(prepared, standard)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, prepared_components_view(final(prepared)@), *final(work)) == crate::specs::part2_reconstruct_planned_tile(
+        prepared_components_view(old(prepared)@), planned_components_view(plan), prepare_precincts_view(plan.precincts@),
+        first.component_coding_styles, codestream::part2_kernel_registry(&first.part2_extensions),
+        codestream::image_size_component_count(size), codestream::image_size_component_infos(size),
+        tile_part_mct_view(first), standard, *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)),
+))]
+fn reconstruct_planned_tile(
+    plan: &ProgressionTilePlan,
+    first: &TilePartPayload<'_>,
+    size: &ImageSize,
+    standard: (bool, bool),
+    limits: &ResourceLimits,
+    prepared: &mut Vec<PreparedTileComponent>,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = prepared_components_view(prepared@);
+        let ghost plans = planned_components_view(plan);
+        let ghost precincts = prepare_precincts_view(plan.precincts@);
+        let ghost kernels = codestream::part2_kernel_registry(&first.part2_extensions);
+        let ghost initial_work = *work;
+    }
+    let start = prepared.len();
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_reconstruct_components_empty(
+            initial, plans, precincts, first.component_coding_styles, kernels, crate::limits::resource_decoded_bytes_limit(limits));
+    }
+    let mut component_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant component_index <= plan.components.len(), plans == planned_components_view(plan),
+        precincts == prepare_precincts_view(plan.precincts@),
+        kernels == codestream::part2_kernel_registry(&first.part2_extensions),
+        initial == prepared_components_view(old(prepared)@), initial_work == *old(work), *work == initial_work,
+        start == initial.len(), start <= prepared.len(),
+        prepared_components_view(prepared@).take(start as int) == initial,
+        crate::specs::part2_reconstruct_components_prefix(initial, plans, precincts, first.component_coding_styles,
+            kernels, crate::limits::resource_decoded_bytes_limit(limits), component_index as nat)
+                == (Ok(()), prepared_components_view(prepared@)),
+        decreases plan.components.len() - component_index,
+    ))]
+    while component_index < plan.components.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_reconstruct_components_step(initial, plans, precincts,
+                first.component_coding_styles, kernels, crate::limits::resource_decoded_bytes_limit(limits), component_index as nat);
+            crate::proofs::production_impl::production_reconstruct_components_error(initial, plans, precincts,
+                first.component_coding_styles, kernels, crate::limits::resource_decoded_bytes_limit(limits), component_index as nat + 1, plans.len());
+        }
+        let planned = plan
+            .components
+            .get(component_index)
+            .ok_or_else(invalid_decode)?;
+        let style = first.component_coding_styles.style(planned.component)?;
+        let kernel = match style.transform {
+            WaveletTransform::Arbitrary(index) => first.part2_extensions.arbitrary_kernel(index),
+            _ => None,
+        };
+        prepared.push(prepare_tile_component_with_kernel(
+            planned,
+            &plan.precincts,
+            style,
+            kernel,
+            limits,
+        )?);
+        component_index = component_index
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost folded = prepared_components_view(prepared@); }
+    let suffix = prepared.get_mut(start..).ok_or_else(invalid_decode)?;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(prepared_components_view(suffix@) =~= folded.skip(start as int)); }
+    let result = finish_prepared_tile(
+        suffix,
+        size,
+        first.multiple_component_transform.as_ref(),
+        standard,
+        limits,
+        work,
+    );
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        let suffix_values = prepared_components_view(suffix@);
+        assert(prepared_components_view(prepared@).skip(start as int) =~= suffix_values);
+        let finished = crate::specs::part2_finish_prepared_tile(folded.skip(start as int),
+            codestream::image_size_component_count(size), codestream::image_size_component_infos(size),
+            tile_part_mct_view(first), standard, initial_work,
+            crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits));
+        assert((result, prepared_components_view(prepared@).skip(start as int), *work) == finished);
+        assert(prepared_components_view(prepared@) =~= initial + finished.1);
+    }
+    result
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -4749,7 +4898,6 @@ fn decode_layout(
         }) {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
         }
-        let prepared_start = prepared.len();
         let coding_style = first.coding_style;
         let component_coding_styles = first.component_coding_styles;
         let component_quantizations = &first.component_quantizations;
@@ -4854,82 +5002,19 @@ fn decode_layout(
         }
         let (grid, precincts) = plan.packet_execution();
         crate::packet::decode_progression_tile_packets(&tile_parts, grid, precincts, limits)?;
-        component_index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component_index <= plan_component_count,
-                decreases plan_component_count - component_index,
-            )
-        )]
-        while component_index < plan_component_count {
-            let planned = plan
-                .components
-                .get(component_index)
-                .ok_or_else(invalid_decode)?;
-            let style = component_coding_styles.style(planned.component)?;
-            let kernel = match style.transform {
-                WaveletTransform::Arbitrary(index) => {
-                    first.part2_extensions.arbitrary_kernel(index)
-                }
-                _ => None,
-            };
-            prepared.push(prepare_tile_component_with_kernel(
-                planned,
-                &plan.precincts,
-                style,
-                kernel,
-                limits,
-            )?);
-            component_index = component_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        if let Some(transform) = &first.multiple_component_transform {
-            apply_tile_multiple_component_transform(
-                prepared
-                    .get_mut(prepared_start..)
-                    .ok_or_else(invalid_decode)?,
-                &layout.info.image_size,
-                transform,
-                limits,
-                &mut total_mct_work,
-            )?;
-        }
-        apply_prepared_component_transform(
-            prepared
-                .get_mut(prepared_start..)
-                .ok_or_else(invalid_decode)?,
+        reconstruct_planned_tile(
+            &plan,
+            first,
+            &layout.info.image_size,
             transform,
+            limits,
+            &mut prepared,
+            &mut total_mct_work,
         )?;
         tile = tile.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
 
-    let mut tile_components = Vec::with_capacity(prepared.len());
-    let mut index = 0_usize;
-    #[cfg_attr(
-        verus_keep_ghost,
-        verus_spec(
-            invariant index <= prepared.len(),
-            decreases prepared.len() - index,
-        )
-    )]
-    while index < prepared.len() {
-        tile_components.push(
-            prepared
-                .get(index)
-                .ok_or_else(invalid_decode)?
-                .as_tile_component(),
-        );
-        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-    }
-    let image = decode_prepared_image(
-        &layout.info.image_size,
-        &tile_components,
-        ComponentTransform::None,
-        limits,
-    )?;
-    Ok(image)
+    assemble_prepared_components(&layout.info.image_size, &prepared, None, limits)
 }
 
 impl DecodedCodeBlock {
@@ -5076,6 +5161,11 @@ pub fn decode_subband(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_image_outcome(result) == crate::specs::part1_decode_prepared_image(
+        crate::image::assembly_size_view(size), crate::image::assembly_tiles_view(tile_components@),
+        component_transform, crate::limits::resource_decoded_bytes_limit(limits)),
+))]
 pub fn decode_prepared_image(
     size: &ImageSize,
     tile_components: &[TileComponent<'_>],
@@ -5917,6 +6007,175 @@ mod tests {
             }
         }
         assert!(nonzero);
+    }
+
+    #[test]
+    fn complete_coefficient_reconstruction_preserves_prefix_mct_and_error_frontiers() {
+        use codestream::{
+            MctArray, MctArrayKind, MctNumericFormat, MctStage, MultipleComponentTransform,
+        };
+        let bytes = prepared_codestream(
+            1,
+            1,
+            1,
+            &[0, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40],
+            &[0],
+        );
+        let parser_limits = ResourceLimits::default();
+        let layout = parse_layout(&bytes, &parser_limits).unwrap();
+        for reversible in [false, true] {
+            for seed in [0, 17, 128, 160] {
+                for with_mct in [false, true] {
+                    for bad_tail in [false, true] {
+                        for maximum in [8, 9, 64] {
+                            let limits = ResourceLimits::default()
+                                .with_maximum_decoded_bytes(maximum)
+                                .unwrap();
+                            let (mut component, precincts, style) =
+                                standard_prepare_fixture(&[], reversible, false, seed);
+                            component.component = 0;
+                            component.x = 0;
+                            component.y = 0;
+                            let reference =
+                                reference_standard_prepare(&component, &precincts, style, maximum);
+                            let mut expected = vec![PreparedTileComponent {
+                                component: u16::MAX,
+                                x: 9,
+                                y: 9,
+                                width: 1,
+                                height: 1,
+                                fraction_bits: u8::MAX,
+                                samples: vec![123],
+                            }];
+                            let mut expected_work = 7;
+                            let expected_result = match reference {
+                                Err(error) => Err(error),
+                                Ok(prepared) => {
+                                    expected.push(prepared);
+                                    if bad_tail {
+                                        Err(DecodeError::MalformedInput {
+                                            offset: 0,
+                                            kind: MalformedKind::InvalidCodingStyle,
+                                        })
+                                    } else if with_mct {
+                                        expected_work += 2;
+                                        if maximum < 16 {
+                                            Err(DecodeError::LimitExceeded {
+                                                resource: Resource::DecodedBytes,
+                                                limit: maximum,
+                                                actual: 16,
+                                            })
+                                        } else {
+                                            for value in &mut expected[1].samples {
+                                                *value = if reversible {
+                                                    *value * 2 + 1
+                                                } else {
+                                                    i64::try_from(
+                                                        i128::from(*value) * 2 * (1_i128 << 16)
+                                                            + (1_i128 << 32),
+                                                    )
+                                                    .unwrap()
+                                                };
+                                            }
+                                            expected[1].fraction_bits =
+                                                if reversible { 0 } else { 32 };
+                                            Ok(())
+                                        }
+                                    } else {
+                                        Ok(())
+                                    }
+                                }
+                            };
+                            let mut first = layout.tile_parts[0].clone();
+                            first.coding_style = style;
+                            first.component_coding_styles =
+                                ComponentCodingStyles::uniform(1, style).unwrap();
+                            if with_mct {
+                                let array = |values| {
+                                    MctArray::from_values(
+                                        0,
+                                        MctArrayKind::Offset,
+                                        MctNumericFormat::Int16,
+                                        0,
+                                        values,
+                                    )
+                                };
+                                first.multiple_component_transform =
+                                    Some(MultipleComponentTransform::from_stages(vec![
+                                        MctStage::from_collections(
+                                            0,
+                                            vec![codestream::MctCollection::from_arrays(
+                                                reversible,
+                                                vec![0],
+                                                vec![0],
+                                                array(vec![2]),
+                                                Some(array(vec![1])),
+                                            )],
+                                        ),
+                                    ]));
+                            }
+                            let mut components = vec![component];
+                            if bad_tail {
+                                let mut bad =
+                                    standard_prepare_fixture(&[], reversible, false, seed).0;
+                                bad.component = 1;
+                                components.push(bad);
+                            }
+                            let plan = ProgressionTilePlan {
+                                tile_index: 0,
+                                coding_style: style,
+                                component_coding_styles: first.component_coding_styles,
+                                grid: PacketGrid::new(1, 1, 1, vec![1], &ResourceLimits::default())
+                                    .unwrap(),
+                                precincts,
+                                components,
+                            };
+                            let mut prepared = vec![PreparedTileComponent {
+                                component: u16::MAX,
+                                x: 9,
+                                y: 9,
+                                width: 1,
+                                height: 1,
+                                fraction_bits: u8::MAX,
+                                samples: vec![123],
+                            }];
+                            let mut work = 7;
+                            assert_eq!(
+                                reconstruct_planned_tile(
+                                    &plan,
+                                    &first,
+                                    &layout.info.image_size,
+                                    (false, false),
+                                    &limits,
+                                    &mut prepared,
+                                    &mut work
+                                ),
+                                expected_result
+                            );
+                            assert_eq!(work, expected_work);
+                            assert_eq!(prepared, expected);
+                            if expected_result.is_ok() {
+                                let assembled = assemble_prepared_components(
+                                    &layout.info.image_size,
+                                    &prepared[1..],
+                                    None,
+                                    &limits,
+                                )
+                                .unwrap();
+                                assert_eq!(
+                                    assembled.component(0).unwrap().samples(),
+                                    expected[1].samples
+                                );
+                                assert_eq!(
+                                    assembled.component(0).unwrap().fraction_bits(),
+                                    expected[1].fraction_bits
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -241,7 +241,7 @@ verus! {
     impl View for DecodedImage {
         type V = crate::specs::Part1DecodedImageModel;
 
-        closed spec fn view(&self) -> Self::V {
+        open spec fn view(&self) -> Self::V {
             decoded_image_view(*self)
         }
     }
