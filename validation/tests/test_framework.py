@@ -667,6 +667,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_OPACITY_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_native_external_alpha_and_all_scratch_state(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-external-alpha"},
+            framework._LAYER_EXTERNAL_ALPHA_CONTRACTS, 3,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

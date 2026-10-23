@@ -2683,6 +2683,142 @@ fn set_layer_alpha_mode(
     }
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, final(alpha)@) == crate::specs::part2_opacity_pixel(
+            (samples@, geometry.0, geometry.1), geometry.2, geometry.3, old(alpha)@),
+            final(alpha)@.len() == old(alpha)@.len(),
+    )
+)]
+fn copy_opacity_pixel(
+    samples: &[u16],
+    geometry: (u32, u32, u32, u32),
+    alpha: &mut [u16],
+) -> Result<(), DecodeError> {
+    let (source_width, width, x, y) = geometry;
+    let destination = index_of(width, x, y)?;
+    *alpha.get_mut(destination).ok_or_else(invalid_layer)? = *samples
+        .get(index_of(source_width, x, y)?)
+        .ok_or_else(invalid_layer)?;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, final(alpha)@) == crate::specs::part2_opacity_columns_prefix(
+            (samples@, source_width, destination.0), destination.1, old(alpha)@, destination.2 as nat),
+    )
+)]
+fn copy_opacity_row(
+    samples: &[u16],
+    source_width: u32,
+    destination: (u32, u32, u32),
+    alpha: &mut [u16],
+) -> Result<(), DecodeError> {
+    let (width, y, copy_width) = destination;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost context = (samples@, source_width, width); let ghost initial = alpha@; }
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_opacity_columns_empty(context, y, initial); }
+    let mut x = 0_u32;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant x <= copy_width, destination == (width, y, copy_width),
+                context == (samples@, source_width, width), initial == old(alpha)@,
+                crate::specs::part2_opacity_columns_prefix(context, y, initial, x as nat) == (Ok(()), alpha@),
+            decreases copy_width - x,
+        )
+    )]
+    while x < copy_width {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_opacity_columns_step(context, y, initial, x as nat); }
+        let result = copy_opacity_pixel(samples, (source_width, width, x, y), alpha);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_opacity_columns_prefix(context, y, initial, x as nat + 1) == (Err(error), alpha@));
+                crate::proofs::production_impl::production_opacity_columns_error(context, y, initial, x as nat + 1, copy_width as nat);
+            } else { crate::proofs::production_impl::production_mct_unit_result(result); }
+        }
+        result?;
+        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, owned_layer_view(final(owned))) == crate::specs::part2_copy_registered_opacity(
+            owned_layer_view(old(owned)), owned_layer_view(source), premultiplied),
+    )
+)]
+fn copy_registered_layer_opacity(
+    owned: &mut OwnedLayer,
+    source: &OwnedLayer,
+    premultiplied: bool,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = owned_layer_view(owned); let ghost registered = owned_layer_view(source); }
+    let samples = source.colors.first().ok_or_else(invalid_layer)?;
+    let pixels = checked_area(owned.width, owned.height)?;
+    let mut alpha = vec![0_u16; pixels];
+    let copy_width = owned.width.min(source.width);
+    let copy_height = owned.height.min(source.height);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = alpha@;
+        let ghost context = (samples@, source.width, owned.width);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(initial =~= Seq::new(pixels as nat, |_index: int| 0u16));
+        crate::proofs::production_impl::production_opacity_rows_empty(context, copy_width, initial);
+    }
+    let mut y = 0_u32;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant y <= copy_height, input == owned_layer_view(old(owned)), input == owned_layer_view(owned),
+                registered == owned_layer_view(source), registered.3.len() > 0,
+                samples@ == registered.3[0],
+                context == (registered.3[0], registered.0, input.0),
+                crate::specs::part2_layer_area(input.0, input.1) == Ok(pixels),
+                initial == Seq::new(pixels as nat, |_index: int| 0u16),
+                copy_width == if input.0 < registered.0 { input.0 } else { registered.0 },
+                copy_height == if input.1 < registered.1 { input.1 } else { registered.1 },
+                crate::specs::part2_opacity_rows_prefix(context, copy_width, initial, y as nat) == (Ok(()), alpha@),
+            decreases copy_height - y,
+        )
+    )]
+    while y < copy_height {
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_opacity_rows_step(context, copy_width, initial, y as nat); }
+        let result = copy_opacity_row(
+            samples,
+            source.width,
+            (owned.width, y, copy_width),
+            &mut alpha,
+        );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_opacity_rows_prefix(context, copy_width, initial, y as nat + 1)
+                    == (Err(error), alpha@));
+                crate::proofs::production_impl::production_opacity_rows_error(
+                    context, copy_width, initial, y as nat + 1, copy_height as nat);
+            } else { crate::proofs::production_impl::production_mct_unit_result(result); }
+        }
+        result?;
+        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    owned.alpha = Some((alpha, premultiplied));
+    Ok(())
+}
+
 fn apply_layer_opacity(
     file: &Jp2File<'_>,
     layer: &CompositingLayer<'_>,
@@ -2711,37 +2847,7 @@ fn apply_layer_opacity(
                     layer.horizontal_grid_size(),
                     layer.vertical_grid_size(),
                 )?;
-                let samples = alpha_registered.colors.first().ok_or_else(invalid_layer)?;
-                let mut alpha = vec![0_u16; checked_area(owned.width, owned.height)?];
-                let copy_width = owned.width.min(alpha_registered.width);
-                let copy_height = owned.height.min(alpha_registered.height);
-                let mut y = 0_u32;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant y <= copy_height,
-                        decreases copy_height - y,
-                    )
-                )]
-                while y < copy_height {
-                    let mut x = 0_u32;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(
-                            invariant x <= copy_width,
-                            decreases copy_width - x,
-                        )
-                    )]
-                    while x < copy_width {
-                        let destination = index_of(owned.width, x, y)?;
-                        *alpha.get_mut(destination).ok_or_else(invalid_layer)? = *samples
-                            .get(index_of(alpha_registered.width, x, y)?)
-                            .ok_or_else(invalid_layer)?;
-                        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    }
-                    y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                }
-                owned.alpha = Some((alpha, premultiplied));
+                copy_registered_layer_opacity(owned, &alpha_registered, premultiplied)?;
             } else {
                 set_layer_alpha_mode(owned, premultiplied, layer.box_header().offset())?;
             }
@@ -4213,6 +4319,210 @@ mod tests {
                 u16::try_from((nominal * 65_535 + maximum / 2) / maximum).unwrap()
             })
             .collect())
+    }
+
+    #[test]
+    fn external_opacity_matches_raw_min_rectangle_and_commits_owner_only_on_success() {
+        let mut cases = 0;
+        for width in 0..=2 {
+            for height in 0..=2 {
+                for source_width in 0..=2 {
+                    for source_height in 0..=2 {
+                        let source_pixels = usize::try_from(source_width * source_height).unwrap();
+                        for source_channels in [0, 1, 3] {
+                            for source_length in [
+                                0,
+                                source_pixels.saturating_sub(1),
+                                source_pixels,
+                                source_pixels + 1,
+                            ] {
+                                for channels in [0, 4] {
+                                    for space in
+                                        [ConvertedColorSpace::Grayscale, ConvertedColorSpace::Srgb]
+                                    {
+                                        for prior_alpha in [None, Some((vec![5, 7], true))] {
+                                            for source_alpha in [None, Some((vec![11], true))] {
+                                                for premultiplied in [false, true] {
+                                                    let source = OwnedLayer {
+                                                        width: source_width,
+                                                        height: source_height,
+                                                        color_space: ConvertedColorSpace::Srgb,
+                                                        colors: vec![
+                                                                (0..source_length)
+                                                                    .map(|index| (index * 31 + 7)
+                                                                        as u16)
+                                                                    .collect();
+                                                                source_channels
+                                                            ],
+                                                        alpha: source_alpha.clone(),
+                                                    };
+                                                    let colors = vec![vec![17, 19, 23]; channels];
+                                                    let mut owned = OwnedLayer {
+                                                        width,
+                                                        height,
+                                                        color_space: space,
+                                                        colors: colors.clone(),
+                                                        alpha: prior_alpha.clone(),
+                                                    };
+                                                    let expected =
+                                                        (|| -> Result<Vec<u16>, DecodeError> {
+                                                            let samples = source
+                                                                .colors
+                                                                .first()
+                                                                .ok_or_else(invalid_layer)?;
+                                                            let count = usize::try_from(
+                                                                u128::from(width)
+                                                                    * u128::from(height),
+                                                            )
+                                                            .map_err(|_| arithmetic_overflow())?;
+                                                            let mut alpha = vec![0; count];
+                                                            for y in 0..height.min(source_height) {
+                                                                for x in 0..width.min(source_width)
+                                                                {
+                                                                    let destination =
+                                                                        usize::try_from(
+                                                                            u128::from(y)
+                                                                                * u128::from(width)
+                                                                                + u128::from(x),
+                                                                        )
+                                                                        .map_err(|_| {
+                                                                            arithmetic_overflow()
+                                                                        })?;
+                                                                    let source_index =
+                                                                        usize::try_from(
+                                                                            u128::from(y)
+                                                                                * u128::from(
+                                                                                    source_width,
+                                                                                )
+                                                                                + u128::from(x),
+                                                                        )
+                                                                        .map_err(|_| {
+                                                                            arithmetic_overflow()
+                                                                        })?;
+                                                                    let sample = *samples
+                                                                        .get(source_index)
+                                                                        .ok_or_else(
+                                                                            invalid_layer,
+                                                                        )?;
+                                                                    *alpha.get_mut(destination).ok_or_else(invalid_layer)? = sample;
+                                                                }
+                                                            }
+                                                            Ok(alpha)
+                                                        })(
+                                                        );
+                                                    let actual = copy_registered_layer_opacity(
+                                                        &mut owned,
+                                                        &source,
+                                                        premultiplied,
+                                                    );
+                                                    assert_eq!(
+                                                        (
+                                                            owned.width,
+                                                            owned.height,
+                                                            owned.color_space
+                                                        ),
+                                                        (width, height, space)
+                                                    );
+                                                    assert_eq!(owned.colors, colors);
+                                                    match expected {
+                                                        Err(error) => {
+                                                            assert_eq!(actual, Err(error));
+                                                            assert_eq!(owned.alpha, prior_alpha);
+                                                        }
+                                                        Ok(alpha) => {
+                                                            actual.unwrap();
+                                                            assert_eq!(
+                                                                owned.alpha,
+                                                                Some((alpha, premultiplied))
+                                                            );
+                                                        }
+                                                    }
+                                                    cases += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 31104);
+        let mut owned = OwnedLayer {
+            width: u32::MAX,
+            height: u32::MAX,
+            color_space: ConvertedColorSpace::Srgb,
+            colors: vec![],
+            alpha: Some((vec![29], false)),
+        };
+        let source = OwnedLayer {
+            width: 0,
+            height: 0,
+            color_space: ConvertedColorSpace::Grayscale,
+            colors: vec![],
+            alpha: Some((vec![31], false)),
+        };
+        assert_eq!(
+            copy_registered_layer_opacity(&mut owned, &source, true),
+            Err(invalid_layer())
+        );
+        assert_eq!(owned.alpha, Some((vec![29], false)));
+    }
+
+    #[test]
+    fn opacity_pixel_and_row_preserve_wide_indices_and_prior_scratch_updates() {
+        let mut cases = 0;
+        for source_width in [0, 1, 2, u32::MAX] {
+            for width in [0, 1, 2, u32::MAX] {
+                for x in [0, 1, 2, u32::MAX] {
+                    for y in [0, 1, 2, u32::MAX] {
+                        for source_length in 0..=3 {
+                            for output_length in 0..=3 {
+                                let samples = (0..source_length)
+                                    .map(|index| (index * 13 + 11) as u16)
+                                    .collect::<Vec<_>>();
+                                let mut alpha = vec![37; output_length];
+                                let mut expected_alpha = alpha.clone();
+                                let expected = (|| {
+                                    let destination = usize::try_from(
+                                        u128::from(y) * u128::from(width) + u128::from(x),
+                                    )
+                                    .map_err(|_| arithmetic_overflow())?;
+                                    let source = usize::try_from(
+                                        u128::from(y) * u128::from(source_width) + u128::from(x),
+                                    )
+                                    .map_err(|_| arithmetic_overflow())?;
+                                    let sample = *samples.get(source).ok_or_else(invalid_layer)?;
+                                    *expected_alpha
+                                        .get_mut(destination)
+                                        .ok_or_else(invalid_layer)? = sample;
+                                    Ok(())
+                                })();
+                                assert_eq!(
+                                    copy_opacity_pixel(
+                                        &samples,
+                                        (source_width, width, x, y),
+                                        &mut alpha
+                                    ),
+                                    expected
+                                );
+                                assert_eq!(alpha, expected_alpha);
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 4096);
+        let mut alpha = vec![41, 43, 47];
+        assert_eq!(
+            copy_opacity_row(&[11, 13], 2, (3, 0, 3), &mut alpha),
+            Err(invalid_layer())
+        );
+        assert_eq!(alpha, vec![11, 13, 47]);
     }
 
     #[test]
