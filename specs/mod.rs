@@ -17,6 +17,153 @@ pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
 pub type Part2MctDecorrelationPreparation = (Seq<usize>, Seq<usize>, Seq<u8>, usize, usize, usize);
 
+pub open spec fn part2_mct_source_sample(
+    components: Seq<Part2MctComponent>, component: usize, sample: usize,
+) -> Result<i64, crate::DecodeError> {
+    if component >= components.len() || sample >= components[component as int].3.len() {
+        Err(part1_transform_error(false))
+    } else { Ok(components[component as int].3[sample as int]) }
+}
+
+pub open spec fn part2_mct_snapshot_step(
+    previous: (Result<(), crate::DecodeError>, Seq<i64>),
+    components: Seq<Part2MctComponent>, indexes: Seq<usize>, sample: usize, position: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>) {
+    match previous.0 {
+        Err(_) => previous,
+        Ok(()) => if position >= indexes.len() { (Err(part1_transform_error(false)), previous.1) }
+            else { match part2_mct_source_sample(components, indexes[position as int], sample) {
+                Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+            } },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_source_snapshot(
+    components: Seq<Part2MctComponent>, indexes: Seq<usize>, sample: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), Seq::empty()) }
+    else { part2_mct_snapshot_step(
+        part2_mct_source_snapshot(components, indexes, sample, (count - 1) as nat),
+        components, indexes, sample, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_store_output_row(
+    previous: (Result<(), crate::DecodeError>, Seq<Part2MctComponent>),
+    destinations: Seq<usize>, values: Seq<i64>, sample: usize, row: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>) {
+    match previous.0 {
+        Err(_) => previous,
+        Ok(()) => if row >= destinations.len() || row >= values.len() {
+            (Err(part1_transform_error(false)), previous.1)
+        } else { part2_mct_store_sample(previous.1, destinations[row as int], sample, values[row as int]) },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_store_output_rows(
+    before: Seq<Part2MctComponent>, destinations: Seq<usize>, values: Seq<i64>, sample: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else { part2_mct_store_output_row(
+        part2_mct_store_output_rows(before, destinations, values, sample, (count - 1) as nat),
+        destinations, values, sample, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_decorrelation_pixel(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDecorrelationPreparation, sample: usize,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, Seq<i64>, Seq<i64>) {
+    let snapshot = part2_mct_source_snapshot(before, prepared.0, sample, prepared.0.len());
+    match snapshot.0 {
+        Err(error) => (Err(error), before, snapshot.1, Seq::empty()),
+        Ok(()) => {
+            let computed = part2_mct_decorrelation_rows(Seq::empty(), collection, snapshot.1, prepared.2, prepared.4 as nat);
+            match computed.0 {
+                Err(error) => (Err(error), before, snapshot.1, computed.1),
+                Ok(()) => {
+                    let stored = part2_mct_store_output_rows(before, prepared.1, computed.1, sample, prepared.4 as nat);
+                    (stored.0, stored.1, snapshot.1, computed.1)
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_decorrelation_pixels(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDecorrelationPreparation, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_decorrelation_pixels(before, collection, prepared, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else {
+                    let pixel = part2_mct_decorrelation_pixel(previous.1, collection, prepared, (count - 1) as usize);
+                    (pixel.0, pixel.1)
+                },
+        }
+    }
+}
+
+pub open spec fn part2_mct_component_precision(before: Part2MctComponent, precision: u8) -> Part2MctComponent {
+    (before.0, before.1, precision, before.3)
+}
+
+pub open spec fn part2_mct_set_precision(
+    before: Seq<Part2MctComponent>, destination: usize, precision: u8,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>) {
+    if destination >= before.len() { (Err(part1_transform_error(false)), before) }
+    else { (Ok(()), before.update(destination as int, part2_mct_component_precision(before[destination as int], precision))) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_destination_precisions(
+    before: Seq<Part2MctComponent>, destinations: Seq<usize>, precision: u8, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_destination_precisions(before, destinations, precision, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 >= destinations.len() { (Err(part1_transform_error(false)), previous.1) }
+                else { part2_mct_set_precision(previous.1, destinations[count as int - 1], precision) },
+        }
+    }
+}
+
+pub open spec fn part2_mct_decorrelation(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    let preparation = part2_mct_prepare_decorrelation(before, collection, work, maximum_work, maximum_bytes);
+    match preparation.0 {
+        Err(error) => (Err(error), before, preparation.1),
+        Ok(prepared) => {
+            let pixels = part2_mct_decorrelation_pixels(before, collection, prepared, prepared.3 as nat);
+            match pixels.0 {
+                Err(error) => (Err(error), pixels.1, preparation.1),
+                Ok(()) => {
+                    let tagged = part2_mct_destination_precisions(pixels.1, prepared.1,
+                        if collection.0 { 0 } else { 32 }, prepared.1.len());
+                    (tagged.0, tagged.1, preparation.1)
+                },
+            }
+        },
+    }
+}
+
 pub open spec fn part2_mct_decorrelation_row(
     collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, row: usize,
 ) -> Result<i64, crate::DecodeError> {

@@ -59,8 +59,16 @@ the complete original component and collection values. Ordered lookup derives
 the indexes from real component identities; no index list, valid layout,
 successful preparation or admitted budget is supplied as a premise. Native
 allocation and source-before-destination lookup order are preserved.
-The subsequent complete pixel/output/final-precision and general collection/
-wavelet/stage joins remain under implementation.
+`part2_mct_decorrelation_pixel` now describes the actual complete source
+snapshot, row computation and ordered destination stores, including both
+scratch vectors and all partial error states. It does not receive precomputed
+samples or supplied row results. `part2_mct_decorrelation` composes the actual
+preparation, every real pixel and final-only precision updates into one
+complete Result/components/work relation for the original native producer.
+Duplicate component references, malformed raw descriptors, zero-sample paths,
+first-error order and earlier state effects remain distinct. Dependency/
+wavelet collections, stage traversal and general MCT/reconstruction joins
+remain separate work.
 
 ## Frozen full F5H refinement-plane profile
 

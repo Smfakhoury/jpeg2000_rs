@@ -159,6 +159,36 @@ precision updates and exact charged work. These tests do not replace the still
 open whole collection/dependency/wavelet/stage composition proofs or qualify
 general MCT against an independent external oracle.
 
+## Complete actual native decorrelation collection
+
+The original `apply_mct_decorrelation` now has one unconditional full
+Result/components/work relation over the original raw component/collection
+values and actual limits. It calls the real preparation producer, derives
+the real index/precision plan and charged work, then composes every actual
+pixel and the final destination precision updates. There is no supplied
+success, plan, normalized layout, admitted budget or decoder outcome premise.
+
+The real pixel body clears both original scratch vectors, gathers every
+source sample before computing any row, computes every row before starting
+destination stores, and retains the actual ordered duplicate overwrites.
+Its complete relation includes both scratch vectors and every partial
+component update on an error. A failed source read or row leaves components
+unchanged for that pixel; a later destination-store error retains prior
+stores. Earlier complete pixels remain on later failures. Final precision
+updates execute only after all pixels and retain their own ordered partial
+error states. Unselected components, geometry, metadata and samples remain
+in the full deep state relation.
+
+Independent raw pixel fixtures exhaust 972 source/destination/row/sample
+contexts, including duplicate aliases, missing components, unequal sample
+lengths, contradictory unused plan metadata and sentinel scratch data.
+Another1792 cases cover all256 destination precision values and partial
+tag errors. Existing actual collection fixtures retain late numeric errors,
+prior-pixel writes, duplicate destinations and exact work. This closes the
+native decorrelation collection producer, not the complete dependency/wavelet
+collections, stage traversal, general MCT/reconstruction or independent
+external-array qualification.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,
