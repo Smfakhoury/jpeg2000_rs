@@ -1539,3 +1539,10 @@ initial-versus-late error policy, zero padding and discarded finest geometry.
 They are mathematical folds over actual inputs, not supplied grid/count/result
 banks. A production transition lemma links the original nested loops, and
 exact raw-owner/limit recipes bind both native producers.
+The complete raw subband admission models `part2_quantization_lookup`,
+`part2_quantization_step_at_index`, `part2_quantization_for_subband` and
+`part2_make_subband_geometry` retain actual logical/physical lookup, derived
+step0/saturating exponent behavior and original bitplane/extent error order.
+Public orientation admission is not silently imposed on the internal raw
+geometry helper. Every result field derives from original metadata; no
+normalized depth/step/bounds or successful lookup/scaling result is a premise.

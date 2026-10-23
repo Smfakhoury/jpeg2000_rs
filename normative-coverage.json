@@ -4,6 +4,36 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-subband-admission",
+      "topic": "Complete actual raw quantization observations, shared indexed/derived step computation, public isotropic orientation indexing and make_subband_geometry Result/all fields. Logical-before-physical step lookup and unvalidated raw step/guard words are retained; ScalarDerived observes step0 and saturates exponent without validating the supplied logical index. Public orientation admission differs intentionally from the actual geometry helper's raw orientation/index policy. Dynamic-range/quantization/bitplane admission precedes checked extents, preserving first errors, phase/ROI/dimensions and all outputs. No normalized depth/bounds/step, successful lookup or bitplane/budget premise. Actual subband construction executes the sole shared producer; complete subband-vector/tile-plan/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"},
+        {"path": "src/decode.rs", "symbol": "make_subband_geometry"},
+        {"path": "src/decode.rs", "symbol": "quantization_step_at_index"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_quantization_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part2_quantization_step_at_index"},
+        {"path": "specs/mod.rs", "symbol": "part2_quantization_for_subband"},
+        {"path": "specs/mod.rs", "symbol": "part2_make_subband_geometry"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Quantization::step"},
+        {"path": "src/decode.rs", "symbol": "quantization_step_at_index"},
+        {"path": "src/decode.rs", "symbol": "make_subband_geometry"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "quantization_step_for_subband"},
+        {"path": "src/codestream.rs", "symbol": "quantization_view"},
+        {"path": "src/codestream.rs", "symbol": "Quantization::style"},
+        {"path": "src/codestream.rs", "symbol": "Quantization::guard_bits"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "quantization_lookup_and_public_subband_index_preserve_raw_words_and_lazy_policy"},
+        {"path": "src/codestream.rs", "symbol": "subband_admission_matches_every_field_and_raw_error_priority"}
+      ]
+    },
+    {
       "id": "part2-complete-native-component-packet-grid",
       "topic": "Complete actual derive_packet_grid_for_components Result/full PacketGrid from original raw ImageSize/component-style owner/layers/limits/tile/discard metadata. Real ordered all-component resolution admission precedes capacity, geometry, subband deltas, selected-only code-block accounting, all-resolution precinct counts/zero padding and the sole proved constructor's full offset/count/resource result. Discarded finest geometry is still computed and raw unused owner fields remain unvalidated. No normalized counts/grid/geometry, supplied lookup/scaling/result bank, successful budget or allocation premise. Actual full/selected tile planner executes this producer; packet-plan precinct/codeblock/component construction and F2/F4/F8 remain separate.",
       "implementation_refs": [

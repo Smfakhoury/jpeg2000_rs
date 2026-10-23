@@ -790,6 +790,30 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_SUBBAND_ADMISSION_CONTRACTS = {
+    ("src/codestream.rs", "Quantization::step"): (
+        "part2_quantization_lookup", r"\1", None,
+        _coverage_call("quantization_view", "self") + r"\s*,\s*index",
+    ),
+    ("src/decode.rs", "quantization_step_at_index"): (
+        "part2_quantization_step_at_index", r"\1", None,
+        _coverage_call("codestream::quantization_view", "quantization") + r"\s*,\s*resolution\s*,\s*index",
+    ),
+    ("src/decode.rs", "quantization_step_for_subband"): (
+        "part2_quantization_for_subband", r"\1", None,
+        _coverage_call("codestream::quantization_view", "quantization") + r"\s*,\s*resolution\s*,\s*orientation",
+    ),
+    ("src/decode.rs", "make_subband_geometry"): (
+        "part2_make_subband_geometry", r"\1", None,
+        r"resolution\s*,\s*orientation\s*,\s*bounds\s*,\s*resolution_dimensions\s*,\s*"
+        r"low_pass_first\s*,\s*component_depth\s*,\s*"
+        + _coverage_call("codestream::quantization_view", "quantization") + r"\s*,\s*quantization_index",
+    ),
+}
+_SUBBAND_ADMISSION_PROVED_BOUNDARY_APIS = frozenset({
+    ("src/decode.rs", "quantization_step_for_subband"),
+})
+
 _PACKET_GRID_PRODUCER_CONTRACTS = {
     ("src/decode.rs", "prepare_component_resolution_counts"): (
         "part2_component_resolution_counts",
@@ -1086,6 +1110,7 @@ def validate_normative_coverage(
             if (reference["path"], reference["symbol"]) in (
                 _PACKET_PROVED_BOUNDARY_APIS | _RECONSTRUCTION_PROVED_BOUNDARY_APIS
                 | _RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS
+                | _SUBBAND_ADMISSION_PROVED_BOUNDARY_APIS
             )
             and reference not in entry["contract_refs"]
         ]
@@ -1529,6 +1554,7 @@ def validate_normative_coverage(
                 or _RESOLUTION_STYLE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RESOLUTION_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_GRID_PRODUCER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _SUBBAND_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
