@@ -11035,6 +11035,70 @@ pub open spec fn part1_image_error(arithmetic: bool) -> crate::DecodeError {
     }
 }
 
+pub open spec fn part2_registered_component_ceil(value: u32, divisor: u32, registration: u16)
+    -> Result<u32, crate::DecodeError>
+{
+    if divisor == 0 { Err(part1_image_error(false)) } else {
+        let numerator = value as int * 65536;
+        if numerator > u64::MAX { Err(part1_image_error(true)) }
+        else if numerator <= registration as int { Ok(0) }
+        else {
+            let adjusted = numerator - registration as int;
+            let denominator = divisor as int * 65536;
+            if adjusted < 0 || denominator > u64::MAX { Err(part1_image_error(true)) } else {
+                let rounded = adjusted / denominator + if adjusted % denominator == 0 { 0int } else { 1int };
+                if rounded > u64::MAX || rounded > u32::MAX { Err(part1_image_error(true)) }
+                else { Ok(rounded as u32) }
+            }
+        }
+    }
+}
+
+pub open spec fn part2_tile_component_bounds(
+    size: Part2SelectionGeometry, count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+    tile_index: u16, component: u16,
+) -> Result<crate::codestream::TileComponentBounds, crate::DecodeError> {
+    match part2_selection_tile_bounds(size, tile_index) {
+        Err(error) => Err(error),
+        Ok(tile) => match part1_image_size_component(count, infos, component) {
+            Err(error) => Err(error),
+            Ok(info) => match (
+                part2_registered_component_ceil(size.2, info.x_subsampling as u32, info.x_registration),
+                part2_registered_component_ceil(size.3, info.y_subsampling as u32, info.y_registration),
+                part2_registered_component_ceil(tile.x0, info.x_subsampling as u32, info.x_registration),
+                part2_registered_component_ceil(tile.y0, info.y_subsampling as u32, info.y_registration),
+                part2_registered_component_ceil(tile.x1, info.x_subsampling as u32, info.x_registration),
+                part2_registered_component_ceil(tile.y1, info.y_subsampling as u32, info.y_registration),
+            ) {
+                (Err(error), _, _, _, _, _) => Err(error),
+                (_, Err(error), _, _, _, _) => Err(error),
+                (_, _, Err(error), _, _, _) => Err(error),
+                (_, _, _, Err(error), _, _) => Err(error),
+                (_, _, _, _, Err(error), _) => Err(error),
+                (_, _, _, _, _, Err(error)) => Err(error),
+                (Ok(image_x0), Ok(image_y0), Ok(x0), Ok(y0), Ok(x1), Ok(y1)) => {
+                    if x0 >= x1 || y0 >= y1 || x0 < image_x0 || y0 < image_y0 {
+                        Err(part1_image_error(false))
+                    } else {
+                        Ok(crate::codestream::TileComponentBounds {
+                            tile_index, component, x0, y0, x1, y1,
+                            image_x: (x0 - image_x0) as u32,
+                            image_y: (y0 - image_y0) as u32,
+                        })
+                    }
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_registered_decode_ceil(value: u32, divisor: u32, registration: u16)
+    -> Result<u32, crate::DecodeError>
+{
+    if divisor == 0 { Err(part1_block_placement_error(false)) }
+    else { part2_registered_component_ceil(value, divisor, registration) }
+}
+
 pub open spec fn part1_image_size_component(
     components: u16, information: Seq<crate::codestream::ComponentInfo>, index: u16,
 ) -> Result<crate::codestream::ComponentInfo, crate::DecodeError> {

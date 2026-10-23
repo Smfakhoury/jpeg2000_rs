@@ -1496,3 +1496,11 @@ pixel charges one unit per active output color plus one alpha unit. Stores
 precede charging; overflow preserves the stores and old counter, and a work
 limit error preserves stores and the incremented counter. These are selected
 bounded-decoder behaviors, not newly asserted normative JPEG 2000 equations.
+The complete native tile-component geometry relations
+`part2_tile_component_bounds`, `part2_registered_component_ceil` and
+`part2_registered_decode_ceil` describe actual raw tile/component/registration
+inputs and exact typed Results. Tile geometry precedes descriptor admission;
+the typed-layout decoder's separate zero-divisor error is preserved while both consumers
+execute the same registered-ceiling body. No admitted geometry, normalized
+descriptor or supplied scalar outcome is a premise. Complete packet planning
+and the F2/F4/F8 file/decoder joins remain separate.

@@ -790,6 +790,26 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_TILE_COMPONENT_GEOMETRY_CONTRACTS = {
+    ("src/codestream.rs", "registered_ceil_div"): (
+        "part2_registered_component_ceil", r"\1", None,
+        r"value\s*,\s*divisor\s*,\s*registration",
+    ),
+    ("src/decode.rs", "registered_ceil_div_u32"): (
+        "part2_registered_decode_ceil", r"\1", None,
+        r"value\s*,\s*divisor\s*,\s*registration",
+    ),
+    ("src/codestream.rs", "ImageSize::tile_component_bounds"): (
+        "part2_tile_component_bounds", r"\1", None,
+        r"\s*,\s*".join((
+            _coverage_call("selection_geometry_view", "self"),
+            _coverage_call("image_size_component_count", "self"),
+            _coverage_call("image_size_component_infos", "self"),
+            "tile_index", "component",
+        )),
+    ),
+}
+
 _LAYER_REGISTRATION_CONTRACTS = {
     ("src/jpx.rs", "registered_extent"): (
         "part2_native_registered_extent", r"\1", None,
@@ -1404,6 +1424,7 @@ def validate_normative_coverage(
                 or _PACKET_PROGRESSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TILE_COMPONENT_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))

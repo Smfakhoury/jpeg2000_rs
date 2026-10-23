@@ -4,6 +4,35 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-tile-component-geometry",
+      "topic": "Complete actual raw ImageSize::tile_component_bounds Result and shared registered-ceiling producer. Original checked tile geometry precedes ordered raw component admission, six registered ceiling computations, nonempty extents and relative-origin stores. All raw counts, descriptor registration/subsampling/unused precision/sign fields and checked failures are retained. Actual typed-layout output-region registration reuses the same scalar while preserving its distinct zero-divisor InvalidCodeBlock policy. No normalized geometry, admitted component or supplied scalar result premise; full packet planning and F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "typed_layout"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_tile_component_bounds"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_component_ceil"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_decode_ceil"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "ImageSize::tile_component_bounds"},
+        {"path": "src/codestream.rs", "symbol": "registered_ceil_div"},
+        {"path": "src/decode.rs", "symbol": "registered_ceil_div_u32"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "ImageSize::tile_bounds"},
+        {"path": "src/codestream.rs", "symbol": "ImageSize::component"},
+        {"path": "src/codestream.rs", "symbol": "selection_geometry_view"},
+        {"path": "src/codestream.rs", "symbol": "image_size_component_count"},
+        {"path": "src/codestream.rs", "symbol": "image_size_component_infos"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "registered_component_ceiling_matches_wide_arithmetic_and_all_registration_words"},
+        {"path": "src/codestream.rs", "symbol": "tile_component_bounds_match_raw_geometry_and_ordered_descriptor_admission"}
+      ]
+    },
+    {
       "id": "part2-complete-native-external-alpha",
       "topic": "Complete actual external registered-alpha copy Result/full OwnedLayer and real pixel/row scratch state. Source first-color admission precedes target checked area; actual minimum rectangle, zero padding, target-before-source checked addresses and source-before-destination store are preserved, with first/late errors and final-only alpha/representation commit. No normalized registered source, successful read/store, prepared mask or budget premise. Actual opacity path executes these sole bodies; full file/normalization/frame joins and F2/F4/F8 remain separate.",
       "implementation_refs": [

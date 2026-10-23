@@ -2258,3 +2258,18 @@ exact recipes require all original owners/coordinates and complete final state.
 This closes actual external-alpha copying, not the complete parsed-file
 opacity preparation/dispatch or F2/F4/F8 joins. Full-root/MSRV/local/hosted
 and actual owner-main acceptance remain separate delivery gates.
+## Complete actual tile-component geometry
+
+The original `ImageSize::tile_component_bounds` now has a complete raw-input
+Result relation: actual tile clipping/checked geometry, ordered logical and
+physical component admission, six registered ceilings, nonempty extents and
+relative image coordinates. Raw descriptor precision/sign remain unused;
+registration/subsampling and contradictory counts are not normalized away.
+
+The existing registered-ceiling computation is shared with the native decoder
+typed-layout output-region helper, retaining its distinct zero-divisor error kind.
+An explicit zero/one rounding branch exposes the same boolean conversion to
+the pinned verifier without a new trusted standard-library adapter. Three
+finite exact-input/result recipes, all 65,536 registration words and 168,750
+independent raw tile/descriptor contexts cover both native consumers. This
+does not close packet planning, file decoder output, or whole F2/F4/F8.

@@ -5379,7 +5379,10 @@ fn ceil_div_u32(value: u32, divisor: u32) -> Result<u32, DecodeError> {
         .ok_or_else(arithmetic_overflow)
 }
 
-fn registered_ceil_div_u32(
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_registered_decode_ceil(value, divisor, registration),
+))]
+pub(crate) fn registered_ceil_div_u32(
     value: u32,
     divisor: u32,
     registration: u16,
@@ -5387,24 +5390,7 @@ fn registered_ceil_div_u32(
     if divisor == 0 {
         return Err(invalid_decode());
     }
-    let scale = 65_536_u64;
-    let numerator = u64::from(value)
-        .checked_mul(scale)
-        .ok_or_else(arithmetic_overflow)?;
-    if numerator <= u64::from(registration) {
-        return Ok(0);
-    }
-    let adjusted = numerator
-        .checked_sub(u64::from(registration))
-        .ok_or_else(arithmetic_overflow)?;
-    let denominator = u64::from(divisor)
-        .checked_mul(scale)
-        .ok_or_else(arithmetic_overflow)?;
-    let quotient = adjusted / denominator;
-    let rounded = quotient
-        .checked_add(u64::from(!adjusted.is_multiple_of(denominator)))
-        .ok_or_else(arithmetic_overflow)?;
-    u32::try_from(rounded).map_err(|_| arithmetic_overflow())
+    codestream::registered_ceil_div(value, divisor, registration)
 }
 
 fn floor_div_u32(value: u32, divisor: u32) -> Result<u32, DecodeError> {
