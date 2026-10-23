@@ -673,6 +673,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYER_EXTERNAL_ALPHA_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_decoder_style_and_component_depth_admission(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-decoder-style-admission"},
+            framework._DECODER_ADMISSION_CONTRACTS, 2,
+        )
+
     def test_inventory_binds_complete_raw_tile_component_geometry_and_shared_scalar(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-tile-component-geometry"},

@@ -923,6 +923,19 @@ _LAYER_EXTERNAL_ALPHA_CONTRACTS = {
 }
 
 
+_DECODER_ADMISSION_CONTRACTS = {
+    ("src/decode.rs", "validate_part2_coding_style"): (
+        "part2_validate_execution_style", r"\1", None,
+        r"style\s*,\s*" + _coverage_call("codestream::part2_execution_registry", "extensions")
+        + r"\s*,\s*" + _coverage_call("codestream::part2_kernel_registry", "extensions"),
+    ),
+    ("src/codestream.rs", "Part2Extensions::component_bit_depths_equal"): (
+        "part2_component_depths_equal", r"\1", None,
+        _coverage_call("part2_component_depths", "self") + r"\s*,\s*" + _coverage_call("part2_component_depths", "other"),
+    ),
+}
+
+
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1425,6 +1438,7 @@ def validate_normative_coverage(
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_COMPONENT_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_SAMPLING_CONTRACTS.get((reference["path"], reference["symbol"]))

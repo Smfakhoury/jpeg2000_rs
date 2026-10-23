@@ -1507,6 +1507,19 @@ pub struct Part2Extensions {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn part2_execution_registry(extensions: &Part2Extensions) -> (Seq<u8>, Seq<u8>) {
+        (Seq::new(extensions.decomposition_structures@.len(), |index: int| extensions.decomposition_structures@[index].index),
+            Seq::new(extensions.arbitrary_decompositions@.len(), |index: int| extensions.arbitrary_decompositions@[index].index))
+    }
+
+    pub open spec fn component_depth_views(values: Seq<ComponentBitDepth>) -> Seq<(u8, bool)> {
+        Seq::new(values.len(), |index: int| (values[index].precision, values[index].signed))
+    }
+
+    pub closed spec fn part2_component_depths(extensions: &Part2Extensions) -> Seq<(u8, bool)> {
+        component_depth_views(extensions.component_bit_depths@)
+    }
+
     pub closed spec fn part2_kernel_registry(extensions: &Part2Extensions) -> Seq<(u8, crate::specs::Part2RawKernel)> {
         Seq::new(extensions.arbitrary_kernels@.len(), |index: int|
             (extensions.arbitrary_kernels@[index].index, raw_kernel_view(extensions.arbitrary_kernels@[index])))
@@ -1526,6 +1539,9 @@ impl Part2Extensions {
         &self.nonlinear_transforms
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures component_depth_views(result@) == part2_component_depths(self),
+    ))]
     pub fn component_bit_depths(&self) -> &[ComponentBitDepth] {
         &self.component_bit_depths
     }
@@ -1559,10 +1575,38 @@ impl Part2Extensions {
             .find(|transform| transform.component.is_none())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result.is_some() == part2_execution_registry(self).0.contains(index),
+    ))]
     pub(crate) fn decomposition_structure(&self, index: u8) -> Option<&DecompositionStructure> {
-        self.decomposition_structures
-            .iter()
-            .find(|structure| structure.index == index)
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= self.decomposition_structures.len(),
+                forall|prior: int| 0 <= prior < position ==> self.decomposition_structures@[prior].index != index,
+            decreases self.decomposition_structures.len() - position,
+        ))]
+        while position < self.decomposition_structures.len() {
+            let structure = &self.decomposition_structures[position];
+            if structure.index == index {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(part2_execution_registry(self).0[position as int] == index);
+                    assert(part2_execution_registry(self).0.contains(index));
+                }
+                return Some(structure);
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if part2_execution_registry(self).0.contains(index) {
+                let prior = choose|prior: int| 0 <= prior < part2_execution_registry(self).0.len()
+                    && part2_execution_registry(self).0[prior] == index;
+                assert(self.decomposition_structures@[prior].index != index);
+                assert(false);
+            }
+        }
+        None
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -1593,10 +1637,38 @@ impl Part2Extensions {
         None
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result.is_some() == part2_execution_registry(self).1.contains(index),
+    ))]
     pub(crate) fn arbitrary_decomposition(&self, index: u8) -> Option<&ArbitraryDecomposition> {
-        self.arbitrary_decompositions
-            .iter()
-            .find(|decomposition| decomposition.index == index)
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= self.arbitrary_decompositions.len(),
+                forall|prior: int| 0 <= prior < position ==> self.arbitrary_decompositions@[prior].index != index,
+            decreases self.arbitrary_decompositions.len() - position,
+        ))]
+        while position < self.arbitrary_decompositions.len() {
+            let decomposition = &self.arbitrary_decompositions[position];
+            if decomposition.index == index {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(part2_execution_registry(self).1[position as int] == index);
+                    assert(part2_execution_registry(self).1.contains(index));
+                }
+                return Some(decomposition);
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if part2_execution_registry(self).1.contains(index) {
+                let prior = choose|prior: int| 0 <= prior < part2_execution_registry(self).1.len()
+                    && part2_execution_registry(self).1[prior] == index;
+                assert(self.arbitrary_decompositions@[prior].index != index);
+                assert(false);
+            }
+        }
+        None
     }
 
     #[cfg(test)]
@@ -1607,6 +1679,9 @@ impl Part2Extensions {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_component_depths_equal(part2_component_depths(self), part2_component_depths(other)),
+    ))]
     pub(crate) fn component_bit_depths_equal(&self, other: &Self) -> bool {
         if self.component_bit_depths.len() != other.component_bit_depths.len() {
             return false;
@@ -1616,6 +1691,9 @@ impl Part2Extensions {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.component_bit_depths.len(),
+                    self.component_bit_depths.len() == other.component_bit_depths.len(),
+                    forall|position: int| 0 <= position < index ==>
+                        part2_component_depths(self)[position] == part2_component_depths(other)[position],
                 decreases self.component_bit_depths.len() - index,
             )
         )]
@@ -1626,14 +1704,24 @@ impl Part2Extensions {
             let Some(right) = other.component_bit_depths.get(index) else {
                 return false;
             };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(part2_component_depths(self)[index as int] == (left.precision, left.signed));
+                assert(part2_component_depths(other)[index as int] == (right.precision, right.signed));
+            }
             if left.precision != right.precision || left.signed != right.signed {
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(part2_component_depths(self) != part2_component_depths(other)); }
                 return false;
             }
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(part2_component_depths(self) =~= part2_component_depths(other)); }
         true
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == Ok(()),))]
     pub(crate) fn validate_executable(&self) -> Result<(), DecodeError> {
         Ok(())
     }
@@ -9099,6 +9187,167 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actual_execution_style_admission_matches_raw_registry_membership_and_lazy_fields() {
+        let headers = baseline_headers();
+        let bytes = codestream_with_headers(1, &headers, &[], &[]);
+        let limits = ResourceLimits::default();
+        let baseline = parse_layout(&bytes, &limits).unwrap().info.coding_style;
+        let mut cases = 0;
+        for stored in 0..=u8::MAX {
+            let ads_index = stored.wrapping_add(2);
+            let atk_index = stored.wrapping_add(3);
+            let extensions = Part2Extensions {
+                decomposition_structures: vec![
+                    DecompositionStructure {
+                        index: stored,
+                        directions: vec![baseline.decomposition_directions[0]; 33],
+                    },
+                    DecompositionStructure {
+                        index: stored.wrapping_add(1),
+                        directions: vec![],
+                    },
+                    DecompositionStructure {
+                        index: stored,
+                        directions: vec![],
+                    },
+                ],
+                arbitrary_decompositions: vec![
+                    ArbitraryDecomposition {
+                        index: ads_index,
+                        sublevel_depths: vec![u8::MAX],
+                        subband_splits: vec![],
+                    },
+                    ArbitraryDecomposition {
+                        index: ads_index,
+                        sublevel_depths: vec![],
+                        subband_splits: vec![],
+                    },
+                ],
+                arbitrary_kernels: vec![ArbitraryKernel {
+                    index: atk_index,
+                    reversible: false,
+                    descriptor: u16::MAX,
+                    coefficient_type: u8::MAX,
+                    whole_sample_filter: false,
+                    initial_odd: true,
+                    whole_sample_extension: false,
+                    scaling: None,
+                    steps: vec![],
+                }],
+                metadata_bytes: u64::MAX,
+                ..Part2Extensions::default()
+            };
+            extensions.validate_executable().unwrap();
+            for index in 0..=u8::MAX {
+                let dsc_position = if index == stored {
+                    Some(0)
+                } else if index == stored.wrapping_add(1) {
+                    Some(1)
+                } else {
+                    None
+                };
+                let dsc = extensions.decomposition_structure(index);
+                assert_eq!(dsc.is_some(), dsc_position.is_some());
+                if let Some(position) = dsc_position {
+                    assert!(std::ptr::eq(
+                        dsc.unwrap(),
+                        &extensions.decomposition_structures[position]
+                    ));
+                }
+                let ads = extensions.arbitrary_decomposition(index);
+                assert_eq!(ads.is_some(), index == ads_index);
+                if index == ads_index {
+                    assert!(std::ptr::eq(
+                        ads.unwrap(),
+                        &extensions.arbitrary_decompositions[0]
+                    ));
+                }
+                for transform in [
+                    WaveletTransform::Reversible5x3,
+                    WaveletTransform::Irreversible9x7,
+                    WaveletTransform::Arbitrary(atk_index),
+                    WaveletTransform::Arbitrary(atk_index.wrapping_add(1)),
+                ] {
+                    let mut style = baseline;
+                    style.decomposition_structure = Some(index);
+                    style.transform = transform;
+                    style.layers = 0;
+                    style.decomposition_levels = u8::MAX;
+                    style.code_block_width = 0;
+                    style.code_block_height = u16::MAX;
+                    style.code_block_style = u8::MAX;
+                    let decomposition_exists = dsc_position.is_some() || index == ads_index;
+                    let kernel_exists = !matches!(transform, WaveletTransform::Arbitrary(requested) if requested != atk_index);
+                    let expected = if decomposition_exists && kernel_exists {
+                        Ok(())
+                    } else {
+                        Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::MissingRequiredStructure,
+                        })
+                    };
+                    assert_eq!(
+                        crate::decode::validate_part2_coding_style(style, &extensions),
+                        expected
+                    );
+                    cases += 1;
+                }
+            }
+            let mut style = baseline;
+            style.decomposition_structure = None;
+            style.transform = WaveletTransform::Arbitrary(atk_index);
+            crate::decode::validate_part2_coding_style(style, &extensions).unwrap();
+        }
+        assert_eq!(cases, 262144);
+    }
+
+    #[test]
+    fn actual_component_depth_comparison_preserves_raw_order_precision_and_sign() {
+        let mut cases = 0;
+        for precision in 0..=u8::MAX {
+            for signed in [false, true] {
+                let values = vec![
+                    ComponentBitDepth { precision, signed },
+                    ComponentBitDepth {
+                        precision: 0,
+                        signed: !signed,
+                    },
+                    ComponentBitDepth { precision, signed },
+                ];
+                let left = Part2Extensions {
+                    component_bit_depths: values.clone(),
+                    metadata_bytes: u64::MAX,
+                    ..Part2Extensions::default()
+                };
+                for variant in 0..5 {
+                    let mut other_values = values.clone();
+                    match variant {
+                        1 => other_values[2].precision = precision.wrapping_add(1),
+                        2 => other_values[2].signed = !signed,
+                        3 => {
+                            other_values.pop();
+                        }
+                        4 => other_values.push(ComponentBitDepth { precision, signed }),
+                        _ => {}
+                    }
+                    let expected = values == other_values;
+                    let right = Part2Extensions {
+                        component_bit_depths: other_values,
+                        ..Part2Extensions::default()
+                    };
+                    assert_eq!(left.component_bit_depths_equal(&right), expected);
+                    assert_eq!(right.component_bit_depths_equal(&left), expected);
+                    assert_eq!(left.component_bit_depths(), &values);
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 2560);
+        let empty = Part2Extensions::default();
+        assert!(empty.component_bit_depths_equal(&empty));
+    }
 
     #[test]
     fn registered_component_ceiling_matches_wide_arithmetic_and_all_registration_words() {

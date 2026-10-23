@@ -2258,6 +2258,31 @@ exact recipes require all original owners/coordinates and complete final state.
 This closes actual external-alpha copying, not the complete parsed-file
 opacity preparation/dispatch or F2/F4/F8 joins. Full-root/MSRV/local/hosted
 and actual owner-main acceptance remain separate delivery gates.
+## Actual decoder Part2 style admission and raw depth observations
+
+The actual `validate_part2_coding_style` now has a complete native Result model
+over the original style and real DSC/ADS/ATK registries. Missing decomposition
+is checked before arbitrary-kernel presence; unobserved raw style/descriptor
+contents remain deliberately unvalidated. Native registry lookups preserve
+original first-match behavior and prove precisely the presence observations
+used here, not unobserved descriptor contents or successful execution.
+
+Ordered component-depth comparison now refines equality of every raw precision/
+sign pair, including zero/out-of-range precision, duplicates and length
+mismatch. Its getter exposes those same values. `validate_executable` retains
+its actual unconditional Ok behavior; no new policy rejection is invented.
+
+Independent tests cover 262,144 style/registry/transform contexts, all native
+lookup indices/duplicates/first-pointer identities and2,560 raw depth cases.
+Two finite exact recipes and adversarial bindings require the genuine
+`validate_part2_execution` consumer. Internal style visibility supports these
+same-crate raw tests, not a new public API.
+
+This is an F8 prerequisite for actual decoder results needed by remaining
+F2/F4 file joins. Whole layout admission, planning, compressed/parsed decoder
+and frame composition remain open. No normalized input, lookup/decoder outcome
+bank, conformance or whole-F2/F4/F8 claim follows. Frozen full-root/MSRV/
+local/hosted/main acceptance remain required for delivery.
 ## Complete actual tile-component geometry
 
 The original `ImageSize::tile_component_bounds` now has a complete raw-input
