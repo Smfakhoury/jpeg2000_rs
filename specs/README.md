@@ -66,8 +66,13 @@ samples or supplied row results. `part2_mct_decorrelation` composes the actual
 preparation, every real pixel and final-only precision updates into one
 complete Result/components/work relation for the original native producer.
 Duplicate component references, malformed raw descriptors, zero-sample paths,
-first-error order and earlier state effects remain distinct. Dependency/
-wavelet collections, stage traversal and general MCT/reconstruction joins
+first-error order and earlier state effects remain distinct. `part2_mct_dependency` now also closes the original actual dependency collection:
+real checked coefficient dimensions, interleaved identity resolution, both-side
+integer/layout validation, precise charged work and saturated scratch checks
+precede actual cached-precision/pixel/final-tag composition. The source/store
+loops are genuine shared production bodies, while dependency's previous-row
+recursion and explicit source count remain distinct from decorrelation.
+Wavelet collections, stage traversal and general MCT/reconstruction joins
 remain separate work.
 
 ## Frozen full F5H refinement-plane profile

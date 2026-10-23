@@ -189,6 +189,34 @@ native decorrelation collection producer, not the complete dependency/wavelet
 collections, stage traversal, general MCT/reconstruction or independent
 external-array qualification.
 
+## Complete actual native dependency collection
+
+The original `apply_mct_dependency` now refines a complete unconditional
+Result/components/work model. Checked triangular coefficient counts, raw
+matrix/offset shape, interleaved source-then-destination lookup, original
+per-component integer/layout validation, reversible array precision and actual
+work/saturating-scratch admission retain their original order and first errors.
+The real preparation returns actual indexes/counts without supplying a valid
+plan or adequate budget as a premise.
+
+The existing source/output/fraction scratch allocations retain their order.
+Every pixel uses the same actual source-snapshot and ordered-store bodies as
+decorrelation, with the dependency path's explicit count rather than silently
+substituting the index-list length. Its real row loop feeds all previous
+computed rows into the verified reversible floor or irreversible Q32 producer.
+All rows finish before component stores. Cached original precision values,
+duplicate references, prior-pixel writes, partial errors and final-only tags
+remain in the full relation; no trace or row outcome is supplied.
+
+Independent tests cover 22 coefficient overflow frontiers, 4320 wide admission/
+counter/cap combinations using actual hardened limits, 4608 destination-precision/
+exact-cap preparation cases, 216 whole floor/Q32 collection contexts and 972
+raw pixel/count/duplicate/error states. The initial test attempted an invalid
+above-hardened limit and failed explicitly; that log is retained, and the
+corrected test uses only the repository's real immutable caps. Wavelet
+collections, stage traversal, complete reconstruction and coherent integrated
+qualification remain separate work.
+
 ## Reproduce verification
 
 The [Verus workflow](.github/workflows/verus.yml) pins the verifier archive,

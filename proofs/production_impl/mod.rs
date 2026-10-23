@@ -32,6 +32,182 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_mct_dependency_layout_rejects(
+    components: Seq<crate::specs::Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>,
+    reversible: bool, source_list: bool, position: nat,
+)
+    requires source.len() > 0, source[0] < components.len(),
+        position < (if source_list { source.len() } else { destination.len() }),
+        !crate::specs::part2_mct_dependency_layout_index_valid(
+            components, source[0], if source_list { source[position as int] } else { destination[position as int] }, reversible),
+    ensures crate::specs::part2_mct_validate_dependency_layout(components, source, destination, reversible)
+        == Err(crate::specs::part1_transform_error(false)),
+{
+    if source_list {
+        assert(!(forall |index: int| 0 <= index < source.len()
+            ==> crate::specs::part2_mct_dependency_layout_index_valid(components, source[0], source[index], reversible)));
+    } else {
+        assert(!(forall |index: int| 0 <= index < destination.len()
+            ==> crate::specs::part2_mct_dependency_layout_index_valid(components, source[0], destination[index], reversible)));
+    }
+}
+
+pub proof fn production_mct_dependency_layout_bounds(
+    components: Seq<crate::specs::Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>,
+    reversible: bool, samples: usize,
+)
+    requires crate::specs::part2_mct_validate_dependency_layout(components, source, destination, reversible) == Ok(samples),
+    ensures forall |index: int| 0 <= index < source.len() ==> source[index] < components.len(),
+        forall |index: int| 0 <= index < destination.len() ==> destination[index] < components.len(),
+{
+    assert forall |index: int| 0 <= index < source.len() implies source[index] < components.len() by {
+        assert(crate::specs::part2_mct_dependency_layout_index_valid(components, source[0], source[index], reversible));
+    }
+    assert forall |index: int| 0 <= index < destination.len() implies destination[index] < components.len() by {
+        assert(crate::specs::part2_mct_dependency_layout_index_valid(components, source[0], destination[index], reversible));
+    }
+}
+
+pub proof fn production_mct_pairs_empty(
+    components: Seq<crate::specs::Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>,
+)
+    ensures crate::specs::part2_mct_component_pairs(components, source, destination, 0) == Ok((Seq::empty(), Seq::empty())),
+{
+    reveal_with_fuel(crate::specs::part2_mct_component_pairs, 1);
+}
+
+pub proof fn production_mct_pairs_step(
+    components: Seq<crate::specs::Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, count: nat,
+)
+    ensures crate::specs::part2_mct_component_pairs(components, source, destination, count + 1)
+        == crate::specs::part2_mct_component_pair_step(
+            crate::specs::part2_mct_component_pairs(components, source, destination, count),
+            components, source, destination, count),
+{
+    reveal_with_fuel(crate::specs::part2_mct_component_pairs, 1);
+}
+
+pub proof fn production_mct_pairs_error(
+    components: Seq<crate::specs::Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, count: nat, end: nat,
+)
+    requires count <= end,
+    ensures crate::specs::part2_mct_component_pairs(components, source, destination, count).is_err()
+        ==> crate::specs::part2_mct_component_pairs(components, source, destination, end)
+            == crate::specs::part2_mct_component_pairs(components, source, destination, count),
+    decreases end - count,
+{
+    if count < end {
+        production_mct_pairs_error(components, source, destination, count, (end - 1) as nat);
+        production_mct_pairs_step(components, source, destination, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_pairs_lengths(
+    components: Seq<crate::specs::Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, count: nat,
+    inputs: Seq<usize>, outputs: Seq<usize>,
+)
+    requires crate::specs::part2_mct_component_pairs(components, source, destination, count) == Ok((inputs, outputs)),
+    ensures inputs.len() == count, outputs.len() == count,
+    decreases count,
+{
+    reveal_with_fuel(crate::specs::part2_mct_component_pairs, 1);
+    if count > 0 {
+        match crate::specs::part2_mct_component_pairs(components, source, destination, (count - 1) as nat) {
+            Ok((previous_inputs, previous_outputs)) => {
+                production_mct_pairs_lengths(components, source, destination, (count - 1) as nat, previous_inputs, previous_outputs);
+            },
+            Err(_) => {},
+        }
+    }
+}
+
+pub proof fn production_mct_dependency_rows_empty(
+    initial: Seq<i64>, collection: crate::specs::Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>,
+)
+    ensures crate::specs::part2_mct_dependency_rows(initial, collection, source, fractions, 0) == (Ok(()), initial),
+{
+    reveal_with_fuel(crate::specs::part2_mct_dependency_rows, 1);
+}
+
+pub proof fn production_mct_dependency_rows_step(
+    initial: Seq<i64>, collection: crate::specs::Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat,
+)
+    requires count <= usize::MAX,
+    ensures crate::specs::part2_mct_dependency_rows(initial, collection, source, fractions, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_dependency_rows(initial, collection, source, fractions, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => match crate::specs::part2_mct_dependency_row(collection.4, collection.5, source,
+                    if collection.0 { None } else { Some(fractions) }, previous.1, count as usize) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_dependency_rows, 1);
+}
+
+pub proof fn production_mct_dependency_rows_error(
+    initial: Seq<i64>, collection: crate::specs::Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat, end: nat,
+)
+    requires count <= end <= usize::MAX,
+    ensures crate::specs::part2_mct_dependency_rows(initial, collection, source, fractions, count).0.is_err()
+        ==> crate::specs::part2_mct_dependency_rows(initial, collection, source, fractions, end)
+            == crate::specs::part2_mct_dependency_rows(initial, collection, source, fractions, count),
+    decreases end - count,
+{
+    if count < end {
+        production_mct_dependency_rows_error(initial, collection, source, fractions, count, (end - 1) as nat);
+        production_mct_dependency_rows_step(initial, collection, source, fractions, (end - 1) as nat);
+    }
+}
+
+pub proof fn production_mct_dependency_pixels_empty(
+    components: Seq<crate::specs::Part2MctComponent>, collection: crate::specs::Part2MctCollection,
+    prepared: crate::specs::Part2MctDependencyPreparation, fractions: Seq<u8>,
+)
+    ensures crate::specs::part2_mct_dependency_pixels(components, collection, prepared, fractions, 0) == (Ok(()), components),
+{
+    reveal_with_fuel(crate::specs::part2_mct_dependency_pixels, 1);
+}
+
+pub proof fn production_mct_dependency_pixels_step(
+    components: Seq<crate::specs::Part2MctComponent>, collection: crate::specs::Part2MctCollection,
+    prepared: crate::specs::Part2MctDependencyPreparation, fractions: Seq<u8>, count: nat,
+)
+    requires count <= usize::MAX,
+    ensures crate::specs::part2_mct_dependency_pixels(components, collection, prepared, fractions, count + 1)
+        == {
+            let previous = crate::specs::part2_mct_dependency_pixels(components, collection, prepared, fractions, count);
+            match previous.0 {
+                Err(_) => previous,
+                Ok(()) => {
+                    let pixel = crate::specs::part2_mct_dependency_pixel(previous.1, collection, prepared, fractions, count as usize);
+                    (pixel.0, pixel.1)
+                },
+            }
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_dependency_pixels, 1);
+}
+
+pub proof fn production_mct_dependency_pixels_error(
+    components: Seq<crate::specs::Part2MctComponent>, collection: crate::specs::Part2MctCollection,
+    prepared: crate::specs::Part2MctDependencyPreparation, fractions: Seq<u8>, count: nat, end: nat,
+)
+    requires count <= end <= usize::MAX,
+    ensures crate::specs::part2_mct_dependency_pixels(components, collection, prepared, fractions, count).0.is_err()
+        ==> crate::specs::part2_mct_dependency_pixels(components, collection, prepared, fractions, end)
+            == crate::specs::part2_mct_dependency_pixels(components, collection, prepared, fractions, count),
+    decreases end - count,
+{
+    if count < end {
+        production_mct_dependency_pixels_error(components, collection, prepared, fractions, count, (end - 1) as nat);
+        production_mct_dependency_pixels_step(components, collection, prepared, fractions, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_mct_pixels_empty(
     components: Seq<crate::specs::Part2MctComponent>, collection: crate::specs::Part2MctCollection,
     prepared: crate::specs::Part2MctDecorrelationPreparation,

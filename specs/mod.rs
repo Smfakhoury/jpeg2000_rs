@@ -16,6 +16,213 @@ pub type Part2MctCollection = (
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
 pub type Part2MctDecorrelationPreparation = (Seq<usize>, Seq<usize>, Seq<u8>, usize, usize, usize);
+pub type Part2MctDependencyPreparation = (Seq<usize>, Seq<usize>, usize, usize);
+
+pub open spec fn part2_mct_dependency_coefficients(count: usize, reversible: bool)
+    -> Result<usize, crate::DecodeError> {
+    if reversible {
+        if count as nat + 1 > usize::MAX || count as nat * (count as nat + 1) > usize::MAX
+            || count as nat * (count as nat + 1) / 2 < 1 {
+            Err(part1_transform_error(true))
+        } else { Ok((count as nat * (count as nat + 1) / 2 - 1) as usize) }
+    } else {
+        let previous = if count == 0 { 0nat } else { (count - 1) as nat };
+        if count as nat * previous > usize::MAX { Err(part1_transform_error(true)) }
+        else { Ok((count as nat * previous / 2) as usize) }
+    }
+}
+
+pub open spec fn part2_mct_dependency_dimensions(collection: Part2MctCollection)
+    -> Result<(usize, usize), crate::DecodeError> {
+    let count = collection.1.len();
+    if count == 0 || count != collection.2.len() { Err(part1_transform_error(false)) }
+    else if count > usize::MAX { Err(part1_transform_error(true)) }
+    else { match part2_mct_dependency_coefficients(count as usize, collection.0) {
+        Err(error) => Err(error),
+        Ok(coefficients) => if (collection.4.is_some() && collection.4.unwrap().4.len() != coefficients)
+            || (collection.5.is_some() && collection.5.unwrap().4.len() != count) {
+            Err(part1_transform_error(false))
+        } else { Ok((count as usize, coefficients)) },
+    } }
+}
+
+pub open spec fn part2_mct_component_pair_step(
+    previous: Result<(Seq<usize>, Seq<usize>), crate::DecodeError>,
+    components: Seq<Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, index: nat,
+) -> Result<(Seq<usize>, Seq<usize>), crate::DecodeError> {
+    match previous {
+        Err(error) => Err(error),
+        Ok((inputs, outputs)) => if index >= source.len() { Err(part1_transform_error(false)) }
+            else { match part2_mct_find_component(components, source[index as int]) {
+                Err(error) => Err(error),
+                Ok(input) => if index >= destination.len() { Err(part1_transform_error(false)) }
+                    else { match part2_mct_find_component(components, destination[index as int]) {
+                        Err(error) => Err(error), Ok(output) => Ok((inputs.push(input), outputs.push(output))),
+                    } },
+            } },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_component_pairs(
+    components: Seq<Part2MctComponent>, source: Seq<u16>, destination: Seq<u16>, count: nat,
+) -> Result<(Seq<usize>, Seq<usize>), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok((Seq::empty(), Seq::empty())) }
+    else { part2_mct_component_pair_step(
+        part2_mct_component_pairs(components, source, destination, (count - 1) as nat),
+        components, source, destination, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_dependency_layout_index_valid(
+    components: Seq<Part2MctComponent>, first: usize, index: usize, reversible: bool,
+) -> bool {
+    part2_mct_layout_index_valid(components, first, index)
+        && (!reversible || components[index as int].2 == 0)
+}
+
+pub open spec fn part2_mct_validate_dependency_layout(
+    components: Seq<Part2MctComponent>, source: Seq<usize>, destination: Seq<usize>, reversible: bool,
+) -> Result<usize, crate::DecodeError> {
+    if source.len() == 0 || source[0] >= components.len() { Err(part1_transform_error(false)) }
+    else if !(forall |index: int| 0 <= index < source.len()
+        ==> part2_mct_dependency_layout_index_valid(components, source[0], source[index], reversible)) {
+        Err(part1_transform_error(false))
+    } else if !(forall |index: int| 0 <= index < destination.len()
+        ==> part2_mct_dependency_layout_index_valid(components, source[0], destination[index], reversible)) {
+        Err(part1_transform_error(false))
+    } else { Ok(components[source[0] as int].3.len() as usize) }
+}
+
+pub open spec fn part2_mct_dependency_admission(
+    samples: usize, coefficients: usize, count: usize, before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, u64) {
+    let twice = (coefficients as u64) as nat * 2;
+    let per_sample = twice + (count as u64) as nat;
+    let operations = (samples as u64) as nat * per_sample;
+    if twice > u64::MAX || per_sample > u64::MAX || operations > u64::MAX {
+        (Err(part1_transform_error(true)), before)
+    } else {
+        let charged = part2_mct_charge_work(before, operations as u64, maximum_work);
+        match charged.0 {
+            Err(error) => (Err(error), charged.1),
+            Ok(()) => {
+                let scratch = if count as nat * 3 > usize::MAX { usize::MAX as nat } else { count as nat * 3 };
+                (part1_image_byte_budget(scratch, 8, maximum_bytes), charged.1)
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_prepare_dependency(
+    components: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<Part2MctDependencyPreparation, crate::DecodeError>, u64) {
+    match part2_mct_dependency_dimensions(collection) {
+        Err(error) => (Err(error), before),
+        Ok((count, coefficients)) => match part2_mct_component_pairs(components, collection.1, collection.2, count as nat) {
+            Err(error) => (Err(error), before),
+            Ok((source, destination)) => match part2_mct_validate_dependency_layout(components, source, destination, collection.0) {
+                Err(error) => (Err(error), before),
+                Ok(samples) => if collection.0
+                    && ((collection.4.is_some() && collection.4.unwrap().3 != 0)
+                        || (collection.5.is_some() && collection.5.unwrap().3 != 0)) {
+                    (Err(part1_transform_error(false)), before)
+                } else {
+                    let admitted = part2_mct_dependency_admission(samples, coefficients, count, before, maximum_work, maximum_bytes);
+                    match admitted.0 {
+                        Err(error) => (Err(error), admitted.1),
+                        Ok(()) => (Ok((source, destination, samples, count)), admitted.1),
+                    }
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_dependency_rows(
+    initial: Seq<i64>, collection: Part2MctCollection, source: Seq<i64>, fractions: Seq<u8>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial) }
+    else {
+        let previous = part2_mct_dependency_rows(initial, collection, source, fractions, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else { match part2_mct_dependency_row(collection.4, collection.5, source,
+                    if collection.0 { None } else { Some(fractions) }, previous.1, (count - 1) as usize) {
+                    Err(error) => (Err(error), previous.1), Ok(value) => (Ok(()), previous.1.push(value)),
+                } },
+        }
+    }
+}
+
+pub open spec fn part2_mct_dependency_pixel(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDependencyPreparation, fractions: Seq<u8>, sample: usize,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, Seq<i64>, Seq<i64>) {
+    let snapshot = part2_mct_source_snapshot(before, prepared.0, sample, prepared.3 as nat);
+    match snapshot.0 {
+        Err(error) => (Err(error), before, snapshot.1, Seq::empty()),
+        Ok(()) => {
+            let computed = part2_mct_dependency_rows(Seq::empty(), collection, snapshot.1, fractions, prepared.3 as nat);
+            match computed.0 {
+                Err(error) => (Err(error), before, snapshot.1, computed.1),
+                Ok(()) => {
+                    let stored = part2_mct_store_output_rows(before, prepared.1, computed.1, sample, prepared.3 as nat);
+                    (stored.0, stored.1, snapshot.1, computed.1)
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_mct_dependency_pixels(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    prepared: Part2MctDependencyPreparation, fractions: Seq<u8>, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>)
+    decreases count,
+{
+    if count == 0 { (Ok(()), before) }
+    else {
+        let previous = part2_mct_dependency_pixels(before, collection, prepared, fractions, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => if count - 1 > usize::MAX { (Err(part1_transform_error(true)), previous.1) }
+                else {
+                    let pixel = part2_mct_dependency_pixel(previous.1, collection, prepared, fractions, (count - 1) as usize);
+                    (pixel.0, pixel.1)
+                },
+        }
+    }
+}
+
+pub open spec fn part2_mct_dependency(
+    before: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    work: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<(), crate::DecodeError>, Seq<Part2MctComponent>, u64) {
+    let preparation = part2_mct_prepare_dependency(before, collection, work, maximum_work, maximum_bytes);
+    match preparation.0 {
+        Err(error) => (Err(error), before, preparation.1),
+        Ok(prepared) => {
+            let fractions = Seq::new(prepared.0.len(), |index: int| before[prepared.0[index] as int].2);
+            let pixels = part2_mct_dependency_pixels(before, collection, prepared, fractions, prepared.2 as nat);
+            match pixels.0 {
+                Err(error) => (Err(error), pixels.1, preparation.1),
+                Ok(()) => {
+                    let tagged = part2_mct_destination_precisions(pixels.1, prepared.1,
+                        if collection.0 { 0 } else { 32 }, prepared.1.len());
+                    (tagged.0, tagged.1, preparation.1)
+                },
+            }
+        },
+    }
+}
 
 pub open spec fn part2_mct_source_sample(
     components: Seq<Part2MctComponent>, component: usize, sample: usize,
@@ -48,6 +255,13 @@ pub open spec fn part2_mct_source_snapshot(
     else { part2_mct_snapshot_step(
         part2_mct_source_snapshot(components, indexes, sample, (count - 1) as nat),
         components, indexes, sample, (count - 1) as nat) }
+}
+
+pub open spec fn part2_mct_begin_pixel(
+    components: Seq<Part2MctComponent>, indexes: Seq<usize>, sample: usize, count: nat,
+) -> (Result<(), crate::DecodeError>, Seq<i64>, Seq<i64>) {
+    let snapshot = part2_mct_source_snapshot(components, indexes, sample, count);
+    (snapshot.0, snapshot.1, Seq::empty())
 }
 
 pub open spec fn part2_mct_store_output_row(
