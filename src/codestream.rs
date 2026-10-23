@@ -103,6 +103,13 @@ verus! {
     pub closed spec fn precinct_selector_view(style: CodingStyle) -> (u8, Seq<(u8, u8)>) {
         (style.decomposition_levels, style.precinct_exponents@)
     }
+
+    pub(crate) proof fn resolution_selectors_known_fields(style: CodingStyle)
+        ensures
+            decomposition_selector_view(style) == (style.decomposition_levels, style.decomposition_directions@),
+            precinct_selector_view(style) == (style.decomposition_levels, style.precinct_exponents@),
+    {
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -9328,6 +9335,271 @@ mod tests {
         ))
     }
 
+    fn raw_resolution_size(
+        extent: u32,
+        origin: u32,
+        sampling: (u8, u8),
+        registration: u16,
+        components: u16,
+    ) -> ImageSize {
+        ImageSize {
+            width: extent,
+            height: extent,
+            x_origin: origin,
+            y_origin: origin.min(1),
+            components,
+            uniform_bit_depth: None,
+            uniform_signed: None,
+            tile_width: 17,
+            tile_height: 31,
+            tile_x_origin: origin.saturating_sub(1),
+            tile_y_origin: 0,
+            tiles_across: 2,
+            tiles_down: 2,
+            component_info: [ComponentInfo {
+                precision: registration as u8,
+                signed: true,
+                x_subsampling: sampling.0,
+                y_subsampling: sampling.1,
+                x_registration: registration,
+                y_registration: u16::MAX - registration,
+            }; MAX_COMPONENTS],
+        }
+    }
+
+    fn reference_component_coordinate_bounds(
+        size: &ImageSize,
+        component: u16,
+        tile_index: Option<u16>,
+    ) -> Result<[u32; 4], DecodeError> {
+        if let Some(tile) = tile_index {
+            let bounds = reference_tile_component_bounds(size, tile, component)?;
+            return Ok([bounds.x0, bounds.y0, bounds.x1, bounds.y1]);
+        }
+        let geometry = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        };
+        if component >= size.components {
+            return Err(geometry);
+        }
+        let info = size
+            .component_info
+            .get(usize::from(component))
+            .ok_or(geometry)?;
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let x1 = u32::try_from(u128::from(size.x_origin) + u128::from(size.width))
+            .map_err(|_| arithmetic)?;
+        let y1 = u32::try_from(u128::from(size.y_origin) + u128::from(size.height))
+            .map_err(|_| arithmetic)?;
+        let ceil = |value: u32, divisor: u8| {
+            if divisor == 0 {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodeBlock,
+                });
+            }
+            Ok(u32::try_from(u64::from(value).div_ceil(u64::from(divisor))).unwrap())
+        };
+        Ok([
+            ceil(size.x_origin, info.x_subsampling)?,
+            ceil(size.y_origin, info.y_subsampling)?,
+            ceil(x1, info.x_subsampling)?,
+            ceil(y1, info.y_subsampling)?,
+        ])
+    }
+
+    fn reference_resolution_geometry(
+        size: &ImageSize,
+        style: CodingStyle,
+        component: u16,
+        resolution: u8,
+        tile_index: Option<u16>,
+    ) -> Result<crate::decode::ComponentResolutionGeometry, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        if resolution > style.decomposition_levels {
+            return Err(invalid);
+        }
+        let bounds = reference_component_coordinate_bounds(size, component, tile_index)?;
+        let scale = (0..style.decomposition_levels - resolution)
+            .try_fold((1, 1), |before, stage| {
+                reference_resolution_scale_step(style, stage, before)
+            })?;
+        let ceil = |value: u32, divisor: u32| {
+            u32::try_from(u128::from(value).div_ceil(u128::from(divisor))).unwrap()
+        };
+        let x0 = ceil(bounds[0], scale.0);
+        let y0 = ceil(bounds[1], scale.1);
+        let x1 = ceil(bounds[2], scale.0);
+        let y1 = ceil(bounds[3], scale.1);
+        let width = x1.checked_sub(x0).ok_or(arithmetic)?;
+        let height = y1.checked_sub(y0).ok_or(arithmetic)?;
+        if style.code_block_width == 0 || style.code_block_height == 0 {
+            return Err(invalid);
+        }
+        let cells = |start: u32, end: u32, step: u32| {
+            let right = u64::from(end).div_ceil(u64::from(step));
+            let left = u64::from(start) / u64::from(step);
+            u32::try_from(right.checked_sub(left).ok_or(arithmetic)?).map_err(|_| arithmetic)
+        };
+        let code_blocks_across = cells(x0, x1, u32::from(style.code_block_width))?;
+        let code_blocks_down = cells(y0, y1, u32::from(style.code_block_height))?;
+        let code_blocks =
+            u64::try_from(u128::from(code_blocks_across) * u128::from(code_blocks_down))
+                .map_err(|_| arithmetic)?;
+        let precinct = style
+            .precinct_exponents
+            .get(usize::from(resolution))
+            .ok_or(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            })?;
+        if precinct.0 > 31 || precinct.1 > 31 {
+            return Err(invalid);
+        }
+        let precincts_across = cells(x0, x1, 1_u32 << precinct.0)?;
+        let precincts_down = cells(y0, y1, 1_u32 << precinct.1)?;
+        let precincts = u64::try_from(u128::from(precincts_across) * u128::from(precincts_down))
+            .map_err(|_| arithmetic)?;
+        Ok(crate::decode::ComponentResolutionGeometry {
+            component,
+            resolution,
+            width,
+            height,
+            subbands: if resolution == 0 { 1 } else { 3 },
+            code_blocks_across,
+            code_blocks_down,
+            code_blocks,
+            precincts_across,
+            precincts_down,
+            precincts,
+        })
+    }
+
+    #[test]
+    fn resolution_geometry_matches_complete_raw_whole_and_registered_tile_outputs() {
+        let mut cases = 0;
+        let mut successful = 0;
+        for extent in [0, 1, 33, 1025, u32::MAX] {
+            for origin in [0, 1, u32::MAX] {
+                for sampling in [(1, 1), (1, 3), (2, 255), (255, 2)] {
+                    for registration in [0, 1, u16::MAX] {
+                        let size = raw_resolution_size(extent, origin, sampling, registration, 1);
+                        for tile in [None, Some(0), Some(1)] {
+                            assert_eq!(
+                                crate::decode::component_coordinate_bounds(&size, 0, tile),
+                                reference_component_coordinate_bounds(&size, 0, tile),
+                            );
+                            for (levels, resolution, pattern) in [
+                                (0, 0, 0),
+                                (1, 0, 1),
+                                (1, 1, 2),
+                                (5, 2, 3),
+                                (31, 0, 1),
+                                (32, 0, 3),
+                                (33, 0, 0),
+                                (255, 255, 7),
+                            ] {
+                                for (block_x, block_y) in
+                                    [(0, 1), (1, 0), (1, 1), (3, 7), (u16::MAX, u16::MAX)]
+                                {
+                                    for precinct in
+                                        [(0, 0), (1, 31), (31, 1), (32, 0), (0, 32), (255, 255)]
+                                    {
+                                        let mut style = raw_resolution_style(levels, pattern);
+                                        style.code_block_width = block_x;
+                                        style.code_block_height = block_y;
+                                        if let Some(slot) = style
+                                            .precinct_exponents
+                                            .get_mut(usize::from(resolution))
+                                        {
+                                            *slot = precinct;
+                                        }
+                                        let expected = reference_resolution_geometry(
+                                            &size, style, 0, resolution, tile,
+                                        );
+                                        assert_eq!(
+                                            crate::decode::derive_component_resolution_geometry_for(
+                                                &size, style, 0, resolution, tile,
+                                            ),
+                                            expected,
+                                        );
+                                        if tile.is_none() {
+                                            assert_eq!(
+                                                crate::decode::derive_component_resolution_geometry(
+                                                    &size, style, 0, resolution
+                                                ),
+                                                expected,
+                                            );
+                                        }
+                                        successful += usize::from(expected.is_ok());
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 129_600);
+        assert!(
+            successful > 1000,
+            "{successful} successful whole-owner outputs"
+        );
+    }
+
+    #[test]
+    fn resolution_geometry_preserves_raw_admission_and_sampling_error_priority() {
+        let mut cases = 0;
+        for extent in [0, 1, 33, 1025, u32::MAX] {
+            for origin in [0, 1, u32::MAX] {
+                for sampling in [(0, 0), (0, 1), (1, 0), (1, 1), (2, 255), (255, 2)] {
+                    for count in [0, 1, 64, 65, u16::MAX] {
+                        let size = raw_resolution_size(extent, origin, sampling, u16::MAX, count);
+                        for component in [0, 1, 63, 64, u16::MAX] {
+                            for tile in [None, Some(0), Some(1), Some(u16::MAX)] {
+                                assert_eq!(
+                                    crate::decode::component_coordinate_bounds(
+                                        &size, component, tile
+                                    ),
+                                    reference_component_coordinate_bounds(&size, component, tile),
+                                );
+                                for (levels, resolution, pattern) in
+                                    [(0, 255, 0), (255, 255, 7), (32, 0, 1)]
+                                {
+                                    let mut style = raw_resolution_style(levels, pattern);
+                                    style.code_block_width = 3;
+                                    style.code_block_height = 7;
+                                    assert_eq!(
+                                        crate::decode::derive_component_resolution_geometry_for(
+                                            &size, style, component, resolution, tile,
+                                        ),
+                                        reference_resolution_geometry(
+                                            &size, style, component, resolution, tile
+                                        ),
+                                    );
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 27_000);
+    }
+
     #[test]
     fn resolution_styles_preserve_all_raw_level_resolution_and_lazy_precinct_cases() {
         let invalid = DecodeError::MalformedInput {
@@ -9803,82 +10075,82 @@ mod tests {
         }
     }
 
+    fn reference_tile_component_bounds(
+        size: &ImageSize,
+        tile_index: u16,
+        component: u16,
+    ) -> Result<TileComponentBounds, DecodeError> {
+        let invalid = || DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        };
+        let checked = |value: u128| {
+            u32::try_from(value).map_err(|_| DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })
+        };
+        if u64::from(tile_index) >= u64::from(size.tiles_across) * u64::from(size.tiles_down)
+            || size.tiles_across == 0
+        {
+            return Err(invalid());
+        }
+        let nx = checked(
+            u128::from(size.tile_x_origin)
+                + u128::from(u32::from(tile_index) % size.tiles_across)
+                    * u128::from(size.tile_width),
+        )?;
+        let ny = checked(
+            u128::from(size.tile_y_origin)
+                + u128::from(u32::from(tile_index) / size.tiles_across)
+                    * u128::from(size.tile_height),
+        )?;
+        let image_x1 = checked(u128::from(size.x_origin) + u128::from(size.width))?;
+        let image_y1 = checked(u128::from(size.y_origin) + u128::from(size.height))?;
+        let tx0 = nx.max(size.x_origin);
+        let ty0 = ny.max(size.y_origin);
+        let tx1 = checked(u128::from(nx) + u128::from(size.tile_width))?.min(image_x1);
+        let ty1 = checked(u128::from(ny) + u128::from(size.tile_height))?.min(image_y1);
+        if tx0 >= tx1 || ty0 >= ty1 {
+            return Err(invalid());
+        }
+        if component >= size.components {
+            return Err(invalid());
+        }
+        let info = size
+            .component_info
+            .get(usize::from(component))
+            .ok_or_else(invalid)?;
+        let ceil = |value: u32, divisor: u8, registration: u16| {
+            if divisor == 0 {
+                return Err(invalid());
+            }
+            let numerator = (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
+            Ok(u32::try_from(numerator.div_ceil(u128::from(divisor) * 65_536)).unwrap())
+        };
+        let image_x0 = ceil(size.x_origin, info.x_subsampling, info.x_registration)?;
+        let image_y0 = ceil(size.y_origin, info.y_subsampling, info.y_registration)?;
+        let x0 = ceil(tx0, info.x_subsampling, info.x_registration)?;
+        let y0 = ceil(ty0, info.y_subsampling, info.y_registration)?;
+        let x1 = ceil(tx1, info.x_subsampling, info.x_registration)?;
+        let y1 = ceil(ty1, info.y_subsampling, info.y_registration)?;
+        if x0 >= x1 || y0 >= y1 {
+            return Err(invalid());
+        }
+        Ok(TileComponentBounds {
+            tile_index,
+            component,
+            x0,
+            y0,
+            x1,
+            y1,
+            image_x: x0.checked_sub(image_x0).ok_or_else(invalid)?,
+            image_y: y0.checked_sub(image_y0).ok_or_else(invalid)?,
+        })
+    }
+
     #[test]
     fn tile_component_bounds_match_raw_geometry_and_ordered_descriptor_admission() {
-        fn oracle(
-            size: &ImageSize,
-            tile_index: u16,
-            component: u16,
-        ) -> Result<TileComponentBounds, DecodeError> {
-            let invalid = || DecodeError::MalformedInput {
-                offset: 0,
-                kind: MalformedKind::InvalidImageGeometry,
-            };
-            let checked = |value: u128| {
-                u32::try_from(value).map_err(|_| DecodeError::MalformedInput {
-                    offset: 0,
-                    kind: MalformedKind::ArithmeticOverflow,
-                })
-            };
-            if u64::from(tile_index) >= u64::from(size.tiles_across) * u64::from(size.tiles_down)
-                || size.tiles_across == 0
-            {
-                return Err(invalid());
-            }
-            let nx = checked(
-                u128::from(size.tile_x_origin)
-                    + u128::from(u32::from(tile_index) % size.tiles_across)
-                        * u128::from(size.tile_width),
-            )?;
-            let ny = checked(
-                u128::from(size.tile_y_origin)
-                    + u128::from(u32::from(tile_index) / size.tiles_across)
-                        * u128::from(size.tile_height),
-            )?;
-            let image_x1 = checked(u128::from(size.x_origin) + u128::from(size.width))?;
-            let image_y1 = checked(u128::from(size.y_origin) + u128::from(size.height))?;
-            let tx0 = nx.max(size.x_origin);
-            let ty0 = ny.max(size.y_origin);
-            let tx1 = checked(u128::from(nx) + u128::from(size.tile_width))?.min(image_x1);
-            let ty1 = checked(u128::from(ny) + u128::from(size.tile_height))?.min(image_y1);
-            if tx0 >= tx1 || ty0 >= ty1 {
-                return Err(invalid());
-            }
-            if component >= size.components {
-                return Err(invalid());
-            }
-            let info = size
-                .component_info
-                .get(usize::from(component))
-                .ok_or_else(invalid)?;
-            let ceil = |value: u32, divisor: u8, registration: u16| {
-                if divisor == 0 {
-                    return Err(invalid());
-                }
-                let numerator =
-                    (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
-                Ok(u32::try_from(numerator.div_ceil(u128::from(divisor) * 65_536)).unwrap())
-            };
-            let image_x0 = ceil(size.x_origin, info.x_subsampling, info.x_registration)?;
-            let image_y0 = ceil(size.y_origin, info.y_subsampling, info.y_registration)?;
-            let x0 = ceil(tx0, info.x_subsampling, info.x_registration)?;
-            let y0 = ceil(ty0, info.y_subsampling, info.y_registration)?;
-            let x1 = ceil(tx1, info.x_subsampling, info.x_registration)?;
-            let y1 = ceil(ty1, info.y_subsampling, info.y_registration)?;
-            if x0 >= x1 || y0 >= y1 {
-                return Err(invalid());
-            }
-            Ok(TileComponentBounds {
-                tile_index,
-                component,
-                x0,
-                y0,
-                x1,
-                y1,
-                image_x: x0.checked_sub(image_x0).ok_or_else(invalid)?,
-                image_y: y0.checked_sub(image_y0).ok_or_else(invalid)?,
-            })
-        }
         let mut cases = 0;
         for extent in [0, 1, 3, 31, u32::MAX] {
             for span in [0, 1, 2, 31, u32::MAX] {
@@ -9916,7 +10188,9 @@ mod tests {
                                         };
                                         assert_eq!(
                                             size.tile_component_bounds(tile_index, component),
-                                            oracle(&size, tile_index, component),
+                                            reference_tile_component_bounds(
+                                                &size, tile_index, component
+                                            ),
                                             "extent={extent} span={span} origin={origin} tile={tile_index} count={components} component={component} sampling=({x_subsampling},{y_subsampling}) registration={registration}",
                                         );
                                         cases += 1;

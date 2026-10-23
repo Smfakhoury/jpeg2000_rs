@@ -99,6 +99,15 @@ pub struct ComponentResolutionGeometry {
     pub precincts: u64,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn resolution_geometry_style(style: CodingStyle) -> crate::specs::Part2ResolutionStyle {
+        let selector = codestream::decomposition_selector_view(style);
+        (selector.0, selector.1, style.code_block_width, style.code_block_height,
+            codestream::precinct_selector_view(style).1)
+    }
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct SubbandGeometry {
@@ -161,6 +170,13 @@ pub struct PreparedTileComponent {
     samples: Vec<i64>,
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_resolution_geometry(
+        codestream::selection_geometry_view(size), codestream::image_size_component_count(size),
+        codestream::image_size_component_infos(size), resolution_geometry_style(coding_style),
+        component, resolution, None,
+    ),
+))]
 pub fn derive_component_resolution_geometry(
     size: &ImageSize,
     coding_style: CodingStyle,
@@ -170,13 +186,24 @@ pub fn derive_component_resolution_geometry(
     derive_component_resolution_geometry_for(size, coding_style, component, resolution, None)
 }
 
-fn derive_component_resolution_geometry_for(
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_resolution_geometry(
+        codestream::selection_geometry_view(size), codestream::image_size_component_count(size),
+        codestream::image_size_component_infos(size), resolution_geometry_style(coding_style),
+        component, resolution, tile_index,
+    ),
+))]
+pub(crate) fn derive_component_resolution_geometry_for(
     size: &ImageSize,
     coding_style: CodingStyle,
     component: u16,
     resolution: u8,
     tile_index: Option<u16>,
 ) -> Result<ComponentResolutionGeometry, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        codestream::resolution_selectors_known_fields(coding_style);
+    }
     if resolution > coding_style.decomposition_levels {
         return Err(invalid_decode());
     }
@@ -5409,11 +5436,21 @@ pub fn decode_code_block(
     })
 }
 
-fn component_coordinate_bounds(
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_component_coordinate_bounds(
+        codestream::selection_geometry_view(size), codestream::image_size_component_count(size),
+        codestream::image_size_component_infos(size), component, tile_index,
+    ),
+))]
+pub(crate) fn component_coordinate_bounds(
     size: &ImageSize,
     component: u16,
     tile_index: Option<u16>,
 ) -> Result<[u32; 4], DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        codestream::selection_geometry_known_fields(size);
+    }
     if let Some(tile_index) = tile_index {
         let bounds = size.tile_component_bounds(tile_index, component)?;
         return Ok([bounds.x0, bounds.y0, bounds.x1, bounds.y1]);
@@ -5427,12 +5464,11 @@ fn component_coordinate_bounds(
         .y_origin
         .checked_add(size.height)
         .ok_or_else(arithmetic_overflow)?;
-    Ok([
-        ceil_div_u32(size.x_origin, u32::from(info.x_subsampling))?,
-        ceil_div_u32(size.y_origin, u32::from(info.y_subsampling))?,
-        ceil_div_u32(image_x1, u32::from(info.x_subsampling))?,
-        ceil_div_u32(image_y1, u32::from(info.y_subsampling))?,
-    ])
+    let x0 = ceil_div_u32(size.x_origin, u32::from(info.x_subsampling))?;
+    let y0 = ceil_div_u32(size.y_origin, u32::from(info.y_subsampling))?;
+    let x1 = ceil_div_u32(image_x1, u32::from(info.x_subsampling))?;
+    let y1 = ceil_div_u32(image_y1, u32::from(info.y_subsampling))?;
+    Ok([x0, y0, x1, y1])
 }
 
 #[cfg_attr(
@@ -5514,6 +5550,9 @@ pub(crate) fn registered_ceil_div_u32(
     codestream::registered_ceil_div(value, divisor, registration)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_selection_floor(value, divisor),
+))]
 fn floor_div_u32(value: u32, divisor: u32) -> Result<u32, DecodeError> {
     if divisor == 0 {
         return Err(invalid_decode());

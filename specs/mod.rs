@@ -1907,6 +1907,164 @@ pub open spec fn part2_selection_ceil(value: u32, divisor: u32) -> Result<u32, c
     }
 }
 
+pub open spec fn part2_selection_floor(value: u32, divisor: u32) -> Result<u32, crate::DecodeError> {
+    if divisor == 0 { Err(part1_block_placement_error(false)) }
+    else { Ok((value / divisor) as u32) }
+}
+
+pub type Part2ResolutionStyle = (u8, Seq<crate::codestream::DecompositionDirection>, u16, u16, Seq<(u8, u8)>);
+
+pub open spec fn part2_component_coordinate_bounds(
+    size: Part2SelectionGeometry, count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+    component: u16, tile_index: Option<u16>,
+) -> Result<[u32; 4], crate::DecodeError> {
+    match tile_index {
+        Some(tile) => match part2_tile_component_bounds(size, count, infos, tile, component) {
+            Err(error) => Err(error),
+            Ok(bounds) => Ok([bounds.x0, bounds.y0, bounds.x1, bounds.y1]),
+        },
+        None => match part1_image_size_component(count, infos, component) {
+            Err(error) => Err(error),
+            Ok(info) => match part1_image_checked_u32(size.2 as int + size.0 as int) {
+                Err(error) => Err(error),
+                Ok(x1) => match part1_image_checked_u32(size.3 as int + size.1 as int) {
+                    Err(error) => Err(error),
+                    Ok(y1) => match (
+                        part2_selection_ceil(size.2, info.x_subsampling as u32),
+                        part2_selection_ceil(size.3, info.y_subsampling as u32),
+                        part2_selection_ceil(x1, info.x_subsampling as u32),
+                        part2_selection_ceil(y1, info.y_subsampling as u32),
+                    ) {
+                        (Err(error), _, _, _) => Err(error),
+                        (_, Err(error), _, _) => Err(error),
+                        (_, _, Err(error), _) => Err(error),
+                        (_, _, _, Err(error)) => Err(error),
+                        (Ok(x0), Ok(y0), Ok(x1), Ok(y1)) => Ok([x0, y0, x1, y1]),
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_geometry_grid_product(across: u32, down: u32)
+    -> Result<(u32, u32, u64), crate::DecodeError>
+{
+    let total = across as int * down as int;
+    if total > u64::MAX { Err(part1_block_placement_error(true)) }
+    else { Ok((across, down, total as u64)) }
+}
+
+pub open spec fn part2_resolution_codeblock_grid(bounds: [u32; 4], width: u32, height: u32)
+    -> Result<(u32, u32, u64), crate::DecodeError>
+{
+    match part2_selection_ceil(bounds[2], width) {
+        Err(error) => Err(error),
+        Ok(x1) => match part2_selection_floor(bounds[0], width) {
+            Err(error) => Err(error),
+            Ok(x0) => match part1_image_checked_u32(x1 as int - x0 as int) {
+                Err(error) => Err(error),
+                Ok(across) => match part2_selection_ceil(bounds[3], height) {
+                    Err(error) => Err(error),
+                    Ok(y1) => match part2_selection_floor(bounds[1], height) {
+                        Err(error) => Err(error),
+                        Ok(y0) => match part1_image_checked_u32(y1 as int - y0 as int) {
+                            Err(error) => Err(error),
+                            Ok(down) => part2_geometry_grid_product(across, down),
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_resolution_precinct_grid(bounds: [u32; 4], width: u32, height: u32)
+    -> Result<(u32, u32, u64), crate::DecodeError>
+{
+    match part2_selection_floor(bounds[0], width) {
+        Err(error) => Err(error),
+        Ok(x0) => match part2_selection_floor(bounds[1], height) {
+            Err(error) => Err(error),
+            Ok(y0) => match part2_selection_ceil(bounds[2], width) {
+                Err(error) => Err(error),
+                Ok(x1) => match part2_selection_ceil(bounds[3], height) {
+                    Err(error) => Err(error),
+                    Ok(y1) => match part1_image_checked_u32(x1 as int - x0 as int) {
+                        Err(error) => Err(error),
+                        Ok(across) => match part1_image_checked_u32(y1 as int - y0 as int) {
+                            Err(error) => Err(error),
+                            Ok(down) => part2_geometry_grid_product(across, down),
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_resolution_geometry_counts(
+    bounds: [u32; 4], style: Part2ResolutionStyle, component: u16, resolution: u8,
+) -> Result<crate::decode::ComponentResolutionGeometry, crate::DecodeError> {
+    match part1_image_checked_u32(bounds[2] as int - bounds[0] as int) {
+        Err(error) => Err(error),
+        Ok(width) => match part1_image_checked_u32(bounds[3] as int - bounds[1] as int) {
+            Err(error) => Err(error),
+            Ok(height) => if style.2 == 0 || style.3 == 0 { Err(part1_block_placement_error(false)) } else {
+                match part2_resolution_codeblock_grid(bounds, style.2 as u32, style.3 as u32) {
+                    Err(error) => Err(error),
+                    Ok(blocks) => match part2_precinct_exponents(style.0, style.4, resolution) {
+                        Err(error) => Err(error),
+                        Ok(exponents) => if exponents.0 > 31 || exponents.1 > 31 {
+                            Err(part1_block_placement_error(false))
+                        } else {
+                            match part2_resolution_precinct_grid(
+                                bounds, 1u32 << (exponents.0 as u32), 1u32 << (exponents.1 as u32),
+                            ) {
+                                Err(error) => Err(error),
+                                Ok(precincts) => Ok(crate::decode::ComponentResolutionGeometry {
+                                    component, resolution, width, height,
+                                    subbands: if resolution == 0 { 1u8 } else { 3u8 },
+                                    code_blocks_across: blocks.0, code_blocks_down: blocks.1, code_blocks: blocks.2,
+                                    precincts_across: precincts.0, precincts_down: precincts.1, precincts: precincts.2,
+                                }),
+                            }
+                        },
+                    },
+                }
+            },
+        },
+    }
+}
+
+pub open spec fn part2_resolution_geometry(
+    size: Part2SelectionGeometry, count: u16, infos: Seq<crate::codestream::ComponentInfo>,
+    style: Part2ResolutionStyle, component: u16, resolution: u8, tile_index: Option<u16>,
+) -> Result<crate::decode::ComponentResolutionGeometry, crate::DecodeError> {
+    if resolution > style.0 { Err(part1_block_placement_error(false)) } else {
+        match part2_component_coordinate_bounds(size, count, infos, component, tile_index) {
+            Err(error) => Err(error),
+            Ok(bounds) => match part2_resolution_downsampling(style.0, style.1, resolution) {
+                Err(error) => Err(error),
+                Ok(scale) => match (
+                    part2_selection_ceil(bounds[0], scale.0),
+                    part2_selection_ceil(bounds[1], scale.1),
+                    part2_selection_ceil(bounds[2], scale.0),
+                    part2_selection_ceil(bounds[3], scale.1),
+                ) {
+                    (Err(error), _, _, _) => Err(error),
+                    (_, Err(error), _, _) => Err(error),
+                    (_, _, Err(error), _) => Err(error),
+                    (_, _, _, Err(error)) => Err(error),
+                    (Ok(x0), Ok(y0), Ok(x1), Ok(y1)) => {
+                        part2_resolution_geometry_counts([x0, y0, x1, y1], style, component, resolution)
+                    },
+                },
+            },
+        }
+    }
+}
+
 pub open spec fn part2_color_target(region: Seq<u32>, discard: u8) -> Result<Seq<u32>, crate::DecodeError> {
     if discard >= 32 {
         Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })

@@ -2337,3 +2337,19 @@ raw scale, overflow, physical-array and precinct-pair regressions bind the real
 planner/subband consumers. No normalized style, lookup/arithmetic success,
 trust adapter, termination opt-out or second executable codec is introduced.
 Complete resolution geometry, packet planning and F2/F4/F8 remain separate.
+## Complete actual resolution geometry
+
+The original whole-image and optional-tile resolution geometry APIs now have
+complete raw-input Result/all-field relations. Real component coordinates and
+resolution-style traversal produce checked extents, code-block/precinct grids
+and products in original error order. The whole-image branch intentionally
+ignores registration while the tile branch uses registered clipping; the
+legacy reported subbands value remains3 for every nonzero resolution.
+No incidental policy was corrected or normalized during this composition.
+
+Coordinate and floor helpers, real field-view equalities, three exact native
+consumer contracts and the curated public boundary connect every result to
+original metadata. Independent wide-arithmetic tests cover129,600 complete
+geometry contexts plus27,000 raw admission/zero-sampling/error-priority cases.
+The prior independent tile oracle is reused rather than duplicated. Complete
+packet planning, decoded-component production and F2/F4/F8 remain separate.
