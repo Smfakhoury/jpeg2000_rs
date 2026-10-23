@@ -4,6 +4,35 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-decoder-style-admission",
+      "topic": "Complete actual parsed-metadata decoder coding-style admission Result and raw ordered component-depth comparison. Real DSC/ADS presence and ATK lookup derive from native registries, with missing-decomposition before kernel and raw unused fields retained/lazy. Lookup observations are proof support, not claims about unobserved descriptor contents. Actual validate_part2_execution consumes these sole bodies; full layout admission/planning/decoder results and F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "validate_part2_execution"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_validate_execution_style"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_depths_equal"},
+        {"path": "specs/mod.rs", "symbol": "part2_kernel_registry_lookup"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "validate_part2_coding_style"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::component_bit_depths_equal"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "part2_execution_registry"},
+        {"path": "src/codestream.rs", "symbol": "part2_component_depths"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::decomposition_structure"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::arbitrary_decomposition"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::arbitrary_kernel"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::component_bit_depths"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::validate_executable"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_execution_style_admission_matches_raw_registry_membership_and_lazy_fields"},
+        {"path": "src/codestream.rs", "symbol": "actual_component_depth_comparison_preserves_raw_order_precision_and_sign"}
+      ]
+    },
+    {
       "id": "part2-complete-native-external-alpha",
       "topic": "Complete actual external registered-alpha copy Result/full OwnedLayer and real pixel/row scratch state. Source first-color admission precedes target checked area; actual minimum rectangle, zero padding, target-before-source checked addresses and source-before-destination store are preserved, with first/late errors and final-only alpha/representation commit. No normalized registered source, successful read/store, prepared mask or budget premise. Actual opacity path executes these sole bodies; full file/normalization/frame joins and F2/F4/F8 remain separate.",
       "implementation_refs": [

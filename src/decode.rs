@@ -4815,7 +4815,14 @@ fn validate_part2_execution(layout: &CodestreamLayout<'_>) -> Result<(), DecodeE
     Ok(())
 }
 
-fn validate_part2_coding_style(
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_validate_execution_style(
+            style, codestream::part2_execution_registry(extensions), codestream::part2_kernel_registry(extensions)),
+    )
+)]
+pub(crate) fn validate_part2_coding_style(
     style: CodingStyle,
     extensions: &crate::codestream::Part2Extensions,
 ) -> Result<(), DecodeError> {
@@ -4827,15 +4834,20 @@ fn validate_part2_coding_style(
         None => false,
     };
     if missing_decomposition {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::MissingRequiredStructure,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::MissingRequiredStructure,
+        });
     }
-    if let WaveletTransform::Arbitrary(index) = style.transform {
-        extensions
-            .arbitrary_kernel(index)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
+    let missing_kernel = match style.transform {
+        WaveletTransform::Arbitrary(index) => extensions.arbitrary_kernel(index).is_none(),
+        _ => false,
+    };
+    if missing_kernel {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::MissingRequiredStructure,
+        });
     }
     Ok(())
 }

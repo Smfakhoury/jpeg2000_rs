@@ -1,5 +1,12 @@
 # Specification audit guide
 
+`part2_validate_execution_style` observes only actual decomposition identity
+and transform selection, with real DSC/ADS presence and ATK lookup. It does
+not silently validate unused raw style fields. `part2_component_depths_equal`
+is exact ordered precision/sign equality, not a valid-precision premise.
+Actual registry-presence and getter observations are proved support. Whole
+layout/decoder results and F2/F4/F8 file/frame joins remain separate.
+
 `part2_copy_registered_opacity` describes the actual first-color, checked-area,
 minimum rectangle, zero-padding and final-only target update. Pixel/row models
 retain observed partial scratch state and address/read/store error order;
