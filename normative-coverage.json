@@ -4,6 +4,31 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-registration-geometry",
+      "topic": "Complete actual raw registered extent and registration geometry admission: zero-grid/ratio rejection, checked products/offset/rounding/typed width and height, axis error ordering and native area conversion. The register_layer consumer executes the shared real preparation; no successful extent, normalized geometry or admitted allocation premise. Source samples and registration raster output remain separate F2 work.",
+      "implementation_refs": [
+        {"path": "src/jpx.rs", "symbol": "registered_layer_geometry"},
+        {"path": "src/jpx.rs", "symbol": "register_layer"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_native_registered_extent"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_layer_geometry"}
+      ],
+      "contract_refs": [
+        {"path": "src/jpx.rs", "symbol": "registered_extent"},
+        {"path": "src/jpx.rs", "symbol": "registered_layer_geometry"}
+      ],
+      "proof_refs": [
+        {"path": "src/jpx.rs", "symbol": "layer_registration_view"},
+        {"path": "src/jpx.rs", "symbol": "checked_area"},
+        {"path": "src/refinement.rs", "symbol": "registered_extent"}
+      ],
+      "test_refs": [
+        {"path": "src/jpx.rs", "symbol": "registered_extent_matches_wide_ceil_at_every_native_frontier"},
+        {"path": "src/jpx.rs", "symbol": "registration_geometry_preserves_raw_admission_and_axis_order"}
+      ]
+    },
+    {
       "id": "part2-complete-native-layer-chroma-key",
       "topic": "Complete actual general compositing-layer chroma-key Result and whole raw OwnedLayer state: exact key-count rejection, checked area, ragged/missing color samples as nonmatches, vacuous zero-channel matches, zero-area behavior, original metadata/colors and final-only replacement of prior alpha with straight alpha. This is the actual apply_chroma_key producer consumed by decode_general_compositing_layer, not the distinct strict opacity path, raw-key normalization, registration, all F2, F4 or F8.",
       "implementation_refs": [

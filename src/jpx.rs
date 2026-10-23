@@ -401,6 +401,12 @@ fn inspect_file(
     })
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_native_registered_extent(samples, subsampling, grid_size, offset),
+    )
+)]
 fn registered_extent(
     samples: u32,
     subsampling: u32,
@@ -410,16 +416,20 @@ fn registered_extent(
     if grid_size == 0 {
         return Err(invalid_layer());
     }
-    let numerator = u64::from(samples)
+    let product = u64::from(samples)
         .checked_mul(u64::from(subsampling))
-        .and_then(|value| value.checked_add(u64::from(offset)))
+        .ok_or_else(arithmetic_overflow)?;
+    let numerator = product
+        .checked_add(u64::from(offset))
         .ok_or_else(arithmetic_overflow)?;
     let grid = u64::from(grid_size);
     if numerator > u64::MAX - (grid - 1) {
         return Err(arithmetic_overflow());
     }
-    u32::try_from(crate::refinement::registered_extent(numerator, grid))
-        .map_err(|_| arithmetic_overflow())
+    match u32::try_from(crate::refinement::registered_extent(numerator, grid)) {
+        Ok(extent) => Ok(extent),
+        Err(_) => Err(arithmetic_overflow()),
+    }
 }
 
 struct TimelineState {
@@ -1270,6 +1280,12 @@ verus! {
     spec fn owned_layer_view(layer: &OwnedLayer) -> crate::specs::Part2OwnedLayer {
         (layer.width, layer.height, layer.color_space,
             crate::specs::part2_composition_planes(layer.colors@), layer_owned_alpha(layer.alpha))
+    }
+
+    #[verifier::inline]
+    spec fn layer_registration_view(registration: &jp2::CodestreamRegistration) -> crate::specs::Part2LayerRegistration {
+        (registration.codestream_index, registration.horizontal_subsampling, registration.vertical_subsampling,
+            registration.horizontal_offset, registration.vertical_offset)
     }
 
     #[verifier::inline]
@@ -2144,12 +2160,20 @@ fn apply_chroma_key(owned: &mut OwnedLayer, keys: &[u16]) -> Result<(), DecodeEr
     Ok(())
 }
 
-fn register_layer(
-    source: &OwnedLayer,
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures result == crate::specs::part2_registered_layer_geometry(
+            source_width, source_height, layer_registration_view(registration), horizontal_grid_size, vertical_grid_size),
+    )
+)]
+fn registered_layer_geometry(
+    source_width: u32,
+    source_height: u32,
     registration: &jp2::CodestreamRegistration,
     horizontal_grid_size: u16,
     vertical_grid_size: u16,
-) -> Result<OwnedLayer, DecodeError> {
+) -> Result<(u32, u32, usize), DecodeError> {
     let horizontal_subsampling = u32::from(registration.horizontal_subsampling);
     let vertical_subsampling = u32::from(registration.vertical_subsampling);
     let horizontal_grid = u32::from(horizontal_grid_size);
@@ -2162,18 +2186,38 @@ fn register_layer(
         return Err(invalid_layer());
     }
     let width = registered_extent(
-        source.width,
+        source_width,
         horizontal_subsampling,
         horizontal_grid,
         registration.horizontal_offset,
     )?;
     let height = registered_extent(
-        source.height,
+        source_height,
         vertical_subsampling,
         vertical_grid,
         registration.vertical_offset,
     )?;
     let pixels = checked_area(width, height)?;
+    Ok((width, height, pixels))
+}
+
+fn register_layer(
+    source: &OwnedLayer,
+    registration: &jp2::CodestreamRegistration,
+    horizontal_grid_size: u16,
+    vertical_grid_size: u16,
+) -> Result<OwnedLayer, DecodeError> {
+    let horizontal_subsampling = u32::from(registration.horizontal_subsampling);
+    let vertical_subsampling = u32::from(registration.vertical_subsampling);
+    let horizontal_grid = u32::from(horizontal_grid_size);
+    let vertical_grid = u32::from(vertical_grid_size);
+    let (width, height, pixels) = registered_layer_geometry(
+        source.width,
+        source.height,
+        registration,
+        horizontal_grid_size,
+        vertical_grid_size,
+    )?;
     let mut colors = vec![vec![0_u16; pixels]; source.colors.len()];
     let mut alpha = vec![0_u16; pixels];
     let mut y = 0_u32;
@@ -3756,6 +3800,110 @@ mod tests {
         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
     };
+
+    fn independent_registered_extent(
+        samples: u32,
+        subsampling: u32,
+        grid: u32,
+        offset: u32,
+    ) -> Result<u32, DecodeError> {
+        if grid == 0 {
+            return Err(invalid_layer());
+        }
+        let numerator = u128::from(samples) * u128::from(subsampling) + u128::from(offset);
+        let extent = numerator.div_ceil(u128::from(grid));
+        u32::try_from(extent).map_err(|_| arithmetic_overflow())
+    }
+
+    #[test]
+    fn registered_extent_matches_wide_ceil_at_every_native_frontier() {
+        let values = [0, 1, 2, 3, 255, 65_535, u32::MAX - 1, u32::MAX];
+        let mut cases = 0;
+        for samples in values {
+            for subsampling in values {
+                for grid in values {
+                    for offset in values {
+                        assert_eq!(
+                            registered_extent(samples, subsampling, grid, offset),
+                            independent_registered_extent(samples, subsampling, grid, offset),
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 4096);
+    }
+
+    #[test]
+    fn registration_geometry_preserves_raw_admission_and_axis_order() {
+        let mut cases = 0;
+        for width in [0, 1, 3, u32::MAX] {
+            for height in [0, 1, 3, u32::MAX] {
+                for horizontal_subsampling in [0, 1, 2, u8::MAX] {
+                    for vertical_subsampling in [0, 1, 2, u8::MAX] {
+                        for horizontal_grid in [0, 1, 2, u16::MAX] {
+                            for vertical_grid in [0, 1, 2, u16::MAX] {
+                                for horizontal_offset in [0, u32::MAX] {
+                                    for vertical_offset in [0, u32::MAX] {
+                                        let registration = jp2::CodestreamRegistration {
+                                            codestream_index: u16::MAX,
+                                            horizontal_subsampling,
+                                            vertical_subsampling,
+                                            horizontal_offset,
+                                            vertical_offset,
+                                        };
+                                        let expected =
+                                            if horizontal_subsampling == 0
+                                                || vertical_subsampling == 0
+                                                || horizontal_grid == 0
+                                                || vertical_grid == 0
+                                            {
+                                                Err(invalid_layer())
+                                            } else {
+                                                independent_registered_extent(
+                                                    width,
+                                                    u32::from(horizontal_subsampling),
+                                                    u32::from(horizontal_grid),
+                                                    horizontal_offset,
+                                                )
+                                                .and_then(|width| {
+                                                    independent_registered_extent(
+                                                        height,
+                                                        u32::from(vertical_subsampling),
+                                                        u32::from(vertical_grid),
+                                                        vertical_offset,
+                                                    )
+                                                    .and_then(|height| {
+                                                        usize::try_from(
+                                                            u128::from(width) * u128::from(height),
+                                                        )
+                                                        .map(|pixels| (width, height, pixels))
+                                                        .map_err(|_| arithmetic_overflow())
+                                                    })
+                                                })
+                                            };
+                                        assert_eq!(
+                                            registered_layer_geometry(
+                                                width,
+                                                height,
+                                                &registration,
+                                                horizontal_grid,
+                                                vertical_grid
+                                            ),
+                                            expected
+                                        );
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 16384);
+    }
 
     #[test]
     fn chroma_key_preserves_raw_planes_and_replaces_alpha_at_exact_matches() {

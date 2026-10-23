@@ -5314,6 +5314,46 @@ pub open spec fn part2_registered_extent(numerator: u64, grid: u64) -> u64
     }
 }
 
+pub type Part2LayerRegistration = (u16, u8, u8, u32, u32);
+
+pub open spec fn part2_native_registered_extent(samples: u32, subsampling: u32, grid: u32, offset: u32)
+    -> Result<u32, crate::DecodeError>
+{
+    if grid == 0 {
+        Err(part2_composition_error(false))
+    } else {
+        let numerator = (samples as nat) * (subsampling as nat) + offset as nat;
+        if numerator > u64::MAX as nat || numerator + grid as nat - 1 > u64::MAX as nat {
+            Err(part2_composition_error(true))
+        } else {
+            let extent = part2_registered_extent(numerator as u64, grid as u64);
+            if extent > u32::MAX as u64 { Err(part2_composition_error(true)) }
+            else { Ok(extent as u32) }
+        }
+    }
+}
+
+pub open spec fn part2_registered_layer_geometry(
+    width: u32, height: u32, registration: Part2LayerRegistration, horizontal_grid: u16, vertical_grid: u16,
+) -> Result<(u32, u32, usize), crate::DecodeError> {
+    if registration.1 == 0 || registration.2 == 0 || horizontal_grid == 0 || vertical_grid == 0 {
+        Err(part2_composition_error(false))
+    } else {
+        match part2_native_registered_extent(width, registration.1 as u32, horizontal_grid as u32, registration.3) {
+            Err(error) => Err(error),
+            Ok(registered_width) => match part2_native_registered_extent(
+                height, registration.2 as u32, vertical_grid as u32, registration.4,
+            ) {
+                Err(error) => Err(error),
+                Ok(registered_height) => match part2_layer_area(registered_width, registered_height) {
+                    Err(error) => Err(error),
+                    Ok(pixels) => Ok((registered_width, registered_height, pixels)),
+                },
+            },
+        }
+    }
+}
+
 pub open spec fn part2_registered_source_coordinate(
     numerator: u32,
     offset: u32,

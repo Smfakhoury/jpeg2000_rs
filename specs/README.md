@@ -1,5 +1,12 @@
 # Specification audit guide
 
+`part2_native_registered_extent` names the raw native product, offset, rounding
+headroom and typed result policy. `part2_registered_layer_geometry` composes
+the real ratio/grid admission, ordered width/height and checked area. The
+actual registration routine executes this same preparation body; successful
+extent/shape values are not supplied as assumptions. Registered sample
+traversal and complete opacity/normalization remain separate F2 obligations.
+
 The F2 `part2_apply_chroma_key` model describes the actual general-layer
 producer over the complete raw owner, not a supplied normalized image:
 exact key cardinality, checked native area, per-channel equality and final-only

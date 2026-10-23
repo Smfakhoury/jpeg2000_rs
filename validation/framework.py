@@ -790,6 +790,19 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_LAYER_REGISTRATION_CONTRACTS = {
+    ("src/jpx.rs", "registered_extent"): (
+        "part2_native_registered_extent", r"\1", None,
+        r"samples\s*,\s*subsampling\s*,\s*grid_size\s*,\s*offset",
+    ),
+    ("src/jpx.rs", "registered_layer_geometry"): (
+        "part2_registered_layer_geometry", r"\1", None,
+        r"source_width\s*,\s*source_height\s*,\s*"
+        + _coverage_call("layer_registration_view", "registration")
+        + r"\s*,\s*horizontal_grid_size\s*,\s*vertical_grid_size",
+    ),
+}
+
 
 def validate_normative_coverage(
     coverage: dict[str, Any] | None = None,
@@ -1293,6 +1306,7 @@ def validate_normative_coverage(
                 or _PACKET_WRAPPER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYER_REGISTRATION_CONTRACTS.get((reference["path"], reference["symbol"]))
             )
             if header_contract:
                 expected_result_model = header_contract[0]
