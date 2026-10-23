@@ -2412,12 +2412,46 @@ fn admit_mct_decorrelation(
     Ok(())
 }
 
-fn apply_mct_decorrelation(
-    components: &mut [TransformComponentMut<'_>],
+struct MctDecorrelationPreparation {
+    source_indexes: Vec<usize>,
+    destination_indexes: Vec<usize>,
+    source_fraction_bits: Vec<u8>,
+    sample_count: usize,
+    rows: usize,
+    columns: usize,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn mct_decorrelation_preparation_view(value: &MctDecorrelationPreparation) -> crate::specs::Part2MctDecorrelationPreparation {
+        (value.source_indexes@, value.destination_indexes@, value.source_fraction_bits@,
+            value.sample_count, value.rows, value.columns)
+    }
+
+    spec fn mct_decorrelation_preparation_outcome(value: Result<MctDecorrelationPreparation, DecodeError>)
+        -> Result<crate::specs::Part2MctDecorrelationPreparation, DecodeError> {
+        match value { Ok(prepared) => Ok(mct_decorrelation_preparation_view(&prepared)), Err(error) => Err(error) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (mct_decorrelation_preparation_outcome(result), *final(work)) == crate::specs::part2_mct_prepare_decorrelation(
+        transform_components_view(components), crate::codestream::mct_collection_view(collection), *old(work),
+        crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+fn prepare_mct_decorrelation(
+    components: &[TransformComponentMut<'_>],
     collection: &MctCollection,
     limits: &ResourceLimits,
     work: &mut u64,
-) -> Result<(), DecodeError> {
+) -> Result<MctDecorrelationPreparation, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = transform_components_view(components);
+        let ghost style = crate::codestream::mct_collection_view(collection);
+        let ghost initial_work = *work;
+    }
     let rows = collection.input_components().len();
     let columns = collection.output_components().len();
     let matrix = collection.matrix();
@@ -2439,15 +2473,35 @@ fn apply_mct_decorrelation(
     }
     let mut source_indexes = Vec::with_capacity(columns);
     let mut destination_indexes = Vec::with_capacity(rows);
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_mct_indices_empty(before);
+        assert(style.2.take(0) =~= Seq::empty());
+        assert(source_indexes@ == Seq::empty());
+    }
     let mut column = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant column <= columns,
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            rows == style.1.len(), columns == style.2.len(),
+            crate::specs::part2_mct_decorrelation_dimensions(style) == Ok((rows, columns)),
+            *work == initial_work,
+            source_indexes@.len() == column,
+            destination_indexes@.len() == 0,
+            crate::specs::part2_mct_component_indices(before, style.2.take(column as int)) == Ok(source_indexes@),
             decreases columns - column,
         )
     )]
     while column < columns {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_indices_step(before, style.2, column as nat);
+            crate::proofs::production_impl::production_mct_indices_error(before, style.2, column as nat + 1, columns as nat);
+            assert(style.2.take(columns as int) =~= style.2);
+        }
         source_indexes.push(find_transform_component(
             components,
             *collection
@@ -2457,15 +2511,37 @@ fn apply_mct_decorrelation(
         )?);
         column = column.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(style.2.take(columns as int) =~= style.2);
+        crate::proofs::production_impl::production_mct_indices_empty(before);
+        assert(style.1.take(0) =~= Seq::empty());
+        assert(destination_indexes@ == Seq::empty());
+    }
     let mut row = 0_usize;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant row <= rows,
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            rows == style.1.len(), columns == style.2.len(),
+            crate::specs::part2_mct_decorrelation_dimensions(style) == Ok((rows, columns)),
+            *work == initial_work,
+            source_indexes@.len() == columns,
+            destination_indexes@.len() == row,
+            crate::specs::part2_mct_component_indices(before, style.2) == Ok(source_indexes@),
+            crate::specs::part2_mct_component_indices(before, style.1.take(row as int)) == Ok(destination_indexes@),
             decreases rows - row,
         )
     )]
     while row < rows {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_mct_indices_step(before, style.1, row as nat);
+            crate::proofs::production_impl::production_mct_indices_error(before, style.1, row as nat + 1, rows as nat);
+            assert(style.1.take(rows as int) =~= style.1);
+        }
         destination_indexes.push(find_transform_component(
             components,
             *collection
@@ -2475,6 +2551,8 @@ fn apply_mct_decorrelation(
         )?);
         row = row.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(style.1.take(rows as int) =~= style.1); }
     let sample_count = validate_mct_components_layout(
         components,
         &source_indexes,
@@ -2488,6 +2566,18 @@ fn apply_mct_decorrelation(
         verus_keep_ghost,
         verus_spec(
             invariant index_index <= source_indexes.len(),
+            before == transform_components_view(components),
+            style == crate::codestream::mct_collection_view(collection),
+            rows == style.1.len(), columns == style.2.len(),
+            crate::specs::part2_mct_decorrelation_dimensions(style) == Ok((rows, columns)),
+            crate::specs::part2_mct_component_indices(before, style.2) == Ok(source_indexes@),
+            crate::specs::part2_mct_component_indices(before, style.1) == Ok(destination_indexes@),
+            crate::specs::part2_mct_validate_layout(before, source_indexes@, destination_indexes@, style.0) == Ok(sample_count),
+            crate::specs::part2_mct_decorrelation_admission(sample_count, rows, columns, initial_work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits)) == (Ok(()), *work),
+            forall |position: int| 0 <= position < source_indexes@.len()
+                ==> source_indexes@[position] < before.len(),
+            source_fraction_bits@ == Seq::new(index_index as nat, |position: int| before[source_indexes@[position] as int].2),
             decreases source_indexes.len() - index_index,
         )
     )]
@@ -2501,8 +2591,41 @@ fn apply_mct_decorrelation(
                 .ok_or_else(invalid_transform)?
                 .fraction_bits,
         );
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(source_fraction_bits@ =~= Seq::new(index_index as nat + 1,
+                |position: int| before[source_indexes@[position] as int].2));
+        }
         index_index = index_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
+    Ok(MctDecorrelationPreparation {
+        source_indexes,
+        destination_indexes,
+        source_fraction_bits,
+        sample_count,
+        rows,
+        columns,
+    })
+}
+
+fn apply_mct_decorrelation(
+    components: &mut [TransformComponentMut<'_>],
+    collection: &MctCollection,
+    limits: &ResourceLimits,
+    work: &mut u64,
+) -> Result<(), DecodeError> {
+    let prepared = prepare_mct_decorrelation(components, collection, limits, work)?;
+    let MctDecorrelationPreparation {
+        source_indexes,
+        destination_indexes,
+        source_fraction_bits,
+        sample_count,
+        rows,
+        columns,
+    } = prepared;
+    let matrix = collection.matrix();
+    let mut row;
+    let mut index_index;
     let mut source = Vec::with_capacity(columns);
     let mut output = Vec::with_capacity(rows);
     let mut sample_index = 0_usize;
@@ -4523,6 +4646,101 @@ fn arithmetic_overflow() -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_mct_preparation_derives_real_ordered_indexes_fractions_and_late_work_errors() {
+        use crate::codestream::{MctArrayKind, MctNumericFormat};
+        let matrix = || {
+            MctArray::from_values(
+                u8::MAX,
+                MctArrayKind::Offset,
+                MctNumericFormat::Float64,
+                u8::MAX,
+                vec![1, 0, 0, 1],
+            )
+        };
+        let collection = MctCollection::from_arrays(true, vec![17, 0], vec![0, 17], matrix(), None);
+        let mut samples = [vec![1, 2], vec![3, 4]];
+        let before_samples = samples.clone();
+        let mut fractions = [0, 0];
+        let components: Vec<_> = samples
+            .iter_mut()
+            .zip(fractions.iter_mut())
+            .zip([0, 17])
+            .map(
+                |((samples, fraction_bits), component)| TransformComponentMut {
+                    component,
+                    x: u32::MAX,
+                    y: 0,
+                    width: 0,
+                    height: u32::MAX,
+                    x_subsampling: 0,
+                    y_subsampling: u8::MAX,
+                    fraction_bits,
+                    samples,
+                },
+            )
+            .collect();
+        let mut work = 7;
+        let prepared = prepare_mct_decorrelation(
+            &components,
+            &collection,
+            &ResourceLimits::default(),
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(prepared.source_indexes, [0, 1]);
+        assert_eq!(prepared.destination_indexes, [1, 0]);
+        assert_eq!(prepared.source_fraction_bits, [0, 0]);
+        assert_eq!(
+            (prepared.sample_count, prepared.rows, prepared.columns, work),
+            (2, 2, 2, 19)
+        );
+        for maximum_work in [18, 19, 20] {
+            for maximum_bytes in [31, 32, 33] {
+                let limits = ResourceLimits::default()
+                    .with_maximum_work_units(maximum_work)
+                    .unwrap()
+                    .with_maximum_decoded_bytes(maximum_bytes)
+                    .unwrap();
+                let expected_error = if maximum_work < 19 {
+                    Some(DecodeError::LimitExceeded {
+                        resource: Resource::WorkUnits,
+                        limit: maximum_work,
+                        actual: 19,
+                    })
+                } else if maximum_bytes < 32 {
+                    Some(DecodeError::LimitExceeded {
+                        resource: Resource::DecodedBytes,
+                        limit: maximum_bytes,
+                        actual: 32,
+                    })
+                } else {
+                    None
+                };
+                let mut work = 7;
+                assert_eq!(
+                    prepare_mct_decorrelation(&components, &collection, &limits, &mut work).err(),
+                    expected_error
+                );
+                assert_eq!(work, 19);
+            }
+        }
+        let missing = MctCollection::from_arrays(true, vec![17, 0], vec![999, 17], matrix(), None);
+        let mut work = 7;
+        assert_eq!(
+            prepare_mct_decorrelation(&components, &missing, &ResourceLimits::default(), &mut work)
+                .err(),
+            Some(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidTransform
+            })
+        );
+        assert_eq!(work, 7);
+        drop(components);
+        assert_eq!(samples, before_samples);
+        assert_eq!(fractions, [0, 0]);
+    }
 
     #[test]
     fn native_mct_decorrelation_admission_keeps_every_overflow_limit_and_counter_frontier() {

@@ -51,6 +51,17 @@ usize scratch arithmetic and evaluation order remain. Independent wide
 references and exact limit-minus-one/limit/limit-plus-one cases check these
 real thresholds; no adequate-budget assumption replaces admission.
 
+The actual decorrelation preparation producer now constructs its real source
+and destination indexes, validates raw layout, performs real ordered work/
+scratch admission, and gathers the actual source precision vector. Its full
+result and final work counter refine `part2_mct_prepare_decorrelation` over
+the complete original component and collection values. Ordered lookup derives
+the indexes from real component identities; no index list, valid layout,
+successful preparation or admitted budget is supplied as a premise. Native
+allocation and source-before-destination lookup order are preserved.
+The subsequent complete pixel/output/final-precision and general collection/
+wavelet/stage joins remain under implementation.
+
 ## Frozen full F5H refinement-plane profile
 
 The continuing stage is the entire actual `decode_ht_refinement_plane`, for

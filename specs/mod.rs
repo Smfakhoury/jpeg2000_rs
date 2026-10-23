@@ -15,6 +15,67 @@ pub type Part2MctCollection = (
 );
 pub type Part2MctStage = (u8, Seq<Part2MctCollection>);
 pub type Part2MctComponent = (u16, (u32, u32, u32, u32, u8, u8), u8, Seq<i64>);
+pub type Part2MctDecorrelationPreparation = (Seq<usize>, Seq<usize>, Seq<u8>, usize, usize, usize);
+
+#[verifier::opaque]
+pub open spec fn part2_mct_component_indices(
+    components: Seq<Part2MctComponent>, references: Seq<u16>,
+) -> Result<Seq<usize>, crate::DecodeError>
+    decreases references.len(),
+{
+    if references.len() == 0 { Ok(Seq::empty()) }
+    else {
+        match part2_mct_component_indices(components, references.drop_last()) {
+            Err(error) => Err(error),
+            Ok(previous) => match part2_mct_find_component(components, references.last()) {
+                Err(error) => Err(error), Ok(index) => Ok(previous.push(index)),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_mct_decorrelation_dimensions(collection: Part2MctCollection)
+    -> Result<(usize, usize), crate::DecodeError> {
+    let rows = collection.1.len();
+    let columns = collection.2.len();
+    if rows == 0 || rows != columns { Err(part1_transform_error(false)) }
+    else if rows > usize::MAX || columns > usize::MAX
+        || (collection.4.is_some() && rows * columns > usize::MAX) {
+        Err(part1_transform_error(true))
+    } else if match collection.4 { None => false, Some(matrix) => matrix.4.len() != rows * columns } {
+        Err(part1_transform_error(false))
+    } else if match collection.5 { None => false, Some(offsets) => offsets.4.len() != rows } {
+        Err(part1_transform_error(false))
+    } else { Ok((rows as usize, columns as usize)) }
+}
+
+pub open spec fn part2_mct_prepare_decorrelation(
+    components: Seq<Part2MctComponent>, collection: Part2MctCollection,
+    before: u64, maximum_work: u64, maximum_bytes: u64,
+) -> (Result<Part2MctDecorrelationPreparation, crate::DecodeError>, u64) {
+    match part2_mct_decorrelation_dimensions(collection) {
+        Err(error) => (Err(error), before),
+        Ok((rows, columns)) => match part2_mct_component_indices(components, collection.2) {
+            Err(error) => (Err(error), before),
+            Ok(source) => match part2_mct_component_indices(components, collection.1) {
+                Err(error) => (Err(error), before),
+                Ok(destination) => match part2_mct_validate_layout(components, source, destination, collection.0) {
+                    Err(error) => (Err(error), before),
+                    Ok(samples) => {
+                        let admitted = part2_mct_decorrelation_admission(
+                            samples, rows as usize, columns as usize, before, maximum_work, maximum_bytes);
+                        match admitted.0 {
+                            Err(error) => (Err(error), admitted.1),
+                            Ok(()) => (Ok((source, destination,
+                                Seq::new(source.len(), |index: int| components[source[index] as int].2),
+                                samples, rows as usize, columns as usize)), admitted.1),
+                        }
+                    },
+                },
+            },
+        },
+    }
+}
 
 pub open spec fn part2_mct_decorrelation_admission(
     samples: usize, rows: usize, columns: usize, before: u64, maximum_work: u64, maximum_bytes: u64,

@@ -32,6 +32,43 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_mct_indices_empty(components: Seq<crate::specs::Part2MctComponent>)
+    ensures crate::specs::part2_mct_component_indices(components, Seq::empty()) == Ok(Seq::empty()),
+{
+    reveal_with_fuel(crate::specs::part2_mct_component_indices, 1);
+}
+
+pub proof fn production_mct_indices_step(
+    components: Seq<crate::specs::Part2MctComponent>, references: Seq<u16>, count: nat,
+)
+    requires count < references.len(),
+    ensures crate::specs::part2_mct_component_indices(components, references.take(count as int + 1))
+        == match crate::specs::part2_mct_component_indices(components, references.take(count as int)) {
+            Err(error) => Err(error),
+            Ok(previous) => match crate::specs::part2_mct_find_component(components, references[count as int]) {
+                Err(error) => Err(error), Ok(index) => Ok(previous.push(index)),
+            },
+        },
+{
+    reveal_with_fuel(crate::specs::part2_mct_component_indices, 1);
+    assert(references.take(count as int + 1).drop_last() =~= references.take(count as int));
+}
+
+pub proof fn production_mct_indices_error(
+    components: Seq<crate::specs::Part2MctComponent>, references: Seq<u16>, count: nat, end: nat,
+)
+    requires count <= end <= references.len(),
+    ensures crate::specs::part2_mct_component_indices(components, references.take(count as int)).is_err()
+        ==> crate::specs::part2_mct_component_indices(components, references.take(end as int))
+            == crate::specs::part2_mct_component_indices(components, references.take(count as int)),
+    decreases end - count,
+{
+    if count < end {
+        production_mct_indices_error(components, references, count, (end - 1) as nat);
+        production_mct_indices_step(components, references, (end - 1) as nat);
+    }
+}
+
 pub proof fn production_mct_component_found(components: Seq<crate::specs::Part2MctComponent>, reference: u16, index: usize)
     requires index < components.len(), components[index as int].0 == reference,
         forall |earlier: int| 0 <= earlier < index ==> components[earlier].0 != reference,
