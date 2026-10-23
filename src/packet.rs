@@ -141,10 +141,6 @@ impl<'a> PacketBitReader<'a> {
         packet_reader_new(input, limits)
     }
 
-    fn new_prefix(input: &'a [u8], limits: &ResourceLimits) -> Self {
-        packet_reader_prefix(input, limits)
-    }
-
     #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == packet_bit_reader_view(self).bits_read,))]
     pub const fn bits_read(&self) -> u64 {
         self.bits_read
@@ -6444,7 +6440,6 @@ mod tests {
             maximum_header_bytes: 1,
         };
         assert_eq!(packet_reader_prefix(&[0, 0], &limits), expected);
-        assert_eq!(PacketBitReader::new_prefix(&[0, 0], &limits), expected);
         assert_eq!(
             tag_tree_new(u32::MAX, u32::MAX, &limits),
             Err(DecodeError::LimitExceeded {
