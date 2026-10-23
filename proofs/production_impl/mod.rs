@@ -32,6 +32,82 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_registered_columns_empty(
+    context: crate::specs::Part2RegistrationContext, y: u32, source_y: u32,
+    colors: Seq<Seq<u16>>, alpha: Seq<u16>,
+)
+    ensures crate::specs::part2_registered_columns_prefix(context, y, source_y, colors, alpha, 0) == (Ok(()), colors, alpha),
+{
+    reveal_with_fuel(crate::specs::part2_registered_columns_prefix, 1);
+}
+
+pub proof fn production_registered_columns_step(
+    context: crate::specs::Part2RegistrationContext, y: u32, source_y: u32,
+    colors: Seq<Seq<u16>>, alpha: Seq<u16>, count: nat,
+)
+    ensures crate::specs::part2_registered_columns_prefix(context, y, source_y, colors, alpha, count + 1) == {
+        let previous = crate::specs::part2_registered_columns_prefix(context, y, source_y, colors, alpha, count);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => crate::specs::part2_registered_column(context, y, source_y, count as u32, previous.1, previous.2),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_registered_columns_prefix, 1);
+}
+
+pub proof fn production_registered_columns_error(
+    context: crate::specs::Part2RegistrationContext, y: u32, source_y: u32,
+    colors: Seq<Seq<u16>>, alpha: Seq<u16>, count: nat, finish: nat,
+)
+    requires count <= finish,
+        crate::specs::part2_registered_columns_prefix(context, y, source_y, colors, alpha, count).0.is_err(),
+    ensures crate::specs::part2_registered_columns_prefix(context, y, source_y, colors, alpha, finish)
+        == crate::specs::part2_registered_columns_prefix(context, y, source_y, colors, alpha, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_registered_columns_step(context, y, source_y, colors, alpha, (finish - 1) as nat);
+        production_registered_columns_error(context, y, source_y, colors, alpha, count, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_registered_rows_empty(
+    context: crate::specs::Part2RegistrationContext, colors: Seq<Seq<u16>>, alpha: Seq<u16>,
+)
+    ensures crate::specs::part2_registered_rows_prefix(context, colors, alpha, 0) == (Ok(()), colors, alpha),
+{
+    reveal_with_fuel(crate::specs::part2_registered_rows_prefix, 1);
+}
+
+pub proof fn production_registered_rows_step(
+    context: crate::specs::Part2RegistrationContext, colors: Seq<Seq<u16>>, alpha: Seq<u16>, count: nat,
+)
+    ensures crate::specs::part2_registered_rows_prefix(context, colors, alpha, count + 1) == {
+        let previous = crate::specs::part2_registered_rows_prefix(context, colors, alpha, count);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => crate::specs::part2_registered_row(context, count as u32, previous.1, previous.2),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_registered_rows_prefix, 1);
+}
+
+pub proof fn production_registered_rows_error(
+    context: crate::specs::Part2RegistrationContext, colors: Seq<Seq<u16>>, alpha: Seq<u16>, count: nat, finish: nat,
+)
+    requires count <= finish, crate::specs::part2_registered_rows_prefix(context, colors, alpha, count).0.is_err(),
+    ensures crate::specs::part2_registered_rows_prefix(context, colors, alpha, finish)
+        == crate::specs::part2_registered_rows_prefix(context, colors, alpha, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_registered_rows_step(context, colors, alpha, (finish - 1) as nat);
+        production_registered_rows_error(context, colors, alpha, count, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_registered_colors_empty(
     initial: Seq<Seq<u16>>, source: Seq<Seq<u16>>, source_index: usize, destination: usize,
 )

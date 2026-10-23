@@ -2135,3 +2135,29 @@ bindings remain rejected.
 This closes the actual pixel producer, not all outer registration traversal,
 opacity, raw-key normalization or F2/F4/F8. Frozen whole-root/local/hosted
 qualification and owner-main acceptance remain explicit.
+## Complete actual native registration raster
+
+The original `register_layer` now refines one complete Result/output model
+from the actual raw source owner, full registration descriptor and both grids.
+It derives geometry, the real zero-initialized buffers, checked row/column
+coordinates, all skipped/outside samples, ordered real color/alpha pixel
+stores and the final source-alpha representation flag. No successful geometry,
+normalized input, source/store outcome or adequate-budget premise is supplied.
+
+One real row body composes the native checked-coordinate logic and existing
+pixel producer. Its full mutable-buffer relation preserves prior stores on
+every later coordinate/source/alpha failure. Row/column folds and error
+absorption are proved separately. Naming the original zero-plane seed exposes
+the pinned standard-library clone facts; allocation/clone operations are not
+replaced or trusted anew.
+
+Independent wide-integer raster references cover 209,952 raw geometry/
+ratio/grid/offset/channel/alpha/representation cases. Direct row regressions
+check prior alpha before late horizontal coordinate overflow and no mutation
+before vertical overflow. Two finite exact contract recipes bind the whole
+owner result, all row buffers and every original input to real production
+consumers, including adversarial rejection cases.
+
+This closes actual registration, not complete opacity/raw-key normalization,
+F2/F4/F8 or independent conformance. Exact frozen whole-root/native/reference/
+resource/hosted and owner-main acceptance remain required for delivery.

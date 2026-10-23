@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part2_register_layer` derives the actual geometry and zero initialization,
+then composes ordered row/column sampling through the actual pixel semantics.
+The complete source owner/descriptor/grids determine every error, output plane
+and final alpha flag. The row model preserves observable partial buffers on
+late failure; its internal context contains raw inputs and actual derived
+width, not a supplied success or decoder result. Standard-library seed/clone
+facts establish initialization without a new trust adapter. Opacity, raw-key
+normalization and complete F2/F4/F8 remain separate work.
+
 `part2_registered_pixel` composes actual checked row-major addresses,
 ordered color stores and final alpha read/store from the raw owner and
 destination buffers. Its complete error result retains earlier color updates.

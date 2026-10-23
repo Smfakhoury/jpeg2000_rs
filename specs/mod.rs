@@ -5315,6 +5315,100 @@ pub open spec fn part2_registered_extent(numerator: u64, grid: u64) -> u64
 }
 
 pub type Part2LayerRegistration = (u16, u8, u8, u32, u32);
+pub type Part2RegistrationContext = (Part2OwnedLayer, Part2LayerRegistration, (u16, u16), u32);
+pub type Part2RegistrationExecution = (Result<(), crate::DecodeError>, Seq<Seq<u16>>, Seq<u16>);
+
+pub open spec fn part2_registered_column(
+    context: Part2RegistrationContext, y: u32, source_y: u32, x: u32,
+    colors: Seq<Seq<u16>>, alpha: Seq<u16>,
+) -> Part2RegistrationExecution {
+    if context.1.1 == 0 {
+        (Err(part2_composition_error(false)), colors, alpha)
+    } else {
+        let numerator = (x as nat) * (context.2.0 as nat);
+        if numerator > u32::MAX as nat {
+            (Err(part2_composition_error(true)), colors, alpha)
+        } else if numerator < context.1.3 {
+            (Ok(()), colors, alpha)
+        } else {
+            let source_x = part2_registered_source_coordinate(numerator as u32, context.1.3, context.1.1 as u32);
+            if source_x >= context.0.0 { (Ok(()), colors, alpha) }
+            else { part2_registered_pixel(context.0, colors, alpha, source_x, source_y, context.3, x, y) }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_registered_columns_prefix(
+    context: Part2RegistrationContext, y: u32, source_y: u32,
+    initial_colors: Seq<Seq<u16>>, initial_alpha: Seq<u16>, count: nat,
+) -> Part2RegistrationExecution
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial_colors, initial_alpha) }
+    else {
+        let previous = part2_registered_columns_prefix(context, y, source_y, initial_colors, initial_alpha, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_registered_column(context, y, source_y, (count - 1) as u32, previous.1, previous.2),
+        }
+    }
+}
+
+pub open spec fn part2_registered_row(
+    context: Part2RegistrationContext, y: u32, colors: Seq<Seq<u16>>, alpha: Seq<u16>,
+) -> Part2RegistrationExecution {
+    if context.1.2 == 0 {
+        (Err(part2_composition_error(false)), colors, alpha)
+    } else {
+        let numerator = (y as nat) * (context.2.1 as nat);
+        if numerator > u32::MAX as nat {
+            (Err(part2_composition_error(true)), colors, alpha)
+        } else if numerator < context.1.4 {
+            (Ok(()), colors, alpha)
+        } else {
+            let source_y = part2_registered_source_coordinate(numerator as u32, context.1.4, context.1.2 as u32);
+            if source_y >= context.0.1 { (Ok(()), colors, alpha) }
+            else if context.1.1 == 0 { (Err(part2_composition_error(false)), colors, alpha) }
+            else { part2_registered_columns_prefix(context, y, source_y, colors, alpha, context.3 as nat) }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_registered_rows_prefix(
+    context: Part2RegistrationContext, initial_colors: Seq<Seq<u16>>, initial_alpha: Seq<u16>, count: nat,
+) -> Part2RegistrationExecution
+    decreases count,
+{
+    if count == 0 { (Ok(()), initial_colors, initial_alpha) }
+    else {
+        let previous = part2_registered_rows_prefix(context, initial_colors, initial_alpha, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_registered_row(context, (count - 1) as u32, previous.1, previous.2),
+        }
+    }
+}
+
+pub open spec fn part2_register_layer(
+    source: Part2OwnedLayer, registration: Part2LayerRegistration, horizontal_grid: u16, vertical_grid: u16,
+) -> Part2OwnedLayerResult {
+    match part2_registered_layer_geometry(source.0, source.1, registration, horizontal_grid, vertical_grid) {
+        Err(error) => Err(error),
+        Ok((width, height, pixels)) => {
+            let context = (source, registration, (horizontal_grid, vertical_grid), width);
+            let colors = Seq::new(source.3.len(), |_channel: int| Seq::new(pixels as nat, |_pixel: int| 0u16));
+            let alpha = Seq::new(pixels as nat, |_pixel: int| 0u16);
+            let copied = part2_registered_rows_prefix(context, colors, alpha, height as nat);
+            match copied.0 {
+                Err(error) => Err(error),
+                Ok(()) => Ok((width, height, source.2, copied.1, Some((copied.2,
+                    match source.4 { None => false, Some((_, premultiplied)) => premultiplied })))),
+            }
+        },
+    }
+}
 
 pub open spec fn part2_registered_color_store(
     colors: Seq<Seq<u16>>, source: Seq<Seq<u16>>, color: nat, source_index: usize, destination: usize,
