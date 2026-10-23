@@ -28,6 +28,70 @@ pub use crate::proofs::internal_specs::{
 
 verus! {
 
+pub type Part2ExecutionHeader = (
+    crate::codestream::ComponentCodingStyles, (Seq<u8>, Seq<u8>),
+    Seq<(u8, Part2RawKernel)>, Seq<(u8, bool)>,
+);
+
+pub open spec fn part2_validate_execution_component(header: Part2ExecutionHeader, component: u16)
+    -> Result<(), crate::DecodeError>
+{
+    match crate::codestream::component_coding_style_result(&header.0, component) {
+        Err(error) => Err(error),
+        Ok(style) => part2_validate_execution_style(style, header.1, header.2),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_execution_components_prefix(header: Part2ExecutionHeader, count: nat)
+    -> Result<(), crate::DecodeError>
+    decreases count,
+{
+    if count == 0 { Ok(()) }
+    else {
+        match part2_execution_components_prefix(header, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => part2_validate_execution_component(header, (count - 1) as u16),
+        }
+    }
+}
+
+pub open spec fn part2_validate_execution_tile(header: Part2ExecutionHeader, main_depths: Seq<(u8, bool)>, components: u16)
+    -> Result<(), crate::DecodeError>
+{
+    match part2_execution_components_prefix(header, components as nat) {
+        Err(error) => Err(error),
+        Ok(()) => if header.3.len() > 0 && !part2_component_depths_equal(header.3, main_depths) {
+            Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidMarkerOrder })
+        } else { Ok(()) },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_execution_tiles_prefix(
+    headers: Seq<Part2ExecutionHeader>, main_depths: Seq<(u8, bool)>, components: u16, count: nat,
+) -> Result<(), crate::DecodeError>
+    recommends count <= headers.len(),
+    decreases count,
+{
+    if count == 0 { Ok(()) }
+    else {
+        match part2_execution_tiles_prefix(headers, main_depths, components, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(()) => part2_validate_execution_tile(headers[(count - 1) as int], main_depths, components),
+        }
+    }
+}
+
+pub open spec fn part2_validate_execution_layout(
+    components: u16, main: Part2ExecutionHeader, tiles: Seq<Part2ExecutionHeader>,
+) -> Result<(), crate::DecodeError> {
+    match part2_execution_components_prefix(main, components as nat) {
+        Err(error) => Err(error),
+        Ok(()) => part2_execution_tiles_prefix(tiles, main.3, components, tiles.len()),
+    }
+}
+
 pub open spec fn part2_validate_execution_style(
     style: crate::codestream::CodingStyle, decompositions: (Seq<u8>, Seq<u8>), kernels: Seq<(u8, Part2RawKernel)>,
 ) -> Result<(), crate::DecodeError> {

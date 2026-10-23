@@ -679,6 +679,12 @@ class FrameworkTests(WorkingFiles):
             framework._DECODER_ADMISSION_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_actual_layout_admission_and_native_header_inputs(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-layout-execution-admission"},
+            framework._DECODER_LAYOUT_CONTRACTS, 4,
+        )
+
     def test_inventory_binds_complete_raw_tile_component_geometry_and_shared_scalar(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-tile-component-geometry"},

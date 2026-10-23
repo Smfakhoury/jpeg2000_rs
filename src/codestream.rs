@@ -9188,6 +9188,200 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 mod tests {
     use super::*;
 
+    fn independent_execution_header(
+        style: CodingStyle,
+        extensions: &Part2Extensions,
+    ) -> Result<(), DecodeError> {
+        match style.decomposition_structure {
+            Some(index)
+                if !extensions
+                    .decomposition_structures
+                    .iter()
+                    .any(|value| value.index == index)
+                    && !extensions
+                        .arbitrary_decompositions
+                        .iter()
+                        .any(|value| value.index == index) =>
+            {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::MissingRequiredStructure,
+                });
+            }
+            _ => {}
+        }
+        match style.transform {
+            WaveletTransform::Arbitrary(index)
+                if !extensions
+                    .arbitrary_kernels
+                    .iter()
+                    .any(|value| value.index == index) =>
+            {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::MissingRequiredStructure,
+                });
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn actual_layout_execution_admission_preserves_raw_count_and_global_error_order() {
+        let headers = baseline_headers();
+        let bytes = codestream_with_headers(1, &headers, &[], &[]);
+        let limits = ResourceLimits::default();
+        let mut layout = parse_layout(&bytes, &limits).unwrap();
+        let baseline = layout.info.coding_style;
+        let template = layout.tile_parts[0].clone();
+        layout.tile_parts = vec![template.clone(), template];
+        let fixture = |mode| {
+            let mut style = baseline;
+            style.layers = 0;
+            style.decomposition_levels = u8::MAX;
+            style.decomposition_structure = None;
+            style.transform = WaveletTransform::Reversible5x3;
+            let mut extensions = Part2Extensions {
+                metadata_bytes: u64::MAX,
+                ..Part2Extensions::default()
+            };
+            match mode {
+                1 => style.decomposition_structure = Some(7),
+                2 => style.transform = WaveletTransform::Arbitrary(8),
+                3 => {
+                    style.decomposition_structure = Some(7);
+                    extensions
+                        .decomposition_structures
+                        .push(DecompositionStructure {
+                            index: 7,
+                            directions: vec![],
+                        });
+                }
+                4 => {
+                    style.decomposition_structure = Some(7);
+                    extensions
+                        .arbitrary_decompositions
+                        .push(ArbitraryDecomposition {
+                            index: 7,
+                            sublevel_depths: vec![u8::MAX],
+                            subband_splits: vec![],
+                        });
+                }
+                _ => {}
+            }
+            (style, extensions)
+        };
+        let main_depths = vec![
+            ComponentBitDepth {
+                precision: 0,
+                signed: false,
+            },
+            ComponentBitDepth {
+                precision: u8::MAX,
+                signed: true,
+            },
+        ];
+        let mut cases = 0;
+        for count in [0, 1, 2, 64, 65, u16::MAX] {
+            for main_count in [0, 1, 64, 65] {
+                for tile_count in [0, 1, 64, 65] {
+                    for main_mode in [0, 1, 2] {
+                        for first_mode in [0, 1, 3] {
+                            for late_mode in [0, 2, 4] {
+                                for depth_mode in 0..5 {
+                                    let (main_style, mut main) = fixture(main_mode);
+                                    main.component_bit_depths = main_depths.clone();
+                                    layout.info.image_size.components = count;
+                                    layout.info.component_coding_styles = ComponentCodingStyles {
+                                        components: main_count,
+                                        styles: [main_style; MAX_COMPONENTS],
+                                    };
+                                    layout.info.part2_extensions = main;
+                                    let (first_style, mut first) = fixture(first_mode);
+                                    first.component_bit_depths = match depth_mode {
+                                        0 => vec![],
+                                        1 => main_depths.clone(),
+                                        2 => vec![
+                                            ComponentBitDepth {
+                                                precision: 1,
+                                                signed: false,
+                                            },
+                                            main_depths[1],
+                                        ],
+                                        3 => vec![
+                                            ComponentBitDepth {
+                                                precision: 0,
+                                                signed: true,
+                                            },
+                                            main_depths[1],
+                                        ],
+                                        _ => vec![main_depths[0]],
+                                    };
+                                    layout.tile_parts[0].component_coding_styles =
+                                        ComponentCodingStyles {
+                                            components: tile_count,
+                                            styles: [first_style; MAX_COMPONENTS],
+                                        };
+                                    layout.tile_parts[0].part2_extensions = first;
+                                    let (late_style, late) = fixture(late_mode);
+                                    layout.tile_parts[1].component_coding_styles =
+                                        ComponentCodingStyles {
+                                            components: tile_count,
+                                            styles: [late_style; MAX_COMPONENTS],
+                                        };
+                                    layout.tile_parts[1].part2_extensions = late;
+                                    let expected = (|| {
+                                        for component in 0..count {
+                                            independent_execution_header(
+                                                layout
+                                                    .info
+                                                    .component_coding_styles
+                                                    .style(component)?,
+                                                &layout.info.part2_extensions,
+                                            )?;
+                                        }
+                                        for part in &layout.tile_parts {
+                                            for component in 0..count {
+                                                independent_execution_header(
+                                                    part.component_coding_styles
+                                                        .style(component)?,
+                                                    &part.part2_extensions,
+                                                )?;
+                                            }
+                                            if !part
+                                                .part2_extensions
+                                                .component_bit_depths
+                                                .is_empty()
+                                                && part.part2_extensions.component_bit_depths
+                                                    != layout
+                                                        .info
+                                                        .part2_extensions
+                                                        .component_bit_depths
+                                            {
+                                                return Err(DecodeError::MalformedInput {
+                                                    offset: 0,
+                                                    kind: MalformedKind::InvalidMarkerOrder,
+                                                });
+                                            }
+                                        }
+                                        Ok(())
+                                    })();
+                                    assert_eq!(
+                                        crate::decode::validate_part2_execution(&layout),
+                                        expected
+                                    );
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 12960);
+    }
+
     #[test]
     fn actual_execution_style_admission_matches_raw_registry_membership_and_lazy_fields() {
         let headers = baseline_headers();

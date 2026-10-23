@@ -32,6 +32,72 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_execution_components_empty(header: crate::specs::Part2ExecutionHeader)
+    ensures crate::specs::part2_execution_components_prefix(header, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::part2_execution_components_prefix, 1);
+}
+
+pub proof fn production_execution_components_step(header: crate::specs::Part2ExecutionHeader, count: nat)
+    ensures crate::specs::part2_execution_components_prefix(header, count + 1) == {
+        match crate::specs::part2_execution_components_prefix(header, count) {
+            Err(error) => Err(error),
+            Ok(()) => crate::specs::part2_validate_execution_component(header, count as u16),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_execution_components_prefix, 1);
+}
+
+pub proof fn production_execution_components_error(header: crate::specs::Part2ExecutionHeader, count: nat, finish: nat)
+    requires count <= finish, crate::specs::part2_execution_components_prefix(header, count).is_err(),
+    ensures crate::specs::part2_execution_components_prefix(header, finish)
+        == crate::specs::part2_execution_components_prefix(header, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_execution_components_step(header, (finish - 1) as nat);
+        production_execution_components_error(header, count, (finish - 1) as nat);
+    }
+}
+
+pub proof fn production_execution_tiles_empty(
+    headers: Seq<crate::specs::Part2ExecutionHeader>, main: Seq<(u8, bool)>, components: u16,
+)
+    ensures crate::specs::part2_execution_tiles_prefix(headers, main, components, 0) == Ok(()),
+{
+    reveal_with_fuel(crate::specs::part2_execution_tiles_prefix, 1);
+}
+
+pub proof fn production_execution_tiles_step(
+    headers: Seq<crate::specs::Part2ExecutionHeader>, main: Seq<(u8, bool)>, components: u16, count: nat,
+)
+    requires count < headers.len(),
+    ensures crate::specs::part2_execution_tiles_prefix(headers, main, components, count + 1) == {
+        match crate::specs::part2_execution_tiles_prefix(headers, main, components, count) {
+            Err(error) => Err(error),
+            Ok(()) => crate::specs::part2_validate_execution_tile(headers[count as int], main, components),
+        }
+    },
+{
+    reveal_with_fuel(crate::specs::part2_execution_tiles_prefix, 1);
+}
+
+pub proof fn production_execution_tiles_error(
+    headers: Seq<crate::specs::Part2ExecutionHeader>, main: Seq<(u8, bool)>, components: u16, count: nat, finish: nat,
+)
+    requires count <= finish <= headers.len(),
+        crate::specs::part2_execution_tiles_prefix(headers, main, components, count).is_err(),
+    ensures crate::specs::part2_execution_tiles_prefix(headers, main, components, finish)
+        == crate::specs::part2_execution_tiles_prefix(headers, main, components, count),
+    decreases finish - count,
+{
+    if count < finish {
+        production_execution_tiles_step(headers, main, components, (finish - 1) as nat);
+        production_execution_tiles_error(headers, main, components, count, (finish - 1) as nat);
+    }
+}
+
 pub proof fn production_opacity_columns_empty(context: crate::specs::Part2OpacityCopyContext, y: u32, initial: Seq<u16>)
     ensures crate::specs::part2_opacity_columns_prefix(context, y, initial, 0) == (Ok(()), initial),
 {
