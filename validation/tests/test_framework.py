@@ -679,6 +679,12 @@ class FrameworkTests(WorkingFiles):
             framework._DECODER_ADMISSION_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_actual_layout_admission_and_native_header_inputs(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-layout-execution-admission"},
+            framework._DECODER_LAYOUT_CONTRACTS, 4,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

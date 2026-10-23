@@ -4,9 +4,48 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-layout-execution-admission",
+      "topic": "Complete actual validate_part2_execution Result over original parsed main/tile metadata/styles/raw component count. Actual executable observation, checked style lookup and real style admission, all main components before all tile headers, per-tile components before optional CBD agreement, empty-CBD bypass and every first/late error are composed without normalized metadata or supplied validator/decoder outcomes. Original full/selected decode_layout consumers execute these same producers. Real packet planning/decoder/frame and F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_execution"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_components"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_tile_execution"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_validate_execution_layout"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_execution_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_execution_components_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_execution_tile"},
+        {"path": "specs/mod.rs", "symbol": "part2_execution_tiles_prefix"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "validate_part2_execution"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_component"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_components"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_tile_execution"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "execution_header_view"},
+        {"path": "src/decode.rs", "symbol": "execution_tile_headers"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_components_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_components_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_components_error"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_tiles_empty"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_tiles_step"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_tiles_error"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_layout_execution_admission_preserves_raw_count_and_global_error_order"}
+      ]
+    },
+    {
       "id": "part2-complete-native-decoder-style-admission",
       "topic": "Complete actual parsed-metadata decoder coding-style admission Result and raw ordered component-depth comparison. Real DSC/ADS presence and ATK lookup derive from native registries, with missing-decomposition before kernel and raw unused fields retained/lazy. Lookup observations are proof support, not claims about unobserved descriptor contents. Actual validate_part2_execution consumes these sole bodies; full layout admission/planning/decoder results and F2/F4/F8 joins remain separate.",
       "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "validate_part2_component"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_tile_execution"},
         {"path": "src/decode.rs", "symbol": "validate_part2_execution"}
       ],
       "spec_refs": [
