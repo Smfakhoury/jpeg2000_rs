@@ -20,6 +20,24 @@ cargo test --doc --locked
 
 ## Required local checks
 
+### Minimum supported Rust version
+
+Ordinary decoder builds support Rust 1.88.0. Keep runtime changes compatible
+with this minimum; CI runs the following checks independently of the newer
+development toolchain pin:
+
+```sh
+rustup toolchain install 1.88.0 --profile minimal
+cargo +1.88.0 test --no-default-features --all-targets --locked
+cargo +1.88.0 test --no-default-features --doc --locked
+cargo +1.88.0 check --no-default-features --release --all-targets --locked
+```
+
+The optional `verus` feature and verification tools use their separately pinned
+toolchain, not the runtime minimum. Do not lower their pins to run these checks.
+
+### Full development checks
+
 External numerical checks require OpenJPEG's `opj_compress` and
 `opj_decompress` (Debian/Ubuntu package `libopenjp2-tools`). Use
 `all --no-external` only when intentionally omitting native comparisons;

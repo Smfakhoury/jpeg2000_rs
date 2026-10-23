@@ -21,10 +21,13 @@ cargo build --locked
 cargo test --all-targets --locked
 ```
 
-The Rust toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml).
+Ordinary decoder builds support Rust 1.88.0 and newer. CI checks this minimum
+with `cargo +1.88.0`; the development toolchain remains pinned separately in
+[rust-toolchain.toml](rust-toolchain.toml).
 The default decoder build has no external Cargo dependencies and forbids unsafe
 code. The optional `verus` feature supplies pinned verification tooling only;
-see the [Cargo-Verus instructions](PROOFS.md#reproduce-verification).
+it is outside the runtime minimum-version guarantee and uses its own toolchain.
+See the [Cargo-Verus instructions](PROOFS.md#reproduce-verification).
 Package publication is disabled.
 
 ## Decode a JP2 image
