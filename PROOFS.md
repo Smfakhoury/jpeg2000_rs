@@ -2353,3 +2353,25 @@ original metadata. Independent wide-arithmetic tests cover129,600 complete
 geometry contexts plus27,000 raw admission/zero-sampling/error-priority cases.
 The prior independent tile oracle is reused rather than duplicated. Complete
 packet planning, decoded-component production and F2/F4/F8 remain separate.
+## Complete actual component packet-grid producer
+
+`derive_packet_grid_for_components` now derives its complete Result/full
+PacketGrid from raw image/component-style/selection/limit metadata. The
+actual shared first phase validates every component's resolution/selection
+before geometry. Real geometry, subband deltas, selected-only code-block
+accounting, zero padding and all-resolution precinct counts feed the sole
+proved packet-grid constructor. Discarded finest geometry is still evaluated.
+No admitted grid/counts/geometry or successful budget premise is supplied.
+
+Mathematical suffix runs and a proved component-to-resolution transition
+connect both original loops. The caller directly invokes the existing proved
+free constructor, preserving its sole body and all runtime order; conditional
+static-method attributes on the pinned macro could not be annotated safely,
+so no internal marker, new trust, pin change or duplicated constructor is used.
+The now-unused private forwarding method is removed; public constructors
+remain unchanged.
+Native equality observes every private grid field; independent geometry and
+count-vector oracles compose with the previously independently tested factory.
+2,744 raw admission contexts and230,400 full grid/selection/limit contexts
+exercise complete states and first/late errors. Full packet-plan construction
+and F2/F4/F8 remain separate.

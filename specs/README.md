@@ -1532,3 +1532,10 @@ modeled without successful intermediate results as premises. Native
 whole-image registration omission and the reported nonzero-resolution
 subband value3 are preserved explicitly, not silently normalized away.
 Public-boundary and exact native-consumer recipes bind all four contracts.
+`part2_packet_grid_from_components` connects raw owners and limits to the
+complete actual grid constructor through real resolution admission, geometry,
+subband deltas and ordered precinct/code-block accounting. Suffix runs retain
+initial-versus-late error policy, zero padding and discarded finest geometry.
+They are mathematical folds over actual inputs, not supplied grid/count/result
+banks. A production transition lemma links the original nested loops, and
+exact raw-owner/limit recipes bind both native producers.

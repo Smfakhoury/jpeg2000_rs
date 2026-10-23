@@ -617,24 +617,6 @@ impl PacketGrid {
             limits,
         )
     }
-
-    pub(crate) fn new_with_selected_resolutions(
-        layers: u16,
-        components: u16,
-        component_resolutions: Vec<u8>,
-        precinct_counts: Vec<u32>,
-        selected_resolution_counts: Option<&[u8]>,
-        limits: &ResourceLimits,
-    ) -> Result<Self, DecodeError> {
-        packet_grid_new_with_selected_resolutions(
-            layers,
-            components,
-            component_resolutions,
-            precinct_counts,
-            selected_resolution_counts,
-            limits,
-        )
-    }
 }
 
 #[cfg_attr(verus_keep_ghost,verus_spec(result =>

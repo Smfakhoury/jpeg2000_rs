@@ -1913,6 +1913,168 @@ pub open spec fn part2_selection_floor(value: u32, divisor: u32) -> Result<u32, 
 }
 
 pub type Part2ResolutionStyle = (u8, Seq<crate::codestream::DecompositionDirection>, u16, u16, Seq<(u8, u8)>);
+pub type Part2ComponentResolutionCounts = (u8, Seq<u8>, Seq<u8>);
+
+#[verifier::opaque]
+pub open spec fn part2_component_resolution_counts_run(
+    components: u16, styles: &crate::codestream::ComponentCodingStyles, discard: u8,
+    component: u16, maximum: u8, resolutions: Seq<u8>, selected: Seq<u8>,
+) -> Result<Part2ComponentResolutionCounts, crate::DecodeError>
+    decreases if component < components { (components as nat - component as nat) as nat } else { 0nat },
+{
+    if component >= components { Ok((maximum, resolutions, selected)) } else {
+        match crate::codestream::component_coding_style_result(styles, component) {
+            Err(error) => Err(error),
+            Ok(style) => if style.decomposition_levels == u8::MAX {
+                Err(part1_block_placement_error(true))
+            } else {
+                let count = (style.decomposition_levels + 1) as u8;
+                let maximum = if count > maximum { count } else { maximum };
+                let resolutions = resolutions.push(count);
+                if discard >= count {
+                    Err(crate::DecodeError::InvalidSelection {
+                        reason: crate::SelectionError::ReductionTooLarge,
+                    })
+                } else {
+                    part2_component_resolution_counts_run(
+                        components, styles, discard, (component + 1) as u16,
+                        maximum, resolutions, selected.push((count - discard) as u8),
+                    )
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_component_resolution_counts(
+    components: u16, styles: &crate::codestream::ComponentCodingStyles, discard: u8,
+) -> Result<Part2ComponentResolutionCounts, crate::DecodeError> {
+    part2_component_resolution_counts_run(components, styles, discard, 0, 0, Seq::empty(), Seq::empty())
+}
+
+pub open spec fn part2_packet_grid_subband_delta(style: crate::codestream::CodingStyle, resolution: u8)
+    -> Result<usize, crate::DecodeError>
+{
+    let selector = crate::codestream::decomposition_selector_view(style);
+    match part1_subband_count_through_resolution(selector.0, selector.1, resolution) {
+        Err(error) => Err(error),
+        Ok(current) => match if resolution == 0 { Ok(0usize) } else {
+            part1_subband_count_through_resolution(selector.0, selector.1, (resolution - 1) as u8)
+        } {
+            Err(error) => Err(error),
+            Ok(previous) => if current < previous { Err(part1_block_placement_error(true)) }
+                else { Ok((current - previous) as usize) },
+        },
+    }
+}
+
+pub open spec fn part2_packet_grid_codeblocks(total: u64, blocks: u64, selected: bool, limits: &crate::ResourceLimits)
+    -> Result<u64, crate::DecodeError>
+{
+    if !selected { Ok(total) } else {
+        let next = total as int + blocks as int;
+        if next > u64::MAX { Err(part1_block_placement_error(true)) }
+        else if next > crate::limits::resource_code_block_limit(limits) {
+            Err(crate::DecodeError::LimitExceeded {
+                resource: crate::Resource::CodeBlocks,
+                limit: crate::limits::resource_code_block_limit(limits), actual: next as u64,
+            })
+        } else { Ok(next as u64) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_packet_grid_components_run(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    layers: u16, limits: &crate::ResourceLimits, tile: Option<u16>, discard: u8,
+    descriptors: Part2ComponentResolutionCounts, component: u16, counts: Seq<u32>, total: u64,
+) -> Result<Part1PacketGrid, crate::DecodeError>
+    decreases if component < crate::codestream::image_size_component_count(size) {
+        (crate::codestream::image_size_component_count(size) as nat - component as nat) as nat
+    } else { 0nat }, 1nat, 0nat,
+{
+    if component >= crate::codestream::image_size_component_count(size) {
+        part1_packet_grid_new(layers, crate::codestream::image_size_component_count(size), descriptors.1, counts,
+            if discard == 0 { None } else { Some(descriptors.2) }, limits)
+    } else {
+        match crate::codestream::component_coding_style_result(styles, component) {
+            Err(error) => Err(error),
+            Ok(style) => if style.decomposition_levels == u8::MAX {
+                Err(part1_block_placement_error(true))
+            } else {
+                part2_packet_grid_resolutions_run(
+                    size, styles, layers, limits, tile, discard, descriptors, component,
+                    style, (style.decomposition_levels + 1) as u8, 0, counts, total,
+                )
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_packet_grid_resolutions_run(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    layers: u16, limits: &crate::ResourceLimits, tile: Option<u16>, discard: u8,
+    descriptors: Part2ComponentResolutionCounts, component: u16,
+    style: crate::codestream::CodingStyle, resolutions: u8, resolution: u8, counts: Seq<u32>, total: u64,
+) -> Result<Part1PacketGrid, crate::DecodeError>
+    decreases if component < crate::codestream::image_size_component_count(size) {
+        (crate::codestream::image_size_component_count(size) as nat - component as nat) as nat
+    } else { 0nat },
+        0nat, if resolution < descriptors.0 { (descriptors.0 as nat - resolution as nat) as nat } else { 0nat },
+{
+    if component >= crate::codestream::image_size_component_count(size) { Err(part1_block_placement_error(false)) }
+    else if resolution >= descriptors.0 {
+        part2_packet_grid_components_run(size, styles, layers, limits, tile, discard,
+            descriptors, (component + 1) as u16, counts, total)
+    } else if resolution >= resolutions {
+        part2_packet_grid_resolutions_run(size, styles, layers, limits, tile, discard,
+            descriptors, component, style, resolutions, (resolution + 1) as u8, counts.push(0), total)
+    } else {
+        match part2_resolution_geometry(
+            crate::codestream::selection_geometry_view(size), crate::codestream::image_size_component_count(size),
+            crate::codestream::image_size_component_infos(size), crate::decode::resolution_geometry_style(style),
+            component, resolution, tile,
+        ) {
+            Err(error) => Err(error),
+            Ok(geometry) => match part2_packet_grid_subband_delta(style, resolution) {
+                Err(error) => Err(error),
+                Ok(subbands) => if discard > resolutions {
+                    Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })
+                } else {
+                    match part2_packet_grid_codeblocks(total, geometry.code_blocks,
+                        resolution < resolutions - discard, limits) {
+                        Err(error) => Err(error),
+                        Ok(next_total) => {
+                            if subbands != 0 && geometry.precincts > u32::MAX {
+                                Err(part1_block_placement_error(true))
+                            } else {
+                                part2_packet_grid_resolutions_run(size, styles, layers, limits, tile, discard,
+                                    descriptors, component, style, resolutions, (resolution + 1) as u8,
+                                    counts.push(if subbands == 0 { 0u32 } else { geometry.precincts as u32 }), next_total)
+                            }
+                        },
+                    }
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part2_packet_grid_from_components(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    layers: u16, limits: &crate::ResourceLimits, tile: Option<u16>, discard: u8,
+) -> Result<Part1PacketGrid, crate::DecodeError> {
+    match part2_component_resolution_counts(crate::codestream::image_size_component_count(size), styles, discard) {
+        Err(error) => Err(error),
+        Ok(descriptors) => if crate::codestream::image_size_component_count(size) as int * descriptors.0 as int > usize::MAX {
+            Err(part1_block_placement_error(true))
+        } else {
+            part2_packet_grid_components_run(size, styles, layers, limits, tile, discard,
+                descriptors, 0, Seq::empty(), 0)
+        },
+    }
+}
 
 pub open spec fn part2_component_coordinate_bounds(
     size: Part2SelectionGeometry, count: u16, infos: Seq<crate::codestream::ComponentInfo>,

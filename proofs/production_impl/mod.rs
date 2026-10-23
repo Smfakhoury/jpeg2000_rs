@@ -32,6 +32,25 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_packet_grid_component_start(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    layers: u16, limits: &crate::ResourceLimits, tile: Option<u16>, discard: u8,
+    descriptors: crate::specs::Part2ComponentResolutionCounts, component: u16,
+    counts: Seq<u32>, total: u64, style: crate::codestream::CodingStyle, resolutions: u8,
+)
+    requires component < crate::codestream::image_size_component_count(size),
+        crate::codestream::component_coding_style_result(styles, component) == Ok(style),
+        style.decomposition_levels < u8::MAX,
+        resolutions as int == style.decomposition_levels as int + 1,
+    ensures crate::specs::part2_packet_grid_components_run(
+        size, styles, layers, limits, tile, discard, descriptors, component, counts, total,
+    ) == crate::specs::part2_packet_grid_resolutions_run(
+        size, styles, layers, limits, tile, discard, descriptors, component, style, resolutions, 0, counts, total,
+    ),
+{
+    reveal_with_fuel(crate::specs::part2_packet_grid_components_run, 1);
+}
+
 pub proof fn production_resolution_scales_empty(
     levels: u8, directions: Seq<crate::codestream::DecompositionDirection>,
 )

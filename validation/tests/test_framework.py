@@ -703,6 +703,12 @@ class FrameworkTests(WorkingFiles):
             framework._RESOLUTION_GEOMETRY_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_complete_actual_component_packet_grid_producer_and_limits(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-component-packet-grid"},
+            framework._PACKET_GRID_PRODUCER_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
