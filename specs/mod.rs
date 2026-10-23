@@ -5559,6 +5559,81 @@ pub type Part2LayerAlpha = (Seq<u16>, bool);
 pub type Part2LayerInputResult = Result<(u32, u32, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayerResult = Result<(u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>), crate::DecodeError>;
 pub type Part2OwnedLayer = (u32, u32, crate::color::ConvertedColorSpace, Seq<Seq<u16>>, Option<Part2LayerAlpha>);
+pub type Part2ComponentKeyAssembly = (Result<(), crate::DecodeError>, Seq<u16>, usize);
+
+#[verifier::opaque]
+pub open spec fn part2_chroma_descriptor_bytes(descriptors: Seq<(u8, bool)>, count: nat)
+    -> Result<usize, crate::DecodeError>
+    recommends count <= descriptors.len(),
+    decreases count,
+{
+    if count == 0 { Ok(0) }
+    else {
+        match part2_chroma_descriptor_bytes(descriptors, (count - 1) as nat) {
+            Err(error) => Err(error),
+            Ok(previous) => {
+                let bits = descriptors[(count - 1) as int].0;
+                if bits == 0 || bits > 38 { Err(part2_composition_error(false)) }
+                else {
+                    let bytes = (bits as nat + 7) / 8;
+                    if previous as nat + bytes > usize::MAX as nat { Err(part2_composition_error(true)) }
+                    else { Ok((previous as nat + bytes) as usize) }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_append_component_key(
+    values: Seq<u8>, descriptor: (u8, bool), keys: Seq<u16>, offset: usize,
+) -> Part2ComponentKeyAssembly {
+    let sum = descriptor.0 as nat + 7;
+    let bytes = (if sum > 255 { 255nat } else { sum }) / 8;
+    if offset as nat + bytes > usize::MAX as nat {
+        (Err(part2_composition_error(true)), keys, offset)
+    } else {
+        let end = (offset as nat + bytes) as usize;
+        if end > values.len() { (Err(part2_composition_error(false)), keys, offset) }
+        else {
+            let normalized = part2_normalized_chroma_keys(values.subrange(offset as int, end as int), 1,
+                crate::jp2::ComponentBitDepth::Uniform { bits: descriptor.0, signed: descriptor.1 });
+            match normalized {
+                Err(error) => (Err(error), keys, offset),
+                Ok(new_keys) => if new_keys.len() == 0 { (Err(part2_composition_error(false)), keys, offset) }
+                    else { (Ok(()), keys.push(new_keys[0]), end) },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_component_keys_prefix(values: Seq<u8>, descriptors: Seq<(u8, bool)>, count: nat)
+    -> Part2ComponentKeyAssembly
+    recommends count <= descriptors.len(),
+    decreases count,
+{
+    if count == 0 { (Ok(()), Seq::empty(), 0) }
+    else {
+        let previous = part2_component_keys_prefix(values, descriptors, (count - 1) as nat);
+        match previous.0 {
+            Err(_) => previous,
+            Ok(()) => part2_append_component_key(values, descriptors[(count - 1) as int], previous.1, previous.2),
+        }
+    }
+}
+
+pub open spec fn part2_normalized_component_chroma_keys(values: Seq<u8>, descriptors: Seq<(u8, bool)>)
+    -> Result<Seq<u16>, crate::DecodeError>
+{
+    match part2_chroma_descriptor_bytes(descriptors, descriptors.len()) {
+        Err(error) => Err(error),
+        Ok(expected) => if values.len() != expected { Err(part2_composition_error(false)) }
+            else {
+                let assembled = part2_component_keys_prefix(values, descriptors, descriptors.len());
+                match assembled.0 { Err(error) => Err(error), Ok(()) => Ok(assembled.1) }
+            },
+    }
+}
 
 #[verifier::opaque]
 pub open spec fn part2_chroma_key_bytes(values: Seq<u8>, start: nat, count: nat) -> nat

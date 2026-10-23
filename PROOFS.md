@@ -2188,3 +2188,26 @@ mutations require the two genuine production consumers.
 This closes the uniform byte-input producer including Variable rejection,
 not per-component descriptor preparation, opacity, complete F2/F4/F8 or
 independent conformance. Frozen full-root/hosted/main acceptance remain explicit.
+## Complete actual per-component chroma-key preparation
+
+The actual `normalized_chroma_keys_for_components` now derives its complete
+Result from original bytes and ordered native precision/sign descriptors.
+Every descriptor is validated and its byte count charged to the checked sum
+before payload-length admission. The second traversal executes actual slices,
+the proved one-channel normalizer, first-key lookup, append and final offset
+commit. No successful descriptor/normalization/read result is supplied.
+
+Its genuine append body has a complete Result/key-vector/offset relation for
+raw descriptors, keys and offsets, including usize overflow and all first
+errors. Failures preserve both owners; success appends before offset commit.
+Validation and assembly folds/error absorption live in the model and proof
+support respectively. Consumer links follow the actual moved normalizer edge.
+
+Independent integer references cover 6,084 descriptor/payload cases and1,470
+raw append/prefix/offset cases, including invalid precision before malformed
+payload and maximum-offset overflow. Two finite exact recipes reject partial
+owners, wrong primary inputs, guarded results and invented consumers.
+
+This completes the raw per-component input producer, not opacity, complete
+F2/F4/F8 or independent conformance. Frozen full-root/MSRV/local/hosted and
+owner-main acceptance remain explicit delivery gates.

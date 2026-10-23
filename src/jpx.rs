@@ -2011,21 +2011,68 @@ fn register_samples(
     Ok(output)
 }
 
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures (result, final(keys)@, *final(offset)) == crate::specs::part2_append_component_key(
+            values@, descriptor, old(keys)@, *old(offset)),
+    )
+)]
+fn append_component_chroma_key(
+    values: &[u8],
+    descriptor: (u8, bool),
+    keys: &mut Vec<u16>,
+    offset: &mut usize,
+) -> Result<(), DecodeError> {
+    let (bits, signed) = descriptor;
+    let bytes = usize::from(bits.saturating_add(7) / 8);
+    let end = offset.checked_add(bytes).ok_or_else(arithmetic_overflow)?;
+    let key = normalized_chroma_keys(
+        values.get(*offset..end).ok_or_else(invalid_layer)?,
+        1,
+        ComponentBitDepth::Uniform { bits, signed },
+    )?;
+    keys.push(*key.first().ok_or_else(invalid_layer)?);
+    *offset = end;
+    Ok(())
+}
+
+#[cfg_attr(
+    verus_keep_ghost,
+    verus_spec(result =>
+        ensures crate::color::normalized_plane_result(result)
+            == crate::specs::part2_normalized_component_chroma_keys(values@, descriptors@),
+    )
+)]
 fn normalized_chroma_keys_for_components(
     values: &[u8],
     descriptors: &[(u8, bool)],
 ) -> Result<Vec<u16>, DecodeError> {
     let mut expected = 0_usize;
     let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_chroma_descriptors_empty(descriptors@); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= descriptors.len(),
+                crate::specs::part2_chroma_descriptor_bytes(descriptors@, index as nat) == Ok(expected),
             decreases descriptors.len() - index,
         )
     )]
     while index < descriptors.len() {
         let bits = descriptors.get(index).ok_or_else(invalid_layer)?.0;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_chroma_descriptors_step(descriptors@, index as nat);
+            if bits == 0 || bits > 38 {
+                crate::proofs::production_impl::production_chroma_descriptors_error(
+                    descriptors@, index as nat + 1, descriptors@.len());
+            } else if expected as nat + (bits as nat + 7) / 8 > usize::MAX as nat {
+                crate::proofs::production_impl::production_chroma_descriptors_error(
+                    descriptors@, index as nat + 1, descriptors@.len());
+            }
+        }
         if bits == 0 || bits > 38 {
             return Err(invalid_layer());
         }
@@ -2040,24 +2087,36 @@ fn normalized_chroma_keys_for_components(
     let mut keys = Vec::with_capacity(descriptors.len());
     let mut offset = 0_usize;
     index = 0;
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::proofs::production_impl::production_component_keys_empty(values@, descriptors@); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant index <= descriptors.len(),
+                crate::specs::part2_chroma_descriptor_bytes(descriptors@, descriptors@.len()) == Ok(expected),
+                values.len() == expected,
+                crate::specs::part2_component_keys_prefix(values@, descriptors@, index as nat)
+                    == (Ok(()), keys@, offset),
             decreases descriptors.len() - index,
         )
     )]
     while index < descriptors.len() {
-        let (bits, signed) = *descriptors.get(index).ok_or_else(invalid_layer)?;
-        let bytes = usize::from(bits.saturating_add(7) / 8);
-        let end = offset.checked_add(bytes).ok_or_else(arithmetic_overflow)?;
-        let key = normalized_chroma_keys(
-            values.get(offset..end).ok_or_else(invalid_layer)?,
-            1,
-            ComponentBitDepth::Uniform { bits, signed },
-        )?;
-        keys.push(*key.first().ok_or_else(invalid_layer)?);
-        offset = end;
+        let descriptor = *descriptors.get(index).ok_or_else(invalid_layer)?;
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::proofs::production_impl::production_component_keys_step(values@, descriptors@, index as nat); }
+        let result = append_component_chroma_key(values, descriptor, &mut keys, &mut offset);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            if let Err(error) = result {
+                assert(crate::specs::part2_component_keys_prefix(values@, descriptors@, index as nat + 1)
+                    == (Err(error), keys@, offset));
+                crate::proofs::production_impl::production_component_keys_error(
+                    values@, descriptors@, index as nat + 1, descriptors@.len());
+            } else {
+                crate::proofs::production_impl::production_mct_unit_result(result);
+            }
+        }
+        result?;
         index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
     Ok(keys)
@@ -4127,6 +4186,122 @@ mod tests {
                 u16::try_from((nominal * 65_535 + maximum / 2) / maximum).unwrap()
             })
             .collect())
+    }
+
+    #[test]
+    fn component_chroma_preparation_preserves_descriptor_before_payload_validation() {
+        let choices = [0, 1, 7, 8, 9, 16, 31, 32, 38, 39, u8::MAX]
+            .into_iter()
+            .flat_map(|bits| [(bits, false), (bits, true)])
+            .collect::<Vec<_>>();
+        let mut descriptors = vec![vec![]];
+        for &first in &choices {
+            descriptors.push(vec![first]);
+            for &second in &choices {
+                descriptors.push(vec![first, second]);
+            }
+        }
+        let mut cases = 0;
+        for description in descriptors {
+            let expected_length = description
+                .iter()
+                .map(|&(bits, _)| usize::from(bits).div_ceil(8))
+                .sum::<usize>();
+            for pattern in 0..3 {
+                for length in [
+                    0,
+                    expected_length.saturating_sub(1),
+                    expected_length,
+                    expected_length + 1,
+                ] {
+                    let values = (0..length)
+                        .map(|index| match pattern {
+                            0 => 0,
+                            1 => u8::MAX,
+                            _ => (index * 19 + 5) as u8,
+                        })
+                        .collect::<Vec<_>>();
+                    let expected = (|| -> Result<Vec<u16>, DecodeError> {
+                        if description.iter().any(|&(bits, _)| bits == 0 || bits > 38) {
+                            return Err(invalid_layer());
+                        }
+                        if length != expected_length {
+                            return Err(invalid_layer());
+                        }
+                        let mut result = vec![];
+                        let mut cursor = 0;
+                        for &(bits, signed) in &description {
+                            let end = cursor + usize::from(bits).div_ceil(8);
+                            let keys = independent_chroma_normalization(
+                                &values[cursor..end],
+                                1,
+                                ComponentBitDepth::Uniform { bits, signed },
+                            )?;
+                            result.extend(keys);
+                            cursor = end;
+                        }
+                        Ok(result)
+                    })();
+                    assert_eq!(
+                        normalized_chroma_keys_for_components(&values, &description),
+                        expected
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 6084);
+    }
+
+    #[test]
+    fn component_chroma_append_keeps_keys_and_offset_on_every_first_error() {
+        let mut cases = 0;
+        for length in 0..=6 {
+            let values = (0..length)
+                .map(|index| (index * 13 + 7) as u8)
+                .collect::<Vec<_>>();
+            for bits in [0, 1, 8, 9, 38, 39, u8::MAX] {
+                for signed in [false, true] {
+                    for initial_offset in [0, 1, 2, usize::MAX - 1, usize::MAX] {
+                        for initial_keys in [vec![], vec![17], vec![19, 23]] {
+                            let mut expected_keys = initial_keys.clone();
+                            let mut expected_offset = initial_offset;
+                            let expected = (|| {
+                                let bytes = usize::from(bits.saturating_add(7) / 8);
+                                let end = initial_offset
+                                    .checked_add(bytes)
+                                    .ok_or_else(arithmetic_overflow)?;
+                                let data =
+                                    values.get(initial_offset..end).ok_or_else(invalid_layer)?;
+                                let normalized = independent_chroma_normalization(
+                                    data,
+                                    1,
+                                    ComponentBitDepth::Uniform { bits, signed },
+                                )?;
+                                expected_keys.push(*normalized.first().ok_or_else(invalid_layer)?);
+                                expected_offset = end;
+                                Ok(())
+                            })();
+                            let mut keys = initial_keys;
+                            let mut offset = initial_offset;
+                            assert_eq!(
+                                append_component_chroma_key(
+                                    &values,
+                                    (bits, signed),
+                                    &mut keys,
+                                    &mut offset
+                                ),
+                                expected
+                            );
+                            assert_eq!(keys, expected_keys);
+                            assert_eq!(offset, expected_offset);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1470);
     }
 
     #[test]
