@@ -402,6 +402,12 @@ pub(crate) struct DecodedTileComponents {
     pub(crate) mct_work: u64,
 }
 
+pub(crate) struct DecodedLayoutTile {
+    pub(crate) prepared: Vec<PreparedTileComponent>,
+    pub(crate) counters: (u64, u64, u64),
+    pub(crate) mct_work: u64,
+}
+
 pub(crate) struct TileDecodeMetadata<'a, 'data> {
     pub(crate) first: &'a TilePartPayload<'data>,
     pub(crate) standard: (bool, bool),
@@ -5479,6 +5485,82 @@ pub(crate) fn prepare_tile_decode_metadata<'a, 'data>(
     })
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn decoded_layout_tile_view(value: &DecodedLayoutTile) -> crate::specs::Part2DecodedLayoutTile {
+        crate::specs::Part2DecodedLayoutTile {
+            prepared: prepared_components_view(value.prepared@), counters: value.counters, mct_work: value.mct_work,
+        }
+    }
+
+    pub open spec fn decoded_layout_tile_outcome(result: Result<DecodedLayoutTile, DecodeError>)
+        -> Result<crate::specs::Part2DecodedLayoutTile, DecodeError> {
+        match result { Err(error) => Err(error), Ok(value) => Ok(decoded_layout_tile_view(&value)) }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures decoded_layout_tile_outcome(result) == crate::specs::part2_decode_tile_parts_at(
+        size, tile, parts@, codestream::codestream_profile_capabilities(profile), discard, limits,
+        prepared_components_view(prepared@), initial, mct_work,
+    ),
+))]
+pub(crate) fn decode_tile_parts_at(
+    size: &ImageSize,
+    tile: u16,
+    parts: &[TilePartPayload<'_>],
+    profile: &codestream::CodestreamProfile,
+    discard: Option<u8>,
+    limits: &ResourceLimits,
+    prepared: Vec<PreparedTileComponent>,
+    initial: (u64, u64, u64),
+    mct_work: u64,
+) -> Result<DecodedLayoutTile, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { codestream::selection_geometry_known_fields(size); }
+    let metadata = prepare_tile_decode_metadata(parts, size.components, discard)?;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(tile_decode_metadata_view); }
+    let first = metadata.first;
+    let maximum_resolution_counts = match discard {
+        None => None,
+        Some(_) => Some(metadata.resolution_counts.as_slice()),
+    };
+    let plan = plan_progression_tile_at_selected(
+        size,
+        tile,
+        first.coding_style,
+        &first.component_coding_styles,
+        &first.component_quantizations,
+        &first.roi_shifts,
+        discard.unwrap_or(0),
+        profile.part15_allows_multiple_ht_sets(),
+        profile.part15_magnitude_bound(),
+        profile.part15_requires_all_ht_blocks(),
+        limits,
+    )?;
+    let counters = account_planned_tile(&plan, maximum_resolution_counts, initial, limits)?;
+    let decoded = decode_planned_tile_components(
+        plan,
+        parts,
+        first,
+        size,
+        metadata.standard,
+        maximum_resolution_counts,
+        limits,
+        prepared,
+        mct_work,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(decoded_tile_components_view); reveal(decoded_layout_tile_view); }
+    Ok(DecodedLayoutTile {
+        prepared: decoded.prepared,
+        counters,
+        mct_work: decoded.mct_work,
+    })
+}
+
 fn decode_layout_selected(
     layout: &CodestreamLayout<'_>,
     requested: &DecodeSelection,
@@ -5524,51 +5606,21 @@ fn decode_layout_selected(
             }
             part_index = part_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let metadata = prepare_tile_decode_metadata(
-            &tile_parts,
-            layout.info.image_size.components,
-            Some(selection.discard_levels),
-        )?;
-        let first = metadata.first;
-        let coding_style = first.coding_style;
-        let component_coding_styles = first.component_coding_styles;
-        let component_quantizations = &first.component_quantizations;
-        let transform = metadata.standard;
-        let resolution_counts = metadata.resolution_counts;
-        let plan = plan_progression_tile_at_selected(
+        let decoded = decode_tile_parts_at(
             &layout.info.image_size,
             tile_index,
-            coding_style,
-            &component_coding_styles,
-            component_quantizations,
-            &first.roi_shifts,
-            selection.discard_levels,
-            layout.info.profile.part15_allows_multiple_ht_sets(),
-            layout.info.profile.part15_magnitude_bound(),
-            layout.info.profile.part15_requires_all_ht_blocks(),
-            limits,
-        )?;
-        let totals = account_planned_tile(
-            &plan,
-            Some(&resolution_counts),
-            (total_packets, total_precincts, total_code_blocks),
-            limits,
-        )?;
-        total_packets = totals.0;
-        total_precincts = totals.1;
-        total_code_blocks = totals.2;
-        let decoded = decode_planned_tile_components(
-            plan,
             &tile_parts,
-            first,
-            &layout.info.image_size,
-            transform,
-            Some(&resolution_counts),
+            &layout.info.profile,
+            Some(selection.discard_levels),
             limits,
             prepared,
+            (total_packets, total_precincts, total_code_blocks),
             total_mct_work,
         )?;
         prepared = decoded.prepared;
+        total_packets = decoded.counters.0;
+        total_precincts = decoded.counters.1;
+        total_code_blocks = decoded.counters.2;
         total_mct_work = decoded.mct_work;
         selected_tile = selected_tile
             .checked_add(1)
@@ -6284,48 +6336,21 @@ fn decode_layout(
             }
             part_index = part_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let metadata =
-            prepare_tile_decode_metadata(&tile_parts, layout.info.image_size.components, None)?;
-        let first = metadata.first;
-        let coding_style = first.coding_style;
-        let component_coding_styles = first.component_coding_styles;
-        let component_quantizations = &first.component_quantizations;
-        let transform = metadata.standard;
-        let roi_shifts = first.roi_shifts;
-        let plan = plan_progression_tile_at_selected(
+        let decoded = decode_tile_parts_at(
             &layout.info.image_size,
             tile_index,
-            coding_style,
-            &component_coding_styles,
-            component_quantizations,
-            &roi_shifts,
-            0,
-            layout.info.profile.part15_allows_multiple_ht_sets(),
-            layout.info.profile.part15_magnitude_bound(),
-            layout.info.profile.part15_requires_all_ht_blocks(),
-            limits,
-        )?;
-        let totals = account_planned_tile(
-            &plan,
-            None,
-            (total_packets, total_precincts, total_code_blocks),
-            limits,
-        )?;
-        total_packets = totals.0;
-        total_precincts = totals.1;
-        total_code_blocks = totals.2;
-        let decoded = decode_planned_tile_components(
-            plan,
             &tile_parts,
-            first,
-            &layout.info.image_size,
-            transform,
+            &layout.info.profile,
             None,
             limits,
             prepared,
+            (total_packets, total_precincts, total_code_blocks),
             total_mct_work,
         )?;
         prepared = decoded.prepared;
+        total_packets = decoded.counters.0;
+        total_precincts = decoded.counters.1;
+        total_code_blocks = decoded.counters.2;
         total_mct_work = decoded.mct_work;
         tile = tile.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
@@ -8526,6 +8551,182 @@ mod tests {
         }
         assert_eq!(cases, 7_560);
         assert!(successes > 100);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_raw_tile_decode(
+        size: &ImageSize,
+        tile: u16,
+        parts: &[TilePartPayload<'_>],
+        profile: &codestream::CodestreamProfile,
+        discard: Option<u8>,
+        limits: &ResourceLimits,
+        prepared: Vec<PreparedTileComponent>,
+        initial: (u64, u64, u64),
+        work: u64,
+    ) -> Result<DecodedLayoutTile, DecodeError> {
+        let metadata = prepare_tile_decode_metadata(parts, size.components, discard)?;
+        let first = metadata.first;
+        let counts = discard.map(|_| metadata.resolution_counts.as_slice());
+        let policy = (
+            profile.part15_allows_multiple_ht_sets(),
+            profile.part15_magnitude_bound(),
+            profile.part15_requires_all_ht_blocks(),
+        );
+        let plan = reference_tile_plan(
+            size,
+            first.coding_style,
+            &first.component_coding_styles,
+            &first.component_quantizations,
+            &first.roi_shifts,
+            (tile, discard.unwrap_or(0)),
+            policy,
+            limits,
+        )?;
+        let counters = reference_plan_accounting(&plan, counts, initial, limits)?;
+        let decoded = reference_packet_reconstruction(
+            plan,
+            parts,
+            first,
+            size,
+            metadata.standard,
+            counts,
+            limits,
+            prepared,
+            work,
+        )?;
+        Ok(DecodedLayoutTile {
+            prepared: decoded.prepared,
+            counters,
+            mct_work: decoded.mct_work,
+        })
+    }
+
+    #[test]
+    fn actual_raw_tile_decode_derives_all_samples_counters_work_and_first_errors_without_plan_results()
+     {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+            add_single_component_mct(prepared_codestream(1, 1, 1, &qcd, &[0, 0, 0]), 2, 3),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED.with_maximum_packets(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(0)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_packet_header_bytes(0)
+                .unwrap(),
+        ];
+        let prior = [
+            (0, 0, 0),
+            (1, 2, 3),
+            (u64::MAX, 0, 0),
+            (0, u64::MAX, 0),
+            (0, 0, u64::MAX),
+            (u64::MAX, u64::MAX, u64::MAX),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        let mut nonzero = 0;
+        for bytes in fixtures {
+            let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+            for tile in [0, 1, u16::MAX] {
+                for discard in [None, Some(0), Some(1), Some(2), Some(u8::MAX)] {
+                    for limit in &limits {
+                        for initial in prior {
+                            for work in [0, 1, u64::MAX] {
+                                for prefix in [false, true] {
+                                    let prepared = || {
+                                        if prefix {
+                                            vec![PreparedTileComponent {
+                                                component: u16::MAX,
+                                                x: u32::MAX,
+                                                y: 17,
+                                                width: 1,
+                                                height: 1,
+                                                fraction_bits: u8::MAX,
+                                                samples: vec![i64::MIN, i64::MAX],
+                                            }]
+                                        } else {
+                                            Vec::new()
+                                        }
+                                    };
+                                    for parts in [
+                                        &layout.tile_parts[..],
+                                        &layout.tile_parts[..0],
+                                        &layout.tile_parts[..1],
+                                    ] {
+                                        let expected = reference_raw_tile_decode(
+                                            &layout.info.image_size,
+                                            tile,
+                                            parts,
+                                            &layout.info.profile,
+                                            discard,
+                                            limit,
+                                            prepared(),
+                                            initial,
+                                            work,
+                                        );
+                                        let actual = decode_tile_parts_at(
+                                            &layout.info.image_size,
+                                            tile,
+                                            parts,
+                                            &layout.info.profile,
+                                            discard,
+                                            limit,
+                                            prepared(),
+                                            initial,
+                                            work,
+                                        );
+                                        match (actual, expected) {
+                                            (Err(actual), Err(expected)) => {
+                                                assert_eq!(actual, expected)
+                                            }
+                                            (Ok(actual), Ok(expected)) => {
+                                                assert_eq!(actual.prepared, expected.prepared);
+                                                assert_eq!(actual.counters, expected.counters);
+                                                assert_eq!(actual.mct_work, expected.mct_work);
+                                                successes += 1;
+                                                nonzero += usize::from(
+                                                    actual
+                                                        .prepared
+                                                        .iter()
+                                                        .skip(usize::from(prefix))
+                                                        .any(|component| {
+                                                            component
+                                                                .samples
+                                                                .iter()
+                                                                .any(|sample| *sample != 0)
+                                                        }),
+                                                );
+                                            }
+                                            (Err(error), Ok(_)) => panic!(
+                                                "unexpected raw-tile decode error: {error:?}"
+                                            ),
+                                            (Ok(_), Err(error)) => panic!(
+                                                "raw-tile decode should have failed: {error:?}"
+                                            ),
+                                        }
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 38_880);
+        assert!(successes > 10 && nonzero > 0);
     }
 
     fn reference_standard_prepare(

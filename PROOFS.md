@@ -2645,3 +2645,23 @@ isolating the solver context rather than increasing unrelated proof budgets.
 18,432 raw lookup contexts and 1,572,864 policy contexts include every u16
 capability word, physical frontiers and contradictory unused profile fields.
 Tile collection/clone and whole raw-layout/file/F2/F4/F8 joins remain separate.
+## Complete actual per-tile decoding from raw parts
+
+Both actual layout callers now invoke one complete raw per-tile decoder.
+Real first/MCT/kernel/style metadata and raw profile policy feed actual
+selected grid/component/precinct/decoder planning; exact global accounting
+then precedes real packet byte execution and F6/F7 sample reconstruction.
+Every prepared component/position/extent/fraction/sample, global counter and
+MCT-work field is derived from actual raw tile parts/image/profile/mode/limits.
+An existing owned prepared prefix is retained transport, not a result bank.
+
+The exact native postcondition and consumer-binding mutations admit no
+supplied successful plan, decoded plane/sample/reconstruction outcome,
+normalized metadata or successful resource premise. 38,880 complete
+composition contexts compare all output fields and first errors, including
+empty/mismatched raw parts, full-versus-selected admission, nonzero MCT output,
+u64 counter/work frontiers and ragged unused prefixes. References reuse
+independently qualified metadata/profile primitives with independent wide/
+flat-order plan/precinct/accounting composition.
+Actual tile collection/clone, whole layout/selection/raw parser/file/F2/F4/
+final F8 and publication remain separate, not assumed by this producer.

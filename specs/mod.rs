@@ -8593,6 +8593,44 @@ pub open spec fn part2_planned_tile_accounting(
     }
 }
 
+pub struct Part2DecodedLayoutTile {
+    pub prepared: Seq<Part1AssemblyTile>,
+    pub counters: (u64, u64, u64),
+    pub mct_work: u64,
+}
+
+pub open spec fn part2_decode_tile_parts_at(
+    size: &crate::codestream::ImageSize, tile: u16, parts: Seq<crate::codestream::TilePartPayload<'_>>,
+    caps: Option<(u32, Seq<u16>)>, discard: Option<u8>, limits: &crate::ResourceLimits,
+    prepared: Seq<Part1AssemblyTile>, initial: (u64, u64, u64), work: u64,
+) -> Result<Part2DecodedLayoutTile, crate::DecodeError> {
+    match part2_tile_decode_metadata(parts, crate::codestream::image_size_component_count(size), discard) {
+        Err(error) => Err(error),
+        Ok(metadata) => {
+            let maximum = match discard { None => None, Some(_) => Some(metadata.resolution_counts) };
+            let levels = match discard { None => 0u8, Some(levels) => levels };
+            match part2_progression_tile_plan(
+                size, metadata.first.coding_style, &metadata.first.component_coding_styles,
+                &metadata.first.component_quantizations, &metadata.first.roi_shifts, (tile, levels),
+                (part2_profile_multiple_sets(caps), part2_profile_magnitude_bound(caps), part2_profile_force_ht(caps)), limits,
+            ) {
+                Err(error) => Err(error),
+                Ok(plan) => match part2_planned_tile_accounting(plan, maximum, initial, limits) {
+                    Err(error) => Err(error),
+                    Ok(counters) => match part2_decode_planned_tile_components(
+                        plan, parts, &metadata.first, size, metadata.standard, maximum, limits, prepared, work,
+                    ) {
+                        Err(error) => Err(error),
+                        Ok(decoded) => Ok(Part2DecodedLayoutTile {
+                            prepared: decoded.prepared, counters, mct_work: decoded.mct_work,
+                        }),
+                    },
+                },
+            }
+        },
+    }
+}
+
 pub struct Part2DecodedTileComponents {
     pub prepared: Seq<Part1AssemblyTile>,
     pub mct_work: u64,

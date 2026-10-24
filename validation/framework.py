@@ -790,6 +790,15 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_RAW_TILE_DECODING_CONTRACTS = {
+    ("src/decode.rs", "decode_tile_parts_at"): (
+        "part2_decode_tile_parts_at", _coverage_call("decoded_layout_tile_outcome", r"\1"), None,
+        r"size\s*,\s*tile\s*,\s*parts@\s*,\s*" + _coverage_call("codestream::codestream_profile_capabilities", "profile")
+        + r"\s*,\s*discard\s*,\s*limits\s*,\s*" + _coverage_call("prepared_components_view", "prepared@")
+        + r"\s*,\s*initial\s*,\s*mct_work",
+    ),
+}
+
 _PROFILE_POLICY_CONTRACTS = {
     ("src/codestream.rs", "ExtendedCapabilities::capability_for_part"): (
         "part2_capability_value", r"\1", None,
@@ -1808,6 +1817,7 @@ def validate_normative_coverage(
                 or _LAYOUT_ACCOUNTING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_POLICY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _RAW_TILE_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

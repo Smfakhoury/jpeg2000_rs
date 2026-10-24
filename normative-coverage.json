@@ -4,11 +4,48 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-tile-decoding",
+      "topic": "Complete actual per-tile decoder Result/all prepared component/coordinate/extent/fraction/sample fields, global packet/precinct/codeblock counters and MCT work from raw tile-part bytes/metadata, image/tile/profile/full-or-discard mode, limits and owned prior accumulation. Actual first/MCT/kernel/style preparation and raw profile policy derive actual raw-owner plan/grid/decoder/placement vectors, exact accounting, actual F5 byte execution and real F6/F7 reconstruction. No supplied plan, decoded-plane/sample/reconstruction outcomes, normalized metadata or success/budget premise. Existing prepared prefix is transport only and new tile samples are computed internally. Both actual full/selected layout callers execute sole producer; tile collection/clone, whole-layout/selection/raw parser/file/F2/F4/final F8 and publication remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_at"},
+        {"path": "specs/mod.rs", "symbol": "part2_tile_decode_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part2_progression_tile_plan"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_tile_accounting"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_planned_tile_components"},
+        {"path": "specs/mod.rs", "symbol": "part2_profile_multiple_sets"},
+        {"path": "specs/mod.rs", "symbol": "part2_profile_magnitude_bound"},
+        {"path": "specs/mod.rs", "symbol": "part2_profile_force_ht"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "decoded_layout_tile_view"},
+        {"path": "src/decode.rs", "symbol": "decoded_layout_tile_outcome"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"},
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "account_planned_tile"},
+        {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"},
+        {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"},
+        {"path": "src/codestream.rs", "symbol": "CodestreamProfile::part15_allows_multiple_ht_sets"},
+        {"path": "src/codestream.rs", "symbol": "CodestreamProfile::part15_magnitude_bound"},
+        {"path": "src/codestream.rs", "symbol": "CodestreamProfile::part15_requires_all_ht_blocks"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_raw_tile_decode_derives_all_samples_counters_work_and_first_errors_without_plan_results"}
+      ]
+    },
+    {
       "id": "part2-complete-native-ht-profile-policy",
       "topic": "Complete actual CAP part lookup/part15 word/block-mode/multiple-set/magnitude and actual codestream HT policy from raw p_cap/physical c_capabilities/optional profile owners. Retain all-u8 part admission, raw bit rank and physical lookup, absent/ragged defaults, invalid-mode nonvalidation, multiple-set bit and low-five-bit magnitude mapping, default bound74 and builtin mode classification. Unused r_siz/block-coding/profile words do not normalize or override raw CAP. Both real layout decoders consume exact getters before actual plan generation; no parsed policy/result bank, normalized CAP or successful premise. Tile collection/clone, whole raw layout/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "decode_layout"},
         {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
         {"path": "src/codestream.rs", "symbol": "ExtendedCapabilities::part15_value"},
         {"path": "src/codestream.rs", "symbol": "ExtendedCapabilities::part15_block_mode"},
         {"path": "src/codestream.rs", "symbol": "ExtendedCapabilities::part15_allows_multiple_ht_sets"},
@@ -53,6 +90,7 @@
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "decode_layout"},
         {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
         {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"},
         {"path": "src/decode.rs", "symbol": "prepare_tile_component_resolutions"},
         {"path": "src/decode.rs", "symbol": "optional_multiple_component_transforms_equal"},
@@ -112,6 +150,7 @@
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "decode_layout"},
         {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
         {"path": "src/decode.rs", "symbol": "account_planned_tile"}
       ],
       "spec_refs": [
@@ -141,7 +180,8 @@
       "topic": "Complete actual owned post-plan packet-to-prepared-component Result/all component/position/extent/fraction/sample fields and MCT work from raw complete plan state, actual tile-part bytes/first payload/image/standard transform/selection/limits/prepared prefix/work. Actual maintained F5 packet execution mutates real decoder state, proved decoder/precinct/vector field projections derive actual coefficient planes, and actual F6/F7 reconstruction computes every sample. No supplied decoded-plane or reconstruction result bank/callback, normalized plan or successful resource premise. Owned prepared prefix is preserved transport; existing full and selected decoder paths execute the sole body after unchanged actual plan production/global accounting/metadata admission. This join does not by itself close whole raw layout/selection/file/F2/F4/final F8 producer or uniform-facade gaps.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_planned_tile_components"},

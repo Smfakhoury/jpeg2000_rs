@@ -1646,3 +1646,10 @@ and profile policy relations retain invalid-mode, missing/ragged/default and
 unused-owner behavior without normalized metadata or supplied result premises.
 Native field views and eight exact recipes bind every actual layout policy
 getter; the low-five-bit magnitude bound is proved locally, not assumed.
+`part2_decode_tile_parts_at` derives complete per-tile prepared/sample output,
+global packet/precinct/codeblock counters and MCT work from actual raw tile
+parts/image/profile/mode/limits and owned prior accumulation. It composes the
+actual metadata, policy, raw-owner planning, accounting and byte/reconstruction
+relations in source order; no successful intermediate plan/decoded/sample bank
+is supplied. Actual full/selected callers execute the sole native body.
+Collection/clone, whole layout/parser/file/F2/F4/F8 joins remain separate.
