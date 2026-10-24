@@ -8334,6 +8334,104 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub struct Part2PlannedCodeBlocks {
+    pub decoders: Seq<Tier1DecoderState>,
+    pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,
+    pub decoder_index: usize,
+    pub planned_code_blocks: u64,
+}
+
+pub open spec fn part2_planned_codeblock_cell(
+    grid: [u32; 4], clip: [u32; 4], block: [u32; 2],
+    subband: crate::decode::SubbandGeometry, style: crate::tier1::Tier1CodingStyle,
+    policy: (bool, u8), indices: (usize, usize), before: Part2PlannedCodeBlocks,
+) -> Result<Part2PlannedCodeBlocks, crate::DecodeError> {
+    match part2_planned_codeblock_geometry(grid, clip, block) {
+        Err(error) => Err(error),
+        Ok(geometry) => match part2_tier1_configured_decoder(
+            geometry.2, geometry.3, subband.significant_bitplanes, subband.orientation, style, policy.0, policy.1,
+        ) {
+            Err(error) => Err(error),
+            Ok(decoder) => {
+                let x = geometry.0 as int - subband.x0 as int;
+                let y = geometry.1 as int - subband.y0 as int;
+                if x < 0 || y < 0 || before.decoder_index == usize::MAX {
+                    Err(part1_block_placement_error(true))
+                } else {
+                    Ok(Part2PlannedCodeBlocks {
+                        decoders: before.decoders.push(decoder),
+                        placements: before.placements.push(crate::decode::ProgressionCodeBlockPlacement {
+                            precinct_index: indices.0, decoder_index: before.decoder_index, subband_index: indices.1,
+                            x: x as u32, y: y as u32,
+                        }),
+                        decoder_index: (before.decoder_index + 1) as usize,
+                        planned_code_blocks: before.planned_code_blocks,
+                    })
+                }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_planned_codeblock_columns(
+    grid: [u32; 4], clip: [u32; 4], across: u32,
+    subband: crate::decode::SubbandGeometry, style: crate::tier1::Tier1CodingStyle,
+    policy: (bool, u8), indices: (usize, usize), row: u32, column: nat, state: Part2PlannedCodeBlocks,
+) -> Result<Part2PlannedCodeBlocks, crate::DecodeError>
+    decreases if column < across { (across as int - column) as nat } else { 0nat },
+{
+    if column >= across { Ok(state) } else {
+        match part2_planned_codeblock_cell(grid, clip, [column as u32, row], subband, style, policy, indices, state) {
+            Err(error) => Err(error),
+            Ok(next) => part2_planned_codeblock_columns(
+                grid, clip, across, subband, style, policy, indices, row, column + 1, next),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_planned_codeblock_rows(
+    grid: [u32; 4], clip: [u32; 4], blocks: [u32; 2],
+    subband: crate::decode::SubbandGeometry, style: crate::tier1::Tier1CodingStyle,
+    policy: (bool, u8), indices: (usize, usize), row: nat, state: Part2PlannedCodeBlocks,
+) -> Result<Part2PlannedCodeBlocks, crate::DecodeError>
+    decreases if row < blocks[1] { (blocks[1] as int - row) as nat } else { 0nat },
+{
+    if row >= blocks[1] { Ok(state) } else {
+        match part2_planned_codeblock_columns(
+            grid, clip, blocks[0], subband, style, policy, indices, row as u32, 0, state,
+        ) {
+            Err(error) => Err(error),
+            Ok(next) => part2_planned_codeblock_rows(grid, clip, blocks, subband, style, policy, indices, row + 1, next),
+        }
+    }
+}
+
+pub open spec fn part2_planned_codeblocks(
+    grid: [u32; 4], clip: [u32; 4], blocks: [u32; 2],
+    subband: crate::decode::SubbandGeometry, style: crate::tier1::Tier1CodingStyle,
+    policy: (bool, u8), indices: (usize, usize, usize),
+    placements: Seq<crate::decode::ProgressionCodeBlockPlacement>, total: u64,
+    selected: bool, limits: &crate::ResourceLimits,
+) -> Result<Part2PlannedCodeBlocks, crate::DecodeError> {
+    let count = blocks[0] as nat * blocks[1] as nat;
+    let next = if selected { total as nat + count } else { total as nat };
+    if count > u64::MAX || next > u64::MAX { Err(part1_block_placement_error(true)) }
+    else if selected && next > crate::limits::resource_code_block_limit(limits) {
+        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlocks,
+            limit: crate::limits::resource_code_block_limit(limits), actual: next as u64 })
+    } else if selected && next > crate::limits::resource_work_limit(limits) {
+        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits,
+            limit: crate::limits::resource_work_limit(limits), actual: next as u64 })
+    } else if count > usize::MAX { Err(part1_block_placement_error(true)) }
+    else {
+        part2_planned_codeblock_rows(grid, clip, blocks, subband, style, policy, (indices.0, indices.1), 0,
+            Part2PlannedCodeBlocks { decoders: Seq::empty(), placements, decoder_index: indices.2,
+                planned_code_blocks: next as u64 })
+    }
+}
+
 pub open spec fn part2_tier1_magnitude_bound(before: Tier1DecoderState, bound: u8)
     -> (Result<(), crate::DecodeError>, Tier1DecoderState)
 {

@@ -790,6 +790,19 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_CODEBLOCK_VECTOR_CONTRACTS = {
+    ("src/decode.rs", "append_planned_codeblock"): (
+        "part2_planned_codeblock_cell", _coverage_call("planned_codeblocks_outcome", r"\1"), None,
+        r"grid\s*,\s*clip\s*,\s*block\s*,\s*subband\s*,\s*style\s*,\s*policy\s*,\s*indices\s*,\s*"
+        + _coverage_call("planned_codeblocks_view", r"&\s*state"),
+    ),
+    ("src/decode.rs", "plan_codeblock_decoders"): (
+        "part2_planned_codeblocks", _coverage_call("planned_codeblocks_outcome", r"\1"), None,
+        r"grid\s*,\s*clip\s*,\s*blocks\s*,\s*subband\s*,\s*style\s*,\s*policy\s*,\s*indices\s*,\s*"
+        r"placements@\s*,\s*planned_code_blocks\s*,\s*selected\s*,\s*limits",
+    ),
+}
+
 _COMPONENT_PLAN_METADATA_CONTRACTS = {
     ("src/codestream.rs", "ComponentQuantizations::quantization"): (
         "part2_component_quantization", r"\1", None, r"self\s*,\s*component",
@@ -1646,6 +1659,7 @@ def validate_normative_coverage(
                 or _CODEBLOCK_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PRECINCT_INITIALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_PLAN_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _CODEBLOCK_VECTOR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
