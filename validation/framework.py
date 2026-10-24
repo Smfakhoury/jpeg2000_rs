@@ -790,6 +790,18 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_LAYOUT_ACCOUNTING_CONTRACTS = {
+    ("src/decode.rs", "account_planned_tile"): (
+        "part2_planned_tile_accounting", r"\1", None,
+        _coverage_call("progression_plan_view", "plan") + r"\s*,\s*"
+        + _coverage_call("crate::packet::packet_selection_view", "maximum_resolution_counts") + r"\s*,\s*initial\s*,\s*limits",
+    ),
+    ("src/decode.rs", "count_selected_component_blocks"): (
+        "part2_selected_component_blocks", r"\1", None,
+        _coverage_call("prepare_plan_view", "plan") + r"\s*,\s*0\s*,\s*total",
+    ),
+}
+
 _PACKET_RECONSTRUCTION_CONTRACTS = {
     ("src/decode.rs", "decode_planned_tile_components"): (
         "part2_decode_planned_tile_components", _coverage_call("decoded_tile_components_outcome", r"\1"), None,
@@ -1725,6 +1737,7 @@ def validate_normative_coverage(
                 or _RESOLUTION_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_TILE_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYOUT_ACCOUNTING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

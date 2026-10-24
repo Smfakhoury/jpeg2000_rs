@@ -8334,6 +8334,89 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+#[verifier::opaque]
+pub open spec fn part2_selected_component_blocks(plan: Part1PreparePlan, index: nat, total: u64)
+    -> Result<u64, crate::DecodeError>
+    decreases if index < plan.placements.len() { (plan.placements.len() - index) as nat } else { 0nat },
+{
+    if index >= plan.placements.len() { Ok(total) } else {
+        let placement = plan.placements[index as int];
+        if placement.subband_index as nat >= plan.subbands.len() { Err(part1_block_placement_error(false)) }
+        else {
+            let selected = plan.subbands[placement.subband_index as int].resolution <= plan.resolution;
+            if selected && total == u64::MAX { Err(part1_block_placement_error(true)) }
+            else { part2_selected_component_blocks(plan, index + 1, if selected { (total + 1) as u64 } else { total }) }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_account_plan_blocks(
+    plans: Seq<Part1PreparePlan>, selected: bool, maximum: u64, index: nat, total: u64,
+) -> Result<u64, crate::DecodeError>
+    decreases if index < plans.len() { (plans.len() - index) as nat } else { 0nat },
+{
+    if index >= plans.len() {
+        if selected && total > maximum {
+            Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlocks, limit: maximum, actual: total })
+        } else { Ok(total) }
+    } else {
+        let next = if selected { part2_selected_component_blocks(plans[index as int], 0, total) } else {
+            let count = plans[index as int].placements.len() as u64;
+            if total as nat + count as nat > u64::MAX { Err(part1_block_placement_error(true)) }
+            else { Ok((total + count) as u64) }
+        };
+        match next {
+            Err(error) => Err(error),
+            Ok(count) => if !selected && count > maximum {
+                Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlocks, limit: maximum, actual: count })
+            } else { part2_account_plan_blocks(plans, selected, maximum, index + 1, count) },
+        }
+    }
+}
+
+pub open spec fn part2_planned_tile_accounting(
+    plan: Part2ProgressionTilePlan, selection: Option<Seq<u8>>, initial: (u64, u64, u64), limits: &crate::ResourceLimits,
+) -> Result<(u64, u64, u64), crate::DecodeError> {
+    let packets = match selection {
+        None => Ok(plan.grid.packet_count),
+        Some(counts) => part1_packet_grid_selected_count(plan.grid, counts),
+    };
+    match packets {
+        Err(error) => Err(error),
+        Ok(packets) => if initial.0 as nat + packets as nat > u64::MAX { Err(part1_block_placement_error(true)) } else {
+            let total_packets = (initial.0 + packets) as u64;
+            if total_packets > crate::limits::resource_packet_limit(limits) {
+                Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Packets,
+                    limit: crate::limits::resource_packet_limit(limits), actual: total_packets })
+            } else {
+                let precincts = match selection {
+                    None => part1_packet_grid_total_precincts(plan.grid),
+                    Some(_) => if plan.coding_style.layers == 0 { Err(part1_block_placement_error(true)) }
+                        else { Ok((packets / plan.coding_style.layers as u64) as u64) },
+                };
+                match precincts {
+                    Err(error) => Err(error),
+                    Ok(precincts) => if initial.1 as nat + precincts as nat > u64::MAX { Err(part1_block_placement_error(true)) }
+                    else {
+                        let total_precincts = (initial.1 + precincts) as u64;
+                        if total_precincts > crate::limits::resource_precinct_limit(limits) {
+                            Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Precincts,
+                                limit: crate::limits::resource_precinct_limit(limits), actual: total_precincts })
+                        } else {
+                            match part2_account_plan_blocks(plan.components, selection.is_some(),
+                                crate::limits::resource_code_block_limit(limits), 0, initial.2) {
+                                Err(error) => Err(error),
+                                Ok(blocks) => Ok((total_packets, total_precincts, blocks)),
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    }
+}
+
 pub struct Part2DecodedTileComponents {
     pub prepared: Seq<Part1AssemblyTile>,
     pub mct_work: u64,

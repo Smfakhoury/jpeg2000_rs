@@ -5410,83 +5410,15 @@ fn decode_layout_selected(
             layout.info.profile.part15_requires_all_ht_blocks(),
             limits,
         )?;
-        let selected_packets = plan.grid.selected_packet_count(&resolution_counts)?;
-        total_packets = total_packets
-            .checked_add(selected_packets)
-            .ok_or_else(arithmetic_overflow)?;
-        if total_packets > limits.maximum_packets() {
-            return Err(DecodeError::limit(
-                Resource::Packets,
-                limits.maximum_packets(),
-                total_packets,
-            ));
-        }
-        let selected_precincts = selected_packets
-            .checked_div(u64::from(coding_style.layers))
-            .ok_or_else(arithmetic_overflow)?;
-        total_precincts = total_precincts
-            .checked_add(selected_precincts)
-            .ok_or_else(arithmetic_overflow)?;
-        if total_precincts > limits.maximum_precincts() {
-            return Err(DecodeError::limit(
-                Resource::Precincts,
-                limits.maximum_precincts(),
-                total_precincts,
-            ));
-        }
-        let mut component_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component_index <= plan.components.len(),
-                decreases plan.components.len() - component_index,
-            )
-        )]
-        while component_index < plan.components.len() {
-            let planned = plan
-                .components
-                .get(component_index)
-                .ok_or_else(invalid_decode)?;
-            let mut placement_index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant placement_index <= planned.placements.len(),
-                    decreases planned.placements.len() - placement_index,
-                )
-            )]
-            while placement_index < planned.placements.len() {
-                let placement = planned
-                    .placements
-                    .get(placement_index)
-                    .ok_or_else(invalid_decode)?;
-                if plan
-                    .components
-                    .get(component_index)
-                    .and_then(|value| value.subbands.get(placement.subband_index))
-                    .ok_or_else(invalid_decode)?
-                    .resolution
-                    <= planned.output_resolution
-                {
-                    total_code_blocks = total_code_blocks
-                        .checked_add(1)
-                        .ok_or_else(arithmetic_overflow)?;
-                }
-                placement_index = placement_index
-                    .checked_add(1)
-                    .ok_or_else(arithmetic_overflow)?;
-            }
-            component_index = component_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        if total_code_blocks > limits.maximum_code_blocks() {
-            return Err(DecodeError::limit(
-                Resource::CodeBlocks,
-                limits.maximum_code_blocks(),
-                total_code_blocks,
-            ));
-        }
+        let totals = account_planned_tile(
+            &plan,
+            Some(&resolution_counts),
+            (total_packets, total_precincts, total_code_blocks),
+            limits,
+        )?;
+        total_packets = totals.0;
+        total_precincts = totals.1;
+        total_code_blocks = totals.2;
         let decoded = decode_planned_tile_components(
             plan,
             &tile_parts,
@@ -5956,6 +5888,138 @@ pub(crate) fn validate_part2_coding_style(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_selected_component_blocks(prepare_plan_view(plan), 0, total),
+))]
+pub(crate) fn count_selected_component_blocks(
+    plan: &PlannedTileComponent,
+    total: u64,
+) -> Result<u64, DecodeError> {
+    let mut count = total;
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= plan.placements.len(),
+            crate::specs::part2_selected_component_blocks(prepare_plan_view(plan), 0, total)
+                == crate::specs::part2_selected_component_blocks(prepare_plan_view(plan), index as nat, count),
+        decreases plan.placements.len() - index,
+    ))]
+    while index < plan.placements.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(prepare_plan_view); reveal_with_fuel(crate::specs::part2_selected_component_blocks, 1); }
+        let placement = plan.placements.get(index).ok_or_else(invalid_decode)?;
+        let band = plan
+            .subbands
+            .get(placement.subband_index)
+            .ok_or_else(invalid_decode)?;
+        if band.resolution <= plan.output_resolution {
+            count = count.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(prepare_plan_view); reveal_with_fuel(crate::specs::part2_selected_component_blocks, 1); }
+    Ok(count)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_planned_tile_accounting(
+        progression_plan_view(plan), crate::packet::packet_selection_view(maximum_resolution_counts), initial, limits,
+    ),
+))]
+pub(crate) fn account_planned_tile(
+    plan: &ProgressionTilePlan,
+    maximum_resolution_counts: Option<&[u8]>,
+    initial: (u64, u64, u64),
+    limits: &ResourceLimits,
+) -> Result<(u64, u64, u64), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(progression_plan_view); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_planned_tile_accounting(
+        progression_plan_view(plan), crate::packet::packet_selection_view(maximum_resolution_counts), initial, limits,
+    ); }
+    let selected = maximum_resolution_counts.is_some();
+    let packets = match maximum_resolution_counts {
+        None => plan.grid.packet_count(),
+        Some(counts) => plan.grid.selected_packet_count(counts)?,
+    };
+    let total_packets = initial
+        .0
+        .checked_add(packets)
+        .ok_or_else(arithmetic_overflow)?;
+    if total_packets > limits.maximum_packets() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::Packets,
+            limit: limits.maximum_packets(),
+            actual: total_packets,
+        });
+    }
+    let precincts = if selected {
+        packets
+            .checked_div(u64::from(plan.coding_style.layers))
+            .ok_or_else(arithmetic_overflow)?
+    } else {
+        plan.grid.total_precinct_count()?
+    };
+    let total_precincts = initial
+        .1
+        .checked_add(precincts)
+        .ok_or_else(arithmetic_overflow)?;
+    if total_precincts > limits.maximum_precincts() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::Precincts,
+            limit: limits.maximum_precincts(),
+            actual: total_precincts,
+        });
+    }
+    let mut total_blocks = initial.2;
+    let mut component = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant component <= plan.components.len(),
+            goal == crate::specs::part2_planned_tile_accounting(
+                progression_plan_view(plan), crate::packet::packet_selection_view(maximum_resolution_counts), initial, limits,
+            ),
+            goal == match crate::specs::part2_account_plan_blocks(
+                planning_components_view(plan.components@), selected, crate::limits::resource_code_block_limit(limits),
+                component as nat, total_blocks,
+            ) {
+                Err(error) => Err(error),
+                Ok(blocks) => Ok((total_packets, total_precincts, blocks)),
+            },
+        decreases plan.components.len() - component,
+    ))]
+    while component < plan.components.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(progression_plan_view); reveal_with_fuel(crate::specs::part2_account_plan_blocks, 1); }
+        let planned = plan.components.get(component).ok_or_else(invalid_decode)?;
+        if selected {
+            total_blocks = count_selected_component_blocks(planned, total_blocks)?;
+        } else {
+            total_blocks = total_blocks
+                .checked_add(planned.placements.len() as u64)
+                .ok_or_else(arithmetic_overflow)?;
+            if total_blocks > limits.maximum_code_blocks() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::CodeBlocks,
+                    limit: limits.maximum_code_blocks(),
+                    actual: total_blocks,
+                });
+            }
+        }
+        component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_account_plan_blocks, 1); }
+    if selected && total_blocks > limits.maximum_code_blocks() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::CodeBlocks,
+            limit: limits.maximum_code_blocks(),
+            actual: total_blocks,
+        });
+    }
+    Ok((total_packets, total_precincts, total_blocks))
+}
+
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures decoded_tile_components_outcome(result) == crate::specs::part2_decode_planned_tile_components(
@@ -6145,56 +6209,15 @@ fn decode_layout(
             layout.info.profile.part15_requires_all_ht_blocks(),
             limits,
         )?;
-        total_packets = total_packets
-            .checked_add(plan.grid.packet_count())
-            .ok_or_else(arithmetic_overflow)?;
-        if total_packets > limits.maximum_packets() {
-            return Err(DecodeError::limit(
-                Resource::Packets,
-                limits.maximum_packets(),
-                total_packets,
-            ));
-        }
-        total_precincts = total_precincts
-            .checked_add(plan.grid.total_precinct_count()?)
-            .ok_or_else(arithmetic_overflow)?;
-        if total_precincts > limits.maximum_precincts() {
-            return Err(DecodeError::limit(
-                Resource::Precincts,
-                limits.maximum_precincts(),
-                total_precincts,
-            ));
-        }
-        let plan_component_count = plan.components.len();
-        let mut component_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component_index <= plan_component_count,
-                decreases plan_component_count - component_index,
-            )
-        )]
-        while component_index < plan_component_count {
-            total_code_blocks = total_code_blocks
-                .checked_add(
-                    plan.components
-                        .get(component_index)
-                        .ok_or_else(invalid_decode)?
-                        .placements
-                        .len() as u64,
-                )
-                .ok_or_else(arithmetic_overflow)?;
-            if total_code_blocks > limits.maximum_code_blocks() {
-                return Err(DecodeError::limit(
-                    Resource::CodeBlocks,
-                    limits.maximum_code_blocks(),
-                    total_code_blocks,
-                ));
-            }
-            component_index = component_index
-                .checked_add(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
+        let totals = account_planned_tile(
+            &plan,
+            None,
+            (total_packets, total_precincts, total_code_blocks),
+            limits,
+        )?;
+        total_packets = totals.0;
+        total_precincts = totals.1;
+        total_code_blocks = totals.2;
         let decoded = decode_planned_tile_components(
             plan,
             &tile_parts,
@@ -8159,6 +8182,251 @@ mod tests {
         }
         assert_eq!(cases, 14_400);
         assert!(successes > 10 && nonzero > 0);
+    }
+
+    fn reference_selected_component_blocks(
+        plan: &PlannedTileComponent,
+        mut total: u64,
+    ) -> Result<u64, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        for placement in &plan.placements {
+            let band = plan.subbands.get(placement.subband_index).ok_or(invalid)?;
+            if band.resolution <= plan.output_resolution {
+                total = u64::try_from(u128::from(total) + 1).map_err(|_| arithmetic)?;
+            }
+        }
+        Ok(total)
+    }
+
+    #[test]
+    fn actual_selected_component_accounting_preserves_raw_band_indices_resolution_and_overflow_order()
+     {
+        let mut cases = 0;
+        for output in [0, 1, 2, u8::MAX] {
+            for resolution in [0, 1, 2, 31, 32, u8::MAX] {
+                for bands in 0..4 {
+                    let subbands = (0..bands)
+                        .map(|index| {
+                            let mut band =
+                                raw_planned_subband(u32::MAX, u32::MAX, 0, SubbandOrientation::Hh);
+                            band.resolution = resolution.wrapping_add(u8::try_from(index).unwrap());
+                            band
+                        })
+                        .collect::<Vec<_>>();
+                    for count in 0..5 {
+                        for seed in [0, 1, bands, usize::MAX] {
+                            let plan = PlannedTileComponent {
+                                component: u16::MAX,
+                                x: u32::MAX,
+                                y: 17,
+                                width: 0,
+                                height: u32::MAX,
+                                output_resolution: output,
+                                subbands: subbands.clone(),
+                                placements: (0..count)
+                                    .map(|index| ProgressionCodeBlockPlacement {
+                                        precinct_index: usize::MAX,
+                                        decoder_index: usize::MAX,
+                                        subband_index: if index == 0 { seed } else { usize::MAX },
+                                        x: u32::MAX,
+                                        y: u32::MAX,
+                                    })
+                                    .collect(),
+                            };
+                            for total in [
+                                0,
+                                1,
+                                2,
+                                ResourceLimits::HARDENED.maximum_code_blocks(),
+                                u64::MAX - 1,
+                                u64::MAX,
+                            ] {
+                                assert_eq!(
+                                    count_selected_component_blocks(&plan, total),
+                                    reference_selected_component_blocks(&plan, total)
+                                );
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 11_520);
+    }
+
+    fn reference_plan_accounting(
+        plan: &ProgressionTilePlan,
+        counts: Option<&[u8]>,
+        initial: (u64, u64, u64),
+        limits: &ResourceLimits,
+    ) -> Result<(u64, u64, u64), DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let add =
+            |a: u64, b: u64| u64::try_from(u128::from(a) + u128::from(b)).map_err(|_| arithmetic);
+        let packets = match counts {
+            None => plan.grid.packet_count(),
+            Some(counts) => plan.grid.selected_packet_count(counts)?,
+        };
+        let total_packets = add(initial.0, packets)?;
+        if total_packets > limits.maximum_packets() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Packets,
+                limit: limits.maximum_packets(),
+                actual: total_packets,
+            });
+        }
+        let precincts = if counts.is_some() {
+            if plan.coding_style.layers == 0 {
+                return Err(arithmetic);
+            }
+            packets / u64::from(plan.coding_style.layers)
+        } else {
+            plan.grid.total_precinct_count()?
+        };
+        let total_precincts = add(initial.1, precincts)?;
+        if total_precincts > limits.maximum_precincts() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Precincts,
+                limit: limits.maximum_precincts(),
+                actual: total_precincts,
+            });
+        }
+        let mut blocks = initial.2;
+        for component in &plan.components {
+            if counts.is_some() {
+                blocks = reference_selected_component_blocks(component, blocks)?;
+            } else {
+                blocks = add(blocks, u64::try_from(component.placements.len()).unwrap())?;
+                if blocks > limits.maximum_code_blocks() {
+                    return Err(DecodeError::LimitExceeded {
+                        resource: Resource::CodeBlocks,
+                        limit: limits.maximum_code_blocks(),
+                        actual: blocks,
+                    });
+                }
+            }
+        }
+        if counts.is_some() && blocks > limits.maximum_code_blocks() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlocks,
+                limit: limits.maximum_code_blocks(),
+                actual: blocks,
+            });
+        }
+        Ok((total_packets, total_precincts, blocks))
+    }
+
+    #[test]
+    fn actual_layout_accounting_preserves_full_selected_global_limits_empty_and_malformed_plan_policy()
+     {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED.with_maximum_packets(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(1)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_packets(1)
+                .unwrap()
+                .with_maximum_code_blocks(1)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+        ];
+        let prior = [
+            (0, 0, 0),
+            (1, 2, 3),
+            (u64::MAX, 0, 0),
+            (0, u64::MAX, 0),
+            (0, 0, u64::MAX),
+            (u64::MAX, u64::MAX, u64::MAX),
+            (0, ResourceLimits::HARDENED.maximum_precincts(), 0),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for bytes in fixtures {
+            let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+            for tile_scope in [false, true] {
+                let (styles, quantizations, roi) = planning_fixture_owners(&layout, tile_scope);
+                let masks = [
+                    None,
+                    Some(Vec::new()),
+                    Some(vec![0; usize::from(layout.info.image_size.components)]),
+                    Some(vec![1; usize::from(layout.info.image_size.components)]),
+                    Some(vec![
+                        u8::MAX;
+                        usize::from(layout.info.image_size.components)
+                    ]),
+                ];
+                for variant in 0..6 {
+                    let mut plan = plan_progression_tile_at_selected(
+                        &layout.info.image_size,
+                        0,
+                        layout.info.coding_style,
+                        styles,
+                        quantizations,
+                        roi,
+                        0,
+                        false,
+                        74,
+                        false,
+                        &ResourceLimits::HARDENED,
+                    )
+                    .unwrap();
+                    match variant {
+                        0 => {}
+                        1 => plan.components.clear(),
+                        2 => plan.components[0].subbands.clear(),
+                        3 => {
+                            if let Some(placement) = plan.components[0].placements.last_mut() {
+                                placement.subband_index = usize::MAX;
+                            }
+                        }
+                        4 => plan.coding_style.layers = 0,
+                        _ => plan.components[0].output_resolution = 0,
+                    }
+                    for counts in &masks {
+                        for initial in prior {
+                            for limit in &limits {
+                                let expected = reference_plan_accounting(
+                                    &plan,
+                                    counts.as_deref(),
+                                    initial,
+                                    limit,
+                                );
+                                assert_eq!(
+                                    account_planned_tile(&plan, counts.as_deref(), initial, limit),
+                                    expected
+                                );
+                                successes += usize::from(expected.is_ok());
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 7_560);
+        assert!(successes > 100);
     }
 
     fn reference_standard_prepare(

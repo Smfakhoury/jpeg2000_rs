@@ -796,6 +796,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_RECONSTRUCTION_CONTRACTS, 1,
         )
 
+    def test_inventory_binds_actual_full_selected_global_accounting_and_raw_placement_counts(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-layout-accounting"},
+            framework._LAYOUT_ACCOUNTING_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
