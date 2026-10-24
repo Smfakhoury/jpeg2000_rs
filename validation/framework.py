@@ -792,6 +792,27 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_LOG_EXP_CONTRACTS = {
+    ("src/image.rs", "nlt_ln_normalize"): (
+        "part2_nlt_ln_normalize", r"\1", None, r"initial",
+    ),
+    ("src/image.rs", "nlt_ln_series"): (
+        "part2_nlt_ln_series", r"\1", None, r"squared\s*,\s*scale\s*,\s*0\s*,\s*initial\s*,\s*0",
+    ),
+    ("src/image.rs", "nlt_fixed_ln_q32"): (
+        "part2_nlt_fixed_ln_q32", r"\1", None, r"value",
+    ),
+    ("src/image.rs", "nlt_exp_series"): (
+        "part2_nlt_exp_series", r"\1", None, r"remainder\s*,\s*1\s*,\s*4294967296\s*,\s*4294967296",
+    ),
+    ("src/image.rs", "nlt_fixed_exp_q32"): (
+        "part2_nlt_fixed_exp_q32", r"\1", None, r"value",
+    ),
+    ("src/image.rs", "nlt_fixed_pow_reciprocal_q32"): (
+        "part2_nlt_fixed_pow_reciprocal_q32", r"\1", None, r"base\s*,\s*exponent",
+    ),
+}
+
 _NONLINEAR_LUT_CONTRACTS = {
     ("src/image.rs", "inverse_nlt_lut_sample"): (
         "part2_nlt_lut_sample", r"\1", None,
@@ -1901,6 +1922,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_REGIONS_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_ARITHMETIC_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_LUT_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_LOG_EXP_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

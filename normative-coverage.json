@@ -4,6 +4,47 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-nonlinear-log-exp",
+      "topic": "Complete actual raw fixed logarithm/exponential/reciprocal Results, including both 128-ticket normalization loops, exact ordered 20-term log and 24-term exp computations, every checked product/addition/division/rounding, original scale -62..62 admission and final sign/shift policy. All loops and opaque folds derive internally without even the former positive-log caller premise; zero/negative raw log inputs retain checked arithmetic failures. Sole moved/extracted native bodies feed actual gamma inversion, not supplied normalized values or series/results. No new trust, budget, tolerance or iteration change; this proves exact existing bounded computation, not real analytic convergence or conformance accuracy. Gamma/whole scalar dispatch/region/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_ln_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_exp_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_ln_series"},
+        {"path": "src/image.rs", "symbol": "nlt_exp_series"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_ln_normalize"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_ln_normalize_high"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_ln_normalize_low"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_ln_series"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_ln_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_exp_series"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_exp_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_pow_reciprocal_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_mul_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_div_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_checked_i128"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_checked_i32"}
+      ],
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "nlt_ln_normalize"},
+        {"path": "src/image.rs", "symbol": "nlt_ln_series"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_ln_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_exp_series"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_exp_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "nlt_fixed_mul_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_div_q32"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "actual_nonlinear_log_exp_preserve_normalization_bounded_series_and_raw_error_frontiers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-nonlinear-lut",
       "topic": "Complete actual inverse NLT LUT Result for raw source sample, raw component descriptor and complete raw transform. Preserve output precision then minimum/maximum/point-count/source admission, source offset, checked scaling and clamping, checked interval conversion/position, Rust signed quotient/remainder, endpoint versus ordered point reads, every interpolation intermediate overflow, half-away ratio rounding and signed/type4 remapping. No normalized tables, supplied lookup/sample results, monotonicity, target-range or valid-source premises; unused descriptors/kinds stay unvalidated. Actual inverse scalar dispatch calls sole moved private body. Isolate actual interpolation under an opaque but proved model at original budgets; checked widening retains original conversion policy. Gamma/log/exp/whole dispatch/region/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
@@ -42,9 +83,9 @@
         {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_sample"},
         {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_gamma_sample"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
-        {"path": "src/image.rs", "symbol": "TypedImage::fixed_pow_reciprocal_q32"},
-        {"path": "src/image.rs", "symbol": "TypedImage::fixed_ln_q32"},
-        {"path": "src/image.rs", "symbol": "TypedImage::fixed_exp_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_ln_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_exp_q32"},
         {"path": "src/image.rs", "symbol": "nlt_fixed_mul_q32"}
       ],
       "spec_refs": [

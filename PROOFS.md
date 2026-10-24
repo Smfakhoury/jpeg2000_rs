@@ -25,6 +25,31 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native fixed logarithm and exponential
+
+Actual fixed logarithm, exponential and reciprocal-power Results now compose
+the real two-pass normalization and ordered 20/24-term native series. The
+128-ticket normalization counters, all checked arithmetic, Q32 rounding,
+scale range and signed shift/error policy are unchanged. All raw inputs,
+including zero/negative logarithms, are covered without the former positive
+logarithm caller premise; native failures still arise from the original
+checked operations and counters.
+
+Sole private free bodies preserve pinned attribute support. Actual
+normalization and series helpers derive their full Results under opaque,
+terminating folds; no normalized input, successful series or result bank is
+supplied. Constants are proved before their first checked use. A redundant
+LUT diagnostic assertions are removed while its complete Result contract stays
+unchanged; explicit checked remainder retains the same native operation.
+No budget, tolerance, iteration count or trusted adapter is changed.
+
+Independent bit-length normalization, shared unsigned-magnitude arithmetic
+and flat ordered folds check 762 signed power-neighbor contexts, 645 scale
+frontiers, 405 raw log series and 100 reciprocal pairs, plus raw extrema and
+exact fixed-point identities. This proves the existing bounded computation,
+not analytic convergence or a standards accuracy claim. Gamma/whole scalar
+dispatch/region/typed/parser/file/F2/F4/final F8 remain separate.
+
 ## Complete native nonlinear LUT inverse
 
 Actual `inverse_nlt_lut_sample` refines a complete Result from the raw source,
