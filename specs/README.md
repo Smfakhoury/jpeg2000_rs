@@ -1559,3 +1559,9 @@ style/HT policy setter models preserve all unrelated raw state and retain
 the owner on invalid bounds. Actual planner/public facade calls share the
 sole constructor; no supplied initialized decoder/plane, normalized style or
 successful allocation is a premise.
+`part2_planned_codeblock_geometry` and `part2_tier1_configured_decoder` describe
+the actual raw inner tile-loop producers: ordered checked nominal coordinates,
+clipping, dimension narrowing and real initialized/policy-configured decoder
+state. Zero dimensions are not normalized away, and no valid grid/decoder
+outcome or successful allocation/budget is assumed. Full tile-plan vector
+composition and F2/F4/F8 remain separate.

@@ -742,6 +742,12 @@ class FrameworkTests(WorkingFiles):
                     self.assertRaisesRegex(ValueError, "actual implicit unit return"):
                 framework.validate_normative_coverage(coverage)
 
+    def test_inventory_binds_actual_codeblock_geometry_and_configured_decoder_inputs(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-codeblock-planning"},
+            framework._CODEBLOCK_PLANNING_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

@@ -8091,6 +8091,40 @@ pub open spec fn part2_tier1_allow_sets(before: Tier1DecoderState, allowed: bool
     ((), Tier1DecoderState { allow_multiple_ht_sets: allowed, ..before })
 }
 
+pub open spec fn part2_tier1_configured_decoder(
+    width: u16, height: u16, significant: u16, orientation: crate::tier1::SubbandOrientation,
+    style: crate::tier1::Tier1CodingStyle, allowed: bool, bound: u8,
+) -> Result<Tier1DecoderState, crate::DecodeError> {
+    match part2_tier1_initial_decoder(width, height, significant, orientation, style) {
+        Err(error) => Err(error),
+        Ok(initial) => {
+            let policy = part2_tier1_allow_sets(initial, allowed).1;
+            let configured = part2_tier1_magnitude_bound(policy, bound);
+            match configured.0 { Err(error) => Err(error), Ok(()) => Ok(configured.1) }
+        },
+    }
+}
+
+pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4], block: [u32; 2])
+    -> Result<(u32, u32, u16, u16), crate::DecodeError>
+{
+    let ix = grid[0] as int + block[0] as int;
+    let iy = grid[1] as int + block[1] as int;
+    let nx = ix * grid[2] as int;
+    let ny = iy * grid[3] as int;
+    let x = if nx >= clip[0] as int { nx } else { clip[0] as int };
+    let y = if ny >= clip[1] as int { ny } else { clip[1] as int };
+    let ex = nx + grid[2] as int;
+    let ey = ny + grid[3] as int;
+    let width = (if ex <= clip[2] as int { ex } else { clip[2] as int }) - x;
+    let height = (if ey <= clip[3] as int { ey } else { clip[3] as int }) - y;
+    if ix > u32::MAX || nx > u32::MAX || iy > u32::MAX || ny > u32::MAX
+        || ex > u32::MAX || ey > u32::MAX || width < 0 || width > u16::MAX
+        || height < 0 || height > u16::MAX {
+        Err(part1_block_placement_error(true))
+    } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
+}
+
 pub open spec fn part2_tier1_magnitude_bound(before: Tier1DecoderState, bound: u8)
     -> (Result<(), crate::DecodeError>, Tier1DecoderState)
 {
