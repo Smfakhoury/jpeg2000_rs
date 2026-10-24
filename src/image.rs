@@ -997,7 +997,7 @@ impl TypedImage {
                 continuity_a,
             )?;
             0_i128
-                .checked_sub(Self::fixed_pow_reciprocal_q32(base, exponent)?)
+                .checked_sub(nlt_fixed_pow_reciprocal_q32(base, exponent)?)
                 .ok_or_else(arithmetic_overflow)?
         } else if normalized <= threshold {
             nlt_fixed_div_q32(normalized, slope)?
@@ -1008,7 +1008,7 @@ impl TypedImage {
                     .ok_or_else(arithmetic_overflow)?,
                 continuity_a,
             )?;
-            Self::fixed_pow_reciprocal_q32(base, exponent)?
+            nlt_fixed_pow_reciprocal_q32(base, exponent)?
         };
         nlt_round_ratio(
             decoded
@@ -1016,118 +1016,6 @@ impl TypedImage {
                 .ok_or_else(arithmetic_overflow)?,
             1_i128 << 32,
         )
-    }
-
-    fn fixed_pow_reciprocal_q32(base: i128, exponent: i128) -> Result<i128, DecodeError> {
-        if base <= 0 || exponent <= 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        Self::fixed_exp_q32(nlt_fixed_div_q32(Self::fixed_ln_q32(base)?, exponent)?)
-    }
-
-    #[cfg_attr(verus_keep_ghost, verus_spec(requires value > 0,))]
-    fn fixed_ln_q32(mut value: i128) -> Result<i128, DecodeError> {
-        let one = 1_i128 << 32;
-        let two = one.checked_mul(2).ok_or_else(arithmetic_overflow)?;
-        let mut scale = 0_i32;
-        let mut normalization_passes = 128_u16;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases normalization_passes,)
-        )]
-        while value >= two {
-            value >>= 1;
-            scale = scale.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            normalization_passes = normalization_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        normalization_passes = 128;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(decreases normalization_passes,)
-        )]
-        while value < one {
-            value = value.checked_mul(2).ok_or_else(arithmetic_overflow)?;
-            scale = scale.checked_sub(1).ok_or_else(arithmetic_overflow)?;
-            normalization_passes = normalization_passes
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        let z = nlt_fixed_div_q32(
-            value.checked_sub(one).ok_or_else(arithmetic_overflow)?,
-            value.checked_add(one).ok_or_else(arithmetic_overflow)?,
-        )?;
-        let z_squared = nlt_fixed_mul_q32(z, z)?;
-        let mut term = z;
-        let mut sum = 0_i128;
-        let mut iteration = 0_u32;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant iteration <= 20,
-                decreases 20 - iteration,
-            )
-        )]
-        while iteration < 20 {
-            let divisor = iteration
-                .checked_mul(2)
-                .and_then(|value| value.checked_add(1))
-                .ok_or_else(arithmetic_overflow)?;
-            if divisor == 0 {
-                return Err(arithmetic_overflow());
-            }
-            sum = sum
-                .checked_add(term / i128::from(divisor))
-                .ok_or_else(arithmetic_overflow)?;
-            term = nlt_fixed_mul_q32(term, z_squared)?;
-            iteration += 1;
-        }
-        const LN_2_Q32: i128 = 2_977_044_471;
-        sum.checked_mul(2)
-            .ok_or_else(arithmetic_overflow)?
-            .checked_add(
-                i128::from(scale)
-                    .checked_mul(LN_2_Q32)
-                    .ok_or_else(arithmetic_overflow)?,
-            )
-            .ok_or_else(arithmetic_overflow)
-    }
-
-    #[allow(clippy::manual_range_contains)]
-    fn fixed_exp_q32(value: i128) -> Result<i128, DecodeError> {
-        const LN_2_Q32: i128 = 2_977_044_471;
-        let scale = value / LN_2_Q32;
-        if scale < -62 || scale > 62 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        let remainder = value - scale * LN_2_Q32;
-        let mut sum = 1_i128 << 32;
-        let mut term = sum;
-        let mut iteration = 1_u32;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant iteration <= 25,
-                decreases 25 - iteration,
-            )
-        )]
-        while iteration <= 24 {
-            term = nlt_fixed_mul_q32(term, remainder)?
-                .checked_div(i128::from(iteration))
-                .ok_or_else(arithmetic_overflow)?;
-            sum = sum.checked_add(term).ok_or_else(arithmetic_overflow)?;
-            iteration += 1;
-        }
-        if scale >= 0 {
-            let shift = u32::try_from(scale).map_err(|_| arithmetic_overflow())?;
-            if sum < 0 || sum > (i128::MAX >> shift) {
-                return Err(arithmetic_overflow());
-            }
-            Ok(sum << shift)
-        } else {
-            Ok(sum >> u32::try_from(-scale).map_err(|_| arithmetic_overflow())?)
-        }
     }
 
     pub(crate) fn from_components_with_origin(
@@ -1142,6 +1030,185 @@ impl TypedImage {
             width, height, x_origin, y_origin, components, limits,
         )
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_ln_normalize(initial),
+))]
+fn nlt_ln_normalize(initial: i128) -> Result<(i128, i32), DecodeError> {
+    let mut value = initial;
+    let one = 1_i128 << 32;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(1i128 << 32 == 4294967296) by(bit_vector);
+        assert(2i128 << 32 == 8589934592) by(bit_vector);
+    }
+    let two = one.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+    let mut scale = 0_i32;
+    let mut normalization_passes = 128_u16;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_nlt_ln_normalize(initial); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant goal == crate::specs::part2_nlt_ln_normalize(initial),
+            goal == crate::specs::part2_nlt_ln_normalize_high(value, scale, normalization_passes),
+            two == 8589934592, one == 4294967296,
+        decreases normalization_passes,
+    ))]
+    while value >= two {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nlt_ln_normalize_high, 1); }
+        value >>= 1;
+        scale = scale.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        normalization_passes = normalization_passes
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_nlt_ln_normalize_high, 1); }
+    normalization_passes = 128;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant goal == crate::specs::part2_nlt_ln_normalize(initial),
+            goal == crate::specs::part2_nlt_ln_normalize_low(value, scale, normalization_passes),
+            one == 4294967296,
+        decreases normalization_passes,
+    ))]
+    while value < one {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nlt_ln_normalize_low, 1); }
+        value = value.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+        scale = scale.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+        normalization_passes = normalization_passes
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_nlt_ln_normalize_low, 1); }
+    Ok((value, scale))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_ln_series(squared, scale, 0, initial, 0),
+))]
+fn nlt_ln_series(initial: i128, squared: i128, scale: i32) -> Result<i128, DecodeError> {
+    let mut term = initial;
+    let mut sum = 0_i128;
+    let mut iteration = 0_u32;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_nlt_ln_series(squared, scale, 0, initial, 0); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant iteration <= 20,
+            goal == crate::specs::part2_nlt_ln_series(squared, scale, 0, initial, 0),
+            goal == crate::specs::part2_nlt_ln_series(squared, scale, iteration as nat, term, sum),
+        decreases 20 - iteration,
+    ))]
+    while iteration < 20 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nlt_ln_series, 1); }
+        let doubled = iteration.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+        let divisor = doubled.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        if divisor == 0 {
+            return Err(arithmetic_overflow());
+        }
+        sum = sum
+            .checked_add(term / i128::from(divisor))
+            .ok_or_else(arithmetic_overflow)?;
+        term = nlt_fixed_mul_q32(term, squared)?;
+        iteration += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_nlt_ln_series, 1); }
+    let doubled = sum.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+    let shifted = i128::from(scale)
+        .checked_mul(2_977_044_471)
+        .ok_or_else(arithmetic_overflow)?;
+    doubled.checked_add(shifted).ok_or_else(arithmetic_overflow)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_fixed_ln_q32(value),
+))]
+fn nlt_fixed_ln_q32(value: i128) -> Result<i128, DecodeError> {
+    let (value, scale) = nlt_ln_normalize(value)?;
+    let one = 1_i128 << 32;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1i128 << 32 == 4294967296) by(bit_vector); }
+    let z = nlt_fixed_div_q32(
+        value.checked_sub(one).ok_or_else(arithmetic_overflow)?,
+        value.checked_add(one).ok_or_else(arithmetic_overflow)?,
+    )?;
+    let squared = nlt_fixed_mul_q32(z, z)?;
+    nlt_ln_series(z, squared, scale)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_exp_series(remainder, 1, 4294967296, 4294967296),
+))]
+fn nlt_exp_series(remainder: i128) -> Result<i128, DecodeError> {
+    let mut sum = 1_i128 << 32;
+    let mut term = sum;
+    let mut iteration = 1_u32;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_nlt_exp_series(remainder, 1, 4294967296, 4294967296); }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1i128 << 32 == 4294967296) by(bit_vector); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant 1 <= iteration <= 25,
+            goal == crate::specs::part2_nlt_exp_series(remainder, 1, 4294967296, 4294967296),
+            goal == crate::specs::part2_nlt_exp_series(remainder, iteration as nat, term, sum),
+        decreases 25 - iteration,
+    ))]
+    while iteration <= 24 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nlt_exp_series, 1); }
+        term = nlt_fixed_mul_q32(term, remainder)?
+            .checked_div(i128::from(iteration))
+            .ok_or_else(arithmetic_overflow)?;
+        sum = sum.checked_add(term).ok_or_else(arithmetic_overflow)?;
+        iteration += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_nlt_exp_series, 1); }
+    Ok(sum)
+}
+
+#[allow(clippy::manual_range_contains)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_fixed_exp_q32(value),
+))]
+fn nlt_fixed_exp_q32(value: i128) -> Result<i128, DecodeError> {
+    const LN_2_Q32: i128 = 2_977_044_471;
+    let scale = value / LN_2_Q32;
+    if scale < -62 || scale > 62 {
+        return Err(invalid_transform());
+    }
+    let remainder = value - scale * LN_2_Q32;
+    let sum = nlt_exp_series(remainder)?;
+    if scale >= 0 {
+        let shift = match u32::try_from(scale) {
+            Ok(shift) => shift,
+            Err(_) => return Err(arithmetic_overflow()),
+        };
+        if sum < 0 || sum > (i128::MAX >> shift) {
+            return Err(arithmetic_overflow());
+        }
+        Ok(sum << shift)
+    } else {
+        let shift = match u32::try_from(-scale) {
+            Ok(shift) => shift,
+            Err(_) => return Err(arithmetic_overflow()),
+        };
+        Ok(sum >> shift)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_fixed_pow_reciprocal_q32(base, exponent),
+))]
+fn nlt_fixed_pow_reciprocal_q32(base: i128, exponent: i128) -> Result<i128, DecodeError> {
+    if base <= 0 || exponent <= 0 {
+        return Err(invalid_transform());
+    }
+    nlt_fixed_exp_q32(nlt_fixed_div_q32(nlt_fixed_ln_q32(base)?, exponent)?)
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -1241,9 +1308,10 @@ fn nlt_lut_position(
     let interval = position_numerator
         .checked_div(denominator)
         .ok_or_else(arithmetic_overflow)?;
-    let remainder = position_numerator
-        .checked_rem(denominator)
-        .ok_or_else(arithmetic_overflow)?;
+    let remainder = match position_numerator.checked_rem(denominator) {
+        Some(value) => value,
+        None => return Err(arithmetic_overflow()),
+    };
     let interval_index = match usize::try_from(interval) {
         Ok(index) => index,
         Err(_) => return Err(arithmetic_overflow()),
@@ -1252,7 +1320,6 @@ fn nlt_lut_position(
     proof! {
         assert(interval_count as int == points@.len() - 1);
         assert(interval == vstd::arithmetic::div_mod::rust_div(position_numerator as int, denominator as int) as i128);
-        assert(remainder == vstd::arithmetic::div_mod::rust_rem(position_numerator as int, denominator as int) as i128);
         assert(interval_index == interval as usize);
         assert(crate::specs::part2_nlt_lut_position(points@, source_scale, nominal, minimum, maximum)
             == crate::specs::part2_nlt_lut_interpolate(points@, interval_index, denominator, remainder));
@@ -8639,34 +8706,203 @@ mod tests {
         }
     }
 
+    fn reference_ratio(numerator: i128, denominator: i128) -> Result<i128, DecodeError> {
+        if denominator <= 0 || numerator == i128::MIN {
+            return Err(arithmetic_overflow());
+        }
+        let adjusted = numerator.unsigned_abs() + denominator as u128 / 2;
+        if adjusted > i128::MAX as u128 {
+            return Err(arithmetic_overflow());
+        }
+        let rounded = i128::try_from(adjusted / denominator as u128).unwrap();
+        Ok(if numerator < 0 { -rounded } else { rounded })
+    }
+
+    fn reference_product(left: i128, right: i128) -> Result<i128, DecodeError> {
+        let negative = (left < 0) != (right < 0);
+        let magnitude = left
+            .unsigned_abs()
+            .checked_mul(right.unsigned_abs())
+            .ok_or_else(arithmetic_overflow)?;
+        if negative && magnitude == 1_u128 << 127 {
+            Ok(i128::MIN)
+        } else {
+            let product = i128::try_from(magnitude).map_err(|_| arithmetic_overflow())?;
+            Ok(if negative { -product } else { product })
+        }
+    }
+
+    fn reference_nlt_mul(left: i128, right: i128) -> Result<i128, DecodeError> {
+        reference_product(left, right).and_then(|product| reference_ratio(product, 1_i128 << 32))
+    }
+
+    fn reference_nlt_div(left: i128, right: i128) -> Result<i128, DecodeError> {
+        if right <= 0 {
+            return Err(invalid_transform());
+        }
+        reference_product(left, 1_i128 << 32).map(|product| product / right)
+    }
+
+    fn reference_nlt_normalize(value: i128) -> Result<(i128, i32), DecodeError> {
+        if value <= 0 {
+            return Err(arithmetic_overflow());
+        }
+        let scale = i32::try_from(127 - value.leading_zeros()).unwrap() - 32;
+        let normalized = if scale >= 0 {
+            value >> u32::try_from(scale).unwrap()
+        } else {
+            value << scale.unsigned_abs()
+        };
+        Ok((normalized, scale))
+    }
+
+    fn reference_nlt_ln_series(
+        initial: i128,
+        squared: i128,
+        scale: i32,
+    ) -> Result<i128, DecodeError> {
+        let (sum, _) = (0_u32..20).try_fold((0_i128, initial), |(sum, term), iteration| {
+            let sum = sum
+                .checked_add(term / i128::from(2 * iteration + 1))
+                .ok_or_else(arithmetic_overflow)?;
+            let term = reference_nlt_mul(term, squared)?;
+            Ok::<_, DecodeError>((sum, term))
+        })?;
+        let doubled = reference_product(sum, 2)?;
+        let shifted = reference_product(i128::from(scale), 2_977_044_471)?;
+        doubled.checked_add(shifted).ok_or_else(arithmetic_overflow)
+    }
+
+    fn reference_nlt_ln(value: i128) -> Result<i128, DecodeError> {
+        let (value, scale) = reference_nlt_normalize(value)?;
+        let one = 1_i128 << 32;
+        let z = reference_nlt_div(value - one, value + one)?;
+        reference_nlt_ln_series(z, reference_nlt_mul(z, z)?, scale)
+    }
+
+    fn reference_nlt_exp_series(remainder: i128) -> Result<i128, DecodeError> {
+        let one = 1_i128 << 32;
+        (1_u32..=24)
+            .try_fold((one, one), |(sum, term), iteration| {
+                let term = reference_nlt_mul(term, remainder)? / i128::from(iteration);
+                let sum = sum.checked_add(term).ok_or_else(arithmetic_overflow)?;
+                Ok::<_, DecodeError>((sum, term))
+            })
+            .map(|(sum, _)| sum)
+    }
+
+    fn reference_nlt_exp(value: i128) -> Result<i128, DecodeError> {
+        let scale = value / 2_977_044_471;
+        if !(-62..=62).contains(&scale) {
+            return Err(invalid_transform());
+        }
+        let sum = reference_nlt_exp_series(value - scale * 2_977_044_471)?;
+        if scale < 0 {
+            Ok(sum >> u32::try_from(-scale).unwrap())
+        } else {
+            let shift = u32::try_from(scale).unwrap();
+            if sum < 0 || sum > (i128::MAX >> shift) {
+                Err(arithmetic_overflow())
+            } else {
+                Ok(sum << shift)
+            }
+        }
+    }
+
+    fn reference_nlt_reciprocal(base: i128, exponent: i128) -> Result<i128, DecodeError> {
+        if base <= 0 || exponent <= 0 {
+            return Err(invalid_transform());
+        }
+        reference_nlt_exp(reference_nlt_div(reference_nlt_ln(base)?, exponent)?)
+    }
+
+    #[test]
+    fn actual_nonlinear_log_exp_preserve_normalization_bounded_series_and_raw_error_frontiers() {
+        let mut normalizations = 0;
+        for bit in 0..127 {
+            let power = 1_i128 << bit;
+            for positive in [power - 1, power, power + 1] {
+                for value in [positive, -positive] {
+                    assert_eq!(nlt_ln_normalize(value), reference_nlt_normalize(value));
+                    assert_eq!(nlt_fixed_ln_q32(value), reference_nlt_ln(value));
+                    normalizations += 1;
+                }
+            }
+        }
+        assert_eq!(normalizations, 762);
+        for value in [i128::MIN, i128::MIN + 1, i128::MAX - 1, i128::MAX] {
+            assert_eq!(nlt_ln_normalize(value), reference_nlt_normalize(value));
+            assert_eq!(nlt_fixed_ln_q32(value), reference_nlt_ln(value));
+            assert_eq!(nlt_fixed_exp_q32(value), reference_nlt_exp(value));
+        }
+        let mut exponentials = 0;
+        for scale in -64_i128..=64 {
+            for offset in [-1, 0, 1, -(2_977_044_471_i128 / 2), 2_977_044_471_i128 / 2] {
+                let value = scale * 2_977_044_471 + offset;
+                assert_eq!(nlt_fixed_exp_q32(value), reference_nlt_exp(value));
+                exponentials += 1;
+            }
+        }
+        assert_eq!(exponentials, 645);
+        let terms = [
+            i128::MIN,
+            i128::MIN + 1,
+            -(1_i128 << 32),
+            -1,
+            0,
+            1,
+            1_i128 << 32,
+            i128::MAX / 2,
+            i128::MAX,
+        ];
+        let mut series = 0;
+        for term in terms {
+            assert_eq!(nlt_exp_series(term), reference_nlt_exp_series(term));
+            for squared in terms {
+                for scale in [i32::MIN, -1, 0, 1, i32::MAX] {
+                    assert_eq!(
+                        nlt_ln_series(term, squared, scale),
+                        reference_nlt_ln_series(term, squared, scale)
+                    );
+                    series += 1;
+                }
+            }
+        }
+        assert_eq!(series, 405);
+        let bases = [
+            -1,
+            0,
+            1,
+            1_i128 << 30,
+            1_i128 << 31,
+            1_i128 << 32,
+            1_i128 << 33,
+            1_i128 << 38,
+            i128::MIN,
+            i128::MAX,
+        ];
+        let mut reciprocals = 0;
+        for base in bases {
+            for exponent in bases {
+                assert_eq!(
+                    nlt_fixed_pow_reciprocal_q32(base, exponent),
+                    reference_nlt_reciprocal(base, exponent)
+                );
+                reciprocals += 1;
+            }
+        }
+        assert_eq!(reciprocals, 100);
+        assert_eq!(nlt_fixed_ln_q32(1_i128 << 32), Ok(0));
+        assert_eq!(nlt_fixed_ln_q32(1_i128 << 33), Ok(2_977_044_471));
+        assert_eq!(nlt_fixed_ln_q32(1_i128 << 31), Ok(-2_977_044_471));
+        assert_eq!(nlt_fixed_exp_q32(0), Ok(1_i128 << 32));
+        assert_eq!(nlt_fixed_exp_q32(2_977_044_471), Ok(1_i128 << 33));
+        assert_eq!(nlt_fixed_exp_q32(-2_977_044_471), Ok(1_i128 << 31));
+        assert_eq!(nlt_ln_normalize(0), Err(arithmetic_overflow()));
+    }
+
     #[test]
     fn actual_nonlinear_arithmetic_preserves_checked_i128_rounding_q32_and_power_boundaries() {
-        fn reference_ratio(numerator: i128, denominator: i128) -> Result<i128, DecodeError> {
-            if denominator <= 0 || numerator == i128::MIN {
-                return Err(arithmetic_overflow());
-            }
-            let adjusted = numerator.unsigned_abs() + denominator as u128 / 2;
-            if adjusted > i128::MAX as u128 {
-                return Err(arithmetic_overflow());
-            }
-            let rounded = i128::try_from(adjusted / denominator as u128).unwrap();
-            Ok(if numerator < 0 { -rounded } else { rounded })
-        }
-
-        fn reference_product(left: i128, right: i128) -> Result<i128, DecodeError> {
-            let negative = (left < 0) != (right < 0);
-            let magnitude = left
-                .unsigned_abs()
-                .checked_mul(right.unsigned_abs())
-                .ok_or_else(arithmetic_overflow)?;
-            if negative && magnitude == 1_u128 << 127 {
-                Ok(i128::MIN)
-            } else {
-                let product = i128::try_from(magnitude).map_err(|_| arithmetic_overflow())?;
-                Ok(if negative { -product } else { product })
-            }
-        }
-
         let mut small_cases = 0;
         for numerator in -257..=257 {
             for denominator in -3..=65 {

@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part2_nlt_fixed_ln_q32`, `part2_nlt_fixed_exp_q32` and
+`part2_nlt_fixed_pow_reciprocal_q32` compose actual raw normalization and
+bounded series execution. Opaque high/low and 20/24-term suffixes retain
+every checked failure, original normalization tickets, signed division,
+Q32 rounding and final range/shift order. Native frames and termination are
+proved without a positive-log premise or supplied series/results. These are
+exact computational denotations, not real analytic accuracy/conformance
+claims. Actual gamma/dispatch/region/typed/parser/file/F2/F4/final F8 joins
+remain separate.
+
 `part2_nlt_lut_sample` binds actual raw LUT inverse execution, not supplied
 lookup results. Its helpers retain ordered admission, checked source/position
 arithmetic, clamping, endpoint/point-read policy, native-width Rust division/

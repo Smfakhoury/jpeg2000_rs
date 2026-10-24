@@ -8819,6 +8819,136 @@ pub open spec fn part2_nlt_fixed_div_q32(left: i128, right: i128)
     }
 }
 
+#[verifier::opaque]
+pub open spec fn part2_nlt_ln_normalize_low(value: i128, scale: i32, passes: u16)
+    -> Result<(i128, i32), crate::DecodeError>
+    decreases passes,
+{
+    if value >= 4294967296 { Ok((value, scale)) } else {
+        match part2_atk_checked_i128(value as int * 2) {
+            Err(error) => Err(error),
+            Ok(next) => match part2_atk_checked_i32(scale as int - 1) {
+                Err(error) => Err(error),
+                Ok(scale) => if passes == 0 { Err(part1_transform_error(true)) }
+                    else { part2_nlt_ln_normalize_low(next, scale, (passes - 1) as u16) },
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_ln_normalize_high(value: i128, scale: i32, passes: u16)
+    -> Result<(i128, i32), crate::DecodeError>
+    decreases passes,
+{
+    if value < 8589934592 { part2_nlt_ln_normalize_low(value, scale, 128) } else {
+        match part2_atk_checked_i32(scale as int + 1) {
+            Err(error) => Err(error),
+            Ok(scale) => if passes == 0 { Err(part1_transform_error(true)) }
+                else { part2_nlt_ln_normalize_high(value >> 1, scale, (passes - 1) as u16) },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_ln_normalize(value: i128)
+    -> Result<(i128, i32), crate::DecodeError>
+{
+    part2_nlt_ln_normalize_high(value, 0, 128)
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_ln_series(
+    squared: i128, scale: i32, iteration: nat, term: i128, sum: i128,
+) -> Result<i128, crate::DecodeError>
+    decreases 20 - iteration,
+{
+    if iteration >= 20 {
+        match part2_atk_checked_i128(sum as int * 2) {
+            Err(error) => Err(error),
+            Ok(doubled) => match part2_atk_checked_i128(scale as int * 2977044471) {
+                Err(error) => Err(error),
+                Ok(shifted) => part2_atk_checked_i128(doubled as int + shifted as int),
+            },
+        }
+    } else {
+        let divisor = 2 * iteration + 1;
+        let quotient = vstd::arithmetic::div_mod::rust_div(term as int, divisor as int) as i128;
+        match part2_atk_checked_i128(sum as int + quotient as int) {
+            Err(error) => Err(error),
+            Ok(sum) => match part2_nlt_fixed_mul_q32(term, squared) {
+                Err(error) => Err(error),
+                Ok(term) => part2_nlt_ln_series(squared, scale, iteration + 1, term, sum),
+            },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_fixed_ln_q32(value: i128) -> Result<i128, crate::DecodeError> {
+    match part2_nlt_ln_normalize(value) {
+        Err(error) => Err(error),
+        Ok((value, scale)) => match part2_atk_checked_i128(value as int - 4294967296) {
+            Err(error) => Err(error),
+            Ok(numerator) => match part2_atk_checked_i128(value as int + 4294967296) {
+                Err(error) => Err(error),
+                Ok(denominator) => match part2_nlt_fixed_div_q32(numerator, denominator) {
+                    Err(error) => Err(error),
+                    Ok(z) => match part2_nlt_fixed_mul_q32(z, z) {
+                        Err(error) => Err(error),
+                        Ok(squared) => part2_nlt_ln_series(squared, scale, 0, z, 0),
+                    },
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_exp_series(remainder: i128, iteration: nat, term: i128, sum: i128)
+    -> Result<i128, crate::DecodeError>
+    decreases 25 - iteration,
+{
+    if iteration > 24 { Ok(sum) } else {
+        match part2_nlt_fixed_mul_q32(term, remainder) {
+            Err(error) => Err(error),
+            Ok(product) => if iteration == 0 { Err(part1_transform_error(true)) } else {
+                let term = vstd::arithmetic::div_mod::rust_div(product as int, iteration as int) as i128;
+                match part2_atk_checked_i128(sum as int + term as int) {
+                    Err(error) => Err(error),
+                    Ok(sum) => part2_nlt_exp_series(remainder, iteration + 1, term, sum),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_fixed_exp_q32(value: i128) -> Result<i128, crate::DecodeError> {
+    let scale = vstd::arithmetic::div_mod::rust_div(value as int, 2977044471) as i128;
+    if scale < -62 || scale > 62 { Err(part1_transform_error(false)) } else {
+        let remainder = (value as int - scale as int * 2977044471) as i128;
+        match part2_nlt_exp_series(remainder, 1, 4294967296, 4294967296) {
+            Err(error) => Err(error),
+            Ok(sum) => if scale >= 0 {
+                if sum < 0 || sum > (i128::MAX >> scale as u32) { Err(part1_transform_error(true)) }
+                else { Ok(sum << scale as u32) }
+            } else { Ok(sum >> ((-(scale as int)) as u32)) },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_fixed_pow_reciprocal_q32(base: i128, exponent: i128)
+    -> Result<i128, crate::DecodeError>
+{
+    if base <= 0 || exponent <= 0 { Err(part1_transform_error(false)) } else {
+        match part2_nlt_fixed_ln_q32(base) {
+            Err(error) => Err(error),
+            Ok(logarithm) => match part2_nlt_fixed_div_q32(logarithm, exponent) {
+                Err(error) => Err(error),
+                Ok(power) => part2_nlt_fixed_exp_q32(power),
+            },
+        }
+    }
+}
+
 pub open spec fn part2_nonlinear_transform_for(
     transforms: Seq<Part2OwnedNonlinear>, component: u16,
 ) -> Option<Part2OwnedNonlinear> {
