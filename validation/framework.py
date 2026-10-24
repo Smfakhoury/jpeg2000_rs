@@ -790,6 +790,31 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_SUBBAND_VECTOR_CONTRACTS = {
+    ("src/codestream.rs", "CodingStyle::subband_count"): (
+        "part2_subband_count", r"\1", None,
+        _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
+        + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1",
+    ),
+    ("src/decode.rs", "derive_subband_resolution"): (
+        "part2_subband_resolution", _coverage_call("subbands_outcome", r"\1"), None,
+        r"coding_style\s*,\s*component_bounds\s*,\s*component_depth\s*,\s*"
+        + _coverage_call("codestream::quantization_view", "quantization")
+        + r"\s*,\s*resolution\s*,\s*before\s*@",
+    ),
+    ("src/decode.rs", "derive_component_subbands_for"): (
+        "part2_component_subbands", _coverage_call("subbands_outcome", r"\1"), None,
+        r"size\s*,\s*coding_style\s*,\s*quantization\s*,\s*component\s*,\s*tile_index\s*,\s*roi_shift",
+    ),
+    ("src/decode.rs", "derive_component_subbands"): (
+        "part2_component_subbands", _coverage_call("subbands_outcome", r"\1"), None,
+        r"size\s*,\s*coding_style\s*,\s*quantization\s*,\s*component\s*,\s*None\s*,\s*0",
+    ),
+}
+_SUBBAND_VECTOR_PROVED_BOUNDARY_APIS = frozenset({
+    ("src/decode.rs", "derive_component_subbands"),
+})
+
 _SUBBAND_ADMISSION_CONTRACTS = {
     ("src/codestream.rs", "Quantization::step"): (
         "part2_quantization_lookup", r"\1", None,
@@ -1111,6 +1136,7 @@ def validate_normative_coverage(
                 _PACKET_PROVED_BOUNDARY_APIS | _RECONSTRUCTION_PROVED_BOUNDARY_APIS
                 | _RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS
                 | _SUBBAND_ADMISSION_PROVED_BOUNDARY_APIS
+                | _SUBBAND_VECTOR_PROVED_BOUNDARY_APIS
             )
             and reference not in entry["contract_refs"]
         ]
@@ -1555,6 +1581,7 @@ def validate_normative_coverage(
                 or _RESOLUTION_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_GRID_PRODUCER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SUBBAND_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _SUBBAND_VECTOR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

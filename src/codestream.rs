@@ -477,17 +477,31 @@ impl CodingStyle {
         (self.decomposition_levels as u16) + 1
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_subband_count(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1,
+        ),
+    ))]
     pub fn subband_count(self) -> u16 {
         let mut count = 1_u16;
         let mut stage = 0_u8;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_subband_count_run); }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant stage <= self.decomposition_levels,
+                invariant
+                    stage <= self.decomposition_levels,
+                    crate::specs::part2_subband_count(decomposition_selector_view(self).0, decomposition_selector_view(self).1)
+                        == crate::specs::part2_subband_count_run(
+                            decomposition_selector_view(self).0, decomposition_selector_view(self).1, stage, count,
+                        ),
                 decreases self.decomposition_levels - stage,
             )
         )]
         while stage < self.decomposition_levels && stage < 32 {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part2_subband_count_run); }
             let Some(direction) = self.decomposition_directions.get(stage as usize) else {
                 return count;
             };
@@ -502,6 +516,8 @@ impl CodingStyle {
             };
             stage += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_subband_count_run); }
         count
     }
 
@@ -9279,6 +9295,328 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 mod tests {
     use super::*;
     use crate::tier1::SubbandOrientation;
+
+    fn reference_truncated_subband_count(style: CodingStyle) -> u16 {
+        let total = style
+            .decomposition_directions
+            .iter()
+            .take(usize::from(style.decomposition_levels.min(32)))
+            .fold(1_u32, |count, direction| {
+                count
+                    + match direction {
+                        DecompositionDirection::None => 0,
+                        DecompositionDirection::Horizontal | DecompositionDirection::Vertical => 1,
+                        DecompositionDirection::TwoDimensional => 3,
+                    }
+            });
+        u16::try_from(total).unwrap()
+    }
+
+    fn reference_subband_resolution(
+        style: CodingStyle,
+        bounds: [u32; 4],
+        depth: [u8; 2],
+        quantization: &Quantization,
+        resolution: u8,
+        mut before: Vec<crate::decode::SubbandGeometry>,
+    ) -> Result<Vec<crate::decode::SubbandGeometry>, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        if resolution > style.decomposition_levels {
+            return Err(invalid);
+        }
+        let scale = (0..style.decomposition_levels - resolution)
+            .try_fold((1, 1), |previous, stage| {
+                reference_resolution_scale_step(style, stage, previous)
+            })?;
+        let ceil = |value: u32, divisor: u32| {
+            u32::try_from(u64::from(value).div_ceil(u64::from(divisor))).unwrap()
+        };
+        let [x0, y0, x1, y1] = [
+            ceil(bounds[0], scale.0),
+            ceil(bounds[1], scale.1),
+            ceil(bounds[2], scale.0),
+            ceil(bounds[3], scale.1),
+        ];
+        let dimensions = [
+            u32::try_from(i64::from(x1) - i64::from(x0)).map_err(|_| arithmetic)?,
+            u32::try_from(i64::from(y1) - i64::from(y0)).map_err(|_| arithmetic)?,
+        ];
+        if resolution == 0 {
+            before.push(reference_subband_admission(
+                0,
+                SubbandOrientation::Ll,
+                [x0, y0, x1, y1],
+                dimensions,
+                [true, true],
+                depth,
+                quantization,
+                0,
+            )?);
+            return Ok(before);
+        }
+        let low = [ceil(x0, 2), ceil(y0, 2), ceil(x1, 2), ceil(y1, 2)];
+        let direction = style
+            .decomposition_directions
+            .get(usize::from(style.decomposition_levels - resolution))
+            .ok_or(invalid)?;
+        let orientations: &[SubbandOrientation] = match direction {
+            DecompositionDirection::None => &[],
+            DecompositionDirection::Horizontal => &[SubbandOrientation::Hl],
+            DecompositionDirection::Vertical => &[SubbandOrientation::Lh],
+            DecompositionDirection::TwoDimensional => &[
+                SubbandOrientation::Hl,
+                SubbandOrientation::Lh,
+                SubbandOrientation::Hh,
+            ],
+        };
+        let both = *direction == DecompositionDirection::TwoDimensional;
+        let phase = [x0 & 1 == 0, y0 & 1 == 0];
+        for orientation in orientations {
+            let index = u16::try_from(before.len()).map_err(|_| arithmetic)?;
+            let band = match orientation {
+                SubbandOrientation::Hl => [
+                    x0 / 2,
+                    if both { low[1] } else { y0 },
+                    x1 / 2,
+                    if both { low[3] } else { y1 },
+                ],
+                SubbandOrientation::Lh => [
+                    if both { low[0] } else { x0 },
+                    y0 / 2,
+                    if both { low[2] } else { x1 },
+                    y1 / 2,
+                ],
+                SubbandOrientation::Hh => [x0 / 2, y0 / 2, x1 / 2, y1 / 2],
+                SubbandOrientation::Ll => unreachable!(),
+            };
+            before.push(reference_subband_admission(
+                resolution,
+                *orientation,
+                band,
+                dimensions,
+                phase,
+                depth,
+                quantization,
+                index,
+            )?);
+        }
+        Ok(before)
+    }
+
+    fn reference_component_subbands(
+        size: &ImageSize,
+        style: CodingStyle,
+        quantization: &Quantization,
+        component: u16,
+        tile: Option<u16>,
+        roi: u8,
+    ) -> Result<Vec<crate::decode::SubbandGeometry>, DecodeError> {
+        let invalid_geometry = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        };
+        if component >= size.components {
+            return Err(invalid_geometry);
+        }
+        let info = size
+            .component_info
+            .get(usize::from(component))
+            .ok_or(invalid_geometry)?;
+        let bounds = reference_component_coordinate_bounds(size, component, tile)?;
+        let expected = reference_truncated_subband_count(style);
+        let mut bands = Vec::new();
+        for resolution in 0_u16..=u16::from(style.decomposition_levels) {
+            bands = reference_subband_resolution(
+                style,
+                bounds,
+                [info.precision, roi],
+                quantization,
+                u8::try_from(resolution).unwrap(),
+                bands,
+            )?;
+            if resolution == u16::from(u8::MAX) {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        }
+        if bands.len() != usize::from(expected) {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodeBlock,
+            });
+        }
+        Ok(bands)
+    }
+
+    #[test]
+    fn complete_subband_vectors_match_raw_coordinates_direction_order_and_every_field() {
+        let mut cases = 0;
+        let mut successes = 0;
+        for levels in 0..=u8::MAX {
+            for pattern in 0..8 {
+                let style = raw_resolution_style(levels, pattern);
+                assert_eq!(
+                    style.subband_count(),
+                    reference_truncated_subband_count(style)
+                );
+            }
+        }
+        for extent in [0, 1, 5, 33] {
+            for origin in [0, 1, u32::MAX] {
+                for sampling in [(0, 1), (1, 0), (1, 1), (2, 3)] {
+                    for precision in [0, 1, 8, 38, u8::MAX] {
+                        let mut size = raw_resolution_size(extent, origin, sampling, u16::MAX, 1);
+                        for info in &mut size.component_info {
+                            info.precision = precision;
+                        }
+                        for quantization_style in [
+                            QuantizationStyle::None,
+                            QuantizationStyle::ScalarDerived,
+                            QuantizationStyle::ScalarExpounded,
+                        ] {
+                            for count in [0, 1, 97, u16::MAX] {
+                                let quantization =
+                                    raw_subband_quantization(quantization_style, count, 4);
+                                for (levels, pattern) in
+                                    [(0, 0), (1, 1), (2, 2), (2, 3), (32, 0), (u8::MAX, 0)]
+                                {
+                                    let style = raw_resolution_style(levels, pattern);
+                                    for tile in [None, Some(0), Some(u16::MAX)] {
+                                        for roi in [0, 1, 73, u8::MAX] {
+                                            let expected = reference_component_subbands(
+                                                &size,
+                                                style,
+                                                &quantization,
+                                                0,
+                                                tile,
+                                                roi,
+                                            );
+                                            assert_eq!(
+                                                crate::decode::derive_component_subbands_for(
+                                                    &size,
+                                                    style,
+                                                    &quantization,
+                                                    0,
+                                                    tile,
+                                                    roi
+                                                ),
+                                                expected,
+                                            );
+                                            if tile.is_none() && roi == 0 {
+                                                assert_eq!(
+                                                    crate::decode::derive_component_subbands(
+                                                        &size,
+                                                        style,
+                                                        &quantization,
+                                                        0
+                                                    ),
+                                                    expected,
+                                                );
+                                            }
+                                            successes += usize::from(expected.is_ok());
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 207_360);
+        assert!(
+            successes > 1000,
+            "{successes} complete subband vectors checked"
+        );
+    }
+
+    #[test]
+    fn subband_vectors_preserve_component_admission_and_raw_prefix_index_boundaries() {
+        let quantization = raw_subband_quantization(QuantizationStyle::ScalarDerived, 1, 4);
+        let mut cases = 0;
+        for components in [0, 1, 64, 65, u16::MAX] {
+            for component in [0, 1, 63, 64, u16::MAX] {
+                for tile in [None, Some(0), Some(u16::MAX)] {
+                    for extent in [1, u32::MAX] {
+                        for (levels, pattern) in [(0, 0), (u8::MAX, 0)] {
+                            for sampling in [(0, 1), (1, 0), (1, 1)] {
+                                let size =
+                                    raw_resolution_size(extent, 1, sampling, u16::MAX, components);
+                                let style = raw_resolution_style(levels, pattern);
+                                assert_eq!(
+                                    crate::decode::derive_component_subbands_for(
+                                        &size,
+                                        style,
+                                        &quantization,
+                                        component,
+                                        tile,
+                                        0
+                                    ),
+                                    reference_component_subbands(
+                                        &size,
+                                        style,
+                                        &quantization,
+                                        component,
+                                        tile,
+                                        0
+                                    ),
+                                );
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 900);
+        let dummy = reference_subband_admission(
+            0,
+            SubbandOrientation::Ll,
+            [0, 0, 1, 1],
+            [1, 1],
+            [true, false],
+            [8, 0],
+            &quantization,
+            u16::MAX,
+        )
+        .unwrap();
+        for length in [0, 1, usize::from(u16::MAX), usize::from(u16::MAX) + 1] {
+            let before = vec![dummy; length];
+            for pattern in 0..4 {
+                let style = raw_resolution_style(1, pattern);
+                for resolution in [0, 1] {
+                    assert_eq!(
+                        crate::decode::derive_subband_resolution(
+                            style,
+                            [1, 3, 5, 9],
+                            [8, 0],
+                            &quantization,
+                            resolution,
+                            before.clone()
+                        ),
+                        reference_subband_resolution(
+                            style,
+                            [1, 3, 5, 9],
+                            [8, 0],
+                            &quantization,
+                            resolution,
+                            before.clone()
+                        ),
+                    );
+                }
+            }
+        }
+    }
 
     fn raw_subband_quantization(
         style: QuantizationStyle,

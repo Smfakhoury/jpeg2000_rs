@@ -115,6 +115,12 @@ verus! {
             Ok(counts) => Ok((counts.0, counts.1@, counts.2@)),
         }
     }
+
+    pub open spec fn subbands_outcome(result: Result<Vec<SubbandGeometry>, DecodeError>)
+        -> Result<Seq<SubbandGeometry>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(values) => Ok(values@) }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -888,6 +894,11 @@ pub fn quantization_step_for_subband(
     Ok((orientation_index, step))
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures subbands_outcome(result) == crate::specs::part2_component_subbands(
+        size, coding_style, quantization, component, None, 0,
+    ),
+))]
 pub fn derive_component_subbands(
     size: &ImageSize,
     coding_style: CodingStyle,
@@ -897,7 +908,12 @@ pub fn derive_component_subbands(
     derive_component_subbands_for(size, coding_style, quantization, component, None, 0)
 }
 
-fn derive_component_subbands_for(
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures subbands_outcome(result) == crate::specs::part2_component_subbands(
+        size, coding_style, quantization, component, tile_index, roi_shift,
+    ),
+))]
+pub(crate) fn derive_component_subbands_for(
     size: &ImageSize,
     coding_style: CodingStyle,
     quantization: &Quantization,
@@ -905,130 +921,178 @@ fn derive_component_subbands_for(
     tile_index: Option<u16>,
     roi_shift: u8,
 ) -> Result<Vec<SubbandGeometry>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { codestream::resolution_selectors_known_fields(coding_style); }
     let info = size.component(component)?;
     let component_bounds = component_coordinate_bounds(size, component, tile_index)?;
-    let component_x0 = component_bounds[0];
-    let component_y0 = component_bounds[1];
-    let component_x1 = component_bounds[2];
-    let component_y1 = component_bounds[3];
-    let expected_count = usize::from(coding_style.subband_count());
-    let mut subbands = Vec::with_capacity(expected_count);
+    let expected_count = coding_style.subband_count();
+    let mut subbands = Vec::with_capacity(usize::from(expected_count));
     let mut resolution = 0_u8;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_subband_vector_run); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant resolution as int <= coding_style.decomposition_levels as int + 1,
+            invariant
+                resolution as int <= coding_style.decomposition_levels as int + 1,
+                crate::specs::part2_component_subbands(size, coding_style, quantization, component, tile_index, roi_shift)
+                    == crate::specs::part2_subband_vector_run(
+                        coding_style, component_bounds, [info.precision, roi_shift],
+                        codestream::quantization_view(quantization), expected_count, resolution, subbands@,
+                    ),
             decreases coding_style.decomposition_levels as int + 1 - resolution as int,
         )
     )]
     while resolution <= coding_style.decomposition_levels {
-        let (scale_x, scale_y) = coding_style.resolution_downsampling(resolution)?;
-        let resolution_x0 = ceil_div_u32(component_x0, scale_x)?;
-        let resolution_y0 = ceil_div_u32(component_y0, scale_y)?;
-        let resolution_x1 = ceil_div_u32(component_x1, scale_x)?;
-        let resolution_y1 = ceil_div_u32(component_y1, scale_y)?;
-        let resolution_width = resolution_x1
-            .checked_sub(resolution_x0)
-            .ok_or_else(arithmetic_overflow)?;
-        let resolution_height = resolution_y1
-            .checked_sub(resolution_y0)
-            .ok_or_else(arithmetic_overflow)?;
-        if resolution == 0 {
-            subbands.push(make_subband_geometry(
-                resolution,
-                SubbandOrientation::Ll,
-                [resolution_x0, resolution_y0, resolution_x1, resolution_y1],
-                [resolution_width, resolution_height],
-                [true, true],
-                [info.precision, roi_shift],
-                quantization,
-                0,
-            )?);
-        } else {
-            let low_x0 = ceil_div_u32(resolution_x0, 2)?;
-            let low_y0 = ceil_div_u32(resolution_y0, 2)?;
-            let low_x1 = ceil_div_u32(resolution_x1, 2)?;
-            let low_y1 = ceil_div_u32(resolution_y1, 2)?;
-            let high_x0 = resolution_x0 / 2;
-            let high_y0 = resolution_y0 / 2;
-            let high_x1 = resolution_x1 / 2;
-            let high_y1 = resolution_y1 / 2;
-            let phase = [
-                resolution_x0.is_multiple_of(2),
-                resolution_y0.is_multiple_of(2),
-            ];
-            let direction = coding_style.direction_for_resolution(resolution)?;
-            if matches!(
-                direction,
-                crate::codestream::DecompositionDirection::TwoDimensional
-                    | crate::codestream::DecompositionDirection::Horizontal
-            ) {
-                let index = u16::try_from(subbands.len()).map_err(|_| arithmetic_overflow())?;
-                let y_bounds = if matches!(
-                    direction,
-                    crate::codestream::DecompositionDirection::TwoDimensional
-                ) {
-                    [low_y0, low_y1]
-                } else {
-                    [resolution_y0, resolution_y1]
-                };
-                subbands.push(make_subband_geometry(
-                    resolution,
-                    SubbandOrientation::Hl,
-                    [high_x0, y_bounds[0], high_x1, y_bounds[1]],
-                    [resolution_width, resolution_height],
-                    phase,
-                    [info.precision, roi_shift],
-                    quantization,
-                    index,
-                )?);
-            }
-            if matches!(
-                direction,
-                crate::codestream::DecompositionDirection::TwoDimensional
-                    | crate::codestream::DecompositionDirection::Vertical
-            ) {
-                let index = u16::try_from(subbands.len()).map_err(|_| arithmetic_overflow())?;
-                let x_bounds = if matches!(
-                    direction,
-                    crate::codestream::DecompositionDirection::TwoDimensional
-                ) {
-                    [low_x0, low_x1]
-                } else {
-                    [resolution_x0, resolution_x1]
-                };
-                subbands.push(make_subband_geometry(
-                    resolution,
-                    SubbandOrientation::Lh,
-                    [x_bounds[0], high_y0, x_bounds[1], high_y1],
-                    [resolution_width, resolution_height],
-                    phase,
-                    [info.precision, roi_shift],
-                    quantization,
-                    index,
-                )?);
-            }
-            if matches!(
-                direction,
-                crate::codestream::DecompositionDirection::TwoDimensional
-            ) {
-                let index = u16::try_from(subbands.len()).map_err(|_| arithmetic_overflow())?;
-                subbands.push(make_subband_geometry(
-                    resolution,
-                    SubbandOrientation::Hh,
-                    [high_x0, high_y0, high_x1, high_y1],
-                    [resolution_width, resolution_height],
-                    phase,
-                    [info.precision, roi_shift],
-                    quantization,
-                    index,
-                )?);
-            }
-        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_subband_vector_run); }
+        subbands = derive_subband_resolution(
+            coding_style,
+            component_bounds,
+            [info.precision, roi_shift],
+            quantization,
+            resolution,
+            subbands,
+        )?;
         resolution = resolution.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if subbands.len() != expected_count {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_subband_vector_run); }
+    if subbands.len() != usize::from(expected_count) {
         return Err(invalid_decode());
+    }
+    Ok(subbands)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures subbands_outcome(result) == crate::specs::part2_subband_resolution(
+        coding_style, component_bounds, component_depth, codestream::quantization_view(quantization), resolution, before@,
+    ),
+))]
+pub(crate) fn derive_subband_resolution(
+    coding_style: CodingStyle,
+    component_bounds: [u32; 4],
+    component_depth: [u8; 2],
+    quantization: &Quantization,
+    resolution: u8,
+    before: Vec<SubbandGeometry>,
+) -> Result<Vec<SubbandGeometry>, DecodeError> {
+    let component_x0 = component_bounds[0];
+    let component_y0 = component_bounds[1];
+    let component_x1 = component_bounds[2];
+    let component_y1 = component_bounds[3];
+    let mut subbands = before;
+    let (scale_x, scale_y) = coding_style.resolution_downsampling(resolution)?;
+    let resolution_x0 = ceil_div_u32(component_x0, scale_x)?;
+    let resolution_y0 = ceil_div_u32(component_y0, scale_y)?;
+    let resolution_x1 = ceil_div_u32(component_x1, scale_x)?;
+    let resolution_y1 = ceil_div_u32(component_y1, scale_y)?;
+    let resolution_width = resolution_x1
+        .checked_sub(resolution_x0)
+        .ok_or_else(arithmetic_overflow)?;
+    let resolution_height = resolution_y1
+        .checked_sub(resolution_y0)
+        .ok_or_else(arithmetic_overflow)?;
+    if resolution == 0 {
+        subbands.push(make_subband_geometry(
+            resolution,
+            SubbandOrientation::Ll,
+            [resolution_x0, resolution_y0, resolution_x1, resolution_y1],
+            [resolution_width, resolution_height],
+            [true, true],
+            component_depth,
+            quantization,
+            0,
+        )?);
+    } else {
+        let low_x0 = ceil_div_u32(resolution_x0, 2)?;
+        let low_y0 = ceil_div_u32(resolution_y0, 2)?;
+        let low_x1 = ceil_div_u32(resolution_x1, 2)?;
+        let low_y1 = ceil_div_u32(resolution_y1, 2)?;
+        let high_x0 = resolution_x0 / 2;
+        let high_y0 = resolution_y0 / 2;
+        let high_x1 = resolution_x1 / 2;
+        let high_y1 = resolution_y1 / 2;
+        let phase = [
+            resolution_x0.is_multiple_of(2),
+            resolution_y0.is_multiple_of(2),
+        ];
+        let direction = coding_style.direction_for_resolution(resolution)?;
+        if matches!(
+            direction,
+            crate::codestream::DecompositionDirection::TwoDimensional
+                | crate::codestream::DecompositionDirection::Horizontal
+        ) {
+            let index = match u16::try_from(subbands.len()) {
+                Ok(index) => index,
+                Err(_) => return Err(arithmetic_overflow()),
+            };
+            let y_bounds = if matches!(
+                direction,
+                crate::codestream::DecompositionDirection::TwoDimensional
+            ) {
+                [low_y0, low_y1]
+            } else {
+                [resolution_y0, resolution_y1]
+            };
+            subbands.push(make_subband_geometry(
+                resolution,
+                SubbandOrientation::Hl,
+                [high_x0, y_bounds[0], high_x1, y_bounds[1]],
+                [resolution_width, resolution_height],
+                phase,
+                component_depth,
+                quantization,
+                index,
+            )?);
+        }
+        if matches!(
+            direction,
+            crate::codestream::DecompositionDirection::TwoDimensional
+                | crate::codestream::DecompositionDirection::Vertical
+        ) {
+            let index = match u16::try_from(subbands.len()) {
+                Ok(index) => index,
+                Err(_) => return Err(arithmetic_overflow()),
+            };
+            let x_bounds = if matches!(
+                direction,
+                crate::codestream::DecompositionDirection::TwoDimensional
+            ) {
+                [low_x0, low_x1]
+            } else {
+                [resolution_x0, resolution_x1]
+            };
+            subbands.push(make_subband_geometry(
+                resolution,
+                SubbandOrientation::Lh,
+                [x_bounds[0], high_y0, x_bounds[1], high_y1],
+                [resolution_width, resolution_height],
+                phase,
+                component_depth,
+                quantization,
+                index,
+            )?);
+        }
+        if matches!(
+            direction,
+            crate::codestream::DecompositionDirection::TwoDimensional
+        ) {
+            let index = match u16::try_from(subbands.len()) {
+                Ok(index) => index,
+                Err(_) => return Err(arithmetic_overflow()),
+            };
+            subbands.push(make_subband_geometry(
+                resolution,
+                SubbandOrientation::Hh,
+                [high_x0, high_y0, high_x1, high_y1],
+                [resolution_width, resolution_height],
+                phase,
+                component_depth,
+                quantization,
+                index,
+            )?);
+        }
     }
     Ok(subbands)
 }

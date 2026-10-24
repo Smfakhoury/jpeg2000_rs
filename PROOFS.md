@@ -2391,3 +2391,20 @@ computation; public boundary/native-consumer recipes bind four full contracts.
 All-u16 lookup,147,456 raw public-index contexts and589,824 complete admission
 contexts independently cover first/late errors and all returned fields.
 Complete subband-vector/tile-plan construction and F2/F4/F8 remain separate.
+## Complete actual component subband vectors
+
+Public and optional-tile/ROI subband APIs now have complete raw-input
+Result/ordered-vector relations. Actual component admission precedes real
+coordinates and the original truncated 32-stage subband count/allocation.
+The sole native per-resolution body derives scaling, phases, anisotropic
+HL/LH/HH order and every geometry/quantization/bitplane field. Actual growing
+length supplies checked indices; initial LL keeps its fixed index0.
+
+Mathematical suffix runs retain last-byte advancement, first/late errors and
+the original final count check. No normalized bands/bounds/counts, supplied
+geometry/lookup result or successful allocation premise is assumed. Native
+vector ownership moves across the shared resolution helper without replacing
+its allocation/growth algorithm. Independent reused scalar/coordinate oracles
+cover207,360 full-vector contexts,900 raw admission contexts,2,048 raw count
+styles and32 prefix/index-boundary cases including65535/65536 entries.
+Full tile-plan/packet/decoded-component/file/F2/F4/F8 joins remain separate.

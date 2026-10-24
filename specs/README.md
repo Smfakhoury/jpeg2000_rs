@@ -1546,3 +1546,10 @@ step0/saturating exponent behavior and original bitplane/extent error order.
 Public orientation admission is not silently imposed on the internal raw
 geometry helper. Every result field derives from original metadata; no
 normalized depth/step/bounds or successful lookup/scaling result is a premise.
+`part2_component_subbands` derives the complete actual ordered subband vector
+from original image/style/quantization/component/tile/ROI inputs. Raw truncated
+counts, resolution steps, phases, anisotropic order, growing checked indices,
+final count checks and first errors remain explicit. The public boundary and
+three native consumer contracts bind the sole executable traversal; no
+prepared band vector, normalized geometry/count or supplied lookup result is
+a premise. Full tile-plan and F2/F4/F8 composition remain separate.

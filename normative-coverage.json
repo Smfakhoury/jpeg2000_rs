@@ -4,10 +4,47 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-subband-vector",
+      "topic": "Complete actual public/private component subband-vector Result/all ordered fields from raw image/style/quantization/component/tile/ROI metadata. Real component admission precedes coordinate production, original truncated 32-stage count/capacity, ordered resolution traversal, anisotropic HL/LH/HH growth and quantization/phase/bitplane production. Growing actual vector length supplies each checked index; zero-resolution LL retains its original fixed index0. Final count equality and last u8 advancement/first errors are retained. No normalized bounds/style/bands/count, supplied lookup/geometry result or successful allocation/budget premise. Actual tile planner executes the same sole resolution producer; full tile-plan/decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_subband_count"},
+        {"path": "specs/mod.rs", "symbol": "part2_subband_count_run"},
+        {"path": "specs/mod.rs", "symbol": "part2_append_subband"},
+        {"path": "specs/mod.rs", "symbol": "part2_subband_resolution_bands"},
+        {"path": "specs/mod.rs", "symbol": "part2_subband_resolution"},
+        {"path": "specs/mod.rs", "symbol": "part2_subband_vector_run"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_subbands"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count"},
+        {"path": "src/decode.rs", "symbol": "derive_subband_resolution"},
+        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "derive_component_subbands"},
+        {"path": "src/decode.rs", "symbol": "subbands_outcome"},
+        {"path": "src/decode.rs", "symbol": "component_coordinate_bounds"},
+        {"path": "src/decode.rs", "symbol": "make_subband_geometry"},
+        {"path": "src/codestream.rs", "symbol": "ImageSize::component"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::resolution_downsampling"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
+        {"path": "src/codestream.rs", "symbol": "resolution_selectors_known_fields"},
+        {"path": "src/codestream.rs", "symbol": "quantization_view"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "complete_subband_vectors_match_raw_coordinates_direction_order_and_every_field"},
+        {"path": "src/codestream.rs", "symbol": "subband_vectors_preserve_component_admission_and_raw_prefix_index_boundaries"}
+      ]
+    },
+    {
       "id": "part2-complete-native-subband-admission",
       "topic": "Complete actual raw quantization observations, shared indexed/derived step computation, public isotropic orientation indexing and make_subband_geometry Result/all fields. Logical-before-physical step lookup and unvalidated raw step/guard words are retained; ScalarDerived observes step0 and saturates exponent without validating the supplied logical index. Public orientation admission differs intentionally from the actual geometry helper's raw orientation/index policy. Dynamic-range/quantization/bitplane admission precedes checked extents, preserving first errors, phase/ROI/dimensions and all outputs. No normalized depth/bounds/step, successful lookup or bitplane/budget premise. Actual subband construction executes the sole shared producer; complete subband-vector/tile-plan/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"},
+        {"path": "src/decode.rs", "symbol": "derive_subband_resolution"},
         {"path": "src/decode.rs", "symbol": "make_subband_geometry"},
         {"path": "src/decode.rs", "symbol": "quantization_step_at_index"}
       ],

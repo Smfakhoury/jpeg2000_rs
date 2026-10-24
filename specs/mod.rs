@@ -1912,6 +1912,23 @@ pub open spec fn part2_selection_floor(value: u32, divisor: u32) -> Result<u32, 
     else { Ok((value / divisor) as u32) }
 }
 
+#[verifier::opaque]
+pub open spec fn part2_subband_count_run(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, stage: u8, count: u16,
+) -> u16
+    decreases if stage < 32 { 32int - stage as int } else { 0int },
+{
+    if stage >= levels || stage >= 32 || stage as nat >= directions.len() { count } else {
+        let next = count as nat + part1_direction_detail_count(directions[stage as int]);
+        if next > u16::MAX { count }
+        else { part2_subband_count_run(levels, directions, (stage + 1) as u8, next as u16) }
+    }
+}
+
+pub open spec fn part2_subband_count(levels: u8, directions: Seq<crate::codestream::DecompositionDirection>) -> u16 {
+    part2_subband_count_run(levels, directions, 0, 1)
+}
+
 pub type Part2Quantization = (crate::codestream::QuantizationStyle, u8, u16, Seq<crate::transform::QuantizationStep>);
 
 pub open spec fn part2_quantization_lookup(value: Part2Quantization, index: u16)
@@ -2005,6 +2022,145 @@ pub open spec fn part2_make_subband_geometry(
                 }
             },
         }
+    }
+}
+
+pub open spec fn part2_append_subband(
+    before: Seq<crate::decode::SubbandGeometry>, resolution: u8, orientation: crate::tier1::SubbandOrientation,
+    bounds: [u32; 4], dimensions: [u32; 2], phase: [bool; 2], depth: [u8; 2],
+    quantization: Part2Quantization, index: nat,
+) -> Result<Seq<crate::decode::SubbandGeometry>, crate::DecodeError> {
+    if index > u16::MAX { Err(part1_block_placement_error(true)) } else {
+        match part2_make_subband_geometry(resolution, orientation, bounds, dimensions, phase, depth, quantization, index as u16) {
+            Err(error) => Err(error), Ok(value) => Ok(before.push(value)),
+        }
+    }
+}
+
+pub open spec fn part2_subband_resolution_bands(
+    style: crate::codestream::CodingStyle, quantization: Part2Quantization, resolution: u8,
+    bounds: [u32; 4], dimensions: [u32; 2], depth: [u8; 2], before: Seq<crate::decode::SubbandGeometry>,
+) -> Result<Seq<crate::decode::SubbandGeometry>, crate::DecodeError> {
+    if resolution == 0 {
+        part2_append_subband(before, resolution, crate::tier1::SubbandOrientation::Ll,
+            bounds, dimensions, [true, true], depth, quantization, 0)
+    } else {
+        match (part2_selection_ceil(bounds[0], 2), part2_selection_ceil(bounds[1], 2),
+            part2_selection_ceil(bounds[2], 2), part2_selection_ceil(bounds[3], 2)) {
+            (Err(error), _, _, _) => Err(error),
+            (_, Err(error), _, _) => Err(error),
+            (_, _, Err(error), _) => Err(error),
+            (_, _, _, Err(error)) => Err(error),
+            (Ok(lx0), Ok(ly0), Ok(lx1), Ok(ly1)) => {
+                let selector = crate::codestream::decomposition_selector_view(style);
+                let phase = [bounds[0] % 2 == 0, bounds[1] % 2 == 0];
+                match part1_direction_for_resolution(selector.0, selector.1, resolution) {
+                    Err(error) => Err(error),
+                    Ok(direction) => {
+                        let horizontal = match direction {
+                            crate::codestream::DecompositionDirection::Horizontal
+                            | crate::codestream::DecompositionDirection::TwoDimensional => true, _ => false,
+                        };
+                        let vertical = match direction {
+                            crate::codestream::DecompositionDirection::Vertical
+                            | crate::codestream::DecompositionDirection::TwoDimensional => true, _ => false,
+                        };
+                        let both = horizontal && vertical;
+                        let first = if horizontal {
+                            part2_append_subband(before, resolution, crate::tier1::SubbandOrientation::Hl,
+                                [(bounds[0] / 2) as u32, if both { ly0 } else { bounds[1] },
+                                 (bounds[2] / 2) as u32, if both { ly1 } else { bounds[3] }],
+                                dimensions, phase, depth, quantization, before.len())
+                        } else { Ok(before) };
+                        match first {
+                            Err(error) => Err(error),
+                            Ok(first) => {
+                                let second = if vertical {
+                                    part2_append_subband(first, resolution, crate::tier1::SubbandOrientation::Lh,
+                                        [if both { lx0 } else { bounds[0] }, (bounds[1] / 2) as u32,
+                                         if both { lx1 } else { bounds[2] }, (bounds[3] / 2) as u32],
+                                        dimensions, phase, depth, quantization, first.len())
+                                } else { Ok(first) };
+                                match second {
+                                    Err(error) => Err(error),
+                                    Ok(second) => if both {
+                                        part2_append_subband(second, resolution, crate::tier1::SubbandOrientation::Hh,
+                                            [(bounds[0] / 2) as u32, (bounds[1] / 2) as u32,
+                                             (bounds[2] / 2) as u32, (bounds[3] / 2) as u32],
+                                            dimensions, phase, depth, quantization, second.len())
+                                    } else { Ok(second) },
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_subband_resolution(
+    style: crate::codestream::CodingStyle, bounds: [u32; 4], depth: [u8; 2],
+    quantization: Part2Quantization, resolution: u8, before: Seq<crate::decode::SubbandGeometry>,
+) -> Result<Seq<crate::decode::SubbandGeometry>, crate::DecodeError> {
+    let selector = crate::codestream::decomposition_selector_view(style);
+    match part2_resolution_downsampling(selector.0, selector.1, resolution) {
+        Err(error) => Err(error),
+        Ok(scale) => match (
+            part2_selection_ceil(bounds[0], scale.0), part2_selection_ceil(bounds[1], scale.1),
+            part2_selection_ceil(bounds[2], scale.0), part2_selection_ceil(bounds[3], scale.1),
+        ) {
+            (Err(error), _, _, _) => Err(error),
+            (_, Err(error), _, _) => Err(error),
+            (_, _, Err(error), _) => Err(error),
+            (_, _, _, Err(error)) => Err(error),
+            (Ok(x0), Ok(y0), Ok(x1), Ok(y1)) => match part1_image_checked_u32(x1 as int - x0 as int) {
+                Err(error) => Err(error),
+                Ok(width) => match part1_image_checked_u32(y1 as int - y0 as int) {
+                    Err(error) => Err(error),
+                    Ok(height) => part2_subband_resolution_bands(style, quantization, resolution,
+                        [x0, y0, x1, y1], [width, height], depth, before),
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_subband_vector_run(
+    style: crate::codestream::CodingStyle, bounds: [u32; 4], depth: [u8; 2],
+    quantization: Part2Quantization, expected: u16, resolution: u8, before: Seq<crate::decode::SubbandGeometry>,
+) -> Result<Seq<crate::decode::SubbandGeometry>, crate::DecodeError>
+    decreases if resolution <= style.decomposition_levels { style.decomposition_levels as int + 1 - resolution as int } else { 0int },
+{
+    if resolution > style.decomposition_levels {
+        if before.len() != expected { Err(part1_block_placement_error(false)) } else { Ok(before) }
+    } else {
+        match part2_subband_resolution(style, bounds, depth, quantization, resolution, before) {
+            Err(error) => Err(error),
+            Ok(next) => if resolution == u8::MAX { Err(part1_block_placement_error(true)) }
+                else { part2_subband_vector_run(style, bounds, depth, quantization, expected, (resolution + 1) as u8, next) },
+        }
+    }
+}
+
+pub open spec fn part2_component_subbands(
+    size: &crate::codestream::ImageSize, style: crate::codestream::CodingStyle,
+    quantization: &crate::codestream::Quantization, component: u16, tile: Option<u16>, roi: u8,
+) -> Result<Seq<crate::decode::SubbandGeometry>, crate::DecodeError> {
+    match part1_image_size_component(crate::codestream::image_size_component_count(size),
+        crate::codestream::image_size_component_infos(size), component) {
+        Err(error) => Err(error),
+        Ok(info) => match part2_component_coordinate_bounds(
+            crate::codestream::selection_geometry_view(size), crate::codestream::image_size_component_count(size),
+            crate::codestream::image_size_component_infos(size), component, tile) {
+            Err(error) => Err(error),
+            Ok(bounds) => {
+                let selector = crate::codestream::decomposition_selector_view(style);
+                part2_subband_vector_run(style, bounds, [info.precision, roi], crate::codestream::quantization_view(quantization),
+                    part2_subband_count(selector.0, selector.1), 0, Seq::empty())
+            },
+        },
     }
 }
 
