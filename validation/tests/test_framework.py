@@ -884,6 +884,12 @@ class FrameworkTests(WorkingFiles):
             framework._NONLINEAR_LOG_EXP_CONTRACTS, 6,
         )
 
+    def test_inventory_binds_complete_actual_nonlinear_samples_without_supplied_parameter_or_sample_results(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-nonlinear-scalar"},
+            framework._NONLINEAR_SCALAR_CONTRACTS, 4,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

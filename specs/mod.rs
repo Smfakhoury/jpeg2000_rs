@@ -8949,6 +8949,144 @@ pub open spec fn part2_nlt_fixed_pow_reciprocal_q32(base: i128, exponent: i128)
     }
 }
 
+pub open spec fn part2_nlt_gamma_parameter_value(raw: u32) -> i128 {
+    ((raw >> 16) as int * 4294967296 + (raw & 65535) as int * 4294967296 / 65535) as i128
+}
+
+pub open spec fn part2_nlt_gamma_parameter(raw: u32) -> Result<i128, crate::DecodeError> {
+    Ok(part2_nlt_gamma_parameter_value(raw))
+}
+
+pub open spec fn part2_nlt_gamma_scale(precision: u8, signed: bool)
+    -> Result<i128, crate::DecodeError>
+{
+    if signed && precision == 0 { Err(part1_transform_error(true)) } else {
+        match part2_nlt_power_of_two(if signed { (precision - 1) as u8 } else { precision }) {
+            Err(error) => Err(error),
+            Ok(power) => part2_atk_checked_i128(power as int - 1),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_gamma_curve(
+    normalized: i128, exponent: i128, slope: i128, threshold: i128, a: i128, b: i128,
+) -> Result<i128, crate::DecodeError> {
+    match part2_atk_checked_i128(-(threshold as int)) {
+        Err(error) => Err(error),
+        Ok(negative_threshold) => if normalized < negative_threshold {
+            match part2_atk_checked_i128(-(normalized as int)) {
+                Err(error) => Err(error),
+                Ok(magnitude) => match part2_atk_checked_i128(magnitude as int + b as int) {
+                    Err(error) => Err(error),
+                    Ok(numerator) => match part2_nlt_fixed_div_q32(numerator, a) {
+                        Err(error) => Err(error),
+                        Ok(base) => match part2_nlt_fixed_pow_reciprocal_q32(base, exponent) {
+                            Err(error) => Err(error),
+                            Ok(value) => part2_atk_checked_i128(-(value as int)),
+                        },
+                    },
+                },
+            }
+        } else if normalized <= threshold { part2_nlt_fixed_div_q32(normalized, slope) }
+        else {
+            match part2_atk_checked_i128(normalized as int + b as int) {
+                Err(error) => Err(error),
+                Ok(numerator) => match part2_nlt_fixed_div_q32(numerator, a) {
+                    Err(error) => Err(error),
+                    Ok(base) => part2_nlt_fixed_pow_reciprocal_q32(base, exponent),
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_nlt_gamma_sample(
+    source: i128, info: crate::codestream::ComponentInfo, transform: Part2OwnedNonlinear,
+) -> Result<i128, crate::DecodeError> {
+    if info.precision == 0 || info.precision > 38 { Err(part1_image_error(false)) } else {
+        match transform.gamma {
+            None => Err(part1_transform_error(false)),
+            Some(parameters) => {
+                let exponent = part2_nlt_gamma_parameter_value(parameters[0]);
+                let slope = part2_nlt_gamma_parameter_value(parameters[1]);
+                let threshold = part2_nlt_gamma_parameter_value(parameters[2]);
+                let a = part2_nlt_gamma_parameter_value(parameters[3]);
+                let b = part2_nlt_gamma_parameter_value(parameters[4]);
+                if exponent <= 0 || slope <= 0 || a <= 0 { Err(part1_transform_error(false)) } else {
+                    match part2_nlt_gamma_scale(info.precision, info.signed) {
+                        Err(error) => Err(error),
+                        Ok(source_scale) => if transform.precision == 0 { Err(part1_transform_error(false)) } else {
+                            match part2_nlt_gamma_scale(transform.precision, transform.signed) {
+                                Err(error) => Err(error),
+                                Ok(target_scale) => if source_scale <= 0 || target_scale <= 0 {
+                                    Err(part1_transform_error(false))
+                                } else {
+                                    match part2_atk_checked_i128(source as int * 4294967296) {
+                                        Err(error) => Err(error),
+                                        Ok(product) => {
+                                            let normalized = vstd::arithmetic::div_mod::rust_div(product as int, source_scale as int) as i128;
+                                            match part2_nlt_gamma_curve(normalized, exponent, slope, threshold, a, b) {
+                                                Err(error) => Err(error),
+                                                Ok(decoded) => match part2_atk_checked_i128(decoded as int * target_scale as int) {
+                                                    Err(error) => Err(error),
+                                                    Ok(product) => part2_nlt_round_ratio(product, 4294967296),
+                                                },
+                                            }
+                                        },
+                                    }
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_inverse_value(
+    source: i128, info: crate::codestream::ComponentInfo, transform: Part2OwnedNonlinear, half: i128,
+) -> Result<i128, crate::DecodeError> {
+    if transform.transform_type == 0 || transform.transform_type == 3 {
+        if info.precision != transform.precision || info.signed != transform.signed {
+            Err(part1_transform_error(false))
+        } else if transform.transform_type == 3 && source < 0 {
+            if source == i128::MIN || half < 0 || half == i128::MAX { Err(part1_transform_error(true)) }
+            else { Ok(part2_nlt_binary_complement(source, half)) }
+        } else { Ok(source) }
+    } else if transform.transform_type == 2 || transform.transform_type == 4 {
+        part2_nlt_lut_sample(source, info, transform)
+    } else if transform.transform_type == 1 { part2_nlt_gamma_sample(source, info, transform) }
+    else { Err(part1_transform_error(false)) }
+}
+
+pub open spec fn part2_nlt_inverse_sample(
+    source: i128, info: crate::codestream::ComponentInfo, transform: Part2OwnedNonlinear,
+) -> Result<i128, crate::DecodeError> {
+    if transform.precision == 0 || transform.precision > 38 { Err(part1_image_error(false)) } else {
+        match part2_nlt_power_of_two((transform.precision - 1) as u8) {
+            Err(error) => Err(error),
+            Ok(half) => match if transform.signed { part2_atk_checked_i128(-(half as int)) } else { Ok(0i128) } {
+                Err(error) => Err(error),
+                Ok(minimum) => match if transform.signed { part2_atk_checked_i128(half as int - 1) } else {
+                    match part2_nlt_power_of_two(transform.precision) {
+                        Err(error) => Err(error),
+                        Ok(power) => part2_atk_checked_i128(power as int - 1),
+                    }
+                } {
+                    Err(error) => Err(error),
+                    Ok(maximum) => match part2_nlt_inverse_value(source, info, transform, half) {
+                        Err(error) => Err(error),
+                        Ok(value) => if value < minimum || value > maximum { Err(part1_transform_error(false)) }
+                            else { Ok(value) },
+                    },
+                },
+            },
+        }
+    }
+}
+
 pub open spec fn part2_nonlinear_transform_for(
     transforms: Seq<Part2OwnedNonlinear>, component: u16,
 ) -> Option<Part2OwnedNonlinear> {

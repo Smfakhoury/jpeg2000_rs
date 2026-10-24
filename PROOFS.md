@@ -25,6 +25,28 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native nonlinear sample producer
+
+Actual `inverse_nlt_sample` now refines the complete raw sample/component/
+transform Result for all supported and unknown kinds. It composes genuine
+parameter decoding, three gamma branches, checked log/exp/reciprocal, LUT
+interpolation, binary complement and the original final target-range check.
+Every error and value derives from actual raw fields, not supplied parameter,
+curve or sample results. Descriptors are not normalized or newly validated.
+
+The sole private free bodies preserve pinned attribute support and actual
+region consumers. The former parameter callback becomes one proved body;
+the real gamma curve is isolated under an opaque proved model. Source and
+target precision/scale order, checked intermediate overflow, fractional
+denominator 65535, signed rounding and unknown-kind behavior remain unchanged.
+No caller premise, trust, tolerance or solver/iteration change is introduced.
+Tests cover 393,216 parameter encodings, 20,384 raw gamma and 45,864 full scalar
+contexts, plus raw curve frontiers. Gamma references share independent
+unsigned-magnitude/flat-series calculations; full dispatch reuses the
+separately independently tested, proved LUT child. No analytic accuracy or
+official conformance claim is made. Region application/whole typed/parser/
+file/F2/F4/final F8 remain separate.
+
 ## Complete native fixed logarithm and exponential
 
 Actual fixed logarithm, exponential and reciprocal-power Results now compose
@@ -38,7 +60,7 @@ checked operations and counters.
 Sole private free bodies preserve pinned attribute support. Actual
 normalization and series helpers derive their full Results under opaque,
 terminating folds; no normalized input, successful series or result bank is
-supplied. Constants are proved before their first checked use. A redundant
+supplied. Constants are proved before their first checked use. Redundant
 LUT diagnostic assertions are removed while its complete Result contract stays
 unchanged; explicit checked remainder retains the same native operation.
 No budget, tolerance, iteration count or trusted adapter is changed.
