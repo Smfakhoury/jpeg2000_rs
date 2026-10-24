@@ -2587,3 +2587,19 @@ composition contexts retain actual byte/selection/error behavior, nonzero
 MCT samples, raw ragged prefixes and work frontiers.
 Whole raw layout/selection/file/F2/F4/final F8 and uniform-facade joins remain
 separate; this is not a supplied-plan shortcut for those whole producers.
+## Exact actual full and selected global plan accounting
+
+Both actual layout callers share complete packet/precinct/codeblock
+accounting from raw plan state, optional resolution counts, prior counters
+and limits. The original full path checks placement-length totals after each
+component; the selected path performs every raw placement/subband lookup and
+resolution test before its final-only codeblock limit check. Empty components,
+zero or mismatched layer fields, unused work limits and invalid indices retain
+the original lazy/first-error behavior, not a new normalized-plan policy.
+
+Two complete exact-binding contracts and terminating mathematical folds
+derive every counter and typed error without supplied counts/results or
+successful resource premises. 11,520 independent raw selected-component
+contexts and 7,560 full/selected plan/limit/prior-counter contexts include
+empty/malformed plans, separate stored grid/plan layers and u64 frontiers.
+Whole raw-layout metadata/selection/file/F2/F4/F8 joins remain separate.

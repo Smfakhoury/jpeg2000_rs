@@ -4,6 +4,36 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-layout-accounting",
+      "topic": "Complete actual full/selected post-plan global packet/precinct/codeblock accounting Result/all counters from raw complete plan, raw optional resolution counts, arbitrary prior counters and actual limits. Preserve selected-grid admission before packet sum/limit, full grid versus selected plan-style layer division, precinct sum/limit, full per-component placement-length codeblock checks versus selected raw placement/subband resolution lookup/count and final-only check. Empty-component and unused-field laziness, malformed indices/zero layers, overflow and typed first-error order remain. No supplied count/result bank, valid/normalized plan or successful resource premise; actual full/selected layout callers consume sole helper before actual byte/reconstruction. Whole raw-layout/metadata/selection/file/F2/F4/final F8 and publishing remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "account_planned_tile"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_planned_tile_accounting"},
+        {"path": "specs/mod.rs", "symbol": "part2_account_plan_blocks"},
+        {"path": "specs/mod.rs", "symbol": "part2_selected_component_blocks"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "account_planned_tile"},
+        {"path": "src/decode.rs", "symbol": "count_selected_component_blocks"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "progression_plan_view"},
+        {"path": "src/decode.rs", "symbol": "planning_components_view"},
+        {"path": "src/decode.rs", "symbol": "prepare_plan_view"},
+        {"path": "src/packet.rs", "symbol": "PacketGrid::packet_count"},
+        {"path": "src/packet.rs", "symbol": "PacketGrid::selected_packet_count"},
+        {"path": "src/packet.rs", "symbol": "PacketGrid::total_precinct_count"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_selected_component_accounting_preserves_raw_band_indices_resolution_and_overflow_order"},
+        {"path": "src/decode.rs", "symbol": "actual_layout_accounting_preserves_full_selected_global_limits_empty_and_malformed_plan_policy"}
+      ]
+    },
+    {
       "id": "part2-complete-native-packet-reconstruction-join",
       "topic": "Complete actual owned post-plan packet-to-prepared-component Result/all component/position/extent/fraction/sample fields and MCT work from raw complete plan state, actual tile-part bytes/first payload/image/standard transform/selection/limits/prepared prefix/work. Actual maintained F5 packet execution mutates real decoder state, proved decoder/precinct/vector field projections derive actual coefficient planes, and actual F6/F7 reconstruction computes every sample. No supplied decoded-plane or reconstruction result bank/callback, normalized plan or successful resource premise. Owned prepared prefix is preserved transport; existing full and selected decoder paths execute the sole body after unchanged actual plan production/global accounting/metadata admission. This join does not by itself close whole raw layout/selection/file/F2/F4/final F8 producer or uniform-facade gaps.",
       "implementation_refs": [

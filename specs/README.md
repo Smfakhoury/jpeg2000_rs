@@ -1625,3 +1625,10 @@ preserving raw existing-prefix frames and full/selected error order.
 Real layout callers use actual produced plans, unchanged metadata/global
 accounting and this sole join; whole raw-layout/file/F2/F4/F8 closure remains
 separate.
+`part2_planned_tile_accounting` composes actual grid admission/counts and
+ordered global packet/precinct/codeblock limits from raw complete plan state,
+optional resolution counts, arbitrary prior counters and actual limits.
+`part2_selected_component_blocks` and `part2_account_plan_blocks` retain raw
+placement/subband lookups, per-component full versus final-only selected
+limit checks and empty-component laziness. All intermediate bounds and
+counter relations are proved, not successful count or normalized-plan premises.
