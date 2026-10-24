@@ -2408,3 +2408,21 @@ its allocation/growth algorithm. Independent reused scalar/coordinate oracles
 cover207,360 full-vector contexts,900 raw admission contexts,2,048 raw count
 styles and32 prefix/index-boundary cases including65535/65536 entries.
 Full tile-plan/packet/decoded-component/file/F2/F4/F8 joins remain separate.
+## Complete actual Tier-1 decoder initialization
+
+The sole actual decoder initializer has a complete Result/every-field relation
+from raw dimensions, significant-bitplanes, orientation and style. Original
+bitplane admission precedes pass metadata and the proved zero-plane producer;
+all initial legacy/HT/counter/buffer fields derive from that real computation.
+The public new facade and actual planner reuse the same body; no initialized
+decoder/plane result, normalized style or allocation premise is supplied.
+
+Route forcing, multiple-set policy and magnitude-bound setters have complete
+state relations, retaining every unrelated raw field and the unchanged owner
+on invalid-bound errors. Four exact native-consumer recipes,10,976 raw factory
+contexts,the entire u16 significant-bitplane domain and dense raw/sentinel
+setter snapshots cover defaults, lazy style policy, first failures and all
+state. No new trust, pin/budget/termination change or duplicate decoder is used.
+Implicit-unit setters use their literal unit result with exact signature
+guards and negative return-shape tests, not an invented executable return.
+Full tile-plan/packet/component/file/F2/F4/F8 composition remains separate.

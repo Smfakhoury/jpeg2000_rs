@@ -1489,7 +1489,7 @@ fn plan_progression_tile_at_selected(
                                         .ok_or_else(arithmetic_overflow)?,
                                 )
                                 .map_err(|_| arithmetic_overflow())?;
-                                let mut decoder = Tier1CodeBlockDecoder::new(
+                                let mut decoder = crate::tier1::tier1_decoder_from_dimensions(
                                     block_width,
                                     block_height,
                                     subband.significant_bitplanes,

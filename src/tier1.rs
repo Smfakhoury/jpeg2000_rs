@@ -1702,6 +1702,9 @@ impl Tier1CodingStyle {
         tier1_coding_style_from_code_block_style(value)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(_result =>
+        ensures ((), *final(self)) == crate::specs::part2_tier1_force_style(*old(self), required),
+    ))]
     pub fn set_force_high_throughput(&mut self, required: bool) {
         self.force_high_throughput = required;
     }
@@ -5097,6 +5100,14 @@ verus! {
             allow_multiple_ht_sets: decoder.allow_multiple_ht_sets, ht_magnitude_bound: decoder.ht_magnitude_bound,
         }
     }
+
+    pub closed spec fn tier1_max_ht_magnitude_bits() -> u8 { MAX_HT_MAGNITUDE_BITS }
+
+    pub open spec fn tier1_initial_decoder_outcome(result: Result<Tier1CodeBlockDecoder, DecodeError>)
+        -> Result<crate::specs::Tier1DecoderState, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(decoder) => Ok(tier1_decoder_state(&decoder)) }
+    }
 }
 
 impl Tier1PassStatistics {
@@ -5177,6 +5188,56 @@ impl Tier1PassStatistics {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures tier1_initial_decoder_outcome(result) == crate::specs::part2_tier1_initial_decoder(
+        width, height, significant_bitplanes, orientation, style,
+    ),
+))]
+pub(crate) fn tier1_decoder_from_dimensions(
+    width: u16,
+    height: u16,
+    significant_bitplanes: u16,
+    orientation: SubbandOrientation,
+    style: Tier1CodingStyle,
+) -> Result<Tier1CodeBlockDecoder, DecodeError> {
+    if significant_bitplanes == 0 || significant_bitplanes > MAX_TIER1_BITPLANES {
+        return Err(invalid_code_block());
+    }
+    let bitplane = significant_bitplanes
+        .checked_sub(1)
+        .ok_or_else(arithmetic_overflow)?;
+    let maximum_passes = u32::from(significant_bitplanes)
+        .checked_mul(3)
+        .ok_or_else(arithmetic_overflow)?;
+    let maximum_passes = maximum_passes
+        .checked_sub(2)
+        .ok_or_else(arithmetic_overflow)?;
+    Ok(Tier1CodeBlockDecoder {
+        plane: code_block_plane_from_dimensions(width, height)?,
+        orientation,
+        style,
+        maximum_passes,
+        next_pass: 0,
+        bitplane,
+        zero_bitplanes: None,
+        bitplane_state: None,
+        mq_context_state: None,
+        reset_contexts_before_mq: false,
+        decoded_segments: 0,
+        decoded_bytes: 0,
+        legacy_segment: None,
+        legacy_decode_work: 0,
+        ht_cleanup_plane: None,
+        ht_refinement_data: Vec::new(),
+        ht_refinement_passes: 0,
+        ht_decoded_bitplanes: 0,
+        ht_current_set_has_cleanup: false,
+        ht_sets_seen: 0,
+        allow_multiple_ht_sets: false,
+        ht_magnitude_bound: MAX_HT_MAGNITUDE_BITS,
+    })
+}
+
 impl Tier1CodeBlockDecoder {
     pub fn new(
         width: u16,
@@ -5185,40 +5246,7 @@ impl Tier1CodeBlockDecoder {
         orientation: SubbandOrientation,
         style: Tier1CodingStyle,
     ) -> Result<Self, DecodeError> {
-        if significant_bitplanes == 0 || significant_bitplanes > MAX_TIER1_BITPLANES {
-            return Err(invalid_code_block());
-        }
-        let bitplane = significant_bitplanes
-            .checked_sub(1)
-            .ok_or_else(arithmetic_overflow)?;
-        let maximum_passes = u32::from(significant_bitplanes)
-            .checked_mul(3)
-            .and_then(|passes| passes.checked_sub(2))
-            .ok_or_else(arithmetic_overflow)?;
-        Ok(Self {
-            plane: CodeBlockPlane::new(width, height)?,
-            orientation,
-            style,
-            maximum_passes,
-            next_pass: 0,
-            bitplane,
-            zero_bitplanes: None,
-            bitplane_state: None,
-            mq_context_state: None,
-            reset_contexts_before_mq: false,
-            decoded_segments: 0,
-            decoded_bytes: 0,
-            legacy_segment: None,
-            legacy_decode_work: 0,
-            ht_cleanup_plane: None,
-            ht_refinement_data: Vec::new(),
-            ht_refinement_passes: 0,
-            ht_decoded_bitplanes: 0,
-            ht_current_set_has_cleanup: false,
-            ht_sets_seen: 0,
-            allow_multiple_ht_sets: false,
-            ht_magnitude_bound: MAX_HT_MAGNITUDE_BITS,
-        })
+        tier1_decoder_from_dimensions(width, height, significant_bitplanes, orientation, style)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -5288,10 +5316,17 @@ impl Tier1CodeBlockDecoder {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(_result =>
+        ensures ((), tier1_decoder_state(final(self))) == crate::specs::part2_tier1_allow_sets(tier1_decoder_state(old(self)), allowed),
+    ))]
     pub fn set_multiple_ht_sets_allowed(&mut self, allowed: bool) {
         self.allow_multiple_ht_sets = allowed;
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, tier1_decoder_state(final(self)))
+            == crate::specs::part2_tier1_magnitude_bound(tier1_decoder_state(old(self)), bound),
+    ))]
     pub fn set_ht_magnitude_bound(&mut self, bound: u8) -> Result<(), DecodeError> {
         if bound == 0 || bound > MAX_HT_MAGNITUDE_BITS {
             return Err(invalid_code_block());
@@ -8184,6 +8219,216 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn raw_initialization_style(seed: u8) -> Tier1CodingStyle {
+        Tier1CodingStyle {
+            block_coding: match seed % 3 {
+                0 => Tier1BlockCoding::Legacy,
+                1 => Tier1BlockCoding::HighThroughput,
+                _ => Tier1BlockCoding::Mixed,
+            },
+            force_high_throughput: seed & 1 != 0,
+            selective_arithmetic_coding_bypass: seed & 2 != 0,
+            reset_contexts: seed & 4 != 0,
+            terminate_all_passes: seed & 8 != 0,
+            vertical_causal_context: seed & 16 != 0,
+            predictable_termination: seed & 32 != 0,
+            segmentation_symbols: seed & 64 != 0,
+        }
+    }
+
+    fn check_initial_decoder(
+        decoder: &Tier1CodeBlockDecoder,
+        width: u16,
+        height: u16,
+        bits: u16,
+        orientation: SubbandOrientation,
+        style: Tier1CodingStyle,
+    ) {
+        assert_eq!((decoder.plane.width, decoder.plane.height), (width, height));
+        assert_eq!(
+            decoder.plane.coefficients.len(),
+            usize::from(width) * usize::from(height)
+        );
+        assert!(decoder.plane.coefficients.iter().all(|coefficient| {
+            coefficient.magnitude == 0
+                && coefficient.magnitude_high == [0; 5]
+                && coefficient.legacy_bitplane.is_none()
+                && !coefficient.negative
+                && !coefficient.significant
+                && !coefficient.refined
+        }));
+        assert_eq!(decoder.orientation, orientation);
+        assert_eq!(decoder.style, style);
+        assert_eq!(decoder.maximum_passes, u32::from(bits) * 3 - 2);
+        assert_eq!(decoder.next_pass, 0);
+        assert_eq!(decoder.bitplane, bits - 1);
+        assert!(decoder.zero_bitplanes.is_none());
+        assert!(decoder.bitplane_state.is_none());
+        assert!(decoder.mq_context_state.is_none());
+        assert!(!decoder.reset_contexts_before_mq);
+        assert_eq!(decoder.decoded_segments, 0);
+        assert_eq!(decoder.decoded_bytes, 0);
+        assert!(decoder.legacy_segment.is_none());
+        assert_eq!(decoder.legacy_decode_work, 0);
+        assert!(decoder.ht_cleanup_plane.is_none());
+        assert!(decoder.ht_refinement_data.is_empty());
+        assert_eq!(decoder.ht_refinement_passes, 0);
+        assert_eq!(decoder.ht_decoded_bitplanes, 0);
+        assert!(!decoder.ht_current_set_has_cleanup);
+        assert_eq!(decoder.ht_sets_seen, 0);
+        assert!(!decoder.allow_multiple_ht_sets);
+        assert_eq!(decoder.ht_magnitude_bound, MAX_HT_MAGNITUDE_BITS);
+    }
+
+    #[test]
+    fn actual_decoder_initialization_derives_every_field_from_raw_dimensions_bits_and_style() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let mut cases = 0;
+        for width in [0, 1, 2, 63, 64, 65, u16::MAX] {
+            for height in [0, 1, 2, 63, 64, 65, u16::MAX] {
+                for bits in [0, 1, 2, 73, 74, 75, u16::MAX] {
+                    for orientation in [
+                        SubbandOrientation::Ll,
+                        SubbandOrientation::Hl,
+                        SubbandOrientation::Lh,
+                        SubbandOrientation::Hh,
+                    ] {
+                        for seed in [0, 1, 2, 3, 0x35, 0x7f, 0x80, 0xff] {
+                            let style = raw_initialization_style(seed);
+                            let success = bits != 0
+                                && bits <= MAX_TIER1_BITPLANES
+                                && width != 0
+                                && height != 0
+                                && u64::from(width) * u64::from(height) <= 4096;
+                            for result in [
+                                tier1_decoder_from_dimensions(
+                                    width,
+                                    height,
+                                    bits,
+                                    orientation,
+                                    style,
+                                ),
+                                Tier1CodeBlockDecoder::new(width, height, bits, orientation, style),
+                            ] {
+                                match result {
+                                    Ok(decoder) => {
+                                        assert!(success);
+                                        check_initial_decoder(
+                                            &decoder,
+                                            width,
+                                            height,
+                                            bits,
+                                            orientation,
+                                            style,
+                                        );
+                                    }
+                                    Err(error) => {
+                                        assert!(!success);
+                                        assert_eq!(error, invalid);
+                                    }
+                                }
+                            }
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 10_976);
+        for bits in 0..=u16::MAX {
+            let style = raw_initialization_style(0xff);
+            match tier1_decoder_from_dimensions(1, 1, bits, SubbandOrientation::Ll, style) {
+                Ok(decoder) => {
+                    check_initial_decoder(&decoder, 1, 1, bits, SubbandOrientation::Ll, style)
+                }
+                Err(error) => {
+                    assert!(bits == 0 || bits > MAX_TIER1_BITPLANES);
+                    assert_eq!(error, invalid);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn initialization_policy_setters_preserve_all_unrelated_raw_state_and_error_snapshots() {
+        for coding in [
+            Tier1BlockCoding::Legacy,
+            Tier1BlockCoding::HighThroughput,
+            Tier1BlockCoding::Mixed,
+        ] {
+            for seed in 0..=u8::MAX {
+                for required in [false, true] {
+                    let mut style = raw_initialization_style(seed);
+                    style.block_coding = coding;
+                    let expected = Tier1CodingStyle {
+                        force_high_throughput: required,
+                        ..style
+                    };
+                    style.set_force_high_throughput(required);
+                    assert_eq!(style, expected);
+                }
+            }
+        }
+        let mut decoder = tier1_decoder_from_dimensions(
+            2,
+            2,
+            8,
+            SubbandOrientation::Hh,
+            raw_initialization_style(0xa5),
+        )
+        .unwrap();
+        decoder.plane.coefficients[0].magnitude = u64::MAX;
+        decoder.plane.coefficients[0].magnitude_high = [u64::MAX; 5];
+        decoder.plane.coefficients[0].negative = true;
+        decoder.plane.coefficients[0].significant = true;
+        decoder.plane.coefficients[0].refined = true;
+        decoder.maximum_passes = u32::MAX;
+        decoder.next_pass = u32::MAX;
+        decoder.bitplane = u16::MAX;
+        decoder.zero_bitplanes = Some(u16::MAX);
+        decoder.reset_contexts_before_mq = true;
+        decoder.decoded_segments = u32::MAX;
+        decoder.decoded_bytes = u64::MAX;
+        decoder.legacy_decode_work = u64::MAX;
+        decoder.ht_cleanup_plane = Some(decoder.plane.clone());
+        decoder.ht_refinement_data = vec![0xff, 0, 0xfe, 0x7f];
+        decoder.ht_refinement_passes = u8::MAX;
+        decoder.ht_decoded_bitplanes = u16::MAX;
+        decoder.ht_current_set_has_cleanup = true;
+        decoder.ht_sets_seen = u16::MAX;
+        decoder.legacy_segment = Some(decoder.legacy_segment_snapshot());
+        for allowed in [false, true] {
+            let mut expected = decoder.clone();
+            expected.allow_multiple_ht_sets = allowed;
+            decoder.set_multiple_ht_sets_allowed(allowed);
+            assert_eq!(format!("{decoder:?}"), format!("{expected:?}"));
+            for bound in 0..=u8::MAX {
+                let mut actual = decoder.clone();
+                let mut expected = decoder.clone();
+                let success = bound != 0 && bound <= MAX_HT_MAGNITUDE_BITS;
+                if success {
+                    expected.ht_magnitude_bound = bound;
+                }
+                let result = actual.set_ht_magnitude_bound(bound);
+                assert_eq!(
+                    result,
+                    if success {
+                        Ok(())
+                    } else {
+                        Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::InvalidCodeBlock,
+                        })
+                    }
+                );
+                assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+            }
+        }
+    }
 
     #[test]
     fn complete_style_byte_parser_matches_all_native_bytes_and_flags() {
