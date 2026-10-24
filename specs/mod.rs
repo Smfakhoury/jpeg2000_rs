@@ -8334,6 +8334,90 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub struct Part2PlannedSubbandLattice {
+    pub grid: [u32; 4],
+    pub clip: [u32; 4],
+    pub blocks: [u32; 2],
+}
+
+pub open spec fn part2_planned_subband_lattice(
+    band: [u32; 4], block_size: [u32; 2], subband: crate::decode::SubbandGeometry,
+) -> Result<Option<Part2PlannedSubbandLattice>, crate::DecodeError> {
+    let start_x = if band[0] >= subband.x0 { band[0] } else { subband.x0 };
+    let start_y = if band[1] >= subband.y0 { band[1] } else { subband.y0 };
+    match part1_image_checked_u32(subband.x0 as int + subband.width as int) {
+        Err(error) => Err(error),
+        Ok(sx1) => match part1_image_checked_u32(subband.y0 as int + subband.height as int) {
+            Err(error) => Err(error),
+            Ok(sy1) => if start_x >= sx1 || start_y >= sy1 { Ok(None) } else {
+                match part1_image_checked_u32(band[0] as int + band[2] as int) {
+                    Err(error) => Err(error),
+                    Ok(bx1) => match part1_image_checked_u32(band[1] as int + band[3] as int) {
+                        Err(error) => Err(error),
+                        Ok(by1) => {
+                            let ex = if bx1 <= sx1 { bx1 } else { sx1 };
+                            let ey = if by1 <= sy1 { by1 } else { sy1 };
+                            match part2_selection_floor(start_x, block_size[0]) {
+                                Err(error) => Err(error),
+                                Ok(fx) => match part2_selection_floor(start_y, block_size[1]) {
+                                    Err(error) => Err(error),
+                                    Ok(fy) => match part2_selection_ceil(ex, block_size[0]) {
+                                        Err(error) => Err(error),
+                                        Ok(cx) => match part1_image_checked_u32(cx as int - fx as int) {
+                                            Err(error) => Err(error),
+                                            Ok(across) => match part2_selection_ceil(ey, block_size[1]) {
+                                                Err(error) => Err(error),
+                                                Ok(cy) => match part1_image_checked_u32(cy as int - fy as int) {
+                                                    Err(error) => Err(error),
+                                                    Ok(down) => Ok(Some(Part2PlannedSubbandLattice {
+                                                        grid: [fx, fy, block_size[0], block_size[1]],
+                                                        clip: [start_x, start_y, ex, ey], blocks: [across, down],
+                                                    })),
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        },
+                    },
+                }
+            },
+        },
+    }
+}
+
+pub struct Part2PlannedSubbandExecution {
+    pub execution: Option<Part2PacketSubbandExecution>,
+    pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,
+    pub decoder_index: usize,
+    pub planned_code_blocks: u64,
+}
+
+pub open spec fn part2_planned_subband_execution(
+    band: [u32; 4], block_size: [u32; 2], subband: crate::decode::SubbandGeometry,
+    style: crate::tier1::Tier1CodingStyle, policy: (bool, u8), indices: (usize, usize, usize),
+    placements: Seq<crate::decode::ProgressionCodeBlockPlacement>, total: u64, selected: bool, limits: &crate::ResourceLimits,
+) -> Result<Part2PlannedSubbandExecution, crate::DecodeError> {
+    match part2_planned_subband_lattice(band, block_size, subband) {
+        Err(error) => Err(error),
+        Ok(None) => Ok(Part2PlannedSubbandExecution { execution: None, placements, decoder_index: indices.2, planned_code_blocks: total }),
+        Ok(Some(lattice)) => match part2_planned_codeblocks(
+            lattice.grid, lattice.clip, lattice.blocks, subband, style, policy, indices, placements, total, selected, limits,
+        ) {
+            Err(error) => Err(error),
+            Ok(planned) => Ok(Part2PlannedSubbandExecution {
+                execution: Some(Part2PacketSubbandExecution {
+                    orientation: subband.orientation, across: lattice.blocks[0], down: lattice.blocks[1],
+                    maximum_zero: subband.significant_bitplanes, decoders: planned.decoders,
+                }),
+                placements: planned.placements, decoder_index: planned.decoder_index,
+                planned_code_blocks: planned.planned_code_blocks,
+            }),
+        },
+    }
+}
+
 pub struct Part2PlannedCodeBlocks {
     pub decoders: Seq<Tier1DecoderState>,
     pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,

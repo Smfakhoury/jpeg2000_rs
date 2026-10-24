@@ -1585,3 +1585,10 @@ style, policy, location, owned prefix, count, selection and limits. Actual
 configured initialization is composed directly, not supplied as a result.
 Native views bind every owned decoder/placement field and existing-prefix
 frame; all intermediate bounds and traversal frames are proved internally.
+`part2_planned_subband_lattice` derives optional intersection/lattice/shape
+from raw band/block/subband fields. `part2_planned_subband_execution` composes
+that actual producer with real configured decoder vectors, packet-row metadata
+and complete owned placement/index/accounting state. Empty-intersection
+laziness and preceding arithmetic, divisor, limit and initializer error order
+remain explicit; no prepared lattice, decoder/result bank or successful
+resource premise is supplied.

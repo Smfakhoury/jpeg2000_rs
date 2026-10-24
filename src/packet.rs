@@ -1941,6 +1941,16 @@ verus! {
         }
     }
 
+    pub proof fn packet_execution_known_fields(value: &PacketSubbandExecution)
+        ensures packet_execution_view(value) == (crate::specs::Part2PacketSubbandExecution {
+            orientation: value.orientation, across: value.code_blocks_across, down: value.code_blocks_down,
+            maximum_zero: value.maximum_zero_bitplanes,
+            decoders: value.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+        }),
+    {
+        reveal(packet_execution_view);
+    }
+
     pub open spec fn packet_executions_view(values: Seq<PacketSubbandExecution>) -> Seq<crate::specs::Part2PacketSubbandExecution> {
         Seq::new(values.len(), |index: int| packet_execution_view(&values[index]))
     }

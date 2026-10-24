@@ -4,11 +4,40 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-subband-execution",
+      "topic": "Complete actual raw band/block/subband/style/HT policy/location/owned prefix/global count/selection/limits to optional full PacketSubbandExecution, all placement fields, flattened index and charged count. Actual checked intersections/lattice/shape derive before actual configured decoder vectors; no supplied lattice, counts, initialized state/results or successful budget/allocation premise. Preserve subband-end arithmetic before empty-intersection bypass, band-end/divisor/count error order, selected-only charging, actual packet orientation/shape/maximum-zero metadata, owned prefixes and laziness of unused fields. Real tile planner consumes the sole producer; full resolution/precinct/component/tile and decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "plan_subband_execution"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_planned_subband_lattice"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_subband_execution"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "derive_planned_subband_lattice"},
+        {"path": "src/decode.rs", "symbol": "plan_subband_execution"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "planned_subband_lattice_view"},
+        {"path": "src/decode.rs", "symbol": "planned_subband_lattice_outcome"},
+        {"path": "src/decode.rs", "symbol": "planned_subband_execution_view"},
+        {"path": "src/decode.rs", "symbol": "planned_subband_execution_outcome"},
+        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"},
+        {"path": "src/packet.rs", "symbol": "packet_execution_known_fields"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_subband_lattice_preserves_raw_overflow_empty_intersection_and_divisor_policy"},
+        {"path": "src/decode.rs", "symbol": "actual_subband_execution_derives_full_packet_row_and_preserves_lazy_owned_prefix"}
+      ]
+    },
+    {
       "id": "part2-complete-native-codeblock-vectors",
       "topic": "Complete actual raw codeblock lattice/clipping/shape/subband/style/HT policy/location/owned placement prefix/global count/selection/limits to all owned decoder and placement vectors, flattened decoder index and charged count. Real configured decoders, every placement field, row-major append order, untouched prefixes and selected-only CodeBlocks-before-WorkUnits admission derive from actual inputs. Empty shapes retain original laziness; geometry/initialization/relative-position/index errors retain order. Actual tile planner consumes the sole vector producer; no supplied initialized/decoded state bank, prepared plan, validated dimensions or successful budget/allocation premise. Full resolution/precinct/component/tile plan and decoded-component/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"}
+        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"},
+        {"path": "src/decode.rs", "symbol": "plan_subband_execution"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_codeblocks"},

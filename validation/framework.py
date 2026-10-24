@@ -790,6 +790,18 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_SUBBAND_EXECUTION_CONTRACTS = {
+    ("src/decode.rs", "derive_planned_subband_lattice"): (
+        "part2_planned_subband_lattice", _coverage_call("planned_subband_lattice_outcome", r"\1"), None,
+        r"band\s*,\s*block_size\s*,\s*subband",
+    ),
+    ("src/decode.rs", "plan_subband_execution"): (
+        "part2_planned_subband_execution", _coverage_call("planned_subband_execution_outcome", r"\1"), None,
+        r"band\s*,\s*block_size\s*,\s*subband\s*,\s*style\s*,\s*policy\s*,\s*indices\s*,\s*"
+        r"placements@\s*,\s*planned_code_blocks\s*,\s*selected\s*,\s*limits",
+    ),
+}
+
 _CODEBLOCK_VECTOR_CONTRACTS = {
     ("src/decode.rs", "append_planned_codeblock"): (
         "part2_planned_codeblock_cell", _coverage_call("planned_codeblocks_outcome", r"\1"), None,
@@ -1660,6 +1672,7 @@ def validate_normative_coverage(
                 or _PRECINCT_INITIALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_PLAN_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODEBLOCK_VECTOR_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _SUBBAND_EXECUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
