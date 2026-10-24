@@ -397,6 +397,11 @@ pub struct PreparedTileComponent {
     samples: Vec<i64>,
 }
 
+pub(crate) struct DecodedTileComponents {
+    pub(crate) prepared: Vec<PreparedTileComponent>,
+    pub(crate) mct_work: u64,
+}
+
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part2_resolution_geometry(
         codestream::selection_geometry_view(size), codestream::image_size_component_count(size),
@@ -2357,6 +2362,35 @@ verus! {
             let decoders = crate::packet::packet_precinct_decoders(&precincts[i]);
             Seq::new(decoders.len(), |j: int| crate::tier1::tier1_decoder_plane_view(&decoders[j]))
         })
+    }
+
+    pub proof fn planning_precinct_planes_known_fields(values: Seq<PacketPrecinctDecoder>)
+        ensures prepare_precincts_view(values) == crate::specs::part2_precinct_decoder_planes(planning_precincts_view(values)),
+    {
+        assert forall |i: int| 0 <= i < values.len() implies
+            prepare_precincts_view(values)[i]
+                == crate::specs::part2_precinct_decoder_planes(planning_precincts_view(values))[i] by {
+            crate::packet::packet_precinct_decoder_states(&values[i]);
+            let decoders = crate::packet::packet_precinct_decoders(&values[i]);
+            assert forall |j: int| 0 <= j < decoders.len() implies
+                crate::tier1::tier1_decoder_plane_view(&decoders[j])
+                    == crate::tier1::tier1_decoder_state(&decoders[j]).plane by {
+                crate::tier1::tier1_decoder_plane_matches_state(&decoders[j]);
+            }
+            assert(prepare_precincts_view(values)[i]
+                =~= crate::specs::part2_precinct_decoder_planes(planning_precincts_view(values))[i]);
+        }
+        assert(prepare_precincts_view(values) =~= crate::specs::part2_precinct_decoder_planes(planning_precincts_view(values)));
+    }
+
+    pub closed spec fn decoded_tile_components_view(value: &DecodedTileComponents) -> crate::specs::Part2DecodedTileComponents {
+        crate::specs::Part2DecodedTileComponents { prepared: prepared_components_view(value.prepared@), mct_work: value.mct_work }
+    }
+
+    pub open spec fn decoded_tile_components_outcome(result: Result<DecodedTileComponents, DecodeError>)
+        -> Result<crate::specs::Part2DecodedTileComponents, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(decoded_tile_components_view(&value)) }
     }
 
     pub closed spec fn prepared_component_view(value: PreparedTileComponent) -> crate::specs::Part1AssemblyTile {
@@ -5363,7 +5397,7 @@ fn decode_layout_selected(
             );
             component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let mut plan = plan_progression_tile_at_selected(
+        let plan = plan_progression_tile_at_selected(
             &layout.info.image_size,
             tile_index,
             coding_style,
@@ -5453,23 +5487,19 @@ fn decode_layout_selected(
                 total_code_blocks,
             ));
         }
-        let (grid, precincts) = plan.packet_execution();
-        crate::packet::decode_progression_tile_packets_selected(
+        let decoded = decode_planned_tile_components(
+            plan,
             &tile_parts,
-            grid,
-            precincts,
-            Some(&resolution_counts),
-            limits,
-        )?;
-        reconstruct_planned_tile(
-            &plan,
             first,
             &layout.info.image_size,
             transform,
+            Some(&resolution_counts),
             limits,
-            &mut prepared,
-            &mut total_mct_work,
+            prepared,
+            total_mct_work,
         )?;
+        prepared = decoded.prepared;
+        total_mct_work = decoded.mct_work;
         selected_tile = selected_tile
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
@@ -5926,6 +5956,85 @@ pub(crate) fn validate_part2_coding_style(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures decoded_tile_components_outcome(result) == crate::specs::part2_decode_planned_tile_components(
+        progression_plan_view(&plan), tile_parts@, first, size, standard,
+        crate::packet::packet_selection_view(maximum_resolution_counts), limits, prepared_components_view(prepared@), mct_work,
+    ),
+))]
+pub(crate) fn decode_planned_tile_components(
+    plan: ProgressionTilePlan,
+    tile_parts: &[TilePartPayload<'_>],
+    first: &TilePartPayload<'_>,
+    size: &ImageSize,
+    standard: (bool, bool),
+    maximum_resolution_counts: Option<&[u8]>,
+    limits: &ResourceLimits,
+    prepared: Vec<PreparedTileComponent>,
+    mct_work: u64,
+) -> Result<DecodedTileComponents, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost before = progression_plan_view(&plan);
+        let ghost execution = crate::specs::part1_progression_tile_decode(
+            tile_parts@, before.grid, before.precincts,
+            crate::packet::packet_selection_view(maximum_resolution_counts), limits,
+        );
+    }
+    let mut active = plan;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(progression_plan_view); }
+    {
+        let precincts = active.precincts.as_mut_slice();
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::packet::packet_precinct_vector_known_fields(precincts); }
+        match maximum_resolution_counts {
+            None => crate::packet::decode_progression_tile_packets(
+                tile_parts,
+                &active.grid,
+                precincts,
+                limits,
+            ),
+            Some(counts) => crate::packet::decode_progression_tile_packets_selected(
+                tile_parts,
+                &active.grid,
+                precincts,
+                Some(counts),
+                limits,
+            ),
+        }?;
+        #[cfg(verus_keep_ghost)]
+        proof! { crate::packet::packet_precinct_vector_known_fields(precincts); }
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        planning_precinct_planes_known_fields(active.precincts@);
+        reveal(planned_components_view);
+        assert(planning_precincts_view(active.precincts@) == execution.1);
+        assert(execution.0.is_ok());
+        assert(planned_components_view(&active) =~= before.components);
+        assert(prepare_precincts_view(active.precincts@) == crate::specs::part2_precinct_decoder_planes(execution.1));
+    }
+    let mut components = prepared;
+    let mut work = mct_work;
+    reconstruct_planned_tile(
+        &active,
+        first,
+        size,
+        standard,
+        limits,
+        &mut components,
+        &mut work,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(decoded_tile_components_view); }
+    Ok(DecodedTileComponents {
+        prepared: components,
+        mct_work: work,
+    })
+}
+
 fn decode_layout(
     layout: &CodestreamLayout<'_>,
     limits: &ResourceLimits,
@@ -6023,7 +6132,7 @@ fn decode_layout(
                 component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
         }
-        let mut plan = plan_progression_tile_at_selected(
+        let plan = plan_progression_tile_at_selected(
             &layout.info.image_size,
             tile_index,
             coding_style,
@@ -6086,17 +6195,19 @@ fn decode_layout(
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
         }
-        let (grid, precincts) = plan.packet_execution();
-        crate::packet::decode_progression_tile_packets(&tile_parts, grid, precincts, limits)?;
-        reconstruct_planned_tile(
-            &plan,
+        let decoded = decode_planned_tile_components(
+            plan,
+            &tile_parts,
             first,
             &layout.info.image_size,
             transform,
+            None,
             limits,
-            &mut prepared,
-            &mut total_mct_work,
+            prepared,
+            total_mct_work,
         )?;
+        prepared = decoded.prepared;
+        total_mct_work = decoded.mct_work;
         tile = tile.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
 
@@ -7865,6 +7976,189 @@ mod tests {
         }
         assert_eq!(cases, 1_440);
         assert!(successes > 10);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_packet_reconstruction(
+        mut plan: ProgressionTilePlan,
+        parts: &[TilePartPayload<'_>],
+        first: &TilePartPayload<'_>,
+        size: &ImageSize,
+        standard: (bool, bool),
+        counts: Option<&[u8]>,
+        limits: &ResourceLimits,
+        mut prepared: Vec<PreparedTileComponent>,
+        mut work: u64,
+    ) -> Result<DecodedTileComponents, DecodeError> {
+        let (grid, precincts) = plan.packet_execution();
+        match counts {
+            None => crate::packet::decode_progression_tile_packets(parts, grid, precincts, limits),
+            Some(counts) => crate::packet::decode_progression_tile_packets_selected(
+                parts,
+                grid,
+                precincts,
+                Some(counts),
+                limits,
+            ),
+        }?;
+        reconstruct_planned_tile(
+            &plan,
+            first,
+            size,
+            standard,
+            limits,
+            &mut prepared,
+            &mut work,
+        )?;
+        Ok(DecodedTileComponents {
+            prepared,
+            mct_work: work,
+        })
+    }
+
+    #[test]
+    fn actual_packet_reconstruction_uses_real_bytes_complete_decoder_planes_and_owned_prepared_prefixes()
+     {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+            add_single_component_mct(prepared_codestream(1, 1, 1, &qcd, &[0, 0, 0]), 2, 3),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(0)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_packet_header_bytes(0)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_block_bytes(0)
+                .unwrap(),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        let mut nonzero = 0;
+        for bytes in fixtures {
+            let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+            let first = &layout.tile_parts[0];
+            let masks = [
+                None,
+                Some(Vec::new()),
+                Some(vec![0; usize::from(layout.info.image_size.components)]),
+                Some(vec![1; usize::from(layout.info.image_size.components)]),
+                Some(vec![
+                    u8::MAX;
+                    usize::from(layout.info.image_size.components)
+                ]),
+            ];
+            for tile_scope in [false, true] {
+                let (styles, quantizations, roi) = planning_fixture_owners(&layout, tile_scope);
+                let plan = || {
+                    plan_progression_tile_at_selected(
+                        &layout.info.image_size,
+                        0,
+                        first.coding_style,
+                        styles,
+                        quantizations,
+                        roi,
+                        0,
+                        false,
+                        74,
+                        false,
+                        &ResourceLimits::HARDENED,
+                    )
+                    .unwrap()
+                };
+                for mask in &masks {
+                    for standard in [(false, false), (false, true), (true, false), (true, true)] {
+                        for limit in &limits {
+                            for work in [0, 1, u64::MAX] {
+                                for prefix in [false, true] {
+                                    let prepared = || {
+                                        if prefix {
+                                            vec![PreparedTileComponent {
+                                                component: u16::MAX,
+                                                x: u32::MAX,
+                                                y: 17,
+                                                width: 1,
+                                                height: 1,
+                                                fraction_bits: u8::MAX,
+                                                samples: vec![i64::MIN, i64::MAX],
+                                            }]
+                                        } else {
+                                            Vec::new()
+                                        }
+                                    };
+                                    for parts in [
+                                        &layout.tile_parts[..],
+                                        &layout.tile_parts[..0],
+                                        &layout.tile_parts[..1],
+                                    ] {
+                                        let expected = reference_packet_reconstruction(
+                                            plan(),
+                                            parts,
+                                            first,
+                                            &layout.info.image_size,
+                                            standard,
+                                            mask.as_deref(),
+                                            limit,
+                                            prepared(),
+                                            work,
+                                        );
+                                        let actual = decode_planned_tile_components(
+                                            plan(),
+                                            parts,
+                                            first,
+                                            &layout.info.image_size,
+                                            standard,
+                                            mask.as_deref(),
+                                            limit,
+                                            prepared(),
+                                            work,
+                                        );
+                                        match (actual, expected) {
+                                            (Err(actual), Err(expected)) => {
+                                                assert_eq!(actual, expected)
+                                            }
+                                            (Ok(actual), Ok(expected)) => {
+                                                assert_eq!(actual.prepared, expected.prepared);
+                                                assert_eq!(actual.mct_work, expected.mct_work);
+                                                successes += 1;
+                                                nonzero += usize::from(
+                                                    actual
+                                                        .prepared
+                                                        .iter()
+                                                        .skip(usize::from(prefix))
+                                                        .any(|component| {
+                                                            component
+                                                                .samples
+                                                                .iter()
+                                                                .any(|sample| *sample != 0)
+                                                        }),
+                                                );
+                                            }
+                                            (Err(error), Ok(_)) => panic!(
+                                                "unexpected packet-reconstruction error: {error:?}"
+                                            ),
+                                            (Ok(_), Err(error)) => panic!(
+                                                "packet reconstruction should have failed: {error:?}"
+                                            ),
+                                        }
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 14_400);
+        assert!(successes > 10 && nonzero > 0);
     }
 
     fn reference_standard_prepare(

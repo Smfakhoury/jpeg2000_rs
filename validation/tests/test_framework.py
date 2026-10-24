@@ -790,6 +790,12 @@ class FrameworkTests(WorkingFiles):
             framework._COMPONENT_TILE_PLANNING_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_byte_execution_to_complete_reconstruction_without_plane_results(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-packet-reconstruction-join"},
+            framework._PACKET_RECONSTRUCTION_CONTRACTS, 1,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

@@ -7665,6 +7665,13 @@ verus! {
         code_block_plane_view(&decoder.plane)
     }
 
+    pub proof fn tier1_decoder_plane_matches_state(decoder: &Tier1CodeBlockDecoder)
+        ensures tier1_decoder_plane_view(decoder) == tier1_decoder_state(decoder).plane,
+    {
+        reveal(tier1_decoder_plane_view);
+        reveal(tier1_decoder_state);
+    }
+
     pub closed spec fn code_block_plane_outcome(result: Result<CodeBlockPlane, DecodeError>)
         -> Result<crate::specs::Tier1RawPlane, DecodeError>
     {

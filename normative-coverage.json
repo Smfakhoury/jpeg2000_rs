@@ -4,6 +4,37 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-packet-reconstruction-join",
+      "topic": "Complete actual owned post-plan packet-to-prepared-component Result/all component/position/extent/fraction/sample fields and MCT work from raw complete plan state, actual tile-part bytes/first payload/image/standard transform/selection/limits/prepared prefix/work. Actual maintained F5 packet execution mutates real decoder state, proved decoder/precinct/vector field projections derive actual coefficient planes, and actual F6/F7 reconstruction computes every sample. No supplied decoded-plane or reconstruction result bank/callback, normalized plan or successful resource premise. Owned prepared prefix is preserved transport; existing full and selected decoder paths execute the sole body after unchanged actual plan production/global accounting/metadata admission. This join does not by itself close whole raw layout/selection/file/F2/F4/final F8 producer or uniform-facade gaps.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_decode_planned_tile_components"},
+        {"path": "specs/mod.rs", "symbol": "part2_precinct_decoder_planes"},
+        {"path": "specs/mod.rs", "symbol": "part2_reconstruct_planned_tile"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "decoded_tile_components_view"},
+        {"path": "src/decode.rs", "symbol": "decoded_tile_components_outcome"},
+        {"path": "src/decode.rs", "symbol": "planning_precinct_planes_known_fields"},
+        {"path": "src/decode.rs", "symbol": "progression_plan_view"},
+        {"path": "src/decode.rs", "symbol": "reconstruct_planned_tile"},
+        {"path": "src/packet.rs", "symbol": "decode_progression_tile_packets"},
+        {"path": "src/packet.rs", "symbol": "decode_progression_tile_packets_selected"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_vector_known_fields"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_decoder_states"},
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_plane_matches_state"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_packet_reconstruction_uses_real_bytes_complete_decoder_planes_and_owned_prepared_prefixes"}
+      ]
+    },
+    {
       "id": "part2-complete-native-component-tile-planning",
       "topic": "Complete actual raw-owner selected tile-plan Result/all tile/style/style-owner/full private grid/precinct/component/band/placement fields, plus actual complete per-component plan and prior/new precinct vectors/global selected count. Raw image/style owners/quantization owners/ROI/tile/discard/HT policies/limits derive first tile bounds and real selected grid, actual component/resolution metadata and coordinates, actual precinct execution/decoder/context/tag-tree producers and complete ordered component/placement vectors. No supplied successful plans, normalized geometry, prepared metadata or decoder/result banks. Existing precinct prefix is preserved transport only; new plans derive internally. Public component-owner boundary shares sole selected body with exact original defaults. First errors, all raw/unused-field laziness, allocation and selected/local resource ordering remain. Full packet-to-decoded-component/file/F2/F4/final F8 joins and uniform-owner facade construction remain separate.",
       "implementation_refs": [
@@ -810,6 +841,7 @@
         {"path": "src/decode.rs", "symbol": "apply_tile_multiple_component_transform"},
         {"path": "src/decode.rs", "symbol": "finish_prepared_tile"},
         {"path": "src/decode.rs", "symbol": "reconstruct_planned_tile"},
+        {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"},
         {"path": "src/decode.rs", "symbol": "decode_progression_prepared_image"},
         {"path": "src/decode.rs", "symbol": "decode_layout"},
         {"path": "src/decode.rs", "symbol": "decode_layout_selected"}

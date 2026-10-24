@@ -1616,3 +1616,12 @@ indices and budget/error order; no successful intermediate plan, metadata,
 geometry or decoder result bank is supplied as a premise.
 The public component-owner entry binds the same relation and original defaults;
 packet/output/file/F2/F4/final F8 and uniform-owner facade joins remain separate.
+`part2_decode_planned_tile_components` composes actual byte-executing F5
+progression semantics with the real F6/F7 tile reconstruction. Proved native
+decoder/precinct/vector observations justify `part2_precinct_decoder_planes`;
+planes and prepared outcomes are not supplied as successful results.
+The complete owned output includes every component/sample field and MCT work,
+preserving raw existing-prefix frames and full/selected error order.
+Real layout callers use actual produced plans, unchanged metadata/global
+accounting and this sole join; whole raw-layout/file/F2/F4/F8 closure remains
+separate.
