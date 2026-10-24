@@ -751,24 +751,37 @@ impl CodingStyle {
         Ok(count)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_maximum_isotropic_reduction(
+            decomposition_selector_view(self).0, decomposition_selector_view(self).1, 0,
+        ),
+    ))]
     pub fn maximum_isotropic_reduction(self) -> u8 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(decomposition_selector_view); }
         let mut count = 0_u8;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant count <= self.decomposition_levels,
+                    crate::specs::part2_maximum_isotropic_reduction(self.decomposition_levels, self.decomposition_directions@, 0)
+                        == crate::specs::part2_maximum_isotropic_reduction(self.decomposition_levels, self.decomposition_directions@, count),
                 decreases self.decomposition_levels - count,
             )
         )]
         while count < self.decomposition_levels && count < 32 {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_maximum_isotropic_reduction, 1); }
             let Some(direction) = self.decomposition_directions.get(count as usize) else {
                 return count;
             };
             if !matches!(direction, DecompositionDirection::TwoDimensional) {
-                break;
+                return count;
             }
             count += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_maximum_isotropic_reduction, 1); }
         count
     }
 
@@ -2174,7 +2187,12 @@ impl MctArray {
         &self.values
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_mct_array_identity(mct_array_view(self), mct_array_view(other)),
+    ))]
     pub fn equals(&self, other: &Self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(mct_array_view); }
         if self.index != other.index
             || !mct_array_kinds_equal(self.kind, other.kind)
             || !mct_numeric_formats_equal(self.numeric_format, other.numeric_format)
@@ -2188,15 +2206,20 @@ impl MctArray {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.values.len(),
+                    self.index == other.index, self.kind == other.kind, self.numeric_format == other.numeric_format,
+                    self.fraction_bits == other.fraction_bits, self.values.len() == other.values.len(),
+                    forall |i: int| 0 <= i < index ==> self.values@[i] == other.values@[i],
                 decreases self.values.len() - index,
             )
         )]
         while index < self.values.len() {
-            if self.values.get(index) != other.values.get(index) {
+            if self.values[index] != other.values[index] {
                 return false;
             }
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(self.values@ =~= other.values@); }
         true
     }
 
@@ -2227,7 +2250,12 @@ impl MultipleComponentTransform {
         &self.stages
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_mct_identity(multiple_component_transform_view(self), multiple_component_transform_view(other)),
+    ))]
     pub fn equals(&self, other: &Self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(multiple_component_transform_view); }
         if self.stages.len() != other.stages.len() {
             return false;
         }
@@ -2236,6 +2264,8 @@ impl MultipleComponentTransform {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.stages.len(),
+                    self.stages.len() == other.stages.len(),
+                    forall |i: int| 0 <= i < index ==> mct_stage_view(&self.stages@[i]) == mct_stage_view(&other.stages@[i]),
                 decreases self.stages.len() - index,
             )
         )]
@@ -2247,10 +2277,17 @@ impl MultipleComponentTransform {
                 return false;
             };
             if !left.equals(right) {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(multiple_component_transform_view(self)[index as int]
+                        != multiple_component_transform_view(other)[index as int]);
+                }
                 return false;
             }
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(multiple_component_transform_view(self) =~= multiple_component_transform_view(other)); }
         true
     }
 
@@ -2302,7 +2339,16 @@ impl MctStage {
         &self.collections
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_mct_stage_identity(mct_stage_view(self), mct_stage_view(other)),
+    ))]
     pub fn equals(&self, other: &Self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(mct_stage_view);
+            assert(mct_stage_view(self).1.len() == self.collections@.len());
+            assert(mct_stage_view(other).1.len() == other.collections@.len());
+        }
         if self.index != other.index || self.collections.len() != other.collections.len() {
             return false;
         }
@@ -2311,6 +2357,8 @@ impl MctStage {
             verus_keep_ghost,
             verus_spec(
                 invariant index <= self.collections.len(),
+                    self.index == other.index, self.collections.len() == other.collections.len(),
+                    forall |i: int| 0 <= i < index ==> mct_collection_view(&self.collections@[i]) == mct_collection_view(&other.collections@[i]),
                 decreases self.collections.len() - index,
             )
         )]
@@ -2322,10 +2370,14 @@ impl MctStage {
                 return false;
             };
             if !left.equals(right) {
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(mct_stage_view(self).1[index as int] != mct_stage_view(other).1[index as int]); }
                 return false;
             }
             index += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(mct_stage_view(self).1 =~= mct_stage_view(other).1); }
         true
     }
 
@@ -2371,7 +2423,12 @@ impl MctCollection {
         self.wavelet
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_mct_collection_identity(mct_collection_view(self), mct_collection_view(other)),
+    ))]
     pub fn equals(&self, other: &Self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(mct_collection_view); }
         if self.reversible != other.reversible
             || !u16_lists_equal(&self.input_components, &other.input_components)
             || !u16_lists_equal(&self.output_components, &other.output_components)
@@ -2470,6 +2527,7 @@ impl MctWavelet {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (left == right),))]
 const fn mct_collection_kinds_equal(left: MctCollectionKind, right: MctCollectionKind) -> bool {
     matches!(
         (left, right),
@@ -2482,7 +2540,12 @@ const fn mct_collection_kinds_equal(left: MctCollectionKind, right: MctCollectio
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == (mct_wavelet_option(left) == mct_wavelet_option(right)),
+))]
 const fn mct_wavelets_equal(left: Option<MctWavelet>, right: Option<MctWavelet>) -> bool {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(mct_wavelet_view); }
     match (left, right) {
         (Some(left), Some(right)) => {
             mct_wavelet_types_equal(left.transform, right.transform)
@@ -2494,6 +2557,7 @@ const fn mct_wavelets_equal(left: Option<MctWavelet>, right: Option<MctWavelet>)
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (left == right),))]
 const fn mct_wavelet_types_equal(left: MctWaveletType, right: MctWaveletType) -> bool {
     matches!(
         (left, right),
@@ -2504,6 +2568,7 @@ const fn mct_wavelet_types_equal(left: MctWaveletType, right: MctWaveletType) ->
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (left == right),))]
 const fn mct_array_kinds_equal(left: MctArrayKind, right: MctArrayKind) -> bool {
     matches!(
         (left, right),
@@ -2513,6 +2578,7 @@ const fn mct_array_kinds_equal(left: MctArrayKind, right: MctArrayKind) -> bool 
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (left == right),))]
 const fn mct_numeric_formats_equal(left: MctNumericFormat, right: MctNumericFormat) -> bool {
     matches!(
         (left, right),
@@ -2523,6 +2589,7 @@ const fn mct_numeric_formats_equal(left: MctNumericFormat, right: MctNumericForm
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result => ensures result == (left@ == right@),))]
 fn u16_lists_equal(left: &[u16], right: &[u16]) -> bool {
     if left.len() != right.len() {
         return false;
@@ -2532,15 +2599,19 @@ fn u16_lists_equal(left: &[u16], right: &[u16]) -> bool {
         verus_keep_ghost,
         verus_spec(
             invariant index <= left.len(),
+                left.len() == right.len(),
+                forall |i: int| 0 <= i < index ==> left@[i] == right@[i],
             decreases left.len() - index,
         )
     )]
     while index < left.len() {
-        if left.get(index) != right.get(index) {
+        if left[index] != right[index] {
             return false;
         }
         index += 1;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(left@ =~= right@); }
     true
 }
 
@@ -9756,6 +9827,484 @@ mod tests {
         }
         assert_eq!(cases, 207_360);
         assert!(successes > 100 && lazy_narrowing > 0);
+    }
+
+    fn raw_mct_identity_fixture(variant: usize) -> MultipleComponentTransform {
+        let matrix = MctArray {
+            index: 1,
+            kind: MctArrayKind::Decorrelation,
+            numeric_format: MctNumericFormat::Int16,
+            fraction_bits: 0,
+            values: vec![1, 0, 0, 1],
+        };
+        let offsets = MctArray {
+            index: 2,
+            kind: MctArrayKind::Offset,
+            numeric_format: MctNumericFormat::Int32,
+            fraction_bits: 0,
+            values: vec![0, 0],
+        };
+        let collection = MctCollection {
+            reversible: true,
+            input_components: vec![0, 1],
+            output_components: vec![0, 1],
+            kind: MctCollectionKind::Decorrelation,
+            matrix: Some(matrix),
+            offsets: Some(offsets),
+            wavelet: None,
+        };
+        let mut value = MultipleComponentTransform {
+            stages: vec![MctStage {
+                index: 1,
+                collections: vec![collection],
+            }],
+        };
+        match variant {
+            0 => {}
+            1 => value.stages.clear(),
+            2 => value.stages.push(value.stages[0].clone()),
+            3 => value.stages[0].index = u8::MAX,
+            4 => value.stages[0].collections.clear(),
+            5 => {
+                let collection = value.stages[0].collections[0].clone();
+                value.stages[0].collections.push(collection);
+            }
+            6 => value.stages[0].collections[0].reversible = false,
+            7 => value.stages[0].collections[0].input_components.reverse(),
+            8 => value.stages[0].collections[0]
+                .output_components
+                .push(u16::MAX),
+            9 => value.stages[0].collections[0].kind = MctCollectionKind::Dependency,
+            10 => value.stages[0].collections[0].matrix = None,
+            11 => {
+                value.stages[0].collections[0]
+                    .matrix
+                    .as_mut()
+                    .unwrap()
+                    .index = 2
+            }
+            12 => {
+                value.stages[0].collections[0].matrix.as_mut().unwrap().kind =
+                    MctArrayKind::Dependency
+            }
+            13 => {
+                value.stages[0].collections[0]
+                    .matrix
+                    .as_mut()
+                    .unwrap()
+                    .numeric_format = MctNumericFormat::Float32
+            }
+            14 => {
+                value.stages[0].collections[0]
+                    .matrix
+                    .as_mut()
+                    .unwrap()
+                    .fraction_bits = u8::MAX
+            }
+            15 => {
+                value.stages[0].collections[0]
+                    .matrix
+                    .as_mut()
+                    .unwrap()
+                    .values[0] = i64::MIN
+            }
+            16 => {
+                value.stages[0].collections[0]
+                    .matrix
+                    .as_mut()
+                    .unwrap()
+                    .values
+                    .pop();
+            }
+            17 => value.stages[0].collections[0].offsets = None,
+            18 => {
+                value.stages[0].collections[0]
+                    .offsets
+                    .as_mut()
+                    .unwrap()
+                    .values[0] = i64::MAX
+            }
+            19 => {
+                value.stages[0].collections[0].wavelet = Some(MctWavelet {
+                    transform: MctWaveletType::Reversible5x3,
+                    levels: 0,
+                    component_offset: 0,
+                })
+            }
+            20 => {
+                value.stages[0].collections[0].wavelet = Some(MctWavelet {
+                    transform: MctWaveletType::Irreversible9x7,
+                    levels: 0,
+                    component_offset: 0,
+                })
+            }
+            21 => {
+                value.stages[0].collections[0].wavelet = Some(MctWavelet {
+                    transform: MctWaveletType::Reversible5x3,
+                    levels: u8::MAX,
+                    component_offset: i32::MIN,
+                })
+            }
+            22 => {
+                value.stages[0].collections[0]
+                    .offsets
+                    .as_mut()
+                    .unwrap()
+                    .numeric_format = MctNumericFormat::Float64
+            }
+            _ => value.stages[0].collections[0].kind = MctCollectionKind::Wavelet,
+        }
+        value
+    }
+
+    #[test]
+    fn actual_mct_identity_compares_every_raw_graph_array_stage_and_collection_field() {
+        let mut cases = 0;
+        for left in 0..24 {
+            for right in 0..24 {
+                let left = raw_mct_identity_fixture(left);
+                let right = raw_mct_identity_fixture(right);
+                assert_eq!(left.equals(&right), left == right);
+                assert_eq!(
+                    crate::decode::optional_multiple_component_transforms_equal(
+                        Some(&left),
+                        Some(&right)
+                    ),
+                    left == right
+                );
+                for (a, b) in left.stages.iter().zip(&right.stages) {
+                    assert_eq!(a.equals(b), a == b);
+                    for (a, b) in a.collections.iter().zip(&b.collections) {
+                        assert_eq!(a.equals(b), a == b);
+                        for (a, b) in [
+                            a.matrix.as_ref().zip(b.matrix.as_ref()),
+                            a.offsets.as_ref().zip(b.offsets.as_ref()),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            assert_eq!(a.equals(b), a == b);
+                        }
+                    }
+                }
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 576);
+        let empty = MultipleComponentTransform { stages: Vec::new() };
+        assert!(!crate::decode::optional_multiple_component_transforms_equal(Some(&empty), None));
+        assert!(crate::decode::optional_multiple_component_transforms_equal(
+            None, None
+        ));
+    }
+
+    #[test]
+    fn actual_maximum_isotropic_reduction_preserves_full_u8_levels_and_physical_prefix_laziness() {
+        let mut cases = 0;
+        for levels in 0..=u8::MAX {
+            for pattern in 0..8 {
+                for stop in 0..=32 {
+                    let mut style = raw_resolution_style(levels, pattern);
+                    for direction in style.decomposition_directions.iter_mut().take(stop) {
+                        *direction = DecompositionDirection::TwoDimensional;
+                    }
+                    if stop < 32 {
+                        style.decomposition_directions[stop] = DecompositionDirection::None;
+                    }
+                    let expected = style
+                        .decomposition_directions
+                        .iter()
+                        .take(usize::from(levels).min(32))
+                        .take_while(|direction| {
+                            matches!(direction, DecompositionDirection::TwoDimensional)
+                        })
+                        .count();
+                    assert_eq!(usize::from(style.maximum_isotropic_reduction()), expected);
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 67_584);
+    }
+
+    fn reference_tile_component_resolutions(
+        styles: &ComponentCodingStyles,
+        main: CodingStyle,
+        components: u16,
+        discard: Option<u8>,
+    ) -> Result<Vec<u8>, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        let reduction = DecodeError::InvalidSelection {
+            reason: crate::SelectionError::ReductionTooLarge,
+        };
+        let count = if discard.is_some() {
+            components
+        } else if main.multiple_component_transform {
+            components.min(3)
+        } else {
+            0
+        };
+        let mut output = Vec::new();
+        for component in 0..count {
+            if component >= styles.components {
+                return Err(invalid);
+            }
+            let style = styles.styles.get(usize::from(component)).ok_or(invalid)?;
+            if let Some(discard) = discard {
+                let maximum = style
+                    .decomposition_directions
+                    .iter()
+                    .take(usize::from(style.decomposition_levels).min(32))
+                    .take_while(|direction| {
+                        matches!(direction, DecompositionDirection::TwoDimensional)
+                    })
+                    .count();
+                if usize::from(discard) > maximum {
+                    return Err(reduction);
+                }
+            }
+            let agreement = matches!(
+                (style.transform, main.transform),
+                (
+                    WaveletTransform::Reversible5x3,
+                    WaveletTransform::Reversible5x3
+                ) | (
+                    WaveletTransform::Irreversible9x7,
+                    WaveletTransform::Irreversible9x7
+                )
+            );
+            if main.multiple_component_transform && component < 3 && !agreement {
+                return Err(invalid);
+            }
+            if let Some(discard) = discard {
+                if style.decomposition_levels == u8::MAX {
+                    return Err(reduction);
+                }
+                output.push(
+                    u8::try_from(i16::from(style.decomposition_levels) + 1 - i16::from(discard))
+                        .map_err(|_| reduction)?,
+                );
+            }
+        }
+        Ok(output)
+    }
+
+    #[test]
+    fn actual_tile_style_resolution_preparation_preserves_raw_modes_owners_and_arbitrary_agreement_policy()
+     {
+        let mut cases = 0;
+        let modes = [
+            None,
+            Some(0),
+            Some(1),
+            Some(2),
+            Some(31),
+            Some(32),
+            Some(u8::MAX),
+        ];
+        for levels in [0, 1, 2, 31, 32, u8::MAX] {
+            for pattern in 0..8 {
+                for logical in [0, 1, 2, 3, 64, 65, u16::MAX] {
+                    for components in [0, 1, 2, 3, 64, u16::MAX] {
+                        for flag in [false, true] {
+                            for main_transform in [
+                                WaveletTransform::Reversible5x3,
+                                WaveletTransform::Irreversible9x7,
+                                WaveletTransform::Arbitrary(3),
+                            ] {
+                                let mut main = raw_resolution_style(levels, pattern);
+                                main.multiple_component_transform = flag;
+                                main.transform = main_transform;
+                                for transform in [
+                                    main_transform,
+                                    WaveletTransform::Reversible5x3,
+                                    WaveletTransform::Arbitrary(3),
+                                ] {
+                                    let mut style = raw_resolution_style(levels, pattern);
+                                    style.transform = transform;
+                                    let styles = ComponentCodingStyles {
+                                        components: logical,
+                                        styles: [style; MAX_COMPONENTS],
+                                    };
+                                    for mode in modes {
+                                        assert_eq!(
+                                            crate::decode::prepare_tile_component_resolutions(
+                                                &styles, main, components, mode
+                                            ),
+                                            reference_tile_component_resolutions(
+                                                &styles, main, components, mode
+                                            )
+                                        );
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 254_016);
+    }
+
+    fn reference_tile_decode_metadata(
+        parts: &[TilePartPayload<'_>],
+        components: u16,
+        discard: Option<u8>,
+    ) -> Result<((bool, bool), Vec<u8>), DecodeError> {
+        let first = parts.first().ok_or(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTilePart,
+        })?;
+        if parts
+            .iter()
+            .any(|part| part.multiple_component_transform != first.multiple_component_transform)
+        {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidTransform,
+            });
+        }
+        let irreversible = match first.coding_style.transform {
+            WaveletTransform::Irreversible9x7 => true,
+            WaveletTransform::Reversible5x3 => false,
+            WaveletTransform::Arbitrary(index) => {
+                !first
+                    .part2_extensions
+                    .arbitrary_kernels
+                    .iter()
+                    .find(|kernel| kernel.index == index)
+                    .ok_or(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::MissingRequiredStructure,
+                    })?
+                    .reversible
+            }
+        };
+        Ok((
+            (
+                first.coding_style.multiple_component_transform,
+                irreversible,
+            ),
+            reference_tile_component_resolutions(
+                &first.component_coding_styles,
+                first.coding_style,
+                components,
+                discard,
+            )?,
+        ))
+    }
+
+    #[test]
+    fn actual_tile_metadata_derives_first_payload_mct_kernel_and_ordered_style_results() {
+        let bytes = codestream(&[0], false);
+        let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+        let template = &layout.tile_parts[0];
+        let modes = [
+            None,
+            Some(0),
+            Some(1),
+            Some(2),
+            Some(31),
+            Some(32),
+            Some(u8::MAX),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for shape in 0..6 {
+            for components in [0, 1, 3, u16::MAX] {
+                for mode in modes {
+                    for transform in [
+                        WaveletTransform::Reversible5x3,
+                        WaveletTransform::Irreversible9x7,
+                        WaveletTransform::Arbitrary(3),
+                        WaveletTransform::Arbitrary(4),
+                    ] {
+                        for flag in [false, true] {
+                            for logical in [0, 1, 64, u16::MAX] {
+                                for pattern in [0, 3, 7] {
+                                    for registry in 0..3 {
+                                        let mut first = template.clone();
+                                        first.coding_style.transform = transform;
+                                        first.coding_style.multiple_component_transform = flag;
+                                        let mut style = raw_resolution_style(
+                                            if pattern == 7 { u8::MAX } else { 2 },
+                                            pattern,
+                                        );
+                                        style.transform = transform;
+                                        first.component_coding_styles = ComponentCodingStyles {
+                                            components: logical,
+                                            styles: [style; MAX_COMPONENTS],
+                                        };
+                                        let kernel = |reversible| ArbitraryKernel {
+                                            index: 3,
+                                            reversible,
+                                            descriptor: u16::MAX,
+                                            coefficient_type: u8::MAX,
+                                            whole_sample_filter: false,
+                                            initial_odd: true,
+                                            whole_sample_extension: false,
+                                            scaling: None,
+                                            steps: Vec::new(),
+                                        };
+                                        first.part2_extensions.arbitrary_kernels = match registry {
+                                            0 => Vec::new(),
+                                            1 => vec![kernel(true)],
+                                            _ => vec![kernel(false), kernel(true)],
+                                        };
+                                        let mut second = first.clone();
+                                        match shape {
+                                            3 => {
+                                                first.multiple_component_transform =
+                                                    Some(MultipleComponentTransform {
+                                                        stages: Vec::new(),
+                                                    })
+                                            }
+                                            4 => {
+                                                first.multiple_component_transform =
+                                                    Some(raw_mct_identity_fixture(0));
+                                                second.multiple_component_transform =
+                                                    Some(raw_mct_identity_fixture(3));
+                                            }
+                                            5 => {
+                                                first.multiple_component_transform =
+                                                    Some(raw_mct_identity_fixture(0));
+                                                second.multiple_component_transform =
+                                                    Some(raw_mct_identity_fixture(0));
+                                            }
+                                            _ => {}
+                                        }
+                                        let parts = match shape {
+                                            0 => Vec::new(),
+                                            1 => vec![first],
+                                            _ => vec![first, second],
+                                        };
+                                        let expected = reference_tile_decode_metadata(
+                                            &parts, components, mode,
+                                        );
+                                        let actual = crate::decode::prepare_tile_decode_metadata(
+                                            &parts, components, mode,
+                                        )
+                                        .map(|value| {
+                                            assert!(core::ptr::eq(value.first, &parts[0]));
+                                            (value.standard, value.resolution_counts)
+                                        });
+                                        successes += usize::from(expected.is_ok());
+                                        assert_eq!(actual, expected);
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 48_384);
+        assert!(successes > 100);
     }
 
     fn reference_truncated_subband_count(style: CodingStyle) -> u16 {

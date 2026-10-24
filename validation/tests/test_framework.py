@@ -802,6 +802,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYOUT_ACCOUNTING_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_raw_tile_metadata_mct_identity_and_reduction_policy(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-tile-decode-metadata"},
+            framework._TILE_METADATA_CONTRACTS, 9,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

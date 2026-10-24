@@ -4,6 +4,65 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-tile-decode-metadata",
+      "topic": "Complete actual raw tile-part/component-count/full-or-discard mode to real first payload, exact MCT consistency, actual builtin/arbitrary-kernel transform choice and ordered full-first-three style agreement or selected all-component isotropic/reduction counts. Real MCT array/collection/stage/transform identity binds every raw field, not normalized numeric equivalence; optional None differs from an empty graph. Exact maximum isotropic prefix truncates/lazily stops at physical32; decoder wavelet agreement deliberately accepts only equal builtins, not equal arbitrary indices. Preserve first-before-MCT-before-kernel-before-style/reduction errors, kernel lookup even when MCT flag is false, checked-u8 level advancement before subtraction and all unused fields. Both real layout callers share sole producers; no supplied equality/kernel/metadata/results or successful premises. Whole tile collection/layout/selection/file/F2/F4/final F8 and publication remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_resolutions"},
+        {"path": "src/decode.rs", "symbol": "optional_multiple_component_transforms_equal"},
+        {"path": "src/codestream.rs", "symbol": "MctCollection::equals"},
+        {"path": "src/codestream.rs", "symbol": "MctStage::equals"},
+        {"path": "src/codestream.rs", "symbol": "MultipleComponentTransform::equals"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_tile_decode_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part2_tile_decode_standard"},
+        {"path": "specs/mod.rs", "symbol": "part2_tile_component_resolutions"},
+        {"path": "specs/mod.rs", "symbol": "part2_full_tile_style_admission"},
+        {"path": "specs/mod.rs", "symbol": "part2_selected_tile_resolutions"},
+        {"path": "specs/mod.rs", "symbol": "part2_maximum_isotropic_reduction"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_wavelet_agreement"},
+        {"path": "specs/mod.rs", "symbol": "part2_mct_identity"},
+        {"path": "specs/mod.rs", "symbol": "part2_mct_array_identity"},
+        {"path": "specs/mod.rs", "symbol": "part2_mct_collection_identity"},
+        {"path": "specs/mod.rs", "symbol": "part2_mct_stage_identity"},
+        {"path": "specs/mod.rs", "symbol": "part2_optional_mct_identity"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "MctArray::equals"},
+        {"path": "src/codestream.rs", "symbol": "MctCollection::equals"},
+        {"path": "src/codestream.rs", "symbol": "MctStage::equals"},
+        {"path": "src/codestream.rs", "symbol": "MultipleComponentTransform::equals"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::maximum_isotropic_reduction"},
+        {"path": "src/decode.rs", "symbol": "optional_multiple_component_transforms_equal"},
+        {"path": "src/decode.rs", "symbol": "wavelet_transforms_equal"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_component_resolutions"},
+        {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "tile_decode_metadata_view"},
+        {"path": "src/decode.rs", "symbol": "tile_decode_metadata_outcome"},
+        {"path": "src/decode.rs", "symbol": "resolution_counts_outcome_for_tile"},
+        {"path": "src/decode.rs", "symbol": "tile_part_mct_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_collection_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_stage_view"},
+        {"path": "src/codestream.rs", "symbol": "multiple_component_transform_view"},
+        {"path": "src/codestream.rs", "symbol": "u16_lists_equal"},
+        {"path": "src/codestream.rs", "symbol": "mct_wavelets_equal"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::arbitrary_kernel"},
+        {"path": "src/codestream.rs", "symbol": "ArbitraryKernel::reversible"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mct_identity_compares_every_raw_graph_array_stage_and_collection_field"},
+        {"path": "src/codestream.rs", "symbol": "actual_maximum_isotropic_reduction_preserves_full_u8_levels_and_physical_prefix_laziness"},
+        {"path": "src/codestream.rs", "symbol": "actual_tile_style_resolution_preparation_preserves_raw_modes_owners_and_arbitrary_agreement_policy"},
+        {"path": "src/codestream.rs", "symbol": "actual_tile_metadata_derives_first_payload_mct_kernel_and_ordered_style_results"}
+      ]
+    },
+    {
       "id": "part2-complete-native-layout-accounting",
       "topic": "Complete actual full/selected post-plan global packet/precinct/codeblock accounting Result/all counters from raw complete plan, raw optional resolution counts, arbitrary prior counters and actual limits. Preserve selected-grid admission before packet sum/limit, full grid versus selected plan-style layer division, precinct sum/limit, full per-component placement-length codeblock checks versus selected raw placement/subband resolution lookup/count and final-only check. Empty-component and unused-field laziness, malformed indices/zero layers, overflow and typed first-error order remain. No supplied count/result bank, valid/normalized plan or successful resource premise; actual full/selected layout callers consume sole helper before actual byte/reconstruction. Whole raw-layout/metadata/selection/file/F2/F4/final F8 and publishing remain separate.",
       "implementation_refs": [
