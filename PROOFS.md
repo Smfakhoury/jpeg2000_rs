@@ -2569,3 +2569,21 @@ fields. They reuse independently qualified raw metadata/grid primitives and
 the independent wide/flat-order precinct reference; they are not official
 conformance vectors. Packet-to-decoded-component/file/F2/F4/final F8 joins
 and uniform-owner facade construction remain separate.
+## Actual packet execution to complete prepared components
+
+Both real full and selected layout decoders now execute one owned post-plan
+packet/reconstruction body after their unchanged plan production, metadata
+admission and global accounting. Actual F5 byte execution mutates the real
+precinct decoders; proved full-state/plane projection lemmas connect exactly
+those decoder coefficients to actual F6/F7 reconstruction. Every prepared
+component coordinate, extent, fraction bit, sample and MCT-work output is
+bound, with the existing owned prefix transported unchanged.
+
+No supplied decoded-plane/reconstruction result or callback, normalized plan,
+successful budget/allocation premise or new trust is introduced. Direct real
+field borrowing binds the complete owned plan while retaining the existing
+full/selected packet entry points. The exact native recipe and 14,400 full
+composition contexts retain actual byte/selection/error behavior, nonzero
+MCT samples, raw ragged prefixes and work frontiers.
+Whole raw layout/selection/file/F2/F4/final F8 and uniform-facade joins remain
+separate; this is not a supplied-plan shortcut for those whole producers.

@@ -8334,6 +8334,39 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub struct Part2DecodedTileComponents {
+    pub prepared: Seq<Part1AssemblyTile>,
+    pub mct_work: u64,
+}
+
+pub open spec fn part2_precinct_decoder_planes(precincts: Seq<Part1PacketPrecinctState>) -> Seq<Seq<Tier1RawPlane>> {
+    Seq::new(precincts.len(), |i: int| precincts[i].decoders.map_values(|decoder: Tier1DecoderState| decoder.plane))
+}
+
+pub open spec fn part2_decode_planned_tile_components(
+    plan: Part2ProgressionTilePlan, parts: Seq<crate::codestream::TilePartPayload<'_>>,
+    first: &crate::codestream::TilePartPayload<'_>, size: &crate::codestream::ImageSize, standard: (bool, bool),
+    selection: Option<Seq<u8>>, limits: &crate::ResourceLimits, prepared: Seq<Part1AssemblyTile>, work: u64,
+) -> Result<Part2DecodedTileComponents, crate::DecodeError> {
+    let execution = part1_progression_tile_decode(parts, plan.grid, plan.precincts, selection, limits);
+    match execution.0 {
+        Err(error) => Err(error),
+        Ok(_) => {
+            let reconstructed = part2_reconstruct_planned_tile(
+                prepared, plan.components, part2_precinct_decoder_planes(execution.1), first.component_coding_styles,
+                crate::codestream::part2_kernel_registry(&first.part2_extensions),
+                crate::codestream::image_size_component_count(size), crate::codestream::image_size_component_infos(size),
+                crate::decode::tile_part_mct_view(first), standard, work,
+                crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
+            );
+            match reconstructed.0 {
+                Err(error) => Err(error),
+                Ok(()) => Ok(Part2DecodedTileComponents { prepared: reconstructed.1, mct_work: reconstructed.2 }),
+            }
+        },
+    }
+}
+
 pub struct Part2TilePlanBuffers {
     pub precincts: Seq<Part1PacketPrecinctState>,
     pub components: Seq<Part1PreparePlan>,

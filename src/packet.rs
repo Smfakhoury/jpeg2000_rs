@@ -1802,6 +1802,14 @@ verus! {
         value.decoders@
     }
 
+    pub proof fn packet_precinct_decoder_states(value: &PacketPrecinctDecoder)
+        ensures packet_precinct_view(value).decoders
+            == packet_precinct_decoders(value).map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+    {
+        reveal(packet_precinct_view);
+        reveal(packet_precinct_decoders);
+    }
+
     pub open spec fn packet_decoder_outcome(result: Result<&Tier1CodeBlockDecoder, DecodeError>)
         -> Result<Tier1CodeBlockDecoder, DecodeError>
     {
@@ -2634,6 +2642,13 @@ verus! {
     pub closed spec fn packet_precinct_vector_view(values:&[PacketPrecinctDecoder])
         -> Seq<crate::specs::Part1PacketPrecinctState> {
         values@.map_values(|value:PacketPrecinctDecoder|packet_precinct_view(&value))
+    }
+
+    pub proof fn packet_precinct_vector_known_fields(values: &[PacketPrecinctDecoder])
+        ensures packet_precinct_vector_view(values)
+            == values@.map_values(|value: PacketPrecinctDecoder| packet_precinct_view(&value)),
+    {
+        reveal(packet_precinct_vector_view);
     }
 }
 
