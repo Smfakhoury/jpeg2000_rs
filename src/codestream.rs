@@ -92,6 +92,7 @@ verus! {
         ensures selection_geometry_view(size)
             == (size.width, size.height, size.x_origin, size.y_origin, size.tile_width, size.tile_height,
                 size.tile_x_origin, size.tile_y_origin, size.tiles_across, size.tiles_down),
+            image_size_component_count(size) == size.components,
     {
         reveal(selection_geometry_view);
     }
@@ -9333,6 +9334,230 @@ mod tests {
             u32::try_from(horizontal).map_err(|_| arithmetic)?,
             u32::try_from(vertical).map_err(|_| arithmetic)?,
         ))
+    }
+
+    fn reference_component_resolution_counts(
+        components: u16,
+        styles: &ComponentCodingStyles,
+        discard: u8,
+    ) -> Result<(u8, Vec<u8>, Vec<u8>), DecodeError> {
+        let mut maximum = 0;
+        let mut available = Vec::new();
+        let mut selected = Vec::new();
+        for component in 0..components {
+            if component >= styles.components || usize::from(component) >= styles.styles.len() {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodingStyle,
+                });
+            }
+            let count = u8::try_from(
+                u16::from(styles.styles[usize::from(component)].decomposition_levels) + 1,
+            )
+            .map_err(|_| DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::ArithmeticOverflow,
+            })?;
+            maximum = maximum.max(count);
+            available.push(count);
+            if discard >= count {
+                return Err(DecodeError::InvalidSelection {
+                    reason: crate::SelectionError::ReductionTooLarge,
+                });
+            }
+            selected.push(count - discard);
+        }
+        Ok((maximum, available, selected))
+    }
+
+    fn raw_grid_styles(components: u16, pattern: usize) -> ComponentCodingStyles {
+        ComponentCodingStyles {
+            components,
+            styles: core::array::from_fn(|index| {
+                let levels = match pattern {
+                    0 => 0,
+                    1 => u8::try_from(index % 3).unwrap(),
+                    2 => u8::try_from(index % 4).unwrap(),
+                    3 => {
+                        if index == 2 {
+                            u8::MAX
+                        } else {
+                            1
+                        }
+                    }
+                    4 => u8::MAX,
+                    5 => {
+                        if index == 63 {
+                            u8::MAX
+                        } else {
+                            1
+                        }
+                    }
+                    6 => [0, 2, 31, 254][index % 4],
+                    _ => 32,
+                };
+                let mut style = raw_resolution_style(levels, if pattern == 2 { 0 } else { 3 });
+                style.code_block_width = 4;
+                style.code_block_height = 4;
+                style.precinct_exponents = [(0, 0); 33];
+                style
+            }),
+        }
+    }
+
+    #[test]
+    fn component_resolution_preparation_retains_raw_owners_discard_and_first_errors() {
+        let mut cases = 0;
+        for count in [0, 1, 2, 63, 64, 65, u16::MAX] {
+            for owner in [0, 1, 2, 63, 64, 65, u16::MAX] {
+                for discard in [0, 1, 2, 31, 32, 254, u8::MAX] {
+                    for pattern in 0..8 {
+                        let styles = raw_grid_styles(owner, pattern);
+                        assert_eq!(
+                            crate::decode::prepare_component_resolution_counts(
+                                count, &styles, discard
+                            ),
+                            reference_component_resolution_counts(count, &styles, discard),
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 2744);
+    }
+
+    fn reference_subband_count(style: CodingStyle, resolution: u8) -> Result<usize, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        if resolution > style.decomposition_levels {
+            return Err(invalid);
+        }
+        let mut count = 1;
+        for current in 1..=resolution {
+            let stage = style.decomposition_levels - current;
+            let direction = style
+                .decomposition_directions
+                .get(usize::from(stage))
+                .ok_or(invalid)?;
+            count += match direction {
+                DecompositionDirection::None => 0,
+                DecompositionDirection::Horizontal | DecompositionDirection::Vertical => 1,
+                DecompositionDirection::TwoDimensional => 3,
+            };
+        }
+        Ok(count)
+    }
+
+    fn reference_component_packet_grid(
+        size: &ImageSize,
+        styles: &ComponentCodingStyles,
+        layers: u16,
+        limits: &ResourceLimits,
+        tile: Option<u16>,
+        discard: u8,
+    ) -> Result<crate::packet::PacketGrid, DecodeError> {
+        let (maximum, resolutions, selected) =
+            reference_component_resolution_counts(size.components, styles, discard)?;
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        usize::try_from(u128::from(size.components) * u128::from(maximum))
+            .map_err(|_| arithmetic)?;
+        let mut counts = Vec::new();
+        let mut blocks = 0_u64;
+        for component in 0..size.components {
+            let style = styles.styles[usize::from(component)];
+            let available = resolutions[usize::from(component)];
+            for resolution in 0..maximum {
+                if resolution >= available {
+                    counts.push(0);
+                    continue;
+                }
+                let geometry =
+                    reference_resolution_geometry(size, style, component, resolution, tile)?;
+                let current = reference_subband_count(style, resolution)?;
+                let previous = if resolution == 0 {
+                    0
+                } else {
+                    reference_subband_count(style, resolution - 1)?
+                };
+                let subbands = current.checked_sub(previous).ok_or(arithmetic)?;
+                if resolution < selected[usize::from(component)] {
+                    blocks = u64::try_from(u128::from(blocks) + u128::from(geometry.code_blocks))
+                        .map_err(|_| arithmetic)?;
+                    if blocks > limits.maximum_code_blocks() {
+                        return Err(DecodeError::LimitExceeded {
+                            resource: crate::Resource::CodeBlocks,
+                            limit: limits.maximum_code_blocks(),
+                            actual: blocks,
+                        });
+                    }
+                }
+                counts.push(if subbands == 0 {
+                    0
+                } else {
+                    u32::try_from(geometry.precincts).map_err(|_| arithmetic)?
+                });
+            }
+        }
+        crate::packet::packet_grid_new_with_selected_resolutions(
+            layers,
+            size.components,
+            resolutions,
+            counts,
+            if discard == 0 { None } else { Some(&selected) },
+            limits,
+        )
+    }
+
+    #[test]
+    fn component_packet_grid_matches_real_geometry_padding_selection_and_limit_order() {
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(1)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(1).unwrap(),
+            ResourceLimits::HARDENED.with_maximum_packets(1).unwrap(),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for extent in [0, 1, 17, 33] {
+            for sampling in [(1, 1), (1, 3), (2, 2)] {
+                for components in [0, 1, 2, 3, 4] {
+                    let size = raw_resolution_size(extent, 1, sampling, u16::MAX, components);
+                    for owner in [0, 1, 2, 4, u16::MAX] {
+                        for pattern in 0..4 {
+                            let styles = raw_grid_styles(owner, pattern);
+                            for layers in [0, 1, 2] {
+                                for discard in [0, 1, 2, 3] {
+                                    for tile in [None, Some(0), Some(1), Some(u16::MAX)] {
+                                        for limit in &limits {
+                                            let actual =
+                                                crate::decode::derive_packet_grid_for_components(
+                                                    &size, &styles, layers, limit, tile, discard,
+                                                );
+                                            let expected = reference_component_packet_grid(
+                                                &size, &styles, layers, limit, tile, discard,
+                                            );
+                                            successes += usize::from(expected.is_ok());
+                                            assert_eq!(actual, expected);
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 230_400);
+        assert!(successes > 100, "{successes} full grid states checked");
     }
 
     fn raw_resolution_size(

@@ -790,6 +790,20 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_PACKET_GRID_PRODUCER_CONTRACTS = {
+    ("src/decode.rs", "prepare_component_resolution_counts"): (
+        "part2_component_resolution_counts",
+        _coverage_call("resolution_counts_outcome", r"\1"), None,
+        r"components\s*,\s*coding_styles\s*,\s*discard_levels",
+    ),
+    ("src/decode.rs", "derive_packet_grid_for_components"): (
+        "part2_packet_grid_from_components",
+        _coverage_call("crate::packet::packet_grid_outcome", r"\1"), None,
+        r"size\s*,\s*coding_styles\s*,\s*layers\s*,\s*limits\s*,\s*tile_index\s*,\s*discard_levels",
+    ),
+}
+
+
 def _resolution_geometry_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
     size = r"\s*,\s*".join((
         _coverage_call("codestream::selection_geometry_view", "size"),
@@ -1514,6 +1528,7 @@ def validate_normative_coverage(
                 or _TILE_COMPONENT_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RESOLUTION_STYLE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RESOLUTION_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PACKET_GRID_PRODUCER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
