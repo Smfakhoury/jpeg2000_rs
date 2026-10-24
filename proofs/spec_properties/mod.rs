@@ -2464,8 +2464,41 @@ pub proof fn raw_default_failure_does_not_synchronize_outer_emission(
 {
 }
 
+pub proof fn tile_metadata_ignores_owned_allocation_identity(
+    left: Seq<crate::codestream::TilePartPayload<'_>>, right: Seq<crate::codestream::TilePartPayload<'_>>,
+    components: u16, discard: Option<u8>,
+)
+    requires crate::codestream::tile_parts_owned_view(left) == crate::codestream::tile_parts_owned_view(right),
+    ensures crate::specs::part2_tile_decode_metadata(left, components, discard)
+        == crate::specs::part2_tile_decode_metadata(right, components, discard),
+{
+}
+
+pub proof fn tile_byte_execution_ignores_owned_allocation_identity(
+    left: Seq<crate::codestream::TilePartPayload<'_>>, right: Seq<crate::codestream::TilePartPayload<'_>>,
+    grid: crate::specs::Part1PacketGrid, precincts: Seq<crate::specs::Part1PacketPrecinctState>,
+    selection: Option<Seq<u8>>, limits: &crate::ResourceLimits,
+)
+    requires crate::codestream::tile_parts_owned_view(left) == crate::codestream::tile_parts_owned_view(right),
+    ensures crate::specs::part1_progression_tile_decode(left, grid, precincts, selection, limits)
+        == crate::specs::part1_progression_tile_decode(right, grid, precincts, selection, limits),
+{
+}
+
+pub proof fn raw_tile_decoder_ignores_owned_allocation_identity(
+    size: &crate::codestream::ImageSize, tile: u16,
+    left: Seq<crate::codestream::TilePartPayload<'_>>, right: Seq<crate::codestream::TilePartPayload<'_>>,
+    caps: Option<(u32, Seq<u16>)>, discard: Option<u8>, limits: &crate::ResourceLimits,
+    prepared: Seq<crate::specs::Part1AssemblyTile>, initial: (u64, u64, u64), work: u64,
+)
+    requires crate::codestream::tile_parts_owned_view(left) == crate::codestream::tile_parts_owned_view(right),
+    ensures crate::specs::part2_decode_tile_parts_at(size, tile, left, caps, discard, limits, prepared, initial, work)
+        == crate::specs::part2_decode_tile_parts_at(size, tile, right, caps, discard, limits, prepared, initial, work),
+{
+}
+
 pub proof fn tile_boundary_preserves_real_work_seen_and_accounting_owners(
-    params:crate::specs::Part1TilePacketParameters<'_>,p:crate::specs::Part1TilePacketProgress,
+    params:crate::specs::Part1TilePacketParameters,p:crate::specs::Part1TilePacketProgress,
 )
     ensures
         crate::specs::part1_tile_boundary(params,p).1.remaining_packets==p.remaining_packets,
@@ -2496,7 +2529,7 @@ pub proof fn late_packed_offset_overflow_reports_new_tile_offset_without_later_c
 }
 
 pub proof fn actual_tile_work_guard_follows_the_real_iterator_transition(
-    params:crate::specs::Part1TilePacketParameters<'_>,state:crate::specs::Part1TilePacketExecution,
+    params:crate::specs::Part1TilePacketParameters,state:crate::specs::Part1TilePacketExecution,
 )
     ensures match crate::specs::part1_progression_iterator_next(state.progress.iterator).0 {
         Ok(Some(_))=>state.progress.remaining_packets==0 ==>
@@ -2512,7 +2545,7 @@ pub proof fn actual_tile_work_guard_follows_the_real_iterator_transition(
 }
 
 pub proof fn actual_missing_packed_storage_rejects_after_complete_layer_writes(
-    params:crate::specs::Part1TilePacketParameters<'_>,part:crate::codestream::TilePartPayload<'_>,
+    params:crate::specs::Part1TilePacketParameters,part:crate::codestream::TilePartPayload<'_>,
     p:crate::specs::Part1TilePacketProgress,coordinate:crate::packet::PacketCoordinate,
     expected:Option<u32>,precinct:crate::specs::Part1PacketPrecinctState,
 )

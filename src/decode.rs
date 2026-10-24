@@ -1527,7 +1527,7 @@ fn plan_progression_tile_at_selected(
                     (allow_multiple_ht_sets, ht_magnitude_bound, force_high_throughput), limits,
                 ),
                 goal == crate::specs::part2_tile_plan_components(
-                    size, coding_style, coding_styles, quantizations, roi_shifts, (tile_index, discard_levels),
+                    size, coding_style, coding_styles, codestream::quantization_owner_view(quantizations), roi_shifts, (tile_index, discard_levels),
                     (allow_multiple_ht_sets, ht_magnitude_bound, force_high_throughput), limits, original_grid,
                     component, tile_plan_buffers_view(precincts@, components@, planned_code_blocks),
                 ),
@@ -5294,12 +5294,12 @@ fn validate_selection(
 #[cfg(verus_keep_ghost)]
 verus! {
     pub closed spec fn tile_decode_metadata_view<'a, 'data>(value: &TileDecodeMetadata<'a, 'data>)
-        -> crate::specs::Part2TileDecodeMetadata<'data> {
-        crate::specs::Part2TileDecodeMetadata { first: *value.first, standard: value.standard, resolution_counts: value.resolution_counts@ }
+        -> crate::specs::Part2TileDecodeMetadata {
+        crate::specs::Part2TileDecodeMetadata { first: codestream::tile_part_owned_view(value.first), standard: value.standard, resolution_counts: value.resolution_counts@ }
     }
 
     pub open spec fn tile_decode_metadata_outcome<'a, 'data>(result: Result<TileDecodeMetadata<'a, 'data>, DecodeError>)
-        -> Result<crate::specs::Part2TileDecodeMetadata<'data>, DecodeError> {
+        -> Result<crate::specs::Part2TileDecodeMetadata, DecodeError> {
         match result { Err(error) => Err(error), Ok(value) => Ok(tile_decode_metadata_view(&value)) }
     }
 }
@@ -5426,6 +5426,8 @@ pub(crate) fn prepare_tile_decode_metadata<'a, 'data>(
     components: u16,
     discard: Option<u8>,
 ) -> Result<TileDecodeMetadata<'a, 'data>, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(codestream::tile_part_owned_view); }
     let first = match parts.first() {
         Some(first) => first,
         None => {
@@ -5447,6 +5449,11 @@ pub(crate) fn prepare_tile_decode_metadata<'a, 'data>(
             part.multiple_component_transform.as_ref(),
             first.multiple_component_transform.as_ref(),
         ) {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(codestream::tile_parts_owned_view(parts@)[index as int].multiple_component_transform
+                    != codestream::tile_parts_owned_view(parts@)[0].multiple_component_transform);
+            }
             return Err(DecodeError::MalformedInput {
                 offset: 0,
                 kind: MalformedKind::InvalidTransform,
@@ -5459,6 +5466,8 @@ pub(crate) fn prepare_tile_decode_metadata<'a, 'data>(
         WaveletTransform::Irreversible9x7 => true,
         WaveletTransform::Reversible5x3 => false,
         WaveletTransform::Arbitrary(index) => {
+            #[cfg(verus_keep_ghost)]
+            proof! { codestream::owned_extensions_registry_known(&first.part2_extensions); }
             let kernel = match first.part2_extensions.arbitrary_kernel(index) {
                 Some(kernel) => kernel,
                 None => {
@@ -5518,7 +5527,7 @@ pub(crate) fn decode_tile_parts_at(
     mct_work: u64,
 ) -> Result<DecodedLayoutTile, DecodeError> {
     #[cfg(verus_keep_ghost)]
-    proof! { codestream::selection_geometry_known_fields(size); }
+    proof! { codestream::selection_geometry_known_fields(size); reveal(codestream::tile_part_owned_view); }
     let metadata = prepare_tile_decode_metadata(parts, size.components, discard)?;
     #[cfg(verus_keep_ghost)]
     proof! { reveal(tile_decode_metadata_view); }
@@ -6260,6 +6269,11 @@ pub(crate) fn decode_planned_tile_components(
     prepared: Vec<PreparedTileComponent>,
     mct_work: u64,
 ) -> Result<DecodedTileComponents, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(codestream::tile_part_owned_view);
+        codestream::owned_extensions_registry_known(&first.part2_extensions);
+    }
     #[cfg(verus_keep_ghost)]
     proof_decl! {
         let ghost before = progression_plan_view(&plan);
@@ -8739,6 +8753,106 @@ mod tests {
             }
         }
         assert_eq!(cases, 38_880);
+        assert!(successes > 10 && nonzero > 0);
+    }
+
+    #[test]
+    fn actual_codec_output_is_identical_for_source_parts_and_independent_complete_owned_copies() {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            component_override_codestream(),
+            add_single_component_mct(prepared_codestream(1, 1, 1, &qcd, &[0, 0, 0]), 2, 3),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED.with_maximum_packets(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(0)
+                .unwrap(),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        let mut nonzero = 0;
+        for bytes in fixtures {
+            let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+            let copied = collect_tile_parts(&layout.tile_parts, 0).unwrap();
+            assert_eq!(copied, layout.tile_parts);
+            for discard in [None, Some(0), Some(1), Some(2), Some(u8::MAX)] {
+                for limit in &limits {
+                    for initial in [(0, 0, 0), (1, 2, 3), (u64::MAX, 0, 0), (0, 0, u64::MAX)] {
+                        for work in [0, 1, u64::MAX] {
+                            for prefix in [false, true] {
+                                let prepared = || {
+                                    if prefix {
+                                        vec![PreparedTileComponent {
+                                            component: u16::MAX,
+                                            x: u32::MAX,
+                                            y: 17,
+                                            width: 1,
+                                            height: 1,
+                                            fraction_bits: u8::MAX,
+                                            samples: vec![i64::MIN, i64::MAX],
+                                        }]
+                                    } else {
+                                        Vec::new()
+                                    }
+                                };
+                                let source = decode_tile_parts_at(
+                                    &layout.info.image_size,
+                                    0,
+                                    &layout.tile_parts,
+                                    &layout.info.profile,
+                                    discard,
+                                    limit,
+                                    prepared(),
+                                    initial,
+                                    work,
+                                );
+                                let cloned = decode_tile_parts_at(
+                                    &layout.info.image_size,
+                                    0,
+                                    &copied,
+                                    &layout.info.profile,
+                                    discard,
+                                    limit,
+                                    prepared(),
+                                    initial,
+                                    work,
+                                );
+                                match (source, cloned) {
+                                    (Err(source), Err(cloned)) => assert_eq!(source, cloned),
+                                    (Ok(source), Ok(cloned)) => {
+                                        assert_eq!(source.prepared, cloned.prepared);
+                                        assert_eq!(source.counters, cloned.counters);
+                                        assert_eq!(source.mct_work, cloned.mct_work);
+                                        successes += 1;
+                                        nonzero += usize::from(
+                                            source.prepared.iter().skip(usize::from(prefix)).any(
+                                                |component| {
+                                                    component
+                                                        .samples
+                                                        .iter()
+                                                        .any(|sample| *sample != 0)
+                                                },
+                                            ),
+                                        );
+                                    }
+                                    (Err(error), Ok(_)) | (Ok(_), Err(error)) => {
+                                        panic!("copy changed codec outcome: {error:?}")
+                                    }
+                                }
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1_440);
         assert!(successes > 10 && nonzero > 0);
     }
 

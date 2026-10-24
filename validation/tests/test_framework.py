@@ -842,6 +842,12 @@ class FrameworkTests(WorkingFiles):
 """
         self.assertIsNone(framework._coverage_function_header(source + inherent, "TilePartPayload::clone"))
 
+    def test_inventory_retains_raw_native_tile_contract_while_binding_owned_semantics(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-owned-payload-semantics"},
+            framework._RAW_TILE_DECODING_CONTRACTS, 1,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

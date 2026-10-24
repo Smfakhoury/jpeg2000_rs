@@ -22,8 +22,8 @@ pub struct Part1TilePacketCaps {
     pub input:u64,
 }
 
-pub struct Part1TilePacketParameters<'a> {
-    pub parts:Seq<crate::codestream::TilePartPayload<'a>>,
+pub struct Part1TilePacketParameters {
+    pub parts:Seq<super::Part2OwnedTilePart>,
     pub grid:Part1PacketGrid,
     pub input:Part1TilePacketPreparation,
     pub selection:Option<Seq<u8>>,
@@ -53,17 +53,17 @@ pub struct Part1TilePacketExecution {
     pub precincts:Seq<Part1PacketPrecinctState>,
 }
 
-pub open spec fn part1_tile_progress_initial(params:Part1TilePacketParameters<'_>)
+pub open spec fn part1_tile_progress_initial(params:Part1TilePacketParameters)
     -> Result<Part1TilePacketProgress,crate::DecodeError> {
     if params.parts.len()==0 {Err(ht_reader_error(crate::MalformedKind::InvalidTilePart))}
     else {
         let first=params.parts[0];
         match super::part1_progression_iterator_initial(params.grid,first.coding_style.progression_order,
-            crate::codestream::progression_changes_view(&first.progression_changes),params.caps.work) {
+            first.progression_changes,params.caps.work) {
             Err(error)=>Err(error),
             Ok(iterator)=>if params.grid.packet_count as nat>usize::MAX {Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))}
             else {Ok(Part1TilePacketProgress {
-                iterator,length_iterator:super::part1_packet_lengths_iter(crate::codestream::packet_lengths_view(&first.packet_lengths)),
+                iterator,length_iterator:super::part1_packet_lengths_iter(first.packet_lengths),
                 current_tile_part:0,length_tile_part:0,offset:0,packed_offset:0,packets:0,present_packets:0,
                 contributions:0,segments:0,passes:0,packet_header_bytes:0,packet_body_bytes:0,
                 seen:Seq::new(params.grid.packet_count as nat,|i:int|false),remaining_packets:params.caps.work,
@@ -73,11 +73,15 @@ pub open spec fn part1_tile_progress_initial(params:Part1TilePacketParameters<'_
 }
 
 pub open spec fn part1_tile_length_present(part:crate::codestream::TilePartPayload<'_>)->bool {
-    !matches!(crate::codestream::packet_lengths_view(&part.packet_lengths).source,super::Part1PacketLengthSource::None)
+    part1_tile_length_present_owned(crate::codestream::tile_part_owned_view(&part))
+}
+
+pub open spec fn part1_tile_length_present_owned(part:super::Part2OwnedTilePart)->bool {
+    !matches!(part.packet_lengths.source,super::Part1PacketLengthSource::None)
 }
 
 #[verifier::opaque]
-pub open spec fn part1_tile_boundary_scan(params:Part1TilePacketParameters<'_>,p:Part1TilePacketProgress)
+pub open spec fn part1_tile_boundary_scan(params:Part1TilePacketParameters,p:Part1TilePacketProgress)
     -> (Result<(),crate::DecodeError>,Part1TilePacketProgress)
     decreases params.parts.len()-p.current_tile_part as nat,
 {
@@ -86,11 +90,11 @@ pub open spec fn part1_tile_boundary_scan(params:Part1TilePacketParameters<'_>,p
     else {
         let part=params.parts[p.current_tile_part as int];
         let packed=params.input.packed[p.current_tile_part as int];
-        if p.offset<part.data@.len() || p.packed_offset<packed.len() {(Ok(()),p)}
-        else if p.offset!=part.data@.len() || p.packed_offset!=packed.len() {
+        if p.offset<part.data.len() || p.packed_offset<packed.len() {(Ok(()),p)}
+        else if p.offset!=part.data.len() || p.packed_offset!=packed.len() {
             (Err(super::part1_packet_reader_error(p.offset,crate::MalformedKind::ArithmeticOverflow)),p)
         } else {
-            let length=if part1_tile_length_present(part) && p.length_tile_part==p.current_tile_part {
+            let length=if part1_tile_length_present_owned(part) && p.length_tile_part==p.current_tile_part {
                 let next=super::part1_packet_length_next(p.length_iterator);
                 let p=Part1TilePacketProgress {length_iterator:next.1,..p};
                 match next.0 {
@@ -118,7 +122,7 @@ pub open spec fn part1_tile_boundary_frame(original:Part1TilePacketProgress,upda
     }
 }
 
-pub open spec fn part1_tile_boundary(params:Part1TilePacketParameters<'_>,p:Part1TilePacketProgress)
+pub open spec fn part1_tile_boundary(params:Part1TilePacketParameters,p:Part1TilePacketProgress)
     -> (Result<(bool,bool),crate::DecodeError>,Part1TilePacketProgress) {
     let previous=p.current_tile_part;
     let raw=part1_tile_boundary_scan(params,p);
@@ -130,7 +134,7 @@ pub open spec fn part1_tile_boundary(params:Part1TilePacketParameters<'_>,p:Part
         else {
             let part=params.parts[scanned.1.current_tile_part as int];
             match super::part1_progression_iterator_initial(params.grid,part.coding_style.progression_order,
-                crate::codestream::progression_changes_view(&part.progression_changes),params.caps.work) {
+                part.progression_changes,params.caps.work) {
                 Err(error)=>(Err(error),scanned.1),
                 Ok(iterator)=>(Ok((true,true)),Part1TilePacketProgress {iterator,..scanned.1}),
             }
@@ -141,11 +145,17 @@ pub open spec fn part1_tile_boundary(params:Part1TilePacketParameters<'_>,p:Part
 pub open spec fn part1_tile_packet_length(
     part:crate::codestream::TilePartPayload<'_>,p:Part1TilePacketProgress,
 ) -> (Result<Option<u32>,crate::DecodeError>,Part1TilePacketProgress) {
+    part1_tile_packet_length_owned(crate::codestream::tile_part_owned_view(&part),p)
+}
+
+pub open spec fn part1_tile_packet_length_owned(
+    part:super::Part2OwnedTilePart,p:Part1TilePacketProgress,
+) -> (Result<Option<u32>,crate::DecodeError>,Part1TilePacketProgress) {
     let p=if p.length_tile_part!=p.current_tile_part {Part1TilePacketProgress {
-        length_iterator:super::part1_packet_lengths_iter(crate::codestream::packet_lengths_view(&part.packet_lengths)),
+        length_iterator:super::part1_packet_lengths_iter(part.packet_lengths),
         length_tile_part:p.current_tile_part,..p
     }}else{p};
-    if !part1_tile_length_present(part) {(Ok(None),p)}
+    if !part1_tile_length_present_owned(part) {(Ok(None),p)}
     else {
         let next=super::part1_packet_length_next(p.length_iterator);
         let p=Part1TilePacketProgress {length_iterator:next.1,..p};
@@ -174,7 +184,14 @@ pub open spec fn part1_precinct_context_layer(state:Part1PacketPrecinctState,lay
 }
 
 pub open spec fn part1_tile_precinct_packet(
-    params:Part1TilePacketParameters<'_>,part:crate::codestream::TilePartPayload<'_>,p:Part1TilePacketProgress,
+    params:Part1TilePacketParameters,part:crate::codestream::TilePartPayload<'_>,p:Part1TilePacketProgress,
+    coordinate:crate::packet::PacketCoordinate,expected:Option<u32>,precinct:Part1PacketPrecinctState,
+) -> super::Part1PrecinctPayloadResult {
+    part1_tile_precinct_packet_owned(params,crate::codestream::tile_part_owned_view(&part),p,coordinate,expected,precinct)
+}
+
+pub open spec fn part1_tile_precinct_packet_owned(
+    params:Part1TilePacketParameters,part:super::Part2OwnedTilePart,p:Part1TilePacketProgress,
     coordinate:crate::packet::PacketCoordinate,expected:Option<u32>,precinct:Part1PacketPrecinctState,
 ) -> super::Part1PrecinctPayloadResult {
     let precinct=part1_precinct_context_layer(precinct,coordinate.layer);
@@ -183,7 +200,7 @@ pub open spec fn part1_tile_precinct_packet(
         (Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle)),precinct)
     }else{
         let decode=match params.selection {None=>true,Some(counts)=>coordinate.resolution<counts[coordinate.component as int]};
-        super::part1_precinct_packet(precinct,&part,p.offset,params.input.packed[p.current_tile_part as int],
+        super::part1_precinct_packet_owned(precinct,part,p.offset,params.input.packed[p.current_tile_part as int],
             p.packed_offset,expected,(p.packets & 65535u64) as u16,decode,params.caps.blocks,params.caps.header,
             params.caps.passes,params.caps.bytes,params.caps.input,params.caps.work)
     }
@@ -250,13 +267,13 @@ pub open spec fn part1_tile_account(
 }
 
 pub open spec fn part1_tile_packet(
-    params:Part1TilePacketParameters<'_>,s:Part1TilePacketExecution,coordinate:crate::packet::PacketCoordinate,
+    params:Part1TilePacketParameters,s:Part1TilePacketExecution,coordinate:crate::packet::PacketCoordinate,
 ) -> (Result<(),crate::DecodeError>,Part1TilePacketExecution) {
     if s.progress.current_tile_part>=params.parts.len() {
         (Err(crate::DecodeError::MalformedInput {offset:params.input.payload_bytes,kind:crate::MalformedKind::Truncated}),s)
     }else{
         let part=params.parts[s.progress.current_tile_part as int];
-        let length=part1_tile_packet_length(part,s.progress);
+        let length=part1_tile_packet_length_owned(part,s.progress);
         let s=Part1TilePacketExecution {progress:length.1,..s};
         match length.0 {
             Err(error)=>(Err(error),s),
@@ -270,7 +287,7 @@ pub open spec fn part1_tile_packet(
                     else if s.progress.seen[seen as int] {(Ok(()),s)}
                     else if index>=s.precincts.len() {(Err(super::part1_packet_reader_error(s.progress.offset,crate::MalformedKind::InvalidPacketHeader)),s)}
                     else{
-                            let packet=part1_tile_precinct_packet(params,part,s.progress,coordinate,expected,s.precincts[index as int]);
+                            let packet=part1_tile_precinct_packet_owned(params,part,s.progress,coordinate,expected,s.precincts[index as int]);
                             let s=Part1TilePacketExecution {precincts:s.precincts.update(index as int,packet.1),..s};
                             match packet.0 {
                                 Err(error)=>(Err(error),s),
@@ -287,7 +304,7 @@ pub open spec fn part1_tile_packet(
 }
 
 pub open spec fn part1_tile_iteration(
-    params:Part1TilePacketParameters<'_>,s:Part1TilePacketExecution,coordinate:crate::packet::PacketCoordinate,
+    params:Part1TilePacketParameters,s:Part1TilePacketExecution,coordinate:crate::packet::PacketCoordinate,
 ) -> (Result<bool,crate::DecodeError>,Part1TilePacketExecution) {
     if s.progress.remaining_packets==0 {(Err(ht_reader_error(crate::MalformedKind::InvalidProgressionOrderChange)),s)}
     else {
@@ -308,7 +325,7 @@ pub open spec fn part1_tile_iteration(
 }
 
 #[verifier::opaque]
-pub open spec fn part1_tile_run(params:Part1TilePacketParameters<'_>,s:Part1TilePacketExecution)
+pub open spec fn part1_tile_run(params:Part1TilePacketParameters,s:Part1TilePacketExecution)
     -> (Result<(),crate::DecodeError>,Part1TilePacketExecution)
     decreases s.progress.remaining_packets,
 {
@@ -329,7 +346,7 @@ pub open spec fn part1_tile_run(params:Part1TilePacketParameters<'_>,s:Part1Tile
 }
 
 #[verifier::opaque]
-pub open spec fn part1_tile_finish_scan(params:Part1TilePacketParameters<'_>,p:Part1TilePacketProgress)
+pub open spec fn part1_tile_finish_scan(params:Part1TilePacketParameters,p:Part1TilePacketProgress)
     -> (Result<(),crate::DecodeError>,Part1TilePacketProgress)
     decreases params.parts.len()-p.current_tile_part as nat,
 {
@@ -338,10 +355,10 @@ pub open spec fn part1_tile_finish_scan(params:Part1TilePacketParameters<'_>,p:P
     else {
         let part=params.parts[p.current_tile_part as int];
         let packed=params.input.packed[p.current_tile_part as int];
-        if p.offset!=part.data@.len() || p.packed_offset!=packed.len() {
+        if p.offset!=part.data.len() || p.packed_offset!=packed.len() {
             (Err(super::part1_packet_reader_error(p.offset,crate::MalformedKind::TrailingData)),p)
         }else{
-            let length=if part1_tile_length_present(part) && p.length_tile_part==p.current_tile_part {
+            let length=if part1_tile_length_present_owned(part) && p.length_tile_part==p.current_tile_part {
                 let next=super::part1_packet_length_next(p.length_iterator);
                 let p=Part1TilePacketProgress {length_iterator:next.1,..p};
                 match next.0 {
@@ -361,7 +378,7 @@ pub open spec fn part1_tile_finish_scan(params:Part1TilePacketParameters<'_>,p:P
     }
 }
 
-pub open spec fn part1_tile_finish(params:Part1TilePacketParameters<'_>,p:Part1TilePacketProgress)
+pub open spec fn part1_tile_finish(params:Part1TilePacketParameters,p:Part1TilePacketProgress)
     -> (Result<crate::packet::TilePacketDecode,crate::DecodeError>,Part1TilePacketProgress) {
     let scan=part1_tile_finish_scan(params,p);
     match scan.0 {
@@ -382,7 +399,14 @@ pub open spec fn part1_progression_tile_decode(
     parts:Seq<crate::codestream::TilePartPayload<'_>>,grid:Part1PacketGrid,precincts:Seq<Part1PacketPrecinctState>,
     selection:Option<Seq<u8>>,limits:&crate::ResourceLimits,
 ) -> (Result<crate::packet::TilePacketDecode,crate::DecodeError>,Seq<Part1PacketPrecinctState>) {
-    match part1_progression_tile_input(parts,grid,precincts,selection,limits) {
+    part1_progression_tile_decode_owned(crate::codestream::tile_parts_owned_view(parts),grid,precincts,selection,limits)
+}
+
+pub open spec fn part1_progression_tile_decode_owned(
+    parts:Seq<super::Part2OwnedTilePart>,grid:Part1PacketGrid,precincts:Seq<Part1PacketPrecinctState>,
+    selection:Option<Seq<u8>>,limits:&crate::ResourceLimits,
+) -> (Result<crate::packet::TilePacketDecode,crate::DecodeError>,Seq<Part1PacketPrecinctState>) {
+    match part1_progression_tile_input_owned(parts,grid,precincts,selection,limits) {
         Err(error)=>(Err(error),precincts),
         Ok(input)=>{
             let params=Part1TilePacketParameters {parts,grid,input,selection,caps:Part1TilePacketCaps {
@@ -404,9 +428,15 @@ pub open spec fn part1_progression_tile_decode(
     }
 }
 
-#[verifier::opaque]
 pub open spec fn part1_progression_resolution_levels(
     first:&crate::codestream::TilePartPayload<'_>,components:u16,index:u16,maximum:u8,
+) -> Result<u8,crate::DecodeError> {
+    part1_progression_resolution_levels_owned(crate::codestream::tile_part_owned_view(first),components,index,maximum)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_progression_resolution_levels_owned(
+    first:super::Part2OwnedTilePart,components:u16,index:u16,maximum:u8,
 ) -> Result<u8,crate::DecodeError>
     decreases if index>=components {0nat} else {(components-index) as nat},
 {
@@ -418,7 +448,7 @@ pub open spec fn part1_progression_resolution_levels(
                 Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
             } else {
                 let count=(style.decomposition_levels+1) as u8;
-                part1_progression_resolution_levels(first,components,(index+1) as u16,if count>maximum {count}else{maximum})
+                part1_progression_resolution_levels_owned(first,components,(index+1) as u16,if count>maximum {count}else{maximum})
             },
         }
     }
@@ -441,12 +471,19 @@ pub open spec fn part1_progression_layout(
     parts:Seq<crate::codestream::TilePartPayload<'_>>,grid:Part1PacketGrid,
     selection:Option<Seq<u8>>,limits:&crate::ResourceLimits,
 ) -> Result<(),crate::DecodeError> {
+    part1_progression_layout_owned(crate::codestream::tile_parts_owned_view(parts),grid,selection,limits)
+}
+
+pub open spec fn part1_progression_layout_owned(
+    parts:Seq<super::Part2OwnedTilePart>,grid:Part1PacketGrid,
+    selection:Option<Seq<u8>>,limits:&crate::ResourceLimits,
+) -> Result<(),crate::DecodeError> {
     if parts.len()==0 {Err(ht_reader_error(crate::MalformedKind::InvalidTilePart))}
     else if parts.len() as u64>crate::limits::resource_tile_part_limit(limits) as u64 {
         Err(super::part1_packet_reader_limit(crate::Resource::TileParts,
             crate::limits::resource_tile_part_limit(limits) as u64,parts.len() as u64))
     } else {
-        match part1_progression_resolution_levels(&parts[0],grid.components,0,0) {
+        match part1_progression_resolution_levels_owned(parts[0],grid.components,0,0) {
             Err(error)=>Err(error),
             Ok(maximum)=>if parts[0].coding_style.layers!=grid.layers || maximum!=grid.resolutions {
                 Err(ht_reader_error(crate::MalformedKind::InvalidCodingStyle))
@@ -462,9 +499,15 @@ pub open spec fn part1_progression_layout(
     }
 }
 
-#[verifier::opaque]
 pub open spec fn part1_progression_payloads(
     parts:Seq<crate::codestream::TilePartPayload<'_>>,s:Part1TilePacketPreparation,maximum_header:u64,
+) -> Result<Part1TilePacketPreparation,crate::DecodeError> {
+    part1_progression_payloads_owned(crate::codestream::tile_parts_owned_view(parts),s,maximum_header)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_progression_payloads_owned(
+    parts:Seq<super::Part2OwnedTilePart>,s:Part1TilePacketPreparation,maximum_header:u64,
 ) -> Result<Part1TilePacketPreparation,crate::DecodeError>
     decreases parts.len()-s.index as nat,
 {
@@ -474,11 +517,11 @@ pub open spec fn part1_progression_payloads(
         if s.index>u8::MAX || part.tile_index!=s.tile_index || part.tile_part_index!=s.index
             || (part.tile_part_count!=0 && part.tile_part_count as nat!=parts.len()) {
             Err(ht_reader_error(crate::MalformedKind::InvalidTilePart))
-        } else if s.payload_bytes as nat+(part.data@.len() as u64) as nat>u64::MAX {
+        } else if s.payload_bytes as nat+(part.data.len() as u64) as nat>u64::MAX {
             Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
         } else {
             match super::part1_packed_header_reassembly(
-                crate::codestream::packed_packet_headers_view(&part.packed_packet_headers),maximum_header) {
+                part.packed_packet_headers,maximum_header) {
                 Err(error)=>Err(error),
                 Ok(packed)=>if s.packed_payload_bytes as nat+(packed.len() as u64) as nat>u64::MAX {
                     Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
@@ -486,14 +529,14 @@ pub open spec fn part1_progression_payloads(
                     Err(super::part1_packet_reader_limit(crate::Resource::PacketHeaderBytes,
                         maximum_header,(s.packed_payload_bytes+packed.len() as u64) as u64))
                 } else {
-                    let lengths=crate::codestream::packet_lengths_view(&part.packet_lengths);
+                    let lengths=part.packet_lengths;
                     let present=!matches!(lengths.source,super::Part1PacketLengthSource::None);
                     if present && s.declared_packets as nat+lengths.packet_count as nat>u64::MAX {
                         Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))
                     } else if s.index==usize::MAX {Err(ht_reader_error(crate::MalformedKind::ArithmeticOverflow))}
-                    else {part1_progression_payloads(parts,Part1TilePacketPreparation {
+                    else {part1_progression_payloads_owned(parts,Part1TilePacketPreparation {
                         tile_index:s.tile_index,index:(s.index+1) as usize,
-                        payload_bytes:(s.payload_bytes+part.data@.len() as u64) as u64,
+                        payload_bytes:(s.payload_bytes+part.data.len() as u64) as u64,
                         packed_payload_bytes:(s.packed_payload_bytes+packed.len() as u64) as u64,
                         declared_packets:if present {(s.declared_packets+lengths.packet_count) as u64}else{s.declared_packets},
                         all_lengths:s.all_lengths&&present,packed:s.packed.push(packed),
@@ -537,9 +580,16 @@ pub open spec fn part1_progression_tile_input(
     parts:Seq<crate::codestream::TilePartPayload<'_>>,grid:Part1PacketGrid,
     precincts:Seq<Part1PacketPrecinctState>,selection:Option<Seq<u8>>,limits:&crate::ResourceLimits,
 ) -> Result<Part1TilePacketPreparation,crate::DecodeError> {
-    match part1_progression_layout(parts,grid,selection,limits) {
+    part1_progression_tile_input_owned(crate::codestream::tile_parts_owned_view(parts),grid,precincts,selection,limits)
+}
+
+pub open spec fn part1_progression_tile_input_owned(
+    parts:Seq<super::Part2OwnedTilePart>,grid:Part1PacketGrid,
+    precincts:Seq<Part1PacketPrecinctState>,selection:Option<Seq<u8>>,limits:&crate::ResourceLimits,
+) -> Result<Part1TilePacketPreparation,crate::DecodeError> {
+    match part1_progression_layout_owned(parts,grid,selection,limits) {
         Err(error)=>Err(error),
-        Ok(())=>match part1_progression_payloads(parts,Part1TilePacketPreparation {
+        Ok(())=>match part1_progression_payloads_owned(parts,Part1TilePacketPreparation {
             tile_index:parts[0].tile_index,index:0,payload_bytes:0,packed_payload_bytes:0,
             declared_packets:0,all_lengths:true,packed:Seq::empty(),
         },crate::limits::resource_packet_header_byte_limit(limits)) {

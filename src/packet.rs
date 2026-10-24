@@ -2410,7 +2410,7 @@ fn progression_resolution_levels(
     let mut maximum = 0_u8;
     let mut component = 0_u16;
     #[cfg(verus_keep_ghost)]
-    proof! {reveal(crate::specs::part1_progression_resolution_levels);}
+    proof! {reveal(crate::specs::part1_progression_resolution_levels);reveal(crate::specs::part1_progression_resolution_levels_owned);}
     #[cfg_attr(verus_keep_ghost,verus_spec(
         invariant component<=components,
             crate::specs::part1_progression_resolution_levels(first,components,0,0)
@@ -2419,7 +2419,7 @@ fn progression_resolution_levels(
     ))]
     while component < components {
         #[cfg(verus_keep_ghost)]
-        proof! {reveal(crate::specs::part1_progression_resolution_levels);}
+        proof! {reveal(crate::specs::part1_progression_resolution_levels);reveal(crate::specs::part1_progression_resolution_levels_owned);}
         let style = first.component_coding_styles.style(component)?;
         let levels = match style.decomposition_levels.checked_add(1) {
             Some(levels) => levels,
@@ -2432,7 +2432,7 @@ fn progression_resolution_levels(
         };
     }
     #[cfg(verus_keep_ghost)]
-    proof! {reveal(crate::specs::part1_progression_resolution_levels);}
+    proof! {reveal(crate::specs::part1_progression_resolution_levels);reveal(crate::specs::part1_progression_resolution_levels_owned);}
     Ok(maximum)
 }
 
@@ -2561,6 +2561,7 @@ fn prepare_progression_payloads(
     proof! {
         assert(input.packed@.map_values(|bytes:Vec<u8>|bytes@) =~= Seq::<Seq<u8>>::empty());
         reveal(crate::specs::part1_progression_payloads);
+        reveal(crate::specs::part1_progression_payloads_owned);
     }
     #[cfg_attr(verus_keep_ghost,verus_spec(
         invariant input.index<=tile_parts@.len(),
@@ -2576,7 +2577,7 @@ fn prepare_progression_payloads(
         #[cfg(verus_keep_ghost)]
         proof_decl! {let ghost prior=progression_tile_preparation_view(&input);}
         #[cfg(verus_keep_ghost)]
-        proof! {reveal(crate::specs::part1_progression_payloads);}
+        proof! {reveal(crate::specs::part1_progression_payloads);reveal(crate::specs::part1_progression_payloads_owned);}
         let part = match tile_parts.get(input.index) {
             Some(part) => part,
             None => return Err(packet_reader_error(0, MalformedKind::InvalidTilePart)),
@@ -2633,7 +2634,7 @@ fn prepare_progression_payloads(
         };
     }
     #[cfg(verus_keep_ghost)]
-    proof! {reveal(crate::specs::part1_progression_payloads);}
+    proof! {reveal(crate::specs::part1_progression_payloads);reveal(crate::specs::part1_progression_payloads_owned);}
     Ok(input)
 }
 
@@ -2751,9 +2752,9 @@ struct ProgressionTileProgress<'a> {
 #[cfg(verus_keep_ghost)]
 verus! {
     pub closed spec fn progression_tile_parameters_view<'a,'data>(value:&ProgressionTileParameters<'a,'data>)
-        ->crate::specs::Part1TilePacketParameters<'data> {
+        ->crate::specs::Part1TilePacketParameters {
         crate::specs::Part1TilePacketParameters {
-            parts:value.tile_parts@,grid:packet_grid_view(value.grid),input:progression_tile_preparation_view(value.input),
+            parts:crate::codestream::tile_parts_owned_view(value.tile_parts@),grid:packet_grid_view(value.grid),input:progression_tile_preparation_view(value.input),
             selection:packet_selection_view(value.selection),
             caps:crate::specs::Part1TilePacketCaps {
                 work:crate::limits::resource_work_limit(value.limits),

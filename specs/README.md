@@ -1659,3 +1659,10 @@ MCT/quantization/progression/header/flag/data field for actual Clone refinement.
 `part2_collect_tile_parts` derives the ordered source-filtered observations
 through the actual clone-before-filter suffix. Native bodies preserve prior
 field and allocation order, with no assumed clone or successful outcome bank.
+Complete source-derived `Part2OwnedTilePart` observations are the mathematical
+tile-codec operands. Legacy native-payload entries are thin projection wrappers
+over the same owned-data algorithm; they do not introduce normalized input,
+copy/result witnesses or a second decoder. Actual cloned inputs with equal
+complete data have proved equal metadata, byte-execution and raw-tile outcomes,
+without equating opaque heap allocations. Native API bindings and actual
+Rust decoding behavior remain unchanged.

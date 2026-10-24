@@ -2167,7 +2167,14 @@ pub open spec fn part2_component_subbands(
 pub open spec fn part2_component_quantization(values: &crate::codestream::ComponentQuantizations, component: u16)
     -> Result<crate::codestream::Quantization, crate::DecodeError>
 {
-    crate::codestream::component_quantization_result(values, component)
+    part2_component_quantization_owned(crate::codestream::quantization_owner_view(values), component)
+}
+
+pub open spec fn part2_component_quantization_owned(values: (u16, Seq<crate::codestream::Quantization>), component: u16)
+    -> Result<crate::codestream::Quantization, crate::DecodeError> {
+    if component >= values.0 || component as nat >= values.1.len() {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidQuantization })
+    } else { Ok(values.1[component as int]) }
 }
 
 pub open spec fn part2_roi_shift(shifts: Seq<u8>, component: u16) -> Result<u8, crate::DecodeError> {
@@ -2193,13 +2200,22 @@ pub open spec fn part2_component_plan_metadata(
     quantizations: &crate::codestream::ComponentQuantizations, roi: &crate::codestream::RoiShifts,
     component: u16, selection: (u16, u8), force: bool,
 ) -> Result<Part2ComponentPlanMetadata, crate::DecodeError> {
+    part2_component_plan_metadata_owned(size, styles, crate::codestream::quantization_owner_view(quantizations),
+        roi, component, selection, force)
+}
+
+pub open spec fn part2_component_plan_metadata_owned(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    quantizations: (u16, Seq<crate::codestream::Quantization>), roi: &crate::codestream::RoiShifts,
+    component: u16, selection: (u16, u8), force: bool,
+) -> Result<Part2ComponentPlanMetadata, crate::DecodeError> {
     match crate::codestream::component_coding_style_result(styles, component) {
         Err(error) => Err(error),
         Ok(style) => if selection.1 > style.decomposition_levels {
             Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })
         } else {
             let output = (style.decomposition_levels - selection.1) as u8;
-            match part2_component_quantization(quantizations, component) {
+            match part2_component_quantization_owned(quantizations, component) {
                 Err(error) => Err(error),
                 Ok(quantization) => match crate::codestream::coding_style_tier1_result(style) {
                     Err(error) => Err(error),
@@ -8461,34 +8477,48 @@ pub open spec fn part2_tile_component_resolutions(
     }
 }
 
-pub struct Part2TileDecodeMetadata<'data> {
-    pub first: crate::codestream::TilePartPayload<'data>,
+pub struct Part2TileDecodeMetadata {
+    pub first: Part2OwnedTilePart,
     pub standard: (bool, bool),
     pub resolution_counts: Seq<u8>,
 }
 
 pub open spec fn part2_tile_decode_standard(first: &crate::codestream::TilePartPayload<'_>) -> Result<(bool, bool), crate::DecodeError> {
+    part2_tile_decode_standard_owned(crate::codestream::tile_part_owned_view(first))
+}
+
+pub open spec fn part2_owned_kernel_registry(extensions: Part2OwnedExtensions) -> Seq<(u8, Part2RawKernel)> {
+    extensions.kernels.map_values(|entry: (u8, u16, Part2RawKernel)| (entry.0, entry.2))
+}
+
+pub open spec fn part2_tile_decode_standard_owned(first: Part2OwnedTilePart) -> Result<(bool, bool), crate::DecodeError> {
     let flag = first.coding_style.multiple_component_transform;
     match first.coding_style.transform {
         crate::codestream::WaveletTransform::Irreversible9x7 => Ok((flag, true)),
         crate::codestream::WaveletTransform::Reversible5x3 => Ok((flag, false)),
         crate::codestream::WaveletTransform::Arbitrary(index) => match part2_kernel_registry_lookup(
-            crate::codestream::part2_kernel_registry(&first.part2_extensions), index) {
+            part2_owned_kernel_registry(first.part2_extensions), index) {
             None => Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::MissingRequiredStructure }),
             Some(kernel) => Ok((flag, !kernel.0)),
         },
     }
 }
 
-pub open spec fn part2_tile_decode_metadata<'data>(
-    parts: Seq<crate::codestream::TilePartPayload<'data>>, components: u16, discard: Option<u8>,
-) -> Result<Part2TileDecodeMetadata<'data>, crate::DecodeError> {
+pub open spec fn part2_tile_decode_metadata(
+    parts: Seq<crate::codestream::TilePartPayload<'_>>, components: u16, discard: Option<u8>,
+) -> Result<Part2TileDecodeMetadata, crate::DecodeError> {
+    part2_tile_decode_metadata_owned(crate::codestream::tile_parts_owned_view(parts), components, discard)
+}
+
+pub open spec fn part2_tile_decode_metadata_owned(
+    parts: Seq<Part2OwnedTilePart>, components: u16, discard: Option<u8>,
+) -> Result<Part2TileDecodeMetadata, crate::DecodeError> {
     if parts.len() == 0 {
         Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidTilePart })
-    } else if !(forall |i: int| 0 <= i < parts.len() ==> #[trigger] crate::decode::tile_part_mct_view(&parts[i]) == crate::decode::tile_part_mct_view(&parts[0])) {
+    } else if !(forall |i: int| 0 <= i < parts.len() ==> #[trigger] parts[i].multiple_component_transform == parts[0].multiple_component_transform) {
         Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidTransform })
     } else {
-        match part2_tile_decode_standard(&parts[0]) {
+        match part2_tile_decode_standard_owned(parts[0]) {
             Err(error) => Err(error),
             Ok(standard) => match part2_tile_component_resolutions(&parts[0].component_coding_styles, parts[0].coding_style, components, discard) {
                 Err(error) => Err(error),
@@ -8618,21 +8648,21 @@ pub struct Part2OwnedExtensions {
 }
 
 pub struct Part2OwnedTilePart {
-    pub tile: u16,
-    pub part: u8,
-    pub count: u8,
+    pub tile_index: u16,
+    pub tile_part_index: u8,
+    pub tile_part_count: u8,
     pub coding_style: crate::codestream::CodingStyle,
     pub quantization: crate::codestream::Quantization,
-    pub coding_styles: crate::codestream::ComponentCodingStyles,
-    pub quantizations: (u16, Seq<crate::codestream::Quantization>),
-    pub roi: crate::codestream::RoiShifts,
-    pub progression: Seq<crate::codestream::ProgressionChange>,
-    pub mct: Option<Seq<Part2MctStage>>,
-    pub extensions: Part2OwnedExtensions,
-    pub lengths: Part1PacketLengths,
-    pub headers: Part1PackedHeaders,
-    pub functional_marker: bool,
-    pub roi_marker: bool,
+    pub component_coding_styles: crate::codestream::ComponentCodingStyles,
+    pub component_quantizations: (u16, Seq<crate::codestream::Quantization>),
+    pub roi_shifts: crate::codestream::RoiShifts,
+    pub progression_changes: Seq<crate::codestream::ProgressionChange>,
+    pub multiple_component_transform: Option<Seq<Part2MctStage>>,
+    pub part2_extensions: Part2OwnedExtensions,
+    pub packet_lengths: Part1PacketLengths,
+    pub packed_packet_headers: Part1PackedHeaders,
+    pub has_functional_header_marker: bool,
+    pub has_roi_marker: bool,
     pub data: Seq<u8>,
 }
 
@@ -8646,7 +8676,7 @@ pub open spec fn part2_collect_tile_parts_run(
 {
     if index >= parts.len() { before } else {
         let copied = part2_tile_part_copy(parts[index as int]);
-        part2_collect_tile_parts_run(parts, tile, index + 1, if copied.tile == tile { before.push(copied) } else { before })
+        part2_collect_tile_parts_run(parts, tile, index + 1, if copied.tile_index == tile { before.push(copied) } else { before })
     }
 }
 
@@ -8665,21 +8695,29 @@ pub open spec fn part2_decode_tile_parts_at(
     caps: Option<(u32, Seq<u16>)>, discard: Option<u8>, limits: &crate::ResourceLimits,
     prepared: Seq<Part1AssemblyTile>, initial: (u64, u64, u64), work: u64,
 ) -> Result<Part2DecodedLayoutTile, crate::DecodeError> {
-    match part2_tile_decode_metadata(parts, crate::codestream::image_size_component_count(size), discard) {
+    part2_decode_tile_parts_owned(size, tile, crate::codestream::tile_parts_owned_view(parts), caps, discard, limits, prepared, initial, work)
+}
+
+pub open spec fn part2_decode_tile_parts_owned(
+    size: &crate::codestream::ImageSize, tile: u16, parts: Seq<Part2OwnedTilePart>,
+    caps: Option<(u32, Seq<u16>)>, discard: Option<u8>, limits: &crate::ResourceLimits,
+    prepared: Seq<Part1AssemblyTile>, initial: (u64, u64, u64), work: u64,
+) -> Result<Part2DecodedLayoutTile, crate::DecodeError> {
+    match part2_tile_decode_metadata_owned(parts, crate::codestream::image_size_component_count(size), discard) {
         Err(error) => Err(error),
         Ok(metadata) => {
             let maximum = match discard { None => None, Some(_) => Some(metadata.resolution_counts) };
             let levels = match discard { None => 0u8, Some(levels) => levels };
-            match part2_progression_tile_plan(
+            match part2_progression_tile_plan_owned(
                 size, metadata.first.coding_style, &metadata.first.component_coding_styles,
-                &metadata.first.component_quantizations, &metadata.first.roi_shifts, (tile, levels),
+                metadata.first.component_quantizations, &metadata.first.roi_shifts, (tile, levels),
                 (part2_profile_multiple_sets(caps), part2_profile_magnitude_bound(caps), part2_profile_force_ht(caps)), limits,
             ) {
                 Err(error) => Err(error),
                 Ok(plan) => match part2_planned_tile_accounting(plan, maximum, initial, limits) {
                     Err(error) => Err(error),
-                    Ok(counters) => match part2_decode_planned_tile_components(
-                        plan, parts, &metadata.first, size, metadata.standard, maximum, limits, prepared, work,
+                    Ok(counters) => match part2_decode_planned_tile_components_owned(
+                        plan, parts, metadata.first, size, metadata.standard, maximum, limits, prepared, work,
                     ) {
                         Err(error) => Err(error),
                         Ok(decoded) => Ok(Part2DecodedLayoutTile {
@@ -8706,15 +8744,24 @@ pub open spec fn part2_decode_planned_tile_components(
     first: &crate::codestream::TilePartPayload<'_>, size: &crate::codestream::ImageSize, standard: (bool, bool),
     selection: Option<Seq<u8>>, limits: &crate::ResourceLimits, prepared: Seq<Part1AssemblyTile>, work: u64,
 ) -> Result<Part2DecodedTileComponents, crate::DecodeError> {
-    let execution = part1_progression_tile_decode(parts, plan.grid, plan.precincts, selection, limits);
+    part2_decode_planned_tile_components_owned(plan, crate::codestream::tile_parts_owned_view(parts),
+        crate::codestream::tile_part_owned_view(first), size, standard, selection, limits, prepared, work)
+}
+
+pub open spec fn part2_decode_planned_tile_components_owned(
+    plan: Part2ProgressionTilePlan, parts: Seq<Part2OwnedTilePart>, first: Part2OwnedTilePart,
+    size: &crate::codestream::ImageSize, standard: (bool, bool),
+    selection: Option<Seq<u8>>, limits: &crate::ResourceLimits, prepared: Seq<Part1AssemblyTile>, work: u64,
+) -> Result<Part2DecodedTileComponents, crate::DecodeError> {
+    let execution = part1_progression_tile_decode_owned(parts, plan.grid, plan.precincts, selection, limits);
     match execution.0 {
         Err(error) => Err(error),
         Ok(_) => {
             let reconstructed = part2_reconstruct_planned_tile(
                 prepared, plan.components, part2_precinct_decoder_planes(execution.1), first.component_coding_styles,
-                crate::codestream::part2_kernel_registry(&first.part2_extensions),
+                part2_owned_kernel_registry(first.part2_extensions),
                 crate::codestream::image_size_component_count(size), crate::codestream::image_size_component_infos(size),
-                crate::decode::tile_part_mct_view(first), standard, work,
+                first.multiple_component_transform, standard, work,
                 crate::limits::resource_work_limit(limits), crate::limits::resource_decoded_bytes_limit(limits),
             );
             match reconstructed.0 {
@@ -8743,7 +8790,7 @@ pub struct Part2ProgressionTilePlan {
 #[verifier::opaque]
 pub open spec fn part2_tile_plan_components(
     size: &crate::codestream::ImageSize, coding_style: crate::codestream::CodingStyle,
-    styles: &crate::codestream::ComponentCodingStyles, quantizations: &crate::codestream::ComponentQuantizations,
+    styles: &crate::codestream::ComponentCodingStyles, quantizations: (u16, Seq<crate::codestream::Quantization>),
     roi: &crate::codestream::RoiShifts, selection: (u16, u8), policy: (bool, u8, bool),
     limits: &crate::ResourceLimits, grid: Part1PacketGrid, component: u16, before: Part2TilePlanBuffers,
 ) -> Result<Part2ProgressionTilePlan, crate::DecodeError>
@@ -8757,7 +8804,7 @@ pub open spec fn part2_tile_plan_components(
             precincts: before.precincts, components: before.components,
         })
     } else {
-        match part2_planned_component(size, styles, quantizations, roi, component, selection, policy,
+        match part2_planned_component_owned(size, styles, quantizations, roi, component, selection, policy,
             before.precincts, before.planned_code_blocks, limits) {
             Err(error) => Err(error),
             Ok(planned) => part2_tile_plan_components(size, coding_style, styles, quantizations, roi, selection, policy, limits, grid,
@@ -8772,6 +8819,15 @@ pub open spec fn part2_tile_plan_components(
 pub open spec fn part2_progression_tile_plan(
     size: &crate::codestream::ImageSize, coding_style: crate::codestream::CodingStyle,
     styles: &crate::codestream::ComponentCodingStyles, quantizations: &crate::codestream::ComponentQuantizations,
+    roi: &crate::codestream::RoiShifts, selection: (u16, u8), policy: (bool, u8, bool), limits: &crate::ResourceLimits,
+) -> Result<Part2ProgressionTilePlan, crate::DecodeError> {
+    part2_progression_tile_plan_owned(size, coding_style, styles, crate::codestream::quantization_owner_view(quantizations),
+        roi, selection, policy, limits)
+}
+
+pub open spec fn part2_progression_tile_plan_owned(
+    size: &crate::codestream::ImageSize, coding_style: crate::codestream::CodingStyle,
+    styles: &crate::codestream::ComponentCodingStyles, quantizations: (u16, Seq<crate::codestream::Quantization>),
     roi: &crate::codestream::RoiShifts, selection: (u16, u8), policy: (bool, u8, bool), limits: &crate::ResourceLimits,
 ) -> Result<Part2ProgressionTilePlan, crate::DecodeError> {
     match part2_selection_tile_bounds(crate::codestream::selection_geometry_view(size), selection.0) {
@@ -8865,7 +8921,17 @@ pub open spec fn part2_planned_component(
     component: u16, selection: (u16, u8), policy: (bool, u8, bool), precincts: Seq<Part1PacketPrecinctState>,
     total: u64, limits: &crate::ResourceLimits,
 ) -> Result<Part2PlannedComponent, crate::DecodeError> {
-    match part2_component_plan_metadata(size, styles, quantizations, roi, component, selection, policy.2) {
+    part2_planned_component_owned(size, styles, crate::codestream::quantization_owner_view(quantizations), roi,
+        component, selection, policy, precincts, total, limits)
+}
+
+pub open spec fn part2_planned_component_owned(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    quantizations: (u16, Seq<crate::codestream::Quantization>), roi: &crate::codestream::RoiShifts,
+    component: u16, selection: (u16, u8), policy: (bool, u8, bool), precincts: Seq<Part1PacketPrecinctState>,
+    total: u64, limits: &crate::ResourceLimits,
+) -> Result<Part2PlannedComponent, crate::DecodeError> {
+    match part2_component_plan_metadata_owned(size, styles, quantizations, roi, component, selection, policy.2) {
         Err(error) => Err(error),
         Ok(meta) => part2_component_plan_resolutions(size, component, selection.0, meta, policy, limits, 0,
             Part2ComponentPlanBuffers { precincts, placements: Seq::empty(), planned_code_blocks: total }),

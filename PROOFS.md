@@ -2684,3 +2684,25 @@ impls, instead of accepting a neighboring short-name function.
 buffers; 1,040 source-length/tile-pattern/query contexts retain duplicate order
 and shared immutable byte slices. Both actual layout paths use the sole body.
 Whole layout/raw-parser/file/F2/F4/final F8 joins remain separate.
+## Source-derived raw owned payload operands
+
+The mathematical tile-codec operands now use the complete raw payload
+observations already proved by actual cloning and collection. Native payload
+entry models remain thin projection wrappers over the same one mathematical
+algorithm, not a second decoder. Rust execution, public APIs, bytes, style/
+selection admission, algorithms, errors and every limit remain unchanged.
+
+Actual source projections feed metadata/kernel/quantization observation,
+planning, packet execution and reconstruction. New property proofs show
+complete metadata, F5 byte execution and raw-tile sample/counter/work results
+are identical for payloads with equal complete observations. These are
+copy-congruence lemmas whose premises are established by real clone/collector
+bodies, not additional codec validity or successful-outcome requirements.
+No opaque heap-allocation identity, copy witness bank or decoded results
+are assumed.
+
+All affected native producers and existing semantic field/frame properties
+are reverified. 1,440 ordinary Rust source-versus-independent-copy contexts
+compare all real samples/counters/work and first errors, including nonzero
+MCT samples. Existing exact native contract bindings remain.
+Whole outer layout/parser/file/F2/F4/final F8 and publication remain separate.
