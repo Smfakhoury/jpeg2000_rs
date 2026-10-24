@@ -792,6 +792,14 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_OUTPUT_SHAPE_CONTRACTS = {
+    ("src/decode.rs", "validate_part1_output_shape"): (
+        "part1_validate_typed_output_shape", r"\1", None,
+        r"input_bytes\s*,\s*layout\.tile_parts\.len\s*\(\s*\)\s*,\s*layout\.info\.image_size\.components\s*,\s*"
+        + _coverage_call("crate::image::typed_image_value_view", r"\*\s*image"),
+    ),
+}
+
 _LAYOUT_DECODING_CONTRACTS = {
     ("src/decode.rs", "decode_layout"): (
         "part2_decode_layout", _coverage_call("crate::image::decoded_image_outcome", r"\1"), None,
@@ -1844,6 +1852,7 @@ def validate_normative_coverage(
                 or _RAW_TILE_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_COLLECTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYOUT_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _OUTPUT_SHAPE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

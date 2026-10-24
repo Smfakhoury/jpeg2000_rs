@@ -4,6 +4,32 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-typed-output-shape-admission",
+      "topic": "Complete actual final typed output-shape Result from raw input length, actual layout counts and actual typed image. Preserve header-before-components admission, strict positive extents/counts, exact component count and row/area checks for signed or unsigned sequences without multiplying or inspecting sample values/descriptors/origins/definitions. All iteration/read/arithmetic bounds derive internally; no valid-image or successful-decoder premise. Both actual raw codestream entry points consume this sole body. Typed nonlinear finalization, byte parser, file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_codestream"},
+        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_validate_typed_output_shape"},
+        {"path": "specs/mod.rs", "symbol": "part1_validate_typed_output_components"},
+        {"path": "specs/mod.rs", "symbol": "part1_decode_output_shape_valid"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_output_shape_valid"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "validate_part1_output_shape"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "typed_image_value_view"},
+        {"path": "src/image.rs", "symbol": "typed_image_component_views"},
+        {"path": "src/refinement.rs", "symbol": "decode_output_shape_valid"},
+        {"path": "src/refinement.rs", "symbol": "component_output_shape_valid"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_typed_output_admission_checks_raw_header_and_every_signed_unsigned_plane"}
+      ]
+    },
+    {
       "id": "part2-complete-native-full-selected-layout-decoding",
       "topic": "Complete actual decode_layout and decode_layout_selected Result/all decoded image dimensions/origins/component descriptors/coordinates/fraction/sample fields from raw actual CodestreamLayout/request/limits. Actual Part2 admission then tile count/cap65536 or actual selection validation, genuine source-derived cloned tile collection, real raw per-tile metadata/policy/plan/account/byte/reconstruction from empty accumulation and real full/selected image assembly compose in source order. Complete raw owned observations carry clones without opaque allocation identity or copy/result witnesses; no normalized layout, supplied decoded components/plans/callbacks/banks or success/budget premises. All counters/work/selection/error/allocation policy and every loop bound/frame derive internally. Actual public codestream callers use sole bodies. Raw parser/typed final/file/F2/F4/final F8 and hosted/main/publication remain separate.",
       "implementation_refs": [

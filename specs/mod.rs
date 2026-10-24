@@ -12167,6 +12167,35 @@ pub open spec fn part1_component_output_shape_valid(
     width > 0 && height > 0 && part1_wavelet_sample_count(width, height, samples)
 }
 
+pub open spec fn part1_validate_typed_output_components(
+    components: Seq<Part1TypedComponentModel>, component: nat,
+) -> Result<(), crate::DecodeError>
+    decreases components.len() - component,
+{
+    if component >= components.len() { Ok(()) }
+    else {
+        let output = components[component as int];
+        let samples = match output.samples {
+            Part1TypedSampleSequence::Signed(values) => values.len(),
+            Part1TypedSampleSequence::Unsigned(values) => values.len(),
+        };
+        if !part1_component_output_shape_valid(output.width, output.height, samples as usize) {
+            Err(part1_block_placement_error(false))
+        } else { part1_validate_typed_output_components(components, component + 1) }
+    }
+}
+
+pub open spec fn part1_validate_typed_output_shape(
+    input_bytes: usize, tile_parts: usize, expected_components: u16,
+    image: Part1DecodedTypedImage,
+) -> Result<(), crate::DecodeError> {
+    if !part1_decode_output_shape_valid(
+        input_bytes, tile_parts, expected_components, image.1.len() as usize,
+        image.0.0, image.0.1,
+    ) { Err(part1_block_placement_error(false)) }
+    else { part1_validate_typed_output_components(image.1, 0) }
+}
+
 pub open spec fn part1_magnitude_limb(limbs: Seq<u64>, index: usize) -> Option<u64> {
     if index < limbs.len() { Some(limbs[index as int]) } else { None }
 }
