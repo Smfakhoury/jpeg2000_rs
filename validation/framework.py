@@ -790,6 +790,17 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_RESOLUTION_PLANNING_CONTRACTS = {
+    ("src/decode.rs", "prepare_resolution_plan_metadata"): (
+        "part2_resolution_plan_metadata", _coverage_call("resolution_plan_metadata_outcome", r"\1"), None,
+        r"size\s*,\s*style\s*,\s*component\s*,\s*selection\s*,\s*component_origin",
+    ),
+    ("src/decode.rs", "derive_planned_precinct_origin"): (
+        "part2_planned_precinct_origin", r"\1", None,
+        r"first\s*,\s*across\s*,\s*precinct\s*,\s*band_size",
+    ),
+}
+
 _PRECINCT_PLANNING_CONTRACTS = {
     ("src/decode.rs", "plan_packet_precinct"): (
         "part2_planned_precinct", _coverage_call("planned_precinct_outcome", r"\1"), None,
@@ -1682,6 +1693,7 @@ def validate_normative_coverage(
                 or _CODEBLOCK_VECTOR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SUBBAND_EXECUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PRECINCT_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _RESOLUTION_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

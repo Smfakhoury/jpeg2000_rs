@@ -4,6 +4,36 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-resolution-planning",
+      "topic": "Complete actual per-resolution plan metadata Result/all full geometry/subband range/precinct count/first-grid/band/block fields from raw image/style/component/tile/resolution and unnormalized raw component origin; complete checked precinct-band coordinate Result from raw first/across/precinct/band dimensions. Actual geometry, style lookups/scales/directions and derived arithmetic retain original order. Zero real subband delta bypasses only precinct-count narrowing, not later exponent/split/size admission; empty resolutions and anisotropic phases remain. No supplied geometry, lattice/count result, normalized origin or successful budget/allocation premise; actual tile loop consumes sole bodies. Complete resolution/component/tile vectors and decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_resolution_plan_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part2_resolution_plan_finish"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_precinct_origin"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "prepare_resolution_plan_metadata"},
+        {"path": "src/decode.rs", "symbol": "derive_planned_precinct_origin"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "resolution_plan_metadata_view"},
+        {"path": "src/decode.rs", "symbol": "resolution_plan_metadata_outcome"},
+        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/codestream.rs", "symbol": "resolution_selectors_known_fields"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count_through_resolution"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::precinct_exponents"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::resolution_downsampling"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_resolution_plan_metadata_preserves_complete_raw_geometry_counts_split_and_origin_fields"},
+        {"path": "src/decode.rs", "symbol": "actual_precinct_origins_preserve_raw_divisor_addition_and_multiplication_frontiers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-precinct-planning",
       "topic": "Complete actual per-precinct planning Result/all private packet coordinate/state/context/decoder/subband/tag-tree fields plus owned placement prefixes and global codeblock count from raw band/block/subband source and range/style/HT policy/location/selection/limits. Checked source indices/lookups derive actual optional subband executions, configured decoder vectors and flattened indices; actual packet factory derives all final state. Preserve source-error order, empty/ragged/over-three source laziness, selected-only global charging before later local factory and tag-tree admission, allocation order and buffer moves. No supplied prepared execution/decoder bank, initialized precinct, normalized range or successful budget/allocation premise. Real tile planner consumes sole producer; complete resolution/component/tile plans and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
@@ -331,6 +361,7 @@
         {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry"},
         {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
         {"path": "src/decode.rs", "symbol": "derive_packet_grid_for"},
+        {"path": "src/decode.rs", "symbol": "prepare_resolution_plan_metadata"},
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
       ],
       "spec_refs": [

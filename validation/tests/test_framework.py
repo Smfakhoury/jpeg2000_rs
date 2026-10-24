@@ -778,6 +778,12 @@ class FrameworkTests(WorkingFiles):
             framework._PRECINCT_PLANNING_CONTRACTS, 1,
         )
 
+    def test_inventory_binds_actual_resolution_plan_metadata_and_raw_precinct_origins(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-resolution-planning"},
+            framework._RESOLUTION_PLANNING_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
