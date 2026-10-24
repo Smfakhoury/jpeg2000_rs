@@ -965,6 +965,17 @@ pub struct ComponentQuantizations {
     quantizations: Vec<Quantization>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn component_quantization_result(values: &ComponentQuantizations, component: u16)
+        -> Result<Quantization, DecodeError>
+    {
+        if component >= values.components || component as nat >= values.quantizations@.len() {
+            Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidQuantization })
+        } else { Ok(values.quantizations@[component as int]) }
+    }
+}
+
 impl ComponentQuantizations {
     fn new(components: u16, default: Quantization) -> Result<Self, DecodeError> {
         if components == 0 || usize::from(components) > MAX_COMPONENTS {
@@ -984,19 +995,22 @@ impl ComponentQuantizations {
         Self::new(components, default)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_component_quantization(self, component),
+    ))]
     pub fn quantization(&self, component: u16) -> Result<Quantization, DecodeError> {
         if component >= self.components {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidQuantization,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidQuantization,
+            });
         }
         match self.quantizations.get(usize::from(component)) {
             Some(quantization) => Ok(*quantization),
-            None => Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidQuantization,
-            )),
+            None => Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidQuantization,
+            }),
         }
     }
 
@@ -1051,6 +1065,11 @@ pub struct RoiShifts {
     shifts: [u8; MAX_COMPONENTS],
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn roi_shifts_view(value: &RoiShifts) -> Seq<u8> { value.shifts@ }
+}
+
 impl RoiShifts {
     pub const fn none() -> Self {
         Self {
@@ -1058,13 +1077,16 @@ impl RoiShifts {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_roi_shift(roi_shifts_view(self), component),
+    ))]
     pub fn shift(&self, component: u16) -> Result<u8, DecodeError> {
         match self.shifts.get(usize::from(component)) {
             Some(shift) => Ok(*shift),
-            None => Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidRegionOfInterest,
-            )),
+            None => Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidRegionOfInterest,
+            }),
         }
     }
 
@@ -9295,6 +9317,239 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 mod tests {
     use super::*;
     use crate::tier1::SubbandOrientation;
+
+    #[test]
+    fn raw_component_quantization_and_roi_getters_preserve_logical_physical_policy() {
+        let quantization = raw_subband_quantization(QuantizationStyle::ScalarDerived, u16::MAX, 7);
+        let roi = RoiShifts {
+            shifts: core::array::from_fn(|index| u8::try_from(index).unwrap().wrapping_mul(17)),
+        };
+        for components in [0, 1, 2, 63, 64, 65, u16::MAX] {
+            for physical in [0, 1, 2, 64, 65] {
+                let values = ComponentQuantizations {
+                    components,
+                    quantizations: vec![quantization; physical],
+                };
+                for component in 0..=u16::MAX {
+                    let expected = if component < components && usize::from(component) < physical {
+                        Ok(quantization)
+                    } else {
+                        Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::InvalidQuantization,
+                        })
+                    };
+                    assert_eq!(values.quantization(component), expected);
+                }
+            }
+        }
+        for component in 0..=u16::MAX {
+            let expected = roi.shifts.get(usize::from(component)).copied().ok_or(
+                DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidRegionOfInterest,
+                },
+            );
+            assert_eq!(roi.shift(component), expected);
+        }
+    }
+
+    fn reference_component_plan_metadata(
+        size: &ImageSize,
+        styles: &ComponentCodingStyles,
+        quantizations: &ComponentQuantizations,
+        roi: &RoiShifts,
+        component: u16,
+        selection: (u16, u8),
+        force: bool,
+    ) -> Result<crate::decode::PlannedComponentMetadata, DecodeError> {
+        let invalid_style = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        if component >= styles.components {
+            return Err(invalid_style);
+        }
+        let style = *styles
+            .styles
+            .get(usize::from(component))
+            .ok_or(invalid_style)?;
+        if selection.1 > style.decomposition_levels {
+            return Err(DecodeError::InvalidSelection {
+                reason: crate::SelectionError::ReductionTooLarge,
+            });
+        }
+        let output = style.decomposition_levels - selection.1;
+        let invalid_quant = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidQuantization,
+        };
+        if component >= quantizations.components {
+            return Err(invalid_quant);
+        }
+        let quantization = quantizations
+            .quantizations
+            .get(usize::from(component))
+            .ok_or(invalid_quant)?;
+        let mut tier1_style =
+            crate::tier1::tier1_coding_style_from_code_block_style(style.code_block_style)?;
+        if force
+            && matches!(
+                tier1_style.block_coding,
+                crate::tier1::Tier1BlockCoding::HighThroughput
+                    | crate::tier1::Tier1BlockCoding::Mixed
+            )
+        {
+            tier1_style.force_high_throughput = true;
+        }
+        let bounds = reference_tile_component_bounds(size, selection.0, component)?;
+        let geometry =
+            reference_resolution_geometry(size, style, component, output, Some(selection.0))?;
+        let scale = (0..selection.1).try_fold((1, 1), |previous, stage| {
+            reference_resolution_scale_step(style, stage, previous)
+        })?;
+        let invalid_geometry = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        };
+        if component >= size.components {
+            return Err(invalid_geometry);
+        }
+        let info = size
+            .component_info
+            .get(usize::from(component))
+            .ok_or(invalid_geometry)?;
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let ceil = |value: u32, divisor: u32| {
+            if divisor == 0 {
+                return Err(invalid);
+            }
+            Ok(u32::try_from(u64::from(value).div_ceil(u64::from(divisor))).unwrap())
+        };
+        let origin_x = ceil(size.x_origin, u32::from(info.x_subsampling))?;
+        let origin_y = ceil(size.y_origin, u32::from(info.y_subsampling))?;
+        let x = u32::try_from(
+            i64::from(ceil(bounds.x0, scale.0)?) - i64::from(ceil(origin_x, scale.0)?),
+        )
+        .map_err(|_| arithmetic)?;
+        let y = u32::try_from(
+            i64::from(ceil(bounds.y0, scale.1)?) - i64::from(ceil(origin_y, scale.1)?),
+        )
+        .map_err(|_| arithmetic)?;
+        let shift = *roi
+            .shifts
+            .get(usize::from(component))
+            .ok_or(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidRegionOfInterest,
+            })?;
+        let subbands = reference_component_subbands(
+            size,
+            style,
+            quantization,
+            component,
+            Some(selection.0),
+            shift,
+        )?;
+        Ok(crate::decode::PlannedComponentMetadata {
+            component_coding_style: style,
+            output_resolution: output,
+            tier1_style,
+            bounds,
+            component_width: geometry.width,
+            component_height: geometry.height,
+            component_x: x,
+            component_y: y,
+            subbands,
+        })
+    }
+
+    #[test]
+    fn actual_component_plan_metadata_preserves_all_ordered_raw_admission_and_output_fields() {
+        let mut cases = 0;
+        let mut successes = 0;
+        for components in [0, 1, 2, 64, 65, u16::MAX] {
+            let mut size = raw_resolution_size(33, 1, (1, 1), 0, components);
+            for info in &mut size.component_info {
+                info.precision = 8;
+            }
+            for style_owner in [0, 1, 2, 64, u16::MAX] {
+                for quant_owner in [0, 1, 2, u16::MAX] {
+                    for physical in [0, 1, 2] {
+                        let quantizations = ComponentQuantizations {
+                            components: quant_owner,
+                            quantizations: vec![
+                                raw_subband_quantization(
+                                    QuantizationStyle::ScalarDerived,
+                                    1,
+                                    4
+                                );
+                                physical
+                            ],
+                        };
+                        for component in [0, 1, 63, 64, u16::MAX] {
+                            for tile in [0, u16::MAX] {
+                                for discard in [0, 1, 2, u8::MAX] {
+                                    let roi = RoiShifts {
+                                        shifts: [if discard == 1 { u8::MAX } else { 0 };
+                                            MAX_COMPONENTS],
+                                    };
+                                    for code_style in [0, 0x40, 0xc0, 0xff] {
+                                        let mut style = raw_resolution_style(1, 3);
+                                        style.code_block_style = code_style;
+                                        style.code_block_width = 4;
+                                        style.code_block_height = 4;
+                                        style.precinct_exponents = [(0, 0); 33];
+                                        let styles = ComponentCodingStyles {
+                                            components: style_owner,
+                                            styles: [style; MAX_COMPONENTS],
+                                        };
+                                        for force in [false, true] {
+                                            let expected = reference_component_plan_metadata(
+                                                &size,
+                                                &styles,
+                                                &quantizations,
+                                                &roi,
+                                                component,
+                                                (tile, discard),
+                                                force,
+                                            );
+                                            assert_eq!(
+                                                crate::decode::prepare_component_plan_metadata(
+                                                    &size,
+                                                    &styles,
+                                                    &quantizations,
+                                                    &roi,
+                                                    component,
+                                                    (tile, discard),
+                                                    force
+                                                ),
+                                                expected,
+                                            );
+                                            successes += usize::from(expected.is_ok());
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 115_200);
+        assert!(
+            successes > 100,
+            "{successes} full component metadata owners checked"
+        );
+    }
 
     fn reference_truncated_subband_count(style: CodingStyle) -> u16 {
         let total = style

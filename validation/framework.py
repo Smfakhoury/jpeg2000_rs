@@ -790,6 +790,21 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_COMPONENT_PLAN_METADATA_CONTRACTS = {
+    ("src/codestream.rs", "ComponentQuantizations::quantization"): (
+        "part2_component_quantization", r"\1", None, r"self\s*,\s*component",
+    ),
+    ("src/codestream.rs", "RoiShifts::shift"): (
+        "part2_roi_shift", r"\1", None,
+        _coverage_call("roi_shifts_view", "self") + r"\s*,\s*component",
+    ),
+    ("src/decode.rs", "prepare_component_plan_metadata"): (
+        "part2_component_plan_metadata", _coverage_call("component_plan_metadata_outcome", r"\1"), None,
+        r"size\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*"
+        r"component\s*,\s*selection\s*,\s*force_high_throughput",
+    ),
+}
+
 _PRECINCT_INITIALIZATION_CONTRACTS = {
     ("src/packet.rs", "prepare_precinct_contexts"): (
         "part2_precinct_contexts", _coverage_call("precinct_contexts_outcome", r"\1"), None,
@@ -1630,6 +1645,7 @@ def validate_normative_coverage(
                 or _DECODER_INITIALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODEBLOCK_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PRECINCT_INITIALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COMPONENT_PLAN_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

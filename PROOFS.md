@@ -2456,3 +2456,19 @@ without replacing their allocation/append algorithm.810 raw prefix/context
 cases and28,800 full constructor/facade contexts compare all owned state,
 ordered tag trees, limits and first errors using previously verified primitives.
 Full tile-plan vector/packet/decoder/file/F2/F4/F8 joins remain separate.
+## Complete actual component-plan metadata
+
+The actual tile component loop now consumes one complete raw metadata
+producer. Real style/reduction/quantization admission precedes route policy,
+tile bounds, full output geometry, scaling, original image-origin position,
+ROI lookup and actual computed subbands. All returned style/geometry/position/
+subband fields derive from real inputs; no prepared metadata, bounds/bands,
+lookup result or successful budget/allocation premise is supplied.
+
+Raw component quantization and ROI getters have exact logical/physical
+relations without inventing descriptor/shift validation. Three exact
+native-consumer recipes, entire-u16 owner/ROI lookup cases and 115,200 complete
+metadata contexts retain all output fields and first/late error policy.
+The original body is shared without duplicate executable computation or
+allocation-order changes. Full tile-plan/decoder/file/F2/F4/F8 joins remain
+separate.

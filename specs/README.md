@@ -1572,3 +1572,9 @@ vectors/style/limits and real state/tag-tree producers. Native future-buffer
 frames and moved decoder contents are proved, not supplied as initial-result
 banks. Empty/raw coordinate policy and first/late budget/shape errors remain
 explicit. Complete tile-plan and F2/F4/F8 joins remain separate.
+`part2_component_plan_metadata` composes actual raw owner/selection metadata
+through style, quantization, route, full geometry, position, ROI and real
+subband production. Getter models preserve logical versus physical owner
+admission. Native output/state views bind all fields without prepared metadata
+or supplied intermediate success/result premises; full tile-plan and
+F2/F4/F8 composition remain separate.

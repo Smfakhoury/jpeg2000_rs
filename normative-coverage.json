@@ -4,6 +4,40 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-component-plan-metadata",
+      "topic": "Complete actual per-component tile-plan metadata Result/all owned fields from raw image/style owner/quantization owner/ROI/component/tile/discard/force inputs. Original style-before-reduction-before-quantization admission, Tier1 route policy, tile bounds/full output geometry, real scaling, raw image-origin component position and last ROI/subband production remain. New raw quantization/ROI getters retain logical/physical distinction and unused descriptor values; no normalized metadata/bounds/bands, supplied lookup/result or successful allocation/budget premise. Actual tile planner consumes the sole metadata body; full precinct/codeblock/component plan vectors, decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_component_plan_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_quantization"},
+        {"path": "specs/mod.rs", "symbol": "part2_roi_shift"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "ComponentQuantizations::quantization"},
+        {"path": "src/codestream.rs", "symbol": "RoiShifts::shift"},
+        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "component_plan_metadata_view"},
+        {"path": "src/decode.rs", "symbol": "component_plan_metadata_outcome"},
+        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"},
+        {"path": "src/codestream.rs", "symbol": "component_quantization_result"},
+        {"path": "src/codestream.rs", "symbol": "roi_shifts_view"},
+        {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"},
+        {"path": "src/codestream.rs", "symbol": "ComponentCodingStyles::style"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::tier1_coding_style"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodingStyle::set_force_high_throughput"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "raw_component_quantization_and_roi_getters_preserve_logical_physical_policy"},
+        {"path": "src/codestream.rs", "symbol": "actual_component_plan_metadata_preserves_all_ordered_raw_admission_and_output_fields"}
+      ]
+    },
+    {
       "id": "part2-complete-native-precinct-initialization",
       "topic": "Complete actual precinct initialization Result/all owned coordinate/state/context/decoder/subband/tag-tree fields from raw execution vectors/style/limits. Original execution-count/shape, cumulative code-block/work budget, decoder-length, linear-context, decoder-move and ordered two-tag-tree admission remain. Empty execution list succeeds with empty owned buffers and raw coordinates; style/decoder orientation discrepancies remain unvalidated. Actual tile planner/public facade reuse the sole constructor, contexts derive from real raw prefixes, and decoder vectors move rather than clone. No supplied precinct/grid/tag-tree/context/decoder result or normalized execution/budget/allocation premise. Whole tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
@@ -68,6 +102,7 @@
       "topic": "Complete actual Tier-1 decoder initialization Result/every decoder field from raw dimensions/significant-bitplanes/orientation/coding style. Original significant-bitplane admission precedes checked pass metadata and the sole proved plane constructor; no style normalization or initialized plane/decoder result premise. Public new facade and actual tile planner execute that sole body. Force-route style, multiple-HT-set and magnitude-bound setters preserve every unrelated raw field; invalid bound returns original decoder unchanged. No trusted adapter, supplied initialized state, successful allocation or budget premise. Actual tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
         {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::new"}
       ],
@@ -99,6 +134,7 @@
       "topic": "Complete actual public/private component subband-vector Result/all ordered fields from raw image/style/quantization/component/tile/ROI metadata. Real component admission precedes coordinate production, original truncated 32-stage count/capacity, ordered resolution traversal, anisotropic HL/LH/HH growth and quantization/phase/bitplane production. Growing actual vector length supplies each checked index; zero-resolution LL retains its original fixed index0. Final count equality and last u8 advancement/first errors are retained. No normalized bounds/style/bands/count, supplied lookup/geometry result or successful allocation/budget premise. Actual tile planner executes the same sole resolution producer; full tile-plan/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
         {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"}
       ],
       "spec_refs": [
