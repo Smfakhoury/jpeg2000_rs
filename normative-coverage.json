@@ -4,6 +4,42 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-full-selected-typed-layout-decoding",
+      "topic": "Complete actual full/selected raw parsed-layout/request/limits/input-length to final TypedImage Result, every geometry/descriptor/sample/channel-definition field and first error. Actual decode_layout/selected derives decoded images from genuine tile bytes/plans/metadata/empty state, then real typed conversion, source-owned nonlinear regions and complete owner mutation, then final output-shape admission compose in original order. No supplied decoded/typed/region/sample/result banks, normalized layout, successful admission/coverage/budget premises or callback. Public raw codestream entry points still execute actual byte parser first and call the sole private body. Actual compressed-byte parser functional Result, file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_codestream"},
+        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_typed_layout"},
+        {"path": "src/decode.rs", "symbol": "typed_layout"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_decode_typed_layout"},
+        {"path": "specs/mod.rs", "symbol": "part2_typed_layout"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_layout"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_layout_selected"},
+        {"path": "specs/mod.rs", "symbol": "part1_decoded_image_typed"},
+        {"path": "specs/mod.rs", "symbol": "part2_collect_nonlinear_regions"},
+        {"path": "specs/mod.rs", "symbol": "part2_apply_nonlinear_regions"},
+        {"path": "specs/mod.rs", "symbol": "part1_validate_typed_output_shape"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_typed_layout"},
+        {"path": "src/decode.rs", "symbol": "typed_layout"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/image.rs", "symbol": "DecodedImage::typed"},
+        {"path": "src/decode.rs", "symbol": "collect_nonlinear_regions"},
+        {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
+        {"path": "src/decode.rs", "symbol": "validate_part1_output_shape"},
+        {"path": "src/image.rs", "symbol": "decoded_typed_image_outcome"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_full_selected_typed_layouts_join_real_decode_nonlinear_and_shape_producers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-nonlinear-owner-mutation",
       "topic": "Complete actual TypedImage and TypedComponent nonlinear region Result/final owner fields on success AND failure, from real raw typed samples/region transforms/limits and derived None scratch/target/work. Actual component body preserves selected-region/rectangle/descriptor/duplicate/read/scalar-before-work order, original per-component byte-before-coverage/conversion policy, all metadata and committed component prefix on errors. No decoded/sample/scratch/result banks, normalized image/region premises, precomputed source coverage or budget success. All bounds/frames/termination derive internally; shared proved checked index/work bodies retain original operations. Genuine typed_layout invokes the sole image body and real component producer. Whole typed/parser/file/F2/F4/final F8 and hosted/main/publication remain separate.",
       "implementation_refs": [
@@ -248,7 +284,8 @@
       "topic": "Complete actual final typed output-shape Result from raw input length, actual layout counts and actual typed image. Preserve header-before-components admission, strict positive extents/counts, exact component count and row/area checks for signed or unsigned sequences without multiplying or inspecting sample values/descriptors/origins/definitions. All iteration/read/arithmetic bounds derive internally; no valid-image or successful-decoder premise. Both actual raw codestream entry points consume this sole body. Typed nonlinear finalization, byte parser, file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "decode_codestream"},
-        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"}
+        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_typed_layout"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part1_validate_typed_output_shape"},
@@ -274,7 +311,8 @@
       "topic": "Complete actual decode_layout and decode_layout_selected Result/all decoded image dimensions/origins/component descriptors/coordinates/fraction/sample fields from raw actual CodestreamLayout/request/limits. Actual Part2 admission then tile count/cap65536 or actual selection validation, genuine source-derived cloned tile collection, real raw per-tile metadata/policy/plan/account/byte/reconstruction from empty accumulation and real full/selected image assembly compose in source order. Complete raw owned observations carry clones without opaque allocation identity or copy/result witnesses; no normalized layout, supplied decoded components/plans/callbacks/banks or success/budget premises. All counters/work/selection/error/allocation policy and every loop bound/frame derive internally. Actual public codestream callers use sole bodies. Raw parser/typed final/file/F2/F4/final F8 and hosted/main/publication remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "decode_codestream"},
-        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"}
+        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_typed_layout"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_layout"},

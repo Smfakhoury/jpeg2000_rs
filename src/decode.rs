@@ -3582,13 +3582,7 @@ pub fn decode_progression_prepared_image(
 
 pub fn decode_codestream(input: &[u8], options: &DecodeOptions) -> Result<TypedImage, DecodeError> {
     let layout = codestream::parse_layout(input, options.limits())?;
-    let image = typed_layout(
-        &layout,
-        decode_layout(&layout, options.limits())?,
-        options.limits(),
-    )?;
-    validate_part1_output_shape(input.len(), &layout, &image)?;
-    Ok(image)
+    decode_typed_layout(input.len(), &layout, options.limits(), None)
 }
 
 pub fn decode_codestream_selected(
@@ -3597,12 +3591,28 @@ pub fn decode_codestream_selected(
     selection: &DecodeSelection,
 ) -> Result<TypedImage, DecodeError> {
     let layout = codestream::parse_layout(input, options.limits())?;
-    let image = typed_layout(
-        &layout,
-        decode_layout_selected(&layout, selection, options.limits())?,
-        options.limits(),
-    )?;
-    validate_part1_output_shape(input.len(), &layout, &image)?;
+    decode_typed_layout(input.len(), &layout, options.limits(), Some(selection))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_typed_image_outcome(result) == crate::specs::part2_decode_typed_layout(
+        input_bytes, layout, limits, requested,
+    ),
+))]
+fn decode_typed_layout(
+    input_bytes: usize,
+    layout: &CodestreamLayout<'_>,
+    limits: &ResourceLimits,
+    requested: Option<&DecodeSelection>,
+) -> Result<TypedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_decode_typed_layout); }
+    let decoded = match requested {
+        None => decode_layout(layout, limits)?,
+        Some(requested) => decode_layout_selected(layout, requested, limits)?,
+    };
+    let image = typed_layout(layout, decoded, limits)?;
+    validate_part1_output_shape(input_bytes, layout, &image)?;
     Ok(image)
 }
 
@@ -3680,11 +3690,18 @@ fn validate_part1_output_shape(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_typed_image_outcome(result) == crate::specs::part2_typed_layout(
+        layout, crate::image::decoded_image_view(decoded), limits,
+    ),
+))]
 fn typed_layout(
     layout: &CodestreamLayout<'_>,
     decoded: DecodedImage,
     limits: &ResourceLimits,
 ) -> Result<TypedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_typed_layout); }
     let mut image = decoded.typed(limits)?;
     let regions = collect_nonlinear_regions(layout, &image)?;
     if !regions.is_empty() {
@@ -9188,6 +9205,163 @@ mod tests {
         }
         assert_eq!(full_cases, 180);
         assert_eq!(selected_cases, 2_520);
+        assert!(successes > 10);
+    }
+
+    #[test]
+    fn actual_full_selected_typed_layouts_join_real_decode_nonlinear_and_shape_producers() {
+        use crate::codestream::{NonlinearPointTransform, Part2Extensions};
+
+        fn reference(
+            input_bytes: usize,
+            layout: &CodestreamLayout<'_>,
+            requested: Option<&DecodeSelection>,
+            limits: &ResourceLimits,
+        ) -> Result<TypedImage, DecodeError> {
+            let decoded = reference_complete_layout(layout, requested, limits)?;
+            let mut image = decoded.typed(limits)?;
+            let regions = collect_nonlinear_regions(layout, &image)?;
+            if !regions.is_empty() {
+                image.apply_nonlinear_regions(&regions, limits)?;
+            }
+            let valid = input_bytes > 0
+                && !layout.tile_parts.is_empty()
+                && layout.info.image_size.components > 0
+                && usize::from(layout.info.image_size.components) == image.components().len()
+                && image.width() > 0
+                && image.height() > 0
+                && image.components().iter().all(|component| {
+                    let count = match component.samples() {
+                        TypedSamples::Signed(values) => values.len(),
+                        TypedSamples::Unsigned(values) => values.len(),
+                    };
+                    component.width() > 0
+                        && component.height() > 0
+                        && count as u128
+                            == u128::from(component.width()) * u128::from(component.height())
+                });
+            if valid {
+                Ok(image)
+            } else {
+                Err(invalid_decode())
+            }
+        }
+
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+            add_single_component_mct(prepared_codestream(1, 1, 1, &qcd, &[0, 0, 0]), 2, 3),
+        ];
+        let requests = [
+            DecodeSelection::full_image(),
+            DecodeSelection::tile(0),
+            DecodeSelection::tile(1),
+            DecodeSelection::full_image().with_discard_levels(1),
+            DecodeSelection::full_image().with_discard_levels(u8::MAX),
+            DecodeSelection::full_image().with_region(crate::ImageRegion::new(0, 0, 1, 1)),
+            DecodeSelection::tiles(Vec::new()),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(0)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_packets(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+        ];
+        let one = 1_u32 << 16;
+        let mut cases = 0;
+        let mut successes = 0;
+        let mut public_cases = 0;
+        for bytes in fixtures {
+            for variant in 0..10 {
+                let mut layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+                match variant {
+                    0 => {}
+                    1 => layout.tile_parts.clear(),
+                    2 => layout.info.image_size.tiles_across = 0,
+                    3 => layout.info.image_size.components = 0,
+                    4..=7 => {
+                        let transform = match variant {
+                            5 => NonlinearPointTransform::for_test(
+                                8,
+                                false,
+                                2,
+                                Some(0),
+                                Some(u32::MAX),
+                                vec![0, 128, 255],
+                            ),
+                            6 => NonlinearPointTransform::for_test(0, false, 0, None, None, vec![]),
+                            _ => NonlinearPointTransform::gamma_for_test(
+                                8,
+                                false,
+                                [one, one, one, one, 0],
+                            ),
+                        };
+                        layout.info.part2_extensions =
+                            Part2Extensions::with_nonlinear_transform_for_test(transform);
+                        for part in &mut layout.tile_parts {
+                            part.part2_extensions = if variant == 7 {
+                                Part2Extensions::default()
+                            } else {
+                                layout.info.part2_extensions.clone()
+                            };
+                        }
+                    }
+                    8 => {
+                        layout.info.image_size.width = u32::MAX;
+                        layout.info.image_size.x_origin = 1;
+                    }
+                    _ => {
+                        for info in &mut layout.info.image_size.component_info {
+                            info.signed = true;
+                        }
+                        let extensions = Part2Extensions::with_nonlinear_transform_for_test(
+                            NonlinearPointTransform::for_test(8, true, 3, None, None, vec![]),
+                        );
+                        layout.info.part2_extensions = extensions.clone();
+                        for part in &mut layout.tile_parts {
+                            part.part2_extensions = extensions.clone();
+                        }
+                    }
+                }
+                for limit in &limits {
+                    for input_bytes in [0, bytes.len(), usize::MAX] {
+                        for requested in core::iter::once(None).chain(requests.iter().map(Some)) {
+                            let expected = reference(input_bytes, &layout, requested, limit);
+                            assert_eq!(
+                                decode_typed_layout(input_bytes, &layout, limit, requested),
+                                expected
+                            );
+                            successes += usize::from(expected.is_ok());
+                            cases += 1;
+                            if variant == 0 && input_bytes == bytes.len() {
+                                let options = DecodeOptions::new(*limit);
+                                let public = match requested {
+                                    None => decode_codestream(&bytes, &options),
+                                    Some(requested) => {
+                                        decode_codestream_selected(&bytes, &options, requested)
+                                    }
+                                };
+                                let expected_public =
+                                    parse_layout(&bytes, limit).and_then(|parsed| {
+                                        reference(bytes.len(), &parsed, requested, limit)
+                                    });
+                                assert_eq!(public, expected_public);
+                                public_cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 4_800);
+        assert_eq!(public_cases, 160);
         assert!(successes > 10);
     }
 

@@ -9566,6 +9566,47 @@ pub open spec fn part2_selected_layout_tiles(
     }
 }
 
+#[verifier::opaque]
+pub(crate) open spec fn part2_typed_layout(
+    layout: &crate::codestream::CodestreamLayout<'_>, decoded: Part1DecodedImageModel,
+    limits: &crate::ResourceLimits,
+) -> Result<Part1DecodedTypedImage, crate::DecodeError> {
+    match part1_decoded_image_typed(decoded, crate::limits::resource_decoded_bytes_limit(limits)) {
+        Err(error) => Err(error),
+        Ok(image) => match part2_collect_nonlinear_regions(layout, image) {
+            Err(error) => Err(error),
+            Ok(regions) => if regions.len() == 0 { Ok(image) } else {
+                let outcome = part2_apply_nonlinear_regions(image, regions,
+                    crate::limits::resource_decoded_bytes_limit(limits), crate::limits::resource_work_limit(limits));
+                match outcome.0 { Err(error) => Err(error), Ok(()) => Ok(outcome.1) }
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub(crate) open spec fn part2_decode_typed_layout(
+    input_bytes: usize, layout: &crate::codestream::CodestreamLayout<'_>, limits: &crate::ResourceLimits,
+    requested: Option<&crate::DecodeSelection>,
+) -> Result<Part1DecodedTypedImage, crate::DecodeError> {
+    let decoded = match requested {
+        None => part2_decode_layout(layout, limits),
+        Some(requested) => part2_decode_layout_selected(layout, requested, limits),
+    };
+    match decoded {
+        Err(error) => Err(error),
+        Ok(decoded) => match part2_typed_layout(layout, decoded, limits) {
+            Err(error) => Err(error),
+            Ok(image) => match part1_validate_typed_output_shape(
+                input_bytes, layout.tile_parts.len(), layout.info.image_size.components, image,
+            ) {
+                Err(error) => Err(error),
+                Ok(()) => Ok(image),
+            },
+        },
+    }
+}
+
 pub(crate) open spec fn part2_decode_layout(layout: &crate::codestream::CodestreamLayout<'_>, limits: &crate::ResourceLimits)
     -> Result<Part1DecodedImageModel, crate::DecodeError>
 {
