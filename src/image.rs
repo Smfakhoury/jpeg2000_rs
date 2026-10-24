@@ -677,11 +677,8 @@ impl TypedImage {
                                     i128::from(*samples.get(index).ok_or_else(invalid_image)?)
                                 }
                             };
-                            *slot = Some(Self::inverse_nlt_sample(
-                                source,
-                                source_info,
-                                region.transform,
-                            )?);
+                            *slot =
+                                Some(inverse_nlt_sample(source, source_info, region.transform)?);
                             work = work.checked_add(1).ok_or_else(arithmetic_overflow)?;
                             if work > limits.maximum_work_units() {
                                 return Err(DecodeError::limit(
@@ -813,7 +810,7 @@ impl TypedImage {
                         i128::from(*samples.get(sample_index).ok_or_else(invalid_image)?)
                     }
                 };
-                output.push(Self::inverse_nlt_sample(source, source_info, transform)?);
+                output.push(inverse_nlt_sample(source, source_info, transform)?);
                 sample_index = sample_index
                     .checked_add(1)
                     .ok_or_else(arithmetic_overflow)?;
@@ -860,164 +857,6 @@ impl TypedImage {
         Self::from_components_with_origin(width, height, 0, 0, components, limits)
     }
 
-    fn inverse_nlt_sample(
-        source: i128,
-        source_info: ComponentInfo,
-        transform: &NonlinearPointTransform,
-    ) -> Result<i128, DecodeError> {
-        let target_precision = transform.precision();
-        if target_precision == 0 || target_precision > 38 {
-            return Err(invalid_image());
-        }
-        let target_half = nlt_power_of_two(target_precision - 1)?;
-        let target_min = if transform.signed() {
-            0_i128
-                .checked_sub(target_half)
-                .ok_or_else(arithmetic_overflow)?
-        } else {
-            0
-        };
-        let target_max = if transform.signed() {
-            target_half.checked_sub(1).ok_or_else(arithmetic_overflow)?
-        } else {
-            nlt_power_of_two(target_precision)?
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?
-        };
-        let value = match transform.transform_type() {
-            0 => {
-                if source_info.precision != target_precision
-                    || source_info.signed != transform.signed()
-                {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-                }
-                source
-            }
-            3 => {
-                if source_info.precision != target_precision
-                    || source_info.signed != transform.signed()
-                {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-                }
-                if source < 0 {
-                    if source == i128::MIN || target_half < 0 || target_half == i128::MAX {
-                        return Err(arithmetic_overflow());
-                    }
-                    crate::refinement::nlt_binary_complement(source, target_half)
-                } else {
-                    source
-                }
-            }
-            2 | 4 => inverse_nlt_lut_sample(source, source_info, transform)?,
-            1 => Self::inverse_nlt_gamma_sample(source, source_info, transform)?,
-            _ => {
-                return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-            }
-        };
-        if value < target_min || value > target_max {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        Ok(value)
-    }
-
-    fn inverse_nlt_gamma_sample(
-        source: i128,
-        source_info: ComponentInfo,
-        transform: &NonlinearPointTransform,
-    ) -> Result<i128, DecodeError> {
-        if source_info.precision == 0 || source_info.precision > 38 {
-            return Err(invalid_image());
-        }
-        let parameters = transform
-            .gamma_parameters()
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTransform))?;
-        let parameter = |raw: u32| -> Result<i128, DecodeError> {
-            i128::from(raw >> 16)
-                .checked_mul(1_i128 << 32)
-                .and_then(|integer| {
-                    i128::from(raw & 0xffff)
-                        .checked_mul(1_i128 << 32)
-                        .and_then(|fraction| fraction.checked_div(i128::from(u16::MAX)))
-                        .and_then(|fraction| integer.checked_add(fraction))
-                })
-                .ok_or_else(arithmetic_overflow)
-        };
-        let exponent = parameter(parameters[0])?;
-        let slope = parameter(parameters[1])?;
-        let threshold = parameter(parameters[2])?;
-        let continuity_a = parameter(parameters[3])?;
-        let continuity_b = parameter(parameters[4])?;
-        if exponent <= 0 || slope <= 0 || continuity_a <= 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        let source_scale = if source_info.signed {
-            nlt_power_of_two(source_info.precision - 1)?
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?
-        } else {
-            nlt_power_of_two(source_info.precision)?
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?
-        };
-        let target_precision = transform.precision();
-        if target_precision == 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        let target_scale = if transform.signed() {
-            nlt_power_of_two(
-                target_precision
-                    .checked_sub(1)
-                    .ok_or_else(arithmetic_overflow)?,
-            )?
-            .checked_sub(1)
-            .ok_or_else(arithmetic_overflow)?
-        } else {
-            nlt_power_of_two(transform.precision())?
-                .checked_sub(1)
-                .ok_or_else(arithmetic_overflow)?
-        };
-        if source_scale <= 0 || target_scale <= 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        let normalized = source
-            .checked_mul(1_i128 << 32)
-            .and_then(|value| value.checked_div(source_scale))
-            .ok_or_else(arithmetic_overflow)?;
-        let negative_threshold = 0_i128
-            .checked_sub(threshold)
-            .ok_or_else(arithmetic_overflow)?;
-        let decoded = if normalized < negative_threshold {
-            let magnitude = 0_i128
-                .checked_sub(normalized)
-                .ok_or_else(arithmetic_overflow)?;
-            let base = nlt_fixed_div_q32(
-                magnitude
-                    .checked_add(continuity_b)
-                    .ok_or_else(arithmetic_overflow)?,
-                continuity_a,
-            )?;
-            0_i128
-                .checked_sub(nlt_fixed_pow_reciprocal_q32(base, exponent)?)
-                .ok_or_else(arithmetic_overflow)?
-        } else if normalized <= threshold {
-            nlt_fixed_div_q32(normalized, slope)?
-        } else {
-            let base = nlt_fixed_div_q32(
-                normalized
-                    .checked_add(continuity_b)
-                    .ok_or_else(arithmetic_overflow)?,
-                continuity_a,
-            )?;
-            nlt_fixed_pow_reciprocal_q32(base, exponent)?
-        };
-        nlt_round_ratio(
-            decoded
-                .checked_mul(target_scale)
-                .ok_or_else(arithmetic_overflow)?,
-            1_i128 << 32,
-        )
-    }
-
     pub(crate) fn from_components_with_origin(
         width: u32,
         height: u32,
@@ -1030,6 +869,198 @@ impl TypedImage {
             width, height, x_origin, y_origin, components, limits,
         )
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_gamma_parameter(raw),
+))]
+fn nlt_gamma_parameter(raw: u32) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(raw >> 16 <= 65535) by(bit_vector);
+        assert(raw & 65535 <= 65535) by(bit_vector);
+        assert(1i128 << 32 == 4294967296) by(bit_vector);
+    }
+    let integer = i128::from(raw >> 16)
+        .checked_mul(1_i128 << 32)
+        .ok_or_else(arithmetic_overflow)?;
+    let fraction = i128::from(raw & 0xffff)
+        .checked_mul(1_i128 << 32)
+        .ok_or_else(arithmetic_overflow)?;
+    let fraction = fraction
+        .checked_div(i128::from(u16::MAX))
+        .ok_or_else(arithmetic_overflow)?;
+    integer
+        .checked_add(fraction)
+        .ok_or_else(arithmetic_overflow)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_gamma_curve(normalized, exponent, slope, threshold, a, b),
+))]
+fn nlt_gamma_curve(
+    normalized: i128,
+    exponent: i128,
+    slope: i128,
+    threshold: i128,
+    a: i128,
+    b: i128,
+) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_gamma_curve); }
+    let negative_threshold = 0_i128
+        .checked_sub(threshold)
+        .ok_or_else(arithmetic_overflow)?;
+    if normalized < negative_threshold {
+        let magnitude = 0_i128
+            .checked_sub(normalized)
+            .ok_or_else(arithmetic_overflow)?;
+        let base = nlt_fixed_div_q32(magnitude.checked_add(b).ok_or_else(arithmetic_overflow)?, a)?;
+        0_i128
+            .checked_sub(nlt_fixed_pow_reciprocal_q32(base, exponent)?)
+            .ok_or_else(arithmetic_overflow)
+    } else if normalized <= threshold {
+        nlt_fixed_div_q32(normalized, slope)
+    } else {
+        let base = nlt_fixed_div_q32(
+            normalized.checked_add(b).ok_or_else(arithmetic_overflow)?,
+            a,
+        )?;
+        nlt_fixed_pow_reciprocal_q32(base, exponent)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_gamma_sample(
+        source, source_info, crate::codestream::owned_nonlinear_view(transform),
+    ),
+))]
+fn inverse_nlt_gamma_sample(
+    source: i128,
+    source_info: ComponentInfo,
+    transform: &NonlinearPointTransform,
+) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_gamma_sample); }
+    if source_info.precision == 0 || source_info.precision > 38 {
+        return Err(invalid_image());
+    }
+    let parameters = transform.gamma_parameters().ok_or_else(invalid_transform)?;
+    let exponent = nlt_gamma_parameter(parameters[0])?;
+    let slope = nlt_gamma_parameter(parameters[1])?;
+    let threshold = nlt_gamma_parameter(parameters[2])?;
+    let a = nlt_gamma_parameter(parameters[3])?;
+    let b = nlt_gamma_parameter(parameters[4])?;
+    if exponent <= 0 || slope <= 0 || a <= 0 {
+        return Err(invalid_transform());
+    }
+    let source_scale = if source_info.signed {
+        nlt_power_of_two(source_info.precision - 1)?
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?
+    } else {
+        nlt_power_of_two(source_info.precision)?
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?
+    };
+    let target_precision = transform.precision();
+    if target_precision == 0 {
+        return Err(invalid_transform());
+    }
+    let target_scale = if transform.signed() {
+        nlt_power_of_two(
+            target_precision
+                .checked_sub(1)
+                .ok_or_else(arithmetic_overflow)?,
+        )?
+        .checked_sub(1)
+        .ok_or_else(arithmetic_overflow)?
+    } else {
+        nlt_power_of_two(transform.precision())?
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?
+    };
+    if source_scale <= 0 || target_scale <= 0 {
+        return Err(invalid_transform());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1i128 << 32 == 4294967296) by(bit_vector); }
+    let product = source
+        .checked_mul(1_i128 << 32)
+        .ok_or_else(arithmetic_overflow)?;
+    let normalized = product
+        .checked_div(source_scale)
+        .ok_or_else(arithmetic_overflow)?;
+    let decoded = nlt_gamma_curve(normalized, exponent, slope, threshold, a, b)?;
+    nlt_round_ratio(
+        decoded
+            .checked_mul(target_scale)
+            .ok_or_else(arithmetic_overflow)?,
+        1_i128 << 32,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_inverse_sample(
+        source, source_info, crate::codestream::owned_nonlinear_view(transform),
+    ),
+))]
+fn inverse_nlt_sample(
+    source: i128,
+    source_info: ComponentInfo,
+    transform: &NonlinearPointTransform,
+) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_inverse_sample); }
+    let target_precision = transform.precision();
+    if target_precision == 0 || target_precision > 38 {
+        return Err(invalid_image());
+    }
+    let target_half = nlt_power_of_two(target_precision - 1)?;
+    let target_min = if transform.signed() {
+        0_i128
+            .checked_sub(target_half)
+            .ok_or_else(arithmetic_overflow)?
+    } else {
+        0
+    };
+    let target_max = if transform.signed() {
+        target_half.checked_sub(1).ok_or_else(arithmetic_overflow)?
+    } else {
+        nlt_power_of_two(target_precision)?
+            .checked_sub(1)
+            .ok_or_else(arithmetic_overflow)?
+    };
+    let value = match transform.transform_type() {
+        0 => {
+            if source_info.precision != target_precision || source_info.signed != transform.signed()
+            {
+                return Err(invalid_transform());
+            }
+            source
+        }
+        3 => {
+            if source_info.precision != target_precision || source_info.signed != transform.signed()
+            {
+                return Err(invalid_transform());
+            }
+            if source < 0 {
+                if source == i128::MIN || target_half < 0 || target_half == i128::MAX {
+                    return Err(arithmetic_overflow());
+                }
+                crate::refinement::nlt_binary_complement(source, target_half)
+            } else {
+                source
+            }
+        }
+        2 | 4 => inverse_nlt_lut_sample(source, source_info, transform)?,
+        1 => inverse_nlt_gamma_sample(source, source_info, transform)?,
+        _ => return Err(invalid_transform()),
+    };
+    if value < target_min || value > target_max {
+        return Err(invalid_transform());
+    }
+    Ok(value)
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -8806,6 +8837,265 @@ mod tests {
             return Err(invalid_transform());
         }
         reference_nlt_exp(reference_nlt_div(reference_nlt_ln(base)?, exponent)?)
+    }
+
+    fn reference_nlt_gamma_parameter(raw: u32) -> i128 {
+        let integer = u128::from(raw / 65_536) * (1_u128 << 32);
+        let fraction = u128::from(raw % 65_536) * (1_u128 << 32) / 65_535;
+        i128::try_from(integer + fraction).unwrap()
+    }
+
+    fn reference_nlt_gamma_curve(
+        normalized: i128,
+        exponent: i128,
+        slope: i128,
+        threshold: i128,
+        a: i128,
+        b: i128,
+    ) -> Result<i128, DecodeError> {
+        let negative_threshold = threshold.checked_neg().ok_or_else(arithmetic_overflow)?;
+        let side = if normalized < negative_threshold {
+            -1
+        } else if normalized <= threshold {
+            0
+        } else {
+            1
+        };
+        if side == 0 {
+            return reference_nlt_div(normalized, slope);
+        }
+        let magnitude = if side < 0 {
+            normalized.checked_neg().ok_or_else(arithmetic_overflow)?
+        } else {
+            normalized
+        };
+        let base = reference_nlt_div(magnitude.checked_add(b).ok_or_else(arithmetic_overflow)?, a)?;
+        let value = reference_nlt_reciprocal(base, exponent)?;
+        if side < 0 {
+            value.checked_neg().ok_or_else(arithmetic_overflow)
+        } else {
+            Ok(value)
+        }
+    }
+
+    fn reference_nlt_gamma(
+        source: i128,
+        info: ComponentInfo,
+        transform: &NonlinearPointTransform,
+    ) -> Result<i128, DecodeError> {
+        if info.precision == 0 || info.precision > 38 {
+            return Err(invalid_image());
+        }
+        let [exponent, slope, threshold, a, b] = transform
+            .gamma_parameters()
+            .ok_or_else(invalid_transform)?
+            .map(reference_nlt_gamma_parameter);
+        if exponent <= 0 || slope <= 0 || a <= 0 {
+            return Err(invalid_transform());
+        }
+        let source_exponent = info.precision - u8::from(info.signed);
+        let source_scale = 2_i128.pow(u32::from(source_exponent)) - 1;
+        if transform.precision() == 0 {
+            return Err(invalid_transform());
+        }
+        let target_exponent = transform.precision() - u8::from(transform.signed());
+        if target_exponent > 38 {
+            return Err(arithmetic_overflow());
+        }
+        let target_scale = 2_i128.pow(u32::from(target_exponent)) - 1;
+        if source_scale <= 0 || target_scale <= 0 {
+            return Err(invalid_transform());
+        }
+        let normalized = reference_product(source, 1_i128 << 32)? / source_scale;
+        let decoded = reference_nlt_gamma_curve(normalized, exponent, slope, threshold, a, b)?;
+        reference_ratio(reference_product(decoded, target_scale)?, 1_i128 << 32)
+    }
+
+    fn reference_nlt_inverse(
+        source: i128,
+        info: ComponentInfo,
+        transform: &NonlinearPointTransform,
+    ) -> Result<i128, DecodeError> {
+        let precision = transform.precision();
+        if precision == 0 || precision > 38 {
+            return Err(invalid_image());
+        }
+        let half = 2_i128.pow(u32::from(precision - 1));
+        let (minimum, maximum) = if transform.signed() {
+            (-half, half - 1)
+        } else {
+            (0, 2 * half - 1)
+        };
+        let value = match transform.transform_type() {
+            0 | 3 => {
+                if info.precision != precision || info.signed != transform.signed() {
+                    return Err(invalid_transform());
+                }
+                if transform.transform_type() == 3 && source < 0 {
+                    source
+                        .checked_neg()
+                        .and_then(|value| value.checked_sub(half + 1))
+                        .ok_or_else(arithmetic_overflow)?
+                } else {
+                    source
+                }
+            }
+            1 => reference_nlt_gamma(source, info, transform)?,
+            2 | 4 => inverse_nlt_lut_sample(source, info, transform)?,
+            _ => return Err(invalid_transform()),
+        };
+        if !(minimum..=maximum).contains(&value) {
+            Err(invalid_transform())
+        } else {
+            Ok(value)
+        }
+    }
+
+    #[test]
+    fn actual_complete_nonlinear_samples_derive_parameters_gamma_dispatch_and_target_errors() {
+        let mut parameter_cases = 0;
+        for high in [0_u32, 1, 32_767, 32_768, 65_534, 65_535] {
+            for low in 0..=u16::MAX {
+                let raw = (high << 16) | u32::from(low);
+                assert_eq!(
+                    nlt_gamma_parameter(raw),
+                    Ok(reference_nlt_gamma_parameter(raw))
+                );
+                parameter_cases += 1;
+            }
+        }
+        assert_eq!(parameter_cases, 393_216);
+        assert_eq!(nlt_gamma_parameter(0xffff), nlt_gamma_parameter(0x1_0000));
+        let one = 1_u32 << 16;
+        let parameters = [
+            Some([one, one, one, one, 0]),
+            Some([2 * one, one, 0, one, 0]),
+            Some([one, 2 * one, 0x8000, one, 0xffff]),
+            Some([0, one, one, one, 0]),
+            Some([one, 0, one, one, 0]),
+            Some([one, one, one, 0, 0]),
+            Some([u32::MAX; 5]),
+            None,
+        ];
+        let precisions = [0, 1, 2, 8, 38, 39, u8::MAX];
+        let sources = [
+            i128::MIN,
+            -(1_i128 << 95),
+            -(1_i128 << 38),
+            -129,
+            -128,
+            -1,
+            0,
+            1,
+            127,
+            128,
+            255,
+            (1_i128 << 38) - 1,
+            i128::MAX,
+        ];
+        let mut gamma_cases = 0;
+        let mut scalar_cases = 0;
+        for precision in precisions {
+            for signed in [false, true] {
+                for parameters in parameters {
+                    let transform = match parameters {
+                        Some(parameters) => {
+                            NonlinearPointTransform::gamma_for_test(precision, signed, parameters)
+                        }
+                        None => NonlinearPointTransform::for_test(
+                            precision,
+                            signed,
+                            1,
+                            None,
+                            None,
+                            vec![],
+                        ),
+                    };
+                    for source_precision in precisions {
+                        for source_signed in [false, true] {
+                            let info = ComponentInfo {
+                                precision: source_precision,
+                                signed: source_signed,
+                                x_subsampling: 0,
+                                y_subsampling: u8::MAX,
+                                x_registration: u16::MAX,
+                                y_registration: 17,
+                            };
+                            for source in sources {
+                                assert_eq!(
+                                    inverse_nlt_gamma_sample(source, info, &transform),
+                                    reference_nlt_gamma(source, info, &transform)
+                                );
+                                assert_eq!(
+                                    inverse_nlt_sample(source, info, &transform),
+                                    reference_nlt_inverse(source, info, &transform)
+                                );
+                                gamma_cases += 1;
+                                scalar_cases += 1;
+                            }
+                        }
+                    }
+                }
+                for kind in [0, 2, 3, 4, u8::MAX] {
+                    for minimum in [None, Some(0)] {
+                        let transform = NonlinearPointTransform::for_test(
+                            precision,
+                            signed,
+                            kind,
+                            minimum,
+                            Some(u32::MAX),
+                            vec![0, 128, 255],
+                        );
+                        for source_precision in precisions {
+                            for source_signed in [false, true] {
+                                let info = ComponentInfo {
+                                    precision: source_precision,
+                                    signed: source_signed,
+                                    x_subsampling: 0,
+                                    y_subsampling: u8::MAX,
+                                    x_registration: u16::MAX,
+                                    y_registration: 17,
+                                };
+                                for source in sources {
+                                    assert_eq!(
+                                        inverse_nlt_sample(source, info, &transform),
+                                        reference_nlt_inverse(source, info, &transform)
+                                    );
+                                    scalar_cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(gamma_cases, 20_384);
+        assert_eq!(scalar_cases, 45_864);
+        for normalized in [
+            i128::MIN,
+            -(1_i128 << 32),
+            -1,
+            0,
+            1,
+            1_i128 << 32,
+            i128::MAX,
+        ] {
+            let one = 1_i128 << 32;
+            for (exponent, slope, threshold, a, b) in [
+                (one, one, one, one, 0),
+                (one, one, 0, one, 0),
+                (0, one, one, one, 0),
+                (one, 0, one, one, 0),
+                (one, one, i128::MIN, one, 0),
+                (one, one, i128::MAX, i128::MIN, i128::MAX),
+                (i128::MAX, i128::MAX, -1, 1, i128::MAX),
+            ] {
+                assert_eq!(
+                    nlt_gamma_curve(normalized, exponent, slope, threshold, a, b),
+                    reference_nlt_gamma_curve(normalized, exponent, slope, threshold, a, b)
+                );
+            }
+        }
     }
 
     #[test]

@@ -792,6 +792,24 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_SCALAR_CONTRACTS = {
+    ("src/image.rs", "nlt_gamma_parameter"): (
+        "part2_nlt_gamma_parameter", r"\1", None, r"raw",
+    ),
+    ("src/image.rs", "nlt_gamma_curve"): (
+        "part2_nlt_gamma_curve", r"\1", None,
+        r"normalized\s*,\s*exponent\s*,\s*slope\s*,\s*threshold\s*,\s*a\s*,\s*b",
+    ),
+    ("src/image.rs", "inverse_nlt_gamma_sample"): (
+        "part2_nlt_gamma_sample", r"\1", None,
+        r"source\s*,\s*source_info\s*,\s*" + _coverage_call("crate::codestream::owned_nonlinear_view", "transform"),
+    ),
+    ("src/image.rs", "inverse_nlt_sample"): (
+        "part2_nlt_inverse_sample", r"\1", None,
+        r"source\s*,\s*source_info\s*,\s*" + _coverage_call("crate::codestream::owned_nonlinear_view", "transform"),
+    ),
+}
+
 _NONLINEAR_LOG_EXP_CONTRACTS = {
     ("src/image.rs", "nlt_ln_normalize"): (
         "part2_nlt_ln_normalize", r"\1", None, r"initial",
@@ -1923,6 +1941,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_ARITHMETIC_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_LUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_LOG_EXP_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_SCALAR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

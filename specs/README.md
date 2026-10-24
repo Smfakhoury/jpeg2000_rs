@@ -1,5 +1,16 @@
 # Specification audit guide
 
+`part2_nlt_inverse_sample` is the complete actual nonlinear sample producer
+from raw source/component/transform, including parameter decoding and all
+gamma/LUT/complement/unknown-kind/target-range behavior. Parameter and curve
+models are derived real producer stages, not supplied results. Top-level
+gamma/dispatch bodies are opaque outside the actual producer's explicit
+reveals to bound context, not trusted. Fractional
+denominator, ordered source/target scale admission, checked overflow and
+rounding remain explicit. No descriptor normalization, caller premise,
+trusted adapter or analytic accuracy claim is added. Whole region/typed/
+parser/file/F2/F4/final F8 remain separate.
+
 `part2_nlt_fixed_ln_q32`, `part2_nlt_fixed_exp_q32` and
 `part2_nlt_fixed_pow_reciprocal_q32` compose actual raw normalization and
 bounded series execution. Opaque high/low and 20/24-term suffixes retain

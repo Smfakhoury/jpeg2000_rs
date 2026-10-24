@@ -4,10 +4,54 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-nonlinear-scalar",
+      "topic": "Complete actual raw nonlinear sample producer Result: real Q32 fractional parameter decode, ordered gamma metadata/scale admission, all three gamma curve branches, real checked log/exp/reciprocal/LUT and exact type0/1/2/3/4/unknown dispatch with final target range. Every output/error derives from raw source/component/complete transform; no supplied parameter/curve/LUT/sample results or normalized descriptors. Preserve p0/above38 versus signed power policy, MIN/complement checks, source/target arithmetic/rounding order and intentionally unvalidated metadata. Sole moved/extracted private bodies feed actual region application. No new trust, premise, budget/tolerance or analytic accuracy claim. Whole region application/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "nlt_gamma_curve"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_gamma_parameter"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_gamma_parameter_value"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_gamma_scale"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_gamma_curve"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_gamma_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_inverse_value"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_inverse_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_power_of_two"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_round_ratio"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_pow_reciprocal_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_div_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_binary_complement"}
+      ],
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "nlt_gamma_parameter"},
+        {"path": "src/image.rs", "symbol": "nlt_gamma_curve"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_sample"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},
+        {"path": "src/image.rs", "symbol": "nlt_power_of_two"},
+        {"path": "src/image.rs", "symbol": "nlt_round_ratio"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_div_q32"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
+        {"path": "src/refinement.rs", "symbol": "nlt_binary_complement"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "actual_complete_nonlinear_samples_derive_parameters_gamma_dispatch_and_target_errors"}
+      ]
+    },
+    {
       "id": "part2-complete-native-nonlinear-log-exp",
       "topic": "Complete actual raw fixed logarithm/exponential/reciprocal Results, including both 128-ticket normalization loops, exact ordered 20-term log and 24-term exp computations, every checked product/addition/division/rounding, original scale -62..62 admission and final sign/shift policy. All loops and opaque folds derive internally without even the former positive-log caller premise; zero/negative raw log inputs retain checked arithmetic failures. Sole moved/extracted native bodies feed actual gamma inversion, not supplied normalized values or series/results. No new trust, budget, tolerance or iteration change; this proves exact existing bounded computation, not real analytic convergence or conformance accuracy. Gamma/whole scalar dispatch/region/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
-        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "nlt_gamma_curve"},
         {"path": "src/image.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"},
         {"path": "src/image.rs", "symbol": "nlt_fixed_ln_q32"},
         {"path": "src/image.rs", "symbol": "nlt_fixed_exp_q32"},
@@ -48,7 +92,7 @@
       "id": "part2-complete-native-nonlinear-lut",
       "topic": "Complete actual inverse NLT LUT Result for raw source sample, raw component descriptor and complete raw transform. Preserve output precision then minimum/maximum/point-count/source admission, source offset, checked scaling and clamping, checked interval conversion/position, Rust signed quotient/remainder, endpoint versus ordered point reads, every interpolation intermediate overflow, half-away ratio rounding and signed/type4 remapping. No normalized tables, supplied lookup/sample results, monotonicity, target-range or valid-source premises; unused descriptors/kinds stay unvalidated. Actual inverse scalar dispatch calls sole moved private body. Isolate actual interpolation under an opaque but proved model at original budgets; checked widening retains original conversion policy. Gamma/log/exp/whole dispatch/region/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
-        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
         {"path": "src/image.rs", "symbol": "nlt_lut_position"}
       ],
@@ -80,8 +124,8 @@
       "id": "part2-complete-native-nonlinear-arithmetic",
       "topic": "Complete actual signed ratio rounding, bounded power-of-two and Q32 multiply/divide Results on every raw i128/u8 input. Preserve intermediate overflow before scaling, half-away-from-zero rounding, MIN negation rejection, positive-denominator truncation toward zero and invalid-denominator versus arithmetic errors. Ten raw NLT getter posts expose every original descriptor field without validation or normalization. Private receiverless bodies are module functions for the pinned attribute mechanism; all actual LUT/gamma/log/exp/dispatch callers use the sole bodies. No new trusted adapter, input premise, arithmetic tolerance or budget. Whole nonlinear scalar dispatch, region application, typed/parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
-        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_sample"},
-        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_gamma_sample"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
         {"path": "src/image.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"},
         {"path": "src/image.rs", "symbol": "nlt_fixed_ln_q32"},
@@ -5781,7 +5825,7 @@
         },
         {
           "path": "src/image.rs",
-          "symbol": "TypedImage::inverse_nlt_sample"
+          "symbol": "inverse_nlt_sample"
         }
       ],
       "proof_refs": [
