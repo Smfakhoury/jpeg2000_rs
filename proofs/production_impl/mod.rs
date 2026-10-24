@@ -32,6 +32,21 @@ use crate::specs::{
 
 verus! {
 
+pub proof fn production_precinct_initialization_step(
+    executions: Seq<crate::specs::Part2PacketSubbandExecution>, style: crate::tier1::Tier1CodingStyle,
+    limits: &crate::ResourceLimits, index: nat,
+    before: crate::specs::Part1PacketPrecinctState, total_before: u64,
+    after: crate::specs::Part1PacketPrecinctState, total_after: u64,
+)
+    requires index < executions.len(),
+        crate::specs::part2_precinct_execution(before, total_before, executions[index as int], style, limits)
+            == Ok((after, total_after)),
+    ensures crate::specs::part2_precinct_initialization_run(executions, style, limits, index, before, total_before)
+        == crate::specs::part2_precinct_initialization_run(executions, style, limits, index + 1, after, total_after),
+{
+    reveal_with_fuel(crate::specs::part2_precinct_initialization_run, 1);
+}
+
 pub proof fn production_packet_grid_component_start(
     size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
     layers: u16, limits: &crate::ResourceLimits, tile: Option<u16>, discard: u8,

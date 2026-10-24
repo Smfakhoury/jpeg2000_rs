@@ -1506,7 +1506,7 @@ fn plan_progression_tile_at_selected(
                         .checked_add(1)
                         .ok_or_else(arithmetic_overflow)?;
                 }
-                precincts.push(PacketPrecinctDecoder::new_subbands(
+                precincts.push(crate::packet::packet_precinct_from_subbands(
                     component,
                     resolution,
                     precinct,

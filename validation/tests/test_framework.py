@@ -748,6 +748,12 @@ class FrameworkTests(WorkingFiles):
             framework._CODEBLOCK_PLANNING_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_precinct_initialization_and_complete_owned_inputs(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-precinct-initialization"},
+            framework._PRECINCT_INITIALIZATION_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
