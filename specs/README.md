@@ -1640,3 +1640,9 @@ wavelet agreement, maximum-isotropic physical prefix and checked reduction
 policy. Internal derived mode/prefix/sequence witnesses establish the complete
 postconditions without supplied successful equality, kernel or metadata
 outcomes. Actual full/selected callers execute the sole native producers.
+`part2_capability_value` derives physical CAP lookup from actual raw mask
+and word observations through a terminating mask/index suffix. Exact part15
+and profile policy relations retain invalid-mode, missing/ragged/default and
+unused-owner behavior without normalized metadata or supplied result premises.
+Native field views and eight exact recipes bind every actual layout policy
+getter; the low-five-bit magnitude bound is proved locally, not assumed.

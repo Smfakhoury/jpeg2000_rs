@@ -2628,3 +2628,20 @@ inputs/results. Independent derived native identity compares 576 graph pairs;
 contexts cover logical/physical owners, missing/duplicate/raw invalid kernels,
 MCT mismatch priority and actual first-payload identity.
 Whole tile collection/layout/selection/file/F2/F4/F8 joins remain separate.
+## Complete actual raw CAP lookup and HT profile policy
+
+The actual layout callers' HT multiple-set, magnitude-bound and force-route
+getters now derive completely from real raw CAP bit/physical-word lookup.
+All-u8 part admission, absent/ragged words, invalid-mode nonvalidation, raw
+multiple-set and low-five-bit magnitude fields, default74 and ignored
+r_siz/block-coding/profile metadata retain their original behavior.
+
+Eight exact native-consumer recipes bind raw owned field observations rather
+than normalized profiles or supplied successful policy results. A terminating
+actual mask/index suffix and a local proved bit-width fact preserve the
+existing implementation without new trust, pin, budget or cap changes.
+Policy definitions stay opaque until explicitly unfolded at their consumers,
+isolating the solver context rather than increasing unrelated proof budgets.
+18,432 raw lookup contexts and 1,572,864 policy contexts include every u16
+capability word, physical frontiers and contradictory unused profile fields.
+Tile collection/clone and whole raw-layout/file/F2/F4/F8 joins remain separate.
