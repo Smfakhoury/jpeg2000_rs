@@ -25,6 +25,30 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native nonlinear LUT inverse
+
+Actual `inverse_nlt_lut_sample` refines a complete Result from the raw source,
+component descriptor and transform. Precision/minimum/maximum/point-count/
+source admission order remains explicit. Registered descriptor fields and
+unrelated transform kinds are not newly validated. Source offset, clamping,
+checked interval scaling/conversion, endpoint or ordered point reads, signed
+Rust division/remainder, interpolation and signed/type4 remapping preserve
+all original errors. Nonmonotone and out-of-target-range raw tables remain
+accepted here; the outer scalar dispatcher retains its separate final check.
+
+The private receiverless body is a sole module function for pinned attribute
+support. The actual position and interpolation arithmetic are extracted once and proved
+under opaque mathematical bodies to isolate nonlinear solver context without
+raising budgets. The position helper explicitly rejects empty private inputs;
+the real producer already rejects fewer than two points at its original
+earlier transform check. Interval-count conversion uses unsigned widening followed
+by the original signed bound before narrowing; every read/increment frame
+derives internally. No supplied table/sample results or validity premises
+are used. An independent unsigned weighted-endpoint reference covers 314,496
+raw descriptor/sample contexts plus intermediate overflow frontiers.
+Gamma/log/exp, whole dispatch, region application and typed/parser/file/
+F2/F4/final F8 composition remain separate.
+
 ## Complete native nonlinear scalar arithmetic
 
 Actual ratio rounding, bounded power-of-two and Q32 multiply/divide refine

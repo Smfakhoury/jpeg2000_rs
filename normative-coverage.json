@@ -4,12 +4,44 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-nonlinear-lut",
+      "topic": "Complete actual inverse NLT LUT Result for raw source sample, raw component descriptor and complete raw transform. Preserve output precision then minimum/maximum/point-count/source admission, source offset, checked scaling and clamping, checked interval conversion/position, Rust signed quotient/remainder, endpoint versus ordered point reads, every interpolation intermediate overflow, half-away ratio rounding and signed/type4 remapping. No normalized tables, supplied lookup/sample results, monotonicity, target-range or valid-source premises; unused descriptors/kinds stay unvalidated. Actual inverse scalar dispatch calls sole moved private body. Isolate actual interpolation under an opaque but proved model at original budgets; checked widening retains original conversion policy. Gamma/log/exp/whole dispatch/region/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
+        {"path": "src/image.rs", "symbol": "nlt_lut_position"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_position"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_interpolate"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_interpolate_values"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_finish"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_power_of_two"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_round_ratio"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_checked_i128"}
+      ],
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
+        {"path": "src/image.rs", "symbol": "nlt_lut_interpolate_values"},
+        {"path": "src/image.rs", "symbol": "nlt_lut_position"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},
+        {"path": "src/image.rs", "symbol": "nlt_power_of_two"},
+        {"path": "src/image.rs", "symbol": "nlt_round_ratio"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "actual_nonlinear_lut_derives_checked_interpolation_and_raw_type4_samples"}
+      ]
+    },
+    {
       "id": "part2-complete-native-nonlinear-arithmetic",
       "topic": "Complete actual signed ratio rounding, bounded power-of-two and Q32 multiply/divide Results on every raw i128/u8 input. Preserve intermediate overflow before scaling, half-away-from-zero rounding, MIN negation rejection, positive-denominator truncation toward zero and invalid-denominator versus arithmetic errors. Ten raw NLT getter posts expose every original descriptor field without validation or normalization. Private receiverless bodies are module functions for the pinned attribute mechanism; all actual LUT/gamma/log/exp/dispatch callers use the sole bodies. No new trusted adapter, input premise, arithmetic tolerance or budget. Whole nonlinear scalar dispatch, region application, typed/parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
         {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_sample"},
         {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_gamma_sample"},
-        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_lut_sample"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
         {"path": "src/image.rs", "symbol": "TypedImage::fixed_pow_reciprocal_q32"},
         {"path": "src/image.rs", "symbol": "TypedImage::fixed_ln_q32"},
         {"path": "src/image.rs", "symbol": "TypedImage::fixed_exp_q32"},

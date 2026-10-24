@@ -908,7 +908,7 @@ impl TypedImage {
                     source
                 }
             }
-            2 | 4 => Self::inverse_nlt_lut_sample(source, source_info, transform)?,
+            2 | 4 => inverse_nlt_lut_sample(source, source_info, transform)?,
             1 => Self::inverse_nlt_gamma_sample(source, source_info, transform)?,
             _ => {
                 return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
@@ -1130,109 +1130,6 @@ impl TypedImage {
         }
     }
 
-    fn inverse_nlt_lut_sample(
-        source: i128,
-        source_info: ComponentInfo,
-        transform: &NonlinearPointTransform,
-    ) -> Result<i128, DecodeError> {
-        let output_precision = transform.precision();
-        if output_precision == 0 || output_precision > 38 {
-            return Err(invalid_image());
-        }
-        let minimum = i128::from(
-            transform
-                .d_min()
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTransform))?,
-        );
-        let maximum = i128::from(
-            transform
-                .d_max()
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTransform))?,
-        );
-        let points = transform.points();
-        if points.len() < 2 || minimum >= maximum {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        if source_info.precision == 0 || source_info.precision > 38 {
-            return Err(invalid_image());
-        }
-        let source_scale = nlt_power_of_two(source_info.precision)?;
-        let source_offset = if source_info.signed {
-            nlt_power_of_two(source_info.precision - 1)?
-        } else {
-            0
-        };
-        let nominal = source
-            .checked_add(source_offset)
-            .ok_or_else(arithmetic_overflow)?;
-        if nominal < 0 || nominal >= source_scale {
-            return Err(invalid_image());
-        }
-        let normalized = nominal
-            .checked_mul(i128::from(u32::MAX))
-            .ok_or_else(arithmetic_overflow)?;
-        let minimum_scaled = minimum
-            .checked_mul(source_scale)
-            .ok_or_else(arithmetic_overflow)?;
-        let maximum_scaled = maximum
-            .checked_mul(source_scale)
-            .ok_or_else(arithmetic_overflow)?;
-        let clamped = normalized.max(minimum_scaled).min(maximum_scaled);
-        let interval_count = i128::try_from(points.len() - 1).map_err(|_| arithmetic_overflow())?;
-        let denominator = maximum_scaled
-            .checked_sub(minimum_scaled)
-            .ok_or_else(arithmetic_overflow)?;
-        let position_numerator = clamped
-            .checked_sub(minimum_scaled)
-            .and_then(|value| value.checked_mul(interval_count))
-            .ok_or_else(arithmetic_overflow)?;
-        let interval = position_numerator
-            .checked_div(denominator)
-            .ok_or_else(arithmetic_overflow)?;
-        let remainder = position_numerator
-            .checked_rem(denominator)
-            .ok_or_else(arithmetic_overflow)?;
-        let interval_index = usize::try_from(interval).map_err(|_| arithmetic_overflow())?;
-        let raw = if interval_index >= points.len() - 1 {
-            i128::from(*points.last().ok_or_else(invalid_image)?)
-        } else {
-            let left = i128::from(*points.get(interval_index).ok_or_else(invalid_image)?);
-            let right = i128::from(
-                *points
-                    .get(
-                        interval_index
-                            .checked_add(1)
-                            .ok_or_else(arithmetic_overflow)?,
-                    )
-                    .ok_or_else(invalid_image)?,
-            );
-            let numerator = left
-                .checked_mul(denominator)
-                .and_then(|value| {
-                    right
-                        .checked_sub(left)
-                        .and_then(|difference| difference.checked_mul(remainder))
-                        .and_then(|offset| value.checked_add(offset))
-                })
-                .ok_or_else(arithmetic_overflow)?;
-            nlt_round_ratio(numerator, denominator)?
-        };
-        let half = nlt_power_of_two(output_precision - 1)?;
-        let mut value = if transform.signed() {
-            raw.checked_sub(half).ok_or_else(arithmetic_overflow)?
-        } else {
-            raw
-        };
-        if transform.transform_type() == 4 && value < 0 {
-            let bias = half.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            value = 0_i128
-                .checked_sub(value)
-                .and_then(|magnitude| magnitude.checked_sub(bias))
-                .ok_or_else(arithmetic_overflow)?;
-        }
-        Ok(value)
-    }
-
     pub(crate) fn from_components_with_origin(
         width: u32,
         height: u32,
@@ -1245,6 +1142,160 @@ impl TypedImage {
             width, height, x_origin, y_origin, components, limits,
         )
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_lut_sample(
+        source, source_info, crate::codestream::owned_nonlinear_view(transform),
+    ),
+))]
+fn inverse_nlt_lut_sample(
+    source: i128,
+    source_info: ComponentInfo,
+    transform: &NonlinearPointTransform,
+) -> Result<i128, DecodeError> {
+    let output_precision = transform.precision();
+    if output_precision == 0 || output_precision > 38 {
+        return Err(invalid_image());
+    }
+    let minimum = transform.d_min().ok_or_else(invalid_transform)?;
+    let maximum = transform.d_max().ok_or_else(invalid_transform)?;
+    let points = transform.points();
+    if points.len() < 2 || minimum >= maximum {
+        return Err(invalid_transform());
+    }
+    if source_info.precision == 0 || source_info.precision > 38 {
+        return Err(invalid_image());
+    }
+    let source_scale = nlt_power_of_two(source_info.precision)?;
+    let source_offset = if source_info.signed {
+        nlt_power_of_two(source_info.precision - 1)?
+    } else {
+        0
+    };
+    let nominal = source
+        .checked_add(source_offset)
+        .ok_or_else(arithmetic_overflow)?;
+    if nominal < 0 || nominal >= source_scale {
+        return Err(invalid_image());
+    }
+    let raw = nlt_lut_position(points, source_scale, nominal, minimum, maximum)?;
+    let half = nlt_power_of_two(output_precision - 1)?;
+    let mut value = if transform.signed() {
+        raw.checked_sub(half).ok_or_else(arithmetic_overflow)?
+    } else {
+        raw
+    };
+    if transform.transform_type() == 4 && value < 0 {
+        let bias = half.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        let magnitude = 0_i128.checked_sub(value).ok_or_else(arithmetic_overflow)?;
+        value = magnitude
+            .checked_sub(bias)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(value)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_lut_position(points@, source_scale, nominal, minimum, maximum),
+))]
+fn nlt_lut_position(
+    points: &[u32],
+    source_scale: i128,
+    nominal: i128,
+    minimum: u32,
+    maximum: u32,
+) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part2_nlt_lut_position);
+        reveal(crate::specs::part2_nlt_lut_interpolate);
+    }
+    if points.is_empty() {
+        return Err(invalid_image());
+    }
+    let normalized = nominal
+        .checked_mul(i128::from(u32::MAX))
+        .ok_or_else(arithmetic_overflow)?;
+    let minimum_scaled = i128::from(minimum)
+        .checked_mul(source_scale)
+        .ok_or_else(arithmetic_overflow)?;
+    let maximum_scaled = i128::from(maximum)
+        .checked_mul(source_scale)
+        .ok_or_else(arithmetic_overflow)?;
+    let clamped = normalized.max(minimum_scaled).min(maximum_scaled);
+    let interval_count = (points.len() - 1) as u128;
+    if interval_count > i128::MAX as u128 {
+        return Err(arithmetic_overflow());
+    }
+    let interval_count = interval_count as i128;
+    let denominator = maximum_scaled
+        .checked_sub(minimum_scaled)
+        .ok_or_else(arithmetic_overflow)?;
+    let offset = clamped
+        .checked_sub(minimum_scaled)
+        .ok_or_else(arithmetic_overflow)?;
+    let position_numerator = offset
+        .checked_mul(interval_count)
+        .ok_or_else(arithmetic_overflow)?;
+    let interval = position_numerator
+        .checked_div(denominator)
+        .ok_or_else(arithmetic_overflow)?;
+    let remainder = position_numerator
+        .checked_rem(denominator)
+        .ok_or_else(arithmetic_overflow)?;
+    let interval_index = match usize::try_from(interval) {
+        Ok(index) => index,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(interval_count as int == points@.len() - 1);
+        assert(interval == vstd::arithmetic::div_mod::rust_div(position_numerator as int, denominator as int) as i128);
+        assert(remainder == vstd::arithmetic::div_mod::rust_rem(position_numerator as int, denominator as int) as i128);
+        assert(interval_index == interval as usize);
+        assert(crate::specs::part2_nlt_lut_position(points@, source_scale, nominal, minimum, maximum)
+            == crate::specs::part2_nlt_lut_interpolate(points@, interval_index, denominator, remainder));
+    }
+    if interval_index >= points.len() - 1 {
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(points@.last() == points@[points@.len() - 1]); }
+        Ok(i128::from(*points.last().ok_or_else(invalid_image)?))
+    } else {
+        let left = i128::from(*points.get(interval_index).ok_or_else(invalid_image)?);
+        let right = i128::from(
+            *points
+                .get(
+                    interval_index
+                        .checked_add(1)
+                        .ok_or_else(arithmetic_overflow)?,
+                )
+                .ok_or_else(invalid_image)?,
+        );
+        nlt_lut_interpolate_values(left, right, denominator, remainder)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_lut_interpolate_values(left, right, denominator, remainder),
+))]
+fn nlt_lut_interpolate_values(
+    left: i128,
+    right: i128,
+    denominator: i128,
+    remainder: i128,
+) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_lut_interpolate_values); }
+    let base = left
+        .checked_mul(denominator)
+        .ok_or_else(arithmetic_overflow)?;
+    let difference = right.checked_sub(left).ok_or_else(arithmetic_overflow)?;
+    let offset = difference
+        .checked_mul(remainder)
+        .ok_or_else(arithmetic_overflow)?;
+    let numerator = base.checked_add(offset).ok_or_else(arithmetic_overflow)?;
+    nlt_round_ratio(numerator, denominator)
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -8693,6 +8744,166 @@ mod tests {
             nlt_fixed_mul_q32(i128::MAX, 1_i128 << 32),
             Err(arithmetic_overflow())
         );
+    }
+
+    #[test]
+    fn actual_nonlinear_lut_derives_checked_interpolation_and_raw_type4_samples() {
+        fn reference(
+            source: i128,
+            info: ComponentInfo,
+            transform: &NonlinearPointTransform,
+        ) -> Result<i128, DecodeError> {
+            let precision = transform.precision();
+            if precision == 0 || precision > 38 {
+                return Err(invalid_image());
+            }
+            let minimum = transform.d_min().ok_or_else(invalid_transform)?;
+            let maximum = transform.d_max().ok_or_else(invalid_transform)?;
+            let points = transform.points();
+            if points.len() < 2 || minimum >= maximum {
+                return Err(invalid_transform());
+            }
+            if info.precision == 0 || info.precision > 38 {
+                return Err(invalid_image());
+            }
+            let scale = 1_u128 << info.precision;
+            let offset = if info.signed {
+                i128::try_from(scale / 2).unwrap()
+            } else {
+                0
+            };
+            let nominal = source.checked_add(offset).ok_or_else(arithmetic_overflow)?;
+            if nominal < 0 || nominal as u128 >= scale {
+                return Err(invalid_image());
+            }
+            let low = u128::from(minimum) * scale;
+            let high = u128::from(maximum) * scale;
+            let coordinate = (nominal as u128 * u128::from(u32::MAX)).clamp(low, high);
+            let denominator = high - low;
+            let position = (coordinate - low) * (points.len() - 1) as u128;
+            let index = usize::try_from(position / denominator).unwrap();
+            let remainder = position % denominator;
+            let raw = if index >= points.len() - 1 {
+                u128::from(*points.last().unwrap())
+            } else {
+                let weighted = u128::from(points[index]) * (denominator - remainder)
+                    + u128::from(points[index + 1]) * remainder;
+                (weighted + denominator / 2) / denominator
+            };
+            let half = 1_i128 << (precision - 1);
+            let value = i128::try_from(raw).unwrap() - if transform.signed() { half } else { 0 };
+            Ok(if transform.transform_type() == 4 && value < 0 {
+                -value - (half + 1)
+            } else {
+                value
+            })
+        }
+
+        let tables = [
+            vec![],
+            vec![0],
+            vec![0, 255],
+            vec![255, 0],
+            vec![0, u32::MAX],
+            vec![0, 128, 255],
+            vec![u32::MAX, 0, 17],
+        ];
+        let windows = [
+            (None, None),
+            (Some(0), None),
+            (None, Some(u32::MAX)),
+            (Some(0), Some(0)),
+            (Some(u32::MAX), Some(0)),
+            (Some(0), Some(u32::MAX)),
+            (Some(1), Some(2)),
+            (Some(0x8000_0000), Some(u32::MAX)),
+        ];
+        let sources = [
+            i128::MIN,
+            -(1_i128 << 38),
+            -129,
+            -128,
+            -1,
+            0,
+            1,
+            127,
+            128,
+            255,
+            256,
+            (1_i128 << 38) - 1,
+            i128::MAX,
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for kind in [2, 4, u8::MAX] {
+            for precision in [0, 1, 8, 38, 39, u8::MAX] {
+                for signed in [false, true] {
+                    for (minimum, maximum) in windows {
+                        for points in &tables {
+                            let transform = NonlinearPointTransform::for_test(
+                                precision,
+                                signed,
+                                kind,
+                                minimum,
+                                maximum,
+                                points.clone(),
+                            );
+                            for source_precision in [0, 1, 8, 38, 39, u8::MAX] {
+                                for source_signed in [false, true] {
+                                    let info = ComponentInfo {
+                                        precision: source_precision,
+                                        signed: source_signed,
+                                        x_subsampling: 0,
+                                        y_subsampling: u8::MAX,
+                                        x_registration: u16::MAX,
+                                        y_registration: 17,
+                                    };
+                                    for source in sources {
+                                        let expected = reference(source, info, &transform);
+                                        assert_eq!(
+                                            inverse_nlt_lut_sample(source, info, &transform),
+                                            expected
+                                        );
+                                        successes += usize::from(expected.is_ok());
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 314_496);
+        assert!(successes > 1_000);
+        assert_eq!(nlt_lut_position(&[], 1, 0, 0, 1), Err(invalid_image()));
+        assert_eq!(nlt_lut_position(&[17], 256, 255, 0, u32::MAX), Ok(17));
+        assert_eq!(
+            nlt_lut_position(&[0, 1], i128::MAX, i128::MAX, 0, 1),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(
+            nlt_lut_position(&[0, 1], 0, 0, 0, 1),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(nlt_lut_position(&[0, 1], -1, 0, 0, 1), Ok(1));
+        for (left, right, denominator, remainder, expected) in [
+            (0, 255, 3, 1, Ok(85)),
+            (255, 0, 3, 2, Ok(85)),
+            (1, 0, 2, 1, Ok(1)),
+            (-1, 0, 2, 1, Ok(-1)),
+            (i128::MAX, i128::MAX, 1, 0, Ok(i128::MAX)),
+            (i128::MIN, i128::MIN, 1, 0, Err(arithmetic_overflow())),
+            (i128::MAX, i128::MAX, 2, 0, Err(arithmetic_overflow())),
+            (i128::MAX, i128::MIN, 0, 0, Err(arithmetic_overflow())),
+            (0, i128::MAX, 1, 2, Err(arithmetic_overflow())),
+            (1, 2, -1, 0, Err(arithmetic_overflow())),
+        ] {
+            assert_eq!(
+                nlt_lut_interpolate_values(left, right, denominator, remainder),
+                expected
+            );
+        }
     }
 
     #[test]

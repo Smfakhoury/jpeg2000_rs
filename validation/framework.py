@@ -792,6 +792,21 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_LUT_CONTRACTS = {
+    ("src/image.rs", "inverse_nlt_lut_sample"): (
+        "part2_nlt_lut_sample", r"\1", None,
+        r"source\s*,\s*source_info\s*,\s*" + _coverage_call("crate::codestream::owned_nonlinear_view", "transform"),
+    ),
+    ("src/image.rs", "nlt_lut_interpolate_values"): (
+        "part2_nlt_lut_interpolate_values", r"\1", None,
+        r"left\s*,\s*right\s*,\s*denominator\s*,\s*remainder",
+    ),
+    ("src/image.rs", "nlt_lut_position"): (
+        "part2_nlt_lut_position", r"\1", None,
+        r"points\s*@\s*,\s*source_scale\s*,\s*nominal\s*,\s*minimum\s*,\s*maximum",
+    ),
+}
+
 _NONLINEAR_ARITHMETIC_CONTRACTS = {
     ("src/image.rs", "nlt_round_ratio"): (
         "part2_nlt_round_ratio", r"\1", None, r"numerator\s*,\s*denominator",
@@ -1885,6 +1900,7 @@ def validate_normative_coverage(
                 or _OUTPUT_SHAPE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_REGIONS_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_ARITHMETIC_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_LUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

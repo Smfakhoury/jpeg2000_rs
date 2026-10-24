@@ -8668,6 +8668,137 @@ pub open spec fn part2_nlt_power_of_two(exponent: u8) -> Result<i128, crate::Dec
     else { Ok(1i128 << exponent) }
 }
 
+#[verifier::opaque]
+pub open spec fn part2_nlt_lut_interpolate_values(
+    left: i128, right: i128, denominator: i128, remainder: i128,
+) -> Result<i128, crate::DecodeError>
+{
+    match part2_atk_checked_i128(left as int * denominator as int) {
+        Err(error) => Err(error),
+        Ok(base) => match part2_atk_checked_i128(right as int - left as int) {
+            Err(error) => Err(error),
+            Ok(difference) => match part2_atk_checked_i128(difference as int * remainder as int) {
+                Err(error) => Err(error),
+                Ok(offset) => match part2_atk_checked_i128(base as int + offset as int) {
+                    Err(error) => Err(error),
+                    Ok(numerator) => part2_nlt_round_ratio(numerator, denominator),
+                },
+            },
+        },
+    }
+}
+
+pub open spec fn part2_nlt_lut_interpolate(
+    points: Seq<u32>, index: usize, denominator: i128, remainder: i128,
+) -> Result<i128, crate::DecodeError>
+    recommends points.len() > 0,
+{
+    if index as nat >= points.len() - 1 {
+        Ok(points[points.len() - 1] as i128)
+    } else {
+        part2_nlt_lut_interpolate_values(points[index as int] as i128,
+            points[index as int + 1] as i128, denominator, remainder)
+    }
+}
+
+pub open spec fn part2_nlt_lut_finish(raw: i128, transform: Part2OwnedNonlinear)
+    -> Result<i128, crate::DecodeError>
+    recommends transform.precision > 0,
+{
+    match part2_nlt_power_of_two((transform.precision - 1) as u8) {
+        Err(error) => Err(error),
+        Ok(half) => match if transform.signed { part2_atk_checked_i128(raw as int - half as int) } else { Ok(raw) } {
+            Err(error) => Err(error),
+            Ok(value) => if transform.transform_type == 4 && value < 0 {
+                match part2_atk_checked_i128(half as int + 1) {
+                    Err(error) => Err(error),
+                    Ok(bias) => match part2_atk_checked_i128(-(value as int)) {
+                        Err(error) => Err(error),
+                        Ok(magnitude) => part2_atk_checked_i128(magnitude as int - bias as int),
+                    },
+                }
+            } else { Ok(value) },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_lut_position(
+    points: Seq<u32>, source_scale: i128, nominal: i128, minimum: u32, maximum: u32,
+) -> Result<i128, crate::DecodeError> {
+    if points.len() == 0 { Err(part1_image_error(false)) } else {
+    match part2_atk_checked_i128(nominal as int * u32::MAX as int) {
+        Err(error) => Err(error),
+        Ok(normalized) => match part2_atk_checked_i128(minimum as int * source_scale as int) {
+            Err(error) => Err(error),
+            Ok(minimum_scaled) => match part2_atk_checked_i128(maximum as int * source_scale as int) {
+                Err(error) => Err(error),
+                Ok(maximum_scaled) => {
+                    let above_minimum = if normalized > minimum_scaled { normalized } else { minimum_scaled };
+                    let clamped = if above_minimum < maximum_scaled { above_minimum } else { maximum_scaled };
+                    if points.len() - 1 > i128::MAX { Err(part1_transform_error(true)) } else {
+                        let count = (points.len() - 1) as i128;
+                        match part2_atk_checked_i128(maximum_scaled as int - minimum_scaled as int) {
+                            Err(error) => Err(error),
+                            Ok(denominator) => match part2_atk_checked_i128(clamped as int - minimum_scaled as int) {
+                                Err(error) => Err(error),
+                                Ok(offset) => match part2_atk_checked_i128(offset as int * count as int) {
+                                    Err(error) => Err(error),
+                                    Ok(position) => if denominator == 0 || (position == i128::MIN && denominator == -1) {
+                                        Err(part1_transform_error(true))
+                                    } else {
+                                        let interval = vstd::arithmetic::div_mod::rust_div(position as int, denominator as int) as i128;
+                                        let remainder = vstd::arithmetic::div_mod::rust_rem(position as int, denominator as int) as i128;
+                                        if interval < 0 || interval > usize::MAX { Err(part1_transform_error(true)) }
+                                        else { part2_nlt_lut_interpolate(points, interval as usize, denominator, remainder) }
+                                    },
+                                },
+                            },
+                        }
+                    }
+                },
+            },
+        },
+    }
+    }
+}
+
+pub open spec fn part2_nlt_lut_sample(
+    source: i128, info: crate::codestream::ComponentInfo, transform: Part2OwnedNonlinear,
+) -> Result<i128, crate::DecodeError> {
+    if transform.precision == 0 || transform.precision > 38 { Err(part1_image_error(false)) }
+    else {
+        match transform.d_min {
+            None => Err(part1_transform_error(false)),
+            Some(minimum) => match transform.d_max {
+                None => Err(part1_transform_error(false)),
+                Some(maximum) => if transform.points.len() < 2 || minimum >= maximum {
+                    Err(part1_transform_error(false))
+                } else if info.precision == 0 || info.precision > 38 {
+                    Err(part1_image_error(false))
+                } else {
+                    match part2_nlt_power_of_two(info.precision) {
+                        Err(error) => Err(error),
+                        Ok(source_scale) => match if info.signed { part2_nlt_power_of_two((info.precision - 1) as u8) } else { Ok(0i128) } {
+                            Err(error) => Err(error),
+                            Ok(source_offset) => match part2_atk_checked_i128(source as int + source_offset as int) {
+                                Err(error) => Err(error),
+                                Ok(nominal) => if nominal < 0 || nominal >= source_scale { Err(part1_image_error(false)) }
+                                else {
+                                    match part2_nlt_lut_position(transform.points, source_scale, nominal, minimum, maximum) {
+                                        Err(error) => Err(error),
+                                        Ok(raw) => part2_nlt_lut_finish(raw, transform),
+                                    }
+                                },
+                            },
+                        },
+                    }
+                },
+            },
+        }
+    }
+}
+
 pub open spec fn part2_nlt_fixed_mul_q32(left: i128, right: i128)
     -> Result<i128, crate::DecodeError>
 {

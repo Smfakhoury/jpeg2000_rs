@@ -1,5 +1,13 @@
 # Specification audit guide
 
+`part2_nlt_lut_sample` binds actual raw LUT inverse execution, not supplied
+lookup results. Its helpers retain ordered admission, checked source/position
+arithmetic, clamping, endpoint/point-read policy, native-width Rust division/
+remainder and all interpolation/sign/type4 stages. Interpolation arithmetic
+is opaque outside its own proved native body to bound context, not trusted.
+No monotonicity, target-range or valid-input premise is added. Whole gamma/
+log/exp/dispatch, region/typed/parser/file/F2/F4/final F8 remain separate.
+
 `part2_nlt_round_ratio`, `part2_nlt_fixed_mul_q32`,
 `part2_nlt_fixed_div_q32` and `part2_nlt_power_of_two` bind the actual
 nonlinear scalar arithmetic, including intermediate overflow, distinct
