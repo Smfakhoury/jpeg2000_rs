@@ -216,6 +216,17 @@ pub(crate) struct PlannedPrecinct {
     pub(crate) planned_code_blocks: u64,
 }
 
+#[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
+pub(crate) struct ResolutionPlanMetadata {
+    pub(crate) geometry: ComponentResolutionGeometry,
+    pub(crate) first_subband: usize,
+    pub(crate) subband_count: usize,
+    pub(crate) precincts_in_resolution: u32,
+    pub(crate) first_precinct: [u32; 2],
+    pub(crate) band_size: [u32; 2],
+    pub(crate) block_size: [u32; 2],
+}
+
 struct PrecinctPlanBuilder {
     executions: Vec<PacketSubbandExecution>,
     placements: Vec<ProgressionCodeBlockPlacement>,
@@ -225,6 +236,20 @@ struct PrecinctPlanBuilder {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn resolution_plan_metadata_view(value: &ResolutionPlanMetadata) -> crate::specs::Part2ResolutionPlanMetadata {
+        crate::specs::Part2ResolutionPlanMetadata {
+            geometry: value.geometry, first_subband: value.first_subband, subband_count: value.subband_count,
+            precincts_in_resolution: value.precincts_in_resolution, first_precinct: value.first_precinct,
+            band_size: value.band_size, block_size: value.block_size,
+        }
+    }
+
+    pub open spec fn resolution_plan_metadata_outcome(result: Result<ResolutionPlanMetadata, DecodeError>)
+        -> Result<crate::specs::Part2ResolutionPlanMetadata, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(resolution_plan_metadata_view(&value)) }
+    }
+
     closed spec fn precinct_plan_builder_view(value: &PrecinctPlanBuilder) -> crate::specs::Part2PrecinctPlanBuilder {
         crate::specs::Part2PrecinctPlanBuilder {
             executions: crate::packet::packet_executions_view(value.executions@),
@@ -1435,87 +1460,21 @@ fn plan_progression_tile_at_selected(
             )
         )]
         while resolution <= component_coding_style.decomposition_levels {
-            let geometry = derive_component_resolution_geometry_for(
+            let ResolutionPlanMetadata {
+                geometry,
+                first_subband,
+                subband_count,
+                precincts_in_resolution,
+                first_precinct,
+                band_size,
+                block_size,
+            } = prepare_resolution_plan_metadata(
                 size,
                 component_coding_style,
                 component,
-                resolution,
-                Some(tile_index),
+                (tile_index, resolution),
+                [bounds.x0, bounds.y0],
             )?;
-            let first_subband = if resolution == 0 {
-                0_usize
-            } else {
-                component_coding_style.subband_count_through_resolution(
-                    resolution.checked_sub(1).ok_or_else(arithmetic_overflow)?,
-                )?
-            };
-            let subband_count = component_coding_style
-                .subband_count_through_resolution(resolution)?
-                .checked_sub(first_subband)
-                .ok_or_else(arithmetic_overflow)?;
-            let precincts_in_resolution = if subband_count == 0 {
-                0
-            } else {
-                u32::try_from(geometry.precincts).map_err(|_| arithmetic_overflow())?
-            };
-            let (precinct_x_exponent, precinct_y_exponent) =
-                component_coding_style.precinct_exponents(resolution)?;
-            if precinct_x_exponent > 31 || precinct_y_exponent > 31 {
-                return Err(invalid_decode());
-            }
-            let (resolution_scale_x, resolution_scale_y) =
-                component_coding_style.resolution_downsampling(resolution)?;
-            let resolution_x0 = ceil_div_u32(bounds.x0, resolution_scale_x)?;
-            let resolution_y0 = ceil_div_u32(bounds.y0, resolution_scale_y)?;
-            let precinct_width = 1_u32 << u32::from(precinct_x_exponent);
-            let precinct_height = 1_u32 << u32::from(precinct_y_exponent);
-            let first_precinct_x = floor_div_u32(resolution_x0, precinct_width)?;
-            let first_precinct_y = floor_div_u32(resolution_y0, precinct_height)?;
-            let direction = if resolution == 0 {
-                crate::codestream::DecompositionDirection::None
-            } else {
-                component_coding_style.direction_for_resolution(resolution)?
-            };
-            let split_x = matches!(
-                direction,
-                crate::codestream::DecompositionDirection::Horizontal
-                    | crate::codestream::DecompositionDirection::TwoDimensional
-            );
-            let split_y = matches!(
-                direction,
-                crate::codestream::DecompositionDirection::Vertical
-                    | crate::codestream::DecompositionDirection::TwoDimensional
-            );
-            let band_x_exponent = if split_x {
-                precinct_x_exponent
-                    .checked_sub(1)
-                    .ok_or_else(invalid_decode)?
-            } else {
-                precinct_x_exponent
-            };
-            let band_y_exponent = if split_y {
-                precinct_y_exponent
-                    .checked_sub(1)
-                    .ok_or_else(invalid_decode)?
-            } else {
-                precinct_y_exponent
-            };
-            if band_x_exponent > 31 || band_y_exponent > 31 {
-                return Err(invalid_decode());
-            }
-            let band_precinct_width = 1_u32 << u32::from(band_x_exponent);
-            let band_precinct_height = 1_u32 << u32::from(band_y_exponent);
-            let code_block_width =
-                band_precinct_width.min(u32::from(component_coding_style.code_block_width));
-            let code_block_height =
-                band_precinct_height.min(u32::from(component_coding_style.code_block_height));
-            if precinct_width == 0
-                || precinct_height == 0
-                || code_block_width == 0
-                || code_block_height == 0
-            {
-                return Err(invalid_decode());
-            }
             let mut precinct = 0_u32;
             #[cfg_attr(
                 verus_keep_ghost,
@@ -1525,29 +1484,15 @@ fn plan_progression_tile_at_selected(
                 )
             )]
             while precinct < precincts_in_resolution {
-                let precinct_x = first_precinct_x
-                    .checked_add(
-                        precinct
-                            .checked_rem(geometry.precincts_across)
-                            .ok_or_else(arithmetic_overflow)?,
-                    )
-                    .ok_or_else(arithmetic_overflow)?;
-                let precinct_y = first_precinct_y
-                    .checked_add(
-                        precinct
-                            .checked_div(geometry.precincts_across)
-                            .ok_or_else(arithmetic_overflow)?,
-                    )
-                    .ok_or_else(arithmetic_overflow)?;
-                let band_x = precinct_x
-                    .checked_mul(band_precinct_width)
-                    .ok_or_else(arithmetic_overflow)?;
-                let band_y = precinct_y
-                    .checked_mul(band_precinct_height)
-                    .ok_or_else(arithmetic_overflow)?;
+                let band_origin = derive_planned_precinct_origin(
+                    first_precinct,
+                    geometry.precincts_across,
+                    precinct,
+                    band_size,
+                )?;
                 let planned = plan_packet_precinct(
-                    [band_x, band_y, band_precinct_width, band_precinct_height],
-                    [code_block_width, code_block_height],
+                    [band_origin[0], band_origin[1], band_size[0], band_size[1]],
+                    block_size,
                     &subbands,
                     (first_subband, subband_count),
                     tier1_style,
@@ -1584,6 +1529,131 @@ fn plan_progression_tile_at_selected(
         grid,
         precincts,
         components,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_planned_precinct_origin(first, across, precinct, band_size),
+))]
+pub(crate) fn derive_planned_precinct_origin(
+    first: [u32; 2],
+    across: u32,
+    precinct: u32,
+    band_size: [u32; 2],
+) -> Result<[u32; 2], DecodeError> {
+    let x = first[0]
+        .checked_add(
+            precinct
+                .checked_rem(across)
+                .ok_or_else(arithmetic_overflow)?,
+        )
+        .ok_or_else(arithmetic_overflow)?;
+    let y = first[1]
+        .checked_add(
+            precinct
+                .checked_div(across)
+                .ok_or_else(arithmetic_overflow)?,
+        )
+        .ok_or_else(arithmetic_overflow)?;
+    let band_x = x
+        .checked_mul(band_size[0])
+        .ok_or_else(arithmetic_overflow)?;
+    let band_y = y
+        .checked_mul(band_size[1])
+        .ok_or_else(arithmetic_overflow)?;
+    Ok([band_x, band_y])
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures resolution_plan_metadata_outcome(result) == crate::specs::part2_resolution_plan_metadata(
+        size, style, component, selection, component_origin,
+    ),
+))]
+pub(crate) fn prepare_resolution_plan_metadata(
+    size: &ImageSize,
+    style: CodingStyle,
+    component: u16,
+    selection: (u16, u8),
+    component_origin: [u32; 2],
+) -> Result<ResolutionPlanMetadata, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { codestream::resolution_selectors_known_fields(style); }
+    let (tile, resolution) = selection;
+    let geometry =
+        derive_component_resolution_geometry_for(size, style, component, resolution, Some(tile))?;
+    let first_subband = if resolution == 0 {
+        0
+    } else {
+        style.subband_count_through_resolution(
+            resolution.checked_sub(1).ok_or_else(arithmetic_overflow)?,
+        )?
+    };
+    let subband_count = style
+        .subband_count_through_resolution(resolution)?
+        .checked_sub(first_subband)
+        .ok_or_else(arithmetic_overflow)?;
+    let precincts_in_resolution = if subband_count == 0 {
+        0
+    } else {
+        match u32::try_from(geometry.precincts) {
+            Ok(count) => count,
+            Err(_) => return Err(arithmetic_overflow()),
+        }
+    };
+    let (px, py) = style.precinct_exponents(resolution)?;
+    if px > 31 || py > 31 {
+        return Err(invalid_decode());
+    }
+    let scale = style.resolution_downsampling(resolution)?;
+    let rx0 = ceil_div_u32(component_origin[0], scale.0)?;
+    let ry0 = ceil_div_u32(component_origin[1], scale.1)?;
+    let precinct_width = 1_u32 << u32::from(px);
+    let precinct_height = 1_u32 << u32::from(py);
+    let first_x = floor_div_u32(rx0, precinct_width)?;
+    let first_y = floor_div_u32(ry0, precinct_height)?;
+    let direction = if resolution == 0 {
+        codestream::DecompositionDirection::None
+    } else {
+        style.direction_for_resolution(resolution)?
+    };
+    let split_x = matches!(
+        direction,
+        codestream::DecompositionDirection::Horizontal
+            | codestream::DecompositionDirection::TwoDimensional
+    );
+    let split_y = matches!(
+        direction,
+        codestream::DecompositionDirection::Vertical
+            | codestream::DecompositionDirection::TwoDimensional
+    );
+    let bx = if split_x {
+        px.checked_sub(1).ok_or_else(invalid_decode)?
+    } else {
+        px
+    };
+    let by = if split_y {
+        py.checked_sub(1).ok_or_else(invalid_decode)?
+    } else {
+        py
+    };
+    if bx > 31 || by > 31 {
+        return Err(invalid_decode());
+    }
+    let band_width = 1_u32 << u32::from(bx);
+    let band_height = 1_u32 << u32::from(by);
+    let block_width = band_width.min(u32::from(style.code_block_width));
+    let block_height = band_height.min(u32::from(style.code_block_height));
+    if precinct_width == 0 || precinct_height == 0 || block_width == 0 || block_height == 0 {
+        return Err(invalid_decode());
+    }
+    Ok(ResolutionPlanMetadata {
+        geometry,
+        first_subband,
+        subband_count,
+        precincts_in_resolution,
+        first_precinct: [first_x, first_y],
+        band_size: [band_width, band_height],
+        block_size: [block_width, block_height],
     })
 }
 
@@ -6297,6 +6367,54 @@ mod tests {
             zero_dimensions > 100,
             "zero dimensions remain the decoder initializer's policy"
         );
+    }
+
+    #[test]
+    fn actual_precinct_origins_preserve_raw_divisor_addition_and_multiplication_frontiers() {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let words = [0, 1, 2, 65_535, 65_536, u32::MAX];
+        let mut cases = 0;
+        for x in words {
+            for y in words {
+                for across in words {
+                    for precinct in words {
+                        for width in words {
+                            for height in words {
+                                let expected = if across == 0 {
+                                    Err(arithmetic)
+                                } else {
+                                    let checked =
+                                        |value: u128| u32::try_from(value).map_err(|_| arithmetic);
+                                    (|| {
+                                        let x =
+                                            checked(u128::from(x) + u128::from(precinct % across))?;
+                                        let y =
+                                            checked(u128::from(y) + u128::from(precinct / across))?;
+                                        let bx = checked(u128::from(x) * u128::from(width))?;
+                                        let by = checked(u128::from(y) * u128::from(height))?;
+                                        Ok([bx, by])
+                                    })()
+                                };
+                                assert_eq!(
+                                    derive_planned_precinct_origin(
+                                        [x, y],
+                                        across,
+                                        precinct,
+                                        [width, height]
+                                    ),
+                                    expected
+                                );
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 46_656);
     }
 
     fn raw_planned_subband(

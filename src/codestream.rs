@@ -9551,6 +9551,213 @@ mod tests {
         );
     }
 
+    fn reference_resolution_count(
+        style: CodingStyle,
+        resolution: u8,
+    ) -> Result<usize, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        if resolution > style.decomposition_levels {
+            return Err(invalid);
+        }
+        let mut count = 1_u128;
+        for current in 1..=u16::from(resolution) {
+            let stage = u16::from(style.decomposition_levels) - current;
+            count += match style
+                .decomposition_directions
+                .get(usize::from(stage))
+                .ok_or(invalid)?
+            {
+                DecompositionDirection::None => 0,
+                DecompositionDirection::Horizontal | DecompositionDirection::Vertical => 1,
+                DecompositionDirection::TwoDimensional => 3,
+            };
+            if count > usize::MAX as u128 {
+                return Err(arithmetic);
+            }
+        }
+        Ok(usize::try_from(count).unwrap())
+    }
+
+    fn reference_resolution_plan_metadata(
+        size: &ImageSize,
+        style: CodingStyle,
+        component: u16,
+        selection: (u16, u8),
+        origin: [u32; 2],
+    ) -> Result<crate::decode::ResolutionPlanMetadata, DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let invalid_style = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodingStyle,
+        };
+        let resolution = selection.1;
+        let geometry =
+            reference_resolution_geometry(size, style, component, resolution, Some(selection.0))?;
+        let first = if resolution == 0 {
+            0
+        } else {
+            reference_resolution_count(style, resolution - 1)?
+        };
+        let last = reference_resolution_count(style, resolution)?;
+        let count = usize::try_from(last as i128 - first as i128).map_err(|_| arithmetic)?;
+        let precincts = if count == 0 {
+            0
+        } else {
+            u32::try_from(geometry.precincts).map_err(|_| arithmetic)?
+        };
+        let p = *style
+            .precinct_exponents
+            .get(usize::from(resolution))
+            .ok_or(invalid_style)?;
+        if p.0 > 31 || p.1 > 31 {
+            return Err(invalid);
+        }
+        let scale = (0..style.decomposition_levels - resolution)
+            .try_fold((1, 1), |before, stage| {
+                reference_resolution_scale_step(style, stage, before)
+            })?;
+        let x0 = u32::try_from(u64::from(origin[0]).div_ceil(u64::from(scale.0))).unwrap();
+        let y0 = u32::try_from(u64::from(origin[1]).div_ceil(u64::from(scale.1))).unwrap();
+        let pw = 1_u32 << p.0;
+        let ph = 1_u32 << p.1;
+        let first_precinct = [x0 / pw, y0 / ph];
+        let direction = if resolution == 0 {
+            DecompositionDirection::None
+        } else {
+            *style
+                .decomposition_directions
+                .get(usize::from(style.decomposition_levels - resolution))
+                .ok_or(invalid_style)?
+        };
+        let split_x = matches!(
+            direction,
+            DecompositionDirection::Horizontal | DecompositionDirection::TwoDimensional
+        );
+        let split_y = matches!(
+            direction,
+            DecompositionDirection::Vertical | DecompositionDirection::TwoDimensional
+        );
+        let bx = if split_x {
+            p.0.checked_sub(1).ok_or(invalid)?
+        } else {
+            p.0
+        };
+        let by = if split_y {
+            p.1.checked_sub(1).ok_or(invalid)?
+        } else {
+            p.1
+        };
+        if bx > 31 || by > 31 {
+            return Err(invalid);
+        }
+        let bw = 1_u32 << bx;
+        let bh = 1_u32 << by;
+        let cw = bw.min(u32::from(style.code_block_width));
+        let ch = bh.min(u32::from(style.code_block_height));
+        if pw == 0 || ph == 0 || cw == 0 || ch == 0 {
+            return Err(invalid);
+        }
+        Ok(crate::decode::ResolutionPlanMetadata {
+            geometry,
+            first_subband: first,
+            subband_count: count,
+            precincts_in_resolution: precincts,
+            first_precinct,
+            band_size: [bw, bh],
+            block_size: [cw, ch],
+        })
+    }
+
+    #[test]
+    fn actual_resolution_plan_metadata_preserves_complete_raw_geometry_counts_split_and_origin_fields()
+     {
+        let mut cases = 0;
+        let mut successes = 0;
+        let mut lazy_narrowing = 0;
+        for large in [false, true] {
+            let mut size = raw_resolution_size(if large { 65_536 } else { 33 }, 0, (1, 1), 0, 2);
+            for info in &mut size.component_info {
+                info.x_registration = 0;
+                info.y_registration = 0;
+            }
+            if large {
+                size.tile_width = 65_536;
+                size.tile_height = 65_536;
+                size.tiles_across = 1;
+                size.tiles_down = 1;
+            }
+            for levels in [0, 1, 2, 31, 32, u8::MAX] {
+                for resolution in [0, 1, 2, 31, u8::MAX] {
+                    for pattern in 0..8 {
+                        for p in [
+                            (0, 0),
+                            (1, 1),
+                            (2, 3),
+                            (31, 31),
+                            (32, 0),
+                            (u8::MAX, u8::MAX),
+                        ] {
+                            for (cw, ch) in [(1, 1), (0, 1), (4, 8), (u16::MAX, u16::MAX)] {
+                                let mut style = raw_resolution_style(levels, pattern);
+                                style.code_block_width = cw;
+                                style.code_block_height = ch;
+                                style.precinct_exponents = [p; 33];
+                                for component in [0, 1, 64] {
+                                    for tile in [0, u16::MAX] {
+                                        for origin in [[0, 0], [1, 3], [u32::MAX, u32::MAX]] {
+                                            let expected = reference_resolution_plan_metadata(
+                                                &size,
+                                                style,
+                                                component,
+                                                (tile, resolution),
+                                                origin,
+                                            );
+                                            assert_eq!(
+                                                crate::decode::prepare_resolution_plan_metadata(
+                                                    &size,
+                                                    style,
+                                                    component,
+                                                    (tile, resolution),
+                                                    origin
+                                                ),
+                                                expected
+                                            );
+                                            if let Ok(value) = expected {
+                                                successes += 1;
+                                                lazy_narrowing += usize::from(
+                                                    value.subband_count == 0
+                                                        && value.geometry.precincts
+                                                            > u64::from(u32::MAX),
+                                                );
+                                            }
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 207_360);
+        assert!(successes > 100 && lazy_narrowing > 0);
+    }
+
     fn reference_truncated_subband_count(style: CodingStyle) -> u16 {
         let total = style
             .decomposition_directions

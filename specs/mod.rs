@@ -8334,6 +8334,120 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub struct Part2ResolutionPlanMetadata {
+    pub geometry: crate::decode::ComponentResolutionGeometry,
+    pub first_subband: usize,
+    pub subband_count: usize,
+    pub precincts_in_resolution: u32,
+    pub first_precinct: [u32; 2],
+    pub band_size: [u32; 2],
+    pub block_size: [u32; 2],
+}
+
+pub open spec fn part2_planned_precinct_origin(first: [u32; 2], across: u32, precinct: u32, band_size: [u32; 2])
+    -> Result<[u32; 2], crate::DecodeError>
+{
+    if across == 0 { Err(part1_block_placement_error(true)) } else {
+        let x = first[0] as nat + precinct as nat % across as nat;
+        let y = first[1] as nat + precinct as nat / across as nat;
+        let bx = x * band_size[0] as nat;
+        let by = y * band_size[1] as nat;
+        if x > u32::MAX || y > u32::MAX || bx > u32::MAX || by > u32::MAX {
+            Err(part1_block_placement_error(true))
+        } else { Ok([bx as u32, by as u32]) }
+    }
+}
+
+pub open spec fn part2_resolution_plan_finish(
+    style: crate::codestream::CodingStyle, geometry: crate::decode::ComponentResolutionGeometry,
+    origin: [u32; 2], resolution: u8, first: usize, count: usize, precincts: u32,
+) -> Result<Part2ResolutionPlanMetadata, crate::DecodeError> {
+    let selector = crate::codestream::decomposition_selector_view(style);
+    let pselector = crate::codestream::precinct_selector_view(style);
+    match part2_precinct_exponents(pselector.0, pselector.1, resolution) {
+        Err(error) => Err(error),
+        Ok(p) => if p.0 > 31 || p.1 > 31 { Err(part1_block_placement_error(false)) } else {
+            match part2_resolution_downsampling(selector.0, selector.1, resolution) {
+                Err(error) => Err(error),
+                Ok(scale) => match part2_selection_ceil(origin[0], scale.0) {
+                    Err(error) => Err(error),
+                    Ok(x0) => match part2_selection_ceil(origin[1], scale.1) {
+                        Err(error) => Err(error),
+                        Ok(y0) => {
+                            let pw = 1u32 << (p.0 as u32);
+                            let ph = 1u32 << (p.1 as u32);
+                            match part2_selection_floor(x0, pw) {
+                                Err(error) => Err(error),
+                                Ok(fx) => match part2_selection_floor(y0, ph) {
+                                    Err(error) => Err(error),
+                                    Ok(fy) => {
+                                        let direction = if resolution == 0 { Ok(crate::codestream::DecompositionDirection::None) }
+                                            else { part1_direction_for_resolution(selector.0, selector.1, resolution) };
+                                        match direction {
+                                            Err(error) => Err(error),
+                                            Ok(direction) => {
+                                                let split_x = matches!(direction, crate::codestream::DecompositionDirection::Horizontal | crate::codestream::DecompositionDirection::TwoDimensional);
+                                                let split_y = matches!(direction, crate::codestream::DecompositionDirection::Vertical | crate::codestream::DecompositionDirection::TwoDimensional);
+                                                if (split_x && p.0 == 0) || (split_y && p.1 == 0) { Err(part1_block_placement_error(false)) }
+                                                else {
+                                                    let bx = if split_x { (p.0 - 1) as u8 } else { p.0 };
+                                                    let by = if split_y { (p.1 - 1) as u8 } else { p.1 };
+                                                    if bx > 31 || by > 31 { Err(part1_block_placement_error(false)) } else {
+                                                        let bw = 1u32 << (bx as u32);
+                                                        let bh = 1u32 << (by as u32);
+                                                        let cw = if bw <= style.code_block_width as u32 { bw } else { style.code_block_width as u32 };
+                                                        let ch = if bh <= style.code_block_height as u32 { bh } else { style.code_block_height as u32 };
+                                                        if pw == 0 || ph == 0 || cw == 0 || ch == 0 { Err(part1_block_placement_error(false)) }
+                                                        else { Ok(Part2ResolutionPlanMetadata {
+                                                            geometry, first_subband: first, subband_count: count, precincts_in_resolution: precincts,
+                                                            first_precinct: [fx, fy], band_size: [bw, bh], block_size: [cw, ch],
+                                                        }) }
+                                                    }
+                                                }
+                                            },
+                                        }
+                                    },
+                                },
+                            }
+                        },
+                    },
+                },
+            }
+        },
+    }
+}
+
+pub open spec fn part2_resolution_plan_metadata(
+    size: &crate::codestream::ImageSize, style: crate::codestream::CodingStyle,
+    component: u16, selection: (u16, u8), origin: [u32; 2],
+) -> Result<Part2ResolutionPlanMetadata, crate::DecodeError> {
+    let selector = crate::codestream::decomposition_selector_view(style);
+    match part2_resolution_geometry(crate::codestream::selection_geometry_view(size),
+        crate::codestream::image_size_component_count(size), crate::codestream::image_size_component_infos(size),
+        crate::decode::resolution_geometry_style(style), component, selection.1, Some(selection.0)) {
+        Err(error) => Err(error),
+        Ok(geometry) => {
+            let first = if selection.1 == 0 { Ok(0usize) } else {
+                part1_subband_count_through_resolution(selector.0, selector.1, (selection.1 - 1) as u8)
+            };
+            match first {
+                Err(error) => Err(error),
+                Ok(first) => match part1_subband_count_through_resolution(selector.0, selector.1, selection.1) {
+                    Err(error) => Err(error),
+                    Ok(last) => if last < first { Err(part1_block_placement_error(true)) } else {
+                        let count = (last - first) as usize;
+                        if count != 0 && geometry.precincts > u32::MAX as u64 { Err(part1_block_placement_error(true)) }
+                        else {
+                            part2_resolution_plan_finish(style, geometry, origin, selection.1, first, count,
+                                if count == 0 { 0u32 } else { geometry.precincts as u32 })
+                        }
+                    },
+                },
+            }
+        },
+    }
+}
+
 pub struct Part2PrecinctPlanBuilder {
     pub executions: Seq<Part2PacketSubbandExecution>,
     pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,

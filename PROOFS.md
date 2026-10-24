@@ -2527,3 +2527,21 @@ contexts, wide geometry/flat-order references and the previously independently
 qualified packet constructor compare every private packet field through the
 existing shared test-only snapshot, plus all placements and global count.
 Complete resolution/component/tile plans and F2/F4/F8 joins remain separate.
+## Complete actual resolution-plan metadata and precinct-band coordinates
+
+The real tile loop shares complete producers for resolution geometry/ranges/
+precinct counts/first grid/band and block dimensions, then checked band
+coordinates. Actual image/style/component/tile/resolution and raw component
+origins feed real geometry and ordered style/scaling/direction lookups;
+no geometry/count result, normalized origin or successful resource premise
+is supplied. The actual caller obtains origins from its real component
+metadata producer.
+
+Zero subband delta retains the original bypass of precinct-count narrowing,
+but does not bypass later exponent, split or size validation. Raw first-grid/
+across/precinct/band arithmetic retains zero-divisor and ordered overflow
+errors. Exact contracts and consumer mutations bind all fields and inputs.
+207,360 independent raw metadata contexts and 46,656 wide coordinate
+frontiers include large real precinct counts above u32 with zero/nonzero
+band deltas.
+Full resolution/component/tile vectors and F2/F4/F8 joins remain separate.

@@ -1600,3 +1600,10 @@ then invoke the actual packet-initialization model. No prepared execution or
 decoder bank, validated range or successful resource premise is supplied.
 Native owned-state invariants prove all intermediate indexing and append
 frames; complete tile-plan and F2/F4/F8 joins remain separate.
+`part2_resolution_plan_metadata` derives the actual complete resolution-loop
+metadata from raw image/style/component/selection and unnormalized component
+origin. Its internal finish stage receives geometry/ranges/counts derived
+inside that relation, never supplied successful results or premises.
+`part2_planned_precinct_origin` retains raw checked first-grid/precinct/band
+arithmetic. Native views and exact recipes bind every metadata field,
+including zero-band lazy narrowing and later independent validation.
