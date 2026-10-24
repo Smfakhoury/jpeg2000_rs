@@ -833,6 +833,33 @@ fn apply_tile_multiple_component_transform(
     result
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_quantization_step_at_index(
+        codestream::quantization_view(quantization), resolution, index,
+    ),
+))]
+pub(crate) fn quantization_step_at_index(
+    quantization: &Quantization,
+    resolution: u8,
+    index: u16,
+) -> Result<QuantizationStep, DecodeError> {
+    match quantization.style() {
+        QuantizationStyle::None | QuantizationStyle::ScalarExpounded => quantization.step(index),
+        QuantizationStyle::ScalarDerived => {
+            let base = quantization.step(0)?;
+            Ok(QuantizationStep {
+                exponent: base.exponent.saturating_sub(resolution.saturating_sub(1)),
+                mantissa: base.mantissa,
+            })
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_quantization_for_subband(
+        codestream::quantization_view(quantization), resolution, orientation,
+    ),
+))]
 pub fn quantization_step_for_subband(
     quantization: &Quantization,
     resolution: u8,
@@ -850,26 +877,14 @@ pub fn quantization_step_for_subband(
             SubbandOrientation::Hh => 2_u16,
             SubbandOrientation::Ll => return Err(invalid_decode()),
         };
-        u16::from(resolution)
+        let level = u16::from(resolution)
             .checked_sub(1)
-            .and_then(|level| level.checked_mul(3))
-            .and_then(|index| index.checked_add(1))
-            .and_then(|index| index.checked_add(offset))
-            .ok_or_else(arithmetic_overflow)?
+            .ok_or_else(arithmetic_overflow)?;
+        let index = level.checked_mul(3).ok_or_else(arithmetic_overflow)?;
+        let index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        index.checked_add(offset).ok_or_else(arithmetic_overflow)?
     };
-    let step = match quantization.style() {
-        QuantizationStyle::None | QuantizationStyle::ScalarExpounded => {
-            quantization.step(orientation_index)?
-        }
-        QuantizationStyle::ScalarDerived => {
-            let base = quantization.step(0)?;
-            let reduction = resolution.saturating_sub(1);
-            QuantizationStep {
-                exponent: base.exponent.saturating_sub(reduction),
-                mantissa: base.mantissa,
-            }
-        }
-    };
+    let step = quantization_step_at_index(quantization, resolution, orientation_index)?;
     Ok((orientation_index, step))
 }
 
@@ -1740,7 +1755,13 @@ fn write_quantized_block(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn make_subband_geometry(
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_make_subband_geometry(
+        resolution, orientation, bounds, resolution_dimensions, low_pass_first, component_depth,
+        codestream::quantization_view(quantization), quantization_index,
+    ),
+))]
+pub(crate) fn make_subband_geometry(
     resolution: u8,
     orientation: SubbandOrientation,
     bounds: [u32; 4],
@@ -1761,27 +1782,21 @@ fn make_subband_geometry(
         .checked_add(gain)
         .ok_or_else(arithmetic_overflow)?;
     if dynamic_range == 0 {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::InvalidQuantization,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidQuantization,
+        });
     }
-    let quantization_step = match quantization.style() {
-        QuantizationStyle::None | QuantizationStyle::ScalarExpounded => {
-            quantization.step(quantization_index)?
-        }
-        QuantizationStyle::ScalarDerived => {
-            let base = quantization.step(0)?;
-            QuantizationStep {
-                exponent: base.exponent.saturating_sub(resolution.saturating_sub(1)),
-                mantissa: base.mantissa,
-            }
-        }
-    };
+    let quantization_step =
+        quantization_step_at_index(quantization, resolution, quantization_index)?;
     let significant_bitplanes = u16::from(quantization.guard_bits())
         .checked_add(u16::from(quantization_step.exponent))
-        .and_then(|value| value.checked_sub(1))
-        .and_then(|value| value.checked_add(u16::from(roi_shift)))
+        .ok_or_else(invalid_decode)?;
+    let significant_bitplanes = significant_bitplanes
+        .checked_sub(1)
+        .ok_or_else(invalid_decode)?;
+    let significant_bitplanes = significant_bitplanes
+        .checked_add(u16::from(roi_shift))
         .ok_or_else(invalid_decode)?;
     if significant_bitplanes == 0 || significant_bitplanes > crate::tier1::MAX_TIER1_BITPLANES {
         return Err(invalid_decode());

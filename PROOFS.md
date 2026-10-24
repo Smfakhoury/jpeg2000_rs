@@ -2375,3 +2375,19 @@ count-vector oracles compose with the previously independently tested factory.
 2,744 raw admission contexts and230,400 full grid/selection/limit contexts
 exercise complete states and first/late errors. Full packet-plan construction
 and F2/F4/F8 remain separate.
+## Complete actual subband admission and quantization
+
+Raw quantization style/guard/step observations and logical/physical lookup now
+feed the sole shared indexed/ScalarDerived step computation. The public
+isotropic orientation-index API and actual subband-geometry helper retain
+their different original admission policies; Derived observes step0 and
+saturates its exponent while preserving raw mantissa and the supplied index.
+
+`make_subband_geometry` has a complete Result/all-field relation, including
+precision/gain overflow, zero range, quantization lookup, bitplane/ROI checks
+and last-only checked extents. No raw step/depth/bounds normalization or
+successful intermediate result is supplied. Both callers share the actual
+computation; public boundary/native-consumer recipes bind four full contracts.
+All-u16 lookup,147,456 raw public-index contexts and589,824 complete admission
+contexts independently cover first/late errors and all returned fields.
+Complete subband-vector/tile-plan construction and F2/F4/F8 remain separate.

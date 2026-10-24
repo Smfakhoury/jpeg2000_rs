@@ -1086,6 +1086,13 @@ impl Default for RoiShifts {
     }
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn quantization_view(value: &Quantization) -> crate::specs::Part2Quantization {
+        (value.style, value.guard_bits, value.step_count, value.steps@)
+    }
+}
+
 impl Quantization {
     pub(crate) fn reversible_default(coding_style: CodingStyle) -> Self {
         Self {
@@ -1099,27 +1106,36 @@ impl Quantization {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == quantization_view(self).0,
+    ))]
     pub const fn style(&self) -> QuantizationStyle {
         self.style
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == quantization_view(self).1,
+    ))]
     pub const fn guard_bits(&self) -> u8 {
         self.guard_bits
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_quantization_lookup(quantization_view(self), index),
+    ))]
     pub fn step(&self, index: u16) -> Result<QuantizationStep, DecodeError> {
         if index >= self.step_count {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidQuantization,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidQuantization,
+            });
         }
         let index = usize::from(index);
         if index >= self.steps.len() {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidQuantization,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidQuantization,
+            });
         }
         Ok(self.steps[index])
     }
@@ -9262,6 +9278,268 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tier1::SubbandOrientation;
+
+    fn raw_subband_quantization(
+        style: QuantizationStyle,
+        count: u16,
+        pattern: usize,
+    ) -> Quantization {
+        Quantization {
+            style,
+            guard_bits: [0, 1, 7, u8::MAX, 2, 0, 73, 74][pattern],
+            step_count: count,
+            steps: core::array::from_fn(|index| QuantizationStep {
+                exponent: match pattern {
+                    0 => 0,
+                    1 => u8::try_from(index % 74).unwrap(),
+                    2 => u8::MAX,
+                    3 => 31,
+                    4 => 7,
+                    5 => 1,
+                    6 => 73,
+                    _ => 74,
+                },
+                mantissa: u16::try_from(index)
+                    .unwrap()
+                    .wrapping_mul(997)
+                    .wrapping_add(u16::MAX),
+            }),
+        }
+    }
+
+    fn reference_quantization_lookup(
+        value: &Quantization,
+        index: u16,
+    ) -> Result<QuantizationStep, DecodeError> {
+        if index >= value.step_count || usize::from(index) >= value.steps.len() {
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidQuantization,
+            })
+        } else {
+            Ok(value.steps[usize::from(index)])
+        }
+    }
+
+    fn reference_quantization_at_index(
+        value: &Quantization,
+        resolution: u8,
+        index: u16,
+    ) -> Result<QuantizationStep, DecodeError> {
+        if value.style != QuantizationStyle::ScalarDerived {
+            return reference_quantization_lookup(value, index);
+        }
+        let base = reference_quantization_lookup(value, 0)?;
+        let reduction = if resolution == 0 {
+            0
+        } else {
+            u16::from(resolution) - 1
+        };
+        let exponent = (i32::from(base.exponent) - i32::from(reduction)).max(0);
+        Ok(QuantizationStep {
+            exponent: u8::try_from(exponent).unwrap(),
+            mantissa: base.mantissa,
+        })
+    }
+
+    #[test]
+    fn quantization_lookup_and_public_subband_index_preserve_raw_words_and_lazy_policy() {
+        use SubbandOrientation::{Hh, Hl, Lh, Ll};
+        for count in [0, 1, 2, 97, 98, u16::MAX] {
+            let value = raw_subband_quantization(QuantizationStyle::ScalarDerived, count, 7);
+            for index in 0..=u16::MAX {
+                assert_eq!(
+                    value.step(index),
+                    reference_quantization_lookup(&value, index)
+                );
+            }
+        }
+        let mut cases = 0;
+        for style in [
+            QuantizationStyle::None,
+            QuantizationStyle::ScalarDerived,
+            QuantizationStyle::ScalarExpounded,
+        ] {
+            for count in [0, 1, 2, 97, 98, u16::MAX] {
+                for pattern in 0..8 {
+                    let value = raw_subband_quantization(style, count, pattern);
+                    assert_eq!(value.style(), style);
+                    assert_eq!(value.guard_bits(), value.guard_bits);
+                    for resolution in 0..=u8::MAX {
+                        for orientation in [Ll, Hl, Lh, Hh] {
+                            let offset = match orientation {
+                                Ll | Hl => 0,
+                                Lh => 1,
+                                Hh => 2,
+                            };
+                            let index = if resolution == 0 && orientation == Ll {
+                                Some(0)
+                            } else if resolution != 0 && orientation != Ll {
+                                Some(u16::from(resolution) * 3 - 2 + offset)
+                            } else {
+                                None
+                            };
+                            let expected = if let Some(index) = index {
+                                reference_quantization_at_index(&value, resolution, index)
+                                    .map(|step| (index, step))
+                            } else {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::InvalidCodeBlock,
+                                })
+                            };
+                            assert_eq!(
+                                crate::decode::quantization_step_for_subband(
+                                    &value,
+                                    resolution,
+                                    orientation
+                                ),
+                                expected,
+                            );
+                            let raw_index = u16::from(resolution).wrapping_mul(997);
+                            assert_eq!(
+                                crate::decode::quantization_step_at_index(
+                                    &value, resolution, raw_index
+                                ),
+                                reference_quantization_at_index(&value, resolution, raw_index),
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 147_456);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_subband_admission(
+        resolution: u8,
+        orientation: SubbandOrientation,
+        bounds: [u32; 4],
+        dimensions: [u32; 2],
+        phase: [bool; 2],
+        depth: [u8; 2],
+        quantization: &Quantization,
+        index: u16,
+    ) -> Result<crate::decode::SubbandGeometry, DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let gain = match orientation {
+            SubbandOrientation::Ll => 0,
+            SubbandOrientation::Hl | SubbandOrientation::Lh => 1,
+            SubbandOrientation::Hh => 2,
+        };
+        let dynamic_range = u8::try_from(u16::from(depth[0]) + gain).map_err(|_| arithmetic)?;
+        if dynamic_range == 0 {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidQuantization,
+            });
+        }
+        let step = reference_quantization_at_index(quantization, resolution, index)?;
+        let raw = u32::from(quantization.guard_bits) + u32::from(step.exponent);
+        if raw == 0 {
+            return Err(invalid);
+        }
+        let bitplanes = raw - 1 + u32::from(depth[1]);
+        if bitplanes == 0 || bitplanes > u32::from(crate::tier1::MAX_TIER1_BITPLANES) {
+            return Err(invalid);
+        }
+        let width =
+            u32::try_from(i64::from(bounds[2]) - i64::from(bounds[0])).map_err(|_| arithmetic)?;
+        let height =
+            u32::try_from(i64::from(bounds[3]) - i64::from(bounds[1])).map_err(|_| arithmetic)?;
+        Ok(crate::decode::SubbandGeometry {
+            resolution,
+            orientation,
+            x0: bounds[0],
+            y0: bounds[1],
+            width,
+            height,
+            resolution_width: dimensions[0],
+            resolution_height: dimensions[1],
+            quantization_index: index,
+            quantization_step: step,
+            dynamic_range,
+            significant_bitplanes: u16::try_from(bitplanes).unwrap(),
+            roi_shift: depth[1],
+            low_pass_first_x: phase[0],
+            low_pass_first_y: phase[1],
+        })
+    }
+
+    #[test]
+    fn subband_admission_matches_every_field_and_raw_error_priority() {
+        use SubbandOrientation::{Hh, Hl, Lh, Ll};
+        let mut cases = 0;
+        let mut successes = 0;
+        for style in [
+            QuantizationStyle::None,
+            QuantizationStyle::ScalarDerived,
+            QuantizationStyle::ScalarExpounded,
+        ] {
+            for count in [0, 1, 2, 97, 98, u16::MAX] {
+                for pattern in 0..8 {
+                    let value = raw_subband_quantization(style, count, pattern);
+                    for precision in 0..=u8::MAX {
+                        for seed in 0_u8..16 {
+                            let orientation =
+                                [Ll, Hl, Lh, Hh][usize::from(seed.wrapping_add(precision) % 4)];
+                            let resolution = [0, 1, 2, 31, 32, u8::MAX][usize::from(seed % 6)];
+                            let index = [0, 1, 2, 96, 97, 98, u16::MAX][usize::from(seed % 7)];
+                            let bounds = [
+                                [0, 0, 3, 5],
+                                [1, 1, 1, 1],
+                                [u32::MAX, 0, 0, u32::MAX],
+                                [0, u32::MAX, u32::MAX, 0],
+                            ][usize::from(seed % 4)];
+                            let dimensions = [u32::from(seed), u32::MAX];
+                            let phase = [seed & 1 != 0, seed & 2 != 0];
+                            let depth = [precision, seed * 17];
+                            let expected = reference_subband_admission(
+                                resolution,
+                                orientation,
+                                bounds,
+                                dimensions,
+                                phase,
+                                depth,
+                                &value,
+                                index,
+                            );
+                            assert_eq!(
+                                crate::decode::make_subband_geometry(
+                                    resolution,
+                                    orientation,
+                                    bounds,
+                                    dimensions,
+                                    phase,
+                                    depth,
+                                    &value,
+                                    index,
+                                ),
+                                expected,
+                            );
+                            successes += usize::from(expected.is_ok());
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 589_824);
+        assert!(
+            successes > 1000,
+            "{successes} complete subband outputs checked"
+        );
+    }
 
     fn raw_resolution_style(levels: u8, pattern: usize) -> CodingStyle {
         use DecompositionDirection::{Horizontal, None, TwoDimensional, Vertical};

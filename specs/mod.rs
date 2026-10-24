@@ -1912,6 +1912,102 @@ pub open spec fn part2_selection_floor(value: u32, divisor: u32) -> Result<u32, 
     else { Ok((value / divisor) as u32) }
 }
 
+pub type Part2Quantization = (crate::codestream::QuantizationStyle, u8, u16, Seq<crate::transform::QuantizationStep>);
+
+pub open spec fn part2_quantization_lookup(value: Part2Quantization, index: u16)
+    -> Result<crate::transform::QuantizationStep, crate::DecodeError>
+{
+    if index >= value.2 || index as nat >= value.3.len() {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidQuantization })
+    } else { Ok(value.3[index as int]) }
+}
+
+pub open spec fn part2_quantization_step_at_index(
+    value: Part2Quantization, resolution: u8, index: u16,
+) -> Result<crate::transform::QuantizationStep, crate::DecodeError> {
+    match value.0 {
+        crate::codestream::QuantizationStyle::None | crate::codestream::QuantizationStyle::ScalarExpounded => {
+            part2_quantization_lookup(value, index)
+        },
+        crate::codestream::QuantizationStyle::ScalarDerived => match part2_quantization_lookup(value, 0) {
+            Err(error) => Err(error),
+            Ok(base) => {
+                let reduction = if resolution <= 1 { 0int } else { resolution as int - 1 };
+                Ok(crate::transform::QuantizationStep {
+                    exponent: if base.exponent as int <= reduction { 0u8 } else { (base.exponent as int - reduction) as u8 },
+                    mantissa: base.mantissa,
+                })
+            },
+        },
+    }
+}
+
+pub open spec fn part2_quantization_for_subband(
+    value: Part2Quantization, resolution: u8, orientation: crate::tier1::SubbandOrientation,
+) -> Result<(u16, crate::transform::QuantizationStep), crate::DecodeError> {
+    let index = if resolution == 0 {
+        match orientation {
+            crate::tier1::SubbandOrientation::Ll => Ok(0u16),
+            _ => Err(part1_block_placement_error(false)),
+        }
+    } else {
+        match orientation {
+            crate::tier1::SubbandOrientation::Ll => Err(part1_block_placement_error(false)),
+            crate::tier1::SubbandOrientation::Hl => Ok(((resolution as int - 1) * 3 + 1) as u16),
+            crate::tier1::SubbandOrientation::Lh => Ok(((resolution as int - 1) * 3 + 2) as u16),
+            crate::tier1::SubbandOrientation::Hh => Ok(((resolution as int - 1) * 3 + 3) as u16),
+        }
+    };
+    match index {
+        Err(error) => Err(error),
+        Ok(index) => match part2_quantization_step_at_index(value, resolution, index) {
+            Err(error) => Err(error), Ok(step) => Ok((index, step)),
+        },
+    }
+}
+
+pub open spec fn part2_make_subband_geometry(
+    resolution: u8, orientation: crate::tier1::SubbandOrientation, bounds: [u32; 4],
+    dimensions: [u32; 2], phase: [bool; 2], depth: [u8; 2],
+    quantization: Part2Quantization, index: u16,
+) -> Result<crate::decode::SubbandGeometry, crate::DecodeError> {
+    let gain = match orientation {
+        crate::tier1::SubbandOrientation::Ll => 0int,
+        crate::tier1::SubbandOrientation::Hl | crate::tier1::SubbandOrientation::Lh => 1int,
+        crate::tier1::SubbandOrientation::Hh => 2int,
+    };
+    let dynamic = depth[0] as int + gain;
+    if dynamic > u8::MAX { Err(part1_block_placement_error(true)) }
+    else if dynamic == 0 {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidQuantization })
+    } else {
+        match part2_quantization_step_at_index(quantization, resolution, index) {
+            Err(error) => Err(error),
+            Ok(step) => {
+                let exponent = quantization.1 as int + step.exponent as int;
+                let significant = exponent - 1 + depth[1] as int;
+                if exponent == 0 || significant == 0 || significant > crate::tier1::MAX_TIER1_BITPLANES {
+                    Err(part1_block_placement_error(false))
+                } else {
+                    match part1_image_checked_u32(bounds[2] as int - bounds[0] as int) {
+                        Err(error) => Err(error),
+                        Ok(width) => match part1_image_checked_u32(bounds[3] as int - bounds[1] as int) {
+                            Err(error) => Err(error),
+                            Ok(height) => Ok(crate::decode::SubbandGeometry {
+                                resolution, orientation, x0: bounds[0], y0: bounds[1], width, height,
+                                resolution_width: dimensions[0], resolution_height: dimensions[1],
+                                quantization_index: index, quantization_step: step, dynamic_range: dynamic as u8,
+                                significant_bitplanes: significant as u16, roi_shift: depth[1],
+                                low_pass_first_x: phase[0], low_pass_first_y: phase[1],
+                            }),
+                        },
+                    }
+                }
+            },
+        }
+    }
+}
+
 pub type Part2ResolutionStyle = (u8, Seq<crate::codestream::DecompositionDirection>, u16, u16, Seq<(u8, u8)>);
 pub type Part2ComponentResolutionCounts = (u8, Seq<u8>, Seq<u8>);
 
