@@ -790,6 +790,27 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_DECODER_INITIALIZATION_CONTRACTS = {
+    ("src/tier1.rs", "tier1_decoder_from_dimensions"): (
+        "part2_tier1_initial_decoder", _coverage_call("tier1_initial_decoder_outcome", r"\1"), None,
+        r"width\s*,\s*height\s*,\s*significant_bitplanes\s*,\s*orientation\s*,\s*style",
+    ),
+    ("src/tier1.rs", "Tier1CodingStyle::set_force_high_throughput"): (
+        "part2_tier1_force_style", r"\(\s*\)", r"\*\s*" + _coverage_call("final", "self"),
+        r"\*\s*" + _coverage_call("old", "self") + r"\s*,\s*required",
+    ),
+    ("src/tier1.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"): (
+        "part2_tier1_allow_sets", r"\(\s*\)",
+        _coverage_call("tier1_decoder_state", _coverage_call("final", "self")),
+        _coverage_call("tier1_decoder_state", _coverage_call("old", "self")) + r"\s*,\s*allowed",
+    ),
+    ("src/tier1.rs", "Tier1CodeBlockDecoder::set_ht_magnitude_bound"): (
+        "part2_tier1_magnitude_bound", r"\1",
+        _coverage_call("tier1_decoder_state", _coverage_call("final", "self")),
+        _coverage_call("tier1_decoder_state", _coverage_call("old", "self")) + r"\s*,\s*bound",
+    ),
+}
+
 _SUBBAND_VECTOR_CONTRACTS = {
     ("src/codestream.rs", "CodingStyle::subband_count"): (
         "part2_subband_count", r"\1", None,
@@ -1582,6 +1603,7 @@ def validate_normative_coverage(
                 or _PACKET_GRID_PRODUCER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SUBBAND_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SUBBAND_VECTOR_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _DECODER_INITIALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
@@ -1595,6 +1617,11 @@ def validate_normative_coverage(
             )
             if header_contract:
                 expected_result_model = header_contract[0]
+            if (reference["path"], reference["symbol"]) in (
+                ("src/tier1.rs", "Tier1CodingStyle::set_force_high_throughput"),
+                ("src/tier1.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),
+            ) and re.search(r"\)\s*->", text[signature:body_start]):
+                raise ValueError(f"linked unit-state contract requires the actual implicit unit return: {short}")
             projected_result = re.search(
                 named_prefix + re.escape(result_projection) + r"\(\s*\1\s*\)" + model_suffix,
                 contract,

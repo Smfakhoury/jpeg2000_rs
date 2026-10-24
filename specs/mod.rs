@@ -8059,6 +8059,48 @@ pub open spec fn ht_neighbors(plane: Tier1RawPlane, x: u16, y: u16, vertical_cau
     }
 }
 
+pub open spec fn part2_tier1_force_style(before: crate::tier1::Tier1CodingStyle, required: bool)
+    -> ((), crate::tier1::Tier1CodingStyle)
+{
+    ((), crate::tier1::Tier1CodingStyle { force_high_throughput: required, ..before })
+}
+
+pub open spec fn part2_tier1_initial_decoder(
+    width: u16, height: u16, significant: u16, orientation: crate::tier1::SubbandOrientation,
+    style: crate::tier1::Tier1CodingStyle,
+) -> Result<Tier1DecoderState, crate::DecodeError> {
+    if significant == 0 || significant > crate::tier1::MAX_TIER1_BITPLANES {
+        Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock))
+    } else {
+        match tier1_empty_plane(width, height) {
+            Err(error) => Err(error),
+            Ok(plane) => Ok(Tier1DecoderState {
+                plane, orientation, style, maximum_passes: (significant as int * 3 - 2) as u32,
+                next_pass: 0, bitplane: (significant - 1) as u16, zero_bitplanes: None,
+                bitplane_state: None, mq_context_state: None, reset_contexts_before_mq: false,
+                decoded_segments: 0, decoded_bytes: 0, legacy_segment: None, legacy_decode_work: 0,
+                ht_cleanup_plane: None, ht_refinement_data: Seq::empty(), ht_refinement_passes: 0,
+                ht_decoded_bitplanes: 0, ht_current_set_has_cleanup: false, ht_sets_seen: 0,
+                allow_multiple_ht_sets: false, ht_magnitude_bound: crate::tier1::tier1_max_ht_magnitude_bits(),
+            }),
+        }
+    }
+}
+
+pub open spec fn part2_tier1_allow_sets(before: Tier1DecoderState, allowed: bool) -> ((), Tier1DecoderState) {
+    ((), Tier1DecoderState { allow_multiple_ht_sets: allowed, ..before })
+}
+
+pub open spec fn part2_tier1_magnitude_bound(before: Tier1DecoderState, bound: u8)
+    -> (Result<(), crate::DecodeError>, Tier1DecoderState)
+{
+    if bound == 0 || bound > crate::tier1::tier1_max_ht_magnitude_bits() {
+        (Err(ht_reader_error(crate::MalformedKind::InvalidCodeBlock)), before)
+    } else {
+        (Ok(()), Tier1DecoderState { ht_magnitude_bound: bound, ..before })
+    }
+}
+
 pub struct Tier1DecoderState {
     pub plane: Tier1RawPlane,
     pub orientation: crate::tier1::SubbandOrientation,

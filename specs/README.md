@@ -1553,3 +1553,9 @@ final count checks and first errors remain explicit. The public boundary and
 three native consumer contracts bind the sole executable traversal; no
 prepared band vector, normalized geometry/count or supplied lookup result is
 a premise. Full tile-plan and F2/F4/F8 composition remain separate.
+`part2_tier1_initial_decoder` describes actual raw decoder construction,
+including the real empty plane and every initial legacy/HT field. Native
+style/HT policy setter models preserve all unrelated raw state and retain
+the owner on invalid bounds. Actual planner/public facade calls share the
+sole constructor; no supplied initialized decoder/plane, normalized style or
+successful allocation is a premise.

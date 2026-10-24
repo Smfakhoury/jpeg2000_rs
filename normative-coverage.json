@@ -4,6 +4,36 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-decoder-initialization",
+      "topic": "Complete actual Tier-1 decoder initialization Result/every decoder field from raw dimensions/significant-bitplanes/orientation/coding style. Original significant-bitplane admission precedes checked pass metadata and the sole proved plane constructor; no style normalization or initialized plane/decoder result premise. Public new facade and actual tile planner execute that sole body. Force-route style, multiple-HT-set and magnitude-bound setters preserve every unrelated raw field; invalid bound returns original decoder unchanged. No trusted adapter, supplied initialized state, successful allocation or budget premise. Actual tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::new"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_tier1_initial_decoder"},
+        {"path": "specs/mod.rs", "symbol": "part2_tier1_force_style"},
+        {"path": "specs/mod.rs", "symbol": "part2_tier1_allow_sets"},
+        {"path": "specs/mod.rs", "symbol": "part2_tier1_magnitude_bound"}
+      ],
+      "contract_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_from_dimensions"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodingStyle::set_force_high_throughput"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::set_ht_magnitude_bound"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_initial_decoder_outcome"},
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"},
+        {"path": "src/tier1.rs", "symbol": "tier1_max_ht_magnitude_bits"},
+        {"path": "src/tier1.rs", "symbol": "code_block_plane_from_dimensions"}
+      ],
+      "test_refs": [
+        {"path": "src/tier1.rs", "symbol": "actual_decoder_initialization_derives_every_field_from_raw_dimensions_bits_and_style"},
+        {"path": "src/tier1.rs", "symbol": "initialization_policy_setters_preserve_all_unrelated_raw_state_and_error_snapshots"}
+      ]
+    },
+    {
       "id": "part2-complete-native-subband-vector",
       "topic": "Complete actual public/private component subband-vector Result/all ordered fields from raw image/style/quantization/component/tile/ROI metadata. Real component admission precedes coordinate production, original truncated 32-stage count/capacity, ordered resolution traversal, anisotropic HL/LH/HH growth and quantization/phase/bitplane production. Growing actual vector length supplies each checked index; zero-resolution LL retains its original fixed index0. Final count equality and last u8 advancement/first errors are retained. No normalized bounds/style/bands/count, supplied lookup/geometry result or successful allocation/budget premise. Actual tile planner executes the same sole resolution producer; full tile-plan/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
