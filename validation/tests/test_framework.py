@@ -766,6 +766,12 @@ class FrameworkTests(WorkingFiles):
             framework._CODEBLOCK_VECTOR_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_subband_lattice_execution_owned_prefix_and_limits(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-subband-execution"},
+            framework._SUBBAND_EXECUTION_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

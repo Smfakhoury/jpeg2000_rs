@@ -2492,3 +2492,20 @@ constructor/standard-library behavior to the pinned verifier without new trust.
 Independent wide geometry and flat-order composition tests compare every
 decoder field and placement across 103,680 vector and 768 cell contexts.
 Full tile-plan, decoded-component and F2/F4/F8 joins remain separate.
+## Complete actual subband execution production
+
+The actual tile planner now consumes one raw subband execution producer.
+It derives checked intersections, block lattice and shape, then composes the
+real configured decoder/placement vector factory and packet-row metadata.
+An empty intersection preserves the original lazy style/bitplane/policy/limit
+admission, while subband-end overflow still precedes that bypass.
+
+Two complete exact-binding contracts cover raw band/block/subband/style/
+policy/location/owned prefix/count/selection/limits without supplied lattice,
+initialized decoders, prepared executions or successful resource premises.
+Actual native views and a proved packet-field observation bind all output
+fields without opening private executable representation or adding trust.
+Independent wide intersection/lattice tests cover 10,368 raw contexts;
+57,600 full composition contexts compare packet presence/metadata, every
+decoder field, placement prefixes, indices and selected-only count/errors.
+Full resolution/precinct/component/tile and F2/F4/F8 joins remain separate.

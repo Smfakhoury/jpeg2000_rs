@@ -101,6 +101,16 @@ pub struct ComponentResolutionGeometry {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn planned_subband_lattice_view(value: PlannedSubbandLattice) -> crate::specs::Part2PlannedSubbandLattice {
+        crate::specs::Part2PlannedSubbandLattice { grid: value.grid, clip: value.clip, blocks: value.blocks }
+    }
+
+    pub open spec fn planned_subband_lattice_outcome(result: Result<Option<PlannedSubbandLattice>, DecodeError>)
+        -> Result<Option<crate::specs::Part2PlannedSubbandLattice>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(None) => Ok(None), Ok(Some(value)) => Ok(Some(planned_subband_lattice_view(value))) }
+    }
+
     pub closed spec fn resolution_geometry_style(style: CodingStyle) -> crate::specs::Part2ResolutionStyle {
         let selector = codestream::decomposition_selector_view(style);
         (selector.0, selector.1, style.code_block_width, style.code_block_height,
@@ -185,8 +195,37 @@ pub(crate) struct PlannedCodeBlocks {
     pub(crate) planned_code_blocks: u64,
 }
 
+#[derive(Clone, Copy)]
+#[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
+pub(crate) struct PlannedSubbandLattice {
+    pub(crate) grid: [u32; 4],
+    pub(crate) clip: [u32; 4],
+    pub(crate) blocks: [u32; 2],
+}
+
+pub(crate) struct PlannedSubbandExecution {
+    pub(crate) execution: Option<PacketSubbandExecution>,
+    pub(crate) placements: Vec<ProgressionCodeBlockPlacement>,
+    pub(crate) decoder_index: usize,
+    pub(crate) planned_code_blocks: u64,
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn planned_subband_execution_view(value: &PlannedSubbandExecution) -> crate::specs::Part2PlannedSubbandExecution {
+        crate::specs::Part2PlannedSubbandExecution {
+            execution: match value.execution { None => None, Some(execution) => Some(crate::packet::packet_execution_view(&execution)) },
+            placements: value.placements@, decoder_index: value.decoder_index,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_subband_execution_outcome(result: Result<PlannedSubbandExecution, DecodeError>)
+        -> Result<crate::specs::Part2PlannedSubbandExecution, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_subband_execution_view(&value)) }
+    }
+
     pub closed spec fn planned_codeblocks_view(value: &PlannedCodeBlocks) -> crate::specs::Part2PlannedCodeBlocks {
         crate::specs::Part2PlannedCodeBlocks {
             decoders: value.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
@@ -1488,61 +1527,23 @@ fn plan_progression_tile_at_selected(
                         .checked_add(local_subband)
                         .ok_or_else(arithmetic_overflow)?;
                     let subband = *subbands.get(subband_index).ok_or_else(invalid_decode)?;
-                    let start_x = band_x.max(subband.x0);
-                    let start_y = band_y.max(subband.y0);
-                    let subband_x1 = subband
-                        .x0
-                        .checked_add(subband.width)
-                        .ok_or_else(arithmetic_overflow)?;
-                    let subband_y1 = subband
-                        .y0
-                        .checked_add(subband.height)
-                        .ok_or_else(arithmetic_overflow)?;
-                    if start_x < subband_x1 && start_y < subband_y1 {
-                        let end_x = band_x
-                            .checked_add(band_precinct_width)
-                            .ok_or_else(arithmetic_overflow)?
-                            .min(subband_x1);
-                        let end_y = band_y
-                            .checked_add(band_precinct_height)
-                            .ok_or_else(arithmetic_overflow)?
-                            .min(subband_y1);
-                        let first_block_x = floor_div_u32(start_x, code_block_width)?;
-                        let first_block_y = floor_div_u32(start_y, code_block_height)?;
-                        let blocks_across = ceil_div_u32(end_x, code_block_width)?
-                            .checked_sub(first_block_x)
-                            .ok_or_else(arithmetic_overflow)?;
-                        let blocks_down = ceil_div_u32(end_y, code_block_height)?
-                            .checked_sub(first_block_y)
-                            .ok_or_else(arithmetic_overflow)?;
-                        let planned = plan_codeblock_decoders(
-                            [
-                                first_block_x,
-                                first_block_y,
-                                code_block_width,
-                                code_block_height,
-                            ],
-                            [start_x, start_y, end_x, end_y],
-                            [blocks_across, blocks_down],
-                            subband,
-                            tier1_style,
-                            (allow_multiple_ht_sets, ht_magnitude_bound),
-                            (precinct_index, subband_index, flattened_decoder_index),
-                            placements,
-                            planned_code_blocks,
-                            resolution <= output_resolution,
-                            limits,
-                        )?;
-                        placements = planned.placements;
-                        flattened_decoder_index = planned.decoder_index;
-                        planned_code_blocks = planned.planned_code_blocks;
-                        executions.push(PacketSubbandExecution {
-                            orientation: subband.orientation,
-                            code_blocks_across: blocks_across,
-                            code_blocks_down: blocks_down,
-                            maximum_zero_bitplanes: subband.significant_bitplanes,
-                            decoders: planned.decoders,
-                        });
+                    let planned = plan_subband_execution(
+                        [band_x, band_y, band_precinct_width, band_precinct_height],
+                        [code_block_width, code_block_height],
+                        subband,
+                        tier1_style,
+                        (allow_multiple_ht_sets, ht_magnitude_bound),
+                        (precinct_index, subband_index, flattened_decoder_index),
+                        placements,
+                        planned_code_blocks,
+                        resolution <= output_resolution,
+                        limits,
+                    )?;
+                    placements = planned.placements;
+                    flattened_decoder_index = planned.decoder_index;
+                    planned_code_blocks = planned.planned_code_blocks;
+                    if let Some(execution) = planned.execution {
+                        executions.push(execution);
                     }
                     local_subband = local_subband
                         .checked_add(1)
@@ -1579,6 +1580,113 @@ fn plan_progression_tile_at_selected(
         grid,
         precincts,
         components,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures planned_subband_lattice_outcome(result) == crate::specs::part2_planned_subband_lattice(band, block_size, subband),
+))]
+pub(crate) fn derive_planned_subband_lattice(
+    band: [u32; 4],
+    block_size: [u32; 2],
+    subband: SubbandGeometry,
+) -> Result<Option<PlannedSubbandLattice>, DecodeError> {
+    let start_x = band[0].max(subband.x0);
+    let start_y = band[1].max(subband.y0);
+    let subband_x1 = subband
+        .x0
+        .checked_add(subband.width)
+        .ok_or_else(arithmetic_overflow)?;
+    let subband_y1 = subband
+        .y0
+        .checked_add(subband.height)
+        .ok_or_else(arithmetic_overflow)?;
+    if start_x >= subband_x1 || start_y >= subband_y1 {
+        return Ok(None);
+    }
+    let end_x = band[0]
+        .checked_add(band[2])
+        .ok_or_else(arithmetic_overflow)?
+        .min(subband_x1);
+    let end_y = band[1]
+        .checked_add(band[3])
+        .ok_or_else(arithmetic_overflow)?
+        .min(subband_y1);
+    let first_block_x = floor_div_u32(start_x, block_size[0])?;
+    let first_block_y = floor_div_u32(start_y, block_size[1])?;
+    let blocks_across = ceil_div_u32(end_x, block_size[0])?
+        .checked_sub(first_block_x)
+        .ok_or_else(arithmetic_overflow)?;
+    let blocks_down = ceil_div_u32(end_y, block_size[1])?
+        .checked_sub(first_block_y)
+        .ok_or_else(arithmetic_overflow)?;
+    Ok(Some(PlannedSubbandLattice {
+        grid: [first_block_x, first_block_y, block_size[0], block_size[1]],
+        clip: [start_x, start_y, end_x, end_y],
+        blocks: [blocks_across, blocks_down],
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures planned_subband_execution_outcome(result) == crate::specs::part2_planned_subband_execution(
+        band, block_size, subband, style, policy, indices, placements@, planned_code_blocks, selected, limits,
+    ),
+))]
+pub(crate) fn plan_subband_execution(
+    band: [u32; 4],
+    block_size: [u32; 2],
+    subband: SubbandGeometry,
+    style: Tier1CodingStyle,
+    policy: (bool, u8),
+    indices: (usize, usize, usize),
+    placements: Vec<ProgressionCodeBlockPlacement>,
+    planned_code_blocks: u64,
+    selected: bool,
+    limits: &ResourceLimits,
+) -> Result<PlannedSubbandExecution, DecodeError> {
+    let lattice = match derive_planned_subband_lattice(band, block_size, subband)? {
+        None => {
+            return Ok(PlannedSubbandExecution {
+                execution: None,
+                placements,
+                decoder_index: indices.2,
+                planned_code_blocks,
+            });
+        }
+        Some(lattice) => lattice,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(planned_subband_lattice_view); }
+    let planned = plan_codeblock_decoders(
+        lattice.grid,
+        lattice.clip,
+        lattice.blocks,
+        subband,
+        style,
+        policy,
+        indices,
+        placements,
+        planned_code_blocks,
+        selected,
+        limits,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(planned_codeblocks_view); reveal(planned_subband_execution_view); }
+    let execution = PacketSubbandExecution {
+        orientation: subband.orientation,
+        code_blocks_across: lattice.blocks[0],
+        code_blocks_down: lattice.blocks[1],
+        maximum_zero_bitplanes: subband.significant_bitplanes,
+        decoders: planned.decoders,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! { crate::packet::packet_execution_known_fields(&execution); }
+    Ok(PlannedSubbandExecution {
+        execution: Some(execution),
+        placements: planned.placements,
+        decoder_index: planned.decoder_index,
+        planned_code_blocks: planned.planned_code_blocks,
     })
 }
 
@@ -6401,6 +6509,284 @@ mod tests {
             }
         }
         assert_eq!(cases, 768);
+    }
+
+    fn reference_subband_lattice(
+        band: [u32; 4],
+        block_size: [u32; 2],
+        subband: SubbandGeometry,
+    ) -> Result<Option<PlannedSubbandLattice>, DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let checked = |value: u128| u32::try_from(value).map_err(|_| arithmetic);
+        let sx = subband.x0.max(band[0]);
+        let sy = subband.y0.max(band[1]);
+        let sx1 = checked(u128::from(subband.x0) + u128::from(subband.width))?;
+        let sy1 = checked(u128::from(subband.y0) + u128::from(subband.height))?;
+        if sx >= sx1 || sy >= sy1 {
+            return Ok(None);
+        }
+        let ex = checked(u128::from(band[0]) + u128::from(band[2]))?.min(sx1);
+        let ey = checked(u128::from(band[1]) + u128::from(band[3]))?.min(sy1);
+        if block_size[0] == 0 || block_size[1] == 0 {
+            return Err(invalid);
+        }
+        let fx = sx / block_size[0];
+        let fy = sy / block_size[1];
+        let across = u32::try_from(i64::from(ex.div_ceil(block_size[0])) - i64::from(fx))
+            .map_err(|_| arithmetic)?;
+        let down = u32::try_from(i64::from(ey.div_ceil(block_size[1])) - i64::from(fy))
+            .map_err(|_| arithmetic)?;
+        Ok(Some(PlannedSubbandLattice {
+            grid: [fx, fy, block_size[0], block_size[1]],
+            clip: [sx, sy, ex, ey],
+            blocks: [across, down],
+        }))
+    }
+
+    #[test]
+    fn actual_subband_lattice_preserves_raw_overflow_empty_intersection_and_divisor_policy() {
+        let origins = [
+            (0, 0),
+            (1, 2),
+            (17, 31),
+            (u32::MAX, 0),
+            (0, u32::MAX),
+            (u32::MAX, u32::MAX),
+        ];
+        let extents = [
+            (0, 0),
+            (1, 2),
+            (17, 31),
+            (65_535, 65_536),
+            (65_536, 65_535),
+            (u32::MAX, u32::MAX),
+        ];
+        let mut cases = 0;
+        let mut empty = 0;
+        let mut nonempty = 0;
+        for (bx, by) in origins {
+            for (bw, bh) in extents {
+                for block in [
+                    [0, 0],
+                    [0, 1],
+                    [1, 0],
+                    [1, 1],
+                    [2, 3],
+                    [64, 65],
+                    [65_535, 65_536],
+                    [u32::MAX, u32::MAX],
+                ] {
+                    for (sx, sy) in origins {
+                        for (sw, sh) in extents {
+                            let mut subband =
+                                raw_planned_subband(sx, sy, 0, SubbandOrientation::Hh);
+                            subband.width = sw;
+                            subband.height = sh;
+                            let band = [bx, by, bw, bh];
+                            let expected = reference_subband_lattice(band, block, subband);
+                            assert_eq!(
+                                derive_planned_subband_lattice(band, block, subband),
+                                expected
+                            );
+                            empty += usize::from(matches!(expected, Ok(None)));
+                            nonempty += usize::from(matches!(expected, Ok(Some(_))));
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 10_368);
+        assert!(empty > 100 && nonempty > 100);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_subband_execution(
+        band: [u32; 4],
+        block_size: [u32; 2],
+        subband: SubbandGeometry,
+        style: Tier1CodingStyle,
+        policy: (bool, u8),
+        indices: (usize, usize, usize),
+        placements: Vec<ProgressionCodeBlockPlacement>,
+        total: u64,
+        selected: bool,
+        limits: &ResourceLimits,
+    ) -> Result<PlannedSubbandExecution, DecodeError> {
+        let Some(lattice) = reference_subband_lattice(band, block_size, subband)? else {
+            return Ok(PlannedSubbandExecution {
+                execution: None,
+                placements,
+                decoder_index: indices.2,
+                planned_code_blocks: total,
+            });
+        };
+        let planned = reference_planned_codeblocks(
+            lattice.grid,
+            lattice.clip,
+            lattice.blocks,
+            subband,
+            style,
+            policy,
+            indices,
+            placements,
+            total,
+            selected,
+            limits,
+        )?;
+        Ok(PlannedSubbandExecution {
+            execution: Some(PacketSubbandExecution {
+                orientation: subband.orientation,
+                code_blocks_across: lattice.blocks[0],
+                code_blocks_down: lattice.blocks[1],
+                maximum_zero_bitplanes: subband.significant_bitplanes,
+                decoders: planned.decoders,
+            }),
+            placements: planned.placements,
+            decoder_index: planned.decoder_index,
+            planned_code_blocks: planned.planned_code_blocks,
+        })
+    }
+
+    #[test]
+    fn actual_subband_execution_derives_full_packet_row_and_preserves_lazy_owned_prefix() {
+        let mut cases = 0;
+        let mut empty = 0;
+        let mut populated = 0;
+        for band in [
+            [0, 0, 0, 0],
+            [0, 0, 2, 3],
+            [1, 2, 3, 4],
+            [u32::MAX, u32::MAX, 1, 1],
+            [0, 0, u32::MAX, u32::MAX],
+        ] {
+            for (x, y, w, h) in [
+                (0, 0, 0, 0),
+                (0, 0, 1, 1),
+                (1, 2, 3, 2),
+                (2, 1, 1, 3),
+                (u32::MAX, 0, 1, 1),
+                (0, u32::MAX, 1, 1),
+            ] {
+                for block in [[0, 1], [1, 0], [1, 1], [2, 3], [65, 64]] {
+                    for bits in [0, 1, 74, 75] {
+                        let mut subband = raw_planned_subband(x, y, bits, SubbandOrientation::Lh);
+                        subband.width = w;
+                        subband.height = h;
+                        let style = Tier1CodingStyle {
+                            force_high_throughput: true,
+                            block_coding: crate::tier1::Tier1BlockCoding::Mixed,
+                            ..Tier1CodingStyle::default()
+                        };
+                        for policy in [(false, 0), (false, 74), (true, 1), (true, 75)] {
+                            for selected in [false, true] {
+                                for (total, block_limit, work_limit) in
+                                    [(0, 100, 100), (0, 0, 0), (1, 2, 1), (u64::MAX, 100, 100)]
+                                {
+                                    let limits = ResourceLimits::HARDENED
+                                        .with_maximum_code_blocks(block_limit)
+                                        .unwrap()
+                                        .with_maximum_work_units(work_limit)
+                                        .unwrap();
+                                    for indices in [
+                                        (17, 31, 0),
+                                        (usize::MAX, usize::MAX, 3),
+                                        (4, 7, usize::MAX),
+                                    ] {
+                                        let prefix = vec![ProgressionCodeBlockPlacement {
+                                            precinct_index: usize::MAX,
+                                            decoder_index: usize::MAX,
+                                            subband_index: usize::MAX,
+                                            x: u32::MAX,
+                                            y: u32::MAX,
+                                        }];
+                                        let expected = reference_subband_execution(
+                                            band,
+                                            block,
+                                            subband,
+                                            style,
+                                            policy,
+                                            indices,
+                                            prefix.clone(),
+                                            total,
+                                            selected,
+                                            &limits,
+                                        );
+                                        let actual = plan_subband_execution(
+                                            band, block, subband, style, policy, indices, prefix,
+                                            total, selected, &limits,
+                                        );
+                                        match (actual, expected) {
+                                            (Err(actual), Err(expected)) => {
+                                                assert_eq!(actual, expected)
+                                            }
+                                            (Ok(actual), Ok(expected)) => {
+                                                assert_eq!(actual.placements, expected.placements);
+                                                assert_eq!(
+                                                    actual.decoder_index,
+                                                    expected.decoder_index
+                                                );
+                                                assert_eq!(
+                                                    actual.planned_code_blocks,
+                                                    expected.planned_code_blocks
+                                                );
+                                                match (actual.execution, expected.execution) {
+                                                    (None, None) => empty += 1,
+                                                    (Some(actual), Some(expected)) => {
+                                                        assert_eq!(
+                                                            actual.orientation,
+                                                            expected.orientation
+                                                        );
+                                                        assert_eq!(
+                                                            actual.code_blocks_across,
+                                                            expected.code_blocks_across
+                                                        );
+                                                        assert_eq!(
+                                                            actual.code_blocks_down,
+                                                            expected.code_blocks_down
+                                                        );
+                                                        assert_eq!(
+                                                            actual.maximum_zero_bitplanes,
+                                                            expected.maximum_zero_bitplanes
+                                                        );
+                                                        populated += usize::from(
+                                                            !actual.decoders.is_empty(),
+                                                        );
+                                                        assert_eq!(
+                                                            format!("{:?}", actual.decoders),
+                                                            format!("{:?}", expected.decoders)
+                                                        );
+                                                    }
+                                                    _ => panic!(
+                                                        "wrong presence of packet subband execution"
+                                                    ),
+                                                }
+                                            }
+                                            (Err(error), Ok(_)) => {
+                                                panic!("unexpected subband error: {error:?}")
+                                            }
+                                            (Ok(_), Err(error)) => {
+                                                panic!("subband should have failed: {error:?}")
+                                            }
+                                        }
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 57_600);
+        assert!(empty > 100 && populated > 100);
     }
 
     fn reference_standard_prepare(
