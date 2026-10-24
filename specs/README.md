@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part2_nlt_round_ratio`, `part2_nlt_fixed_mul_q32`,
+`part2_nlt_fixed_div_q32` and `part2_nlt_power_of_two` bind the actual
+nonlinear scalar arithmetic, including intermediate overflow, distinct
+denominator errors, half-away ratio rounding, signed truncation and the
+original exponent ceiling. Shared checked-i128 and standard Rust-division
+models retain exact operation order, not idealized unbounded final results.
+Raw NLT getter posts do not validate descriptors. Whole nonlinear scalar/
+region/typed/parser/file/F2/F4/final F8 composition remains separate.
+
 `part2_collect_nonlinear_regions` derives the complete real typed-layout
 region vector from source-owned transforms, not supplied region results.
 First-specific/first-default selection, last tile-part override (including

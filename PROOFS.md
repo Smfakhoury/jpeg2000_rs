@@ -25,6 +25,27 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native nonlinear scalar arithmetic
+
+Actual ratio rounding, bounded power-of-two and Q32 multiply/divide refine
+complete mathematical Results for every raw input. Intermediate overflow is
+not bypassed even when a final quotient could fit. Ratio ties round away from
+zero, negative Q32 division truncates toward zero, MIN negation rejects, and
+invalid division denominators retain their distinct transform error. Native
+exponents above 38 still reject. Ten actual NLT getters expose every raw
+descriptor field without adding validation.
+
+These four private receiverless bodies are module-level functions because
+the pinned attribute mechanism cannot bind associated static receivers.
+Every computational caller uses the sole moved body; public APIs and
+allocation/error order are unchanged. Explicit checked-result matches expose
+the original arithmetic stages to Verus without trusted callbacks or new
+input premises. Power-loop bit facts are proved at the original budget.
+Unsigned-magnitude references cover 35,535 small ratios, 729 boundary pairs
+for all three binary operations, every u8 exponent and 180 raw descriptors.
+Whole log/exp/LUT/gamma/dispatch and region/typed/parser/file/F2/F4/final F8
+remain separate work.
+
 ## Complete native nonlinear region production
 
 The actual `Part2Extensions::nonlinear_transform_for` refines first specific,
