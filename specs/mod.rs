@@ -8334,6 +8334,65 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+#[verifier::opaque]
+pub open spec fn part2_capability_lookup_run(
+    p_cap: u32, values: Seq<u16>, part: u8, current: u8, mask: u32, index: usize,
+) -> Option<u16>
+    decreases if current < part { part as int - current as int } else { 0int },
+{
+    if current < part {
+        let active = p_cap & mask != 0;
+        if (active && index == usize::MAX) || current == u8::MAX { None } else {
+            part2_capability_lookup_run(p_cap, values, part, (current + 1) as u8, mask >> 1u32,
+                if active { (index + 1) as usize } else { index })
+        }
+    } else if p_cap & mask == 0 || index as nat >= values.len() { None }
+    else { Some(values[index as int]) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_capability_value(caps: (u32, Seq<u16>), part: u8) -> Option<u16> {
+    if part == 0 || part > 32 { None } else { part2_capability_lookup_run(caps.0, caps.1, part, 1, 0x80000000u32, 0) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_capability_block_mode(caps: (u32, Seq<u16>)) -> Option<crate::codestream::Part15BlockMode> {
+    match part2_capability_value(caps, 15) {
+        None => None, Some(word) => match word >> 14u16 {
+            0 => Some(crate::codestream::Part15BlockMode::HtOnly),
+            2 => Some(crate::codestream::Part15BlockMode::HtDeclared),
+            3 => Some(crate::codestream::Part15BlockMode::Mixed), _ => None,
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_capability_multiple_sets(caps: (u32, Seq<u16>)) -> bool {
+    match part2_capability_value(caps, 15) { None => false, Some(word) => word & 0x2000u16 != 0 }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_capability_magnitude_bound(caps: (u32, Seq<u16>)) -> Option<u8> {
+    match part2_capability_value(caps, 15) {
+        None => None, Some(word) => Some(part15_magnitude_bound((word & 0x1fu16) as nat) as u8),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_profile_multiple_sets(caps: Option<(u32, Seq<u16>)>) -> bool {
+    match caps { None => false, Some(caps) => part2_capability_multiple_sets(caps) }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_profile_magnitude_bound(caps: Option<(u32, Seq<u16>)>) -> u8 {
+    match caps { None => 74, Some(caps) => match part2_capability_magnitude_bound(caps) { None => 74, Some(bound) => bound } }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_profile_force_ht(caps: Option<(u32, Seq<u16>)>) -> bool {
+    match caps { None => false, Some(caps) => matches!(part2_capability_block_mode(caps), Some(crate::codestream::Part15BlockMode::HtOnly)) }
+}
+
 pub open spec fn part2_mct_array_identity(left: Part2MctArray, right: Part2MctArray) -> bool { left == right }
 pub open spec fn part2_mct_collection_identity(left: Part2MctCollection, right: Part2MctCollection) -> bool { left == right }
 pub open spec fn part2_mct_stage_identity(left: Part2MctStage, right: Part2MctStage) -> bool { left == right }

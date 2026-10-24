@@ -790,6 +790,35 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_PROFILE_POLICY_CONTRACTS = {
+    ("src/codestream.rs", "ExtendedCapabilities::capability_for_part"): (
+        "part2_capability_value", r"\1", None,
+        _coverage_call("extended_capabilities_view", "self") + r"\s*,\s*part",
+    ),
+    ("src/codestream.rs", "ExtendedCapabilities::part15_value"): (
+        "part2_capability_value", r"\1", None,
+        _coverage_call("extended_capabilities_view", "self") + r"\s*,\s*15",
+    ),
+    ("src/codestream.rs", "ExtendedCapabilities::part15_block_mode"): (
+        "part2_capability_block_mode", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
+    ),
+    ("src/codestream.rs", "ExtendedCapabilities::part15_allows_multiple_ht_sets"): (
+        "part2_capability_multiple_sets", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
+    ),
+    ("src/codestream.rs", "ExtendedCapabilities::part15_magnitude_bound"): (
+        "part2_capability_magnitude_bound", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
+    ),
+    ("src/codestream.rs", "CodestreamProfile::part15_allows_multiple_ht_sets"): (
+        "part2_profile_multiple_sets", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
+    ),
+    ("src/codestream.rs", "CodestreamProfile::part15_magnitude_bound"): (
+        "part2_profile_magnitude_bound", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
+    ),
+    ("src/codestream.rs", "CodestreamProfile::part15_requires_all_ht_blocks"): (
+        "part2_profile_force_ht", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
+    ),
+}
+
 _TILE_METADATA_CONTRACTS = {
     ("src/codestream.rs", "MctArray::equals"): (
         "part2_mct_array_identity", r"\1", None,
@@ -1778,6 +1807,7 @@ def validate_normative_coverage(
                 or _PACKET_RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYOUT_ACCOUNTING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PROFILE_POLICY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

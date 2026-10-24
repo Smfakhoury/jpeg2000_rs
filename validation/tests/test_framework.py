@@ -808,6 +808,12 @@ class FrameworkTests(WorkingFiles):
             framework._TILE_METADATA_CONTRACTS, 9,
         )
 
+    def test_inventory_binds_actual_raw_capability_lookup_and_ht_profile_policy(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-ht-profile-policy"},
+            framework._PROFILE_POLICY_CONTRACTS, 8,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

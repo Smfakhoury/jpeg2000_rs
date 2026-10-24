@@ -1908,6 +1908,17 @@ pub struct CodestreamProfile {
     corresponding_profile: Option<ProfileNumber>,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn extended_capabilities_view(value: &ExtendedCapabilities) -> (u32, Seq<u16>) {
+        (value.p_cap, value.c_capabilities@)
+    }
+
+    pub closed spec fn codestream_profile_capabilities(value: &CodestreamProfile) -> Option<(u32, Seq<u16>)> {
+        match value.extended_capabilities { None => None, Some(capabilities) => Some(extended_capabilities_view(&capabilities)) }
+    }
+}
+
 impl ExtendedCapabilities {
     pub const fn p_cap(&self) -> u32 {
         self.p_cap
@@ -1921,11 +1932,19 @@ impl ExtendedCapabilities {
         self.p_cap & PART_15_CAPABILITY_FLAG != 0
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_value(extended_capabilities_view(self), 15),
+    ))]
     pub fn part15_value(&self) -> Option<u16> {
         self.capability_for_part(15)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_block_mode(extended_capabilities_view(self)),
+    ))]
     pub fn part15_block_mode(&self) -> Option<Part15BlockMode> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_capability_block_mode); }
         match self.part15_value()? >> 14 {
             0 => Some(Part15BlockMode::HtOnly),
             2 => Some(Part15BlockMode::HtDeclared),
@@ -1934,7 +1953,12 @@ impl ExtendedCapabilities {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_multiple_sets(extended_capabilities_view(self)),
+    ))]
     pub fn part15_allows_multiple_ht_sets(&self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_capability_multiple_sets); }
         matches!(self.part15_value(), Some(value) if value & 0x2000 != 0)
     }
 
@@ -1950,13 +1974,26 @@ impl ExtendedCapabilities {
         matches!(self.part15_value(), Some(value) if value & 0x0020 != 0)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_magnitude_bound(extended_capabilities_view(self)),
+    ))]
     pub fn part15_magnitude_bound(&self) -> Option<u8> {
-        let parameter = (self.part15_value()? & 0x1f) as u8;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_capability_magnitude_bound); }
+        let value = self.part15_value()?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(value & 0x1fu16 <= 31u16) by(bit_vector); }
+        let parameter = (value & 0x1f) as u8;
         Some(crate::refinement::part15_magnitude_bound(parameter))
     }
 
     #[allow(clippy::manual_map, clippy::question_mark)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_value(extended_capabilities_view(self), part),
+    ))]
     pub fn capability_for_part(&self, part: u8) -> Option<u16> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(extended_capabilities_view); reveal(crate::specs::part2_capability_value); }
         if part == 0 || part > 32 {
             return None;
         }
@@ -1967,10 +2004,17 @@ impl ExtendedCapabilities {
             verus_keep_ghost,
             verus_spec(
                 invariant current <= part,
+                    part > 0, part <= 32,
+                    crate::specs::part2_capability_value(extended_capabilities_view(self), part)
+                        == crate::specs::part2_capability_lookup_run(
+                            self.p_cap, self.c_capabilities@, part, current, mask, index,
+                        ),
                 decreases part - current,
             )
         )]
         while current < part {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_capability_lookup_run, 1); }
             if self.p_cap & mask != 0 {
                 index = match index.checked_add(1) {
                     Some(value) => value,
@@ -1982,6 +2026,11 @@ impl ExtendedCapabilities {
                 Some(value) => value,
                 None => return None,
             };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part2_capability_lookup_run, 1);
+            assert(current == part);
         }
         if self.p_cap & mask == 0 {
             return None;
@@ -2023,27 +2072,43 @@ impl CodestreamProfile {
         self.corresponding_profile.as_ref()
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_profile_multiple_sets(codestream_profile_capabilities(self)),
+    ))]
     pub fn part15_allows_multiple_ht_sets(&self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(codestream_profile_capabilities); reveal(crate::specs::part2_profile_multiple_sets); }
         match self.extended_capabilities.as_ref() {
             Some(capabilities) => capabilities.part15_allows_multiple_ht_sets(),
             None => false,
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_profile_magnitude_bound(codestream_profile_capabilities(self)),
+    ))]
     pub fn part15_magnitude_bound(&self) -> u8 {
-        self.extended_capabilities
-            .as_ref()
-            .and_then(ExtendedCapabilities::part15_magnitude_bound)
-            .unwrap_or(74)
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(codestream_profile_capabilities); reveal(crate::specs::part2_profile_magnitude_bound); }
+        match self.extended_capabilities.as_ref() {
+            None => 74,
+            Some(capabilities) => capabilities.part15_magnitude_bound().unwrap_or(74),
+        }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_profile_force_ht(codestream_profile_capabilities(self)),
+    ))]
     pub fn part15_requires_all_ht_blocks(&self) -> bool {
-        matches!(
-            self.extended_capabilities
-                .as_ref()
-                .and_then(ExtendedCapabilities::part15_block_mode),
-            Some(Part15BlockMode::HtOnly)
-        )
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(codestream_profile_capabilities); reveal(crate::specs::part2_profile_force_ht); }
+        match self.extended_capabilities.as_ref() {
+            None => false,
+            Some(capabilities) => matches!(
+                capabilities.part15_block_mode(),
+                Some(Part15BlockMode::HtOnly)
+            ),
+        }
     }
 }
 
@@ -10305,6 +10370,142 @@ mod tests {
         }
         assert_eq!(cases, 48_384);
         assert!(successes > 100);
+    }
+
+    fn reference_capability_word(caps: &ExtendedCapabilities, part: u8) -> Option<u16> {
+        if part == 0 || part > 32 {
+            return None;
+        }
+        if caps.p_cap & (1_u32 << (32 - u32::from(part))) == 0 {
+            return None;
+        }
+        let index = (1..part)
+            .filter(|prior| caps.p_cap & (1_u32 << (32 - u32::from(*prior))) != 0)
+            .count();
+        caps.c_capabilities.get(index).copied()
+    }
+
+    #[test]
+    fn actual_capability_lookup_preserves_all_u8_parts_raw_masks_and_ragged_physical_words() {
+        let masks = [
+            0,
+            1,
+            0x8000_0000,
+            PART_15_CAPABILITY_FLAG,
+            PART_15_CAPABILITY_FLAG | 0x8000_0000,
+            u32::MAX,
+            0xaaaa_5555,
+            0x5555_aaaa,
+            u32::MAX ^ PART_15_CAPABILITY_FLAG,
+        ];
+        let mut cases = 0;
+        for mask in masks {
+            for physical in [0, 1, 2, 14, 15, 31, 32, 33] {
+                let caps = ExtendedCapabilities {
+                    p_cap: mask,
+                    c_capabilities: (0..physical)
+                        .map(|index| u16::try_from(index).unwrap().wrapping_mul(2_177))
+                        .collect(),
+                };
+                for part in 0..=u8::MAX {
+                    assert_eq!(
+                        caps.capability_for_part(part),
+                        reference_capability_word(&caps, part)
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 18_432);
+    }
+
+    #[test]
+    fn actual_ht_profile_policy_preserves_every_raw_ccap_word_physical_lookup_and_unused_owner_field()
+     {
+        let mut cases = 0;
+        for word in 0..=u16::MAX {
+            for mask in [
+                PART_15_CAPABILITY_FLAG,
+                PART_15_CAPABILITY_FLAG | 0x8000_0000,
+                u32::MAX,
+                0,
+            ] {
+                let target = (1..15_u8)
+                    .filter(|part| mask & (1_u32 << (32 - u32::from(*part))) != 0)
+                    .count();
+                for physical in [target, target + 1, 34] {
+                    let mut values = vec![u16::MAX; physical];
+                    if let Some(value) = values.get_mut(target) {
+                        *value = word;
+                    }
+                    let caps = ExtendedCapabilities {
+                        p_cap: mask,
+                        c_capabilities: values,
+                    };
+                    let expected_word = reference_capability_word(&caps, 15);
+                    let expected_mode = expected_word.and_then(|word| match word >> 14 {
+                        0 => Some(Part15BlockMode::HtOnly),
+                        2 => Some(Part15BlockMode::HtDeclared),
+                        3 => Some(Part15BlockMode::Mixed),
+                        _ => None,
+                    });
+                    let expected_multiple = expected_word.is_some_and(|word| word & 0x2000 != 0);
+                    let expected_bound = expected_word.map(|word| {
+                        let value = u8::try_from(word & 31).unwrap();
+                        match value {
+                            0 => 8,
+                            1..=19 => value + 8,
+                            20..=30 => (value - 19) * 4 + 27,
+                            _ => 74,
+                        }
+                    });
+                    assert_eq!(caps.part15_value(), expected_word);
+                    assert_eq!(caps.part15_block_mode(), expected_mode);
+                    assert_eq!(caps.part15_allows_multiple_ht_sets(), expected_multiple);
+                    assert_eq!(caps.part15_magnitude_bound(), expected_bound);
+                    for unrelated in [false, true] {
+                        let profile = CodestreamProfile {
+                            r_siz: if unrelated { u16::MAX } else { 0 },
+                            block_coding: if unrelated {
+                                CodestreamBlockCoding::Mixed
+                            } else {
+                                CodestreamBlockCoding::Legacy
+                            },
+                            extended_capabilities: Some(caps.clone()),
+                            profile: unrelated.then(|| ProfileNumber {
+                                words: vec![u16::MAX, 0, 17],
+                            }),
+                            corresponding_profile: unrelated.then(|| ProfileNumber {
+                                words: vec![31, u16::MAX],
+                            }),
+                        };
+                        assert_eq!(profile.part15_allows_multiple_ht_sets(), expected_multiple);
+                        assert_eq!(
+                            profile.part15_magnitude_bound(),
+                            expected_bound.unwrap_or(74)
+                        );
+                        assert_eq!(
+                            profile.part15_requires_all_ht_blocks(),
+                            matches!(expected_mode, Some(Part15BlockMode::HtOnly))
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1_572_864);
+        let absent = CodestreamProfile {
+            r_siz: u16::MAX,
+            block_coding: CodestreamBlockCoding::HighThroughput,
+            extended_capabilities: None,
+            profile: Some(ProfileNumber {
+                words: vec![u16::MAX],
+            }),
+            corresponding_profile: None,
+        };
+        assert!(!absent.part15_allows_multiple_ht_sets());
+        assert_eq!(absent.part15_magnitude_bound(), 74);
+        assert!(!absent.part15_requires_all_ht_blocks());
     }
 
     fn reference_truncated_subband_count(style: CodingStyle) -> u16 {
