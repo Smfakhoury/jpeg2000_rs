@@ -940,6 +940,8 @@ fn inverse_nlt_gamma_sample(
     source_info: ComponentInfo,
     transform: &NonlinearPointTransform,
 ) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_gamma_sample); }
     if source_info.precision == 0 || source_info.precision > 38 {
         return Err(invalid_image());
     }
@@ -1008,6 +1010,8 @@ fn inverse_nlt_sample(
     source_info: ComponentInfo,
     transform: &NonlinearPointTransform,
 ) -> Result<i128, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_inverse_sample); }
     let target_precision = transform.precision();
     if target_precision == 0 || target_precision > 38 {
         return Err(invalid_image());

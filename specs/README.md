@@ -3,7 +3,9 @@
 `part2_nlt_inverse_sample` is the complete actual nonlinear sample producer
 from raw source/component/transform, including parameter decoding and all
 gamma/LUT/complement/unknown-kind/target-range behavior. Parameter and curve
-models are derived real producer stages, not supplied results. Fractional
+models are derived real producer stages, not supplied results. Top-level
+gamma/dispatch bodies are opaque outside the actual producer's explicit
+reveals to bound context, not trusted. Fractional
 denominator, ordered source/target scale admission, checked overflow and
 rounding remain explicit. No descriptor normalization, caller premise,
 trusted adapter or analytic accuracy claim is added. Whole region/typed/

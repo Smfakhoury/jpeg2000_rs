@@ -36,7 +36,10 @@ curve or sample results. Descriptors are not normalized or newly validated.
 
 The sole private free bodies preserve pinned attribute support and actual
 region consumers. The former parameter callback becomes one proved body;
-the real gamma curve is isolated under an opaque proved model. Source and
+the real gamma curve is isolated under an opaque proved model. Top-level
+gamma and dispatch denotations are also opaque outside their actual producer
+proofs, preventing unrelated queries from expanding their context; complete
+bodies and Result contracts remain unchanged. Source and
 target precision/scale order, checked intermediate overflow, fractional
 denominator 65535, signed rounding and unknown-kind behavior remain unchanged.
 No caller premise, trust, tolerance or solver/iteration change is introduced.

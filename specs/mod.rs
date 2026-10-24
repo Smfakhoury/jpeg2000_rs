@@ -9001,6 +9001,7 @@ pub open spec fn part2_nlt_gamma_curve(
     }
 }
 
+#[verifier::opaque]
 pub open spec fn part2_nlt_gamma_sample(
     source: i128, info: crate::codestream::ComponentInfo, transform: Part2OwnedNonlinear,
 ) -> Result<i128, crate::DecodeError> {
@@ -9061,6 +9062,7 @@ pub open spec fn part2_nlt_inverse_value(
     else { Err(part1_transform_error(false)) }
 }
 
+#[verifier::opaque]
 pub open spec fn part2_nlt_inverse_sample(
     source: i128, info: crate::codestream::ComponentInfo, transform: Part2OwnedNonlinear,
 ) -> Result<i128, crate::DecodeError> {
