@@ -4,6 +4,36 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-codeblock-vectors",
+      "topic": "Complete actual raw codeblock lattice/clipping/shape/subband/style/HT policy/location/owned placement prefix/global count/selection/limits to all owned decoder and placement vectors, flattened decoder index and charged count. Real configured decoders, every placement field, row-major append order, untouched prefixes and selected-only CodeBlocks-before-WorkUnits admission derive from actual inputs. Empty shapes retain original laziness; geometry/initialization/relative-position/index errors retain order. Actual tile planner consumes the sole vector producer; no supplied initialized/decoded state bank, prepared plan, validated dimensions or successful budget/allocation premise. Full resolution/precinct/component/tile plan and decoded-component/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_planned_codeblocks"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_cell"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_columns"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_rows"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "append_planned_codeblock"},
+        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "planned_codeblocks_view"},
+        {"path": "src/decode.rs", "symbol": "planned_codeblocks_outcome"},
+        {"path": "src/decode.rs", "symbol": "derive_planned_codeblock_geometry"},
+        {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"},
+        {"path": "src/tier1.rs", "symbol": "tier1_initial_decoder_outcome"},
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_codeblock_vectors_bind_every_decoder_placement_prefix_policy_and_selected_limit"},
+        {"path": "src/decode.rs", "symbol": "actual_codeblock_cell_retains_existing_owned_decoder_and_placement_buffers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-component-plan-metadata",
       "topic": "Complete actual per-component tile-plan metadata Result/all owned fields from raw image/style owner/quantization owner/ROI/component/tile/discard/force inputs. Original style-before-reduction-before-quantization admission, Tier1 route policy, tile bounds/full output geometry, real scaling, raw image-origin component position and last ROI/subband production remain. New raw quantization/ROI getters retain logical/physical distinction and unused descriptor values; no normalized metadata/bounds/bands, supplied lookup/result or successful allocation/budget premise. Actual tile planner consumes the sole metadata body; full precinct/codeblock/component plan vectors, decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
@@ -76,7 +106,8 @@
       "id": "part2-complete-native-codeblock-planning",
       "topic": "Complete actual per-codeblock checked lattice/clipping/u16 dimension Result and configured decoder initial-state Result from raw grid/clip/block coordinates, bits/orientation/style/HT policy. Original nominal-axis arithmetic and clipped narrowing remain; zero dimensions are deliberately forwarded to the real decoder initializer rather than normalized here. Actual decoder initialization precedes multiple-set and magnitude-bound policy, including allocation/admission/error order. The real tile loop consumes both producers; no supplied placement/decoder/geometry result, admitted dimensions or successful allocation/budget premise. Whole tile-plan and F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "append_planned_codeblock"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_geometry"},
@@ -103,6 +134,7 @@
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
         {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode.rs", "symbol": "append_planned_codeblock"},
         {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::new"}
       ],

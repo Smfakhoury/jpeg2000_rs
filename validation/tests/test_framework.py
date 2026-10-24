@@ -760,6 +760,12 @@ class FrameworkTests(WorkingFiles):
             framework._COMPONENT_PLAN_METADATA_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_real_codeblock_vectors_owned_prefix_and_selected_limits(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-codeblock-vectors"},
+            framework._CODEBLOCK_VECTOR_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

@@ -2472,3 +2472,23 @@ metadata contexts retain all output fields and first/late error policy.
 The original body is shared without duplicate executable computation or
 allocation-order changes. Full tile-plan/decoder/file/F2/F4/F8 joins remain
 separate.
+## Complete actual code-block decoder and placement vectors
+
+The actual tile planner shares one owned vector producer for its nested
+code-block traversal. It derives every decoder from the real configured
+initializer, appends all placement fields in row-major order, preserves
+incoming placement prefixes and derives flattened indices and selected-only
+global counts. CodeBlocks precedes WorkUnits admission; geometry, initialization,
+relative-position and index errors retain their original order. Empty shapes
+retain the original lazy style/geometry admission.
+
+Two complete native contracts and exact consumer-binding mutation recipes
+cover raw lattice/clipping/shape/subband/style/HT policy/location/owned prefix/
+count/selection/limits, not supplied initialized decoders or successful plans.
+The nested mathematical suffix folds retain all owned state and error results;
+their raw-input frame is an invariant, not a new input premise. The equivalent
+typed limit literals and explicit fallible capacity match expose existing
+constructor/standard-library behavior to the pinned verifier without new trust.
+Independent wide geometry and flat-order composition tests compare every
+decoder field and placement across 103,680 vector and 768 cell contexts.
+Full tile-plan, decoded-component and F2/F4/F8 joins remain separate.

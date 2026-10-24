@@ -1578,3 +1578,10 @@ subband production. Getter models preserve logical versus physical owner
 admission. Native output/state views bind all fields without prepared metadata
 or supplied intermediate success/result premises; full tile-plan and
 F2/F4/F8 composition remain separate.
+`part2_planned_codeblocks` and its cell/column/row suffix relations derive
+the actual decoder/placement buffers, flattened index and selected-only
+global code-block accounting from raw lattice, clipping, shape, subband,
+style, policy, location, owned prefix, count, selection and limits. Actual
+configured initialization is composed directly, not supplied as a result.
+Native views bind every owned decoder/placement field and existing-prefix
+frame; all intermediate bounds and traversal frames are proved internally.

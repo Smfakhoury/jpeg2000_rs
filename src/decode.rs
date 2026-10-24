@@ -178,8 +178,29 @@ pub(crate) struct PlannedComponentMetadata {
     pub(crate) subbands: Vec<SubbandGeometry>,
 }
 
+pub(crate) struct PlannedCodeBlocks {
+    pub(crate) decoders: Vec<Tier1CodeBlockDecoder>,
+    pub(crate) placements: Vec<ProgressionCodeBlockPlacement>,
+    pub(crate) decoder_index: usize,
+    pub(crate) planned_code_blocks: u64,
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub closed spec fn planned_codeblocks_view(value: &PlannedCodeBlocks) -> crate::specs::Part2PlannedCodeBlocks {
+        crate::specs::Part2PlannedCodeBlocks {
+            decoders: value.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+            placements: value.placements@, decoder_index: value.decoder_index,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_codeblocks_outcome(result: Result<PlannedCodeBlocks, DecodeError>)
+        -> Result<crate::specs::Part2PlannedCodeBlocks, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_codeblocks_view(&value)) }
+    }
+
     pub closed spec fn component_plan_metadata_view(value: &PlannedComponentMetadata) -> crate::specs::Part2ComponentPlanMetadata {
         crate::specs::Part2ComponentPlanMetadata {
             coding_style: value.component_coding_style, output_resolution: value.output_resolution,
@@ -1494,90 +1515,33 @@ fn plan_progression_tile_at_selected(
                         let blocks_down = ceil_div_u32(end_y, code_block_height)?
                             .checked_sub(first_block_y)
                             .ok_or_else(arithmetic_overflow)?;
-                        let count = u64::from(blocks_across)
-                            .checked_mul(u64::from(blocks_down))
-                            .ok_or_else(arithmetic_overflow)?;
-                        if resolution <= output_resolution {
-                            planned_code_blocks = planned_code_blocks
-                                .checked_add(count)
-                                .ok_or_else(arithmetic_overflow)?;
-                            if planned_code_blocks > limits.maximum_code_blocks() {
-                                return Err(DecodeError::limit(
-                                    crate::Resource::CodeBlocks,
-                                    limits.maximum_code_blocks(),
-                                    planned_code_blocks,
-                                ));
-                            }
-                            if planned_code_blocks > limits.maximum_work_units() {
-                                return Err(DecodeError::limit(
-                                    crate::Resource::WorkUnits,
-                                    limits.maximum_work_units(),
-                                    planned_code_blocks,
-                                ));
-                            }
-                        }
-                        let mut decoders = Vec::with_capacity(
-                            usize::try_from(count).map_err(|_| arithmetic_overflow())?,
-                        );
-                        let mut block_y = 0_u32;
-                        #[cfg_attr(
-                            verus_keep_ghost,
-                            verus_spec(
-                                invariant block_y <= blocks_down,
-                                decreases blocks_down - block_y,
-                            )
-                        )]
-                        while block_y < blocks_down {
-                            let mut block_x = 0_u32;
-                            #[cfg_attr(
-                                verus_keep_ghost,
-                                verus_spec(
-                                    invariant block_x <= blocks_across,
-                                    decreases blocks_across - block_x,
-                                )
-                            )]
-                            while block_x < blocks_across {
-                                let (x, y, block_width, block_height) =
-                                    derive_planned_codeblock_geometry(
-                                        [
-                                            first_block_x,
-                                            first_block_y,
-                                            code_block_width,
-                                            code_block_height,
-                                        ],
-                                        [start_x, start_y, end_x, end_y],
-                                        [block_x, block_y],
-                                    )?;
-                                let decoder = crate::tier1::tier1_configured_decoder(
-                                    block_width,
-                                    block_height,
-                                    subband.significant_bitplanes,
-                                    subband.orientation,
-                                    tier1_style,
-                                    allow_multiple_ht_sets,
-                                    ht_magnitude_bound,
-                                )?;
-                                decoders.push(decoder);
-                                placements.push(ProgressionCodeBlockPlacement {
-                                    precinct_index,
-                                    decoder_index: flattened_decoder_index,
-                                    subband_index,
-                                    x: x.checked_sub(subband.x0).ok_or_else(arithmetic_overflow)?,
-                                    y: y.checked_sub(subband.y0).ok_or_else(arithmetic_overflow)?,
-                                });
-                                flattened_decoder_index = flattened_decoder_index
-                                    .checked_add(1)
-                                    .ok_or_else(arithmetic_overflow)?;
-                                block_x = block_x.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                            }
-                            block_y = block_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                        }
+                        let planned = plan_codeblock_decoders(
+                            [
+                                first_block_x,
+                                first_block_y,
+                                code_block_width,
+                                code_block_height,
+                            ],
+                            [start_x, start_y, end_x, end_y],
+                            [blocks_across, blocks_down],
+                            subband,
+                            tier1_style,
+                            (allow_multiple_ht_sets, ht_magnitude_bound),
+                            (precinct_index, subband_index, flattened_decoder_index),
+                            placements,
+                            planned_code_blocks,
+                            resolution <= output_resolution,
+                            limits,
+                        )?;
+                        placements = planned.placements;
+                        flattened_decoder_index = planned.decoder_index;
+                        planned_code_blocks = planned.planned_code_blocks;
                         executions.push(PacketSubbandExecution {
                             orientation: subband.orientation,
                             code_blocks_across: blocks_across,
                             code_blocks_down: blocks_down,
                             maximum_zero_bitplanes: subband.significant_bitplanes,
-                            decoders,
+                            decoders: planned.decoders,
                         });
                     }
                     local_subband = local_subband
@@ -1616,6 +1580,174 @@ fn plan_progression_tile_at_selected(
         precincts,
         components,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures planned_codeblocks_outcome(result) == crate::specs::part2_planned_codeblock_cell(
+        grid, clip, block, subband, style, policy, indices, planned_codeblocks_view(&state),
+    ),
+))]
+pub(crate) fn append_planned_codeblock(
+    grid: [u32; 4],
+    clip: [u32; 4],
+    block: [u32; 2],
+    subband: SubbandGeometry,
+    style: Tier1CodingStyle,
+    policy: (bool, u8),
+    indices: (usize, usize),
+    mut state: PlannedCodeBlocks,
+) -> Result<PlannedCodeBlocks, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost before = planned_codeblocks_view(&state); }
+    let (x, y, width, height) = derive_planned_codeblock_geometry(grid, clip, block)?;
+    let decoder = crate::tier1::tier1_configured_decoder(
+        width,
+        height,
+        subband.significant_bitplanes,
+        subband.orientation,
+        style,
+        policy.0,
+        policy.1,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost decoded = crate::tier1::tier1_decoder_state(&decoder); }
+    state.decoders.push(decoder);
+    state.placements.push(ProgressionCodeBlockPlacement {
+        precinct_index: indices.0,
+        decoder_index: state.decoder_index,
+        subband_index: indices.1,
+        x: x.checked_sub(subband.x0).ok_or_else(arithmetic_overflow)?,
+        y: y.checked_sub(subband.y0).ok_or_else(arithmetic_overflow)?,
+    });
+    state.decoder_index = state
+        .decoder_index
+        .checked_add(1)
+        .ok_or_else(arithmetic_overflow)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(planned_codeblocks_view);
+        assert(state.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder))
+            =~= before.decoders.push(decoded));
+    }
+    Ok(state)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures planned_codeblocks_outcome(result) == crate::specs::part2_planned_codeblocks(
+        grid, clip, blocks, subband, style, policy, indices, placements@, planned_code_blocks, selected, limits,
+    ),
+))]
+pub(crate) fn plan_codeblock_decoders(
+    grid: [u32; 4],
+    clip: [u32; 4],
+    blocks: [u32; 2],
+    subband: SubbandGeometry,
+    style: Tier1CodingStyle,
+    policy: (bool, u8),
+    indices: (usize, usize, usize),
+    placements: Vec<ProgressionCodeBlockPlacement>,
+    planned_code_blocks: u64,
+    selected: bool,
+    limits: &ResourceLimits,
+) -> Result<PlannedCodeBlocks, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_planned_codeblocks(
+        grid, clip, blocks, subband, style, policy, indices, placements@, planned_code_blocks, selected, limits,
+    ); }
+    let mut total = planned_code_blocks;
+    let count = u64::from(blocks[0])
+        .checked_mul(u64::from(blocks[1]))
+        .ok_or_else(arithmetic_overflow)?;
+    if selected {
+        total = total.checked_add(count).ok_or_else(arithmetic_overflow)?;
+        if total > limits.maximum_code_blocks() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlocks,
+                limit: limits.maximum_code_blocks(),
+                actual: total,
+            });
+        }
+        if total > limits.maximum_work_units() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: total,
+            });
+        }
+    }
+    let capacity = match usize::try_from(count) {
+        Ok(capacity) => capacity,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let mut state = PlannedCodeBlocks {
+        decoders: Vec::with_capacity(capacity),
+        placements,
+        decoder_index: indices.2,
+        planned_code_blocks: total,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(planned_codeblocks_view);
+        assert(state.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder))
+            =~= Seq::empty());
+    }
+    let mut block_y = 0_u32;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant block_y <= blocks[1],
+            goal == crate::specs::part2_planned_codeblocks(
+                grid, clip, blocks, subband, style, policy, indices, placements@, planned_code_blocks, selected, limits,
+            ),
+            goal == crate::specs::part2_planned_codeblock_rows(
+                grid, clip, blocks, subband, style, policy, (indices.0, indices.1),
+                block_y as nat, planned_codeblocks_view(&state),
+            ),
+        decreases blocks[1] - block_y,
+    ))]
+    while block_y < blocks[1] {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_planned_codeblock_rows, 1); }
+        let mut block_x = 0_u32;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant block_x <= blocks[0], block_y < blocks[1],
+                goal == crate::specs::part2_planned_codeblocks(
+                    grid, clip, blocks, subband, style, policy, indices, placements@, planned_code_blocks, selected, limits,
+                ),
+                goal == match crate::specs::part2_planned_codeblock_columns(
+                    grid, clip, blocks[0], subband, style, policy, (indices.0, indices.1),
+                    block_y, block_x as nat, planned_codeblocks_view(&state),
+                ) {
+                    Err(error) => Err(error),
+                    Ok(after) => crate::specs::part2_planned_codeblock_rows(
+                        grid, clip, blocks, subband, style, policy, (indices.0, indices.1),
+                        block_y as nat + 1, after,
+                    ),
+                },
+            decreases blocks[0] - block_x,
+        ))]
+        while block_x < blocks[0] {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_planned_codeblock_columns, 1); }
+            state = append_planned_codeblock(
+                grid,
+                clip,
+                [block_x, block_y],
+                subband,
+                style,
+                policy,
+                (indices.0, indices.1),
+                state,
+            )?;
+            block_x = block_x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_planned_codeblock_columns, 1); }
+        block_y = block_y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_planned_codeblock_rows, 1); }
+    Ok(state)
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -5854,28 +5986,33 @@ mod tests {
         decode_code_block_contribution, decode_progression_tile_packets,
     };
 
-    #[test]
-    fn actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers() {
+    fn reference_planned_block_geometry(
+        grid: [u32; 4],
+        clip: [u32; 4],
+        block: [u32; 2],
+    ) -> Result<(u32, u32, u16, u16), DecodeError> {
         let arithmetic = DecodeError::MalformedInput {
             offset: 0,
             kind: MalformedKind::ArithmeticOverflow,
         };
-        let reference = |grid: [u32; 4], clip: [u32; 4], block: [u32; 2]| {
-            let checked = |value: u128| u32::try_from(value).map_err(|_| arithmetic);
-            let ix = checked(u128::from(grid[0]) + u128::from(block[0]))?;
-            let nx = checked(u128::from(ix) * u128::from(grid[2]))?;
-            let iy = checked(u128::from(grid[1]) + u128::from(block[1]))?;
-            let ny = checked(u128::from(iy) * u128::from(grid[3]))?;
-            let x = nx.max(clip[0]);
-            let y = ny.max(clip[1]);
-            let ex = checked(u128::from(nx) + u128::from(grid[2]))?;
-            let ey = checked(u128::from(ny) + u128::from(grid[3]))?;
-            let width =
-                u16::try_from(i64::from(ex.min(clip[2])) - i64::from(x)).map_err(|_| arithmetic)?;
-            let height =
-                u16::try_from(i64::from(ey.min(clip[3])) - i64::from(y)).map_err(|_| arithmetic)?;
-            Ok((x, y, width, height))
-        };
+        let checked = |value: u128| u32::try_from(value).map_err(|_| arithmetic);
+        let ix = checked(u128::from(grid[0]) + u128::from(block[0]))?;
+        let nx = checked(u128::from(ix) * u128::from(grid[2]))?;
+        let iy = checked(u128::from(grid[1]) + u128::from(block[1]))?;
+        let ny = checked(u128::from(iy) * u128::from(grid[3]))?;
+        let x = nx.max(clip[0]);
+        let y = ny.max(clip[1]);
+        let ex = checked(u128::from(nx) + u128::from(grid[2]))?;
+        let ey = checked(u128::from(ny) + u128::from(grid[3]))?;
+        let width =
+            u16::try_from(i64::from(ex.min(clip[2])) - i64::from(x)).map_err(|_| arithmetic)?;
+        let height =
+            u16::try_from(i64::from(ey.min(clip[3])) - i64::from(y)).map_err(|_| arithmetic)?;
+        Ok((x, y, width, height))
+    }
+
+    #[test]
+    fn actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers() {
         let words = [0, 1, 2, 65_535, 65_536, u32::MAX];
         let clips = [
             [0, 0, u32::MAX, u32::MAX],
@@ -5898,7 +6035,8 @@ mod tests {
                                 for clip in clips {
                                     let grid = [first_x, first_y, width, height];
                                     let block = [block_x, block_y];
-                                    let expected = reference(grid, clip, block);
+                                    let expected =
+                                        reference_planned_block_geometry(grid, clip, block);
                                     assert_eq!(
                                         derive_planned_codeblock_geometry(grid, clip, block),
                                         expected
@@ -5919,6 +6057,350 @@ mod tests {
             zero_dimensions > 100,
             "zero dimensions remain the decoder initializer's policy"
         );
+    }
+
+    fn raw_planned_subband(
+        x0: u32,
+        y0: u32,
+        bits: u16,
+        orientation: SubbandOrientation,
+    ) -> SubbandGeometry {
+        SubbandGeometry {
+            resolution: u8::MAX,
+            orientation,
+            x0,
+            y0,
+            width: u32::MAX,
+            height: 0,
+            resolution_width: 0,
+            resolution_height: u32::MAX,
+            quantization_index: u16::MAX,
+            quantization_step: QuantizationStep {
+                exponent: u8::MAX,
+                mantissa: u16::MAX,
+            },
+            dynamic_range: u8::MAX,
+            significant_bitplanes: bits,
+            roi_shift: u8::MAX,
+            low_pass_first_x: true,
+            low_pass_first_y: false,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_planned_cell(
+        grid: [u32; 4],
+        clip: [u32; 4],
+        block: [u32; 2],
+        subband: SubbandGeometry,
+        style: Tier1CodingStyle,
+        policy: (bool, u8),
+        indices: (usize, usize),
+        mut state: PlannedCodeBlocks,
+    ) -> Result<PlannedCodeBlocks, DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let (x, y, width, height) = reference_planned_block_geometry(grid, clip, block)?;
+        let mut decoder = Tier1CodeBlockDecoder::new(
+            width,
+            height,
+            subband.significant_bitplanes,
+            subband.orientation,
+            style,
+        )?;
+        decoder.set_multiple_ht_sets_allowed(policy.0);
+        decoder.set_ht_magnitude_bound(policy.1)?;
+        let x = u32::try_from(i64::from(x) - i64::from(subband.x0)).map_err(|_| arithmetic)?;
+        let y = u32::try_from(i64::from(y) - i64::from(subband.y0)).map_err(|_| arithmetic)?;
+        let next = usize::try_from(state.decoder_index as u128 + 1).map_err(|_| arithmetic)?;
+        state.placements.push(ProgressionCodeBlockPlacement {
+            precinct_index: indices.0,
+            decoder_index: state.decoder_index,
+            subband_index: indices.1,
+            x,
+            y,
+        });
+        state.decoders.push(decoder);
+        state.decoder_index = next;
+        Ok(state)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_planned_codeblocks(
+        grid: [u32; 4],
+        clip: [u32; 4],
+        blocks: [u32; 2],
+        subband: SubbandGeometry,
+        style: Tier1CodingStyle,
+        policy: (bool, u8),
+        indices: (usize, usize, usize),
+        placements: Vec<ProgressionCodeBlockPlacement>,
+        total: u64,
+        selected: bool,
+        limits: &ResourceLimits,
+    ) -> Result<PlannedCodeBlocks, DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let count = u64::from(blocks[0]) * u64::from(blocks[1]);
+        let total = if selected {
+            let next =
+                u64::try_from(u128::from(total) + u128::from(count)).map_err(|_| arithmetic)?;
+            if next > limits.maximum_code_blocks() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::CodeBlocks,
+                    limit: limits.maximum_code_blocks(),
+                    actual: next,
+                });
+            }
+            if next > limits.maximum_work_units() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: limits.maximum_work_units(),
+                    actual: next,
+                });
+            }
+            next
+        } else {
+            total
+        };
+        usize::try_from(count).map_err(|_| arithmetic)?;
+        let mut state = PlannedCodeBlocks {
+            decoders: Vec::new(),
+            placements,
+            decoder_index: indices.2,
+            planned_code_blocks: total,
+        };
+        for index in 0..count {
+            let block = [
+                u32::try_from(index % u64::from(blocks[0])).unwrap(),
+                u32::try_from(index / u64::from(blocks[0])).unwrap(),
+            ];
+            state = reference_planned_cell(
+                grid,
+                clip,
+                block,
+                subband,
+                style,
+                policy,
+                (indices.0, indices.1),
+                state,
+            )?;
+        }
+        Ok(state)
+    }
+
+    fn assert_planned_blocks_equal(
+        actual: Result<PlannedCodeBlocks, DecodeError>,
+        expected: Result<PlannedCodeBlocks, DecodeError>,
+    ) -> bool {
+        match (actual, expected) {
+            (Err(actual), Err(expected)) => {
+                assert_eq!(actual, expected);
+                false
+            }
+            (Ok(actual), Ok(expected)) => {
+                assert_eq!(actual.placements, expected.placements);
+                assert_eq!(actual.decoder_index, expected.decoder_index);
+                assert_eq!(actual.planned_code_blocks, expected.planned_code_blocks);
+                assert_eq!(
+                    format!("{:?}", actual.decoders),
+                    format!("{:?}", expected.decoders)
+                );
+                true
+            }
+            (Err(error), Ok(_)) => panic!("unexpected plan error: {error:?}"),
+            (Ok(_), Err(error)) => panic!("plan should have failed: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn actual_codeblock_vectors_bind_every_decoder_placement_prefix_policy_and_selected_limit() {
+        let grids = [
+            [0, 0, 1, 1],
+            [1, 2, 2, 3],
+            [0, 0, 0, 1],
+            [0, 0, 65, 64],
+            [u32::MAX, 0, 2, 1],
+            [0, 0, 65_536, 1],
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for grid in grids {
+            for clip in [[0, 0, 16, 16], [1, 2, 7, 9], [0, 0, u32::MAX, u32::MAX]] {
+                for blocks in [[0, 0], [0, 2], [1, 1], [2, 1], [2, 3]] {
+                    for (x0, y0, bits) in [
+                        (0, 0, 0),
+                        (0, 0, 1),
+                        (1, 2, 2),
+                        (u32::MAX, u32::MAX, 74),
+                        (0, 0, 74),
+                        (0, 0, 75),
+                    ] {
+                        for orientation in [SubbandOrientation::Ll, SubbandOrientation::Hh] {
+                            let subband = raw_planned_subband(x0, y0, bits, orientation);
+                            let style = Tier1CodingStyle {
+                                force_high_throughput: true,
+                                segmentation_symbols: true,
+                                block_coding: if bits == 1 {
+                                    crate::tier1::Tier1BlockCoding::HighThroughput
+                                } else {
+                                    crate::tier1::Tier1BlockCoding::Mixed
+                                },
+                                ..Tier1CodingStyle::default()
+                            };
+                            for policy in [(false, 0), (false, 74), (true, 1), (true, 75)] {
+                                for selected in [false, true] {
+                                    for (total, block_limit, work_limit) in
+                                        [(0, 100, 100), (0, 0, 0), (1, 2, 1), (u64::MAX, 100, 100)]
+                                    {
+                                        let limits = ResourceLimits::HARDENED
+                                            .with_maximum_code_blocks(block_limit)
+                                            .unwrap()
+                                            .with_maximum_work_units(work_limit)
+                                            .unwrap();
+                                        for indices in [
+                                            (17, 31, 0),
+                                            (usize::MAX, usize::MAX, 3),
+                                            (4, 7, usize::MAX),
+                                        ] {
+                                            let prefix = vec![ProgressionCodeBlockPlacement {
+                                                precinct_index: usize::MAX,
+                                                decoder_index: usize::MAX,
+                                                subband_index: usize::MAX,
+                                                x: u32::MAX,
+                                                y: u32::MAX,
+                                            }];
+                                            let expected = reference_planned_codeblocks(
+                                                grid,
+                                                clip,
+                                                blocks,
+                                                subband,
+                                                style,
+                                                policy,
+                                                indices,
+                                                prefix.clone(),
+                                                total,
+                                                selected,
+                                                &limits,
+                                            );
+                                            let actual = plan_codeblock_decoders(
+                                                grid, clip, blocks, subband, style, policy,
+                                                indices, prefix, total, selected, &limits,
+                                            );
+                                            successes += usize::from(assert_planned_blocks_equal(
+                                                actual, expected,
+                                            ));
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 103_680);
+        assert!(successes > 1_000);
+        for blocks in [[u32::MAX, 0], [u32::MAX, u32::MAX]] {
+            let subband = raw_planned_subband(0, 0, 0, SubbandOrientation::Ll);
+            let limits = ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap();
+            let expected = reference_planned_codeblocks(
+                [0; 4],
+                [0; 4],
+                blocks,
+                subband,
+                Tier1CodingStyle::default(),
+                (true, 0),
+                (0, 0, usize::MAX),
+                Vec::new(),
+                0,
+                true,
+                &limits,
+            );
+            let actual = plan_codeblock_decoders(
+                [0; 4],
+                [0; 4],
+                blocks,
+                subband,
+                Tier1CodingStyle::default(),
+                (true, 0),
+                (0, 0, usize::MAX),
+                Vec::new(),
+                0,
+                true,
+                &limits,
+            );
+            assert_planned_blocks_equal(actual, expected);
+        }
+    }
+
+    #[test]
+    fn actual_codeblock_cell_retains_existing_owned_decoder_and_placement_buffers() {
+        let mut cases = 0;
+        for block in [[0, 0], [1, 2], [u32::MAX, 0], [0, u32::MAX]] {
+            for origin in [0, 1, u32::MAX] {
+                for bits in [0, 1, 74, 75] {
+                    for flattened in [0, 1, usize::MAX - 1, usize::MAX] {
+                        for bound in [0, 1, 74, 75] {
+                            let style = Tier1CodingStyle::default();
+                            let seed = || PlannedCodeBlocks {
+                                decoders: vec![
+                                    Tier1CodeBlockDecoder::new(
+                                        1,
+                                        1,
+                                        2,
+                                        SubbandOrientation::Hh,
+                                        style,
+                                    )
+                                    .unwrap(),
+                                ],
+                                placements: vec![ProgressionCodeBlockPlacement {
+                                    precinct_index: 19,
+                                    decoder_index: usize::MAX,
+                                    subband_index: 37,
+                                    x: u32::MAX,
+                                    y: 7,
+                                }],
+                                decoder_index: flattened,
+                                planned_code_blocks: u64::MAX,
+                            };
+                            let subband =
+                                raw_planned_subband(origin, origin, bits, SubbandOrientation::Lh);
+                            let expected = reference_planned_cell(
+                                [0, 0, 1, 1],
+                                [0, 0, 5, 5],
+                                block,
+                                subband,
+                                style,
+                                (true, bound),
+                                (usize::MAX, 31),
+                                seed(),
+                            );
+                            let actual = append_planned_codeblock(
+                                [0, 0, 1, 1],
+                                [0, 0, 5, 5],
+                                block,
+                                subband,
+                                style,
+                                (true, bound),
+                                (usize::MAX, 31),
+                                seed(),
+                            );
+                            assert_planned_blocks_equal(actual, expected);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 768);
     }
 
     fn reference_standard_prepare(
