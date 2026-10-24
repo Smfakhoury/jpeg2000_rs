@@ -914,6 +914,12 @@ class FrameworkTests(WorkingFiles):
             framework._SIZ_GEOMETRY_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_actual_raw_cod_bytes_to_complete_style_and_precinct_defaults(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-raw-coding-style"},
+            framework._CODING_STYLE_BYTES_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

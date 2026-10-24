@@ -1686,7 +1686,9 @@ pub(crate) fn tier1_coding_style_from_code_block_style(
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part1_tier1_block_coding_byte(value),
 ))]
-fn tier1_block_coding_from_code_block_style(value: u8) -> Result<Tier1BlockCoding, DecodeError> {
+pub(crate) fn tier1_block_coding_from_code_block_style(
+    value: u8,
+) -> Result<Tier1BlockCoding, DecodeError> {
     match value >> 6 {
         0 => Ok(Tier1BlockCoding::Legacy),
         1 if value & 0x37 == 0 => Ok(Tier1BlockCoding::HighThroughput),

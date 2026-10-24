@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part1_parse_cod_payload` binds actual raw COD bytes to every native style
+field and default/precinct slot, not an admitted style or lookup result.
+Ordered flags/progression/layers/MCT/depth/block/length admission and the
+lazy explicit-precinct capacity check retain original first errors.
+Arbitrary transform indices remain raw metadata. Actual main/tile/COC parser
+callers use the sole bodies and shared proved Tier1 block-style primitive.
+No normalization, validity/budget premise, trust or production cap change is
+added. Remaining metadata/layout/file/F2/F4/final F8 stay separate.
+
 `part1_parse_siz` binds actual raw SIZ bytes to every native ImageSize field,
 all private component slots and raw r_siz, not supplied parsed geometry.
 Header/first-tile/length/geometry/component/descriptor/array/resource order,

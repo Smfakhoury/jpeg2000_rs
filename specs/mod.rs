@@ -13097,6 +13097,141 @@ pub(crate) open spec fn part1_parse_siz(segment: Part1CodestreamSegment, limits:
     }
 }
 
+pub struct Part1ParsedCodingStyle {
+    pub progression_order: crate::codestream::ProgressionOrder,
+    pub layers: u16, pub multiple_component_transform: bool,
+    pub decomposition_levels: u8, pub decomposition_structure: Option<u8>,
+    pub decomposition_directions: Seq<crate::codestream::DecompositionDirection>,
+    pub code_block_width: u16, pub code_block_height: u16, pub code_block_style: u8,
+    pub transform: crate::codestream::WaveletTransform,
+    pub precincts_defined: bool, pub sop_markers: bool, pub eph_markers: bool,
+    pub precinct_exponents: Seq<(u8, u8)>,
+}
+
+pub struct Part1CodHeader {
+    pub flags: u8, pub progression_order: crate::codestream::ProgressionOrder,
+    pub layers: u16, pub multiple_component_transform: bool, pub decomposition_levels: u8,
+    pub code_block_width: u16, pub code_block_height: u16, pub code_block_style: u8,
+    pub transform: crate::codestream::WaveletTransform, pub precinct_count: usize,
+}
+
+pub open spec fn part1_cod_progression(value: u8) -> Option<crate::codestream::ProgressionOrder> {
+    match value {
+        0 => Some(crate::codestream::ProgressionOrder::Lrcp),
+        1 => Some(crate::codestream::ProgressionOrder::Rlcp),
+        2 => Some(crate::codestream::ProgressionOrder::Rpcl),
+        3 => Some(crate::codestream::ProgressionOrder::Pcrl),
+        4 => Some(crate::codestream::ProgressionOrder::Cprl),
+        _ => None,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_cod_header(offset: usize, payload: Seq<u8>, limits: &crate::ResourceLimits)
+    -> Result<Part1CodHeader, crate::DecodeError>
+{
+    if payload.len() < 10 { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength)) }
+    else if payload[0] & 248 != 0 { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle)) }
+    else {
+        match part1_cod_progression(payload[1]) {
+            None => Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle)),
+            Some(progression_order) => {
+                let layers = part1_marker_value(payload[2], payload[3]);
+                if layers > crate::limits::resource_layer_limit(limits) {
+                    Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Layers,
+                        limit: crate::limits::resource_layer_limit(limits) as u64, actual: layers as u64 })
+                } else if layers == 0 || payload[4] > 1 {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle))
+                } else if payload[5] == u8::MAX {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    let resolutions = (payload[5] + 1) as u8;
+                    if resolutions > crate::limits::resource_resolution_limit(limits) {
+                        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Resolutions,
+                            limit: crate::limits::resource_resolution_limit(limits) as u64, actual: resolutions as u64 })
+                    } else if payload[6] > 8 || payload[7] > 8 {
+                        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle))
+                    } else {
+                        let width = 1u16 << ((payload[6] as u32) + 2);
+                        let height = 1u16 << ((payload[7] as u32) + 2);
+                        if width as int * height as int > u32::MAX {
+                            Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+                        } else if width as int * height as int > 4096 || part1_tier1_block_coding_byte(payload[8]).is_err() {
+                            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle))
+                        } else {
+                            let count = resolutions as usize;
+                            let expected = if payload[0] & 1 != 0 { 10int + count as int } else { 10int };
+                            if expected > usize::MAX { Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow)) }
+                            else if payload.len() != expected { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength)) }
+                            else {
+                                Ok(Part1CodHeader {
+                                    flags: payload[0], progression_order, layers,
+                                    multiple_component_transform: payload[4] == 1, decomposition_levels: payload[5],
+                                    code_block_width: width, code_block_height: height, code_block_style: payload[8],
+                                    transform: match payload[9] { 0 => crate::codestream::WaveletTransform::Irreversible9x7,
+                                        1 => crate::codestream::WaveletTransform::Reversible5x3,
+                                        index => crate::codestream::WaveletTransform::Arbitrary(index) },
+                                    precinct_count: count,
+                                })
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_cod_precincts(
+    offset: usize, payload: Seq<u8>, count: usize, resolution: usize, precincts: Seq<(u8, u8)>,
+) -> Result<Seq<(u8, u8)>, crate::DecodeError>
+    decreases count - resolution,
+{
+    if resolution >= count { Ok(precincts) }
+    else if 10int + resolution as int > usize::MAX {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+    } else {
+        let index = 10int + resolution as int;
+        if index >= payload.len() || resolution as nat >= precincts.len() {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle))
+        } else if resolution == usize::MAX {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+        } else {
+            part1_cod_precincts(offset, payload, count, (resolution + 1) as usize,
+                precincts.update(resolution as int, (payload[index] & 15, payload[index] >> 4)))
+        }
+    }
+}
+
+pub open spec fn part1_cod_from_header(h: Part1CodHeader, precincts: Seq<(u8, u8)>) -> Part1ParsedCodingStyle {
+    Part1ParsedCodingStyle {
+        progression_order: h.progression_order, layers: h.layers,
+        multiple_component_transform: h.multiple_component_transform,
+        decomposition_levels: h.decomposition_levels, decomposition_structure: None,
+        decomposition_directions: Seq::new(32, |i: int| crate::codestream::DecompositionDirection::TwoDimensional),
+        code_block_width: h.code_block_width, code_block_height: h.code_block_height, code_block_style: h.code_block_style,
+        transform: h.transform, precincts_defined: h.flags & 1 != 0, sop_markers: h.flags & 2 != 0,
+        eph_markers: h.flags & 4 != 0, precinct_exponents: precincts,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_cod_payload(offset: usize, payload: Seq<u8>, limits: &crate::ResourceLimits)
+    -> Result<Part1ParsedCodingStyle, crate::DecodeError>
+{
+    match part1_cod_header(offset, payload, limits) {
+        Err(error) => Err(error),
+        Ok(h) => {
+            let initial = Seq::new(33, |i: int| (15u8, 15u8));
+            match if h.flags & 1 != 0 { part1_cod_precincts(offset, payload, h.precinct_count, 0, initial) } else { Ok(initial) } {
+                Err(error) => Err(error),
+                Ok(precincts) => Ok(part1_cod_from_header(h, precincts)),
+            }
+        },
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

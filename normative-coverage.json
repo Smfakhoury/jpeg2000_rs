@@ -4,6 +4,41 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-raw-coding-style",
+      "topic": "Complete actual Parser::parse_cod/parse_cod_payload Result/every CodingStyle field, all32 default decomposition directions and33 actual/default precinct entries from raw bytes/offset/limits. Preserve header/flag/progression/layer/MCT/checked-u8 depth/resolution/block exponent/product/style/expected-length/lazy precinct capacity ordering, SOP/EPH flags and unvalidated arbitrary transform indices. No supplied coding style/precinct/result bank, normalized metadata or admitted header/budget premise. Actual main/tile/COC callers use sole bodies; the real shared proved Tier1 block-style producer replaces only its unsupported static facade at this computational call. Test-only raw cap fixture changes no production cap/API. Remaining COC/quantization/Part2/tile/layout parser-to-output/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_coc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cod"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cod_payload"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_cod_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_cod_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_cod_progression"},
+        {"path": "specs/mod.rs", "symbol": "part1_cod_precincts"},
+        {"path": "specs/mod.rs", "symbol": "part1_cod_from_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_tier1_block_coding_byte"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cod"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cod_payload"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parsed_coding_style_view"},
+        {"path": "src/codestream.rs", "symbol": "parsed_coding_style_outcome"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_at"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"},
+        {"path": "src/tier1.rs", "symbol": "tier1_block_coding_from_code_block_style"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_raw_cod_derives_full_style_defaults_precincts_and_ordered_admission"}
+      ]
+    },
+    {
       "id": "part1-complete-native-raw-siz-geometry",
       "topic": "Complete actual Parser::parse_siz Result/every ImageSize field, entire private component array including unused zeros and raw r_siz from actual raw Segment payload/offset and real limits. Preserve header-length then first-tile overflow before combined geometry/expected-length, component cap before ordered descriptors, precision/subsampling before capacity, sticky paired uniform flags, then width/height/pixel/ceil/tile limits in native order. Marker identity remains intentionally unvalidated in this helper; the actual parser checks SIZ before calling. All array/loop/arithmetic bounds and byte/word values derive internally without normalized headers/images, supplied geometry/result banks or successful-admission premises. Shared exact malformed-offset/word/ceiling helpers and cap observers are proved, no policy/trust/pin/budget change. Remaining coding/quantization/Part2/tile/layout parser-to-output/file/F2/F4/final F8 and delivery stay separate.",
       "implementation_refs": [
