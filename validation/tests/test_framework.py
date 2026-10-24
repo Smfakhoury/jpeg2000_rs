@@ -820,6 +820,28 @@ class FrameworkTests(WorkingFiles):
             framework._RAW_TILE_DECODING_CONTRACTS, 1,
         )
 
+    def test_inventory_binds_actual_owned_payload_copy_and_ordered_tile_collection(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-owned-tile-collection"},
+            framework._TILE_COLLECTION_CONTRACTS, 2,
+        )
+
+    def test_contract_method_resolution_handles_clone_trait_and_rejects_other_or_ambiguous_impls(self):
+        source = """impl<'a> Clone for TilePartPayload<'a> {
+    fn clone(&self) -> Self { todo!() }
+}
+"""
+        header = framework._coverage_function_header(source, "TilePartPayload::clone")
+        self.assertIsNotNone(header)
+        self.assertEqual(header.group().strip() if header is not None else None, "fn clone")
+        self.assertIsNone(framework._coverage_function_header(source, "Other::clone"))
+        self.assertIsNone(framework._coverage_function_header(source.replace("Clone for", "OtherTrait for"), "TilePartPayload::clone"))
+        inherent = """impl<'a> TilePartPayload<'a> {
+    fn clone(&self) -> Self { todo!() }
+}
+"""
+        self.assertIsNone(framework._coverage_function_header(source + inherent, "TilePartPayload::clone"))
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

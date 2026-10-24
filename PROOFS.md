@@ -2665,3 +2665,22 @@ independently qualified metadata/profile primitives with independent wide/
 flat-order plan/precinct/accounting composition.
 Actual tile collection/clone, whole layout/selection/raw parser/file/F2/F4/
 final F8 and publication remain separate, not assumed by this producer.
+## Actual owned metadata copy and ordered tile collection
+
+The actual collectors now share one source traversal that still clones every
+source part before filtering, including nonmatching parts. Same-order actual
+Clone bodies replace only unsupported non-Copy derives required by this path;
+the same field order and Vec/Option clone calls preserve allocation behavior.
+Their posts prove complete logical data copies, not equality of opaque heap
+allocation identities or an assumed cloned payload.
+
+Every quantization/progression/MCT/Part2/nonlinear/kernel/registration/length/
+header/flag/data field is observed without normalizing unused invalid data.
+Two exact native-consumer recipes bind actual full payload copy and collection;
+the internal clone chain and ordered suffix establish all source/append frames.
+Method links resolve actual Clone trait impls and reject other or ambiguous
+impls, instead of accepting a neighboring short-name function.
+24 rich malformed raw payloads compare every native field and deep independent
+buffers; 1,040 source-length/tile-pattern/query contexts retain duplicate order
+and shared immutable byte slices. Both actual layout paths use the sole body.
+Whole layout/raw-parser/file/F2/F4/final F8 joins remain separate.
