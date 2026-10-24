@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part2_apply_nonlinear_regions` and `part2_nlt_component_mutation` bind
+actual complete owner state AND Result, including failed-component rollback
+by original deferred commit and already committed image prefixes. Raw source/
+region/limit data derive every scratch slot, target and counter. Region,
+duplicate/read/scalar/work, byte/coverage/conversion and metadata commit
+order remain explicit under opaque terminating folds. No normalized inputs,
+source coverage, scratch/sample/result banks or caller premises are supplied.
+Whole typed/parser/file/F2/F4/final F8 composition remains separate.
+
 `part2_nlt_inverse_sample` is the complete actual nonlinear sample producer
 from raw source/component/transform, including parameter decoding and all
 gamma/LUT/complement/unknown-kind/target-range behavior. Parameter and curve

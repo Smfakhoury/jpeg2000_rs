@@ -875,7 +875,7 @@ class FrameworkTests(WorkingFiles):
     def test_inventory_binds_actual_raw_nonlinear_lut_samples_without_lookup_result_banks(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-nonlinear-lut"},
-            framework._NONLINEAR_LUT_CONTRACTS, 3,
+            framework._NONLINEAR_LUT_CONTRACTS, 5,
         )
 
     def test_inventory_binds_actual_nonlinear_log_exp_normalizers_series_and_reciprocal(self):
@@ -888,6 +888,12 @@ class FrameworkTests(WorkingFiles):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-nonlinear-scalar"},
             framework._NONLINEAR_SCALAR_CONTRACTS, 4,
+        )
+
+    def test_inventory_binds_actual_nonlinear_owner_mutation_and_failure_prefix_without_result_banks(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-nonlinear-owner-mutation"},
+            framework._NONLINEAR_APPLICATION_CONTRACTS, 2,
         )
 
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):

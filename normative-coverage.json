@@ -4,10 +4,56 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-nonlinear-owner-mutation",
+      "topic": "Complete actual TypedImage and TypedComponent nonlinear region Result/final owner fields on success AND failure, from real raw typed samples/region transforms/limits and derived None scratch/target/work. Actual component body preserves selected-region/rectangle/descriptor/duplicate/read/scalar-before-work order, original per-component byte-before-coverage/conversion policy, all metadata and committed component prefix on errors. No decoded/sample/scratch/result banks, normalized image/region premises, precomputed source coverage or budget success. All bounds/frames/termination derive internally; shared proved checked index/work bodies retain original operations. Genuine typed_layout invokes the sole image body and real component producer. Whole typed/parser/file/F2/F4/final F8 and hosted/main/publication remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "typed_layout"},
+        {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::apply_nonlinear_regions"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_apply_nonlinear_regions"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_apply_components"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_component_mutation"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_finish_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_updated_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_collect_samples"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_component_regions"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_region_rows"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_region_row"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_region_pixel"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_source_sample"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_sample_count"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_inverse_sample"},
+        {"path": "specs/mod.rs", "symbol": "part1_image_byte_budget"},
+        {"path": "specs/mod.rs", "symbol": "part1_transform_offset"},
+        {"path": "specs/mod.rs", "symbol": "part2_mct_charge_work"}
+      ],
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::apply_nonlinear_regions"}
+      ],
+      "proof_refs": [
+        {"path": "src/image.rs", "symbol": "typed_image_value_view"},
+        {"path": "src/image.rs", "symbol": "typed_component_view"},
+        {"path": "src/image.rs", "symbol": "nlt_scratch_view"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_regions_view"},
+        {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
+        {"path": "src/image.rs", "symbol": "index"},
+        {"path": "src/image.rs", "symbol": "charge_mct_work"},
+        {"path": "src/image.rs", "symbol": "validate_bytes"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "actual_nonlinear_image_mutation_preserves_every_owner_field_and_failure_prefix"}
+      ]
+    },
+    {
       "id": "part2-complete-native-nonlinear-scalar",
       "topic": "Complete actual raw nonlinear sample producer Result: real Q32 fractional parameter decode, ordered gamma metadata/scale admission, all three gamma curve branches, real checked log/exp/reciprocal/LUT and exact type0/1/2/3/4/unknown dispatch with final target range. Every output/error derives from raw source/component/complete transform; no supplied parameter/curve/LUT/sample results or normalized descriptors. Preserve p0/above38 versus signed power policy, MIN/complement checks, source/target arithmetic/rounding order and intentionally unvalidated metadata. Sole moved/extracted private bodies feed actual region application. No new trust, premise, budget/tolerance or analytic accuracy claim. Whole region application/typed/parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
         {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
+        {"path": "src/image.rs", "symbol": "TypedComponent::apply_nonlinear_regions"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_gamma_sample"},
         {"path": "src/image.rs", "symbol": "nlt_gamma_curve"}
@@ -94,11 +140,14 @@
       "implementation_refs": [
         {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
-        {"path": "src/image.rs", "symbol": "nlt_lut_position"}
+        {"path": "src/image.rs", "symbol": "nlt_lut_position"},
+        {"path": "src/image.rs", "symbol": "nlt_lut_coordinates"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_sample"},
         {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_position"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_coordinates"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_checked_rem"},
         {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_interpolate"},
         {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_interpolate_values"},
         {"path": "specs/mod.rs", "symbol": "part2_nlt_lut_finish"},
@@ -109,7 +158,9 @@
       "contract_refs": [
         {"path": "src/image.rs", "symbol": "inverse_nlt_lut_sample"},
         {"path": "src/image.rs", "symbol": "nlt_lut_interpolate_values"},
-        {"path": "src/image.rs", "symbol": "nlt_lut_position"}
+        {"path": "src/image.rs", "symbol": "nlt_lut_position"},
+        {"path": "src/image.rs", "symbol": "nlt_lut_coordinates"},
+        {"path": "src/image.rs", "symbol": "nlt_checked_rem"}
       ],
       "proof_refs": [
         {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},

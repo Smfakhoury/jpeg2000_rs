@@ -25,6 +25,37 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native nonlinear owner mutation
+
+Actual image and component region application refine complete Result/final
+owner-state pairs, including errors. The real per-component computational
+body uses actual source samples, derived None scratch, target and work;
+the image loop commits exactly successful component prefixes. A failed
+component retains every original field and channel definition. Geometry,
+unrelated descriptors and definitions remain unchanged throughout.
+
+Selected-region bounds and target consistency precede ordered row/pixel
+address, duplicate, source and actual nonlinear scalar checks. A decoded
+pixel precedes its original global work charge. After all regions, original
+per-component decoded-byte admission precedes ascending coverage/conversion
+checks and only then samples/precision/sign commit. Shared checked-index
+and work helpers reuse the same proved operations and errors. No source
+coverage, normalized image, scratch/sample/result bank or new caller premise
+is supplied. Every internal frame and opaque fold termination is proved.
+The existing LUT coordinate and signed-remainder computations are also
+isolated into their actual proved scalar bodies, retaining all operation
+order and complete contracts while bounding unrelated solver context.
+Large interval-count overflow is exercised directly without allocating
+an unrealistically large table; no solver budget or trusted boundary changes.
+
+Independent map-based coverage, wide offsets/budgets and the separately
+validated scalar reference check 7,056 whole-owner/error contexts, including
+prefix commits, ignored malformed nonmatching regions, holes, overlaps,
+byte/work priority, raw shapes/descriptors and preserved metadata. Raw
+initial-work overflow and the original 65,536 component narrowing frontier
+are exercised without large sample allocations. Whole typed/parser/file/
+F2/F4/final F8 and delivery remain separate.
+
 ## Complete native nonlinear sample producer
 
 Actual `inverse_nlt_sample` now refines the complete raw sample/component/

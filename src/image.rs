@@ -442,6 +442,13 @@ verus! {
     pub open spec fn typed_image_value_view(image: TypedImage) -> crate::specs::Part1DecodedTypedImage {
         (typed_image_geometry(&image), typed_image_component_views(&image), typed_image_definition_views(&image))
     }
+
+    pub(crate) open spec fn nlt_scratch_view(output: Seq<Option<i128>>, target: Option<(u8, bool)>, work: u64)
+        -> crate::specs::Part2NltScratch
+    {
+        crate::specs::Part2NltScratch { output, target, work }
+    }
+
 }
 
 pub(crate) struct NonlinearRegion<'a> {
@@ -586,90 +593,307 @@ impl DecodedImage {
 }
 
 impl TypedImage {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, typed_image_value_view(*final(self))) == crate::specs::part2_apply_nonlinear_regions(
+            typed_image_value_view(*old(self)), crate::decode::nonlinear_regions_view(regions@),
+            crate::limits::resource_decoded_bytes_limit(limits), crate::limits::resource_work_limit(limits),
+        ),
+    ))]
     pub(crate) fn apply_nonlinear_regions(
         &mut self,
         regions: &[NonlinearRegion<'_>],
         limits: &ResourceLimits,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = typed_image_value_view(*self);
+            let ghost region_views = crate::decode::nonlinear_regions_view(regions@);
+            let ghost byte_limit = crate::limits::resource_decoded_bytes_limit(limits);
+            let ghost work_limit = crate::limits::resource_work_limit(limits);
+            let ghost expected = crate::specs::part2_nlt_apply_components(initial, 0, region_views, byte_limit, work_limit, 0);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_apply_nonlinear_regions); }
         let mut work = 0_u64;
         let mut component_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant component_index <= self.components.len(),
+                initial == typed_image_value_view(*old(self)),
+                initial.0 == typed_image_geometry(self),
+                initial.2 == typed_image_definition_views(self),
+                region_views == crate::decode::nonlinear_regions_view(regions@),
+                byte_limit == crate::limits::resource_decoded_bytes_limit(limits),
+                work_limit == crate::limits::resource_work_limit(limits),
+                (expected.1, expected.0) == crate::specs::part2_apply_nonlinear_regions(initial, region_views, byte_limit, work_limit),
+                expected == crate::specs::part2_nlt_apply_components(
+                    typed_image_value_view(*self), component_index as nat, region_views, byte_limit, work_limit, work,
+                ),
                 decreases self.components.len() - component_index,
             )
         )]
         while component_index < self.components.len() {
-            let component_number =
-                u16::try_from(component_index).map_err(|_| arithmetic_overflow())?;
-            let component = self
-                .components
-                .get_mut(component_index)
-                .ok_or_else(invalid_image)?;
-            let source_info = component.info;
-            let sample_count = match &component.samples {
-                TypedSamples::Signed(samples) => samples.len(),
-                TypedSamples::Unsigned(samples) => samples.len(),
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_nlt_apply_components, 1); }
+            if component_index > usize::from(u16::MAX) {
+                return Err(arithmetic_overflow());
+            }
+            let component_number = component_index as u16;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! {
+                let ghost before = typed_image_value_view(*self);
+                let ghost native_before = self.components@;
+                let ghost source_view = before.1[component_index as int];
+                let ghost component_expected = crate::specs::part2_nlt_component(
+                    source_view, component_number, region_views, byte_limit, work_limit, work,
+                );
+            }
+            let outcome = {
+                let component = self
+                    .components
+                    .get_mut(component_index)
+                    .ok_or_else(invalid_image)?;
+                component.apply_nonlinear_regions(component_number, regions, work, limits)
             };
-            let mut output = vec![None; sample_count];
-            let mut target = None;
-            let mut region_index = 0_usize;
-            #[cfg_attr(
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part2_nlt_component_mutation);
+                let ghost updated = match component_expected { Ok((value, _)) => value, Err(_) => source_view };
+                assert(typed_image_component_views(self) =~= before.1.update(component_index as int, updated));
+                assert(typed_image_definition_views(self) =~= before.2);
+            }
+            work = outcome?;
+            component_index = component_index
+                .checked_add(1)
+                .ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nlt_apply_components, 1); }
+        Ok(())
+    }
+}
+
+impl TypedComponent {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, typed_component_view(final(self))) == crate::specs::part2_nlt_component_mutation(
+            typed_component_view(old(self)), component_number, crate::decode::nonlinear_regions_view(regions@),
+            crate::limits::resource_decoded_bytes_limit(limits), crate::limits::resource_work_limit(limits), initial_work,
+        ),
+        typed_component_definitions(final(self)) == typed_component_definitions(old(self)),
+    ))]
+    fn apply_nonlinear_regions(
+        &mut self,
+        component_number: u16,
+        regions: &[NonlinearRegion<'_>],
+        initial_work: u64,
+        limits: &ResourceLimits,
+    ) -> Result<u64, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost source_view = typed_component_view(self);
+            let ghost initial_defs = typed_component_definitions(self);
+            let ghost region_views = crate::decode::nonlinear_regions_view(regions@);
+            let ghost byte_limit = crate::limits::resource_decoded_bytes_limit(limits);
+            let ghost work_limit = crate::limits::resource_work_limit(limits);
+            let ghost component_expected = crate::specs::part2_nlt_component(
+                source_view, component_number, region_views, byte_limit, work_limit, initial_work,
+            );
+            let ghost region_goal = crate::specs::part2_nlt_component_regions(
+                source_view, component_number, region_views, 0, work_limit,
+                nlt_scratch_view(Seq::new(crate::specs::part2_nlt_sample_count(source_view.samples), |i: int| None), None, initial_work),
+            );
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_nlt_component_mutation); }
+        let mut work = initial_work;
+        let source_info = self.info;
+        let sample_count = match &self.samples {
+            TypedSamples::Signed(samples) => samples.len(),
+            TypedSamples::Unsigned(samples) => samples.len(),
+        };
+        let mut output = vec![None; sample_count];
+        let mut target = None;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(typed_component_view(self) == source_view);
+            assert(output@ =~= Seq::new(crate::specs::part2_nlt_sample_count(source_view.samples), |i: int| None));
+        }
+        let mut region_index = 0_usize;
+        #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant region_index <= regions.len(),
+                    source_view == typed_component_view(old(self)),
+                    initial_defs == typed_component_definitions(old(self)),
+                    typed_component_view(self) == source_view,
+                    self.channel_definitions@ == initial_defs,
+                    source_info == source_view.info,
+                    sample_count == crate::specs::part2_nlt_sample_count(source_view.samples),
+                    output.len() == sample_count,
+                    region_views == crate::decode::nonlinear_regions_view(regions@),
+                    byte_limit == crate::limits::resource_decoded_bytes_limit(limits),
+                    work_limit == crate::limits::resource_work_limit(limits),
+                    component_expected == crate::specs::part2_nlt_component(
+                        source_view, component_number, region_views, byte_limit, work_limit, initial_work,
+                    ),
+                    component_expected == match region_goal {
+                        Err(error) => Err(error),
+                        Ok(state) => crate::specs::part2_nlt_finish_component(source_view, state, byte_limit),
+                    },
+                    region_goal == crate::specs::part2_nlt_component_regions(
+                        source_view, component_number, region_views, region_index as nat, work_limit,
+                        nlt_scratch_view(output@, target, work),
+                    ),
                     decreases regions.len() - region_index,
                 )
             )]
-            while region_index < regions.len() {
-                let region = regions.get(region_index).ok_or_else(invalid_image)?;
-                if region.component == component_number {
-                    if region.x0 >= region.x1
-                        || region.y0 >= region.y1
-                        || region.x1 > component.width
-                        || region.y1 > component.height
-                    {
-                        return Err(invalid_image());
-                    }
-                    let descriptor = (region.transform.precision(), region.transform.signed());
-                    if matches!(target, Some(existing) if existing != descriptor) {
-                        return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-                    }
-                    target = Some(descriptor);
-                    let mut y = region.y0;
-                    #[cfg_attr(
+        while region_index < regions.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part2_nlt_component_mutation);
+                reveal_with_fuel(crate::specs::part2_nlt_component_regions, 1);
+            }
+            let region = regions.get(region_index).ok_or_else(invalid_image)?;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost region_view = crate::decode::nonlinear_region_view(region); }
+            if region.component == component_number {
+                if region.x0 >= region.x1
+                    || region.y0 >= region.y1
+                    || region.x1 > self.width
+                    || region.y1 > self.height
+                {
+                    return Err(invalid_image());
+                }
+                let descriptor = (region.transform.precision(), region.transform.signed());
+                if matches!(target, Some(existing) if existing != descriptor) {
+                    return Err(invalid_transform());
+                }
+                target = Some(descriptor);
+                #[cfg(verus_keep_ghost)]
+                proof_decl! {
+                    let ghost rows_goal = crate::specs::part2_nlt_region_rows(
+                        source_view, region_view, region.y0, work_limit, nlt_scratch_view(output@, target, work),
+                    );
+                }
+                let mut y = region.y0;
+                #[cfg_attr(
                         verus_keep_ghost,
                         verus_spec(
                             invariant y <= region.y1,
+                            y >= region.y0,
+                            region_view == crate::decode::nonlinear_region_view(region),
+                            region_view == region_views[region_index as int],
+                            region_index < regions.len(),
+                            source_view == typed_component_view(old(self)),
+                            initial_defs == typed_component_definitions(old(self)),
+                            typed_component_view(self) == source_view,
+                            self.channel_definitions@ == initial_defs,
+                            source_info == source_view.info,
+                            sample_count == crate::specs::part2_nlt_sample_count(source_view.samples),
+                            output.len() == sample_count,
+                            target == Some((region_view.transform.precision, region_view.transform.signed)),
+                            region_view.x0 < region_view.x1, region_view.y0 < region_view.y1,
+                            region_view.x1 <= source_view.width, region_view.y1 <= source_view.height,
+                            region_views == crate::decode::nonlinear_regions_view(regions@),
+                            byte_limit == crate::limits::resource_decoded_bytes_limit(limits),
+                            work_limit == crate::limits::resource_work_limit(limits),
+                            component_expected == crate::specs::part2_nlt_component(
+                                source_view, component_number, region_views, byte_limit, work_limit, initial_work,
+                            ),
+                            component_expected == match region_goal {
+                                Err(error) => Err(error),
+                                Ok(state) => crate::specs::part2_nlt_finish_component(source_view, state, byte_limit),
+                            },
+                            region_goal == match rows_goal {
+                                Err(error) => Err(error),
+                                Ok(state) => crate::specs::part2_nlt_component_regions(
+                                    source_view, component_number, region_views, region_index as nat + 1, work_limit, state,
+                                ),
+                            },
+                            rows_goal == crate::specs::part2_nlt_region_rows(
+                                source_view, region_view, y, work_limit, nlt_scratch_view(output@, target, work),
+                            ),
                             decreases region.y1 - y,
                         )
                     )]
-                    while y < region.y1 {
-                        let mut x = region.x0;
-                        if x > region.x1 {
-                            return Err(invalid_image());
-                        }
-                        #[cfg_attr(
+                while y < region.y1 {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        reveal(crate::specs::part2_nlt_component_mutation);
+                        reveal_with_fuel(crate::specs::part2_nlt_region_rows, 1);
+                    }
+                    let mut x = region.x0;
+                    if x > region.x1 {
+                        return Err(invalid_image());
+                    }
+                    #[cfg(verus_keep_ghost)]
+                    proof_decl! {
+                        let ghost row_goal = crate::specs::part2_nlt_region_row(
+                            source_view, region_view, y, region.x0, work_limit, nlt_scratch_view(output@, target, work),
+                        );
+                    }
+                    #[cfg_attr(
                             verus_keep_ghost,
                             verus_spec(
                                 invariant x <= region.x1,
+                                x >= region.x0,
+                                region.y0 <= y < region.y1,
+                                region_view == crate::decode::nonlinear_region_view(region),
+                                region_view == region_views[region_index as int],
+                                region_index < regions.len(),
+                                source_view == typed_component_view(old(self)),
+                                initial_defs == typed_component_definitions(old(self)),
+                                typed_component_view(self) == source_view,
+                                self.channel_definitions@ == initial_defs,
+                                source_info == source_view.info,
+                                sample_count == crate::specs::part2_nlt_sample_count(source_view.samples),
+                                output.len() == sample_count,
+                                target == Some((region_view.transform.precision, region_view.transform.signed)),
+                                region_view.x0 < region_view.x1, region_view.y0 < region_view.y1,
+                                region_view.x1 <= source_view.width, region_view.y1 <= source_view.height,
+                                region_views == crate::decode::nonlinear_regions_view(regions@),
+                                byte_limit == crate::limits::resource_decoded_bytes_limit(limits),
+                                work_limit == crate::limits::resource_work_limit(limits),
+                                component_expected == crate::specs::part2_nlt_component(
+                                    source_view, component_number, region_views, byte_limit, work_limit, initial_work,
+                                ),
+                                component_expected == match region_goal {
+                                    Err(error) => Err(error),
+                                    Ok(state) => crate::specs::part2_nlt_finish_component(source_view, state, byte_limit),
+                                },
+                                region_goal == match rows_goal {
+                                    Err(error) => Err(error),
+                                    Ok(state) => crate::specs::part2_nlt_component_regions(
+                                        source_view, component_number, region_views, region_index as nat + 1, work_limit, state,
+                                    ),
+                                },
+                                rows_goal == match row_goal {
+                                    Err(error) => Err(error),
+                                    Ok(state) => crate::specs::part2_nlt_region_rows(source_view, region_view, (y + 1) as u32, work_limit, state),
+                                },
+                                row_goal == crate::specs::part2_nlt_region_row(
+                                    source_view, region_view, y, x, work_limit, nlt_scratch_view(output@, target, work),
+                                ),
                                 decreases region.x1 - x,
                             )
                         )]
-                        while x < region.x1 {
-                            let index = (y as usize)
-                                .checked_mul(component.width as usize)
-                                .and_then(|row| row.checked_add(x as usize))
-                                .ok_or_else(arithmetic_overflow)?;
+                    while x < region.x1 {
+                        #[cfg(verus_keep_ghost)]
+                        proof! {
+                            reveal(crate::specs::part2_nlt_component_mutation);
+                            reveal_with_fuel(crate::specs::part2_nlt_region_row, 1);
+                        }
+                        #[cfg(verus_keep_ghost)]
+                        proof_decl! { let ghost before_pixel = output@; }
+                        let index = index(self.width, x, y)?;
+                        let decoded;
+                        {
                             let slot = output.get_mut(index).ok_or_else(invalid_image)?;
                             if slot.is_some() {
-                                return Err(DecodeError::malformed(
-                                    0,
-                                    MalformedKind::InvalidTransform,
-                                ));
+                                return Err(invalid_transform());
                             }
-                            let source = match &component.samples {
+                            let source = match &self.samples {
                                 TypedSamples::Signed(samples) => {
                                     i128::from(*samples.get(index).ok_or_else(invalid_image)?)
                                 }
@@ -677,84 +901,153 @@ impl TypedImage {
                                     i128::from(*samples.get(index).ok_or_else(invalid_image)?)
                                 }
                             };
-                            *slot =
-                                Some(inverse_nlt_sample(source, source_info, region.transform)?);
-                            work = work.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                            if work > limits.maximum_work_units() {
-                                return Err(DecodeError::limit(
-                                    Resource::WorkUnits,
-                                    limits.maximum_work_units(),
-                                    work,
-                                ));
-                            }
-                            x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+                            decoded = inverse_nlt_sample(source, source_info, region.transform)?;
+                            *slot = Some(decoded);
                         }
-                        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+                        #[cfg(verus_keep_ghost)]
+                        proof! { assert(output@ =~= before_pixel.update(index as int, Some(decoded))); }
+                        charge_mct_work(&mut work, 1, limits)?;
+                        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
                     }
+                    #[cfg(verus_keep_ghost)]
+                    proof! { reveal_with_fuel(crate::specs::part2_nlt_region_row, 1); }
+                    y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
                 }
-                region_index = region_index
-                    .checked_add(1)
-                    .ok_or_else(arithmetic_overflow)?;
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal_with_fuel(crate::specs::part2_nlt_region_rows, 1); }
             }
-            if let Some((precision, signed_output)) = target {
-                validate_bytes(sample_count, 8, limits)?;
-                if signed_output {
-                    let mut samples = Vec::with_capacity(sample_count);
-                    let mut index = 0_usize;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(
-                            invariant index <= output.len(),
-                            decreases output.len() - index,
-                        )
-                    )]
-                    while index < output.len() {
-                        samples.push(
-                            i64::try_from(
-                                output
-                                    .get(index)
-                                    .and_then(|value| *value)
-                                    .ok_or_else(invalid_image)?,
-                            )
-                            .map_err(|_| invalid_image())?,
-                        );
-                        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    }
-                    component.samples = TypedSamples::Signed(samples);
-                } else {
-                    let mut samples = Vec::with_capacity(sample_count);
-                    let mut index = 0_usize;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(
-                            invariant index <= output.len(),
-                            decreases output.len() - index,
-                        )
-                    )]
-                    while index < output.len() {
-                        samples.push(
-                            u64::try_from(
-                                output
-                                    .get(index)
-                                    .and_then(|value| *value)
-                                    .ok_or_else(invalid_image)?,
-                            )
-                            .map_err(|_| invalid_image())?,
-                        );
-                        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-                    }
-                    component.samples = TypedSamples::Unsigned(samples);
-                }
-                component.info.precision = precision;
-                component.info.signed = signed_output;
-            }
-            component_index = component_index
+            region_index = region_index
                 .checked_add(1)
                 .ok_or_else(arithmetic_overflow)?;
         }
-        Ok(())
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part2_nlt_component_regions, 1);
+            assert(component_expected == crate::specs::part2_nlt_finish_component(
+                source_view, nlt_scratch_view(output@, target, work), byte_limit,
+            ));
+        }
+        if let Some((precision, signed_output)) = target {
+            validate_bytes(sample_count, 8, limits)?;
+            if signed_output {
+                let mut samples = Vec::with_capacity(sample_count);
+                let mut index = 0_usize;
+                #[cfg(verus_keep_ghost)]
+                proof_decl! {
+                    let ghost collected_goal = crate::specs::part2_nlt_collect_samples(
+                        output@, true, 0, crate::specs::Part1TypedSampleSequence::Signed(Seq::empty()),
+                    );
+                }
+                #[cfg_attr(
+                        verus_keep_ghost,
+                        verus_spec(
+                            invariant index <= output.len(),
+                            source_view == typed_component_view(old(self)),
+                            initial_defs == typed_component_definitions(old(self)),
+                            typed_component_view(self) == source_view,
+                            self.channel_definitions@ == initial_defs,
+                            region_views == crate::decode::nonlinear_regions_view(regions@),
+                            byte_limit == crate::limits::resource_decoded_bytes_limit(limits),
+                            work_limit == crate::limits::resource_work_limit(limits),
+                            signed_output,
+                            component_expected == crate::specs::part2_nlt_component(
+                                source_view, component_number, region_views, byte_limit, work_limit, initial_work,
+                            ),
+                            component_expected == match collected_goal {
+                                Err(error) => Err(error),
+                                Ok(values) => Ok((crate::specs::part2_nlt_updated_component(source_view, precision, signed_output, values), work)),
+                            },
+                            collected_goal == crate::specs::part2_nlt_collect_samples(
+                                output@, true, index as nat, crate::specs::Part1TypedSampleSequence::Signed(samples@),
+                            ),
+                            decreases output.len() - index,
+                        )
+                    )]
+                while index < output.len() {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        reveal(crate::specs::part2_nlt_component_mutation);
+                        reveal_with_fuel(crate::specs::part2_nlt_collect_samples, 1);
+                    }
+                    let value = match output.get(index) {
+                        Some(Some(value)) => *value,
+                        _ => return Err(invalid_image()),
+                    };
+                    let value = match i64::try_from(value) {
+                        Ok(value) => value,
+                        Err(_) => return Err(invalid_image()),
+                    };
+                    samples.push(value);
+                    index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+                }
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal_with_fuel(crate::specs::part2_nlt_collect_samples, 1); }
+                self.samples = TypedSamples::Signed(samples);
+            } else {
+                let mut samples = Vec::with_capacity(sample_count);
+                let mut index = 0_usize;
+                #[cfg(verus_keep_ghost)]
+                proof_decl! {
+                    let ghost collected_goal = crate::specs::part2_nlt_collect_samples(
+                        output@, false, 0, crate::specs::Part1TypedSampleSequence::Unsigned(Seq::empty()),
+                    );
+                }
+                #[cfg_attr(
+                        verus_keep_ghost,
+                        verus_spec(
+                            invariant index <= output.len(),
+                            source_view == typed_component_view(old(self)),
+                            initial_defs == typed_component_definitions(old(self)),
+                            typed_component_view(self) == source_view,
+                            self.channel_definitions@ == initial_defs,
+                            region_views == crate::decode::nonlinear_regions_view(regions@),
+                            byte_limit == crate::limits::resource_decoded_bytes_limit(limits),
+                            work_limit == crate::limits::resource_work_limit(limits),
+                            !signed_output,
+                            component_expected == crate::specs::part2_nlt_component(
+                                source_view, component_number, region_views, byte_limit, work_limit, initial_work,
+                            ),
+                            component_expected == match collected_goal {
+                                Err(error) => Err(error),
+                                Ok(values) => Ok((crate::specs::part2_nlt_updated_component(source_view, precision, signed_output, values), work)),
+                            },
+                            collected_goal == crate::specs::part2_nlt_collect_samples(
+                                output@, false, index as nat, crate::specs::Part1TypedSampleSequence::Unsigned(samples@),
+                            ),
+                            decreases output.len() - index,
+                        )
+                    )]
+                while index < output.len() {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        reveal(crate::specs::part2_nlt_component_mutation);
+                        reveal_with_fuel(crate::specs::part2_nlt_collect_samples, 1);
+                    }
+                    let value = match output.get(index) {
+                        Some(Some(value)) => *value,
+                        _ => return Err(invalid_image()),
+                    };
+                    let value = match u64::try_from(value) {
+                        Ok(value) => value,
+                        Err(_) => return Err(invalid_image()),
+                    };
+                    samples.push(value);
+                    index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+                }
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal_with_fuel(crate::specs::part2_nlt_collect_samples, 1); }
+                self.samples = TypedSamples::Unsigned(samples);
+            }
+            self.info.precision = precision;
+            self.info.signed = signed_output;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(component_expected == Ok((typed_component_view(self), work))); }
+        Ok(work)
     }
+}
 
+impl TypedImage {
     #[cfg(test)]
     pub(crate) fn apply_nonlinear_transforms(
         &mut self,
@@ -1312,41 +1605,8 @@ fn nlt_lut_position(
     if points.is_empty() {
         return Err(invalid_image());
     }
-    let normalized = nominal
-        .checked_mul(i128::from(u32::MAX))
-        .ok_or_else(arithmetic_overflow)?;
-    let minimum_scaled = i128::from(minimum)
-        .checked_mul(source_scale)
-        .ok_or_else(arithmetic_overflow)?;
-    let maximum_scaled = i128::from(maximum)
-        .checked_mul(source_scale)
-        .ok_or_else(arithmetic_overflow)?;
-    let clamped = normalized.max(minimum_scaled).min(maximum_scaled);
-    let interval_count = (points.len() - 1) as u128;
-    if interval_count > i128::MAX as u128 {
-        return Err(arithmetic_overflow());
-    }
-    let interval_count = interval_count as i128;
-    let denominator = maximum_scaled
-        .checked_sub(minimum_scaled)
-        .ok_or_else(arithmetic_overflow)?;
-    let offset = clamped
-        .checked_sub(minimum_scaled)
-        .ok_or_else(arithmetic_overflow)?;
-    let position_numerator = offset
-        .checked_mul(interval_count)
-        .ok_or_else(arithmetic_overflow)?;
-    let interval = position_numerator
-        .checked_div(denominator)
-        .ok_or_else(arithmetic_overflow)?;
-    let remainder = match position_numerator.checked_rem(denominator) {
-        Some(value) => value,
-        None => return Err(arithmetic_overflow()),
-    };
-    let interval_index = match usize::try_from(interval) {
-        Ok(index) => index,
-        Err(_) => return Err(arithmetic_overflow()),
-    };
+    let (interval_index, denominator, remainder) =
+        nlt_lut_coordinates(source_scale, nominal, minimum, maximum, points.len() - 1)?;
     if interval_index >= points.len() - 1 {
         #[cfg(verus_keep_ghost)]
         proof! { assert(points@.last() == points@[points@.len() - 1]); }
@@ -1363,6 +1623,65 @@ fn nlt_lut_position(
                 .ok_or_else(invalid_image)?,
         );
         nlt_lut_interpolate_values(left, right, denominator, remainder)
+    }
+}
+
+type NonlinearLutCoordinates = (usize, i128, i128);
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_lut_coordinates(source_scale, nominal, minimum, maximum, last_index as nat),
+))]
+fn nlt_lut_coordinates(
+    source_scale: i128,
+    nominal: i128,
+    minimum: u32,
+    maximum: u32,
+    last_index: usize,
+) -> Result<NonlinearLutCoordinates, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_nlt_lut_coordinates); }
+    let normalized = nominal
+        .checked_mul(i128::from(u32::MAX))
+        .ok_or_else(arithmetic_overflow)?;
+    let minimum_scaled = i128::from(minimum)
+        .checked_mul(source_scale)
+        .ok_or_else(arithmetic_overflow)?;
+    let maximum_scaled = i128::from(maximum)
+        .checked_mul(source_scale)
+        .ok_or_else(arithmetic_overflow)?;
+    let clamped = normalized.max(minimum_scaled).min(maximum_scaled);
+    let interval_count = last_index as u128;
+    if interval_count > i128::MAX as u128 {
+        return Err(arithmetic_overflow());
+    }
+    let interval_count = interval_count as i128;
+    let denominator = maximum_scaled
+        .checked_sub(minimum_scaled)
+        .ok_or_else(arithmetic_overflow)?;
+    let offset = clamped
+        .checked_sub(minimum_scaled)
+        .ok_or_else(arithmetic_overflow)?;
+    let position_numerator = offset
+        .checked_mul(interval_count)
+        .ok_or_else(arithmetic_overflow)?;
+    let interval = position_numerator
+        .checked_div(denominator)
+        .ok_or_else(arithmetic_overflow)?;
+    let remainder = nlt_checked_rem(position_numerator, denominator)?;
+    let interval_index = match usize::try_from(interval) {
+        Ok(index) => index,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    Ok((interval_index, denominator, remainder))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_checked_rem(numerator, denominator),
+))]
+fn nlt_checked_rem(numerator: i128, denominator: i128) -> Result<i128, DecodeError> {
+    match numerator.checked_rem(denominator) {
+        Some(value) => Ok(value),
+        None => Err(arithmetic_overflow()),
     }
 }
 
@@ -9405,6 +9724,27 @@ mod tests {
             Err(arithmetic_overflow())
         );
         assert_eq!(nlt_lut_position(&[0, 1], -1, 0, 0, 1), Ok(1));
+        assert_eq!(
+            nlt_lut_coordinates(1_i128 << 64, (1_i128 << 64) - 1, 0, u32::MAX, usize::MAX),
+            Err(arithmetic_overflow())
+        );
+        if usize::BITS >= 64 {
+            assert_eq!(
+                nlt_lut_coordinates(1_i128 << 38, (1_i128 << 38) - 1, 0, u32::MAX, usize::MAX),
+                Err(arithmetic_overflow())
+            );
+        }
+        for numerator in [i128::MIN, -i128::MAX, -17, -1, 0, 1, 17, i128::MAX] {
+            for denominator in [-1, 0, 1, 3, -3, i128::MAX, i128::MIN] {
+                let expected = if denominator == 0 || (numerator == i128::MIN && denominator == -1)
+                {
+                    Err(arithmetic_overflow())
+                } else {
+                    Ok(numerator % denominator)
+                };
+                assert_eq!(nlt_checked_rem(numerator, denominator), expected);
+            }
+        }
         for (left, right, denominator, remainder, expected) in [
             (0, 255, 3, 1, Ok(85)),
             (255, 0, 3, 2, Ok(85)),
@@ -9500,6 +9840,296 @@ mod tests {
             image.component(0).unwrap().samples(),
             &TypedSamples::Unsigned(vec![0, 64, 255])
         );
+    }
+
+    #[test]
+    fn actual_nonlinear_image_mutation_preserves_every_owner_field_and_failure_prefix() {
+        use std::collections::{BTreeMap, btree_map::Entry};
+
+        fn source(case: usize) -> TypedImage {
+            let count = match case {
+                0 => 0,
+                1 | 4 | 7 => 1,
+                3 => 3,
+                _ => 2,
+            };
+            let (width, height) = match case {
+                5 => (0, 2),
+                6 => (3, 1),
+                _ => (2, 2),
+            };
+            let components = (0..count)
+                .map(|index| {
+                    let info = ComponentInfo {
+                        precision: if case == 7 {
+                            0
+                        } else if case == 11 {
+                            38
+                        } else {
+                            8
+                        },
+                        signed: (index % 2 != 0) != (case == 9),
+                        x_subsampling: 0,
+                        y_subsampling: u8::MAX,
+                        x_registration: u16::MAX,
+                        y_registration: 17,
+                    };
+                    let samples = if case == 4 {
+                        TypedSamples::Signed(vec![])
+                    } else if case == 8 {
+                        TypedSamples::Unsigned(vec![u64::MAX; 4])
+                    } else if case == 6 {
+                        TypedSamples::Unsigned(vec![0, 128, 255])
+                    } else if index % 2 == 0 {
+                        TypedSamples::Unsigned(vec![0, 1, 127, 255])
+                    } else {
+                        TypedSamples::Signed(vec![-128, -1, 0, 127])
+                    };
+                    let mut component = TypedComponent::from_parts(width, height, info, samples);
+                    component.add_channel_definition(ChannelDefinition::new(
+                        ChannelType::Opacity,
+                        ChannelAssociation::Color(u16::MAX),
+                    ));
+                    component
+                })
+                .collect();
+            TypedImage::for_test(if case == 10 { 0 } else { 4 }, 2, u32::MAX, 17, components)
+        }
+
+        fn reference(
+            image: &mut TypedImage,
+            regions: &[NonlinearRegion<'_>],
+            limits: &ResourceLimits,
+        ) -> Result<(), DecodeError> {
+            let mut work = 0_u64;
+            for (number, component) in image.components.iter_mut().enumerate() {
+                let number = u16::try_from(number).map_err(|_| arithmetic_overflow())?;
+                let count = match &component.samples {
+                    TypedSamples::Signed(values) => values.len(),
+                    TypedSamples::Unsigned(values) => values.len(),
+                };
+                let mut values = BTreeMap::new();
+                let mut target = None;
+                for region in regions.iter().filter(|region| region.component == number) {
+                    if region.x0 >= region.x1
+                        || region.y0 >= region.y1
+                        || region.x1 > component.width
+                        || region.y1 > component.height
+                    {
+                        return Err(invalid_image());
+                    }
+                    let descriptor = (region.transform.precision(), region.transform.signed());
+                    if target.is_some_and(|previous| previous != descriptor) {
+                        return Err(invalid_transform());
+                    }
+                    target = Some(descriptor);
+                    for (y, x) in (region.y0..region.y1)
+                        .flat_map(|y| (region.x0..region.x1).map(move |x| (y, x)))
+                    {
+                        let offset = u64::from(y) * u64::from(component.width) + u64::from(x);
+                        let offset = usize::try_from(offset).map_err(|_| arithmetic_overflow())?;
+                        if offset >= count {
+                            return Err(invalid_image());
+                        }
+                        let entry = match values.entry(offset) {
+                            Entry::Occupied(_) => return Err(invalid_transform()),
+                            Entry::Vacant(entry) => entry,
+                        };
+                        let source = match &component.samples {
+                            TypedSamples::Signed(values) => i128::from(values[offset]),
+                            TypedSamples::Unsigned(values) => i128::from(values[offset]),
+                        };
+                        entry.insert(reference_nlt_inverse(
+                            source,
+                            component.info,
+                            region.transform,
+                        )?);
+                        let next = u128::from(work) + 1;
+                        if next > u128::from(u64::MAX) {
+                            return Err(arithmetic_overflow());
+                        }
+                        work = next as u64;
+                        if work > limits.maximum_work_units() {
+                            return Err(DecodeError::LimitExceeded {
+                                resource: Resource::WorkUnits,
+                                limit: limits.maximum_work_units(),
+                                actual: work,
+                            });
+                        }
+                    }
+                }
+                if let Some((precision, signed)) = target {
+                    let bytes = count as u128 * 8;
+                    if bytes > u128::from(u64::MAX) {
+                        return Err(arithmetic_overflow());
+                    }
+                    if bytes > u128::from(limits.maximum_decoded_bytes()) {
+                        return Err(DecodeError::LimitExceeded {
+                            resource: Resource::DecodedBytes,
+                            limit: limits.maximum_decoded_bytes(),
+                            actual: bytes as u64,
+                        });
+                    }
+                    component.samples = if signed {
+                        let samples = (0..count)
+                            .map(|position| {
+                                let value = *values.get(&position).ok_or_else(invalid_image)?;
+                                if value < i128::from(i64::MIN) || value > i128::from(i64::MAX) {
+                                    return Err(invalid_image());
+                                }
+                                Ok(value as i64)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        TypedSamples::Signed(samples)
+                    } else {
+                        let samples = (0..count)
+                            .map(|position| {
+                                let value = *values.get(&position).ok_or_else(invalid_image)?;
+                                if value < 0 || value > i128::from(u64::MAX) {
+                                    return Err(invalid_image());
+                                }
+                                Ok(value as u64)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        TypedSamples::Unsigned(samples)
+                    };
+                    component.info.precision = precision;
+                    component.info.signed = signed;
+                }
+            }
+            Ok(())
+        }
+
+        fn region(
+            component: u16,
+            bounds: [u32; 4],
+            transform: &NonlinearPointTransform,
+        ) -> NonlinearRegion<'_> {
+            NonlinearRegion {
+                component,
+                x0: bounds[0],
+                y0: bounds[1],
+                x1: bounds[2],
+                y1: bounds[3],
+                transform,
+            }
+        }
+
+        let one = 1_u32 << 16;
+        let transforms = [
+            NonlinearPointTransform::for_test(8, false, 0, None, None, vec![]),
+            NonlinearPointTransform::for_test(8, true, 3, None, None, vec![]),
+            NonlinearPointTransform::for_test(
+                8,
+                false,
+                2,
+                Some(0),
+                Some(u32::MAX),
+                vec![0, 128, 255],
+            ),
+            NonlinearPointTransform::gamma_for_test(8, false, [one, one, one, one, 0]),
+            NonlinearPointTransform::for_test(0, false, 0, None, None, vec![]),
+            NonlinearPointTransform::for_test(7, false, 0, None, None, vec![]),
+            NonlinearPointTransform::for_test(8, false, u8::MAX, None, None, vec![]),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(0)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(8)
+                .unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(24)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(3).unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(5).unwrap(),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        let mut failure_prefixes = 0;
+        for (transform_index, transform) in transforms.iter().enumerate() {
+            let alternate = &transforms[(transform_index + 1) % transforms.len()];
+            for pattern in 0..12 {
+                let regions = match pattern {
+                    0 => vec![],
+                    1 => vec![region(0, [0, 0, 2, 2], transform)],
+                    2 => vec![
+                        region(0, [0, 0, 1, 2], transform),
+                        region(0, [1, 0, 2, 2], transform),
+                    ],
+                    3 => vec![
+                        region(0, [0, 0, 2, 2], transform),
+                        region(0, [0, 0, 2, 2], transform),
+                    ],
+                    4 => vec![region(0, [0, 0, 1, 1], transform)],
+                    5 => vec![region(0, [0, 0, 3, 2], transform)],
+                    6 => vec![region(0, [0, 0, 0, 2], transform)],
+                    7 => vec![region(u16::MAX, [u32::MAX, 0, 0, 0], transform)],
+                    8 => vec![
+                        region(0, [0, 0, 2, 2], transform),
+                        region(1, [0, 0, 2, 2], alternate),
+                    ],
+                    9 => vec![
+                        region(0, [0, 0, 1, 2], transform),
+                        region(0, [1, 0, 2, 2], alternate),
+                    ],
+                    10 => vec![region(1, [0, 0, 2, 2], transform)],
+                    _ => vec![
+                        region(0, [0, 0, 2, 1], transform),
+                        region(0, [0, 1, 2, 2], transform),
+                    ],
+                };
+                for case in 0..12 {
+                    for limit in &limits {
+                        let mut actual = source(case);
+                        let mut expected = source(case);
+                        let result = actual.apply_nonlinear_regions(&regions, limit);
+                        let expected_result = reference(&mut expected, &regions, limit);
+                        assert_eq!(result, expected_result);
+                        assert_eq!(actual, expected);
+                        successes += usize::from(result.is_ok());
+                        failure_prefixes += usize::from(result.is_err() && actual != source(case));
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 7_056);
+        assert!(successes > 100);
+        assert!(failure_prefixes > 0);
+
+        let full = [region(0, [0, 0, 2, 2], &transforms[0])];
+        let mut component = source(1).components.remove(0);
+        let unchanged = source(1).components.remove(0);
+        assert_eq!(
+            component.apply_nonlinear_regions(0, &full, u64::MAX, &ResourceLimits::HARDENED),
+            Err(arithmetic_overflow())
+        );
+        assert_eq!(component, unchanged);
+        let mut large = TypedImage::for_test(
+            0,
+            0,
+            17,
+            u32::MAX,
+            (0..65_537)
+                .map(|_| {
+                    TypedComponent::from_parts(0, 0, unchanged.info, TypedSamples::Signed(vec![]))
+                })
+                .collect(),
+        );
+        assert_eq!(
+            large.apply_nonlinear_regions(&[], &ResourceLimits::HARDENED),
+            Err(arithmetic_overflow())
+        );
+        assert!(large.components.iter().all(|component| component.samples
+            == TypedSamples::Signed(vec![])
+            && component.info == unchanged.info
+            && component.width == 0
+            && component.height == 0
+            && component.channel_definitions.is_empty()));
     }
 
     #[test]
