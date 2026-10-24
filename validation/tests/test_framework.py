@@ -902,6 +902,12 @@ class FrameworkTests(WorkingFiles):
             framework._TYPED_LAYOUT_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_raw_codestream_reader_inputs_bytes_and_complete_error_state(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-codestream-reader"},
+            framework._CODESTREAM_READER_CONTRACTS, 10,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

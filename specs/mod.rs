@@ -12766,6 +12766,173 @@ pub open spec fn part1_parser_progress(previous: usize, current: usize, limit: u
     previous < current && current <= limit
 }
 
+pub struct Part1CodestreamReader<'a> {
+    pub input: Seq<u8>,
+    pub limits: &'a crate::ResourceLimits,
+    pub position: usize,
+    pub work_units: u64,
+    pub packet_length_bytes: u64,
+    pub packet_lengths: u64,
+}
+
+pub struct Part1CodestreamSegment {
+    pub marker: u16,
+    pub offset: usize,
+    pub payload: Seq<u8>,
+}
+
+pub open spec fn part1_codestream_offset(value: usize) -> u64 { value as u64 }
+
+pub open spec fn part1_codestream_malformed(value: usize, kind: crate::MalformedKind) -> crate::DecodeError {
+    crate::DecodeError::MalformedInput { offset: part1_codestream_offset(value), kind }
+}
+
+pub open spec fn part1_codestream_reader_new<'a>(input: Seq<u8>, limits: &'a crate::ResourceLimits)
+    -> Result<Part1CodestreamReader<'a>, crate::DecodeError>
+{
+    let length = input.len() as u64;
+    let maximum = crate::limits::resource_input_byte_limit(limits);
+    if length > maximum { Err(crate::DecodeError::LimitExceeded {
+        resource: crate::Resource::InputBytes, limit: maximum, actual: length,
+    }) } else { Ok(Part1CodestreamReader {
+        input, limits, position: 0, work_units: 0, packet_length_bytes: 0, packet_lengths: 0,
+    }) }
+}
+
+pub open spec fn part1_codestream_position<'a>(state: Part1CodestreamReader<'a>, position: usize)
+    -> Part1CodestreamReader<'a>
+{
+    Part1CodestreamReader { input: state.input, limits: state.limits, position,
+        work_units: state.work_units, packet_length_bytes: state.packet_length_bytes, packet_lengths: state.packet_lengths }
+}
+
+pub open spec fn part1_codestream_work<'a>(state: Part1CodestreamReader<'a>, work_units: u64)
+    -> Part1CodestreamReader<'a>
+{
+    Part1CodestreamReader { input: state.input, limits: state.limits, position: state.position,
+        work_units, packet_length_bytes: state.packet_length_bytes, packet_lengths: state.packet_lengths }
+}
+
+pub open spec fn part1_codestream_charge_work<'a>(state: Part1CodestreamReader<'a>, amount: u64)
+    -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>)
+{
+    if state.work_units as int + amount as int > u64::MAX {
+        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        let next = (state.work_units + amount) as u64;
+        let updated = part1_codestream_work(state, next);
+        let maximum = crate::limits::resource_work_limit(state.limits);
+        (if next > maximum { Err(crate::DecodeError::LimitExceeded {
+            resource: crate::Resource::WorkUnits, limit: maximum, actual: next,
+        }) } else { Ok(()) }, updated)
+    }
+}
+
+pub open spec fn part1_codestream_peek_marker(state: Part1CodestreamReader<'_>)
+    -> Result<u16, crate::DecodeError>
+{
+    if state.position as int + 2 > state.input.len() {
+        Err(part1_codestream_malformed(state.position, crate::MalformedKind::Truncated))
+    } else {
+        let high = state.input[state.position as int];
+        let low = state.input[state.position as int + 1];
+        if high != 255 || low == 0 || low == 255 {
+            Err(part1_codestream_malformed(state.position, crate::MalformedKind::InvalidMarker))
+        } else { Ok(part1_marker_value(high, low)) }
+    }
+}
+
+pub open spec fn part1_codestream_standalone(marker: u16) -> bool {
+    marker == 0xff4f || marker == 0xff93 || marker == 0xffd9 || marker == 0xff92
+}
+
+#[verifier::opaque]
+pub open spec fn part1_codestream_expect_standalone<'a>(state: Part1CodestreamReader<'a>, expected: u16)
+    -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>)
+{
+    match part1_codestream_peek_marker(state) {
+        Err(error) => (Err(error), state),
+        Ok(marker) => if marker != expected {
+            (Err(part1_codestream_malformed(state.position, crate::MalformedKind::InvalidMarkerOrder)), state)
+        } else if state.position as int + 2 > usize::MAX {
+            (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+        } else {
+            part1_codestream_charge_work(part1_codestream_position(state, (state.position + 2) as usize), 1)
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_codestream_read_segment<'a>(state: Part1CodestreamReader<'a>)
+    -> (Result<Part1CodestreamSegment, crate::DecodeError>, Part1CodestreamReader<'a>)
+{
+    match part1_codestream_peek_marker(state) {
+        Err(error) => (Err(error), state),
+        Ok(marker) => {
+            let charged = part1_codestream_charge_work(state, 1);
+            match charged.0 {
+                Err(error) => (Err(error), charged.1),
+                Ok(()) => {
+                    let state = charged.1;
+                    if part1_codestream_standalone(marker) && marker != 0xff90 {
+                        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::InvalidMarkerOrder)), state)
+                    } else if state.position as int + 2 > usize::MAX {
+                        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+                    } else {
+                        let length_offset = state.position as int + 2;
+                        if length_offset + 2 > state.input.len() {
+                            (Err(part1_codestream_malformed(state.position, crate::MalformedKind::Truncated)), state)
+                        } else {
+                            let length = part1_marker_value(state.input[length_offset], state.input[length_offset + 1]) as int;
+                            let end = length_offset + length;
+                            if length < 2 {
+                                (Err(part1_codestream_malformed(state.position, crate::MalformedKind::InvalidMarkerLength)), state)
+                            } else if end > usize::MAX {
+                                (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+                            } else if end > state.input.len() {
+                                (Err(part1_codestream_malformed(state.position, crate::MalformedKind::Truncated)), state)
+                            } else if length_offset + 2 > end {
+                                (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+                            } else {
+                                (Ok(Part1CodestreamSegment { marker, offset: state.position,
+                                    payload: state.input.subrange(length_offset + 2, end) }),
+                                    part1_codestream_position(state, end as usize))
+                            }
+                        }
+                    }
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_codestream_find_eoc<'a>(state: Part1CodestreamReader<'a>)
+    -> (Result<usize, crate::DecodeError>, Part1CodestreamReader<'a>)
+    decreases state.input.len() - state.position,
+{
+    if state.position >= state.input.len() || state.input.len() - state.position < 2 {
+        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::Truncated)), state)
+    } else if state.position as int + 1 > usize::MAX {
+        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        let next = (state.position + 1) as usize;
+        if state.position >= state.input.len() || next >= state.input.len() {
+            (Err(part1_codestream_malformed(state.position, crate::MalformedKind::Truncated)), state)
+        } else {
+            let found = state.input[state.position as int] == 255 && state.input[next as int] == 217;
+            let charged = part1_codestream_charge_work(state, 1);
+            match charged.0 {
+                Err(error) => (Err(error), charged.1),
+                Ok(()) => if found { (Ok(state.position), charged.1) }
+                else if next <= state.position || next > state.input.len() {
+                    (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), charged.1)
+                } else { part1_codestream_find_eoc(part1_codestream_position(charged.1, next)) },
+            }
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

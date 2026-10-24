@@ -3658,7 +3658,7 @@ pub fn parse_layout<'a>(
     input: &'a [u8],
     limits: &'a ResourceLimits,
 ) -> Result<CodestreamLayout<'a>, DecodeError> {
-    Parser::new(input, limits)?.parse_layout()
+    new_parser(input, limits)?.parse_layout()
 }
 
 struct Parser<'a> {
@@ -3670,26 +3670,55 @@ struct Parser<'a> {
     packet_lengths: u64,
 }
 
-impl<'a> Parser<'a> {
-    fn new(input: &'a [u8], limits: &'a ResourceLimits) -> Result<Self, DecodeError> {
-        let input_length = input.len() as u64;
-        if input_length > limits.maximum_input_bytes() {
-            return Err(DecodeError::limit(
-                Resource::InputBytes,
-                limits.maximum_input_bytes(),
-                input_length,
-            ));
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn parser_view<'a>(parser: &Parser<'a>) -> crate::specs::Part1CodestreamReader<'a> {
+        crate::specs::Part1CodestreamReader {
+            input: parser.input@, limits: parser.limits, position: parser.position,
+            work_units: parser.work_units, packet_length_bytes: parser.packet_length_bytes, packet_lengths: parser.packet_lengths,
         }
-        Ok(Self {
-            input,
-            limits,
-            position: 0,
-            work_units: 0,
-            packet_length_bytes: 0,
-            packet_lengths: 0,
-        })
     }
 
+    closed spec fn parser_initial_outcome<'a>(result: Result<Parser<'a>, DecodeError>)
+        -> Result<crate::specs::Part1CodestreamReader<'a>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(parser) => Ok(parser_view(&parser)) }
+    }
+
+    closed spec fn segment_view(segment: Segment<'_>) -> crate::specs::Part1CodestreamSegment {
+        crate::specs::Part1CodestreamSegment { marker: segment.marker, offset: segment.offset, payload: segment.payload@ }
+    }
+
+    closed spec fn segment_outcome(result: Result<Segment<'_>, DecodeError>)
+        -> Result<crate::specs::Part1CodestreamSegment, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(segment) => Ok(segment_view(segment)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures parser_initial_outcome(result) == crate::specs::part1_codestream_reader_new(input@, limits),
+))]
+fn new_parser<'a>(input: &'a [u8], limits: &'a ResourceLimits) -> Result<Parser<'a>, DecodeError> {
+    let input_length = input.len() as u64;
+    if input_length > limits.maximum_input_bytes() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::InputBytes,
+            limit: limits.maximum_input_bytes(),
+            actual: input_length,
+        });
+    }
+    Ok(Parser {
+        input,
+        limits,
+        position: 0,
+        work_units: 0,
+        packet_length_bytes: 0,
+        packet_lengths: 0,
+    })
+}
+
+impl<'a> Parser<'a> {
     fn parse_layout(self) -> Result<CodestreamLayout<'a>, DecodeError> {
         let mut parser = self;
         parser.expect_standalone(SOC)?;
@@ -8687,17 +8716,34 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self))) == crate::specs::part1_codestream_find_eoc(parser_view(old(self))),
+    ))]
     fn find_eoc(&mut self) -> Result<usize, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost goal = crate::specs::part1_codestream_find_eoc(input);
+        }
         let input_len = self.input.len();
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
+                invariant input == parser_view(old(self)),
+                    self.input@ == input.input, self.limits == input.limits,
+                    self.packet_length_bytes == input.packet_length_bytes,
+                    self.packet_lengths == input.packet_lengths,
+                    input_len == input.input.len(),
+                    goal == crate::specs::part1_codestream_find_eoc(input),
+                    goal == crate::specs::part1_codestream_find_eoc(parser_view(self)),
                 decreases input_len as int - self.position as int,
             )
         )]
         while self.position < input_len {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_codestream_find_eoc, 1); }
             if input_len - self.position < 2 {
-                break;
+                return Err(self.malformed_here(MalformedKind::Truncated));
             }
             let next_position = self
                 .position
@@ -8716,19 +8762,31 @@ impl<'a> Parser<'a> {
             }
             self.position = next_position;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(self.position >= input_len || (input_len as int) - (self.position as int) < 2);
+            reveal_with_fuel(crate::specs::part1_codestream_find_eoc, 1);
+            assert(goal == (Err(crate::specs::part1_codestream_malformed(self.position, MalformedKind::Truncated)), parser_view(self)));
+        }
         Err(self.malformed_here(MalformedKind::Truncated))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (segment_outcome(result), parser_view(final(self))) == crate::specs::part1_codestream_read_segment(parser_view(old(self))),
+    ))]
     fn read_segment(&mut self) -> Result<Segment<'a>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_codestream_read_segment); }
         let offset = self.position;
         let marker = self.peek_marker()?;
         self.charge_work(1)?;
         if is_standalone_marker(marker) && marker != SOT {
             return Err(self.malformed_here(MalformedKind::InvalidMarkerOrder));
         }
-        let length_offset = offset
-            .checked_add(2)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let length_offset = match offset.checked_add(2) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         if self.input.len().saturating_sub(length_offset) < 2 {
             return Err(self.malformed_here(MalformedKind::Truncated));
         }
@@ -8739,9 +8797,10 @@ impl<'a> Parser<'a> {
         if length < 2 {
             return Err(self.malformed_here(MalformedKind::InvalidMarkerLength));
         }
-        let end = length_offset
-            .checked_add(length)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let end = match length_offset.checked_add(length) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         if end > self.input.len() {
             return Err(self.malformed_here(MalformedKind::Truncated));
         }
@@ -8757,17 +8816,25 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self))) == crate::specs::part1_codestream_expect_standalone(parser_view(old(self)), expected),
+    ))]
     fn expect_standalone(&mut self, expected: u16) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_codestream_expect_standalone); }
         if self.peek_marker()? != expected {
             return Err(self.malformed_here(MalformedKind::InvalidMarkerOrder));
         }
-        self.position = self
-            .position
-            .checked_add(2)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        self.position = match self.position.checked_add(2) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         self.charge_work(1)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_codestream_peek_marker(parser_view(self)),
+    ))]
     fn peek_marker(&self) -> Result<u16, DecodeError> {
         if self.input.len().saturating_sub(self.position) < 2 {
             return Err(self.malformed_here(MalformedKind::Truncated));
@@ -8782,25 +8849,37 @@ impl<'a> Parser<'a> {
         ]))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self))) == crate::specs::part1_codestream_charge_work(parser_view(old(self)), amount),
+    ))]
     fn charge_work(&mut self, amount: u64) -> Result<(), DecodeError> {
-        self.work_units = self
-            .work_units
-            .checked_add(amount)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        self.work_units = match self.work_units.checked_add(amount) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         if self.work_units > self.limits.maximum_work_units() {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.limits.maximum_work_units(),
-                self.work_units,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.limits.maximum_work_units(),
+                actual: self.work_units,
+            });
         }
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_codestream_malformed(self.position, kind),
+    ))]
     fn malformed_here(&self, kind: MalformedKind) -> DecodeError {
-        DecodeError::malformed(self.offset(self.position), kind)
+        DecodeError::MalformedInput {
+            offset: self.offset(self.position),
+            kind,
+        }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_codestream_offset(value),
+    ))]
     fn offset(&self, value: usize) -> u64 {
         value as u64
     }
@@ -9431,6 +9510,9 @@ fn fixed_from_binary(negative: bool, significand: u128, binary_exponent: i32) ->
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_codestream_standalone(marker),
+))]
 const fn is_standalone_marker(marker: u16) -> bool {
     matches!(marker, SOC | SOD | EOC | 0xff92)
 }
@@ -9622,6 +9704,9 @@ pub(crate) fn registered_ceil_div(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_marker_value(bytes[0], bytes[1]),
+))]
 fn read_u16(bytes: [u8; 2]) -> u16 {
     crate::refinement::marker_value(bytes[0], bytes[1])
 }
@@ -14964,9 +15049,275 @@ mod tests {
     }
 
     #[test]
+    fn actual_raw_reader_derives_marker_payload_cursor_work_and_partial_error_state() {
+        type Counters = (usize, u64, u64, u64);
+        type SegmentObservation = (u16, usize, Vec<u8>);
+
+        fn malformed(position: usize, kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput {
+                offset: position as u64,
+                kind,
+            }
+        }
+        fn counters(parser: &Parser<'_>) -> Counters {
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths,
+            )
+        }
+        fn raw<'a>(
+            input: &'a [u8],
+            limits: &'a ResourceLimits,
+            position: usize,
+            work: u64,
+        ) -> Parser<'a> {
+            Parser {
+                input,
+                limits,
+                position,
+                work_units: work,
+                packet_length_bytes: u64::MAX,
+                packet_lengths: 17,
+            }
+        }
+        fn frame(parser: &Parser<'_>, input: &[u8], limits: &ResourceLimits, expected: Counters) {
+            assert_eq!(counters(parser), expected);
+            assert_eq!(parser.input, input);
+            assert!(core::ptr::eq(parser.limits, limits));
+        }
+        fn peek(input: &[u8], position: usize) -> Result<u16, DecodeError> {
+            let tail = input
+                .get(position..)
+                .ok_or_else(|| malformed(position, MalformedKind::Truncated))?;
+            let bytes = tail
+                .get(..2)
+                .ok_or_else(|| malformed(position, MalformedKind::Truncated))?;
+            if bytes[0] != 255 || bytes[1] == 0 || bytes[1] == 255 {
+                Err(malformed(position, MalformedKind::InvalidMarker))
+            } else {
+                Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
+            }
+        }
+        fn charge(
+            position: usize,
+            work: &mut u64,
+            amount: u64,
+            limits: &ResourceLimits,
+        ) -> Result<(), DecodeError> {
+            let next = u128::from(*work) + u128::from(amount);
+            if next > u128::from(u64::MAX) {
+                return Err(malformed(position, MalformedKind::ArithmeticOverflow));
+            }
+            *work = next as u64;
+            if *work > limits.maximum_work_units() {
+                Err(DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: limits.maximum_work_units(),
+                    actual: *work,
+                })
+            } else {
+                Ok(())
+            }
+        }
+        fn standalone(
+            input: &[u8],
+            state: &mut Counters,
+            expected: u16,
+            limits: &ResourceLimits,
+        ) -> Result<(), DecodeError> {
+            if peek(input, state.0)? != expected {
+                return Err(malformed(state.0, MalformedKind::InvalidMarkerOrder));
+            }
+            let next = state.0 as u128 + 2;
+            if next > usize::MAX as u128 {
+                return Err(malformed(state.0, MalformedKind::ArithmeticOverflow));
+            }
+            state.0 = next as usize;
+            charge(state.0, &mut state.1, 1, limits)
+        }
+        fn segment(
+            input: &[u8],
+            state: &mut Counters,
+            limits: &ResourceLimits,
+        ) -> Result<SegmentObservation, DecodeError> {
+            let start = state.0;
+            let marker = peek(input, start)?;
+            charge(start, &mut state.1, 1, limits)?;
+            if [SOC, SOD, EOC, 0xff92].contains(&marker) && marker != SOT {
+                return Err(malformed(start, MalformedKind::InvalidMarkerOrder));
+            }
+            let length_offset = start as u128 + 2;
+            if length_offset > usize::MAX as u128 {
+                return Err(malformed(start, MalformedKind::ArithmeticOverflow));
+            }
+            let length_offset = length_offset as usize;
+            let word = input
+                .get(length_offset..)
+                .and_then(|tail| tail.get(..2))
+                .ok_or_else(|| malformed(start, MalformedKind::Truncated))?;
+            let length = u16::from_be_bytes([word[0], word[1]]);
+            if length < 2 {
+                return Err(malformed(start, MalformedKind::InvalidMarkerLength));
+            }
+            let end = length_offset as u128 + u128::from(length);
+            if end > usize::MAX as u128 {
+                return Err(malformed(start, MalformedKind::ArithmeticOverflow));
+            }
+            if end > input.len() as u128 {
+                return Err(malformed(start, MalformedKind::Truncated));
+            }
+            let payload = input[length_offset + 2..end as usize].to_vec();
+            state.0 = end as usize;
+            Ok((marker, start, payload))
+        }
+        fn eoc(
+            input: &[u8],
+            state: &mut Counters,
+            limits: &ResourceLimits,
+        ) -> Result<usize, DecodeError> {
+            let tail = input
+                .get(state.0..)
+                .ok_or_else(|| malformed(state.0, MalformedKind::Truncated))?;
+            for word in tail.windows(2) {
+                charge(state.0, &mut state.1, 1, limits)?;
+                if word == [255, 217] {
+                    return Ok(state.0);
+                }
+                state.0 += 1;
+            }
+            Err(malformed(state.0, MalformedKind::Truncated))
+        }
+
+        let zero_work = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let mut words = 0;
+        for word in 0..=u16::MAX {
+            let bytes = word.to_be_bytes();
+            let parser = raw(&bytes, &zero_work, 0, u64::MAX);
+            assert_eq!(parser.peek_marker(), peek(&bytes, 0));
+            assert_eq!(read_u16(bytes), u16::from_be_bytes(bytes));
+            assert_eq!(
+                is_standalone_marker(word),
+                [SOC, SOD, EOC, 0xff92].contains(&word)
+            );
+            frame(&parser, &bytes, &zero_work, (0, u64::MAX, u64::MAX, 17));
+            words += 1;
+        }
+        assert_eq!(words, 65_536);
+        let mut constructors = 0;
+        for length in 0..=64 {
+            let bytes = vec![0xa5; length];
+            for maximum in [
+                0,
+                1,
+                2,
+                17,
+                64,
+                ResourceLimits::HARDENED.maximum_input_bytes(),
+            ] {
+                let limits = ResourceLimits::HARDENED
+                    .with_maximum_input_bytes(maximum)
+                    .unwrap();
+                match new_parser(&bytes, &limits) {
+                    Ok(parser) => {
+                        assert!(length as u64 <= maximum);
+                        frame(&parser, &bytes, &limits, (0, 0, 0, 0));
+                    }
+                    Err(error) => assert_eq!(
+                        error,
+                        DecodeError::LimitExceeded {
+                            resource: Resource::InputBytes,
+                            limit: maximum,
+                            actual: length as u64,
+                        }
+                    ),
+                }
+                constructors += 1;
+            }
+        }
+        assert_eq!(constructors, 390);
+        let fixtures = [
+            vec![],
+            vec![0],
+            vec![255],
+            vec![255, 0],
+            vec![255, 255],
+            vec![0, 144],
+            vec![255, 79],
+            vec![255, 217],
+            vec![255, 144, 0, 2],
+            vec![255, 81, 0, 1],
+            vec![255, 81, 0, 0],
+            vec![255, 81, 0, 5, 170, 187],
+            vec![255, 81, 0, 4, 170, 187],
+            vec![255, 0, 255, 217],
+            vec![17, 255, 217, 255, 217],
+            vec![255, 81, 255, 255],
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            zero_work,
+            ResourceLimits::HARDENED.with_maximum_work_units(1).unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(2).unwrap(),
+        ];
+        let mut state_cases = 0;
+        for input in fixtures {
+            for position in (0..=input.len() + 2).chain(core::iter::once(usize::MAX)) {
+                for work in [0, 1, u64::MAX - 1, u64::MAX] {
+                    for limit in &limits {
+                        let initial = (position, work, u64::MAX, 17);
+                        let parser = raw(&input, limit, position, work);
+                        assert_eq!(parser.peek_marker(), peek(&input, position));
+                        for kind in [
+                            MalformedKind::Truncated,
+                            MalformedKind::InvalidMarker,
+                            MalformedKind::ArithmeticOverflow,
+                        ] {
+                            assert_eq!(parser.malformed_here(kind), malformed(position, kind));
+                        }
+                        assert_eq!(parser.offset(position), position as u64);
+                        for amount in [0, 1, 2, u64::MAX] {
+                            let mut actual = raw(&input, limit, position, work);
+                            let mut expected = initial;
+                            assert_eq!(
+                                actual.charge_work(amount),
+                                charge(position, &mut expected.1, amount, limit)
+                            );
+                            frame(&actual, &input, limit, expected);
+                        }
+                        for marker in [SOC, SIZ, EOC, 0x1234] {
+                            let mut actual = raw(&input, limit, position, work);
+                            let mut expected = initial;
+                            assert_eq!(
+                                actual.expect_standalone(marker),
+                                standalone(&input, &mut expected, marker, limit)
+                            );
+                            frame(&actual, &input, limit, expected);
+                        }
+                        let mut actual = raw(&input, limit, position, work);
+                        let mut expected = initial;
+                        let read = actual.read_segment().map(|segment| {
+                            (segment.marker, segment.offset, segment.payload.to_vec())
+                        });
+                        assert_eq!(read, segment(&input, &mut expected, limit));
+                        frame(&actual, &input, limit, expected);
+                        let mut actual = raw(&input, limit, position, work);
+                        let mut expected = initial;
+                        assert_eq!(actual.find_eoc(), eoc(&input, &mut expected, limit));
+                        frame(&actual, &input, limit, expected);
+                        state_cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(state_cases, 1_808);
+    }
+
+    #[test]
     fn progression_change_component_indexes_follow_csiz_width() {
         let limits = ResourceLimits::default();
-        let parser = Parser::new(&[], &limits).unwrap();
+        let parser = new_parser(&[], &limits).unwrap();
         let payload = [0, 1, 0, 0, 1, 1, 1, 1, 0];
         let changes = parser
             .parse_poc(

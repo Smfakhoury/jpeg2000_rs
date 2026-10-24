@@ -792,6 +792,44 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_CODESTREAM_READER_CONTRACTS = {
+    ("src/codestream.rs", "new_parser"): (
+        "part1_codestream_reader_new", _coverage_call("parser_initial_outcome", r"\1"), None, r"input\s*@\s*,\s*limits",
+    ),
+    ("src/codestream.rs", "Parser::peek_marker"): (
+        "part1_codestream_peek_marker", r"\1", None, _coverage_call("parser_view", "self"),
+    ),
+    ("src/codestream.rs", "Parser::expect_standalone"): (
+        "part1_codestream_expect_standalone", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*expected",
+    ),
+    ("src/codestream.rs", "Parser::read_segment"): (
+        "part1_codestream_read_segment", _coverage_call("segment_outcome", r"\1"),
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")),
+    ),
+    ("src/codestream.rs", "Parser::find_eoc"): (
+        "part1_codestream_find_eoc", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")),
+    ),
+    ("src/codestream.rs", "Parser::charge_work"): (
+        "part1_codestream_charge_work", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*amount",
+    ),
+    ("src/codestream.rs", "Parser::malformed_here"): (
+        "part1_codestream_malformed", r"\1", None, r"self\.position\s*,\s*kind",
+    ),
+    ("src/codestream.rs", "Parser::offset"): (
+        "part1_codestream_offset", r"\1", None, r"value",
+    ),
+    ("src/codestream.rs", "is_standalone_marker"): (
+        "part1_codestream_standalone", r"\1", None, r"marker",
+    ),
+    ("src/codestream.rs", "read_u16"): (
+        "part1_marker_value", r"\1", None, r"bytes\s*\[\s*0\s*\]\s*,\s*bytes\s*\[\s*1\s*\]",
+    ),
+}
+
 _TYPED_LAYOUT_CONTRACTS = {
     ("src/decode.rs", "typed_layout"): (
         "part2_typed_layout", _coverage_call("crate::image::decoded_typed_image_outcome", r"\1"), None,
@@ -1981,6 +2019,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_SCALAR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TYPED_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _CODESTREAM_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

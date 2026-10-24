@@ -25,6 +25,30 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw codestream reader
+
+Actual parser input admission and every raw reader operation now bind the
+complete original bytes/limits/cursor/work/packet-counter observation and
+Result, including partial error commits. Marker peek rejects stuffing/fill
+without charge. Segment reading charges before order/length checks and
+derives the exact payload slice from source. Standalone matching advances
+before work admission; EOC scanning charges each candidate before using its
+match and leaves a found marker unconsumed. Offset and overflow/truncation/
+resource priority are retained for arbitrary raw cursors and counters.
+
+The sole initializer is a free body for the pinned attribute mechanism.
+Explicit checked-result matches expose the original arithmetic; replacing
+the trailing-byte break with its identical final truncation return retains
+all fields and error order. No parsed segment/layout/result bank, normalized
+cursor, valid-input or budget-success premise is supplied. Actual header and
+tile parser callers use these sole bodies; marker-specific metadata and whole
+layout/parser-to-output/file/F2/F4/final F8 remain separate.
+
+Independent endian words, wide counters, range decoding and window search
+check every 16-bit marker, input admission and arbitrary cursor/resource/error
+states, including exact reader fields and payloads after failure. This is a
+real raw-byte producer milestone, not whole parser or conformance closure.
+
 ## Complete native full and selected typed layout decoding
 
 Actual `typed_layout` now has a complete typed-image Result contract through
