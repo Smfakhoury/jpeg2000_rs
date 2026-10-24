@@ -792,6 +792,25 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_APPLICATION_CONTRACTS = {
+    ("src/image.rs", "TypedImage::apply_nonlinear_regions"): (
+        "part2_apply_nonlinear_regions", r"\1",
+        _coverage_call("typed_image_value_view", r"\*\s*" + _coverage_call("final", "self")),
+        _coverage_call("typed_image_value_view", r"\*\s*" + _coverage_call("old", "self"))
+        + r"\s*,\s*" + _coverage_call("crate::decode::nonlinear_regions_view", "regions@")
+        + r"\s*,\s*" + _coverage_call("crate::limits::resource_decoded_bytes_limit", "limits")
+        + r"\s*,\s*" + _coverage_call("crate::limits::resource_work_limit", "limits"),
+    ),
+    ("src/image.rs", "TypedComponent::apply_nonlinear_regions"): (
+        "part2_nlt_component_mutation", r"\1",
+        _coverage_call("typed_component_view", _coverage_call("final", "self")),
+        _coverage_call("typed_component_view", _coverage_call("old", "self")) + r"\s*,\s*component_number\s*,\s*"
+        + _coverage_call("crate::decode::nonlinear_regions_view", "regions@")
+        + r"\s*,\s*" + _coverage_call("crate::limits::resource_decoded_bytes_limit", "limits")
+        + r"\s*,\s*" + _coverage_call("crate::limits::resource_work_limit", "limits") + r"\s*,\s*initial_work",
+    ),
+}
+
 _NONLINEAR_SCALAR_CONTRACTS = {
     ("src/image.rs", "nlt_gamma_parameter"): (
         "part2_nlt_gamma_parameter", r"\1", None, r"raw",
@@ -843,6 +862,13 @@ _NONLINEAR_LUT_CONTRACTS = {
     ("src/image.rs", "nlt_lut_position"): (
         "part2_nlt_lut_position", r"\1", None,
         r"points\s*@\s*,\s*source_scale\s*,\s*nominal\s*,\s*minimum\s*,\s*maximum",
+    ),
+    ("src/image.rs", "nlt_lut_coordinates"): (
+        "part2_nlt_lut_coordinates", r"\1", None,
+        r"source_scale\s*,\s*nominal\s*,\s*minimum\s*,\s*maximum\s*,\s*last_index\s+as\s+nat",
+    ),
+    ("src/image.rs", "nlt_checked_rem"): (
+        "part2_nlt_checked_rem", r"\1", None, r"numerator\s*,\s*denominator",
     ),
 }
 
@@ -1942,6 +1968,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_LUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_LOG_EXP_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_SCALAR_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

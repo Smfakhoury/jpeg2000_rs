@@ -8723,10 +8723,9 @@ pub open spec fn part2_nlt_lut_finish(raw: i128, transform: Part2OwnedNonlinear)
 }
 
 #[verifier::opaque]
-pub open spec fn part2_nlt_lut_position(
-    points: Seq<u32>, source_scale: i128, nominal: i128, minimum: u32, maximum: u32,
-) -> Result<i128, crate::DecodeError> {
-    if points.len() == 0 { Err(part1_image_error(false)) } else {
+pub open spec fn part2_nlt_lut_coordinates(
+    source_scale: i128, nominal: i128, minimum: u32, maximum: u32, last_index: nat,
+) -> Result<(usize, i128, i128), crate::DecodeError> {
     match part2_atk_checked_i128(nominal as int * u32::MAX as int) {
         Err(error) => Err(error),
         Ok(normalized) => match part2_atk_checked_i128(minimum as int * source_scale as int) {
@@ -8736,8 +8735,8 @@ pub open spec fn part2_nlt_lut_position(
                 Ok(maximum_scaled) => {
                     let above_minimum = if normalized > minimum_scaled { normalized } else { minimum_scaled };
                     let clamped = if above_minimum < maximum_scaled { above_minimum } else { maximum_scaled };
-                    if points.len() - 1 > i128::MAX { Err(part1_transform_error(true)) } else {
-                        let count = (points.len() - 1) as i128;
+                    if last_index > i128::MAX { Err(part1_transform_error(true)) } else {
+                        let count = last_index as i128;
                         match part2_atk_checked_i128(maximum_scaled as int - minimum_scaled as int) {
                             Err(error) => Err(error),
                             Ok(denominator) => match part2_atk_checked_i128(clamped as int - minimum_scaled as int) {
@@ -8750,7 +8749,7 @@ pub open spec fn part2_nlt_lut_position(
                                         let interval = vstd::arithmetic::div_mod::rust_div(position as int, denominator as int) as i128;
                                         let remainder = vstd::arithmetic::div_mod::rust_rem(position as int, denominator as int) as i128;
                                         if interval < 0 || interval > usize::MAX { Err(part1_transform_error(true)) }
-                                        else { part2_nlt_lut_interpolate(points, interval as usize, denominator, remainder) }
+                                        else { Ok((interval as usize, denominator, remainder)) }
                                     },
                                 },
                             },
@@ -8760,6 +8759,27 @@ pub open spec fn part2_nlt_lut_position(
             },
         },
     }
+}
+
+pub open spec fn part2_nlt_checked_rem(numerator: i128, denominator: i128)
+    -> Result<i128, crate::DecodeError>
+{
+    if denominator == 0 || (numerator == i128::MIN && denominator == -1) {
+        Err(part1_transform_error(true))
+    } else {
+        Ok(vstd::arithmetic::div_mod::rust_rem(numerator as int, denominator as int) as i128)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_lut_position(
+    points: Seq<u32>, source_scale: i128, nominal: i128, minimum: u32, maximum: u32,
+) -> Result<i128, crate::DecodeError> {
+    if points.len() == 0 { Err(part1_image_error(false)) } else {
+        match part2_nlt_lut_coordinates(source_scale, nominal, minimum, maximum, (points.len() - 1) as nat) {
+            Err(error) => Err(error),
+            Ok((index, denominator, remainder)) => part2_nlt_lut_interpolate(points, index, denominator, remainder),
+        }
     }
 }
 
@@ -9096,6 +9116,231 @@ pub open spec fn part2_nonlinear_transform_for(
         Some(transform) => Some(transform),
         None => part2_nonlinear_find(transforms, None, 0),
     }
+}
+
+pub open spec fn part2_nlt_sample_count(samples: Part1TypedSampleSequence) -> nat {
+    match samples {
+        Part1TypedSampleSequence::Signed(values) => values.len(),
+        Part1TypedSampleSequence::Unsigned(values) => values.len(),
+    }
+}
+
+pub open spec fn part2_nlt_source_sample(samples: Part1TypedSampleSequence, index: usize)
+    -> Result<i128, crate::DecodeError>
+{
+    match samples {
+        Part1TypedSampleSequence::Signed(values) => if index as nat >= values.len() {
+            Err(part1_image_error(false))
+        } else { Ok(values[index as int] as i128) },
+        Part1TypedSampleSequence::Unsigned(values) => if index as nat >= values.len() {
+            Err(part1_image_error(false))
+        } else { Ok(values[index as int] as i128) },
+    }
+}
+
+pub struct Part2NltScratch {
+    pub output: Seq<Option<i128>>,
+    pub target: Option<(u8, bool)>,
+    pub work: u64,
+}
+
+pub open spec fn part2_nlt_region_pixel(
+    source: Part1TypedComponentModel, region: Part2NonlinearRegion,
+    y: u32, x: u32, maximum: u64, state: Part2NltScratch,
+) -> Result<Part2NltScratch, crate::DecodeError> {
+    match part1_transform_offset(y, source.width, x) {
+        Err(error) => Err(error),
+        Ok(index) => if index as nat >= state.output.len() { Err(part1_image_error(false)) }
+        else if state.output[index as int].is_some() { Err(part1_transform_error(false)) }
+        else {
+            match part2_nlt_source_sample(source.samples, index) {
+                Err(error) => Err(error),
+                Ok(sample) => match part2_nlt_inverse_sample(sample, source.info, region.transform) {
+                    Err(error) => Err(error),
+                    Ok(value) => {
+                        let charged = part2_mct_charge_work(state.work, 1, maximum);
+                        match charged.0 {
+                            Err(error) => Err(error),
+                            Ok(()) => Ok(Part2NltScratch {
+                                output: state.output.update(index as int, Some(value)),
+                                target: state.target, work: charged.1,
+                            }),
+                        }
+                    },
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_region_row(
+    source: Part1TypedComponentModel, region: Part2NonlinearRegion,
+    y: u32, x: u32, maximum: u64, state: Part2NltScratch,
+) -> Result<Part2NltScratch, crate::DecodeError>
+    decreases region.x1 - x,
+{
+    if x >= region.x1 { Ok(state) } else {
+        match part2_nlt_region_pixel(source, region, y, x, maximum, state) {
+            Err(error) => Err(error),
+            Ok(state) => part2_nlt_region_row(source, region, y, (x + 1) as u32, maximum, state),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_region_rows(
+    source: Part1TypedComponentModel, region: Part2NonlinearRegion,
+    y: u32, maximum: u64, state: Part2NltScratch,
+) -> Result<Part2NltScratch, crate::DecodeError>
+    decreases region.y1 - y,
+{
+    if y >= region.y1 { Ok(state) } else {
+        match part2_nlt_region_row(source, region, y, region.x0, maximum, state) {
+            Err(error) => Err(error),
+            Ok(state) => part2_nlt_region_rows(source, region, (y + 1) as u32, maximum, state),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_component_regions(
+    source: Part1TypedComponentModel, number: u16, regions: Seq<Part2NonlinearRegion>,
+    position: nat, maximum: u64, state: Part2NltScratch,
+) -> Result<Part2NltScratch, crate::DecodeError>
+    decreases regions.len() - position,
+{
+    if position >= regions.len() { Ok(state) } else {
+        let region = regions[position as int];
+        if region.component != number {
+            part2_nlt_component_regions(source, number, regions, position + 1, maximum, state)
+        } else if region.x0 >= region.x1 || region.y0 >= region.y1
+            || region.x1 > source.width || region.y1 > source.height {
+            Err(part1_image_error(false))
+        } else {
+            let descriptor = (region.transform.precision, region.transform.signed);
+            if state.target.is_some() && state.target != Some(descriptor) {
+                Err(part1_transform_error(false))
+            } else {
+                match part2_nlt_region_rows(source, region, region.y0, maximum, Part2NltScratch {
+                    output: state.output, target: Some(descriptor), work: state.work,
+                }) {
+                    Err(error) => Err(error),
+                    Ok(state) => part2_nlt_component_regions(source, number, regions, position + 1, maximum, state),
+                }
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_collect_samples(
+    output: Seq<Option<i128>>, signed: bool, position: nat, done: Part1TypedSampleSequence,
+) -> Result<Part1TypedSampleSequence, crate::DecodeError>
+    decreases output.len() - position,
+{
+    if position >= output.len() { Ok(done) } else {
+        match output[position as int] {
+            None => Err(part1_image_error(false)),
+            Some(value) => match done {
+                Part1TypedSampleSequence::Signed(values) => if !signed || value < i64::MIN || value > i64::MAX {
+                    Err(part1_image_error(false))
+                } else {
+                    part2_nlt_collect_samples(output, signed, position + 1,
+                        Part1TypedSampleSequence::Signed(values.push(value as i64)))
+                },
+                Part1TypedSampleSequence::Unsigned(values) => if signed || value < 0 || value > u64::MAX {
+                    Err(part1_image_error(false))
+                } else {
+                    part2_nlt_collect_samples(output, signed, position + 1,
+                        Part1TypedSampleSequence::Unsigned(values.push(value as u64)))
+                },
+            },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_updated_component(
+    source: Part1TypedComponentModel, precision: u8, signed: bool, samples: Part1TypedSampleSequence,
+) -> Part1TypedComponentModel {
+    Part1TypedComponentModel {
+        width: source.width, height: source.height,
+        info: crate::codestream::ComponentInfo {
+            precision, signed,
+            x_subsampling: source.info.x_subsampling, y_subsampling: source.info.y_subsampling,
+            x_registration: source.info.x_registration, y_registration: source.info.y_registration,
+        }, samples,
+    }
+}
+
+pub open spec fn part2_nlt_finish_component(
+    source: Part1TypedComponentModel, state: Part2NltScratch, maximum_bytes: u64,
+) -> Result<(Part1TypedComponentModel, u64), crate::DecodeError> {
+    match state.target {
+        None => Ok((source, state.work)),
+        Some((precision, signed)) => match part1_image_byte_budget(state.output.len(), 8, maximum_bytes) {
+            Err(error) => Err(error),
+            Ok(()) => match part2_nlt_collect_samples(state.output, signed, 0,
+                if signed { Part1TypedSampleSequence::Signed(Seq::empty()) }
+                else { Part1TypedSampleSequence::Unsigned(Seq::empty()) }) {
+                Err(error) => Err(error),
+                Ok(samples) => Ok((part2_nlt_updated_component(source, precision, signed, samples), state.work)),
+            },
+        },
+    }
+}
+
+pub open spec fn part2_nlt_component(
+    source: Part1TypedComponentModel, number: u16, regions: Seq<Part2NonlinearRegion>,
+    maximum_bytes: u64, maximum_work: u64, initial_work: u64,
+) -> Result<(Part1TypedComponentModel, u64), crate::DecodeError> {
+    match part2_nlt_component_regions(source, number, regions, 0, maximum_work, Part2NltScratch {
+        output: Seq::new(part2_nlt_sample_count(source.samples), |i: int| None),
+        target: None, work: initial_work,
+    }) {
+        Err(error) => Err(error),
+        Ok(state) => part2_nlt_finish_component(source, state, maximum_bytes),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_component_mutation(
+    source: Part1TypedComponentModel, number: u16, regions: Seq<Part2NonlinearRegion>,
+    maximum_bytes: u64, maximum_work: u64, initial_work: u64,
+) -> (Result<u64, crate::DecodeError>, Part1TypedComponentModel) {
+    match part2_nlt_component(source, number, regions, maximum_bytes, maximum_work, initial_work) {
+        Err(error) => (Err(error), source),
+        Ok((component, work)) => (Ok(work), component),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_nlt_apply_components(
+    image: Part1DecodedTypedImage, position: nat, regions: Seq<Part2NonlinearRegion>,
+    maximum_bytes: u64, maximum_work: u64, work: u64,
+) -> (Part1DecodedTypedImage, Result<(), crate::DecodeError>)
+    decreases image.1.len() - position,
+{
+    if position >= image.1.len() { (image, Ok(())) }
+    else if position > u16::MAX { (image, Err(part1_transform_error(true))) }
+    else {
+        match part2_nlt_component(image.1[position as int], position as u16, regions, maximum_bytes, maximum_work, work) {
+            Err(error) => (image, Err(error)),
+            Ok((component, work)) => part2_nlt_apply_components(
+                (image.0, image.1.update(position as int, component), image.2),
+                position + 1, regions, maximum_bytes, maximum_work, work,
+            ),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_apply_nonlinear_regions(
+    image: Part1DecodedTypedImage, regions: Seq<Part2NonlinearRegion>,
+    maximum_bytes: u64, maximum_work: u64,
+) -> (Result<(), crate::DecodeError>, Part1DecodedTypedImage) {
+    let outcome = part2_nlt_apply_components(image, 0, regions, maximum_bytes, maximum_work, 0);
+    (outcome.1, outcome.0)
 }
 
 pub open spec fn part2_nonlinear_tile_extensions(
