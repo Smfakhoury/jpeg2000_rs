@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part1_codestream_*` reader models consume actual raw input/limits and all
+cursor/work/packet-counter fields, not supplied parsed results. They retain
+marker validation, source-derived segment payload, standalone advancement,
+EOC search and partial error/resource commits in native order. Constructor
+and operation observations bind every field without normalized cursors or
+valid-input/budget premises. Actual header/tile parsers consume these bodies;
+marker-specific metadata, full layout parsing and outer file/F2/F4/final F8
+remain separate.
+
 `part2_decode_typed_layout` and `part2_typed_layout` bind actual complete
 full/selected parsed-layout to final typed-image execution and every output
 field. Real layout/byte decoding, typed conversion, source region production,

@@ -4,6 +4,56 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-codestream-reader",
+      "topic": "Complete actual raw codestream reader input admission/initialization, marker/standalone/segment/EOC Result and every parser field on success AND error: actual source bytes/limits/cursor/work/packet counters. Derive all returned marker/payload bytes from source; preserve peek-before-charge, segment-charge-before-order/length admission, standalone cursor-before-charge, EOC per-candidate charge-before-match and unconsumed found marker, exact offsets and partial resource/error commits. No supplied parsed segment/layout/result bank, normalized cursor/input, valid marker or successful budget premise. Sole free initializer avoids unsupported pinned static attributes; explicit checked matches and equivalent trailing-byte error preserve original operations/state. Marker-specific metadata/layout/parser-to-output/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_segment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::expect_standalone"},
+        {"path": "src/codestream.rs", "symbol": "Parser::find_eoc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::peek_marker"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_work"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_here"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_reader_new"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_offset"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_position"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_work"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_charge_work"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_peek_marker"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_standalone"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_expect_standalone"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_read_segment"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_find_eoc"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "new_parser"},
+        {"path": "src/codestream.rs", "symbol": "Parser::peek_marker"},
+        {"path": "src/codestream.rs", "symbol": "Parser::expect_standalone"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_segment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::find_eoc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_work"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_here"},
+        {"path": "src/codestream.rs", "symbol": "Parser::offset"},
+        {"path": "src/codestream.rs", "symbol": "is_standalone_marker"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "parser_initial_outcome"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_outcome"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_raw_reader_derives_marker_payload_cursor_work_and_partial_error_state"}
+      ]
+    },
+    {
       "id": "part2-complete-native-full-selected-typed-layout-decoding",
       "topic": "Complete actual full/selected raw parsed-layout/request/limits/input-length to final TypedImage Result, every geometry/descriptor/sample/channel-definition field and first error. Actual decode_layout/selected derives decoded images from genuine tile bytes/plans/metadata/empty state, then real typed conversion, source-owned nonlinear regions and complete owner mutation, then final output-shape admission compose in original order. No supplied decoded/typed/region/sample/result banks, normalized layout, successful admission/coverage/budget premises or callback. Public raw codestream entry points still execute actual byte parser first and call the sole private body. Actual compressed-byte parser functional Result, file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
