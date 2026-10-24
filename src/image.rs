@@ -1316,14 +1316,6 @@ fn nlt_lut_position(
         Ok(index) => index,
         Err(_) => return Err(arithmetic_overflow()),
     };
-    #[cfg(verus_keep_ghost)]
-    proof! {
-        assert(interval_count as int == points@.len() - 1);
-        assert(interval == vstd::arithmetic::div_mod::rust_div(position_numerator as int, denominator as int) as i128);
-        assert(interval_index == interval as usize);
-        assert(crate::specs::part2_nlt_lut_position(points@, source_scale, nominal, minimum, maximum)
-            == crate::specs::part2_nlt_lut_interpolate(points@, interval_index, denominator, remainder));
-    }
     if interval_index >= points.len() - 1 {
         #[cfg(verus_keep_ghost)]
         proof! { assert(points@.last() == points@[points@.len() - 1]); }

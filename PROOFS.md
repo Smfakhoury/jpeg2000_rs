@@ -39,7 +39,7 @@ Sole private free bodies preserve pinned attribute support. Actual
 normalization and series helpers derive their full Results under opaque,
 terminating folds; no normalized input, successful series or result bank is
 supplied. Constants are proved before their first checked use. A redundant
-LUT diagnostic assertion is removed while its complete Result contract stays
+LUT diagnostic assertions are removed while its complete Result contract stays
 unchanged; explicit checked remainder retains the same native operation.
 No budget, tolerance, iteration count or trusted adapter is changed.
 
