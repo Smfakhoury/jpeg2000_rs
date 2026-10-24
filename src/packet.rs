@@ -6593,6 +6593,37 @@ const fn ceil_div_two(value: u32) -> u32 {
 }
 
 #[cfg(test)]
+pub(crate) fn exact_packet_precinct_snapshot(value: &PacketPrecinctDecoder) -> String {
+    let subbands = value
+        .subbands
+        .iter()
+        .map(|s| {
+            (
+                s.orientation,
+                s.first_decoder,
+                s.decoder_count,
+                s.code_blocks_across,
+                s.code_blocks_down,
+                &s.inclusion_tree,
+                &s.zero_bitplane_tree,
+            )
+        })
+        .collect::<Vec<_>>();
+    format!(
+        "{:?}",
+        (
+            value.component,
+            value.resolution,
+            value.precinct,
+            &value.states,
+            &value.contexts,
+            &value.decoders,
+            subbands
+        )
+    )
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -8185,36 +8216,6 @@ mod tests {
             decoders: vec![one_bit_legacy_decoder(false)],
             subbands: vec![literal_header_subband()],
         }
-    }
-
-    fn exact_packet_precinct_snapshot(value: &PacketPrecinctDecoder) -> String {
-        let subbands = value
-            .subbands
-            .iter()
-            .map(|s| {
-                (
-                    s.orientation,
-                    s.first_decoder,
-                    s.decoder_count,
-                    s.code_blocks_across,
-                    s.code_blocks_down,
-                    &s.inclusion_tree,
-                    &s.zero_bitplane_tree,
-                )
-            })
-            .collect::<Vec<_>>();
-        format!(
-            "{:?}",
-            (
-                value.component,
-                value.resolution,
-                value.precinct,
-                &value.states,
-                &value.contexts,
-                &value.decoders,
-                subbands
-            )
-        )
     }
 
     #[test]

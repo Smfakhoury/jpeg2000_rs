@@ -4,11 +4,39 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-precinct-planning",
+      "topic": "Complete actual per-precinct planning Result/all private packet coordinate/state/context/decoder/subband/tag-tree fields plus owned placement prefixes and global codeblock count from raw band/block/subband source and range/style/HT policy/location/selection/limits. Checked source indices/lookups derive actual optional subband executions, configured decoder vectors and flattened indices; actual packet factory derives all final state. Preserve source-error order, empty/ragged/over-three source laziness, selected-only global charging before later local factory and tag-tree admission, allocation order and buffer moves. No supplied prepared execution/decoder bank, initialized precinct, normalized range or successful budget/allocation premise. Real tile planner consumes sole producer; complete resolution/component/tile plans and decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_planned_precinct"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_precinct_rows"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_precinct_subband"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "precinct_plan_builder_view"},
+        {"path": "src/decode.rs", "symbol": "planned_precinct_view"},
+        {"path": "src/decode.rs", "symbol": "planned_precinct_outcome"},
+        {"path": "src/decode.rs", "symbol": "plan_subband_execution"},
+        {"path": "src/packet.rs", "symbol": "packet_executions_view"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_outcome"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_precinct_plan_derives_all_private_packet_fields_from_raw_subband_ranges"}
+      ]
+    },
+    {
       "id": "part2-complete-native-subband-execution",
       "topic": "Complete actual raw band/block/subband/style/HT policy/location/owned prefix/global count/selection/limits to optional full PacketSubbandExecution, all placement fields, flattened index and charged count. Actual checked intersections/lattice/shape derive before actual configured decoder vectors; no supplied lattice, counts, initialized state/results or successful budget/allocation premise. Preserve subband-end arithmetic before empty-intersection bypass, band-end/divisor/count error order, selected-only charging, actual packet orientation/shape/maximum-zero metadata, owned prefixes and laziness of unused fields. Real tile planner consumes the sole producer; full resolution/precinct/component/tile and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_subband_execution"}
+        {"path": "src/decode.rs", "symbol": "plan_subband_execution"},
+        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_subband_lattice"},
@@ -101,6 +129,7 @@
       "topic": "Complete actual precinct initialization Result/all owned coordinate/state/context/decoder/subband/tag-tree fields from raw execution vectors/style/limits. Original execution-count/shape, cumulative code-block/work budget, decoder-length, linear-context, decoder-move and ordered two-tag-tree admission remain. Empty execution list succeeds with empty owned buffers and raw coordinates; style/decoder orientation discrepancies remain unvalidated. Actual tile planner/public facade reuse the sole constructor, contexts derive from real raw prefixes, and decoder vectors move rather than clone. No supplied precinct/grid/tag-tree/context/decoder result or normalized execution/budget/allocation premise. Whole tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"},
         {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::new_subbands"},
         {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"}
       ],

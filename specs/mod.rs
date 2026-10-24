@@ -8334,6 +8334,70 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub struct Part2PrecinctPlanBuilder {
+    pub executions: Seq<Part2PacketSubbandExecution>,
+    pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,
+    pub decoder_index: usize,
+    pub planned_code_blocks: u64,
+}
+
+pub struct Part2PlannedPrecinct {
+    pub precinct: Part1PacketPrecinctState,
+    pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,
+    pub planned_code_blocks: u64,
+}
+
+pub open spec fn part2_planned_precinct_subband(
+    band: [u32; 4], block_size: [u32; 2], subbands: Seq<crate::decode::SubbandGeometry>,
+    first: usize, local: usize, style: crate::tier1::Tier1CodingStyle, policy: (bool, u8),
+    precinct_index: usize, selected: bool, limits: &crate::ResourceLimits, before: Part2PrecinctPlanBuilder,
+) -> Result<Part2PrecinctPlanBuilder, crate::DecodeError> {
+    let index = first as nat + local as nat;
+    if index > usize::MAX { Err(part1_block_placement_error(true)) }
+    else if index >= subbands.len() { Err(part1_block_placement_error(false)) }
+    else {
+        match part2_planned_subband_execution(band, block_size, subbands[index as int], style, policy,
+            (precinct_index, index as usize, before.decoder_index), before.placements, before.planned_code_blocks, selected, limits) {
+            Err(error) => Err(error),
+            Ok(planned) => Ok(Part2PrecinctPlanBuilder {
+                executions: match planned.execution { None => before.executions, Some(execution) => before.executions.push(execution) },
+                placements: planned.placements, decoder_index: planned.decoder_index, planned_code_blocks: planned.planned_code_blocks,
+            }),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_planned_precinct_rows(
+    band: [u32; 4], block_size: [u32; 2], subbands: Seq<crate::decode::SubbandGeometry>, range: (usize, usize),
+    style: crate::tier1::Tier1CodingStyle, policy: (bool, u8), location: (u16, u8, u32, usize),
+    selected: bool, limits: &crate::ResourceLimits, local: nat, builder: Part2PrecinctPlanBuilder,
+) -> Result<Part2PlannedPrecinct, crate::DecodeError>
+    decreases if local < range.1 { (range.1 as int - local) as nat } else { 0nat },
+{
+    if local >= range.1 {
+        match part2_precinct_from_executions(location.0, location.1, location.2, style, builder.executions, limits) {
+            Err(error) => Err(error),
+            Ok(precinct) => Ok(Part2PlannedPrecinct { precinct, placements: builder.placements, planned_code_blocks: builder.planned_code_blocks }),
+        }
+    } else {
+        match part2_planned_precinct_subband(band, block_size, subbands, range.0, local as usize,
+            style, policy, location.3, selected, limits, builder) {
+            Err(error) => Err(error),
+            Ok(next) => part2_planned_precinct_rows(band, block_size, subbands, range, style, policy, location, selected, limits, local + 1, next),
+        }
+    }
+}
+
+pub open spec fn part2_planned_precinct(
+    band: [u32; 4], block_size: [u32; 2], subbands: Seq<crate::decode::SubbandGeometry>, range: (usize, usize),
+    style: crate::tier1::Tier1CodingStyle, policy: (bool, u8), location: (u16, u8, u32, usize),
+    placements: Seq<crate::decode::ProgressionCodeBlockPlacement>, total: u64, selected: bool, limits: &crate::ResourceLimits,
+) -> Result<Part2PlannedPrecinct, crate::DecodeError> {
+    part2_planned_precinct_rows(band, block_size, subbands, range, style, policy, location, selected, limits, 0,
+        Part2PrecinctPlanBuilder { executions: Seq::empty(), placements, decoder_index: 0, planned_code_blocks: total })
+}
+
 pub struct Part2PlannedSubbandLattice {
     pub grid: [u32; 4],
     pub clip: [u32; 4],
