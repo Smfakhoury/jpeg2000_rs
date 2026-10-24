@@ -4,6 +4,44 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-full-selected-layout-decoding",
+      "topic": "Complete actual decode_layout and decode_layout_selected Result/all decoded image dimensions/origins/component descriptors/coordinates/fraction/sample fields from raw actual CodestreamLayout/request/limits. Actual Part2 admission then tile count/cap65536 or actual selection validation, genuine source-derived cloned tile collection, real raw per-tile metadata/policy/plan/account/byte/reconstruction from empty accumulation and real full/selected image assembly compose in source order. Complete raw owned observations carry clones without opaque allocation identity or copy/result witnesses; no normalized layout, supplied decoded components/plans/callbacks/banks or success/budget premises. All counters/work/selection/error/allocation policy and every loop bound/frame derive internally. Actual public codestream callers use sole bodies. Raw parser/typed final/file/F2/F4/final F8 and hosted/main/publication remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_codestream"},
+        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_decode_layout"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_layout_selected"},
+        {"path": "specs/mod.rs", "symbol": "part2_layout_execution_admission"},
+        {"path": "specs/mod.rs", "symbol": "part2_full_layout_tiles"},
+        {"path": "specs/mod.rs", "symbol": "part2_selected_layout_tiles"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_execution_layout"},
+        {"path": "specs/mod.rs", "symbol": "part2_validate_selection"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_at"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_owned"},
+        {"path": "specs/mod.rs", "symbol": "part2_collect_tile_parts"},
+        {"path": "specs/mod.rs", "symbol": "part2_assemble_prepared"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "layout_accumulation_view"},
+        {"path": "src/decode.rs", "symbol": "validate_part2_execution"},
+        {"path": "src/decode.rs", "symbol": "validate_selection"},
+        {"path": "src/decode.rs", "symbol": "validated_selection_view"},
+        {"path": "src/decode.rs", "symbol": "collect_tile_parts"},
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
+        {"path": "src/decode.rs", "symbol": "assemble_prepared_components"},
+        {"path": "src/codestream.rs", "symbol": "tile_parts_owned_view"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_full_and_selected_layout_decode_derive_complete_images_from_real_source_parts_and_empty_state"}
+      ]
+    },
+    {
       "id": "part2-complete-native-owned-payload-semantics",
       "topic": "Complete raw owned payload observations are now the mathematical codec operands, derived from actual source data rather than normalized inputs. Existing Native payload model entries remain thin raw-observation wrappers over the same single owned-data algorithm; actual Rust decoder/public API/bytes/style/selection/budgets/error behavior remain unchanged. Proved actual metadata, F5 byte execution and whole raw-tile outputs are invariant under complete raw observed copies, not opaque allocation identity. Real collector and Clone producers establish those data equalities, so no supplied copy/plan/decoded result witness bank is needed. Exact existing native contract bindings retained; whole outer layout/raw parser/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [

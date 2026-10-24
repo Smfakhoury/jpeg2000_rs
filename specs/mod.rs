@@ -8684,6 +8684,97 @@ pub open spec fn part2_collect_tile_parts(parts: Seq<Part2OwnedTilePart>, tile: 
     Ok(part2_collect_tile_parts_run(parts, tile, 0, Seq::empty()))
 }
 
+pub(crate) open spec fn part2_layout_execution_admission(layout: &crate::codestream::CodestreamLayout<'_>)
+    -> Result<(), crate::DecodeError>
+{
+    part2_validate_execution_layout(layout.info.image_size.components,
+        crate::decode::execution_header_view(layout.info.component_coding_styles, &layout.info.part2_extensions),
+        crate::decode::execution_tile_headers(layout.tile_parts@))
+}
+
+#[verifier::opaque]
+pub open spec fn part2_full_layout_tiles(
+    size: &crate::codestream::ImageSize, parts: Seq<Part2OwnedTilePart>, caps: Option<(u32, Seq<u16>)>,
+    limits: &crate::ResourceLimits, count: u64, tile: u64, before: Part2DecodedLayoutTile,
+) -> Result<Part1DecodedImageModel, crate::DecodeError>
+    decreases if tile < count { count as int - tile as int } else { 0int },
+{
+    if tile >= count {
+        part2_assemble_prepared(crate::image::assembly_size_view(size), before.prepared, None,
+            crate::limits::resource_decoded_bytes_limit(limits))
+    } else if tile > u16::MAX as u64 { Err(part1_block_placement_error(true)) } else {
+        match part2_collect_tile_parts(parts, tile as u16) {
+            Err(error) => Err(error),
+            Ok(selected) => match part2_decode_tile_parts_owned(size, tile as u16, selected, caps, None, limits,
+                before.prepared, before.counters, before.mct_work) {
+                Err(error) => Err(error),
+                Ok(after) => if tile == u64::MAX { Err(part1_block_placement_error(true)) }
+                    else { part2_full_layout_tiles(size, parts, caps, limits, count, (tile + 1) as u64, after) },
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_selected_layout_tiles(
+    size: &crate::codestream::ImageSize, parts: Seq<Part2OwnedTilePart>, caps: Option<(u32, Seq<u16>)>,
+    tiles: Seq<u16>, region: [u32; 4], discard: u8, limits: &crate::ResourceLimits,
+    index: nat, before: Part2DecodedLayoutTile,
+) -> Result<Part1DecodedImageModel, crate::DecodeError>
+    decreases if index < tiles.len() { (tiles.len() - index) as nat } else { 0nat },
+{
+    if index >= tiles.len() {
+        part2_assemble_prepared(crate::image::assembly_size_view(size), before.prepared, Some((region, discard)),
+            crate::limits::resource_decoded_bytes_limit(limits))
+    } else {
+        let tile = tiles[index as int];
+        match part2_collect_tile_parts(parts, tile) {
+            Err(error) => Err(error),
+            Ok(selected) => match part2_decode_tile_parts_owned(size, tile, selected, caps, Some(discard), limits,
+                before.prepared, before.counters, before.mct_work) {
+                Err(error) => Err(error),
+                Ok(after) => part2_selected_layout_tiles(size, parts, caps, tiles, region, discard, limits, index + 1, after),
+            },
+        }
+    }
+}
+
+pub(crate) open spec fn part2_decode_layout(layout: &crate::codestream::CodestreamLayout<'_>, limits: &crate::ResourceLimits)
+    -> Result<Part1DecodedImageModel, crate::DecodeError>
+{
+    match part2_layout_execution_admission(layout) {
+        Err(error) => Err(error),
+        Ok(()) => match part2_selection_tile_count(crate::codestream::selection_geometry_view(&layout.info.image_size)) {
+            Err(error) => Err(error),
+            Ok(count) => if count > u16::MAX as u64 + 1 {
+                Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidImageGeometry })
+            } else {
+                part2_full_layout_tiles(&layout.info.image_size, crate::codestream::tile_parts_owned_view(layout.tile_parts@),
+                    crate::codestream::codestream_profile_capabilities(&layout.info.profile), limits, count, 0,
+                    Part2DecodedLayoutTile { prepared: Seq::empty(), counters: (0, 0, 0), mct_work: 0 })
+            },
+        },
+    }
+}
+
+pub(crate) open spec fn part2_decode_layout_selected(
+    layout: &crate::codestream::CodestreamLayout<'_>, requested: &crate::DecodeSelection, limits: &crate::ResourceLimits,
+) -> Result<Part1DecodedImageModel, crate::DecodeError> {
+    match part2_layout_execution_admission(layout) {
+        Err(error) => Err(error),
+        Ok(()) => match part2_validate_selection(crate::codestream::selection_geometry_view(&layout.info.image_size),
+            crate::options::decode_selection_view(requested)) {
+            Err(error) => Err(error),
+            Ok(selection) => if selection.1.len() != 4 { Err(part1_block_placement_error(false)) } else {
+                part2_selected_layout_tiles(&layout.info.image_size, crate::codestream::tile_parts_owned_view(layout.tile_parts@),
+                    crate::codestream::codestream_profile_capabilities(&layout.info.profile), selection.0,
+                    [selection.1[0], selection.1[1], selection.1[2], selection.1[3]], selection.2, limits, 0,
+                    Part2DecodedLayoutTile { prepared: Seq::empty(), counters: (0, 0, 0), mct_work: 0 })
+            },
+        },
+    }
+}
+
 pub struct Part2DecodedLayoutTile {
     pub prepared: Seq<Part1AssemblyTile>,
     pub counters: (u64, u64, u64),

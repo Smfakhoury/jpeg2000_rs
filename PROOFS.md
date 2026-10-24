@@ -2706,3 +2706,26 @@ are reverified. 1,440 ordinary Rust source-versus-independent-copy contexts
 compare all real samples/counters/work and first errors, including nonzero
 MCT samples. Existing exact native contract bindings remain.
 Whole outer layout/parser/file/F2/F4/final F8 and publication remain separate.
+## Complete actual full and selected parsed-layout decoders
+
+The actual full/selected layout bodies now derive every decoded image
+dimension/origin/component/descriptor/fraction/sample field from the raw
+layout/request/limits. Actual Part2 admission precedes tile-count/cap65536
+or actual selection validation; genuine source-owned tile collection then
+feeds actual metadata/policy/planning/accounting/byte/reconstruction from
+empty accumulated state, followed by real full/selected image assembly.
+
+No normalized layout, successful plan/decoded components, callback/result/
+copy witness banks or resource premises are supplied. Every intermediate
+counter, source/append/work/selection frame and loop bound is proved from the
+actual producers. The selected region is an actual fixed array; the internal
+logical sequence-to-array totalization is proved unreachable at other sizes,
+not an added input premise. Equivalent typed initial error literals and
+explicit checked cast match expose existing behavior to the pinned verifier.
+
+Two exact native-consumer recipes bind the public codestream callers' actual
+bodies. 180 complete full and 2,520 complete selected composition contexts
+compare all native image fields and first errors across raw empty/reordered/
+duplicate parts, zero/overflow/count-cap geometry, reductions/regions/sets
+and unchanged limits. Raw parser/typed final/file/F2/F4/final F8 and hosted/
+main/publication remain separate.
