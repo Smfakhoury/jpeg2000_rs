@@ -8334,6 +8334,153 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub struct Part2TilePlanBuffers {
+    pub precincts: Seq<Part1PacketPrecinctState>,
+    pub components: Seq<Part1PreparePlan>,
+    pub planned_code_blocks: u64,
+}
+
+pub struct Part2ProgressionTilePlan {
+    pub tile: u16,
+    pub coding_style: crate::codestream::CodingStyle,
+    pub coding_styles: crate::codestream::ComponentCodingStyles,
+    pub grid: Part1PacketGrid,
+    pub precincts: Seq<Part1PacketPrecinctState>,
+    pub components: Seq<Part1PreparePlan>,
+}
+
+#[verifier::opaque]
+pub open spec fn part2_tile_plan_components(
+    size: &crate::codestream::ImageSize, coding_style: crate::codestream::CodingStyle,
+    styles: &crate::codestream::ComponentCodingStyles, quantizations: &crate::codestream::ComponentQuantizations,
+    roi: &crate::codestream::RoiShifts, selection: (u16, u8), policy: (bool, u8, bool),
+    limits: &crate::ResourceLimits, grid: Part1PacketGrid, component: u16, before: Part2TilePlanBuffers,
+) -> Result<Part2ProgressionTilePlan, crate::DecodeError>
+    decreases if component < crate::codestream::image_size_component_count(size) {
+        (crate::codestream::image_size_component_count(size) as int - component as int) as nat
+    } else { 0nat },
+{
+    if component >= crate::codestream::image_size_component_count(size) {
+        Ok(Part2ProgressionTilePlan {
+            tile: selection.0, coding_style, coding_styles: *styles, grid,
+            precincts: before.precincts, components: before.components,
+        })
+    } else {
+        match part2_planned_component(size, styles, quantizations, roi, component, selection, policy,
+            before.precincts, before.planned_code_blocks, limits) {
+            Err(error) => Err(error),
+            Ok(planned) => part2_tile_plan_components(size, coding_style, styles, quantizations, roi, selection, policy, limits, grid,
+                (component + 1) as u16, Part2TilePlanBuffers {
+                    precincts: planned.precincts, components: before.components.push(planned.component),
+                    planned_code_blocks: planned.planned_code_blocks,
+                }),
+        }
+    }
+}
+
+pub open spec fn part2_progression_tile_plan(
+    size: &crate::codestream::ImageSize, coding_style: crate::codestream::CodingStyle,
+    styles: &crate::codestream::ComponentCodingStyles, quantizations: &crate::codestream::ComponentQuantizations,
+    roi: &crate::codestream::RoiShifts, selection: (u16, u8), policy: (bool, u8, bool), limits: &crate::ResourceLimits,
+) -> Result<Part2ProgressionTilePlan, crate::DecodeError> {
+    match part2_selection_tile_bounds(crate::codestream::selection_geometry_view(size), selection.0) {
+        Err(error) => Err(error),
+        Ok(_) => match part2_packet_grid_from_components(size, styles, coding_style.layers, limits, Some(selection.0), selection.1) {
+            Err(error) => Err(error),
+            Ok(grid) => part2_tile_plan_components(size, coding_style, styles, quantizations, roi, selection, policy, limits, grid, 0,
+                Part2TilePlanBuffers { precincts: Seq::empty(), components: Seq::empty(), planned_code_blocks: 0 }),
+        },
+    }
+}
+
+pub struct Part2ComponentPlanBuffers {
+    pub precincts: Seq<Part1PacketPrecinctState>,
+    pub placements: Seq<crate::decode::ProgressionCodeBlockPlacement>,
+    pub planned_code_blocks: u64,
+}
+
+pub struct Part2PlannedComponent {
+    pub component: Part1PreparePlan,
+    pub precincts: Seq<Part1PacketPrecinctState>,
+    pub planned_code_blocks: u64,
+}
+
+pub open spec fn part2_component_plan_precinct(
+    component: u16, resolution: u8, meta: Part2ComponentPlanMetadata, data: Part2ResolutionPlanMetadata,
+    policy: (bool, u8, bool), limits: &crate::ResourceLimits, precinct: u32, before: Part2ComponentPlanBuffers,
+) -> Result<Part2ComponentPlanBuffers, crate::DecodeError> {
+    match part2_planned_precinct_origin(data.first_precinct, data.geometry.precincts_across, precinct, data.band_size) {
+        Err(error) => Err(error),
+        Ok(origin) => match part2_planned_precinct(
+            [origin[0], origin[1], data.band_size[0], data.band_size[1]], data.block_size, meta.subbands,
+            (data.first_subband, data.subband_count), meta.tier1_style, (policy.0, policy.1),
+            (component, resolution, precinct, before.precincts.len() as usize), before.placements, before.planned_code_blocks,
+            resolution <= meta.output_resolution, limits,
+        ) {
+            Err(error) => Err(error),
+            Ok(planned) => Ok(Part2ComponentPlanBuffers {
+                precincts: before.precincts.push(planned.precinct), placements: planned.placements,
+                planned_code_blocks: planned.planned_code_blocks,
+            }),
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_component_plan_precincts(
+    component: u16, resolution: u8, meta: Part2ComponentPlanMetadata, data: Part2ResolutionPlanMetadata,
+    policy: (bool, u8, bool), limits: &crate::ResourceLimits, precinct: nat, before: Part2ComponentPlanBuffers,
+) -> Result<Part2ComponentPlanBuffers, crate::DecodeError>
+    decreases if precinct < data.precincts_in_resolution { (data.precincts_in_resolution as int - precinct) as nat } else { 0nat },
+{
+    if precinct >= data.precincts_in_resolution { Ok(before) } else {
+        match part2_component_plan_precinct(component, resolution, meta, data, policy, limits, precinct as u32, before) {
+            Err(error) => Err(error),
+            Ok(next) => part2_component_plan_precincts(component, resolution, meta, data, policy, limits, precinct + 1, next),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_component_plan_resolutions(
+    size: &crate::codestream::ImageSize, component: u16, tile: u16, meta: Part2ComponentPlanMetadata,
+    policy: (bool, u8, bool), limits: &crate::ResourceLimits, resolution: nat, before: Part2ComponentPlanBuffers,
+) -> Result<Part2PlannedComponent, crate::DecodeError>
+    decreases if resolution <= meta.coding_style.decomposition_levels { (meta.coding_style.decomposition_levels as int + 1 - resolution) as nat } else { 0nat },
+{
+    if resolution > meta.coding_style.decomposition_levels {
+        Ok(Part2PlannedComponent {
+            component: Part1PreparePlan {
+                component, x: meta.x, y: meta.y, width: meta.width, height: meta.height,
+                resolution: meta.output_resolution, subbands: meta.subbands, placements: before.placements,
+            },
+            precincts: before.precincts, planned_code_blocks: before.planned_code_blocks,
+        })
+    } else {
+        match part2_resolution_plan_metadata(size, meta.coding_style, component, (tile, resolution as u8), [meta.bounds.x0, meta.bounds.y0]) {
+            Err(error) => Err(error),
+            Ok(data) => match part2_component_plan_precincts(component, resolution as u8, meta, data, policy, limits, 0, before) {
+                Err(error) => Err(error),
+                Ok(after) => if resolution == u8::MAX { Err(part1_block_placement_error(true)) }
+                    else { part2_component_plan_resolutions(size, component, tile, meta, policy, limits, resolution + 1, after) },
+            },
+        }
+    }
+}
+
+pub open spec fn part2_planned_component(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    quantizations: &crate::codestream::ComponentQuantizations, roi: &crate::codestream::RoiShifts,
+    component: u16, selection: (u16, u8), policy: (bool, u8, bool), precincts: Seq<Part1PacketPrecinctState>,
+    total: u64, limits: &crate::ResourceLimits,
+) -> Result<Part2PlannedComponent, crate::DecodeError> {
+    match part2_component_plan_metadata(size, styles, quantizations, roi, component, selection, policy.2) {
+        Err(error) => Err(error),
+        Ok(meta) => part2_component_plan_resolutions(size, component, selection.0, meta, policy, limits, 0,
+            Part2ComponentPlanBuffers { precincts, placements: Seq::empty(), planned_code_blocks: total }),
+    }
+}
+
 pub struct Part2ResolutionPlanMetadata {
     pub geometry: crate::decode::ComponentResolutionGeometry,
     pub first_subband: usize,

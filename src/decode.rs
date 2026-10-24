@@ -101,6 +101,33 @@ pub struct ComponentResolutionGeometry {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub open spec fn planning_components_view(values: Seq<PlannedTileComponent>) -> Seq<crate::specs::Part1PreparePlan> {
+        values.map_values(|value: PlannedTileComponent| prepare_plan_view(&value))
+    }
+
+    closed spec fn tile_plan_buffers_view(
+        precincts: Seq<PacketPrecinctDecoder>, components: Seq<PlannedTileComponent>, total: u64,
+    ) -> crate::specs::Part2TilePlanBuffers {
+        crate::specs::Part2TilePlanBuffers {
+            precincts: planning_precincts_view(precincts), components: planning_components_view(components),
+            planned_code_blocks: total,
+        }
+    }
+
+    pub closed spec fn progression_plan_view(value: &ProgressionTilePlan) -> crate::specs::Part2ProgressionTilePlan {
+        crate::specs::Part2ProgressionTilePlan {
+            tile: value.tile_index, coding_style: value.coding_style, coding_styles: value.component_coding_styles,
+            grid: crate::packet::packet_grid_view(&value.grid), precincts: planning_precincts_view(value.precincts@),
+            components: planning_components_view(value.components@),
+        }
+    }
+
+    pub open spec fn progression_plan_outcome(result: Result<ProgressionTilePlan, DecodeError>)
+        -> Result<crate::specs::Part2ProgressionTilePlan, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(progression_plan_view(&value)) }
+    }
+
     pub closed spec fn planned_subband_lattice_view(value: PlannedSubbandLattice) -> crate::specs::Part2PlannedSubbandLattice {
         crate::specs::Part2PlannedSubbandLattice { grid: value.grid, clip: value.clip, blocks: value.blocks }
     }
@@ -227,6 +254,18 @@ pub(crate) struct ResolutionPlanMetadata {
     pub(crate) block_size: [u32; 2],
 }
 
+pub(crate) struct PlannedComponent {
+    pub(crate) component: PlannedTileComponent,
+    pub(crate) precincts: Vec<PacketPrecinctDecoder>,
+    pub(crate) planned_code_blocks: u64,
+}
+
+struct ComponentPlanBuilder {
+    precincts: Vec<PacketPrecinctDecoder>,
+    placements: Vec<ProgressionCodeBlockPlacement>,
+    planned_code_blocks: u64,
+}
+
 struct PrecinctPlanBuilder {
     executions: Vec<PacketSubbandExecution>,
     placements: Vec<ProgressionCodeBlockPlacement>,
@@ -236,6 +275,30 @@ struct PrecinctPlanBuilder {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub open spec fn planning_precincts_view(values: Seq<PacketPrecinctDecoder>) -> Seq<crate::specs::Part1PacketPrecinctState> {
+        values.map_values(|value: PacketPrecinctDecoder| crate::packet::packet_precinct_view(&value))
+    }
+
+    closed spec fn component_plan_builder_view(value: &ComponentPlanBuilder) -> crate::specs::Part2ComponentPlanBuffers {
+        crate::specs::Part2ComponentPlanBuffers {
+            precincts: planning_precincts_view(value.precincts@), placements: value.placements@,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub closed spec fn planned_component_view(value: &PlannedComponent) -> crate::specs::Part2PlannedComponent {
+        crate::specs::Part2PlannedComponent {
+            component: prepare_plan_view(&value.component), precincts: planning_precincts_view(value.precincts@),
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_component_outcome(result: Result<PlannedComponent, DecodeError>)
+        -> Result<crate::specs::Part2PlannedComponent, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_component_view(&value)) }
+    }
+
     pub closed spec fn resolution_plan_metadata_view(value: &ResolutionPlanMetadata) -> crate::specs::Part2ResolutionPlanMetadata {
         crate::specs::Part2ResolutionPlanMetadata {
             geometry: value.geometry, first_subband: value.first_subband, subband_count: value.subband_count,
@@ -1300,6 +1363,11 @@ pub fn plan_progression_tile_at_with_roi(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures progression_plan_outcome(result) == crate::specs::part2_progression_tile_plan(
+        size, coding_style, coding_styles, quantizations, roi_shifts, (tile_index, 0), (false, 74, false), limits,
+    ),
+))]
 pub fn plan_progression_tile_at_with_component_overrides(
     size: &ImageSize,
     tile_index: u16,
@@ -1395,6 +1463,12 @@ pub(crate) fn prepare_component_plan_metadata(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures progression_plan_outcome(result) == crate::specs::part2_progression_tile_plan(
+        size, coding_style, coding_styles, quantizations, roi_shifts, (tile_index, discard_levels),
+        (allow_multiple_ht_sets, ht_magnitude_bound, force_high_throughput), limits,
+    ),
+))]
 fn plan_progression_tile_at_selected(
     size: &ImageSize,
     tile_index: u16,
@@ -1408,6 +1482,13 @@ fn plan_progression_tile_at_selected(
     force_high_throughput: bool,
     limits: &ResourceLimits,
 ) -> Result<ProgressionTilePlan, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { codestream::selection_geometry_known_fields(size); }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_progression_tile_plan(
+        size, coding_style, coding_styles, quantizations, roi_shifts, (tile_index, discard_levels),
+        (allow_multiple_ht_sets, ht_magnitude_bound, force_high_throughput), limits,
+    ); }
     size.tile_bounds(tile_index)?;
     let grid = derive_packet_grid_for_components(
         size,
@@ -1417,110 +1498,75 @@ fn plan_progression_tile_at_selected(
         Some(tile_index),
         discard_levels,
     )?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original_grid = crate::packet::packet_grid_view(&grid); }
     let mut precincts = Vec::new();
     let mut components = Vec::with_capacity(usize::from(size.components));
     let mut planned_code_blocks = 0_u64;
     let mut component = 0_u16;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(tile_plan_buffers_view);
+        assert(planning_precincts_view(precincts@) =~= Seq::empty());
+        assert(planning_components_view(components@) =~= Seq::empty());
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component <= size.components,
+                codestream::image_size_component_count(size) == size.components,
+                crate::packet::packet_grid_view(&grid) == original_grid,
+                goal == crate::specs::part2_progression_tile_plan(
+                    size, coding_style, coding_styles, quantizations, roi_shifts, (tile_index, discard_levels),
+                    (allow_multiple_ht_sets, ht_magnitude_bound, force_high_throughput), limits,
+                ),
+                goal == crate::specs::part2_tile_plan_components(
+                    size, coding_style, coding_styles, quantizations, roi_shifts, (tile_index, discard_levels),
+                    (allow_multiple_ht_sets, ht_magnitude_bound, force_high_throughput), limits, original_grid,
+                    component, tile_plan_buffers_view(precincts@, components@, planned_code_blocks),
+                ),
             decreases size.components - component,
         )
     )]
     while component < size.components {
-        let PlannedComponentMetadata {
-            component_coding_style,
-            output_resolution,
-            tier1_style,
-            bounds,
-            component_width,
-            component_height,
-            component_x,
-            component_y,
-            subbands,
-        } = prepare_component_plan_metadata(
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = tile_plan_buffers_view(precincts@, components@, planned_code_blocks); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_tile_plan_components, 1); }
+        let planned = plan_tile_component(
             size,
             coding_styles,
             quantizations,
             roi_shifts,
             component,
             (tile_index, discard_levels),
-            force_high_throughput,
+            (
+                allow_multiple_ht_sets,
+                ht_magnitude_bound,
+                force_high_throughput,
+            ),
+            precincts,
+            planned_code_blocks,
+            limits,
         )?;
-        let mut placements = Vec::new();
-        let mut resolution = 0_u8;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant resolution
-                    <= component_coding_style.decomposition_levels as int + 1,
-                decreases component_coding_style.decomposition_levels as int + 1
-                    - resolution as int,
-            )
-        )]
-        while resolution <= component_coding_style.decomposition_levels {
-            let ResolutionPlanMetadata {
-                geometry,
-                first_subband,
-                subband_count,
-                precincts_in_resolution,
-                first_precinct,
-                band_size,
-                block_size,
-            } = prepare_resolution_plan_metadata(
-                size,
-                component_coding_style,
-                component,
-                (tile_index, resolution),
-                [bounds.x0, bounds.y0],
-            )?;
-            let mut precinct = 0_u32;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant precinct <= precincts_in_resolution,
-                    decreases precincts_in_resolution - precinct,
-                )
-            )]
-            while precinct < precincts_in_resolution {
-                let band_origin = derive_planned_precinct_origin(
-                    first_precinct,
-                    geometry.precincts_across,
-                    precinct,
-                    band_size,
-                )?;
-                let planned = plan_packet_precinct(
-                    [band_origin[0], band_origin[1], band_size[0], band_size[1]],
-                    block_size,
-                    &subbands,
-                    (first_subband, subband_count),
-                    tier1_style,
-                    (allow_multiple_ht_sets, ht_magnitude_bound),
-                    (component, resolution, precinct, precincts.len()),
-                    placements,
-                    planned_code_blocks,
-                    resolution <= output_resolution,
-                    limits,
-                )?;
-                placements = planned.placements;
-                planned_code_blocks = planned.planned_code_blocks;
-                precincts.push(planned.precinct);
-                precinct = precinct.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-            resolution = resolution.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost row = planned_component_view(&planned); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(planned_component_view); reveal(tile_plan_buffers_view); }
+        precincts = planned.precincts;
+        planned_code_blocks = planned.planned_code_blocks;
+        components.push(planned.component);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(planning_components_view(components@) =~= before.components.push(row.component));
         }
-        components.push(PlannedTileComponent {
-            component,
-            x: component_x,
-            y: component_y,
-            width: component_width,
-            height: component_height,
-            output_resolution,
-            subbands,
-            placements,
-        });
         component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal_with_fuel(crate::specs::part2_tile_plan_components, 1);
+        reveal(tile_plan_buffers_view);
+        reveal(progression_plan_view);
     }
     Ok(ProgressionTilePlan {
         tile_index,
@@ -1529,6 +1575,171 @@ fn plan_progression_tile_at_selected(
         grid,
         precincts,
         components,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures planned_component_outcome(result) == crate::specs::part2_planned_component(
+        size, coding_styles, quantizations, roi_shifts, component, selection, policy,
+        planning_precincts_view(precincts@), planned_code_blocks, limits,
+    ),
+))]
+pub(crate) fn plan_tile_component(
+    size: &ImageSize,
+    coding_styles: &ComponentCodingStyles,
+    quantizations: &ComponentQuantizations,
+    roi_shifts: &RoiShifts,
+    component: u16,
+    selection: (u16, u8),
+    policy: (bool, u8, bool),
+    precincts: Vec<PacketPrecinctDecoder>,
+    planned_code_blocks: u64,
+    limits: &ResourceLimits,
+) -> Result<PlannedComponent, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_planned_component(
+        size, coding_styles, quantizations, roi_shifts, component, selection, policy,
+        planning_precincts_view(precincts@), planned_code_blocks, limits,
+    ); }
+    let metadata = prepare_component_plan_metadata(
+        size,
+        coding_styles,
+        quantizations,
+        roi_shifts,
+        component,
+        selection,
+        policy.2,
+    )?;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost meta = component_plan_metadata_view(&metadata); }
+    let mut builder = ComponentPlanBuilder {
+        precincts,
+        placements: Vec::new(),
+        planned_code_blocks,
+    };
+    let mut resolution = 0_u8;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant resolution <= metadata.component_coding_style.decomposition_levels as int + 1,
+            meta == component_plan_metadata_view(&metadata),
+            goal == crate::specs::part2_planned_component(
+                size, coding_styles, quantizations, roi_shifts, component, selection, policy,
+                planning_precincts_view(precincts@), planned_code_blocks, limits,
+            ),
+            goal == crate::specs::part2_component_plan_resolutions(
+                size, component, selection.0, meta, policy, limits, resolution as nat, component_plan_builder_view(&builder),
+            ),
+        decreases metadata.component_coding_style.decomposition_levels as int + 1 - resolution as int,
+    ))]
+    while resolution <= metadata.component_coding_style.decomposition_levels {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(component_plan_metadata_view);
+            reveal(component_plan_builder_view);
+            reveal_with_fuel(crate::specs::part2_component_plan_resolutions, 1);
+        }
+        let data = prepare_resolution_plan_metadata(
+            size,
+            metadata.component_coding_style,
+            component,
+            (selection.0, resolution),
+            [metadata.bounds.x0, metadata.bounds.y0],
+        )?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost resolution_data = resolution_plan_metadata_view(&data); }
+        let mut precinct = 0_u32;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant precinct <= data.precincts_in_resolution,
+                resolution <= metadata.component_coding_style.decomposition_levels,
+                meta == component_plan_metadata_view(&metadata),
+                resolution_data == resolution_plan_metadata_view(&data),
+                goal == crate::specs::part2_planned_component(
+                    size, coding_styles, quantizations, roi_shifts, component, selection, policy,
+                    planning_precincts_view(precincts@), planned_code_blocks, limits,
+                ),
+                goal == match crate::specs::part2_component_plan_precincts(
+                    component, resolution, meta, resolution_data, policy, limits, precinct as nat, component_plan_builder_view(&builder),
+                ) {
+                    Err(error) => Err(error),
+                    Ok(after) => if resolution == u8::MAX { Err(crate::specs::part1_block_placement_error(true)) }
+                        else { crate::specs::part2_component_plan_resolutions(
+                            size, component, selection.0, meta, policy, limits, resolution as nat + 1, after) },
+                },
+            decreases data.precincts_in_resolution - precinct,
+        ))]
+        while precinct < data.precincts_in_resolution {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = component_plan_builder_view(&builder); }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(component_plan_metadata_view);
+                reveal(resolution_plan_metadata_view);
+                reveal(component_plan_builder_view);
+                reveal_with_fuel(crate::specs::part2_component_plan_precincts, 1);
+            }
+            let origin = derive_planned_precinct_origin(
+                data.first_precinct,
+                data.geometry.precincts_across,
+                precinct,
+                data.band_size,
+            )?;
+            let planned = plan_packet_precinct(
+                [origin[0], origin[1], data.band_size[0], data.band_size[1]],
+                data.block_size,
+                &metadata.subbands,
+                (data.first_subband, data.subband_count),
+                metadata.tier1_style,
+                (policy.0, policy.1),
+                (component, resolution, precinct, builder.precincts.len()),
+                builder.placements,
+                builder.planned_code_blocks,
+                resolution <= metadata.output_resolution,
+                limits,
+            )?;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost row = planned_precinct_view(&planned); }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(planned_precinct_view); }
+            builder.placements = planned.placements;
+            builder.planned_code_blocks = planned.planned_code_blocks;
+            builder.precincts.push(planned.precinct);
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(planning_precincts_view(builder.precincts@) =~= before.precincts.push(row.precinct));
+                assert(crate::specs::part2_component_plan_precinct(
+                    component, resolution, meta, resolution_data, policy, limits, precinct, before,
+                ) == Ok(component_plan_builder_view(&builder)));
+            }
+            precinct = precinct.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(resolution_plan_metadata_view);
+            reveal_with_fuel(crate::specs::part2_component_plan_precincts, 1);
+        }
+        resolution = resolution.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(component_plan_metadata_view);
+        reveal(component_plan_builder_view);
+        reveal(planned_component_view);
+        reveal(prepare_plan_view);
+        reveal_with_fuel(crate::specs::part2_component_plan_resolutions, 1);
+    }
+    Ok(PlannedComponent {
+        component: PlannedTileComponent {
+            component,
+            x: metadata.component_x,
+            y: metadata.component_y,
+            width: metadata.component_width,
+            height: metadata.component_height,
+            output_resolution: metadata.output_resolution,
+            subbands: metadata.subbands,
+            placements: builder.placements,
+        },
+        precincts: builder.precincts,
+        planned_code_blocks: builder.planned_code_blocks,
     })
 }
 
@@ -7247,6 +7458,413 @@ mod tests {
         }
         assert_eq!(cases, 92_160);
         assert!(empty > 100 && populated > 100);
+    }
+
+    fn planning_prefix(present: bool) -> Vec<PacketPrecinctDecoder> {
+        if !present {
+            return Vec::new();
+        }
+        let style = Tier1CodingStyle::default();
+        vec![
+            PacketPrecinctDecoder::new_subbands(
+                19,
+                u8::MAX,
+                u32::MAX,
+                style,
+                vec![PacketSubbandExecution {
+                    orientation: SubbandOrientation::Hh,
+                    code_blocks_across: 1,
+                    code_blocks_down: 1,
+                    maximum_zero_bitplanes: 2,
+                    decoders: vec![
+                        Tier1CodeBlockDecoder::new(1, 1, 2, SubbandOrientation::Hh, style).unwrap(),
+                    ],
+                }],
+                &ResourceLimits::HARDENED,
+            )
+            .unwrap(),
+        ]
+    }
+
+    fn planning_fixture_owners<'a>(
+        layout: &'a CodestreamLayout<'_>,
+        tile_scope: bool,
+    ) -> (
+        &'a ComponentCodingStyles,
+        &'a ComponentQuantizations,
+        &'a RoiShifts,
+    ) {
+        if tile_scope {
+            let tile = &layout.tile_parts[0];
+            (
+                &tile.component_coding_styles,
+                &tile.component_quantizations,
+                &tile.roi_shifts,
+            )
+        } else {
+            (
+                &layout.info.component_coding_styles,
+                &layout.info.component_quantizations,
+                &layout.info.roi_shifts,
+            )
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_component_plan(
+        size: &ImageSize,
+        styles: &ComponentCodingStyles,
+        quantizations: &ComponentQuantizations,
+        roi: &RoiShifts,
+        component: u16,
+        selection: (u16, u8),
+        policy: (bool, u8, bool),
+        mut precincts: Vec<PacketPrecinctDecoder>,
+        mut total: u64,
+        limits: &ResourceLimits,
+    ) -> Result<PlannedComponent, DecodeError> {
+        let metadata = prepare_component_plan_metadata(
+            size,
+            styles,
+            quantizations,
+            roi,
+            component,
+            selection,
+            policy.2,
+        )?;
+        let mut placements = Vec::new();
+        for resolution in 0..=u16::from(metadata.component_coding_style.decomposition_levels) {
+            let resolution = u8::try_from(resolution).unwrap();
+            let data = prepare_resolution_plan_metadata(
+                size,
+                metadata.component_coding_style,
+                component,
+                (selection.0, resolution),
+                [metadata.bounds.x0, metadata.bounds.y0],
+            )?;
+            for precinct in 0..data.precincts_in_resolution {
+                let origin = derive_planned_precinct_origin(
+                    data.first_precinct,
+                    data.geometry.precincts_across,
+                    precinct,
+                    data.band_size,
+                )?;
+                let planned = reference_planned_precinct(
+                    [origin[0], origin[1], data.band_size[0], data.band_size[1]],
+                    data.block_size,
+                    &metadata.subbands,
+                    (data.first_subband, data.subband_count),
+                    metadata.tier1_style,
+                    (policy.0, policy.1),
+                    (component, resolution, precinct, precincts.len()),
+                    placements,
+                    total,
+                    resolution <= metadata.output_resolution,
+                    limits,
+                )?;
+                placements = planned.placements;
+                total = planned.planned_code_blocks;
+                precincts.push(planned.precinct);
+            }
+            if resolution == u8::MAX {
+                return Err(arithmetic_overflow());
+            }
+        }
+        Ok(PlannedComponent {
+            component: PlannedTileComponent {
+                component,
+                x: metadata.component_x,
+                y: metadata.component_y,
+                width: metadata.component_width,
+                height: metadata.component_height,
+                output_resolution: metadata.output_resolution,
+                subbands: metadata.subbands,
+                placements,
+            },
+            precincts,
+            planned_code_blocks: total,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_tile_plan(
+        size: &ImageSize,
+        coding_style: CodingStyle,
+        styles: &ComponentCodingStyles,
+        quantizations: &ComponentQuantizations,
+        roi: &RoiShifts,
+        selection: (u16, u8),
+        policy: (bool, u8, bool),
+        limits: &ResourceLimits,
+    ) -> Result<ProgressionTilePlan, DecodeError> {
+        size.tile_bounds(selection.0)?;
+        let grid = derive_packet_grid_for_components(
+            size,
+            styles,
+            coding_style.layers,
+            limits,
+            Some(selection.0),
+            selection.1,
+        )?;
+        let mut precincts = Vec::new();
+        let mut components = Vec::new();
+        let mut total = 0;
+        for component in 0..size.components {
+            let planned = reference_component_plan(
+                size,
+                styles,
+                quantizations,
+                roi,
+                component,
+                selection,
+                policy,
+                precincts,
+                total,
+                limits,
+            )?;
+            precincts = planned.precincts;
+            total = planned.planned_code_blocks;
+            components.push(planned.component);
+        }
+        Ok(ProgressionTilePlan {
+            tile_index: selection.0,
+            coding_style,
+            component_coding_styles: *styles,
+            grid,
+            precincts,
+            components,
+        })
+    }
+
+    fn assert_tile_plans_equal(
+        actual: Result<ProgressionTilePlan, DecodeError>,
+        expected: Result<ProgressionTilePlan, DecodeError>,
+    ) -> bool {
+        match (actual, expected) {
+            (Err(actual), Err(expected)) => {
+                assert_eq!(actual, expected);
+                false
+            }
+            (Ok(actual), Ok(expected)) => {
+                assert_eq!(actual.tile_index, expected.tile_index);
+                assert_eq!(actual.coding_style, expected.coding_style);
+                assert_eq!(
+                    actual.component_coding_styles,
+                    expected.component_coding_styles
+                );
+                assert_eq!(actual.grid, expected.grid);
+                assert_eq!(actual.components, expected.components);
+                assert_eq!(
+                    actual
+                        .precincts
+                        .iter()
+                        .map(crate::packet::exact_packet_precinct_snapshot)
+                        .collect::<Vec<_>>(),
+                    expected
+                        .precincts
+                        .iter()
+                        .map(crate::packet::exact_packet_precinct_snapshot)
+                        .collect::<Vec<_>>()
+                );
+                true
+            }
+            (Err(error), Ok(_)) => panic!("unexpected tile-plan error: {error:?}"),
+            (Ok(_), Err(error)) => panic!("tile plan should have failed: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn actual_component_plan_derives_full_component_and_precinct_vectors_from_real_raw_owners() {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(2)
+                .unwrap()
+                .with_maximum_work_units(1)
+                .unwrap(),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for bytes in fixtures {
+            let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+            for tile_scope in [false, true] {
+                let (styles, quantizations, roi) = planning_fixture_owners(&layout, tile_scope);
+                for component in [0, 1, 64] {
+                    for tile in [0, 1, u16::MAX] {
+                        for discard in [0, 1, 2, 3, u8::MAX] {
+                            for policy in [
+                                (false, 0, false),
+                                (false, 74, false),
+                                (true, 1, true),
+                                (true, 75, true),
+                            ] {
+                                for limit in &limits {
+                                    for total in [0, 1, u64::MAX] {
+                                        for prefix in [false, true] {
+                                            let expected = reference_component_plan(
+                                                &layout.info.image_size,
+                                                styles,
+                                                quantizations,
+                                                roi,
+                                                component,
+                                                (tile, discard),
+                                                policy,
+                                                planning_prefix(prefix),
+                                                total,
+                                                limit,
+                                            );
+                                            let actual = plan_tile_component(
+                                                &layout.info.image_size,
+                                                styles,
+                                                quantizations,
+                                                roi,
+                                                component,
+                                                (tile, discard),
+                                                policy,
+                                                planning_prefix(prefix),
+                                                total,
+                                                limit,
+                                            );
+                                            match (actual, expected) {
+                                                (Err(actual), Err(expected)) => {
+                                                    assert_eq!(actual, expected)
+                                                }
+                                                (Ok(actual), Ok(expected)) => {
+                                                    assert_eq!(
+                                                        actual.component,
+                                                        expected.component
+                                                    );
+                                                    assert_eq!(
+                                                        actual.planned_code_blocks,
+                                                        expected.planned_code_blocks
+                                                    );
+                                                    assert_eq!(actual.precincts.iter().map(crate::packet::exact_packet_precinct_snapshot).collect::<Vec<_>>(),
+                                                        expected.precincts.iter().map(crate::packet::exact_packet_precinct_snapshot).collect::<Vec<_>>());
+                                                    successes += 1;
+                                                }
+                                                (Err(error), Ok(_)) => panic!(
+                                                    "unexpected component-plan error: {error:?}"
+                                                ),
+                                                (Ok(_), Err(error)) => panic!(
+                                                    "component plan should have failed: {error:?}"
+                                                ),
+                                            }
+                                            cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 25_920);
+        assert!(successes > 100);
+    }
+
+    #[test]
+    fn actual_selected_tile_plan_and_public_owner_boundary_bind_every_field_and_first_error() {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(2)
+                .unwrap()
+                .with_maximum_work_units(1)
+                .unwrap(),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for bytes in fixtures {
+            let layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+            for tile_scope in [false, true] {
+                let (styles, quantizations, roi) = planning_fixture_owners(&layout, tile_scope);
+                for tile in [0, 1, u16::MAX] {
+                    for discard in [0, 1, 2, 3, u8::MAX] {
+                        for policy in [
+                            (false, 0, false),
+                            (false, 74, false),
+                            (true, 1, true),
+                            (true, 75, true),
+                        ] {
+                            for limit in &limits {
+                                let expected = reference_tile_plan(
+                                    &layout.info.image_size,
+                                    layout.info.coding_style,
+                                    styles,
+                                    quantizations,
+                                    roi,
+                                    (tile, discard),
+                                    policy,
+                                    limit,
+                                );
+                                let actual = plan_progression_tile_at_selected(
+                                    &layout.info.image_size,
+                                    tile,
+                                    layout.info.coding_style,
+                                    styles,
+                                    quantizations,
+                                    roi,
+                                    discard,
+                                    policy.0,
+                                    policy.1,
+                                    policy.2,
+                                    limit,
+                                );
+                                successes += usize::from(assert_tile_plans_equal(actual, expected));
+                                if discard == 0 && policy == (false, 74, false) {
+                                    let public = plan_progression_tile_at_with_component_overrides(
+                                        &layout.info.image_size,
+                                        tile,
+                                        layout.info.coding_style,
+                                        styles,
+                                        quantizations,
+                                        roi,
+                                        limit,
+                                    );
+                                    assert_tile_plans_equal(
+                                        public,
+                                        reference_tile_plan(
+                                            &layout.info.image_size,
+                                            layout.info.coding_style,
+                                            styles,
+                                            quantizations,
+                                            roi,
+                                            (tile, discard),
+                                            policy,
+                                            limit,
+                                        ),
+                                    );
+                                }
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1_440);
+        assert!(successes > 10);
     }
 
     fn reference_standard_prepare(

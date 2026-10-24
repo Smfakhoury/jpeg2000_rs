@@ -2545,3 +2545,27 @@ errors. Exact contracts and consumer mutations bind all fields and inputs.
 frontiers include large real precinct counts above u32 with zero/nonzero
 band deltas.
 Full resolution/component/tile vectors and F2/F4/F8 joins remain separate.
+## Complete actual raw-owner component and selected tile plans
+
+Actual component planning now derives all resolutions, real ordered precinct
+states and complete component/band/placement fields from raw image/style
+owners/quantization owners/ROI/component/selection/policies/limits. Existing
+precinct prefixes are retained transport, not a successful result bank.
+The actual selected tile planner composes first tile admission, the real
+selected packet-grid producer and those actual component producers into every
+private tile/style/grid/precinct/component field. Its public component-owner
+boundary shares the sole body and original defaults.
+
+Three complete contracts and exact consumer-binding mutation recipes bind
+all raw inputs and complete outputs without prepared metadata/geometry,
+successful plans, decoder banks or resource/allocation premises. Non-mutual
+precinct, resolution and component suffix folds prove every intermediate
+index, raw input and append frame internally while retaining first errors,
+unused-field laziness, allocation order and global selected/local budgets.
+
+25,920 complete component/prefix/count and 1,440 complete selected-tile
+composition contexts compare all private grid/packet/component/placement
+fields. They reuse independently qualified raw metadata/grid primitives and
+the independent wide/flat-order precinct reference; they are not official
+conformance vectors. Packet-to-decoded-component/file/F2/F4/final F8 joins
+and uniform-owner facade construction remain separate.

@@ -1607,3 +1607,12 @@ inside that relation, never supplied successful results or premises.
 `part2_planned_precinct_origin` retains raw checked first-grid/precinct/band
 arithmetic. Native views and exact recipes bind every metadata field,
 including zero-band lazy narrowing and later independent validation.
+`part2_planned_component` derives complete component and existing/new
+precinct vectors from actual raw owner metadata, resolution preparation and
+real precinct producers. `part2_progression_tile_plan` composes actual first
+tile bounds, selected grid and all actual component results into the complete
+private tile plan. Non-mutual suffix folds retain all owned state, prefixes,
+indices and budget/error order; no successful intermediate plan, metadata,
+geometry or decoder result bank is supplied as a premise.
+The public component-owner entry binds the same relation and original defaults;
+packet/output/file/F2/F4/final F8 and uniform-owner facade joins remain separate.
