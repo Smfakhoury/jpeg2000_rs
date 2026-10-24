@@ -165,6 +165,36 @@ pub struct PlannedTileComponent {
     placements: Vec<ProgressionCodeBlockPlacement>,
 }
 
+#[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
+pub(crate) struct PlannedComponentMetadata {
+    pub(crate) component_coding_style: CodingStyle,
+    pub(crate) output_resolution: u8,
+    pub(crate) tier1_style: Tier1CodingStyle,
+    pub(crate) bounds: crate::codestream::TileComponentBounds,
+    pub(crate) component_width: u32,
+    pub(crate) component_height: u32,
+    pub(crate) component_x: u32,
+    pub(crate) component_y: u32,
+    pub(crate) subbands: Vec<SubbandGeometry>,
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn component_plan_metadata_view(value: &PlannedComponentMetadata) -> crate::specs::Part2ComponentPlanMetadata {
+        crate::specs::Part2ComponentPlanMetadata {
+            coding_style: value.component_coding_style, output_resolution: value.output_resolution,
+            tier1_style: value.tier1_style, bounds: value.bounds, width: value.component_width,
+            height: value.component_height, x: value.component_x, y: value.component_y, subbands: value.subbands@,
+        }
+    }
+
+    pub open spec fn component_plan_metadata_outcome(result: Result<PlannedComponentMetadata, DecodeError>)
+        -> Result<crate::specs::Part2ComponentPlanMetadata, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(component_plan_metadata_view(&value)) }
+    }
+}
+
 pub struct ProgressionTilePlan {
     tile_index: u16,
     coding_style: CodingStyle,
@@ -1175,6 +1205,76 @@ pub fn plan_progression_tile_at_with_component_overrides(
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures component_plan_metadata_outcome(result) == crate::specs::part2_component_plan_metadata(
+        size, coding_styles, quantizations, roi_shifts, component, selection, force_high_throughput,
+    ),
+))]
+pub(crate) fn prepare_component_plan_metadata(
+    size: &ImageSize,
+    coding_styles: &ComponentCodingStyles,
+    quantizations: &ComponentQuantizations,
+    roi_shifts: &RoiShifts,
+    component: u16,
+    selection: (u16, u8),
+    force_high_throughput: bool,
+) -> Result<PlannedComponentMetadata, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { codestream::selection_geometry_known_fields(size); }
+    let (tile_index, discard_levels) = selection;
+    let component_coding_style = coding_styles.style(component)?;
+    let output_resolution = component_coding_style
+        .decomposition_levels
+        .checked_sub(discard_levels)
+        .ok_or(DecodeError::InvalidSelection {
+            reason: SelectionError::ReductionTooLarge,
+        })?;
+    let component_quantization = quantizations.quantization(component)?;
+    let mut tier1_style = component_coding_style.tier1_coding_style()?;
+    if tier1_style.block_coding.uses_high_throughput() && force_high_throughput {
+        tier1_style.set_force_high_throughput(true);
+    }
+    let bounds = size.tile_component_bounds(tile_index, component)?;
+    let output_geometry = derive_component_resolution_geometry_for(
+        size,
+        component_coding_style,
+        component,
+        output_resolution,
+        Some(tile_index),
+    )?;
+    let component_width = output_geometry.width;
+    let component_height = output_geometry.height;
+    let (scale_x, scale_y) = component_coding_style.resolution_downsampling(output_resolution)?;
+    let info = size.component(component)?;
+    let component_image_x0 = ceil_div_u32(size.x_origin, u32::from(info.x_subsampling))?;
+    let component_image_y0 = ceil_div_u32(size.y_origin, u32::from(info.y_subsampling))?;
+    let component_x = ceil_div_u32(bounds.x0, scale_x)?
+        .checked_sub(ceil_div_u32(component_image_x0, scale_x)?)
+        .ok_or_else(arithmetic_overflow)?;
+    let component_y = ceil_div_u32(bounds.y0, scale_y)?
+        .checked_sub(ceil_div_u32(component_image_y0, scale_y)?)
+        .ok_or_else(arithmetic_overflow)?;
+    let subbands = derive_component_subbands_for(
+        size,
+        component_coding_style,
+        &component_quantization,
+        component,
+        Some(tile_index),
+        roi_shifts.shift(component)?,
+    )?;
+    Ok(PlannedComponentMetadata {
+        component_coding_style,
+        output_resolution,
+        tier1_style,
+        bounds,
+        component_width,
+        component_height,
+        component_x,
+        component_y,
+        subbands,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn plan_progression_tile_at_selected(
     size: &ImageSize,
@@ -1210,46 +1310,24 @@ fn plan_progression_tile_at_selected(
         )
     )]
     while component < size.components {
-        let component_coding_style = coding_styles.style(component)?;
-        let output_resolution = component_coding_style
-            .decomposition_levels
-            .checked_sub(discard_levels)
-            .ok_or(DecodeError::InvalidSelection {
-                reason: SelectionError::ReductionTooLarge,
-            })?;
-        let component_quantization = quantizations.quantization(component)?;
-        let mut tier1_style = component_coding_style.tier1_coding_style()?;
-        if tier1_style.block_coding.uses_high_throughput() && force_high_throughput {
-            tier1_style.set_force_high_throughput(true);
-        }
-        let bounds = size.tile_component_bounds(tile_index, component)?;
-        let output_geometry = derive_component_resolution_geometry_for(
-            size,
+        let PlannedComponentMetadata {
             component_coding_style,
-            component,
             output_resolution,
-            Some(tile_index),
-        )?;
-        let component_width = output_geometry.width;
-        let component_height = output_geometry.height;
-        let (scale_x, scale_y) =
-            component_coding_style.resolution_downsampling(output_resolution)?;
-        let info = size.component(component)?;
-        let component_image_x0 = ceil_div_u32(size.x_origin, u32::from(info.x_subsampling))?;
-        let component_image_y0 = ceil_div_u32(size.y_origin, u32::from(info.y_subsampling))?;
-        let component_x = ceil_div_u32(bounds.x0, scale_x)?
-            .checked_sub(ceil_div_u32(component_image_x0, scale_x)?)
-            .ok_or_else(arithmetic_overflow)?;
-        let component_y = ceil_div_u32(bounds.y0, scale_y)?
-            .checked_sub(ceil_div_u32(component_image_y0, scale_y)?)
-            .ok_or_else(arithmetic_overflow)?;
-        let subbands = derive_component_subbands_for(
+            tier1_style,
+            bounds,
+            component_width,
+            component_height,
+            component_x,
+            component_y,
+            subbands,
+        } = prepare_component_plan_metadata(
             size,
-            component_coding_style,
-            &component_quantization,
+            coding_styles,
+            quantizations,
+            roi_shifts,
             component,
-            Some(tile_index),
-            roi_shifts.shift(component)?,
+            (tile_index, discard_levels),
+            force_high_throughput,
         )?;
         let mut placements = Vec::new();
         let mut resolution = 0_u8;

@@ -2164,6 +2164,119 @@ pub open spec fn part2_component_subbands(
     }
 }
 
+pub open spec fn part2_component_quantization(values: &crate::codestream::ComponentQuantizations, component: u16)
+    -> Result<crate::codestream::Quantization, crate::DecodeError>
+{
+    crate::codestream::component_quantization_result(values, component)
+}
+
+pub open spec fn part2_roi_shift(shifts: Seq<u8>, component: u16) -> Result<u8, crate::DecodeError> {
+    if component as nat >= shifts.len() {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidRegionOfInterest })
+    } else { Ok(shifts[component as int]) }
+}
+
+pub struct Part2ComponentPlanMetadata {
+    pub coding_style: crate::codestream::CodingStyle,
+    pub output_resolution: u8,
+    pub tier1_style: crate::tier1::Tier1CodingStyle,
+    pub bounds: crate::codestream::TileComponentBounds,
+    pub width: u32,
+    pub height: u32,
+    pub x: u32,
+    pub y: u32,
+    pub subbands: Seq<crate::decode::SubbandGeometry>,
+}
+
+pub open spec fn part2_component_plan_metadata(
+    size: &crate::codestream::ImageSize, styles: &crate::codestream::ComponentCodingStyles,
+    quantizations: &crate::codestream::ComponentQuantizations, roi: &crate::codestream::RoiShifts,
+    component: u16, selection: (u16, u8), force: bool,
+) -> Result<Part2ComponentPlanMetadata, crate::DecodeError> {
+    match crate::codestream::component_coding_style_result(styles, component) {
+        Err(error) => Err(error),
+        Ok(style) => if selection.1 > style.decomposition_levels {
+            Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })
+        } else {
+            let output = (style.decomposition_levels - selection.1) as u8;
+            match part2_component_quantization(quantizations, component) {
+                Err(error) => Err(error),
+                Ok(quantization) => match crate::codestream::coding_style_tier1_result(style) {
+                    Err(error) => Err(error),
+                    Ok(initial_style) => {
+                        let tier1_style = if force && ht_block_coding_enabled(initial_style.block_coding) {
+                            part2_tier1_force_style(initial_style, true).1
+                        } else { initial_style };
+                        match part2_tile_component_bounds(crate::codestream::selection_geometry_view(size),
+                            crate::codestream::image_size_component_count(size),
+                            crate::codestream::image_size_component_infos(size), selection.0, component) {
+                            Err(error) => Err(error),
+                            Ok(bounds) => match part2_resolution_geometry(
+                                crate::codestream::selection_geometry_view(size),
+                                crate::codestream::image_size_component_count(size),
+                                crate::codestream::image_size_component_infos(size),
+                                crate::decode::resolution_geometry_style(style), component, output, Some(selection.0),
+                            ) {
+                                Err(error) => Err(error),
+                                Ok(geometry) => {
+                                    let selector = crate::codestream::decomposition_selector_view(style);
+                                    match part2_resolution_downsampling(selector.0, selector.1, output) {
+                                        Err(error) => Err(error),
+                                        Ok(scale) => match part1_image_size_component(
+                                            crate::codestream::image_size_component_count(size),
+                                            crate::codestream::image_size_component_infos(size), component) {
+                                            Err(error) => Err(error),
+                                            Ok(info) => {
+                                                let size_view = crate::codestream::selection_geometry_view(size);
+                                                match part2_selection_ceil(size_view.2, info.x_subsampling as u32) {
+                                                    Err(error) => Err(error),
+                                                    Ok(origin_x) => match part2_selection_ceil(size_view.3, info.y_subsampling as u32) {
+                                                        Err(error) => Err(error),
+                                                        Ok(origin_y) => match part2_selection_ceil(bounds.x0, scale.0) {
+                                                            Err(error) => Err(error),
+                                                            Ok(x0) => match part2_selection_ceil(origin_x, scale.0) {
+                                                                Err(error) => Err(error),
+                                                                Ok(ix0) => match part1_image_checked_u32(x0 as int - ix0 as int) {
+                                                                    Err(error) => Err(error),
+                                                                    Ok(x) => match part2_selection_ceil(bounds.y0, scale.1) {
+                                                                        Err(error) => Err(error),
+                                                                        Ok(y0) => match part2_selection_ceil(origin_y, scale.1) {
+                                                                            Err(error) => Err(error),
+                                                                            Ok(iy0) => match part1_image_checked_u32(y0 as int - iy0 as int) {
+                                                                                Err(error) => Err(error),
+                                                                                Ok(y) => match part2_roi_shift(crate::codestream::roi_shifts_view(roi), component) {
+                                                                                    Err(error) => Err(error),
+                                                                                    Ok(shift) => match part2_component_subbands(
+                                                                                        size, style, &quantization, component, Some(selection.0), shift) {
+                                                                                        Err(error) => Err(error),
+                                                                                        Ok(subbands) => Ok(Part2ComponentPlanMetadata {
+                                                                                            coding_style: style, output_resolution: output,
+                                                                                            tier1_style, bounds, width: geometry.width, height: geometry.height,
+                                                                                            x, y, subbands,
+                                                                                        }),
+                                                                                    },
+                                                                                },
+                                                                            },
+                                                                        },
+                                                                    },
+                                                                },
+                                                            },
+                                                        },
+                                                    },
+                                                }
+                                            },
+                                        },
+                                    }
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        },
+    }
+}
+
 pub type Part2ResolutionStyle = (u8, Seq<crate::codestream::DecompositionDirection>, u16, u16, Seq<(u8, u8)>);
 pub type Part2ComponentResolutionCounts = (u8, Seq<u8>, Seq<u8>);
 
