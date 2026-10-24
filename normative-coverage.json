@@ -4,6 +4,40 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-owned-payload-semantics",
+      "topic": "Complete raw owned payload observations are now the mathematical codec operands, derived from actual source data rather than normalized inputs. Existing Native payload model entries remain thin raw-observation wrappers over the same single owned-data algorithm; actual Rust decoder/public API/bytes/style/selection/budgets/error behavior remain unchanged. Proved actual metadata, F5 byte execution and whole raw-tile outputs are invariant under complete raw observed copies, not opaque allocation identity. Real collector and Clone producers establish those data equalities, so no supplied copy/plan/decoded result witness bank is needed. Exact existing native contract bindings retained; whole outer layout/raw parser/file/F2/F4/final F8 and publication remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_at"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_owned"},
+        {"path": "specs/mod.rs", "symbol": "part2_tile_decode_metadata_owned"},
+        {"path": "specs/mod.rs", "symbol": "part2_progression_tile_plan_owned"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_plan_metadata_owned"},
+        {"path": "specs/mod.rs", "symbol": "part2_decode_planned_tile_components_owned"},
+        {"path": "specs/packet_tile.rs", "symbol": "part1_progression_tile_decode_owned"},
+        {"path": "specs/packet_tile.rs", "symbol": "part1_progression_tile_input_owned"},
+        {"path": "specs/packet_tile.rs", "symbol": "part1_progression_payloads_owned"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"}
+      ],
+      "proof_refs": [
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "tile_metadata_ignores_owned_allocation_identity"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "tile_byte_execution_ignores_owned_allocation_identity"},
+        {"path": "proofs/spec_properties/mod.rs", "symbol": "raw_tile_decoder_ignores_owned_allocation_identity"},
+        {"path": "src/codestream.rs", "symbol": "tile_part_owned_view"},
+        {"path": "src/codestream.rs", "symbol": "tile_parts_owned_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_registry_known"},
+        {"path": "src/codestream.rs", "symbol": "packed_header_presence_matches_view"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_codec_output_is_identical_for_source_parts_and_independent_complete_owned_copies"}
+      ]
+    },
+    {
       "id": "part2-complete-native-owned-tile-collection",
       "topic": "Complete actual same-order owned TilePartPayload copy and ordered per-tile source collection: every raw copy/quantization/progression/MCT/Part2/kernel/nonlinear/registration/length/header/flag/data field derives from original actual owners. Actual manual Clone bodies retain former derived field order and same Vec/Option clone operations; no defaults, normalized metadata, allocation identity claim, assumed clone or successful result bank. Collector clones EVERY original source part before filtering, preserving actual allocation/error/duplicate order and unused invalid fields. Both actual layout paths use sole collector. Complete logical observations, not opaque allocation identity; whole layout/raw-parser/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [

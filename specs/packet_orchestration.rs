@@ -290,8 +290,19 @@ pub open spec fn part1_precinct_packet(
     expected_packet_length: Option<u32>, expected_sop_sequence: u16, decode_tier1: bool,
     code_block_limit: u64, header_limit: u64, pass_limit: u32, byte_limit: u64, input_limit: u64, work_limit: u64,
 ) -> Part1PrecinctPayloadResult {
-    part1_precinct_packet_fields(state,tile_part.data@,&tile_part.component_coding_styles,&tile_part.coding_style,
-        crate::codestream::packed_packet_headers_present(&tile_part.packed_packet_headers),
+    part1_precinct_packet_owned(state,crate::codestream::tile_part_owned_view(tile_part),offset,packed_headers,
+        packed_offset,expected_packet_length,expected_sop_sequence,decode_tier1,
+        code_block_limit,header_limit,pass_limit,byte_limit,input_limit,work_limit)
+}
+
+pub open spec fn part1_precinct_packet_owned(
+    state: Part1PacketPrecinctState, tile_part: super::Part2OwnedTilePart,
+    offset: usize, packed_headers: Seq<u8>, packed_offset: usize,
+    expected_packet_length: Option<u32>, expected_sop_sequence: u16, decode_tier1: bool,
+    code_block_limit:u64,header_limit:u64,pass_limit:u32,byte_limit:u64,input_limit:u64,work_limit:u64,
+) -> Part1PrecinctPayloadResult {
+    part1_precinct_packet_fields(state,tile_part.data,&tile_part.component_coding_styles,&tile_part.coding_style,
+        !matches!(tile_part.packed_packet_headers.source,super::Part1PackedHeaderSource::None),
         offset,packed_headers,packed_offset,expected_packet_length,expected_sop_sequence,decode_tier1,
         code_block_limit,header_limit,pass_limit,byte_limit,input_limit,work_limit)
 }

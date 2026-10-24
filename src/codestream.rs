@@ -3305,16 +3305,16 @@ verus! {
         }
     }
 
-    pub closed spec fn tile_part_owned_view(value: &TilePartPayload<'_>) -> crate::specs::Part2OwnedTilePart {
+    pub open spec fn tile_part_owned_view(value: &TilePartPayload<'_>) -> crate::specs::Part2OwnedTilePart {
         crate::specs::Part2OwnedTilePart {
-            tile: value.tile_index, part: value.tile_part_index, count: value.tile_part_count,
-            coding_style: value.coding_style, quantization: value.quantization, coding_styles: value.component_coding_styles,
-            quantizations: quantization_owner_view(&value.component_quantizations), roi: value.roi_shifts,
-            progression: progression_changes_view(&value.progression_changes),
-            mct: match value.multiple_component_transform { None => None, Some(transform) => Some(multiple_component_transform_view(&transform)) },
-            extensions: owned_extensions_view(&value.part2_extensions), lengths: packet_lengths_view(&value.packet_lengths),
-            headers: packed_packet_headers_view(&value.packed_packet_headers),
-            functional_marker: value.has_functional_header_marker, roi_marker: value.has_roi_marker, data: value.data@,
+            tile_index: value.tile_index, tile_part_index: value.tile_part_index, tile_part_count: value.tile_part_count,
+            coding_style: value.coding_style, quantization: value.quantization, component_coding_styles: value.component_coding_styles,
+            component_quantizations: quantization_owner_view(&value.component_quantizations), roi_shifts: value.roi_shifts,
+            progression_changes: progression_changes_view(&value.progression_changes),
+            multiple_component_transform: match value.multiple_component_transform { None => None, Some(transform) => Some(multiple_component_transform_view(&transform)) },
+            part2_extensions: owned_extensions_view(&value.part2_extensions), packet_lengths: packet_lengths_view(&value.packet_lengths),
+            packed_packet_headers: packed_packet_headers_view(&value.packed_packet_headers),
+            has_functional_header_marker: value.has_functional_header_marker, has_roi_marker: value.has_roi_marker, data: value.data@,
         }
     }
 
@@ -3323,9 +3323,26 @@ verus! {
     }
 
     pub proof fn tile_part_owned_tile_known(value: &TilePartPayload<'_>)
-        ensures tile_part_owned_view(value).tile == value.tile_index,
+        ensures tile_part_owned_view(value).tile_index == value.tile_index,
     {
         reveal(tile_part_owned_view);
+    }
+
+    pub proof fn packed_header_presence_matches_view(value: &PackedPacketHeaders<'_>)
+        ensures packed_packet_headers_present(value)
+            == !matches!(packed_packet_headers_view(value).source, crate::specs::Part1PackedHeaderSource::None),
+    {
+        reveal(packed_packet_headers_present);
+        reveal(packed_packet_headers_view);
+    }
+
+    pub proof fn owned_extensions_registry_known(value: &Part2Extensions)
+        ensures crate::specs::part2_owned_kernel_registry(owned_extensions_view(value)) == part2_kernel_registry(value),
+    {
+        reveal(owned_extensions_view);
+        reveal(owned_kernel_view);
+        reveal(part2_kernel_registry);
+        assert(crate::specs::part2_owned_kernel_registry(owned_extensions_view(value)) =~= part2_kernel_registry(value));
     }
 }
 
