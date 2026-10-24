@@ -25,6 +25,27 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native full and selected typed layout decoding
+
+Actual `typed_layout` now has a complete typed-image Result contract through
+real decoded-to-typed conversion, source-derived nonlinear region collection
+and complete owner mutation. Actual `decode_typed_layout` composes the genuine
+full/selected parsed-layout byte/sample producer with that finalization and
+the original final shape validator. Every typed geometry, descriptor, sample
+and channel-definition field is bound; first errors and allocation/selection/
+budget order are unchanged.
+
+Both public raw codestream entry points still execute the actual byte parser
+first, then use this sole private computational body. No supplied decoded,
+typed, region or sample bank or normalized-layout/coverage/budget premise is
+used. Only new top-level denotations are opaque outside their own producer
+proofs to bound context. Maintained real-byte fixtures and raw layout/NLT/
+selection/limit mutations cover 4,800 complete Results and 160 public-wrapper
+joins. References compose previously independently qualified actual child
+producers and a wide final-shape check, not provided successful outputs.
+The compressed-byte parser itself still lacks a complete functional Result;
+file/F2/F4/final F8 and delivery are not completed by this parsed-layout join.
+
 ## Complete native nonlinear owner mutation
 
 Actual image and component region application refine complete Result/final

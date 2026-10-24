@@ -792,6 +792,17 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_TYPED_LAYOUT_CONTRACTS = {
+    ("src/decode.rs", "typed_layout"): (
+        "part2_typed_layout", _coverage_call("crate::image::decoded_typed_image_outcome", r"\1"), None,
+        r"layout\s*,\s*" + _coverage_call("crate::image::decoded_image_view", "decoded") + r"\s*,\s*limits",
+    ),
+    ("src/decode.rs", "decode_typed_layout"): (
+        "part2_decode_typed_layout", _coverage_call("crate::image::decoded_typed_image_outcome", r"\1"), None,
+        r"input_bytes\s*,\s*layout\s*,\s*limits\s*,\s*requested",
+    ),
+}
+
 _NONLINEAR_APPLICATION_CONTRACTS = {
     ("src/image.rs", "TypedImage::apply_nonlinear_regions"): (
         "part2_apply_nonlinear_regions", r"\1",
@@ -1969,6 +1980,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_LOG_EXP_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_SCALAR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TYPED_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

@@ -896,6 +896,12 @@ class FrameworkTests(WorkingFiles):
             framework._NONLINEAR_APPLICATION_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_actual_full_selected_typed_layout_results_without_banks(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-full-selected-typed-layout-decoding"},
+            framework._TYPED_LAYOUT_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

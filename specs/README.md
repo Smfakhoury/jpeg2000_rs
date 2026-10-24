@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part2_decode_typed_layout` and `part2_typed_layout` bind actual complete
+full/selected parsed-layout to final typed-image execution and every output
+field. Real layout/byte decoding, typed conversion, source region production,
+nonlinear owner mutation and final shape admission compose in source order.
+The public raw byte entry points still parse first; no decoded/typed/region/
+sample bank or normalized-success premise is supplied. Root denotations are
+opaque outside explicit producer reveals, not trusted. The actual raw parser
+functional Result and file/F2/F4/final F8 remain separate.
+
 `part2_apply_nonlinear_regions` and `part2_nlt_component_mutation` bind
 actual complete owner state AND Result, including failed-component rollback
 by original deferred commit and already committed image prefixes. Raw source/
