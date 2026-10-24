@@ -1,5 +1,13 @@
 # Specification audit guide
 
+`part1_validate_typed_output_shape` binds the actual final codestream output
+validator, not only its scalar predicates. It checks raw input/layout/image
+counts and extents first, then every signed or unsigned plane in source order,
+without multiplying dimensions. Origins, descriptors, definitions and sample
+values are intentionally not validated here. All loop/read bounds derive
+internally, without a valid-image premise. Typed nonlinear finalization, raw
+byte parsing and file/F2/F4/final F8 remain separate.
+
 `part2_validate_execution_layout` composes the actual ordered component/tile
 admission from raw parsed headers and logical counts. Component style lookup
 errors, missing metadata, nonempty CBD mismatch and empty CBD bypass retain

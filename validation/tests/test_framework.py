@@ -854,6 +854,12 @@ class FrameworkTests(WorkingFiles):
             framework._LAYOUT_DECODING_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_typed_output_shape_admission_without_valid_image_premises(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-typed-output-shape-admission"},
+            framework._OUTPUT_SHAPE_CONTRACTS, 1,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

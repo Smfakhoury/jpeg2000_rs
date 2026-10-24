@@ -3606,11 +3606,25 @@ pub fn decode_codestream_selected(
     Ok(image)
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_validate_typed_output_shape(
+        input_bytes, layout.tile_parts.len(), layout.info.image_size.components,
+        crate::image::typed_image_value_view(*image),
+    ),
+))]
 fn validate_part1_output_shape(
     input_bytes: usize,
     layout: &CodestreamLayout<'_>,
     image: &TypedImage,
 ) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost components = crate::image::typed_image_component_views(image);
+        let ghost goal = crate::specs::part1_validate_typed_output_shape(
+            input_bytes, layout.tile_parts.len(), layout.info.image_size.components,
+            crate::image::typed_image_value_view(*image),
+        );
+    }
     if !crate::refinement::decode_output_shape_valid(
         input_bytes,
         layout.tile_parts.len(),
@@ -3627,10 +3641,21 @@ fn validate_part1_output_shape(
         verus_keep_ghost,
         verus_spec(
             invariant component <= component_count,
+            component_count == components.len(),
+            components == crate::image::typed_image_component_views(image),
+            goal == crate::specs::part1_validate_typed_output_shape(
+                input_bytes, layout.tile_parts.len(), layout.info.image_size.components,
+                crate::image::typed_image_value_view(*image),
+            ),
+            goal == crate::specs::part1_validate_typed_output_components(components, component as nat),
             decreases component_count - component,
         )
     )]
     while component < component_count {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part1_validate_typed_output_components, 1);
+        }
         let output = image
             .components()
             .get(component)
@@ -3647,6 +3672,10 @@ fn validate_part1_output_shape(
             return Err(invalid_decode());
         }
         component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal_with_fuel(crate::specs::part1_validate_typed_output_components, 1);
     }
     Ok(())
 }
@@ -11272,6 +11301,120 @@ mod tests {
                 actual: 24,
             })
         ));
+    }
+
+    #[test]
+    fn actual_typed_output_admission_checks_raw_header_and_every_signed_unsigned_plane() {
+        use crate::codestream::ComponentInfo;
+        use crate::image::{ChannelAssociation, ChannelDefinition, ChannelType, TypedComponent};
+
+        fn component(width: u32, height: u32, count: usize, signed: bool) -> TypedComponent {
+            let mut component = TypedComponent::from_parts(
+                width,
+                height,
+                ComponentInfo {
+                    precision: 0,
+                    signed: !signed,
+                    x_subsampling: 0,
+                    y_subsampling: u8::MAX,
+                    x_registration: u16::MAX,
+                    y_registration: 17,
+                },
+                if signed {
+                    TypedSamples::Signed(vec![i64::MIN; count])
+                } else {
+                    TypedSamples::Unsigned(vec![u64::MAX; count])
+                },
+            );
+            component.add_channel_definition(ChannelDefinition::new(
+                ChannelType::Opacity,
+                ChannelAssociation::Color(u16::MAX),
+            ));
+            component
+        }
+
+        let bytes = two_tile_codestream();
+        let mut cases = 0;
+        let mut successes = 0;
+        for input_bytes in [0, 1, usize::MAX] {
+            for parts in 0..=2 {
+                let mut layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+                assert_eq!(layout.tile_parts.len(), 2);
+                layout.tile_parts.truncate(parts);
+                for expected in [0, 1, 2, u16::MAX] {
+                    layout.info.image_size.components = expected;
+                    for (width, height) in [
+                        (0, 0),
+                        (0, 3),
+                        (2, 0),
+                        (1, 1),
+                        (7, 11),
+                        (u32::MAX, u32::MAX),
+                    ] {
+                        for variant in 0..64 {
+                            let components = match variant {
+                                0 => Vec::new(),
+                                61 => vec![component(2, 3, 6, true), component(2, 3, 5, false)],
+                                62 => vec![component(2, 3, 5, false), component(2, 3, 6, true)],
+                                63 => vec![component(2, 3, 6, true), component(1, 1, 1, false)],
+                                _ => {
+                                    let index = variant - 1;
+                                    let (w, h) = [
+                                        (0, 0),
+                                        (0, 3),
+                                        (2, 0),
+                                        (1, 1),
+                                        (2, 3),
+                                        (u32::MAX, u32::MAX),
+                                    ][index / 10];
+                                    vec![component(
+                                        w,
+                                        h,
+                                        [0, 1, 5, 6, 7][index / 2 % 5],
+                                        index % 2 == 0,
+                                    )]
+                                }
+                            };
+                            let image =
+                                TypedImage::for_test(width, height, u32::MAX, 17, components);
+                            let valid = input_bytes > 0
+                                && parts > 0
+                                && expected > 0
+                                && usize::from(expected) == image.components().len()
+                                && width > 0
+                                && height > 0
+                                && image.components().iter().all(|output| {
+                                    let count = match output.samples() {
+                                        TypedSamples::Signed(values) => values.len(),
+                                        TypedSamples::Unsigned(values) => values.len(),
+                                    };
+                                    output.width() > 0
+                                        && output.height() > 0
+                                        && count as u128
+                                            == u128::from(output.width())
+                                                * u128::from(output.height())
+                                });
+                            let expected = if valid {
+                                Ok(())
+                            } else {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::InvalidCodeBlock,
+                                })
+                            };
+                            assert_eq!(
+                                validate_part1_output_shape(input_bytes, &layout, &image),
+                                expected
+                            );
+                            cases += 1;
+                            successes += usize::from(valid);
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 13_824);
+        assert_eq!(successes, 60);
     }
 
     #[test]

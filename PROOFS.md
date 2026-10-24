@@ -25,6 +25,19 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native typed output-shape admission
+
+The actual `validate_part1_output_shape` refines
+`part1_validate_typed_output_shape` from raw input length, actual layout and
+typed image. Header/count/extent admission precedes ordered checks of every
+signed or unsigned plane. The original division/remainder area checks avoid
+multiplication overflow; descriptors, origins, channel definitions and sample
+values remain uninspected. Every loop, read and increment bound is proved
+internally without a valid-image or successful-decoder premise. Both public
+codestream entry points still call this single unchanged executable body.
+This closes the final shape consumer only, not typed nonlinear finalization,
+raw parsing, file/F2/F4/final F8 or hosted/main/publication acceptance.
+
 ## Complete native packed-header and packet-length input producers
 
 The actual `PackedPacketHeaders::reassemble` refines
