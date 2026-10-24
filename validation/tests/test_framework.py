@@ -848,6 +848,12 @@ class FrameworkTests(WorkingFiles):
             framework._RAW_TILE_DECODING_CONTRACTS, 1,
         )
 
+    def test_inventory_binds_complete_actual_full_selected_layouts_without_decoded_banks(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-full-selected-layout-decoding"},
+            framework._LAYOUT_DECODING_CONTRACTS, 2,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

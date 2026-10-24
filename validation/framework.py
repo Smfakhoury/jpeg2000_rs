@@ -792,6 +792,17 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_LAYOUT_DECODING_CONTRACTS = {
+    ("src/decode.rs", "decode_layout"): (
+        "part2_decode_layout", _coverage_call("crate::image::decoded_image_outcome", r"\1"), None,
+        r"layout\s*,\s*limits",
+    ),
+    ("src/decode.rs", "decode_layout_selected"): (
+        "part2_decode_layout_selected", _coverage_call("crate::image::decoded_image_outcome", r"\1"), None,
+        r"layout\s*,\s*requested\s*,\s*limits",
+    ),
+}
+
 _TILE_COLLECTION_CONTRACTS = {
     ("src/codestream.rs", "TilePartPayload::clone"): (
         "part2_tile_part_copy", _coverage_call("tile_part_owned_view", r"&\s*\1"), None,
@@ -1832,6 +1843,7 @@ def validate_normative_coverage(
                 or _PROFILE_POLICY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RAW_TILE_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_COLLECTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYOUT_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

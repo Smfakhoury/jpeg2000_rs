@@ -1666,3 +1666,10 @@ copy/result witnesses or a second decoder. Actual cloned inputs with equal
 complete data have proved equal metadata, byte-execution and raw-tile outcomes,
 without equating opaque heap allocations. Native API bindings and actual
 Rust decoding behavior remain unchanged.
+`part2_decode_layout` and `part2_decode_layout_selected` compose actual
+Part2/count/selection admission, source-owned tile collection, real raw
+per-tile decoding from empty accumulation and full/selected assembly.
+Complete fixed image/sample outcomes and first errors contain no supplied
+decoded/planning/copy witness banks or normalized-layout premises. The
+native loops establish all count/work/source/selection frames internally.
+Raw parser/typed/file/F2/F4/final F8 joins remain separate.

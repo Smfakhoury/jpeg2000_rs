@@ -5621,27 +5621,65 @@ pub(crate) fn collect_tile_parts<'data>(
     Ok(output)
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn layout_accumulation_view(
+        prepared: Seq<PreparedTileComponent>, counters: (u64, u64, u64), work: u64,
+    ) -> crate::specs::Part2DecodedLayoutTile {
+        crate::specs::Part2DecodedLayoutTile { prepared: prepared_components_view(prepared), counters, mct_work: work }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_image_outcome(result) == crate::specs::part2_decode_layout_selected(layout, requested, limits),
+))]
 fn decode_layout_selected(
     layout: &CodestreamLayout<'_>,
     requested: &DecodeSelection,
     limits: &ResourceLimits,
 ) -> Result<DecodedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_decode_layout_selected(layout, requested, limits); }
     validate_part2_execution(layout)?;
     let selection = validate_selection(&layout.info.image_size, requested)?;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(validated_selection_view);
+        reveal(validated_selection_outcome);
+        assert(selection.region@.len() == 4);
+        assert([selection.region@[0], selection.region@[1], selection.region@[2], selection.region@[3]] == selection.region);
+    }
     let mut prepared = Vec::new();
     let mut total_packets = 0_u64;
     let mut total_precincts = 0_u64;
     let mut total_code_blocks = 0_u64;
     let mut total_mct_work = 0_u64;
     let mut selected_tile = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(prepared_components_view(prepared@) =~= Seq::empty());
+        reveal(layout_accumulation_view);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant selected_tile <= selection.tiles.len(),
+                goal == crate::specs::part2_decode_layout_selected(layout, requested, limits),
+                goal == crate::specs::part2_selected_layout_tiles(
+                    &layout.info.image_size, codestream::tile_parts_owned_view(layout.tile_parts@),
+                    codestream::codestream_profile_capabilities(&layout.info.profile), selection.tiles@,
+                    selection.region, selection.discard_levels, limits, selected_tile as nat,
+                    layout_accumulation_view(prepared@, (total_packets, total_precincts, total_code_blocks), total_mct_work),
+                ),
             decreases selection.tiles.len() - selected_tile,
         )
     )]
     while selected_tile < selection.tiles.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(layout_accumulation_view);
+            reveal_with_fuel(crate::specs::part2_selected_layout_tiles, 1);
+        }
         let tile_index = *selection
             .tiles
             .get(selected_tile)
@@ -5667,7 +5705,8 @@ fn decode_layout_selected(
             .checked_add(1)
             .ok_or_else(arithmetic_overflow)?;
     }
-
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_selected_layout_tiles, 1); reveal(layout_accumulation_view); }
     assemble_prepared_components(
         &layout.info.image_size,
         &prepared,
@@ -6335,17 +6374,22 @@ pub(crate) fn decode_planned_tile_components(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures crate::image::decoded_image_outcome(result) == crate::specs::part2_decode_layout(layout, limits),
+))]
 fn decode_layout(
     layout: &CodestreamLayout<'_>,
     limits: &ResourceLimits,
 ) -> Result<DecodedImage, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_decode_layout(layout, limits); }
     validate_part2_execution(layout)?;
     let tile_count = layout.info.image_size.tile_count()?;
     if tile_count > u64::from(u16::MAX) + 1 {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::InvalidImageGeometry,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        });
     }
     let mut prepared = Vec::new();
     let mut total_packets = 0_u64;
@@ -6353,15 +6397,32 @@ fn decode_layout(
     let mut total_code_blocks = 0_u64;
     let mut total_mct_work = 0_u64;
     let mut tile = 0_u64;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(prepared_components_view(prepared@) =~= Seq::empty());
+        reveal(layout_accumulation_view);
+    }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant tile <= tile_count,
+                tile_count <= u16::MAX as u64 + 1,
+                goal == crate::specs::part2_decode_layout(layout, limits),
+                goal == crate::specs::part2_full_layout_tiles(
+                    &layout.info.image_size, codestream::tile_parts_owned_view(layout.tile_parts@),
+                    codestream::codestream_profile_capabilities(&layout.info.profile), limits, tile_count, tile,
+                    layout_accumulation_view(prepared@, (total_packets, total_precincts, total_code_blocks), total_mct_work),
+                ),
             decreases tile_count - tile,
         )
     )]
     while tile < tile_count {
-        let tile_index = u16::try_from(tile).map_err(|_| arithmetic_overflow())?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_full_layout_tiles, 1); reveal(layout_accumulation_view); }
+        let tile_index = match u16::try_from(tile) {
+            Ok(index) => index,
+            Err(_) => return Err(arithmetic_overflow()),
+        };
         let tile_parts = collect_tile_parts(&layout.tile_parts, tile_index)?;
         let decoded = decode_tile_parts_at(
             &layout.info.image_size,
@@ -6381,7 +6442,8 @@ fn decode_layout(
         total_mct_work = decoded.mct_work;
         tile = tile.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_full_layout_tiles, 1); reveal(layout_accumulation_view); }
     assemble_prepared_components(&layout.info.image_size, &prepared, None, limits)
 }
 
@@ -8854,6 +8916,146 @@ mod tests {
         }
         assert_eq!(cases, 1_440);
         assert!(successes > 10 && nonzero > 0);
+    }
+
+    fn reference_complete_layout(
+        layout: &CodestreamLayout<'_>,
+        requested: Option<&DecodeSelection>,
+        limits: &ResourceLimits,
+    ) -> Result<DecodedImage, DecodeError> {
+        validate_part2_execution(layout)?;
+        let (tiles, selection) = match requested {
+            None => {
+                let count = layout.info.image_size.tile_count()?;
+                if count > u64::from(u16::MAX) + 1 {
+                    return Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidImageGeometry,
+                    });
+                }
+                (
+                    (0..count)
+                        .map(|index| u16::try_from(index).unwrap())
+                        .collect::<Vec<_>>(),
+                    None,
+                )
+            }
+            Some(requested) => {
+                let selection = validate_selection(&layout.info.image_size, requested)?;
+                (
+                    selection.tiles,
+                    Some((selection.region, selection.discard_levels)),
+                )
+            }
+        };
+        let mut prepared = Vec::new();
+        let mut counters = (0, 0, 0);
+        let mut work = 0;
+        for tile in tiles {
+            let parts = layout
+                .tile_parts
+                .iter()
+                .filter(|part| part.tile_index == tile)
+                .cloned()
+                .collect::<Vec<_>>();
+            let decoded = reference_raw_tile_decode(
+                &layout.info.image_size,
+                tile,
+                &parts,
+                &layout.info.profile,
+                selection.map(|value| value.1),
+                limits,
+                prepared,
+                counters,
+                work,
+            )?;
+            prepared = decoded.prepared;
+            counters = decoded.counters;
+            work = decoded.mct_work;
+        }
+        assemble_prepared_components(&layout.info.image_size, &prepared, selection, limits)
+    }
+
+    #[test]
+    fn actual_full_and_selected_layout_decode_derive_complete_images_from_real_source_parts_and_empty_state()
+     {
+        let qcd = [0x40, 0x40, 0x48, 0x48, 0x50, 0x48, 0x48, 0x50];
+        let fixtures = [
+            prepared_codestream(5, 3, 1, &qcd, &[0, 0, 0]),
+            two_tile_codestream(),
+            component_override_codestream(),
+            add_single_component_mct(prepared_codestream(1, 1, 1, &qcd, &[0, 0, 0]), 2, 3),
+        ];
+        let requests = [
+            DecodeSelection::full_image(),
+            DecodeSelection::full_image().with_discard_levels(1),
+            DecodeSelection::full_image().with_discard_levels(2),
+            DecodeSelection::full_image().with_discard_levels(u8::MAX),
+            DecodeSelection::tile(0),
+            DecodeSelection::tile(1),
+            DecodeSelection::tile(u16::MAX),
+            DecodeSelection::tiles(Vec::new()),
+            DecodeSelection::tiles(vec![0, 1]),
+            DecodeSelection::tiles(vec![1, 0]),
+            DecodeSelection::tiles(vec![0, 0]),
+            DecodeSelection::full_image().with_region(crate::ImageRegion::new(1, 0, 1, 1)),
+            DecodeSelection::full_image().with_region(crate::ImageRegion::new(0, 0, 0, 0)),
+            DecodeSelection::full_image().with_region(crate::ImageRegion::new(u32::MAX, 0, 2, 1)),
+        ];
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED.with_maximum_packets(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_decoded_bytes(0)
+                .unwrap(),
+        ];
+        let mut full_cases = 0;
+        let mut selected_cases = 0;
+        let mut successes = 0;
+        for bytes in fixtures {
+            for variant in 0..9 {
+                let mut layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+                match variant {
+                    0 => {}
+                    1 => layout.tile_parts.clear(),
+                    2 => layout.tile_parts.reverse(),
+                    3 => {
+                        let duplicate = layout.tile_parts[0].clone();
+                        layout.tile_parts.push(duplicate);
+                    }
+                    4 => layout.info.image_size.tiles_across = 0,
+                    5 => layout.info.image_size.tile_width = 0,
+                    6 => {
+                        layout.info.image_size.tiles_across = 65_537;
+                        layout.info.image_size.tiles_down = 1;
+                    }
+                    7 => layout.info.image_size.components = 0,
+                    _ => {
+                        layout.info.image_size.width = u32::MAX;
+                        layout.info.image_size.x_origin = 1;
+                    }
+                }
+                for limit in &limits {
+                    let expected = reference_complete_layout(&layout, None, limit);
+                    assert_eq!(decode_layout(&layout, limit), expected);
+                    successes += usize::from(expected.is_ok());
+                    full_cases += 1;
+                    for requested in &requests {
+                        let expected = reference_complete_layout(&layout, Some(requested), limit);
+                        assert_eq!(decode_layout_selected(&layout, requested, limit), expected);
+                        successes += usize::from(expected.is_ok());
+                        selected_cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(full_cases, 180);
+        assert_eq!(selected_cases, 2_520);
+        assert!(successes > 10);
     }
 
     fn reference_standard_prepare(
