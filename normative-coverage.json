@@ -4,6 +4,42 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-raw-siz-geometry",
+      "topic": "Complete actual Parser::parse_siz Result/every ImageSize field, entire private component array including unused zeros and raw r_siz from actual raw Segment payload/offset and real limits. Preserve header-length then first-tile overflow before combined geometry/expected-length, component cap before ordered descriptors, precision/subsampling before capacity, sticky paired uniform flags, then width/height/pixel/ceil/tile limits in native order. Marker identity remains intentionally unvalidated in this helper; the actual parser checks SIZ before calling. All array/loop/arithmetic bounds and byte/word values derive internally without normalized headers/images, supplied geometry/result banks or successful-admission premises. Shared exact malformed-offset/word/ceiling helpers and cap observers are proved, no policy/trust/pin/budget change. Remaining coding/quantization/Part2/tile/layout parser-to-output/file/F2/F4/final F8 and delivery stay separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_siz"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_here"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_siz"},
+        {"path": "specs/mod.rs", "symbol": "part1_siz_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_siz_components"},
+        {"path": "specs/mod.rs", "symbol": "part1_siz_components_initial"},
+        {"path": "specs/mod.rs", "symbol": "part1_siz_finish"},
+        {"path": "specs/mod.rs", "symbol": "part1_empty_component_info"},
+        {"path": "specs/mod.rs", "symbol": "part1_siz_word"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_u32"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"},
+        {"path": "specs/mod.rs", "symbol": "part1_image_ceil_div"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_siz"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_at"},
+        {"path": "src/codestream.rs", "symbol": "read_u32"},
+        {"path": "src/codestream.rs", "symbol": "ceil_div"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parsed_image_size_view"},
+        {"path": "src/codestream.rs", "symbol": "parsed_siz_outcome"},
+        {"path": "src/codestream.rs", "symbol": "siz_components_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_raw_siz_derives_every_image_field_uniform_policy_unused_slot_and_first_limit_error"}
+      ]
+    },
+    {
       "id": "part1-complete-native-codestream-reader",
       "topic": "Complete actual raw codestream reader input admission/initialization, marker/standalone/segment/EOC Result and every parser field on success AND error: actual source bytes/limits/cursor/work/packet counters. Derive all returned marker/payload bytes from source; preserve peek-before-charge, segment-charge-before-order/length admission, standalone cursor-before-charge, EOC per-candidate charge-before-match and unconsumed found marker, exact offsets and partial resource/error commits. No supplied parsed segment/layout/result bank, normalized cursor/input, valid marker or successful budget premise. Sole free initializer avoids unsupported pinned static attributes; explicit checked matches and equivalent trailing-byte error preserve original operations/state. Marker-specific metadata/layout/parser-to-output/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [

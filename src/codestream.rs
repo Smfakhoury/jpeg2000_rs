@@ -7,7 +7,7 @@ use crate::{
 use vstd::prelude::*;
 
 const MAX_QUANTIZATION_STEPS: usize = 97;
-const MAX_COMPONENTS: usize = 64;
+pub(crate) const MAX_COMPONENTS: usize = 64;
 
 const SOC: u16 = 0xff4f;
 const SIZ: u16 = 0xff51;
@@ -86,6 +86,13 @@ verus! {
     pub closed spec fn selection_geometry_view(size: &ImageSize) -> crate::specs::Part2SelectionGeometry {
         (size.width, size.height, size.x_origin, size.y_origin, size.tile_width, size.tile_height,
             size.tile_x_origin, size.tile_y_origin, size.tiles_across, size.tiles_down)
+    }
+
+    pub(crate) closed spec fn parsed_image_size_view(size: &ImageSize) -> crate::specs::Part1ParsedImageSize {
+        crate::specs::Part1ParsedImageSize {
+            geometry: selection_geometry_view(size), components: size.components,
+            uniform_bit_depth: size.uniform_bit_depth, uniform_signed: size.uniform_signed, infos: size.component_info@,
+        }
     }
 
     pub(crate) proof fn selection_geometry_known_fields(size: &ImageSize)
@@ -3693,6 +3700,18 @@ verus! {
         -> Result<crate::specs::Part1CodestreamSegment, DecodeError>
     {
         match result { Err(error) => Err(error), Ok(segment) => Ok(segment_view(segment)) }
+    }
+
+    closed spec fn parsed_siz_outcome(result: Result<(ImageSize, u16), DecodeError>)
+        -> Result<(crate::specs::Part1ParsedImageSize, u16), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((size, r_siz)) => Ok((parsed_image_size_view(&size), r_siz)) }
+    }
+
+    closed spec fn siz_components_view(
+        infos: Seq<ComponentInfo>, offset: usize, component: u16, first_precision: u8, first_signed: bool, uniform: bool,
+    ) -> crate::specs::Part1SizComponents {
+        crate::specs::Part1SizComponents { infos, offset, component, first_precision, first_signed, uniform }
     }
 }
 
@@ -7860,12 +7879,17 @@ impl<'a> Parser<'a> {
         Ok((count, total))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_siz_outcome(result) == crate::specs::part1_parse_siz(segment_view(segment), self.limits),
+    ))]
     fn parse_siz(&self, segment: Segment<'a>) -> Result<(ImageSize, u16), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_siz);
+            reveal(crate::specs::part1_siz_header);
+        }
         if segment.payload.len() < 36 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let xsiz = read_u32([
             segment.payload[2],
@@ -7916,30 +7940,30 @@ impl<'a> Parser<'a> {
             segment.payload[33],
         ]);
         let components = read_u16([segment.payload[34], segment.payload[35]]);
-        let first_tile_x1 = xtosiz.checked_add(xtsiz).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        let first_tile_y1 = ytosiz.checked_add(ytsiz).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        let component_bytes = usize::from(components).checked_mul(3).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        let expected_length = 36_usize.checked_add(component_bytes).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        let first_tile_x1 = match xtosiz.checked_add(xtsiz) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let first_tile_y1 = match ytosiz.checked_add(ytsiz) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let component_bytes = match usize::from(components).checked_mul(3) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let expected_length = match 36_usize.checked_add(component_bytes) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if segment.payload.len() != expected_length
             || xsiz <= xosiz
             || ysiz <= yosiz
@@ -7951,38 +7975,81 @@ impl<'a> Parser<'a> {
             || first_tile_y1 <= yosiz
             || components == 0
         {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidImageGeometry,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidImageGeometry));
         }
         if components > self.limits.maximum_components() {
-            return Err(DecodeError::limit(
-                Resource::Components,
-                u64::from(self.limits.maximum_components()),
-                u64::from(components),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Components,
+                limit: u64::from(self.limits.maximum_components()),
+                actual: u64::from(components),
+            });
         }
 
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost h = crate::specs::Part1SizHeader {
+                xsiz, ysiz, xosiz, yosiz, xtsiz, ytsiz, xtosiz, ytosiz, components,
+                r_siz: crate::specs::part1_marker_value(segment.payload@[0], segment.payload@[1]),
+            };
+            let ghost component_goal = crate::specs::part1_siz_components(
+                segment.payload@, segment.offset, crate::specs::part1_siz_components_initial(),
+            );
+            let ghost goal = crate::specs::part1_parse_siz(segment_view(segment), self.limits);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(crate::specs::part1_siz_header(segment_view(segment), self.limits) == Ok(h)); }
         let mut component_offset = 36_usize;
         let mut first_precision = 0_u8;
         let mut first_signed = false;
         let mut components_uniform = true;
         let mut component_index = 0_u16;
-        let mut component_info = [ComponentInfo::default(); MAX_COMPONENTS];
+        let mut component_info = [ComponentInfo {
+            precision: 0,
+            signed: false,
+            x_subsampling: 0,
+            y_subsampling: 0,
+            x_registration: 0,
+            y_registration: 0,
+        }; MAX_COMPONENTS];
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(component_info@ =~= Seq::new(MAX_COMPONENTS as nat, |i: int| crate::specs::part1_empty_component_info()));
+            assert(siz_components_view(component_info@, component_offset, component_index,
+                first_precision, first_signed, components_uniform) == crate::specs::part1_siz_components_initial());
+        }
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant component_offset <= segment.payload.len(),
+                component_index <= components,
+                component_offset as int == 36 + 3 * component_index as int,
+                segment.payload.len() as int == 36 + 3 * components as int,
+                h == (crate::specs::Part1SizHeader {
+                    xsiz, ysiz, xosiz, yosiz, xtsiz, ytsiz, xtosiz, ytosiz, components,
+                    r_siz: crate::specs::part1_marker_value(segment.payload@[0], segment.payload@[1]),
+                }),
+                crate::specs::part1_siz_header(segment_view(segment), self.limits) == Ok(h),
+                xsiz > xosiz, ysiz > yosiz, xosiz >= xtosiz, yosiz >= ytosiz, xtsiz > 0, ytsiz > 0,
+                goal == crate::specs::part1_parse_siz(segment_view(segment), self.limits),
+                goal == match component_goal {
+                    Err(error) => Err(error),
+                    Ok(state) => crate::specs::part1_siz_finish(h, state, segment.offset, self.limits),
+                },
+                component_goal == crate::specs::part1_siz_components(
+                    segment.payload@, segment.offset,
+                    siz_components_view(component_info@, component_offset, component_index, first_precision, first_signed, components_uniform),
+                ),
                 decreases segment.payload.len() - component_offset,
             )
         )]
         while component_offset < segment.payload.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part1_parse_siz);
+                reveal_with_fuel(crate::specs::part1_siz_components, 1);
+            }
             if segment.payload.len() - component_offset < 3 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
             }
             let precision_value = u16::from(segment.payload[component_offset] & 0x7f) + 1;
             let signed = segment.payload[component_offset] & 0x80 != 0;
@@ -7990,23 +8057,19 @@ impl<'a> Parser<'a> {
                 || segment.payload[component_offset + 1] == 0
                 || segment.payload[component_offset + 2] == 0
             {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidImageGeometry,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidImageGeometry));
             }
-            let precision = u8::try_from(precision_value).map_err(|_| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            let precision = match u8::try_from(precision_value) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
             let info_index = usize::from(component_index);
             if info_index >= component_info.len() {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidImageGeometry,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidImageGeometry));
             }
             component_info[info_index] = ComponentInfo {
                 precision,
@@ -8022,68 +8085,73 @@ impl<'a> Parser<'a> {
             } else if precision != first_precision || signed != first_signed {
                 components_uniform = false;
             }
-            component_index = component_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            component_offset = component_offset.checked_add(3).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            component_index = match component_index.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            component_offset = match component_offset.checked_add(3) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part1_siz_components, 1);
+            reveal(crate::specs::part1_siz_finish);
         }
 
         let width = xsiz - xosiz;
         let height = ysiz - yosiz;
         if width > self.limits.maximum_width() {
-            return Err(DecodeError::limit(
-                Resource::Width,
-                u64::from(self.limits.maximum_width()),
-                u64::from(width),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Width,
+                limit: u64::from(self.limits.maximum_width()),
+                actual: u64::from(width),
+            });
         }
         if height > self.limits.maximum_height() {
-            return Err(DecodeError::limit(
-                Resource::Height,
-                u64::from(self.limits.maximum_height()),
-                u64::from(height),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Height,
+                limit: u64::from(self.limits.maximum_height()),
+                actual: u64::from(height),
+            });
         }
-        let pixels = u64::from(width)
-            .checked_mul(u64::from(height))
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+        let pixels = match u64::from(width).checked_mul(u64::from(height)) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if pixels > self.limits.maximum_pixels() {
-            return Err(DecodeError::limit(
-                Resource::Pixels,
-                self.limits.maximum_pixels(),
-                pixels,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Pixels,
+                limit: self.limits.maximum_pixels(),
+                actual: pixels,
+            });
         }
 
         let tiles_across = ceil_div(xsiz - xtosiz, xtsiz)?;
         let tiles_down = ceil_div(ysiz - ytosiz, ytsiz)?;
-        let tiles = u64::from(tiles_across)
-            .checked_mul(u64::from(tiles_down))
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+        let tiles = match u64::from(tiles_across).checked_mul(u64::from(tiles_down)) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if tiles > u64::from(self.limits.maximum_tiles()) {
-            return Err(DecodeError::limit(
-                Resource::Tiles,
-                u64::from(self.limits.maximum_tiles()),
-                tiles,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Tiles,
+                limit: u64::from(self.limits.maximum_tiles()),
+                actual: tiles,
+            });
         }
 
         Ok((
@@ -8871,8 +8939,15 @@ impl<'a> Parser<'a> {
         ensures result == crate::specs::part1_codestream_malformed(self.position, kind),
     ))]
     fn malformed_here(&self, kind: MalformedKind) -> DecodeError {
+        self.malformed_at(self.position, kind)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_codestream_malformed(value, kind),
+    ))]
+    fn malformed_at(&self, value: usize, kind: MalformedKind) -> DecodeError {
         DecodeError::MalformedInput {
-            offset: self.offset(self.position),
+            offset: self.offset(value),
             kind,
         }
     }
@@ -9654,12 +9729,15 @@ const fn quantization_styles_equal(left: QuantizationStyle, right: QuantizationS
     )
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_image_ceil_div(value, divisor),
+))]
 fn ceil_div(value: u32, divisor: u32) -> Result<u32, DecodeError> {
     if divisor == 0 {
-        return Err(DecodeError::malformed(
-            0,
-            MalformedKind::InvalidImageGeometry,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidImageGeometry,
+        });
     }
 
     Ok(crate::refinement::ceil_div_u32(value, divisor))
@@ -9711,6 +9789,9 @@ fn read_u16(bytes: [u8; 2]) -> u16 {
     crate::refinement::marker_value(bytes[0], bytes[1])
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_codestream_u32(bytes[0], bytes[1], bytes[2], bytes[3]),
+))]
 fn read_u32(bytes: [u8; 4]) -> u32 {
     (u32::from(bytes[0]) << 24)
         | (u32::from(bytes[1]) << 16)
@@ -15046,6 +15127,334 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn actual_raw_siz_derives_every_image_field_uniform_policy_unused_slot_and_first_limit_error() {
+        fn malformed(offset: usize, kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind,
+            }
+        }
+        fn payload(geometry: [u32; 8], components: &[[u8; 3]], r_siz: u16) -> Vec<u8> {
+            let mut bytes = r_siz.to_be_bytes().to_vec();
+            for coordinate in geometry {
+                bytes.extend(coordinate.to_be_bytes());
+            }
+            bytes.extend(u16::try_from(components.len()).unwrap().to_be_bytes());
+            for component in components {
+                bytes.extend(component);
+            }
+            bytes
+        }
+        fn reference(
+            bytes: &[u8],
+            offset: usize,
+            limits: &ResourceLimits,
+        ) -> Result<(ImageSize, u16), DecodeError> {
+            if bytes.len() < 36 {
+                return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
+            }
+            let mut words = bytes[2..34]
+                .chunks_exact(4)
+                .map(|word| u32::from_be_bytes(word.try_into().unwrap()));
+            let xsiz = words.next().unwrap();
+            let ysiz = words.next().unwrap();
+            let xosiz = words.next().unwrap();
+            let yosiz = words.next().unwrap();
+            let xtsiz = words.next().unwrap();
+            let ytsiz = words.next().unwrap();
+            let xtosiz = words.next().unwrap();
+            let ytosiz = words.next().unwrap();
+            let count = u16::from_be_bytes([bytes[34], bytes[35]]);
+            let first_x = u64::from(xtosiz) + u64::from(xtsiz);
+            let first_y = u64::from(ytosiz) + u64::from(ytsiz);
+            let component_bytes = u128::from(count) * 3;
+            if first_x > u64::from(u32::MAX)
+                || first_y > u64::from(u32::MAX)
+                || component_bytes > usize::MAX as u128
+                || component_bytes + 36 > usize::MAX as u128
+            {
+                return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+            }
+            if bytes.len() as u128 != 36 + component_bytes
+                || xsiz <= xosiz
+                || ysiz <= yosiz
+                || xtsiz == 0
+                || ytsiz == 0
+                || xtosiz > xosiz
+                || ytosiz > yosiz
+                || first_x <= u64::from(xosiz)
+                || first_y <= u64::from(yosiz)
+                || count == 0
+            {
+                return Err(malformed(offset, MalformedKind::InvalidImageGeometry));
+            }
+            if count > limits.maximum_components() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Components,
+                    limit: u64::from(limits.maximum_components()),
+                    actual: u64::from(count),
+                });
+            }
+            let mut infos = [ComponentInfo::default(); MAX_COMPONENTS];
+            let mut first = None;
+            let mut uniform = true;
+            for (index, entry) in bytes[36..].chunks_exact(3).enumerate() {
+                let precision = u16::from(entry[0] % 128) + 1;
+                let signed = entry[0] >= 128;
+                if precision > 38 || entry[1] == 0 || entry[2] == 0 || index >= infos.len() {
+                    return Err(malformed(offset, MalformedKind::InvalidImageGeometry));
+                }
+                let precision = u8::try_from(precision).unwrap();
+                infos[index] = ComponentInfo {
+                    precision,
+                    signed,
+                    x_subsampling: entry[1],
+                    y_subsampling: entry[2],
+                    x_registration: 0,
+                    y_registration: 0,
+                };
+                match first {
+                    None => first = Some((precision, signed)),
+                    Some(expected) if expected != (precision, signed) => uniform = false,
+                    _ => {}
+                }
+            }
+            let width = xsiz - xosiz;
+            let height = ysiz - yosiz;
+            if width > limits.maximum_width() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Width,
+                    limit: u64::from(limits.maximum_width()),
+                    actual: u64::from(width),
+                });
+            }
+            if height > limits.maximum_height() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Height,
+                    limit: u64::from(limits.maximum_height()),
+                    actual: u64::from(height),
+                });
+            }
+            let pixels = u128::from(width) * u128::from(height);
+            if pixels > u128::from(u64::MAX) {
+                return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+            }
+            if pixels > u128::from(limits.maximum_pixels()) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Pixels,
+                    limit: limits.maximum_pixels(),
+                    actual: pixels as u64,
+                });
+            }
+            let across = u64::from(xsiz - xtosiz).div_ceil(u64::from(xtsiz));
+            let down = u64::from(ysiz - ytosiz).div_ceil(u64::from(ytsiz));
+            let tiles = u128::from(across) * u128::from(down);
+            if tiles > u128::from(u64::MAX) {
+                return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+            }
+            if tiles > u128::from(limits.maximum_tiles()) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Tiles,
+                    limit: u64::from(limits.maximum_tiles()),
+                    actual: tiles as u64,
+                });
+            }
+            let first = first.unwrap();
+            Ok((
+                ImageSize {
+                    width,
+                    height,
+                    x_origin: xosiz,
+                    y_origin: yosiz,
+                    components: count,
+                    uniform_bit_depth: if uniform { Some(first.0) } else { None },
+                    uniform_signed: if uniform { Some(first.1) } else { None },
+                    tile_width: xtsiz,
+                    tile_height: ytsiz,
+                    tile_x_origin: xtosiz,
+                    tile_y_origin: ytosiz,
+                    tiles_across: u32::try_from(across).unwrap(),
+                    tiles_down: u32::try_from(down).unwrap(),
+                    component_info: infos,
+                },
+                u16::from_be_bytes([bytes[0], bytes[1]]),
+            ))
+        }
+        let geometries = [
+            [17, 11, 3, 1, 8, 6, 0, 0],
+            [u32::MAX, u32::MAX, 0, 0, u32::MAX, u32::MAX, 0, 0],
+            [0; 8],
+            [3, 11, 3, 1, 8, 6, 0, 0],
+            [17, 1, 3, 1, 8, 6, 0, 0],
+            [17, 11, 3, 1, 0, 6, 0, 0],
+            [17, 11, 3, 1, 8, 0, 0, 0],
+            [17, 11, 3, 1, 8, 6, 4, 0],
+            [17, 11, 3, 1, 8, 6, 0, 2],
+            [17, 11, 3, 1, 2, 6, 0, 0],
+            [17, 11, 3, 1, 8, 1, 0, 0],
+            [17, 11, 3, 1, 1, 6, u32::MAX, 0],
+            [17, 11, 3, 1, 8, 1, 0, u32::MAX],
+            [1_000, 1_000, 0, 0, 1, 1, 0, 0],
+            [1, 1, 0, 0, 1, 1, 0, 0],
+            [17, 11, 3, 1, 8, 6, 3, 1],
+        ];
+        let components = [
+            vec![],
+            vec![[7, 1, 1]],
+            vec![[0x87, 2, 3]],
+            vec![[7, 1, 1], [8, 3, 2]],
+            vec![[7, 1, 1], [0x87, 1, 1]],
+            vec![[37, 255, 255]],
+            vec![[38, 1, 1]],
+            vec![[255, 1, 1]],
+            vec![[7, 0, 1]],
+            vec![[7, 1, 0]],
+            vec![[7, 1, 1], [8, 1, 1], [7, 1, 1]],
+            vec![[7, 1, 1]; MAX_COMPONENTS],
+            vec![[7, 1, 1]; MAX_COMPONENTS + 1],
+        ];
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_geometry_limits_for_test(
+                1,
+                base.maximum_width(),
+                base.maximum_height(),
+                base.maximum_pixels(),
+                base.maximum_tiles(),
+            ),
+            base.with_geometry_limits_for_test(
+                base.maximum_components(),
+                8,
+                base.maximum_height(),
+                base.maximum_pixels(),
+                base.maximum_tiles(),
+            ),
+            base.with_geometry_limits_for_test(
+                base.maximum_components(),
+                base.maximum_width(),
+                4,
+                base.maximum_pixels(),
+                base.maximum_tiles(),
+            ),
+            base.with_geometry_limits_for_test(
+                base.maximum_components(),
+                base.maximum_width(),
+                base.maximum_height(),
+                16,
+                base.maximum_tiles(),
+            ),
+            base.with_geometry_limits_for_test(
+                base.maximum_components(),
+                base.maximum_width(),
+                base.maximum_height(),
+                base.maximum_pixels(),
+                2,
+            ),
+            base.with_geometry_limits_for_test(u16::MAX, 8, 4, 16, 2),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for geometry in geometries {
+            for entries in &components {
+                for r_siz in [0, 1, 0x4000, u16::MAX] {
+                    for variant in 0..4 {
+                        let mut bytes = payload(geometry, entries, r_siz);
+                        match variant {
+                            0 => {}
+                            1 => bytes.truncate(35),
+                            2 => bytes.push(0),
+                            _ => bytes[34..36].copy_from_slice(&u16::MAX.to_be_bytes()),
+                        }
+                        for limit in &limits {
+                            let parser = new_parser(&[], limit).unwrap();
+                            for offset in [0, 17, usize::MAX] {
+                                let expected = reference(&bytes, offset, limit);
+                                assert_eq!(
+                                    parser.parse_siz(Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    }),
+                                    expected
+                                );
+                                successes += usize::from(expected.is_ok());
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 69_888);
+        assert!(successes > 100);
+        let mut descriptor_cases = 0;
+        let limit = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limit).unwrap();
+        for ssiz in 0..=u8::MAX {
+            for x in [0, 1, u8::MAX] {
+                for y in [0, 1, u8::MAX] {
+                    let bytes = payload(geometries[0], &[[ssiz, x, y]], u16::MAX);
+                    assert_eq!(
+                        parser.parse_siz(Segment {
+                            marker: SIZ,
+                            offset: 19,
+                            payload: &bytes
+                        }),
+                        reference(&bytes, 19, &limit)
+                    );
+                    descriptor_cases += 1;
+                }
+            }
+        }
+        assert_eq!(descriptor_cases, 2_304);
+        let mut words = 0;
+        for base in [
+            [0; 4],
+            [u8::MAX; 4],
+            [0x12, 0x34, 0x56, 0x78],
+            [0x80, 0, 0, 1],
+        ] {
+            for index in 0..4 {
+                for byte in 0..=u8::MAX {
+                    let mut bytes = base;
+                    bytes[index] = byte;
+                    assert_eq!(read_u32(bytes), u32::from_be_bytes(bytes));
+                    words += 1;
+                }
+            }
+        }
+        assert_eq!(words, 4_096);
+        for value in [0, 1, 2, u32::MAX - 1, u32::MAX] {
+            for divisor in [0, 1, 2, 3, u32::MAX] {
+                let expected = if divisor == 0 {
+                    Err(malformed(0, MalformedKind::InvalidImageGeometry))
+                } else {
+                    Ok(u32::try_from(u64::from(value).div_ceil(u64::from(divisor))).unwrap())
+                };
+                assert_eq!(ceil_div(value, divisor), expected);
+            }
+        }
+        let bytes = payload(geometries[0], &components[4], 0x4000);
+        let mut input = vec![255, 81];
+        input.extend(u16::try_from(bytes.len() + 2).unwrap().to_be_bytes());
+        input.extend(&bytes);
+        let mut parser = new_parser(&input, &limit).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let actual = parser.parse_siz(segment).unwrap();
+        assert_eq!(actual, reference(&bytes, 0, &limit).unwrap());
+        assert_eq!(actual.0.uniform_bit_depth, None);
+        assert_eq!(actual.0.uniform_signed, None);
+        assert!(
+            actual.0.component_info[2..]
+                .iter()
+                .all(|info| *info == ComponentInfo::default())
+        );
+        assert_eq!(parser.work_units, 1);
+        assert_eq!(parser.position, input.len());
     }
 
     #[test]

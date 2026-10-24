@@ -908,6 +908,12 @@ class FrameworkTests(WorkingFiles):
             framework._CODESTREAM_READER_CONTRACTS, 10,
         )
 
+    def test_inventory_binds_actual_raw_siz_full_geometry_and_component_payload_result(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-raw-siz-geometry"},
+            framework._SIZ_GEOMETRY_CONTRACTS, 4,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
