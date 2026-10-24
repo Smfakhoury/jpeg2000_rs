@@ -872,6 +872,12 @@ class FrameworkTests(WorkingFiles):
             framework._NONLINEAR_ARITHMETIC_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_actual_raw_nonlinear_lut_samples_without_lookup_result_banks(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-nonlinear-lut"},
+            framework._NONLINEAR_LUT_CONTRACTS, 3,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
