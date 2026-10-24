@@ -792,6 +792,21 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_ARITHMETIC_CONTRACTS = {
+    ("src/image.rs", "nlt_round_ratio"): (
+        "part2_nlt_round_ratio", r"\1", None, r"numerator\s*,\s*denominator",
+    ),
+    ("src/image.rs", "nlt_power_of_two"): (
+        "part2_nlt_power_of_two", r"\1", None, r"exponent",
+    ),
+    ("src/image.rs", "nlt_fixed_mul_q32"): (
+        "part2_nlt_fixed_mul_q32", r"\1", None, r"left\s*,\s*right",
+    ),
+    ("src/image.rs", "nlt_fixed_div_q32"): (
+        "part2_nlt_fixed_div_q32", r"\1", None, r"left\s*,\s*right",
+    ),
+}
+
 _NONLINEAR_REGIONS_CONTRACTS = {
     ("src/codestream.rs", "Part2Extensions::nonlinear_transform_for"): (
         "part2_nonlinear_transform_for", _coverage_call("nonlinear_transform_option_view", r"\1"), None,
@@ -1869,6 +1884,7 @@ def validate_normative_coverage(
                 or _LAYOUT_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _OUTPUT_SHAPE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_REGIONS_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_ARITHMETIC_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

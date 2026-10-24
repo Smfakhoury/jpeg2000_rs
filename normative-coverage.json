@@ -4,6 +4,39 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-nonlinear-arithmetic",
+      "topic": "Complete actual signed ratio rounding, bounded power-of-two and Q32 multiply/divide Results on every raw i128/u8 input. Preserve intermediate overflow before scaling, half-away-from-zero rounding, MIN negation rejection, positive-denominator truncation toward zero and invalid-denominator versus arithmetic errors. Ten raw NLT getter posts expose every original descriptor field without validation or normalization. Private receiverless bodies are module functions for the pinned attribute mechanism; all actual LUT/gamma/log/exp/dispatch callers use the sole bodies. No new trusted adapter, input premise, arithmetic tolerance or budget. Whole nonlinear scalar dispatch, region application, typed/parser/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_sample"},
+        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_gamma_sample"},
+        {"path": "src/image.rs", "symbol": "TypedImage::inverse_nlt_lut_sample"},
+        {"path": "src/image.rs", "symbol": "TypedImage::fixed_pow_reciprocal_q32"},
+        {"path": "src/image.rs", "symbol": "TypedImage::fixed_ln_q32"},
+        {"path": "src/image.rs", "symbol": "TypedImage::fixed_exp_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_mul_q32"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_round_ratio"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_power_of_two"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_mul_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_nlt_fixed_div_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_checked_i128"}
+      ],
+      "contract_refs": [
+        {"path": "src/image.rs", "symbol": "nlt_round_ratio"},
+        {"path": "src/image.rs", "symbol": "nlt_power_of_two"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_mul_q32"},
+        {"path": "src/image.rs", "symbol": "nlt_fixed_div_q32"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"}
+      ],
+      "test_refs": [
+        {"path": "src/image.rs", "symbol": "actual_nonlinear_arithmetic_preserves_checked_i128_rounding_q32_and_power_boundaries"},
+        {"path": "src/codestream.rs", "symbol": "actual_nonlinear_getters_expose_complete_raw_descriptors_without_validation"}
+      ]
+    },
+    {
       "id": "part2-complete-native-nonlinear-region-production",
       "topic": "Complete actual nonlinear transform selection, registered output metadata and full raw layout/image to ordered nonlinear regions Result. First component-specific transform precedes first default; last matching tile-part owner replaces main metadata even when empty. Preserve component-before-tile traversal, all metadata/check/narrowing order, lazy tile geometry only with a selected transform, clipping and every raw transform field. Prove all frames/bounds internally, no normalized metadata, supplied regions/transforms/results or success premises. Sole extracted bodies are used by actual typed_layout with original allocation and error policy. Nonlinear sample execution, final typed/raw parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [

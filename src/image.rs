@@ -869,7 +869,7 @@ impl TypedImage {
         if target_precision == 0 || target_precision > 38 {
             return Err(invalid_image());
         }
-        let target_half = Self::nlt_power_of_two(target_precision - 1)?;
+        let target_half = nlt_power_of_two(target_precision - 1)?;
         let target_min = if transform.signed() {
             0_i128
                 .checked_sub(target_half)
@@ -880,7 +880,7 @@ impl TypedImage {
         let target_max = if transform.signed() {
             target_half.checked_sub(1).ok_or_else(arithmetic_overflow)?
         } else {
-            Self::nlt_power_of_two(target_precision)?
+            nlt_power_of_two(target_precision)?
                 .checked_sub(1)
                 .ok_or_else(arithmetic_overflow)?
         };
@@ -951,11 +951,11 @@ impl TypedImage {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
         }
         let source_scale = if source_info.signed {
-            Self::nlt_power_of_two(source_info.precision - 1)?
+            nlt_power_of_two(source_info.precision - 1)?
                 .checked_sub(1)
                 .ok_or_else(arithmetic_overflow)?
         } else {
-            Self::nlt_power_of_two(source_info.precision)?
+            nlt_power_of_two(source_info.precision)?
                 .checked_sub(1)
                 .ok_or_else(arithmetic_overflow)?
         };
@@ -964,7 +964,7 @@ impl TypedImage {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
         }
         let target_scale = if transform.signed() {
-            Self::nlt_power_of_two(
+            nlt_power_of_two(
                 target_precision
                     .checked_sub(1)
                     .ok_or_else(arithmetic_overflow)?,
@@ -972,7 +972,7 @@ impl TypedImage {
             .checked_sub(1)
             .ok_or_else(arithmetic_overflow)?
         } else {
-            Self::nlt_power_of_two(transform.precision())?
+            nlt_power_of_two(transform.precision())?
                 .checked_sub(1)
                 .ok_or_else(arithmetic_overflow)?
         };
@@ -990,7 +990,7 @@ impl TypedImage {
             let magnitude = 0_i128
                 .checked_sub(normalized)
                 .ok_or_else(arithmetic_overflow)?;
-            let base = Self::fixed_div_q32(
+            let base = nlt_fixed_div_q32(
                 magnitude
                     .checked_add(continuity_b)
                     .ok_or_else(arithmetic_overflow)?,
@@ -1000,9 +1000,9 @@ impl TypedImage {
                 .checked_sub(Self::fixed_pow_reciprocal_q32(base, exponent)?)
                 .ok_or_else(arithmetic_overflow)?
         } else if normalized <= threshold {
-            Self::fixed_div_q32(normalized, slope)?
+            nlt_fixed_div_q32(normalized, slope)?
         } else {
-            let base = Self::fixed_div_q32(
+            let base = nlt_fixed_div_q32(
                 normalized
                     .checked_add(continuity_b)
                     .ok_or_else(arithmetic_overflow)?,
@@ -1010,7 +1010,7 @@ impl TypedImage {
             )?;
             Self::fixed_pow_reciprocal_q32(base, exponent)?
         };
-        Self::round_ratio(
+        nlt_round_ratio(
             decoded
                 .checked_mul(target_scale)
                 .ok_or_else(arithmetic_overflow)?,
@@ -1018,27 +1018,11 @@ impl TypedImage {
         )
     }
 
-    fn fixed_mul_q32(left: i128, right: i128) -> Result<i128, DecodeError> {
-        Self::round_ratio(
-            left.checked_mul(right).ok_or_else(arithmetic_overflow)?,
-            1_i128 << 32,
-        )
-    }
-
-    fn fixed_div_q32(left: i128, right: i128) -> Result<i128, DecodeError> {
-        if right <= 0 {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
-        left.checked_mul(1_i128 << 32)
-            .and_then(|value| value.checked_div(right))
-            .ok_or_else(arithmetic_overflow)
-    }
-
     fn fixed_pow_reciprocal_q32(base: i128, exponent: i128) -> Result<i128, DecodeError> {
         if base <= 0 || exponent <= 0 {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
         }
-        Self::fixed_exp_q32(Self::fixed_div_q32(Self::fixed_ln_q32(base)?, exponent)?)
+        Self::fixed_exp_q32(nlt_fixed_div_q32(Self::fixed_ln_q32(base)?, exponent)?)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(requires value > 0,))]
@@ -1070,11 +1054,11 @@ impl TypedImage {
                 .checked_sub(1)
                 .ok_or_else(arithmetic_overflow)?;
         }
-        let z = Self::fixed_div_q32(
+        let z = nlt_fixed_div_q32(
             value.checked_sub(one).ok_or_else(arithmetic_overflow)?,
             value.checked_add(one).ok_or_else(arithmetic_overflow)?,
         )?;
-        let z_squared = Self::fixed_mul_q32(z, z)?;
+        let z_squared = nlt_fixed_mul_q32(z, z)?;
         let mut term = z;
         let mut sum = 0_i128;
         let mut iteration = 0_u32;
@@ -1096,7 +1080,7 @@ impl TypedImage {
             sum = sum
                 .checked_add(term / i128::from(divisor))
                 .ok_or_else(arithmetic_overflow)?;
-            term = Self::fixed_mul_q32(term, z_squared)?;
+            term = nlt_fixed_mul_q32(term, z_squared)?;
             iteration += 1;
         }
         const LN_2_Q32: i128 = 2_977_044_471;
@@ -1129,7 +1113,7 @@ impl TypedImage {
             )
         )]
         while iteration <= 24 {
-            term = Self::fixed_mul_q32(term, remainder)?
+            term = nlt_fixed_mul_q32(term, remainder)?
                 .checked_div(i128::from(iteration))
                 .ok_or_else(arithmetic_overflow)?;
             sum = sum.checked_add(term).ok_or_else(arithmetic_overflow)?;
@@ -1172,9 +1156,9 @@ impl TypedImage {
         if source_info.precision == 0 || source_info.precision > 38 {
             return Err(invalid_image());
         }
-        let source_scale = Self::nlt_power_of_two(source_info.precision)?;
+        let source_scale = nlt_power_of_two(source_info.precision)?;
         let source_offset = if source_info.signed {
-            Self::nlt_power_of_two(source_info.precision - 1)?
+            nlt_power_of_two(source_info.precision - 1)?
         } else {
             0
         };
@@ -1231,9 +1215,9 @@ impl TypedImage {
                         .and_then(|offset| value.checked_add(offset))
                 })
                 .ok_or_else(arithmetic_overflow)?;
-            Self::round_ratio(numerator, denominator)?
+            nlt_round_ratio(numerator, denominator)?
         };
-        let half = Self::nlt_power_of_two(output_precision - 1)?;
+        let half = nlt_power_of_two(output_precision - 1)?;
         let mut value = if transform.signed() {
             raw.checked_sub(half).ok_or_else(arithmetic_overflow)?
         } else {
@@ -1245,46 +1229,6 @@ impl TypedImage {
                 .checked_sub(value)
                 .and_then(|magnitude| magnitude.checked_sub(bias))
                 .ok_or_else(arithmetic_overflow)?;
-        }
-        Ok(value)
-    }
-
-    fn round_ratio(numerator: i128, denominator: i128) -> Result<i128, DecodeError> {
-        if denominator <= 0 {
-            return Err(arithmetic_overflow());
-        }
-
-        if numerator >= 0 {
-            numerator
-                .checked_add(denominator / 2)
-                .map(|value| value / denominator)
-                .ok_or_else(arithmetic_overflow)
-        } else {
-            0_i128
-                .checked_sub(numerator)
-                .and_then(|value| value.checked_add(denominator / 2))
-                .and_then(|value| value.checked_div(denominator))
-                .and_then(|value| 0_i128.checked_sub(value))
-                .ok_or_else(arithmetic_overflow)
-        }
-    }
-
-    fn nlt_power_of_two(exponent: u8) -> Result<i128, DecodeError> {
-        if exponent > 38 {
-            return Err(arithmetic_overflow());
-        }
-        let mut value = 1_i128;
-        let mut bit = 0_u8;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant bit <= exponent,
-                decreases exponent - bit,
-            )
-        )]
-        while bit < exponent {
-            value = value.checked_mul(2).ok_or_else(arithmetic_overflow)?;
-            bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
         Ok(value)
     }
@@ -1301,6 +1245,92 @@ impl TypedImage {
             width, height, x_origin, y_origin, components, limits,
         )
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_round_ratio(numerator, denominator),
+))]
+fn nlt_round_ratio(numerator: i128, denominator: i128) -> Result<i128, DecodeError> {
+    if denominator <= 0 {
+        return Err(arithmetic_overflow());
+    }
+    if numerator >= 0 {
+        let adjusted = match numerator.checked_add(denominator / 2) {
+            Some(value) => value,
+            None => return Err(arithmetic_overflow()),
+        };
+        Ok(adjusted / denominator)
+    } else {
+        let magnitude = match 0_i128.checked_sub(numerator) {
+            Some(value) => value,
+            None => return Err(arithmetic_overflow()),
+        };
+        let adjusted = match magnitude.checked_add(denominator / 2) {
+            Some(value) => value,
+            None => return Err(arithmetic_overflow()),
+        };
+        let rounded = match adjusted.checked_div(denominator) {
+            Some(value) => value,
+            None => return Err(arithmetic_overflow()),
+        };
+        0_i128.checked_sub(rounded).ok_or_else(arithmetic_overflow)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_power_of_two(exponent),
+))]
+fn nlt_power_of_two(exponent: u8) -> Result<i128, DecodeError> {
+    if exponent > 38 {
+        return Err(arithmetic_overflow());
+    }
+    let mut value = 1_i128;
+    let mut bit = 0_u8;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1i128 << 0 == 1) by(bit_vector); }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant bit <= exponent, exponent <= 38, value == 1i128 << bit,
+        decreases exponent - bit,
+    ))]
+    while bit < exponent {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert((1i128 << bit) * 2 == 1i128 << (bit + 1)) by(bit_vector)
+                requires bit < 38;
+        }
+        value = value.checked_mul(2).ok_or_else(arithmetic_overflow)?;
+        bit = bit.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(value)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_fixed_mul_q32(left, right),
+))]
+fn nlt_fixed_mul_q32(left: i128, right: i128) -> Result<i128, DecodeError> {
+    nlt_round_ratio(
+        left.checked_mul(right).ok_or_else(arithmetic_overflow)?,
+        1_i128 << 32,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nlt_fixed_div_q32(left, right),
+))]
+fn nlt_fixed_div_q32(left: i128, right: i128) -> Result<i128, DecodeError> {
+    if right <= 0 {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        });
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(1i128 << 32 == 4294967296) by(bit_vector); }
+    let product = match left.checked_mul(1_i128 << 32) {
+        Some(value) => value,
+        None => return Err(arithmetic_overflow()),
+    };
+    product.checked_div(right).ok_or_else(arithmetic_overflow)
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -8556,6 +8586,113 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn actual_nonlinear_arithmetic_preserves_checked_i128_rounding_q32_and_power_boundaries() {
+        fn reference_ratio(numerator: i128, denominator: i128) -> Result<i128, DecodeError> {
+            if denominator <= 0 || numerator == i128::MIN {
+                return Err(arithmetic_overflow());
+            }
+            let adjusted = numerator.unsigned_abs() + denominator as u128 / 2;
+            if adjusted > i128::MAX as u128 {
+                return Err(arithmetic_overflow());
+            }
+            let rounded = i128::try_from(adjusted / denominator as u128).unwrap();
+            Ok(if numerator < 0 { -rounded } else { rounded })
+        }
+
+        fn reference_product(left: i128, right: i128) -> Result<i128, DecodeError> {
+            let negative = (left < 0) != (right < 0);
+            let magnitude = left
+                .unsigned_abs()
+                .checked_mul(right.unsigned_abs())
+                .ok_or_else(arithmetic_overflow)?;
+            if negative && magnitude == 1_u128 << 127 {
+                Ok(i128::MIN)
+            } else {
+                let product = i128::try_from(magnitude).map_err(|_| arithmetic_overflow())?;
+                Ok(if negative { -product } else { product })
+            }
+        }
+
+        let mut small_cases = 0;
+        for numerator in -257..=257 {
+            for denominator in -3..=65 {
+                assert_eq!(
+                    nlt_round_ratio(numerator, denominator),
+                    reference_ratio(numerator, denominator)
+                );
+                small_cases += 1;
+            }
+        }
+        assert_eq!(small_cases, 35_535);
+        let values = [
+            i128::MIN,
+            i128::MIN + 1,
+            i128::MIN / 2,
+            i128::MIN / 2 + 1,
+            -(1_i128 << 96),
+            -(1_i128 << 64),
+            -(1_i128 << 32) - 1,
+            -(1_i128 << 32),
+            -(1_i128 << 32) + 1,
+            -65_536,
+            -65,
+            -2,
+            -1,
+            0,
+            1,
+            2,
+            65,
+            65_536,
+            (1_i128 << 32) - 1,
+            1_i128 << 32,
+            (1_i128 << 32) + 1,
+            1_i128 << 64,
+            1_i128 << 96,
+            i128::MAX / 2,
+            i128::MAX / 2 + 1,
+            i128::MAX - 1,
+            i128::MAX,
+        ];
+        let mut edge_cases = 0;
+        for left in values {
+            for right in values {
+                assert_eq!(nlt_round_ratio(left, right), reference_ratio(left, right));
+                assert_eq!(
+                    nlt_fixed_mul_q32(left, right),
+                    reference_product(left, right)
+                        .and_then(|product| reference_ratio(product, 1_i128 << 32))
+                );
+                let division = if right <= 0 {
+                    Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidTransform,
+                    })
+                } else {
+                    reference_product(left, 1_i128 << 32).map(|product| product / right)
+                };
+                assert_eq!(nlt_fixed_div_q32(left, right), division);
+                edge_cases += 1;
+            }
+        }
+        assert_eq!(edge_cases, 729);
+        for exponent in 0..=u8::MAX {
+            let expected = if exponent <= 38 {
+                Ok(2_i128.pow(u32::from(exponent)))
+            } else {
+                Err(arithmetic_overflow())
+            };
+            assert_eq!(nlt_power_of_two(exponent), expected);
+        }
+        assert_eq!(nlt_round_ratio(1, 2), Ok(1));
+        assert_eq!(nlt_round_ratio(-1, 2), Ok(-1));
+        assert_eq!(nlt_fixed_div_q32(-1, 3), Ok(-1_431_655_765));
+        assert_eq!(
+            nlt_fixed_mul_q32(i128::MAX, 1_i128 << 32),
+            Err(arithmetic_overflow())
+        );
     }
 
     #[test]

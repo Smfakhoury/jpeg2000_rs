@@ -866,6 +866,12 @@ class FrameworkTests(WorkingFiles):
             framework._NONLINEAR_REGIONS_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_nonlinear_arithmetic_exact_results_and_error_frontiers(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-nonlinear-arithmetic"},
+            framework._NONLINEAR_ARITHMETIC_CONTRACTS, 4,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

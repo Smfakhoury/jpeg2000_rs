@@ -8646,6 +8646,48 @@ pub open spec fn part2_nonlinear_find(
     else { part2_nonlinear_find(transforms, component, position + 1) }
 }
 
+pub open spec fn part2_nlt_round_ratio(numerator: i128, denominator: i128)
+    -> Result<i128, crate::DecodeError>
+{
+    if denominator <= 0 || numerator == i128::MIN {
+        Err(part1_transform_error(true))
+    } else {
+        let magnitude = if numerator < 0 { -(numerator as int) } else { numerator as int };
+        match part2_atk_checked_i128(magnitude + denominator as int / 2) {
+            Err(error) => Err(error),
+            Ok(adjusted) => {
+                let rounded = adjusted as int / denominator as int;
+                Ok((if numerator < 0 { -rounded } else { rounded }) as i128)
+            },
+        }
+    }
+}
+
+pub open spec fn part2_nlt_power_of_two(exponent: u8) -> Result<i128, crate::DecodeError> {
+    if exponent > 38 { Err(part1_transform_error(true)) }
+    else { Ok(1i128 << exponent) }
+}
+
+pub open spec fn part2_nlt_fixed_mul_q32(left: i128, right: i128)
+    -> Result<i128, crate::DecodeError>
+{
+    match part2_atk_checked_i128(left as int * right as int) {
+        Err(error) => Err(error),
+        Ok(product) => part2_nlt_round_ratio(product, 1i128 << 32),
+    }
+}
+
+pub open spec fn part2_nlt_fixed_div_q32(left: i128, right: i128)
+    -> Result<i128, crate::DecodeError>
+{
+    if right <= 0 { Err(part1_transform_error(false)) } else {
+        match part2_atk_checked_i128(left as int * 4294967296) {
+            Err(error) => Err(error),
+            Ok(product) => Ok(vstd::arithmetic::div_mod::rust_div(product as int, right as int) as i128),
+        }
+    }
+}
+
 pub open spec fn part2_nonlinear_transform_for(
     transforms: Seq<Part2OwnedNonlinear>, component: u16,
 ) -> Option<Part2OwnedNonlinear> {

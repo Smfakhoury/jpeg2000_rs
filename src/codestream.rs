@@ -1311,42 +1311,52 @@ pub struct NonlinearPointTransform {
 }
 
 impl NonlinearPointTransform {
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).component,))]
     pub const fn component(&self) -> Option<u16> {
         self.component
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).precision,))]
     pub const fn precision(&self) -> u8 {
         self.precision
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).signed,))]
     pub const fn signed(&self) -> bool {
         self.signed
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).transform_type,))]
     pub const fn transform_type(&self) -> u8 {
         self.transform_type
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value@ == owned_nonlinear_view(self).parameters,))]
     pub fn parameters(&self) -> &[u8] {
         &self.parameters
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).d_min,))]
     pub const fn d_min(&self) -> Option<u32> {
         self.d_min
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).d_max,))]
     pub const fn d_max(&self) -> Option<u32> {
         self.d_max
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).point_bits,))]
     pub const fn point_bits(&self) -> Option<u8> {
         self.point_bits
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value@ == owned_nonlinear_view(self).points,))]
     pub fn points(&self) -> &[u32] {
         &self.points
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == owned_nonlinear_view(self).gamma,))]
     pub const fn gamma_parameters(&self) -> Option<[u32; 5]> {
         self.gamma_parameters
     }
@@ -13620,6 +13630,47 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn actual_nonlinear_getters_expose_complete_raw_descriptors_without_validation() {
+        let mut cases = 0;
+        for component in [None, Some(0), Some(u16::MAX)] {
+            for precision in [0, 1, 38, 39, u8::MAX] {
+                for transform_type in [0, 1, 2, 3, 4, u8::MAX] {
+                    for signed in [false, true] {
+                        let transform = NonlinearPointTransform {
+                            component,
+                            precision,
+                            signed,
+                            transform_type,
+                            parameters: if signed { vec![] } else { vec![0, u8::MAX, 17] },
+                            d_min: Some(u32::MAX),
+                            d_max: None,
+                            point_bits: Some(u8::MAX),
+                            points: if signed {
+                                vec![u32::MAX, 0, 17]
+                            } else {
+                                vec![]
+                            },
+                            gamma_parameters: Some([0, 17, u32::MAX, 3, 1]),
+                        };
+                        assert_eq!(transform.component(), component);
+                        assert_eq!(transform.precision(), precision);
+                        assert_eq!(transform.signed(), signed);
+                        assert_eq!(transform.transform_type(), transform_type);
+                        assert_eq!(transform.parameters(), transform.parameters);
+                        assert_eq!(transform.d_min(), Some(u32::MAX));
+                        assert_eq!(transform.d_max(), None);
+                        assert_eq!(transform.point_bits(), Some(u8::MAX));
+                        assert_eq!(transform.points(), transform.points);
+                        assert_eq!(transform.gamma_parameters(), Some([0, 17, u32::MAX, 3, 1]));
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 180);
     }
 
     #[test]
