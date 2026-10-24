@@ -2426,3 +2426,17 @@ state. No new trust, pin/budget/termination change or duplicate decoder is used.
 Implicit-unit setters use their literal unit result with exact signature
 guards and negative return-shape tests, not an invented executable return.
 Full tile-plan/packet/component/file/F2/F4/F8 composition remains separate.
+## Complete actual code-block planning primitives
+
+The actual tile loop now consumes the sole checked lattice/clipping producer
+and the configured decoder initializer. Full raw arithmetic and u16 narrowing
+are modeled without assumed valid dimensions; zero extents intentionally
+remain the decoder initializer's admission policy. Real initialization still
+precedes multiple-set and magnitude-bound configuration, including errors
+and allocation order. All returned decoder fields derive from actual state.
+
+No supplied geometry/placement/decoder bank, successful budget or normalized
+lattice is a premise. Two exact native-consumer recipes,165,888 independent
+wide geometry contexts,5,760 configured-constructor contexts and the complete
+byte-bound sweep cover boundaries and first failures. The full tile-plan
+vector/precinct/packet/component/file/F2/F4/F8 joins remain separate.

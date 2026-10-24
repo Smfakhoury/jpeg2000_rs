@@ -4,10 +4,36 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-codeblock-planning",
+      "topic": "Complete actual per-codeblock checked lattice/clipping/u16 dimension Result and configured decoder initial-state Result from raw grid/clip/block coordinates, bits/orientation/style/HT policy. Original nominal-axis arithmetic and clipped narrowing remain; zero dimensions are deliberately forwarded to the real decoder initializer rather than normalized here. Actual decoder initialization precedes multiple-set and magnitude-bound policy, including allocation/admission/error order. The real tile loop consumes both producers; no supplied placement/decoder/geometry result, admitted dimensions or successful allocation/budget premise. Whole tile-plan and F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_geometry"},
+        {"path": "specs/mod.rs", "symbol": "part2_tier1_configured_decoder"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "derive_planned_codeblock_geometry"},
+        {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"}
+      ],
+      "proof_refs": [
+        {"path": "src/tier1.rs", "symbol": "tier1_initial_decoder_outcome"},
+        {"path": "src/tier1.rs", "symbol": "tier1_decoder_from_dimensions"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"},
+        {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::set_ht_magnitude_bound"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers"},
+        {"path": "src/tier1.rs", "symbol": "configured_decoder_derives_initial_state_and_preserves_bound_admission_order"}
+      ]
+    },
+    {
       "id": "part2-complete-native-decoder-initialization",
       "topic": "Complete actual Tier-1 decoder initialization Result/every decoder field from raw dimensions/significant-bitplanes/orientation/coding style. Original significant-bitplane admission precedes checked pass metadata and the sole proved plane constructor; no style normalization or initialized plane/decoder result premise. Public new facade and actual tile planner execute that sole body. Force-route style, multiple-HT-set and magnitude-bound setters preserve every unrelated raw field; invalid bound returns original decoder unchanged. No trusted adapter, supplied initialized state, successful allocation or budget premise. Actual tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::new"}
       ],
       "spec_refs": [

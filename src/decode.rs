@@ -1459,45 +1459,26 @@ fn plan_progression_tile_at_selected(
                                 )
                             )]
                             while block_x < blocks_across {
-                                let nominal_x = first_block_x
-                                    .checked_add(block_x)
-                                    .and_then(|index| index.checked_mul(code_block_width))
-                                    .ok_or_else(arithmetic_overflow)?;
-                                let nominal_y = first_block_y
-                                    .checked_add(block_y)
-                                    .and_then(|index| index.checked_mul(code_block_height))
-                                    .ok_or_else(arithmetic_overflow)?;
-                                let x = nominal_x.max(start_x);
-                                let y = nominal_y.max(start_y);
-                                let nominal_x1 = nominal_x
-                                    .checked_add(code_block_width)
-                                    .ok_or_else(arithmetic_overflow)?;
-                                let nominal_y1 = nominal_y
-                                    .checked_add(code_block_height)
-                                    .ok_or_else(arithmetic_overflow)?;
-                                let block_width = u16::try_from(
-                                    nominal_x1
-                                        .min(end_x)
-                                        .checked_sub(x)
-                                        .ok_or_else(arithmetic_overflow)?,
-                                )
-                                .map_err(|_| arithmetic_overflow())?;
-                                let block_height = u16::try_from(
-                                    nominal_y1
-                                        .min(end_y)
-                                        .checked_sub(y)
-                                        .ok_or_else(arithmetic_overflow)?,
-                                )
-                                .map_err(|_| arithmetic_overflow())?;
-                                let mut decoder = crate::tier1::tier1_decoder_from_dimensions(
+                                let (x, y, block_width, block_height) =
+                                    derive_planned_codeblock_geometry(
+                                        [
+                                            first_block_x,
+                                            first_block_y,
+                                            code_block_width,
+                                            code_block_height,
+                                        ],
+                                        [start_x, start_y, end_x, end_y],
+                                        [block_x, block_y],
+                                    )?;
+                                let decoder = crate::tier1::tier1_configured_decoder(
                                     block_width,
                                     block_height,
                                     subband.significant_bitplanes,
                                     subband.orientation,
                                     tier1_style,
+                                    allow_multiple_ht_sets,
+                                    ht_magnitude_bound,
                                 )?;
-                                decoder.set_multiple_ht_sets_allowed(allow_multiple_ht_sets);
-                                decoder.set_ht_magnitude_bound(ht_magnitude_bound)?;
                                 decoders.push(decoder);
                                 placements.push(ProgressionCodeBlockPlacement {
                                     precinct_index,
@@ -1557,6 +1538,53 @@ fn plan_progression_tile_at_selected(
         precincts,
         components,
     })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_planned_codeblock_geometry(grid, clip, block),
+))]
+pub(crate) fn derive_planned_codeblock_geometry(
+    grid: [u32; 4],
+    clip: [u32; 4],
+    block: [u32; 2],
+) -> Result<(u32, u32, u16, u16), DecodeError> {
+    let index_x = grid[0]
+        .checked_add(block[0])
+        .ok_or_else(arithmetic_overflow)?;
+    let nominal_x = index_x
+        .checked_mul(grid[2])
+        .ok_or_else(arithmetic_overflow)?;
+    let index_y = grid[1]
+        .checked_add(block[1])
+        .ok_or_else(arithmetic_overflow)?;
+    let nominal_y = index_y
+        .checked_mul(grid[3])
+        .ok_or_else(arithmetic_overflow)?;
+    let x = nominal_x.max(clip[0]);
+    let y = nominal_y.max(clip[1]);
+    let nominal_x1 = nominal_x
+        .checked_add(grid[2])
+        .ok_or_else(arithmetic_overflow)?;
+    let nominal_y1 = nominal_y
+        .checked_add(grid[3])
+        .ok_or_else(arithmetic_overflow)?;
+    let width = nominal_x1
+        .min(clip[2])
+        .checked_sub(x)
+        .ok_or_else(arithmetic_overflow)?;
+    let width = match u16::try_from(width) {
+        Ok(width) => width,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    let height = nominal_y1
+        .min(clip[3])
+        .checked_sub(y)
+        .ok_or_else(arithmetic_overflow)?;
+    let height = match u16::try_from(height) {
+        Ok(height) => height,
+        Err(_) => return Err(arithmetic_overflow()),
+    };
+    Ok((x, y, width, height))
 }
 
 struct WorkingSubband {
@@ -5747,6 +5775,73 @@ mod tests {
         CodeBlockPacketContext, CodeBlockPacketState, PacketBitReader, TagTree,
         decode_code_block_contribution, decode_progression_tile_packets,
     };
+
+    #[test]
+    fn actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers() {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let reference = |grid: [u32; 4], clip: [u32; 4], block: [u32; 2]| {
+            let checked = |value: u128| u32::try_from(value).map_err(|_| arithmetic);
+            let ix = checked(u128::from(grid[0]) + u128::from(block[0]))?;
+            let nx = checked(u128::from(ix) * u128::from(grid[2]))?;
+            let iy = checked(u128::from(grid[1]) + u128::from(block[1]))?;
+            let ny = checked(u128::from(iy) * u128::from(grid[3]))?;
+            let x = nx.max(clip[0]);
+            let y = ny.max(clip[1]);
+            let ex = checked(u128::from(nx) + u128::from(grid[2]))?;
+            let ey = checked(u128::from(ny) + u128::from(grid[3]))?;
+            let width =
+                u16::try_from(i64::from(ex.min(clip[2])) - i64::from(x)).map_err(|_| arithmetic)?;
+            let height =
+                u16::try_from(i64::from(ey.min(clip[3])) - i64::from(y)).map_err(|_| arithmetic)?;
+            Ok((x, y, width, height))
+        };
+        let words = [0, 1, 2, 65_535, 65_536, u32::MAX];
+        let clips = [
+            [0, 0, u32::MAX, u32::MAX],
+            [0, 0, 0, 0],
+            [1, 1, 65_535, 65_535],
+            [u32::MAX, u32::MAX, 0, 0],
+            [5, 7, 3, 1],
+            [1, 3, 65_536, 65_537],
+            [17, 31, 33, 65],
+            [1, 1, u32::MAX, u32::MAX],
+        ];
+        let mut cases = 0;
+        let mut zero_dimensions = 0;
+        for first_x in words {
+            for first_y in words {
+                for width in words {
+                    for height in words {
+                        for block_x in [0, 1, 2, u32::MAX] {
+                            for block_y in [0, 1, 2, u32::MAX] {
+                                for clip in clips {
+                                    let grid = [first_x, first_y, width, height];
+                                    let block = [block_x, block_y];
+                                    let expected = reference(grid, clip, block);
+                                    assert_eq!(
+                                        derive_planned_codeblock_geometry(grid, clip, block),
+                                        expected
+                                    );
+                                    if let Ok((_, _, width, height)) = expected {
+                                        zero_dimensions += usize::from(width == 0 || height == 0);
+                                    }
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 165_888);
+        assert!(
+            zero_dimensions > 100,
+            "zero dimensions remain the decoder initializer's policy"
+        );
+    }
 
     fn reference_standard_prepare(
         plan: &PlannedTileComponent,

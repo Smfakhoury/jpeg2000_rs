@@ -790,6 +790,17 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_CODEBLOCK_PLANNING_CONTRACTS = {
+    ("src/decode.rs", "derive_planned_codeblock_geometry"): (
+        "part2_planned_codeblock_geometry", r"\1", None, r"grid\s*,\s*clip\s*,\s*block",
+    ),
+    ("src/tier1.rs", "tier1_configured_decoder"): (
+        "part2_tier1_configured_decoder", _coverage_call("tier1_initial_decoder_outcome", r"\1"), None,
+        r"width\s*,\s*height\s*,\s*significant_bitplanes\s*,\s*orientation\s*,\s*style\s*,\s*"
+        r"allow_multiple_ht_sets\s*,\s*ht_magnitude_bound",
+    ),
+}
+
 _DECODER_INITIALIZATION_CONTRACTS = {
     ("src/tier1.rs", "tier1_decoder_from_dimensions"): (
         "part2_tier1_initial_decoder", _coverage_call("tier1_initial_decoder_outcome", r"\1"), None,
@@ -1604,6 +1615,7 @@ def validate_normative_coverage(
                 or _SUBBAND_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SUBBAND_VECTOR_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_INITIALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _CODEBLOCK_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

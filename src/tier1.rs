@@ -5238,6 +5238,27 @@ pub(crate) fn tier1_decoder_from_dimensions(
     })
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures tier1_initial_decoder_outcome(result) == crate::specs::part2_tier1_configured_decoder(
+        width, height, significant_bitplanes, orientation, style, allow_multiple_ht_sets, ht_magnitude_bound,
+    ),
+))]
+pub(crate) fn tier1_configured_decoder(
+    width: u16,
+    height: u16,
+    significant_bitplanes: u16,
+    orientation: SubbandOrientation,
+    style: Tier1CodingStyle,
+    allow_multiple_ht_sets: bool,
+    ht_magnitude_bound: u8,
+) -> Result<Tier1CodeBlockDecoder, DecodeError> {
+    let mut decoder =
+        tier1_decoder_from_dimensions(width, height, significant_bitplanes, orientation, style)?;
+    decoder.set_multiple_ht_sets_allowed(allow_multiple_ht_sets);
+    decoder.set_ht_magnitude_bound(ht_magnitude_bound)?;
+    Ok(decoder)
+}
+
 impl Tier1CodeBlockDecoder {
     pub fn new(
         width: u16,
@@ -8219,6 +8240,114 @@ impl CodeBlockSegmentAccounting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_decoder_derives_initial_state_and_preserves_bound_admission_order() {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let mut cases = 0;
+        for (width, height) in [(0, 0), (1, 1), (64, 64), (65, 64), (u16::MAX, 1)] {
+            for bits in [0, 1, 2, 74, 75, u16::MAX] {
+                for allowed in [false, true] {
+                    for bound in [0, 1, 73, 74, 75, u8::MAX] {
+                        for orientation in [
+                            SubbandOrientation::Ll,
+                            SubbandOrientation::Hl,
+                            SubbandOrientation::Lh,
+                            SubbandOrientation::Hh,
+                        ] {
+                            for seed in [0, 1, 0x7f, 0xff] {
+                                let style = raw_initialization_style(seed);
+                                let success = width != 0
+                                    && height != 0
+                                    && u64::from(width) * u64::from(height) <= 4096
+                                    && bits != 0
+                                    && bits <= MAX_TIER1_BITPLANES
+                                    && bound != 0
+                                    && bound <= MAX_HT_MAGNITUDE_BITS;
+                                match tier1_configured_decoder(
+                                    width,
+                                    height,
+                                    bits,
+                                    orientation,
+                                    style,
+                                    allowed,
+                                    bound,
+                                ) {
+                                    Err(error) => {
+                                        assert!(!success);
+                                        assert_eq!(error, invalid);
+                                    }
+                                    Ok(mut decoder) => {
+                                        assert!(success);
+                                        assert_eq!(decoder.allow_multiple_ht_sets, allowed);
+                                        assert_eq!(decoder.ht_magnitude_bound, bound);
+                                        decoder.allow_multiple_ht_sets = false;
+                                        decoder.ht_magnitude_bound = MAX_HT_MAGNITUDE_BITS;
+                                        check_initial_decoder(
+                                            &decoder,
+                                            width,
+                                            height,
+                                            bits,
+                                            orientation,
+                                            style,
+                                        );
+                                    }
+                                }
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 5760);
+        for bound in 0..=u8::MAX {
+            for bits in [0, 1, 74, 75] {
+                for allowed in [false, true] {
+                    for seed in [0, 1, 0x7f, 0xff] {
+                        let style = raw_initialization_style(seed);
+                        let result = tier1_configured_decoder(
+                            1,
+                            1,
+                            bits,
+                            SubbandOrientation::Ll,
+                            style,
+                            allowed,
+                            bound,
+                        );
+                        let success = bits != 0
+                            && bits <= MAX_TIER1_BITPLANES
+                            && bound != 0
+                            && bound <= MAX_HT_MAGNITUDE_BITS;
+                        match result {
+                            Err(error) => {
+                                assert!(!success);
+                                assert_eq!(error, invalid);
+                            }
+                            Ok(mut decoder) => {
+                                assert!(success);
+                                assert_eq!(decoder.allow_multiple_ht_sets, allowed);
+                                assert_eq!(decoder.ht_magnitude_bound, bound);
+                                decoder.allow_multiple_ht_sets = false;
+                                decoder.ht_magnitude_bound = MAX_HT_MAGNITUDE_BITS;
+                                check_initial_decoder(
+                                    &decoder,
+                                    1,
+                                    1,
+                                    bits,
+                                    SubbandOrientation::Ll,
+                                    style,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     fn raw_initialization_style(seed: u8) -> Tier1CodingStyle {
         Tier1CodingStyle {
