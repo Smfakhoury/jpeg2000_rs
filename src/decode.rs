@@ -210,8 +210,42 @@ pub(crate) struct PlannedSubbandExecution {
     pub(crate) planned_code_blocks: u64,
 }
 
+pub(crate) struct PlannedPrecinct {
+    pub(crate) precinct: PacketPrecinctDecoder,
+    pub(crate) placements: Vec<ProgressionCodeBlockPlacement>,
+    pub(crate) planned_code_blocks: u64,
+}
+
+struct PrecinctPlanBuilder {
+    executions: Vec<PacketSubbandExecution>,
+    placements: Vec<ProgressionCodeBlockPlacement>,
+    decoder_index: usize,
+    planned_code_blocks: u64,
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
+    closed spec fn precinct_plan_builder_view(value: &PrecinctPlanBuilder) -> crate::specs::Part2PrecinctPlanBuilder {
+        crate::specs::Part2PrecinctPlanBuilder {
+            executions: crate::packet::packet_executions_view(value.executions@),
+            placements: value.placements@, decoder_index: value.decoder_index,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub closed spec fn planned_precinct_view(value: &PlannedPrecinct) -> crate::specs::Part2PlannedPrecinct {
+        crate::specs::Part2PlannedPrecinct {
+            precinct: crate::packet::packet_precinct_view(&value.precinct),
+            placements: value.placements@, planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_precinct_outcome(result: Result<PlannedPrecinct, DecodeError>)
+        -> Result<crate::specs::Part2PlannedPrecinct, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_precinct_view(&value)) }
+    }
+
     pub closed spec fn planned_subband_execution_view(value: &PlannedSubbandExecution) -> crate::specs::Part2PlannedSubbandExecution {
         crate::specs::Part2PlannedSubbandExecution {
             execution: match value.execution { None => None, Some(execution) => Some(crate::packet::packet_execution_view(&execution)) },
@@ -1511,52 +1545,22 @@ fn plan_progression_tile_at_selected(
                 let band_y = precinct_y
                     .checked_mul(band_precinct_height)
                     .ok_or_else(arithmetic_overflow)?;
-                let precinct_index = precincts.len();
-                let mut executions = Vec::with_capacity(subband_count);
-                let mut flattened_decoder_index = 0_usize;
-                let mut local_subband = 0_usize;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant local_subband <= subband_count,
-                        decreases subband_count - local_subband,
-                    )
-                )]
-                while local_subband < subband_count {
-                    let subband_index = first_subband
-                        .checked_add(local_subband)
-                        .ok_or_else(arithmetic_overflow)?;
-                    let subband = *subbands.get(subband_index).ok_or_else(invalid_decode)?;
-                    let planned = plan_subband_execution(
-                        [band_x, band_y, band_precinct_width, band_precinct_height],
-                        [code_block_width, code_block_height],
-                        subband,
-                        tier1_style,
-                        (allow_multiple_ht_sets, ht_magnitude_bound),
-                        (precinct_index, subband_index, flattened_decoder_index),
-                        placements,
-                        planned_code_blocks,
-                        resolution <= output_resolution,
-                        limits,
-                    )?;
-                    placements = planned.placements;
-                    flattened_decoder_index = planned.decoder_index;
-                    planned_code_blocks = planned.planned_code_blocks;
-                    if let Some(execution) = planned.execution {
-                        executions.push(execution);
-                    }
-                    local_subband = local_subband
-                        .checked_add(1)
-                        .ok_or_else(arithmetic_overflow)?;
-                }
-                precincts.push(crate::packet::packet_precinct_from_subbands(
-                    component,
-                    resolution,
-                    precinct,
+                let planned = plan_packet_precinct(
+                    [band_x, band_y, band_precinct_width, band_precinct_height],
+                    [code_block_width, code_block_height],
+                    &subbands,
+                    (first_subband, subband_count),
                     tier1_style,
-                    executions,
+                    (allow_multiple_ht_sets, ht_magnitude_bound),
+                    (component, resolution, precinct, precincts.len()),
+                    placements,
+                    planned_code_blocks,
+                    resolution <= output_resolution,
                     limits,
-                )?);
+                )?;
+                placements = planned.placements;
+                planned_code_blocks = planned.planned_code_blocks;
+                precincts.push(planned.precinct);
                 precinct = precinct.checked_add(1).ok_or_else(arithmetic_overflow)?;
             }
             resolution = resolution.checked_add(1).ok_or_else(arithmetic_overflow)?;
@@ -1580,6 +1584,134 @@ fn plan_progression_tile_at_selected(
         grid,
         precincts,
         components,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures planned_precinct_outcome(result) == crate::specs::part2_planned_precinct(
+        band, block_size, subbands@, range, style, policy, location, placements@, planned_code_blocks, selected, limits,
+    ),
+))]
+pub(crate) fn plan_packet_precinct(
+    band: [u32; 4],
+    block_size: [u32; 2],
+    subbands: &[SubbandGeometry],
+    range: (usize, usize),
+    style: Tier1CodingStyle,
+    policy: (bool, u8),
+    location: (u16, u8, u32, usize),
+    placements: Vec<ProgressionCodeBlockPlacement>,
+    planned_code_blocks: u64,
+    selected: bool,
+    limits: &ResourceLimits,
+) -> Result<PlannedPrecinct, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part2_planned_precinct(
+        band, block_size, subbands@, range, style, policy, location, placements@, planned_code_blocks, selected, limits,
+    ); }
+    let mut builder = PrecinctPlanBuilder {
+        executions: Vec::with_capacity(range.1),
+        placements,
+        decoder_index: 0,
+        planned_code_blocks,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(precinct_plan_builder_view);
+        assert(crate::packet::packet_executions_view(builder.executions@) =~= Seq::empty());
+    }
+    let mut local_subband = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant local_subband <= range.1,
+            goal == crate::specs::part2_planned_precinct(
+                band, block_size, subbands@, range, style, policy, location, placements@, planned_code_blocks, selected, limits,
+            ),
+            goal == crate::specs::part2_planned_precinct_rows(
+                band, block_size, subbands@, range, style, policy, location, selected, limits,
+                local_subband as nat, precinct_plan_builder_view(&builder),
+            ),
+        decreases range.1 - local_subband,
+    ))]
+    while local_subband < range.1 {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = precinct_plan_builder_view(&builder); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_planned_precinct_rows, 1); }
+        let subband_index = range
+            .0
+            .checked_add(local_subband)
+            .ok_or_else(arithmetic_overflow)?;
+        let subband = *subbands.get(subband_index).ok_or_else(invalid_decode)?;
+        let planned = plan_subband_execution(
+            band,
+            block_size,
+            subband,
+            style,
+            policy,
+            (location.3, subband_index, builder.decoder_index),
+            builder.placements,
+            builder.planned_code_blocks,
+            selected,
+            limits,
+        )?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost row = planned_subband_execution_view(&planned); }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(precinct_plan_builder_view);
+            reveal(planned_subband_execution_view);
+        }
+        builder.placements = planned.placements;
+        builder.decoder_index = planned.decoder_index;
+        builder.planned_code_blocks = planned.planned_code_blocks;
+        if let Some(execution) = planned.execution {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost execution_view = crate::packet::packet_execution_view(&execution); }
+            builder.executions.push(execution);
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(row.execution == Some(execution_view));
+                assert(crate::packet::packet_executions_view(builder.executions@)
+                    =~= before.executions.push(execution_view));
+            }
+        } else {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(row.execution.is_none());
+                assert(crate::packet::packet_executions_view(builder.executions@) =~= before.executions);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(precinct_plan_builder_view);
+            reveal(planned_subband_execution_view);
+            assert(crate::specs::part2_planned_precinct_subband(
+                band, block_size, subbands@, range.0, local_subband, style, policy, location.3, selected, limits, before,
+            ) == Ok(precinct_plan_builder_view(&builder)));
+        }
+        local_subband = local_subband
+            .checked_add(1)
+            .ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal_with_fuel(crate::specs::part2_planned_precinct_rows, 1);
+        reveal(precinct_plan_builder_view);
+        reveal(planned_precinct_view);
+    }
+    let precinct = crate::packet::packet_precinct_from_subbands(
+        location.0,
+        location.1,
+        location.2,
+        style,
+        builder.executions,
+        limits,
+    )?;
+    Ok(PlannedPrecinct {
+        precinct,
+        placements: builder.placements,
+        planned_code_blocks: builder.planned_code_blocks,
     })
 }
 
@@ -6786,6 +6918,216 @@ mod tests {
             }
         }
         assert_eq!(cases, 57_600);
+        assert!(empty > 100 && populated > 100);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reference_planned_precinct(
+        band: [u32; 4],
+        block_size: [u32; 2],
+        subbands: &[SubbandGeometry],
+        range: (usize, usize),
+        style: Tier1CodingStyle,
+        policy: (bool, u8),
+        location: (u16, u8, u32, usize),
+        mut placements: Vec<ProgressionCodeBlockPlacement>,
+        mut total: u64,
+        selected: bool,
+        limits: &ResourceLimits,
+    ) -> Result<PlannedPrecinct, DecodeError> {
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidCodeBlock,
+        };
+        let mut executions = Vec::new();
+        let mut flattened = 0;
+        for local in 0..range.1 {
+            let index = usize::try_from(range.0 as u128 + local as u128).map_err(|_| arithmetic)?;
+            let subband = *subbands.get(index).ok_or(invalid)?;
+            let planned = reference_subband_execution(
+                band,
+                block_size,
+                subband,
+                style,
+                policy,
+                (location.3, index, flattened),
+                placements,
+                total,
+                selected,
+                limits,
+            )?;
+            placements = planned.placements;
+            flattened = planned.decoder_index;
+            total = planned.planned_code_blocks;
+            if let Some(execution) = planned.execution {
+                executions.push(execution);
+            }
+        }
+        let precinct = PacketPrecinctDecoder::new_subbands(
+            location.0, location.1, location.2, style, executions, limits,
+        )?;
+        Ok(PlannedPrecinct {
+            precinct,
+            placements,
+            planned_code_blocks: total,
+        })
+    }
+
+    #[test]
+    fn actual_precinct_plan_derives_all_private_packet_fields_from_raw_subband_ranges() {
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(0)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(2)
+                .unwrap()
+                .with_maximum_work_units(1)
+                .unwrap(),
+        ];
+        let mut cases = 0;
+        let mut populated = 0;
+        let mut empty = 0;
+        for physical in [0, 1, 3, 4] {
+            for variant in 0..4 {
+                let subbands = (0..physical)
+                    .map(|index| {
+                        let mut subband = raw_planned_subband(
+                            0,
+                            0,
+                            1,
+                            [
+                                SubbandOrientation::Ll,
+                                SubbandOrientation::Hl,
+                                SubbandOrientation::Lh,
+                                SubbandOrientation::Hh,
+                            ][index],
+                        );
+                        match variant {
+                            0 => {
+                                subband.width = 1;
+                                subband.height = 1;
+                            }
+                            1 => {
+                                subband.width = 0;
+                                subband.height = 1;
+                                subband.significant_bitplanes = 0;
+                            }
+                            2 => {
+                                subband.x0 = u32::try_from(index % 2).unwrap();
+                                subband.width = 2;
+                                subband.height = 3;
+                                subband.significant_bitplanes = 74;
+                            }
+                            _ => {
+                                subband.x0 = u32::MAX;
+                                subband.width = 1;
+                                subband.height = 1;
+                                subband.significant_bitplanes = 75;
+                            }
+                        }
+                        subband
+                    })
+                    .collect::<Vec<_>>();
+                let style = Tier1CodingStyle {
+                    force_high_throughput: true,
+                    reset_contexts: true,
+                    block_coding: crate::tier1::Tier1BlockCoding::Mixed,
+                    ..Tier1CodingStyle::default()
+                };
+                for count in [0, 1, 3, 4, 5] {
+                    for first in [0, 1, usize::MAX] {
+                        for band in [[0, 0, 4, 4], [17, 31, 1, 1]] {
+                            for block in [[0, 1], [1, 1], [2, 3]] {
+                                for policy in [(false, 0), (true, 1)] {
+                                    for selected in [false, true] {
+                                        for limit in &limits {
+                                            for location in [
+                                                (0, 0, 0, 0),
+                                                (u16::MAX, u8::MAX, u32::MAX, usize::MAX),
+                                            ] {
+                                                for total in [0, u64::MAX] {
+                                                    let prefix =
+                                                        vec![ProgressionCodeBlockPlacement {
+                                                            precinct_index: 19,
+                                                            decoder_index: usize::MAX,
+                                                            subband_index: 37,
+                                                            x: u32::MAX,
+                                                            y: 7,
+                                                        }];
+                                                    let expected = reference_planned_precinct(
+                                                        band,
+                                                        block,
+                                                        &subbands,
+                                                        (first, count),
+                                                        style,
+                                                        policy,
+                                                        location,
+                                                        prefix.clone(),
+                                                        total,
+                                                        selected,
+                                                        limit,
+                                                    );
+                                                    let actual = plan_packet_precinct(
+                                                        band,
+                                                        block,
+                                                        &subbands,
+                                                        (first, count),
+                                                        style,
+                                                        policy,
+                                                        location,
+                                                        prefix,
+                                                        total,
+                                                        selected,
+                                                        limit,
+                                                    );
+                                                    match (actual, expected) {
+                                                        (Err(actual), Err(expected)) => {
+                                                            assert_eq!(actual, expected)
+                                                        }
+                                                        (Ok(actual), Ok(expected)) => {
+                                                            assert_eq!(
+                                                                actual.placements,
+                                                                expected.placements
+                                                            );
+                                                            assert_eq!(
+                                                                actual.planned_code_blocks,
+                                                                expected.planned_code_blocks
+                                                            );
+                                                            let is_empty = actual
+                                                                .precinct
+                                                                .decoders()
+                                                                .is_empty();
+                                                            empty += usize::from(is_empty);
+                                                            populated += usize::from(!is_empty);
+                                                            assert_eq!(crate::packet::exact_packet_precinct_snapshot(&actual.precinct), crate::packet::exact_packet_precinct_snapshot(&expected.precinct));
+                                                        }
+                                                        (Err(error), Ok(_)) => panic!(
+                                                            "unexpected precinct-plan error: {error:?}"
+                                                        ),
+                                                        (Ok(_), Err(error)) => panic!(
+                                                            "precinct plan should have failed: {error:?}"
+                                                        ),
+                                                    }
+                                                    cases += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 92_160);
         assert!(empty > 100 && populated > 100);
     }
 

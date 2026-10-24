@@ -2509,3 +2509,21 @@ Independent wide intersection/lattice tests cover 10,368 raw contexts;
 57,600 full composition contexts compare packet presence/metadata, every
 decoder field, placement prefixes, indices and selected-only count/errors.
 Full resolution/precinct/component/tile and F2/F4/F8 joins remain separate.
+## Complete actual precinct planning from raw subbands
+
+The actual tile planner shares a complete per-precinct producer. Checked
+indices and raw subband lookups feed actual intersection/lattice/execution
+and configured decoder/placement production; the real packet factory then
+derives every private context/state/decoder/subband/tag-tree field.
+Its source prefix, row-major flattened indices, selected-only global charge
+and later local factory/tag-tree budgets retain the original error and
+allocation order, including empty/ragged/over-three-source laziness.
+
+The exact native contract and consumer-binding mutations admit no prepared
+execution/decoder bank, initialized precinct, normalized range or successful
+budget/allocation premise. A proved owned-state suffix fold derives the
+whole output from raw source subbands. In 92,160 independent composition
+contexts, wide geometry/flat-order references and the previously independently
+qualified packet constructor compare every private packet field through the
+existing shared test-only snapshot, plus all placements and global count.
+Complete resolution/component/tile plans and F2/F4/F8 joins remain separate.

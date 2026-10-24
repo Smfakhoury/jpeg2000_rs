@@ -1592,3 +1592,11 @@ and complete owned placement/index/accounting state. Empty-intersection
 laziness and preceding arithmetic, divisor, limit and initializer error order
 remain explicit; no prepared lattice, decoder/result bank or successful
 resource premise is supplied.
+`part2_planned_precinct` derives complete private packet state and owned
+placement/accounting output from raw band/block geometry, subband source and
+range, style/policy/location/selection/limits. Its source-index and suffix
+relations produce actual optional subband executions and decoder vectors,
+then invoke the actual packet-initialization model. No prepared execution or
+decoder bank, validated range or successful resource premise is supplied.
+Native owned-state invariants prove all intermediate indexing and append
+frames; complete tile-plan and F2/F4/F8 joins remain separate.
