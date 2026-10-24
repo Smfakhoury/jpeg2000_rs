@@ -1,5 +1,13 @@
 # Specification audit guide
 
+`part2_collect_nonlinear_regions` derives the complete real typed-layout
+region vector from source-owned transforms, not supplied region results.
+First-specific/first-default selection, last tile-part override (including
+empty), registered checked extents, component/tile order, lazy geometry,
+clipping and raw transform fields remain explicit. Internal fold frames and
+all bounds are proved without valid-image premises. Actual nonlinear sample
+execution and whole typed/parser/file/F2/F4/final F8 remain separate.
+
 `part1_validate_typed_output_shape` binds the actual final codestream output
 validator, not only its scalar predicates. It checks raw input/layout/image
 counts and extents first, then every signed or unsigned plane in source order,

@@ -8636,6 +8636,145 @@ pub struct Part2OwnedNonlinear {
     pub gamma: Option<[u32; 5]>,
 }
 
+pub open spec fn part2_nonlinear_find(
+    transforms: Seq<Part2OwnedNonlinear>, component: Option<u16>, position: nat,
+) -> Option<Part2OwnedNonlinear>
+    decreases transforms.len() - position,
+{
+    if position >= transforms.len() { None }
+    else if transforms[position as int].component == component { Some(transforms[position as int]) }
+    else { part2_nonlinear_find(transforms, component, position + 1) }
+}
+
+pub open spec fn part2_nonlinear_transform_for(
+    transforms: Seq<Part2OwnedNonlinear>, component: u16,
+) -> Option<Part2OwnedNonlinear> {
+    match part2_nonlinear_find(transforms, Some(component), 0) {
+        Some(transform) => Some(transform),
+        None => part2_nonlinear_find(transforms, None, 0),
+    }
+}
+
+pub open spec fn part2_nonlinear_tile_extensions(
+    main: Part2OwnedExtensions, parts: Seq<Part2OwnedTilePart>, tile: u16, count: nat,
+) -> Part2OwnedExtensions
+    recommends count <= parts.len(),
+    decreases count,
+{
+    if count == 0 { main }
+    else if parts[count - 1].tile_index == tile { parts[count - 1].part2_extensions }
+    else { part2_nonlinear_tile_extensions(main, parts, tile, (count - 1) as nat) }
+}
+
+pub struct Part2NonlinearRegion {
+    pub component: u16,
+    pub x0: u32,
+    pub y0: u32,
+    pub x1: u32,
+    pub y1: u32,
+    pub transform: Part2OwnedNonlinear,
+}
+
+pub open spec fn part2_nonlinear_component_extent(
+    size: &crate::codestream::ImageSize, image: Part1DecodedTypedImage, component: u16,
+) -> Result<((u32, u32, u32, u32), u64), crate::DecodeError> {
+    match part1_image_size_component(crate::codestream::image_size_component_count(size),
+        crate::codestream::image_size_component_infos(size), component) {
+        Err(error) => Err(error),
+        Ok(info) => if component as nat >= image.1.len() { Err(part1_image_error(false)) } else {
+            let output = image.1[component as int];
+            match part2_registered_decode_ceil(image.0.2, info.x_subsampling as u32, info.x_registration) {
+                Err(error) => Err(error),
+                Ok(x0) => match part2_registered_decode_ceil(image.0.3, info.y_subsampling as u32, info.y_registration) {
+                    Err(error) => Err(error),
+                    Ok(y0) => if x0 as int + output.width as int > u32::MAX {
+                        Err(part1_block_placement_error(true))
+                    } else if y0 as int + output.height as int > u32::MAX {
+                        Err(part1_block_placement_error(true))
+                    } else {
+                        match part2_selection_tile_count(crate::codestream::selection_geometry_view(size)) {
+                            Err(error) => Err(error),
+                            Ok(count) => Ok(((x0, y0, (x0 + output.width) as u32, (y0 + output.height) as u32), count)),
+                        }
+                    }
+                },
+            }
+        },
+    }
+}
+
+pub(crate) open spec fn part2_nonlinear_tile_region(
+    layout: &crate::codestream::CodestreamLayout<'_>, component: u16, tile: u16,
+    extent: (u32, u32, u32, u32),
+) -> Result<Option<Part2NonlinearRegion>, crate::DecodeError> {
+    let extensions = part2_nonlinear_tile_extensions(
+        crate::codestream::owned_extensions_view(&layout.info.part2_extensions),
+        crate::codestream::tile_parts_owned_view(layout.tile_parts@), tile, layout.tile_parts@.len(),
+    );
+    match part2_nonlinear_transform_for(extensions.nonlinear, component) {
+        None => Ok(None),
+        Some(transform) => match part2_tile_component_bounds(
+            crate::codestream::selection_geometry_view(&layout.info.image_size),
+            crate::codestream::image_size_component_count(&layout.info.image_size),
+            crate::codestream::image_size_component_infos(&layout.info.image_size), tile, component,
+        ) {
+            Err(error) => Err(error),
+            Ok(bounds) => {
+                let x0 = if bounds.x0 > extent.0 { bounds.x0 } else { extent.0 };
+                let y0 = if bounds.y0 > extent.1 { bounds.y0 } else { extent.1 };
+                let x1 = if bounds.x1 < extent.2 { bounds.x1 } else { extent.2 };
+                let y1 = if bounds.y1 < extent.3 { bounds.y1 } else { extent.3 };
+                if x0 >= x1 || y0 >= y1 { Ok(None) } else {
+                    Ok(Some(Part2NonlinearRegion {
+                        component, x0: (x0 - extent.0) as u32, y0: (y0 - extent.1) as u32,
+                        x1: (x1 - extent.0) as u32, y1: (y1 - extent.1) as u32, transform,
+                    }))
+                }
+            },
+        },
+    }
+}
+
+pub(crate) open spec fn part2_nonlinear_tile_regions(
+    layout: &crate::codestream::CodestreamLayout<'_>, component: u16,
+    extent: (u32, u32, u32, u32), count: u64, tile: nat, regions: Seq<Part2NonlinearRegion>,
+) -> Result<Seq<Part2NonlinearRegion>, crate::DecodeError>
+    decreases count - tile,
+{
+    if tile >= count { Ok(regions) }
+    else if tile > u16::MAX { Err(part1_block_placement_error(true)) }
+    else {
+        match part2_nonlinear_tile_region(layout, component, tile as u16, extent) {
+            Err(error) => Err(error),
+            Ok(region) => part2_nonlinear_tile_regions(layout, component, extent, count, tile + 1,
+                match region { None => regions, Some(region) => regions.push(region) }),
+        }
+    }
+}
+
+pub(crate) open spec fn part2_nonlinear_component_regions(
+    layout: &crate::codestream::CodestreamLayout<'_>, image: Part1DecodedTypedImage,
+    component: nat, regions: Seq<Part2NonlinearRegion>,
+) -> Result<Seq<Part2NonlinearRegion>, crate::DecodeError>
+    decreases layout.info.image_size.components - component,
+{
+    if component >= layout.info.image_size.components { Ok(regions) } else {
+        match part2_nonlinear_component_extent(&layout.info.image_size, image, component as u16) {
+            Err(error) => Err(error),
+            Ok((extent, count)) => match part2_nonlinear_tile_regions(layout, component as u16, extent, count, 0, regions) {
+                Err(error) => Err(error),
+                Ok(regions) => part2_nonlinear_component_regions(layout, image, component + 1, regions),
+            },
+        }
+    }
+}
+
+pub(crate) open spec fn part2_collect_nonlinear_regions(
+    layout: &crate::codestream::CodestreamLayout<'_>, image: Part1DecodedTypedImage,
+) -> Result<Seq<Part2NonlinearRegion>, crate::DecodeError> {
+    part2_nonlinear_component_regions(layout, image, 0, Seq::empty())
+}
+
 pub struct Part2OwnedExtensions {
     pub decompositions: Seq<(u8, Seq<crate::codestream::DecompositionDirection>)>,
     pub arbitrary: Seq<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>,
