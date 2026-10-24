@@ -3686,51 +3686,141 @@ fn typed_layout(
     limits: &ResourceLimits,
 ) -> Result<TypedImage, DecodeError> {
     let mut image = decoded.typed(limits)?;
+    let regions = collect_nonlinear_regions(layout, &image)?;
+    if !regions.is_empty() {
+        image.apply_nonlinear_regions(&regions, limits)?;
+    }
+    Ok(image)
+}
+
+type NonlinearComponentExtent = ((u32, u32, u32, u32), u64);
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_nonlinear_component_extent(
+        size, crate::image::typed_image_value_view(*image), component,
+    ),
+))]
+fn nonlinear_component_extent(
+    size: &codestream::ImageSize,
+    image: &TypedImage,
+    component: u16,
+) -> Result<NonlinearComponentExtent, DecodeError> {
+    let info = size.component(component)?;
+    let output = image.component(component)?;
+    let x0 = registered_ceil_div_u32(
+        image.x_origin(),
+        u32::from(info.x_subsampling),
+        info.x_registration,
+    )?;
+    let y0 = registered_ceil_div_u32(
+        image.y_origin(),
+        u32::from(info.y_subsampling),
+        info.y_registration,
+    )?;
+    let x1 = x0
+        .checked_add(output.width())
+        .ok_or_else(arithmetic_overflow)?;
+    let y1 = y0
+        .checked_add(output.height())
+        .ok_or_else(arithmetic_overflow)?;
+    let count = size.tile_count()?;
+    Ok(((x0, y0, x1, y1), count))
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) open spec fn nonlinear_region_view(region: &NonlinearRegion<'_>) -> crate::specs::Part2NonlinearRegion {
+        crate::specs::Part2NonlinearRegion {
+            component: region.component, x0: region.x0, y0: region.y0, x1: region.x1, y1: region.y1,
+            transform: codestream::owned_nonlinear_view(region.transform),
+        }
+    }
+
+    pub(crate) open spec fn nonlinear_regions_view(regions: Seq<NonlinearRegion<'_>>) -> Seq<crate::specs::Part2NonlinearRegion> {
+        regions.map_values(|region: NonlinearRegion<'_>| nonlinear_region_view(&region))
+    }
+
+    pub(crate) open spec fn nonlinear_regions_outcome(result: Result<Vec<NonlinearRegion<'_>>, DecodeError>)
+        -> Result<Seq<crate::specs::Part2NonlinearRegion>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(regions) => Ok(nonlinear_regions_view(regions@)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures nonlinear_regions_outcome(result) == crate::specs::part2_collect_nonlinear_regions(
+        layout, crate::image::typed_image_value_view(*image),
+    ),
+))]
+fn collect_nonlinear_regions<'a>(
+    layout: &'a CodestreamLayout<'_>,
+    image: &TypedImage,
+) -> Result<Vec<NonlinearRegion<'a>>, DecodeError> {
     let mut regions = Vec::new();
     let mut component = 0_u16;
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost image_view = crate::image::typed_image_value_view(*image);
+        let ghost goal = crate::specs::part2_collect_nonlinear_regions(layout, image_view);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(nonlinear_regions_view(regions@) =~= Seq::empty()); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
             invariant component <= layout.info.image_size.components,
+            image_view == crate::image::typed_image_value_view(*image),
+            goal == crate::specs::part2_collect_nonlinear_regions(layout, image_view),
+            goal == crate::specs::part2_nonlinear_component_regions(layout, image_view, component as nat, nonlinear_regions_view(regions@)),
             decreases layout.info.image_size.components - component,
         )
     )]
     while component < layout.info.image_size.components {
-        let info = layout.info.image_size.component(component)?;
-        let output = image.component(component)?;
-        let output_x0 = registered_ceil_div_u32(
-            image.x_origin(),
-            u32::from(info.x_subsampling),
-            info.x_registration,
-        )?;
-        let output_y0 = registered_ceil_div_u32(
-            image.y_origin(),
-            u32::from(info.y_subsampling),
-            info.y_registration,
-        )?;
-        let output_x1 = output_x0
-            .checked_add(output.width())
-            .ok_or_else(arithmetic_overflow)?;
-        let output_y1 = output_y0
-            .checked_add(output.height())
-            .ok_or_else(arithmetic_overflow)?;
-        let tile_count = layout.info.image_size.tile_count()?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nonlinear_component_regions, 1); }
+        let (extent, tile_count) =
+            nonlinear_component_extent(&layout.info.image_size, image, component)?;
+        let (output_x0, output_y0, output_x1, output_y1) = extent;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost tile_goal = crate::specs::part2_nonlinear_tile_regions(
+                layout, component, extent, tile_count, 0, nonlinear_regions_view(regions@),
+            );
+        }
         let mut tile = 0_u64;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant tile <= tile_count,
+                image_view == crate::image::typed_image_value_view(*image),
+                component < layout.info.image_size.components,
+                goal == crate::specs::part2_collect_nonlinear_regions(layout, image_view),
+                goal == match tile_goal {
+                    Err(error) => Err(error),
+                    Ok(regions) => crate::specs::part2_nonlinear_component_regions(layout, image_view, component as nat + 1, regions),
+                },
+                tile_goal == crate::specs::part2_nonlinear_tile_regions(layout, component, extent, tile_count, tile as nat, nonlinear_regions_view(regions@)),
+                extent == (output_x0, output_y0, output_x1, output_y1),
                 decreases tile_count - tile,
             )
         )]
         while tile < tile_count {
-            let tile_index = u16::try_from(tile).map_err(|_| arithmetic_overflow())?;
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_nonlinear_tile_regions, 1); }
+            let tile_index = match u16::try_from(tile) {
+                Ok(index) => index,
+                Err(_) => return Err(arithmetic_overflow()),
+            };
             let mut extensions = &layout.info.part2_extensions;
             let mut part = 0_usize;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant part <= layout.tile_parts.len(),
+                    codestream::owned_extensions_view(extensions) == crate::specs::part2_nonlinear_tile_extensions(
+                        codestream::owned_extensions_view(&layout.info.part2_extensions),
+                        codestream::tile_parts_owned_view(layout.tile_parts@), tile_index, part as nat,
+                    ),
                     decreases layout.tile_parts.len() - part,
                 )
             )]
@@ -3740,6 +3830,11 @@ fn typed_layout(
                     extensions = &tile_part.part2_extensions;
                 }
                 part = part.checked_add(1).ok_or_else(arithmetic_overflow)?;
+            }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! {
+                let ghost before = regions@;
+                let ghost region = crate::specs::part2_nonlinear_tile_region(layout, component, tile_index, extent);
             }
             if let Some(transform) = extensions.nonlinear_transform_for(component) {
                 let bounds = layout
@@ -3761,14 +3856,23 @@ fn typed_layout(
                     });
                 }
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(nonlinear_regions_view(regions@) =~= match region {
+                    Err(_) => nonlinear_regions_view(before),
+                    Ok(None) => nonlinear_regions_view(before),
+                    Ok(Some(region)) => nonlinear_regions_view(before).push(region),
+                });
+            }
             tile = tile.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nonlinear_tile_regions, 1); }
         component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
     }
-    if !regions.is_empty() {
-        image.apply_nonlinear_regions(&regions, limits)?;
-    }
-    Ok(image)
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_nonlinear_component_regions, 1); }
+    Ok(regions)
 }
 
 pub fn decode_jp2(input: &[u8], options: &DecodeOptions) -> Result<TypedImage, DecodeError> {
@@ -11301,6 +11405,224 @@ mod tests {
                 actual: 24,
             })
         ));
+    }
+
+    #[test]
+    fn actual_nonlinear_regions_derive_last_raw_tile_owner_registered_clipping_and_error_order() {
+        use crate::codestream::{ComponentInfo, NonlinearPointTransform, Part2Extensions};
+        use crate::image::TypedComponent;
+
+        fn wide_ceil(value: u32, divisor: u8, registration: u16) -> Result<u32, DecodeError> {
+            if divisor == 0 {
+                return Err(invalid_decode());
+            }
+            let shifted = (u128::from(value) * 65_536).saturating_sub(u128::from(registration));
+            let divisor = u128::from(divisor) * 65_536;
+            u32::try_from(shifted.div_ceil(divisor)).map_err(|_| arithmetic_overflow())
+        }
+
+        fn reference<'a>(
+            layout: &'a CodestreamLayout<'_>,
+            image: &TypedImage,
+        ) -> Result<Vec<NonlinearRegion<'a>>, DecodeError> {
+            let size = &layout.info.image_size;
+            let mut regions = Vec::new();
+            for component in 0..size.components {
+                let info = size.component(component)?;
+                let output = image.component(component)?;
+                let x0 = wide_ceil(image.x_origin(), info.x_subsampling, info.x_registration)?;
+                let y0 = wide_ceil(image.y_origin(), info.y_subsampling, info.y_registration)?;
+                let x1 = u32::try_from(u64::from(x0) + u64::from(output.width()))
+                    .map_err(|_| arithmetic_overflow())?;
+                let y1 = u32::try_from(u64::from(y0) + u64::from(output.height()))
+                    .map_err(|_| arithmetic_overflow())?;
+                for tile in 0..size.tile_count()? {
+                    let tile = u16::try_from(tile).map_err(|_| arithmetic_overflow())?;
+                    let owner = layout
+                        .tile_parts
+                        .iter()
+                        .rev()
+                        .find(|part| part.tile_index == tile)
+                        .map_or(&layout.info.part2_extensions, |part| &part.part2_extensions);
+                    let selected = owner
+                        .nonlinear_transforms()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, transform)| {
+                            let priority = if transform.component() == Some(component) {
+                                0
+                            } else if transform.component().is_none() {
+                                1
+                            } else {
+                                return None;
+                            };
+                            Some((priority, index, transform))
+                        })
+                        .min_by_key(|(priority, index, _)| (*priority, *index));
+                    if let Some((_, _, transform)) = selected {
+                        let bounds = size.tile_component_bounds(tile, component)?;
+                        let start_x = u64::from(bounds.x0).max(u64::from(x0));
+                        let start_y = u64::from(bounds.y0).max(u64::from(y0));
+                        let end_x = u64::from(bounds.x1).min(u64::from(x1));
+                        let end_y = u64::from(bounds.y1).min(u64::from(y1));
+                        if start_x < end_x && start_y < end_y {
+                            regions.push(NonlinearRegion {
+                                component,
+                                x0: (start_x - u64::from(x0)) as u32,
+                                y0: (start_y - u64::from(y0)) as u32,
+                                x1: (end_x - u64::from(x0)) as u32,
+                                y1: (end_y - u64::from(y0)) as u32,
+                                transform,
+                            });
+                        }
+                    }
+                }
+            }
+            Ok(regions)
+        }
+
+        fn observe<'a>(
+            regions: Vec<NonlinearRegion<'a>>,
+        ) -> Vec<(u16, [u32; 4], &'a NonlinearPointTransform)> {
+            regions
+                .into_iter()
+                .map(|region| {
+                    (
+                        region.component,
+                        [region.x0, region.y0, region.x1, region.y1],
+                        region.transform,
+                    )
+                })
+                .collect()
+        }
+
+        let extensions =
+            [
+                Part2Extensions::default(),
+                Part2Extensions::with_nonlinear_transform_for_test(
+                    NonlinearPointTransform::for_test(7, false, 0, None, None, vec![]),
+                ),
+                Part2Extensions::with_nonlinear_transform_for_test(
+                    NonlinearPointTransform::for_test(
+                        0,
+                        true,
+                        u8::MAX,
+                        Some(u32::MAX),
+                        Some(0),
+                        vec![u32::MAX, 0],
+                    ),
+                ),
+                Part2Extensions::with_nonlinear_transform_for_test(
+                    NonlinearPointTransform::gamma_for_test(38, true, [u32::MAX, 17, 0, 3, 1]),
+                ),
+            ];
+        let bytes = two_tile_codestream();
+        let mut cases = 0;
+        let mut nonempty = 0;
+        let mut successes = 0;
+        for mode in 0..extensions.len() {
+            for variant in 0..10 {
+                let mut layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+                layout.info.image_size.components = 2;
+                layout.info.image_size.component_info[1] = ComponentInfo {
+                    precision: 0,
+                    signed: true,
+                    x_subsampling: 2,
+                    y_subsampling: 1,
+                    x_registration: u16::MAX,
+                    y_registration: 17,
+                };
+                layout.info.part2_extensions = extensions[1].clone();
+                layout.tile_parts[0].part2_extensions = extensions[mode].clone();
+                layout.tile_parts[1].part2_extensions =
+                    extensions[(mode + 1) % extensions.len()].clone();
+                match variant {
+                    0 => {}
+                    1 => layout.tile_parts.clear(),
+                    2 => layout.tile_parts.reverse(),
+                    3 => {
+                        let mut duplicate = layout.tile_parts[0].clone();
+                        duplicate.part2_extensions =
+                            extensions[(mode + 2) % extensions.len()].clone();
+                        layout.tile_parts.push(duplicate);
+                    }
+                    4 => {
+                        for part in &mut layout.tile_parts {
+                            part.tile_index = u16::MAX;
+                        }
+                    }
+                    5 => layout.info.image_size.tiles_across = 0,
+                    6 => layout.info.image_size.tile_width = 0,
+                    7 => layout.info.image_size.component_info[0].x_subsampling = 0,
+                    8 => layout.info.image_size.component_info[0].y_subsampling = 0,
+                    _ => layout.info.image_size.components = 0,
+                }
+                for count in 0..4 {
+                    for (x, y) in [
+                        (0, 0),
+                        (1, 0),
+                        (2, 0),
+                        (3, 0),
+                        (6, 0),
+                        (u32::MAX, 0),
+                        (1, u32::MAX),
+                    ] {
+                        for (width, height) in [(0, 0), (1, 1), (4, 1), (u32::MAX, 1)] {
+                            let components = (0..count)
+                                .map(|_| {
+                                    TypedComponent::from_parts(
+                                        width,
+                                        height,
+                                        layout.info.image_size.component_info[0],
+                                        TypedSamples::Signed(vec![]),
+                                    )
+                                })
+                                .collect();
+                            let image = TypedImage::for_test(width, height, x, y, components);
+                            let actual = collect_nonlinear_regions(&layout, &image).map(observe);
+                            let expected = reference(&layout, &image).map(observe);
+                            nonempty +=
+                                usize::from(matches!(&actual, Ok(regions) if !regions.is_empty()));
+                            successes += usize::from(actual.is_ok());
+                            assert_eq!(actual, expected);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 4_480);
+        assert!(successes > 100);
+        assert!(nonempty > 100);
+
+        let mut layout = parse_layout(&bytes, &ResourceLimits::HARDENED).unwrap();
+        layout.info.image_size.tiles_across = 65_537;
+        layout.info.image_size.tiles_down = 1;
+        let image = TypedImage::for_test(
+            0,
+            0,
+            0,
+            0,
+            vec![TypedComponent::from_parts(
+                0,
+                0,
+                layout.info.image_size.component_info[0],
+                TypedSamples::Signed(vec![]),
+            )],
+        );
+        assert!(matches!(
+            collect_nonlinear_regions(&layout, &image),
+            Err(DecodeError::MalformedInput {
+                kind: MalformedKind::ArithmeticOverflow,
+                ..
+            })
+        ));
+        layout.info.image_size.components = 0;
+        assert!(
+            collect_nonlinear_regions(&layout, &image)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

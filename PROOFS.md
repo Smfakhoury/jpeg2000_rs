@@ -25,6 +25,30 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native nonlinear region production
+
+The actual `Part2Extensions::nonlinear_transform_for` refines first specific,
+then first default selection over complete raw transform observations. Two
+explicit scans preserve the former iterator order without trusting callback
+results or normalizing descriptors.
+
+Actual `typed_layout` uses the single extracted `nonlinear_component_extent`
+and `collect_nonlinear_regions` bodies. Their complete Result contracts derive
+every ordered region and transform from the actual raw layout and typed image.
+Last matching tile-part metadata replaces main metadata, including an empty
+registry; no-match retains main metadata. Registration and checked extents
+precede tile traversal; each tile narrows before lookup, and geometry is lazy
+until a transform exists. Regions clip to the output and retain all source
+transform fields. Empty components still bypass otherwise invalid metadata.
+All loop/read/narrowing frames derive internally; no supplied regions,
+transforms, successful results or valid-image premises are used.
+
+The extraction preserves allocation, mutation and error order. A private
+extent alias keeps the existing tuple shape within strict Clippy conventions.
+Independent exhaustive-u16 selection and wide-coordinate/reverse-owner tests
+exercise raw metadata, complete regions and first errors. Nonlinear sample
+execution and full typed/parser/file/F2/F4/final F8 joins remain separate.
+
 ## Complete native typed output-shape admission
 
 The actual `validate_part1_output_shape` refines

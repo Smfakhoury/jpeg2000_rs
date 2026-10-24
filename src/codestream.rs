@@ -1693,21 +1693,55 @@ impl Part2Extensions {
         &self.tile_part_lengths
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures nonlinear_transform_option_view(result) == crate::specs::part2_nonlinear_transform_for(
+            owned_extensions_view(self).nonlinear, component,
+        ),
+    ))]
     pub(crate) fn nonlinear_transform_for(
         &self,
         component: u16,
     ) -> Option<&NonlinearPointTransform> {
-        if let Some(transform) = self
-            .nonlinear_transforms
-            .iter()
-            .find(|transform| transform.component == Some(component))
-        {
-            return Some(transform);
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(owned_extensions_view); reveal(owned_nonlinear_view); }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= self.nonlinear_transforms.len(),
+                crate::specs::part2_nonlinear_find(owned_extensions_view(self).nonlinear, Some(component), 0)
+                    == crate::specs::part2_nonlinear_find(owned_extensions_view(self).nonlinear, Some(component), position as nat),
+            decreases self.nonlinear_transforms.len() - position,
+        ))]
+        while position < self.nonlinear_transforms.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_nonlinear_find, 1); }
+            let transform = &self.nonlinear_transforms[position];
+            if transform.component == Some(component) {
+                return Some(transform);
+            }
+            position += 1;
         }
-
-        self.nonlinear_transforms
-            .iter()
-            .find(|transform| transform.component.is_none())
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nonlinear_find, 1); }
+        position = 0;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= self.nonlinear_transforms.len(),
+                crate::specs::part2_nonlinear_find(owned_extensions_view(self).nonlinear, Some(component), 0) == None,
+                crate::specs::part2_nonlinear_find(owned_extensions_view(self).nonlinear, None, 0)
+                    == crate::specs::part2_nonlinear_find(owned_extensions_view(self).nonlinear, None, position as nat),
+            decreases self.nonlinear_transforms.len() - position,
+        ))]
+        while position < self.nonlinear_transforms.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_nonlinear_find, 1); }
+            let transform = &self.nonlinear_transforms[position];
+            if transform.component.is_none() {
+                return Some(transform);
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_nonlinear_find, 1); }
+        None
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -3288,6 +3322,12 @@ verus! {
             parameters: value.parameters@, d_min: value.d_min, d_max: value.d_max, point_bits: value.point_bits,
             points: value.points@, gamma: value.gamma_parameters,
         }
+    }
+
+    pub open spec fn nonlinear_transform_option_view(value: Option<&NonlinearPointTransform>)
+        -> Option<crate::specs::Part2OwnedNonlinear>
+    {
+        match value { None => None, Some(value) => Some(owned_nonlinear_view(value)) }
     }
 
     pub closed spec fn owned_kernel_view(value: &ArbitraryKernel) -> (u8, u16, crate::specs::Part2RawKernel) {
@@ -13580,6 +13620,65 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn actual_nonlinear_lookup_preserves_first_specific_then_first_default_and_all_raw_fields() {
+        let selectors = [
+            vec![],
+            vec![None],
+            vec![Some(0)],
+            vec![Some(u16::MAX)],
+            vec![None, Some(0)],
+            vec![None, None, Some(0), Some(0)],
+            vec![Some(1), Some(u16::MAX), None, Some(0)],
+            vec![Some(0), None, Some(0), None],
+            vec![None, Some(1), None],
+        ];
+        let mut cases = 0;
+        for selectors in selectors {
+            let extensions = Part2Extensions {
+                nonlinear_transforms: selectors
+                    .iter()
+                    .enumerate()
+                    .map(|(index, component)| NonlinearPointTransform {
+                        component: *component,
+                        precision: 0,
+                        signed: index % 2 == 0,
+                        transform_type: u8::MAX,
+                        parameters: vec![0xa5, index as u8],
+                        d_min: Some(u32::MAX),
+                        d_max: Some(index as u32),
+                        point_bits: Some(u8::MAX),
+                        points: vec![u32::MAX, 0, index as u32],
+                        gamma_parameters: Some([u32::MAX, 17, index as u32, 0, 1]),
+                    })
+                    .collect(),
+                ..Part2Extensions::default()
+            };
+            for component in 0..=u16::MAX {
+                let mut specific = None;
+                let mut default = None;
+                for (index, selector) in selectors.iter().enumerate() {
+                    if *selector == Some(component) && specific.is_none() {
+                        specific = Some(index);
+                    }
+                    if selector.is_none() && default.is_none() {
+                        default = Some(index);
+                    }
+                }
+                let expected = specific
+                    .or(default)
+                    .map(|index| &extensions.nonlinear_transforms[index]);
+                let actual = extensions.nonlinear_transform_for(component);
+                assert_eq!(actual, expected);
+                if let (Some(actual), Some(expected)) = (actual, expected) {
+                    assert!(core::ptr::eq(actual, expected));
+                }
+                cases += 1;
+            }
+        }
+        assert_eq!(cases, 589_824);
     }
 
     #[test]

@@ -4,6 +4,45 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-nonlinear-region-production",
+      "topic": "Complete actual nonlinear transform selection, registered output metadata and full raw layout/image to ordered nonlinear regions Result. First component-specific transform precedes first default; last matching tile-part owner replaces main metadata even when empty. Preserve component-before-tile traversal, all metadata/check/narrowing order, lazy tile geometry only with a selected transform, clipping and every raw transform field. Prove all frames/bounds internally, no normalized metadata, supplied regions/transforms/results or success premises. Sole extracted bodies are used by actual typed_layout with original allocation and error policy. Nonlinear sample execution, final typed/raw parser/file/F2/F4/final F8 and delivery remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "typed_layout"},
+        {"path": "src/decode.rs", "symbol": "collect_nonlinear_regions"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_component_extent"},
+        {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_transform_for"},
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_find"},
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_component_extent"},
+        {"path": "specs/mod.rs", "symbol": "part2_collect_nonlinear_regions"},
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_component_regions"},
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_tile_regions"},
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_tile_region"},
+        {"path": "specs/mod.rs", "symbol": "part2_nonlinear_tile_extensions"},
+        {"path": "specs/mod.rs", "symbol": "part2_registered_decode_ceil"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::nonlinear_transform_for"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_component_extent"},
+        {"path": "src/decode.rs", "symbol": "collect_nonlinear_regions"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "nonlinear_transform_option_view"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_region_view"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_regions_view"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_regions_outcome"},
+        {"path": "src/decode.rs", "symbol": "registered_ceil_div_u32"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_nonlinear_lookup_preserves_first_specific_then_first_default_and_all_raw_fields"},
+        {"path": "src/decode.rs", "symbol": "actual_nonlinear_regions_derive_last_raw_tile_owner_registered_clipping_and_error_order"}
+      ]
+    },
+    {
       "id": "part1-complete-native-typed-output-shape-admission",
       "topic": "Complete actual final typed output-shape Result from raw input length, actual layout counts and actual typed image. Preserve header-before-components admission, strict positive extents/counts, exact component count and row/area checks for signed or unsigned sequences without multiplying or inspecting sample values/descriptors/origins/definitions. All iteration/read/arithmetic bounds derive internally; no valid-image or successful-decoder premise. Both actual raw codestream entry points consume this sole body. Typed nonlinear finalization, byte parser, file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
@@ -819,7 +858,8 @@
       "topic": "Complete actual raw ImageSize::tile_component_bounds Result and shared registered-ceiling producer. Original checked tile geometry precedes ordered raw component admission, six registered ceiling computations, nonempty extents and relative-origin stores. All raw counts, descriptor registration/subsampling/unused precision/sign fields and checked failures are retained. Actual typed-layout output-region registration reuses the same scalar while preserving its distinct zero-divisor InvalidCodeBlock policy. No normalized geometry, admitted component or supplied scalar result premise; full packet planning and F2/F4/F8 remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "typed_layout"}
+        {"path": "src/decode.rs", "symbol": "typed_layout"},
+        {"path": "src/decode.rs", "symbol": "nonlinear_component_extent"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_tile_component_bounds"},

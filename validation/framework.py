@@ -792,6 +792,21 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_REGIONS_CONTRACTS = {
+    ("src/codestream.rs", "Part2Extensions::nonlinear_transform_for"): (
+        "part2_nonlinear_transform_for", _coverage_call("nonlinear_transform_option_view", r"\1"), None,
+        _coverage_call("owned_extensions_view", "self") + r"\.nonlinear\s*,\s*component",
+    ),
+    ("src/decode.rs", "nonlinear_component_extent"): (
+        "part2_nonlinear_component_extent", r"\1", None,
+        r"size\s*,\s*" + _coverage_call("crate::image::typed_image_value_view", r"\*\s*image") + r"\s*,\s*component",
+    ),
+    ("src/decode.rs", "collect_nonlinear_regions"): (
+        "part2_collect_nonlinear_regions", _coverage_call("nonlinear_regions_outcome", r"\1"), None,
+        r"layout\s*,\s*" + _coverage_call("crate::image::typed_image_value_view", r"\*\s*image"),
+    ),
+}
+
 _OUTPUT_SHAPE_CONTRACTS = {
     ("src/decode.rs", "validate_part1_output_shape"): (
         "part1_validate_typed_output_shape", r"\1", None,
@@ -1853,6 +1868,7 @@ def validate_normative_coverage(
                 or _TILE_COLLECTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYOUT_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _OUTPUT_SHAPE_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_REGIONS_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
