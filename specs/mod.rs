@@ -8334,6 +8334,123 @@ pub open spec fn part2_planned_codeblock_geometry(grid: [u32; 4], clip: [u32; 4]
     } else { Ok((x as u32, y as u32, width as u16, height as u16)) }
 }
 
+pub open spec fn part2_mct_array_identity(left: Part2MctArray, right: Part2MctArray) -> bool { left == right }
+pub open spec fn part2_mct_collection_identity(left: Part2MctCollection, right: Part2MctCollection) -> bool { left == right }
+pub open spec fn part2_mct_stage_identity(left: Part2MctStage, right: Part2MctStage) -> bool { left == right }
+pub open spec fn part2_mct_identity(left: Seq<Part2MctStage>, right: Seq<Part2MctStage>) -> bool { left == right }
+pub open spec fn part2_optional_mct_identity(left: Option<Seq<Part2MctStage>>, right: Option<Seq<Part2MctStage>>) -> bool { left == right }
+
+pub open spec fn part2_decode_wavelet_agreement(left: crate::codestream::WaveletTransform, right: crate::codestream::WaveletTransform) -> bool {
+    matches!((left, right),
+        (crate::codestream::WaveletTransform::Irreversible9x7, crate::codestream::WaveletTransform::Irreversible9x7)
+        | (crate::codestream::WaveletTransform::Reversible5x3, crate::codestream::WaveletTransform::Reversible5x3))
+}
+
+#[verifier::opaque]
+pub open spec fn part2_full_tile_style_admission(
+    styles: &crate::codestream::ComponentCodingStyles, main: crate::codestream::CodingStyle, components: u16, component: u16,
+) -> Result<(), crate::DecodeError>
+    decreases if component < components && component < 3 { 3int - component as int } else { 0int },
+{
+    if component >= components || component >= 3 { Ok(()) } else {
+        match crate::codestream::component_coding_style_result(styles, component) {
+            Err(error) => Err(error),
+            Ok(style) => if !part2_decode_wavelet_agreement(style.transform, main.transform) {
+                Err(part1_selector_error(false))
+            } else { part2_full_tile_style_admission(styles, main, components, (component + 1) as u16) },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_selected_tile_resolutions(
+    styles: &crate::codestream::ComponentCodingStyles, main: crate::codestream::CodingStyle, components: u16,
+    discard: u8, component: u16, before: Seq<u8>,
+) -> Result<Seq<u8>, crate::DecodeError>
+    decreases if component < components { components as int - component as int } else { 0int },
+{
+    if component >= components { Ok(before) } else {
+        match crate::codestream::component_coding_style_result(styles, component) {
+            Err(error) => Err(error),
+            Ok(style) => {
+                let selector = crate::codestream::decomposition_selector_view(style);
+                if discard > part2_maximum_isotropic_reduction(selector.0, selector.1, 0) {
+                    Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })
+                } else if main.multiple_component_transform && component < 3 && !part2_decode_wavelet_agreement(style.transform, main.transform) {
+                    Err(part1_selector_error(false))
+                } else if style.decomposition_levels == u8::MAX || style.decomposition_levels as int + 1 < discard as int {
+                    Err(crate::DecodeError::InvalidSelection { reason: crate::SelectionError::ReductionTooLarge })
+                } else {
+                    part2_selected_tile_resolutions(styles, main, components, discard, (component + 1) as u16,
+                        before.push((style.decomposition_levels as int + 1 - discard as int) as u8))
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part2_tile_component_resolutions(
+    styles: &crate::codestream::ComponentCodingStyles, main: crate::codestream::CodingStyle, components: u16, discard: Option<u8>,
+) -> Result<Seq<u8>, crate::DecodeError> {
+    match discard {
+        None => if !main.multiple_component_transform { Ok(Seq::empty()) } else {
+            match part2_full_tile_style_admission(styles, main, components, 0) {
+                Err(error) => Err(error), Ok(()) => Ok(Seq::empty()),
+            }
+        },
+        Some(levels) => part2_selected_tile_resolutions(styles, main, components, levels, 0, Seq::empty()),
+    }
+}
+
+pub struct Part2TileDecodeMetadata<'data> {
+    pub first: crate::codestream::TilePartPayload<'data>,
+    pub standard: (bool, bool),
+    pub resolution_counts: Seq<u8>,
+}
+
+pub open spec fn part2_tile_decode_standard(first: &crate::codestream::TilePartPayload<'_>) -> Result<(bool, bool), crate::DecodeError> {
+    let flag = first.coding_style.multiple_component_transform;
+    match first.coding_style.transform {
+        crate::codestream::WaveletTransform::Irreversible9x7 => Ok((flag, true)),
+        crate::codestream::WaveletTransform::Reversible5x3 => Ok((flag, false)),
+        crate::codestream::WaveletTransform::Arbitrary(index) => match part2_kernel_registry_lookup(
+            crate::codestream::part2_kernel_registry(&first.part2_extensions), index) {
+            None => Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::MissingRequiredStructure }),
+            Some(kernel) => Ok((flag, !kernel.0)),
+        },
+    }
+}
+
+pub open spec fn part2_tile_decode_metadata<'data>(
+    parts: Seq<crate::codestream::TilePartPayload<'data>>, components: u16, discard: Option<u8>,
+) -> Result<Part2TileDecodeMetadata<'data>, crate::DecodeError> {
+    if parts.len() == 0 {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidTilePart })
+    } else if !(forall |i: int| 0 <= i < parts.len() ==> #[trigger] crate::decode::tile_part_mct_view(&parts[i]) == crate::decode::tile_part_mct_view(&parts[0])) {
+        Err(crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidTransform })
+    } else {
+        match part2_tile_decode_standard(&parts[0]) {
+            Err(error) => Err(error),
+            Ok(standard) => match part2_tile_component_resolutions(&parts[0].component_coding_styles, parts[0].coding_style, components, discard) {
+                Err(error) => Err(error),
+                Ok(counts) => Ok(Part2TileDecodeMetadata { first: parts[0], standard, resolution_counts: counts }),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_maximum_isotropic_reduction(
+    levels: u8, directions: Seq<crate::codestream::DecompositionDirection>, count: u8,
+) -> u8
+    decreases if count < 32 { 32int - count as int } else { 0int },
+{
+    if count >= levels || count >= 32 || count as nat >= directions.len()
+        || directions[count as int] != crate::codestream::DecompositionDirection::TwoDimensional {
+        count
+    } else { part2_maximum_isotropic_reduction(levels, directions, (count + 1) as u8) }
+}
+
 #[verifier::opaque]
 pub open spec fn part2_selected_component_blocks(plan: Part1PreparePlan, index: nat, total: u64)
     -> Result<u64, crate::DecodeError>

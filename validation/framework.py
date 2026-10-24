@@ -790,6 +790,45 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_TILE_METADATA_CONTRACTS = {
+    ("src/codestream.rs", "MctArray::equals"): (
+        "part2_mct_array_identity", r"\1", None,
+        _coverage_call("mct_array_view", "self") + r"\s*,\s*" + _coverage_call("mct_array_view", "other"),
+    ),
+    ("src/codestream.rs", "MctCollection::equals"): (
+        "part2_mct_collection_identity", r"\1", None,
+        _coverage_call("mct_collection_view", "self") + r"\s*,\s*" + _coverage_call("mct_collection_view", "other"),
+    ),
+    ("src/codestream.rs", "MctStage::equals"): (
+        "part2_mct_stage_identity", r"\1", None,
+        _coverage_call("mct_stage_view", "self") + r"\s*,\s*" + _coverage_call("mct_stage_view", "other"),
+    ),
+    ("src/codestream.rs", "MultipleComponentTransform::equals"): (
+        "part2_mct_identity", r"\1", None,
+        _coverage_call("multiple_component_transform_view", "self") + r"\s*,\s*" + _coverage_call("multiple_component_transform_view", "other"),
+    ),
+    ("src/codestream.rs", "CodingStyle::maximum_isotropic_reduction"): (
+        "part2_maximum_isotropic_reduction", r"\1", None,
+        _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
+        + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*0",
+    ),
+    ("src/decode.rs", "optional_multiple_component_transforms_equal"): (
+        "part2_optional_mct_identity", r"\1", None,
+        _coverage_call("tile_mct_option", "left") + r"\s*,\s*" + _coverage_call("tile_mct_option", "right"),
+    ),
+    ("src/decode.rs", "wavelet_transforms_equal"): (
+        "part2_decode_wavelet_agreement", r"\1", None, r"left\s*,\s*right",
+    ),
+    ("src/decode.rs", "prepare_tile_component_resolutions"): (
+        "part2_tile_component_resolutions", _coverage_call("resolution_counts_outcome_for_tile", r"\1"), None,
+        r"styles\s*,\s*main\s*,\s*components\s*,\s*discard",
+    ),
+    ("src/decode.rs", "prepare_tile_decode_metadata"): (
+        "part2_tile_decode_metadata", _coverage_call("tile_decode_metadata_outcome", r"\1"), None,
+        r"parts@\s*,\s*components\s*,\s*discard",
+    ),
+}
+
 _LAYOUT_ACCOUNTING_CONTRACTS = {
     ("src/decode.rs", "account_planned_tile"): (
         "part2_planned_tile_accounting", r"\1", None,
@@ -1738,6 +1777,7 @@ def validate_normative_coverage(
                 or _COMPONENT_TILE_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_RECONSTRUCTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYOUT_ACCOUNTING_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TILE_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

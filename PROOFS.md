@@ -2603,3 +2603,28 @@ successful resource premises. 11,520 independent raw selected-component
 contexts and 7,560 full/selected plan/limit/prior-counter contexts include
 empty/malformed plans, separate stored grid/plan layers and u64 frontiers.
 Whole raw-layout metadata/selection/file/F2/F4/F8 joins remain separate.
+## Complete actual raw tile metadata admission
+
+Both real full and selected layout callers now share one actual raw metadata
+producer: first payload, exact MCT consistency, actual standard/arbitrary
+kernel choice and ordered full/selected component-style preparation.
+Every MCT array/collection/stage/transform field participates in exact
+identity. Optional absence is not an empty graph, and unused descriptors
+are not numerically normalized.
+
+The actual maximum isotropic prefix retains physical32 truncation and lazy
+stops; decoder wavelet agreement intentionally remains builtin-only, even
+for equal arbitrary indices. First/MCT/kernel/style/reduction error order,
+kernel lookup despite a false standard-MCT flag, checked u8 advancement before
+discard subtraction and base first-three versus selected all-component
+admission remain. The base emits an unused empty Vec with no heap allocation.
+The old private receiverless optional-MCT facade was replaced by its sole
+proved free body, preserving the pinned macro/compiler rather than adding
+trust or changing pins.
+
+Nine complete contracts and exact consumer-binding mutations bind all raw
+inputs/results. Independent derived native identity compares 576 graph pairs;
+67,584 raw isotropic, 254,016 raw style/reduction and 48,384 complete metadata
+contexts cover logical/physical owners, missing/duplicate/raw invalid kernels,
+MCT mismatch priority and actual first-payload identity.
+Whole tile collection/layout/selection/file/F2/F4/F8 joins remain separate.

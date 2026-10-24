@@ -402,6 +402,12 @@ pub(crate) struct DecodedTileComponents {
     pub(crate) mct_work: u64,
 }
 
+pub(crate) struct TileDecodeMetadata<'a, 'data> {
+    pub(crate) first: &'a TilePartPayload<'data>,
+    pub(crate) standard: (bool, bool),
+    pub(crate) resolution_counts: Vec<u8>,
+}
+
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
     ensures result == crate::specs::part2_resolution_geometry(
         codestream::selection_geometry_view(size), codestream::image_size_component_count(size),
@@ -854,17 +860,6 @@ impl ProgressionTilePlan {
 impl PreparedTileComponent {
     pub const fn component(&self) -> u16 {
         self.component
-    }
-
-    fn optional_mct_equal(
-        left: Option<&codestream::MultipleComponentTransform>,
-        right: Option<&codestream::MultipleComponentTransform>,
-    ) -> bool {
-        match (left, right) {
-            (Some(left), Some(right)) => left.equals(right),
-            (None, None) => true,
-            _ => false,
-        }
     }
 
     pub const fn width(&self) -> u32 {
@@ -5290,6 +5285,200 @@ fn validate_selection(
     })
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn tile_decode_metadata_view<'a, 'data>(value: &TileDecodeMetadata<'a, 'data>)
+        -> crate::specs::Part2TileDecodeMetadata<'data> {
+        crate::specs::Part2TileDecodeMetadata { first: *value.first, standard: value.standard, resolution_counts: value.resolution_counts@ }
+    }
+
+    pub open spec fn tile_decode_metadata_outcome<'a, 'data>(result: Result<TileDecodeMetadata<'a, 'data>, DecodeError>)
+        -> Result<crate::specs::Part2TileDecodeMetadata<'data>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(value) => Ok(tile_decode_metadata_view(&value)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_optional_mct_identity(tile_mct_option(left), tile_mct_option(right)),
+))]
+pub(crate) fn optional_multiple_component_transforms_equal(
+    left: Option<&codestream::MultipleComponentTransform>,
+    right: Option<&codestream::MultipleComponentTransform>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.equals(right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures resolution_counts_outcome_for_tile(result) == crate::specs::part2_tile_component_resolutions(
+        styles, main, components, discard,
+    ),
+))]
+pub(crate) fn prepare_tile_component_resolutions(
+    styles: &ComponentCodingStyles,
+    main: CodingStyle,
+    components: u16,
+    discard: Option<u8>,
+) -> Result<Vec<u8>, DecodeError> {
+    let discard_levels = match discard {
+        None => {
+            if main.multiple_component_transform {
+                let count = components.min(3);
+                let mut component = 0_u16;
+                #[cfg_attr(verus_keep_ghost, verus_spec(
+                    invariant component <= count, count == if components <= 3 { components } else { 3u16 },
+                        discard.is_none(), main.multiple_component_transform,
+                        crate::specs::part2_full_tile_style_admission(styles, main, components, 0)
+                            == crate::specs::part2_full_tile_style_admission(styles, main, components, component),
+                    decreases count - component,
+                ))]
+                while component < count {
+                    #[cfg(verus_keep_ghost)]
+                    proof! { reveal_with_fuel(crate::specs::part2_full_tile_style_admission, 1); }
+                    let style = styles.style(component)?;
+                    if !wavelet_transforms_equal(style.transform, main.transform) {
+                        return Err(DecodeError::MalformedInput {
+                            offset: 0,
+                            kind: MalformedKind::InvalidCodingStyle,
+                        });
+                    }
+                    component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+                }
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal_with_fuel(crate::specs::part2_full_tile_style_admission, 1); }
+            }
+            return Ok(Vec::new());
+        }
+        Some(levels) => levels,
+    };
+    let mut counts = Vec::with_capacity(usize::from(components));
+    let mut component = 0_u16;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant component <= components,
+            discard == Some(discard_levels),
+            crate::specs::part2_selected_tile_resolutions(styles, main, components, discard_levels, 0, Seq::empty())
+                == crate::specs::part2_selected_tile_resolutions(styles, main, components, discard_levels, component, counts@),
+        decreases components - component,
+    ))]
+    while component < components {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_selected_tile_resolutions, 1); }
+        let style = styles.style(component)?;
+        if discard_levels > style.maximum_isotropic_reduction() {
+            return Err(DecodeError::InvalidSelection {
+                reason: SelectionError::ReductionTooLarge,
+            });
+        }
+        if main.multiple_component_transform
+            && component < 3
+            && !wavelet_transforms_equal(style.transform, main.transform)
+        {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidCodingStyle,
+            });
+        }
+        let levels = match style.decomposition_levels.checked_add(1) {
+            Some(levels) => levels,
+            None => {
+                return Err(DecodeError::InvalidSelection {
+                    reason: SelectionError::ReductionTooLarge,
+                });
+            }
+        };
+        let levels = match levels.checked_sub(discard_levels) {
+            Some(levels) => levels,
+            None => {
+                return Err(DecodeError::InvalidSelection {
+                    reason: SelectionError::ReductionTooLarge,
+                });
+            }
+        };
+        counts.push(levels);
+        component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_selected_tile_resolutions, 1); }
+    Ok(counts)
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn resolution_counts_outcome_for_tile(result: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(counts) => Ok(counts@) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures tile_decode_metadata_outcome(result) == crate::specs::part2_tile_decode_metadata(parts@, components, discard),
+))]
+pub(crate) fn prepare_tile_decode_metadata<'a, 'data>(
+    parts: &'a [TilePartPayload<'data>],
+    components: u16,
+    discard: Option<u8>,
+) -> Result<TileDecodeMetadata<'a, 'data>, DecodeError> {
+    let first = match parts.first() {
+        Some(first) => first,
+        None => {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidTilePart,
+            });
+        }
+    };
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= parts.len(), parts.len() > 0, *first == parts@[0],
+            forall |i: int| 0 <= i < index ==> tile_part_mct_view(&parts@[i]) == tile_part_mct_view(first),
+        decreases parts.len() - index,
+    ))]
+    while index < parts.len() {
+        let part = parts.get(index).ok_or_else(invalid_decode)?;
+        if !optional_multiple_component_transforms_equal(
+            part.multiple_component_transform.as_ref(),
+            first.multiple_component_transform.as_ref(),
+        ) {
+            return Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidTransform,
+            });
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    let main = first.coding_style;
+    let irreversible = match main.transform {
+        WaveletTransform::Irreversible9x7 => true,
+        WaveletTransform::Reversible5x3 => false,
+        WaveletTransform::Arbitrary(index) => {
+            let kernel = match first.part2_extensions.arbitrary_kernel(index) {
+                Some(kernel) => kernel,
+                None => {
+                    return Err(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::MissingRequiredStructure,
+                    });
+                }
+            };
+            !kernel.reversible()
+        }
+    };
+    let standard = (main.multiple_component_transform, irreversible);
+    let resolution_counts = prepare_tile_component_resolutions(
+        &first.component_coding_styles,
+        main,
+        components,
+        discard,
+    )?;
+    Ok(TileDecodeMetadata {
+        first,
+        standard,
+        resolution_counts,
+    })
+}
+
 fn decode_layout_selected(
     layout: &CodestreamLayout<'_>,
     requested: &DecodeSelection,
@@ -5335,68 +5524,17 @@ fn decode_layout_selected(
             }
             part_index = part_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let first = tile_parts
-            .first()
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-        if tile_parts.iter().any(|part| {
-            !PreparedTileComponent::optional_mct_equal(
-                part.multiple_component_transform.as_ref(),
-                first.multiple_component_transform.as_ref(),
-            )
-        }) {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
+        let metadata = prepare_tile_decode_metadata(
+            &tile_parts,
+            layout.info.image_size.components,
+            Some(selection.discard_levels),
+        )?;
+        let first = metadata.first;
         let coding_style = first.coding_style;
         let component_coding_styles = first.component_coding_styles;
         let component_quantizations = &first.component_quantizations;
-        let transform = (
-            coding_style.multiple_component_transform,
-            match coding_style.transform {
-                WaveletTransform::Irreversible9x7 => true,
-                WaveletTransform::Reversible5x3 => false,
-                WaveletTransform::Arbitrary(index) => !first
-                    .part2_extensions
-                    .arbitrary_kernel(index)
-                    .ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::MissingRequiredStructure)
-                    })?
-                    .reversible(),
-            },
-        );
-        let mut resolution_counts =
-            Vec::with_capacity(usize::from(layout.info.image_size.components));
-        let mut component = 0_u16;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= layout.info.image_size.components,
-                decreases layout.info.image_size.components - component,
-            )
-        )]
-        while component < layout.info.image_size.components {
-            let style = component_coding_styles.style(component)?;
-            if selection.discard_levels > style.maximum_isotropic_reduction() {
-                return Err(DecodeError::InvalidSelection {
-                    reason: SelectionError::ReductionTooLarge,
-                });
-            }
-            if coding_style.multiple_component_transform
-                && component < 3
-                && !wavelet_transforms_equal(style.transform, coding_style.transform)
-            {
-                return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-            }
-            resolution_counts.push(
-                style
-                    .decomposition_levels
-                    .checked_add(1)
-                    .and_then(|value| value.checked_sub(selection.discard_levels))
-                    .ok_or(DecodeError::InvalidSelection {
-                        reason: SelectionError::ReductionTooLarge,
-                    })?,
-            );
-            component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        let transform = metadata.standard;
+        let resolution_counts = metadata.resolution_counts;
         let plan = plan_progression_tile_at_selected(
             &layout.info.image_size,
             tile_index,
@@ -6146,56 +6284,14 @@ fn decode_layout(
             }
             part_index = part_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
         }
-        let first = tile_parts
-            .first()
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
-        if tile_parts.iter().any(|part| {
-            !PreparedTileComponent::optional_mct_equal(
-                part.multiple_component_transform.as_ref(),
-                first.multiple_component_transform.as_ref(),
-            )
-        }) {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-        }
+        let metadata =
+            prepare_tile_decode_metadata(&tile_parts, layout.info.image_size.components, None)?;
+        let first = metadata.first;
         let coding_style = first.coding_style;
         let component_coding_styles = first.component_coding_styles;
         let component_quantizations = &first.component_quantizations;
-        let transform = (
-            coding_style.multiple_component_transform,
-            match coding_style.transform {
-                WaveletTransform::Irreversible9x7 => true,
-                WaveletTransform::Reversible5x3 => false,
-                WaveletTransform::Arbitrary(index) => !first
-                    .part2_extensions
-                    .arbitrary_kernel(index)
-                    .ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::MissingRequiredStructure)
-                    })?
-                    .reversible(),
-            },
-        );
-        let roi_shifts = tile_parts
-            .first()
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?
-            .roi_shifts;
-        if coding_style.multiple_component_transform {
-            let transform_component_count = layout.info.image_size.components.min(3);
-            let mut component = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant component <= transform_component_count,
-                    decreases transform_component_count - component,
-                )
-            )]
-            while component < transform_component_count {
-                let style = component_coding_styles.style(component)?;
-                if !wavelet_transforms_equal(style.transform, coding_style.transform) {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-                }
-                component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
-            }
-        }
+        let transform = metadata.standard;
+        let roi_shifts = first.roi_shifts;
         let plan = plan_progression_tile_at_selected(
             &layout.info.image_size,
             tile_index,
@@ -6557,6 +6653,9 @@ fn invalid_decode() -> DecodeError {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part2_decode_wavelet_agreement(left, right),
+))]
 const fn wavelet_transforms_equal(left: WaveletTransform, right: WaveletTransform) -> bool {
     matches!(
         (left, right),

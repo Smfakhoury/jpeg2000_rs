@@ -1632,3 +1632,11 @@ optional resolution counts, arbitrary prior counters and actual limits.
 placement/subband lookups, per-component full versus final-only selected
 limit checks and empty-component laziness. All intermediate bounds and
 counter relations are proved, not successful count or normalized-plan premises.
+`part2_tile_decode_metadata` derives actual first/MCT/kernel/style metadata
+from raw tile parts, component count and optional discard mode.
+Exact MCT identity relations preserve every encoded owner field, not normalized
+numeric equality; style suffixes preserve the original builtin-only decoder
+wavelet agreement, maximum-isotropic physical prefix and checked reduction
+policy. Internal derived mode/prefix/sequence witnesses establish the complete
+postconditions without supplied successful equality, kernel or metadata
+outcomes. Actual full/selected callers execute the sole native producers.
