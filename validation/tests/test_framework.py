@@ -784,6 +784,12 @@ class FrameworkTests(WorkingFiles):
             framework._RESOLUTION_PLANNING_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_complete_raw_owner_component_and_selected_tile_plan_production(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-component-tile-planning"},
+            framework._COMPONENT_TILE_PLANNING_CONTRACTS, 3,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

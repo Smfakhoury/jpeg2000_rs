@@ -790,6 +790,25 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_COMPONENT_TILE_PLANNING_CONTRACTS = {
+    ("src/decode.rs", "plan_tile_component"): (
+        "part2_planned_component", _coverage_call("planned_component_outcome", r"\1"), None,
+        r"size\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*component\s*,\s*selection\s*,\s*policy\s*,\s*"
+        + _coverage_call("planning_precincts_view", r"precincts@") + r"\s*,\s*planned_code_blocks\s*,\s*limits",
+    ),
+    ("src/decode.rs", "plan_progression_tile_at_selected"): (
+        "part2_progression_tile_plan", _coverage_call("progression_plan_outcome", r"\1"), None,
+        r"size\s*,\s*coding_style\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*"
+        r"\(\s*tile_index\s*,\s*discard_levels\s*\)\s*,\s*"
+        r"\(\s*allow_multiple_ht_sets\s*,\s*ht_magnitude_bound\s*,\s*force_high_throughput\s*\)\s*,\s*limits",
+    ),
+    ("src/decode.rs", "plan_progression_tile_at_with_component_overrides"): (
+        "part2_progression_tile_plan", _coverage_call("progression_plan_outcome", r"\1"), None,
+        r"size\s*,\s*coding_style\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*"
+        r"\(\s*tile_index\s*,\s*0\s*\)\s*,\s*\(\s*false\s*,\s*74\s*,\s*false\s*\)\s*,\s*limits",
+    ),
+}
+
 _RESOLUTION_PLANNING_CONTRACTS = {
     ("src/decode.rs", "prepare_resolution_plan_metadata"): (
         "part2_resolution_plan_metadata", _coverage_call("resolution_plan_metadata_outcome", r"\1"), None,
@@ -1694,6 +1713,7 @@ def validate_normative_coverage(
                 or _SUBBAND_EXECUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PRECINCT_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RESOLUTION_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COMPONENT_TILE_PLANNING_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

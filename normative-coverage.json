@@ -4,10 +4,55 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-component-tile-planning",
+      "topic": "Complete actual raw-owner selected tile-plan Result/all tile/style/style-owner/full private grid/precinct/component/band/placement fields, plus actual complete per-component plan and prior/new precinct vectors/global selected count. Raw image/style owners/quantization owners/ROI/tile/discard/HT policies/limits derive first tile bounds and real selected grid, actual component/resolution metadata and coordinates, actual precinct execution/decoder/context/tag-tree producers and complete ordered component/placement vectors. No supplied successful plans, normalized geometry, prepared metadata or decoder/result banks. Existing precinct prefix is preserved transport only; new plans derive internally. Public component-owner boundary shares sole selected body with exact original defaults. First errors, all raw/unused-field laziness, allocation and selected/local resource ordering remain. Full packet-to-decoded-component/file/F2/F4/final F8 joins and uniform-owner facade construction remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_with_roi"},
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_with_component_overrides"},
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "decode_layout"},
+        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_progression_tile_plan"},
+        {"path": "specs/mod.rs", "symbol": "part2_tile_plan_components"},
+        {"path": "specs/mod.rs", "symbol": "part2_planned_component"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_plan_resolutions"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_plan_precincts"},
+        {"path": "specs/mod.rs", "symbol": "part2_component_plan_precinct"}
+      ],
+      "contract_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_tile_component"},
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_with_component_overrides"}
+      ],
+      "proof_refs": [
+        {"path": "src/decode.rs", "symbol": "planned_component_view"},
+        {"path": "src/decode.rs", "symbol": "planned_component_outcome"},
+        {"path": "src/decode.rs", "symbol": "component_plan_builder_view"},
+        {"path": "src/decode.rs", "symbol": "planning_precincts_view"},
+        {"path": "src/decode.rs", "symbol": "planning_components_view"},
+        {"path": "src/decode.rs", "symbol": "tile_plan_buffers_view"},
+        {"path": "src/decode.rs", "symbol": "progression_plan_view"},
+        {"path": "src/decode.rs", "symbol": "progression_plan_outcome"},
+        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode.rs", "symbol": "prepare_resolution_plan_metadata"},
+        {"path": "src/decode.rs", "symbol": "derive_planned_precinct_origin"},
+        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"},
+        {"path": "src/decode.rs", "symbol": "derive_packet_grid_for_components"},
+        {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"}
+      ],
+      "test_refs": [
+        {"path": "src/decode.rs", "symbol": "actual_component_plan_derives_full_component_and_precinct_vectors_from_real_raw_owners"},
+        {"path": "src/decode.rs", "symbol": "actual_selected_tile_plan_and_public_owner_boundary_bind_every_field_and_first_error"}
+      ]
+    },
+    {
       "id": "part2-complete-native-resolution-planning",
       "topic": "Complete actual per-resolution plan metadata Result/all full geometry/subband range/precinct count/first-grid/band/block fields from raw image/style/component/tile/resolution and unnormalized raw component origin; complete checked precinct-band coordinate Result from raw first/across/precinct/band dimensions. Actual geometry, style lookups/scales/directions and derived arithmetic retain original order. Zero real subband delta bypasses only precinct-count narrowing, not later exponent/split/size admission; empty resolutions and anisotropic phases remain. No supplied geometry, lattice/count result, normalized origin or successful budget/allocation premise; actual tile loop consumes sole bodies. Complete resolution/component/tile vectors and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "plan_tile_component"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_resolution_plan_metadata"},
@@ -37,7 +82,8 @@
       "id": "part2-complete-native-precinct-planning",
       "topic": "Complete actual per-precinct planning Result/all private packet coordinate/state/context/decoder/subband/tag-tree fields plus owned placement prefixes and global codeblock count from raw band/block/subband source and range/style/HT policy/location/selection/limits. Checked source indices/lookups derive actual optional subband executions, configured decoder vectors and flattened indices; actual packet factory derives all final state. Preserve source-error order, empty/ragged/over-three source laziness, selected-only global charging before later local factory and tag-tree admission, allocation order and buffer moves. No supplied prepared execution/decoder bank, initialized precinct, normalized range or successful budget/allocation premise. Real tile planner consumes sole producer; complete resolution/component/tile plans and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode.rs", "symbol": "plan_tile_component"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_precinct"},
@@ -125,7 +171,8 @@
       "topic": "Complete actual per-component tile-plan metadata Result/all owned fields from raw image/style owner/quantization owner/ROI/component/tile/discard/force inputs. Original style-before-reduction-before-quantization admission, Tier1 route policy, tile bounds/full output geometry, real scaling, raw image-origin component position and last ROI/subband production remain. New raw quantization/ROI getters retain logical/physical distinction and unused descriptor values; no normalized metadata/bounds/bands, supplied lookup/result or successful allocation/budget premise. Actual tile planner consumes the sole metadata body; full precinct/codeblock/component plan vectors, decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"}
+        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode.rs", "symbol": "plan_tile_component"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_component_plan_metadata"},
