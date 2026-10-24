@@ -2440,3 +2440,19 @@ lattice is a premise. Two exact native-consumer recipes,165,888 independent
 wide geometry contexts,5,760 configured-constructor contexts and the complete
 byte-bound sweep cover boundaries and first failures. The full tile-plan
 vector/precinct/packet/component/file/F2/F4/F8 joins remain separate.
+## Complete actual precinct initialization
+
+The actual tile planner and public precinct facade now execute one proved
+constructor from raw execution vectors/style/limits. It preserves the original
+execution-count/shape, cumulative block/work limit, decoder-length, context,
+decoder-move and ordered tag-tree policy, including empty-list success and raw
+coordinate/style observations. No admitted execution, prepared precinct or
+successful lookup/tag-tree/allocation/budget result is assumed.
+
+Owned prefix/context preparation has a complete Result/state relation. A
+proved row transition connects real mutable execution buffers to mathematical
+suffix runs, retaining untouched future rows and moving decoder vectors
+without replacing their allocation/append algorithm.810 raw prefix/context
+cases and28,800 full constructor/facade contexts compare all owned state,
+ordered tag trees, limits and first errors using previously verified primitives.
+Full tile-plan vector/packet/decoder/file/F2/F4/F8 joins remain separate.

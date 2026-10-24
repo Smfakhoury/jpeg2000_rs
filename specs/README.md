@@ -1565,3 +1565,10 @@ clipping, dimension narrowing and real initialized/policy-configured decoder
 state. Zero dimensions are not normalized away, and no valid grid/decoder
 outcome or successful allocation/budget is assumed. Full tile-plan vector
 composition and F2/F4/F8 remain separate.
+The actual precinct constructor models `part2_precinct_contexts`,
+`part2_precinct_execution`, `part2_precinct_initialization_run` and
+`part2_precinct_from_executions` derive every owned field from raw execution
+vectors/style/limits and real state/tag-tree producers. Native future-buffer
+frames and moved decoder contents are proved, not supplied as initial-result
+banks. Empty/raw coordinate policy and first/late budget/shape errors remain
+explicit. Complete tile-plan and F2/F4/F8 joins remain separate.

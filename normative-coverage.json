@@ -4,6 +4,41 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-precinct-initialization",
+      "topic": "Complete actual precinct initialization Result/all owned coordinate/state/context/decoder/subband/tag-tree fields from raw execution vectors/style/limits. Original execution-count/shape, cumulative code-block/work budget, decoder-length, linear-context, decoder-move and ordered two-tag-tree admission remain. Empty execution list succeeds with empty owned buffers and raw coordinates; style/decoder orientation discrepancies remain unvalidated. Actual tile planner/public facade reuse the sole constructor, contexts derive from real raw prefixes, and decoder vectors move rather than clone. No supplied precinct/grid/tag-tree/context/decoder result or normalized execution/budget/allocation premise. Whole tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::new_subbands"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part2_precinct_contexts"},
+        {"path": "specs/mod.rs", "symbol": "part2_precinct_execution"},
+        {"path": "specs/mod.rs", "symbol": "part2_precinct_initialization_run"},
+        {"path": "specs/mod.rs", "symbol": "part2_precinct_from_executions"}
+      ],
+      "contract_refs": [
+        {"path": "src/packet.rs", "symbol": "prepare_precinct_contexts"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"}
+      ],
+      "proof_refs": [
+        {"path": "src/packet.rs", "symbol": "packet_precinct_outcome"},
+        {"path": "src/packet.rs", "symbol": "precinct_contexts_outcome"},
+        {"path": "src/packet.rs", "symbol": "packet_executions_view"},
+        {"path": "src/packet.rs", "symbol": "packet_execution_view"},
+        {"path": "src/packet.rs", "symbol": "packet_states_view"},
+        {"path": "src/packet.rs", "symbol": "precinct_initialization_view"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_view"},
+        {"path": "src/packet.rs", "symbol": "code_block_packet_state_new"},
+        {"path": "src/packet.rs", "symbol": "tag_tree_new"},
+        {"path": "proofs/production_impl/mod.rs", "symbol": "production_precinct_initialization_step"}
+      ],
+      "test_refs": [
+        {"path": "src/packet.rs", "symbol": "precinct_context_preparation_preserves_raw_prefixes_and_exact_leaf_metadata"},
+        {"path": "src/packet.rs", "symbol": "actual_precinct_initialization_keeps_all_owned_state_limits_and_empty_policy"}
+      ]
+    },
+    {
       "id": "part2-complete-native-codeblock-planning",
       "topic": "Complete actual per-codeblock checked lattice/clipping/u16 dimension Result and configured decoder initial-state Result from raw grid/clip/block coordinates, bits/orientation/style/HT policy. Original nominal-axis arithmetic and clipped narrowing remain; zero dimensions are deliberately forwarded to the real decoder initializer rather than normalized here. Actual decoder initialization precedes multiple-set and magnitude-bound policy, including allocation/admission/error order. The real tile loop consumes both producers; no supplied placement/decoder/geometry result, admitted dimensions or successful allocation/budget premise. Whole tile-plan and F2/F4/F8 joins remain separate.",
       "implementation_refs": [
@@ -3280,7 +3315,7 @@
       ],
       "id": "part1-complete-raw-packet-decoder-access",
       "implementation_refs": [
-        {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::new_subbands"},
+        {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"},
         {"path": "src/packet.rs", "symbol": "readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices"},
         {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
         {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder"},

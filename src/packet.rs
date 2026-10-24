@@ -1933,6 +1933,49 @@ verus! {
         }
     }
 
+    pub closed spec fn packet_execution_view(value: &PacketSubbandExecution) -> crate::specs::Part2PacketSubbandExecution {
+        crate::specs::Part2PacketSubbandExecution {
+            orientation: value.orientation, across: value.code_blocks_across, down: value.code_blocks_down,
+            maximum_zero: value.maximum_zero_bitplanes,
+            decoders: value.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+        }
+    }
+
+    pub open spec fn packet_executions_view(values: Seq<PacketSubbandExecution>) -> Seq<crate::specs::Part2PacketSubbandExecution> {
+        Seq::new(values.len(), |index: int| packet_execution_view(&values[index]))
+    }
+
+    pub closed spec fn precinct_initialization_view(
+        coordinate: (u16, u8, u32), states: Seq<CodeBlockPacketState>, contexts: Seq<CodeBlockPacketContext>,
+        decoders: Seq<Tier1CodeBlockDecoder>, subbands: Seq<PacketSubbandState>,
+    ) -> crate::specs::Part1PacketPrecinctState {
+        crate::specs::Part1PacketPrecinctState {
+            component: coordinate.0, resolution: coordinate.1, precinct: coordinate.2,
+            states: states.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state)),
+            contexts, decoders: decoders.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+            subbands: subbands.map_values(|subband: PacketSubbandState| packet_subband_view(&subband)),
+        }
+    }
+
+    pub open spec fn packet_precinct_outcome(result: Result<PacketPrecinctDecoder, DecodeError>)
+        -> Result<crate::specs::Part1PacketPrecinctState, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(packet_precinct_view(&value)) }
+    }
+
+    pub open spec fn precinct_contexts_outcome(
+        result: Result<(Vec<CodeBlockPacketState>, Vec<CodeBlockPacketContext>), DecodeError>,
+    ) -> Result<(Seq<crate::specs::Part1CodeBlockPacketState>, Seq<CodeBlockPacketContext>), DecodeError> {
+        match result {
+            Err(error) => Err(error),
+            Ok(value) => Ok((value.0@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state)), value.1@)),
+        }
+    }
+
+    pub open spec fn packet_states_view(values: Seq<CodeBlockPacketState>) -> Seq<crate::specs::Part1CodeBlockPacketState> {
+        values.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state))
+    }
+
     pub closed spec fn precinct_payload_parameters_view(value: PrecinctPayloadParameters)
         -> crate::specs::Part1PrecinctPayloadParameters {
         crate::specs::Part1PrecinctPayloadParameters {
@@ -1956,6 +1999,78 @@ verus! {
             contribution_count: progress.contribution_count,
         }
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures precinct_contexts_outcome(result) == crate::specs::part2_precinct_contexts(
+        packet_states_view(before_states@),
+        before_contexts@, count, across, maximum_zero, tier1_style,
+    ),
+))]
+pub(crate) fn prepare_precinct_contexts(
+    before_states: Vec<CodeBlockPacketState>,
+    before_contexts: Vec<CodeBlockPacketContext>,
+    count: usize,
+    across: u32,
+    maximum_zero: u16,
+    tier1_style: Tier1CodingStyle,
+) -> Result<(Vec<CodeBlockPacketState>, Vec<CodeBlockPacketContext>), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial_states = before_states@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state));
+        let ghost initial_contexts = before_contexts@;
+    }
+    let mut states = before_states;
+    let mut contexts = before_contexts;
+    let mut local_index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            local_index <= count,
+            local_index as nat <= u32::MAX as nat + 1,
+            local_index == 0 || across != 0,
+            states@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state))
+                == initial_states + Seq::new(local_index as nat, |index: int| crate::specs::part1_code_block_packet_initial()),
+            contexts@ == initial_contexts + Seq::new(local_index as nat, |index: int| CodeBlockPacketContext {
+                leaf_x: if across == 0 { 0u32 } else { (index % across as int) as u32 },
+                leaf_y: if across == 0 { 0u32 } else { (index / across as int) as u32 },
+                layer: 0, maximum_zero_bitplanes: maximum_zero, tier1_style,
+            }),
+        decreases count - local_index,
+    ))]
+    while local_index < count {
+        let linear_index = match u32::try_from(local_index) {
+            Ok(index) => index,
+            Err(_) => return Err(packet_arithmetic_overflow()),
+        };
+        let state = code_block_packet_state_new();
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost previous_states = states@; }
+        states.push(state);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(states@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state))
+                =~= previous_states.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state))
+                    .push(crate::specs::part1_code_block_packet_initial()));
+            assert(initial_states + Seq::new(local_index as nat + 1, |index: int| crate::specs::part1_code_block_packet_initial())
+                =~= (initial_states + Seq::new(local_index as nat, |index: int| crate::specs::part1_code_block_packet_initial()))
+                    .push(crate::specs::part1_code_block_packet_initial()));
+        }
+        contexts.push(CodeBlockPacketContext {
+            leaf_x: linear_index
+                .checked_rem(across)
+                .ok_or_else(packet_arithmetic_overflow)?,
+            leaf_y: linear_index
+                .checked_div(across)
+                .ok_or_else(packet_arithmetic_overflow)?,
+            layer: 0,
+            maximum_zero_bitplanes: maximum_zero,
+            tier1_style,
+        });
+        local_index = local_index
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
+    }
+    Ok((states, contexts))
 }
 
 impl PacketPrecinctDecoder {
@@ -1987,121 +2102,217 @@ impl PacketPrecinctDecoder {
         resolution: u8,
         precinct: u32,
         tier1_style: Tier1CodingStyle,
-        mut executions: Vec<PacketSubbandExecution>,
+        executions: Vec<PacketSubbandExecution>,
         limits: &ResourceLimits,
     ) -> Result<Self, DecodeError> {
-        if executions.len() > 3 {
-            return Err(invalid_packet_header());
-        }
-        let mut states = Vec::new();
-        let mut contexts = Vec::new();
-        let mut decoders = Vec::new();
-        let mut subbands = Vec::with_capacity(executions.len());
-        let mut execution_index = 0_usize;
-        let mut total_code_blocks = 0_u64;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant execution_index <= executions.len(),
-                decreases executions.len() - execution_index,
-            )
-        )]
-        while execution_index < executions.len() {
-            let execution = executions
-                .get_mut(execution_index)
-                .ok_or_else(invalid_packet_header)?;
-            if execution.code_blocks_across == 0
-                || execution.code_blocks_down == 0
-                || execution.maximum_zero_bitplanes == 0
-                || execution.maximum_zero_bitplanes > crate::tier1::MAX_TIER1_BITPLANES
-            {
-                return Err(invalid_packet_header());
-            }
-            let count = u64::from(execution.code_blocks_across)
-                .checked_mul(u64::from(execution.code_blocks_down))
-                .ok_or_else(packet_arithmetic_overflow)?;
-            total_code_blocks = total_code_blocks
-                .checked_add(count)
-                .ok_or_else(packet_arithmetic_overflow)?;
-            if total_code_blocks > limits.maximum_code_blocks() {
-                return Err(DecodeError::limit(
-                    Resource::CodeBlocks,
-                    limits.maximum_code_blocks(),
-                    total_code_blocks,
-                ));
-            }
-            if total_code_blocks > limits.maximum_work_units() {
-                return Err(DecodeError::limit(
-                    Resource::WorkUnits,
-                    limits.maximum_work_units(),
-                    total_code_blocks,
-                ));
-            }
-            let count = usize::try_from(count).map_err(|_| packet_arithmetic_overflow())?;
-            if execution.decoders.len() != count {
-                return Err(invalid_packet_header());
-            }
-            let first_decoder = decoders.len();
-            let mut local_index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant local_index <= count,
-                    decreases count - local_index,
-                )
-            )]
-            while local_index < count {
-                let linear_index =
-                    u32::try_from(local_index).map_err(|_| packet_arithmetic_overflow())?;
-                states.push(CodeBlockPacketState::new());
-                contexts.push(CodeBlockPacketContext {
-                    leaf_x: linear_index
-                        .checked_rem(execution.code_blocks_across)
-                        .ok_or_else(packet_arithmetic_overflow)?,
-                    leaf_y: linear_index
-                        .checked_div(execution.code_blocks_across)
-                        .ok_or_else(packet_arithmetic_overflow)?,
-                    layer: 0,
-                    maximum_zero_bitplanes: execution.maximum_zero_bitplanes,
-                    tier1_style,
-                });
-                local_index = local_index
-                    .checked_add(1)
-                    .ok_or_else(packet_arithmetic_overflow)?;
-            }
-            decoders.append(&mut execution.decoders);
-            subbands.push(PacketSubbandState {
-                orientation: execution.orientation,
-                first_decoder,
-                decoder_count: count,
-                code_blocks_across: execution.code_blocks_across,
-                code_blocks_down: execution.code_blocks_down,
-                inclusion_tree: TagTree::new(
-                    execution.code_blocks_across,
-                    execution.code_blocks_down,
-                    limits,
-                )?,
-                zero_bitplane_tree: TagTree::new(
-                    execution.code_blocks_across,
-                    execution.code_blocks_down,
-                    limits,
-                )?,
-            });
-            execution_index = execution_index
-                .checked_add(1)
-                .ok_or_else(packet_arithmetic_overflow)?;
-        }
-        Ok(Self {
+        packet_precinct_from_subbands(
             component,
             resolution,
             precinct,
+            tier1_style,
+            executions,
+            limits,
+        )
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures packet_precinct_outcome(result) == crate::specs::part2_precinct_from_executions(
+        component, resolution, precinct, tier1_style, packet_executions_view(before@), limits,
+    ),
+))]
+pub(crate) fn packet_precinct_from_subbands(
+    component: u16,
+    resolution: u8,
+    precinct: u32,
+    tier1_style: Tier1CodingStyle,
+    before: Vec<PacketSubbandExecution>,
+    limits: &ResourceLimits,
+) -> Result<PacketPrecinctDecoder, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = packet_executions_view(before@); }
+    let mut executions = before;
+    if executions.len() > 3 {
+        return Err(invalid_packet_header());
+    }
+    let mut states = Vec::new();
+    let mut contexts = Vec::new();
+    let mut decoders = Vec::new();
+    let mut subbands = Vec::with_capacity(executions.len());
+    let mut execution_index = 0_usize;
+    let mut total_code_blocks = 0_u64;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(original.len() == executions@.len());
+        assert(original.len() <= 3);
+        reveal(precinct_initialization_view);
+        assert(states@.map_values(|state: CodeBlockPacketState| code_block_packet_state_view(&state)) =~= Seq::empty());
+        assert(decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)) =~= Seq::empty());
+        assert(subbands@.map_values(|subband: PacketSubbandState| packet_subband_view(&subband)) =~= Seq::empty());
+        assert(precinct_initialization_view((component, resolution, precinct), states@, contexts@, decoders@, subbands@)
+            == crate::specs::Part1PacketPrecinctState {
+                component, resolution, precinct, states: Seq::empty(), contexts: Seq::empty(),
+                decoders: Seq::empty(), subbands: Seq::empty(),
+            });
+        reveal(crate::specs::part2_precinct_initialization_run);
+    }
+    #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant
+                    execution_index <= executions.len(),
+                    executions@.len() == original.len(),
+                    original == packet_executions_view(before@),
+                    original.len() <= 3,
+                    forall |index: int| execution_index <= index < original.len()
+                        ==> #[trigger] packet_execution_view(&executions@[index]) == original[index],
+                    crate::specs::part2_precinct_from_executions(component, resolution, precinct, tier1_style, original, limits)
+                        == crate::specs::part2_precinct_initialization_run(
+                            original, tier1_style, limits, execution_index as nat,
+                            precinct_initialization_view((component, resolution, precinct), states@, contexts@, decoders@, subbands@),
+                            total_code_blocks,
+                        ),
+                decreases executions.len() - execution_index,
+            )
+        )]
+    while execution_index < executions.len() {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost previous_state = precinct_initialization_view(
+                (component, resolution, precinct), states@, contexts@, decoders@, subbands@);
+            let ghost previous_total = total_code_blocks;
+            let ghost row = original[execution_index as int];
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part2_precinct_initialization_run);
+            reveal(packet_execution_view);
+            reveal(precinct_initialization_view);
+            assert(packet_execution_view(&executions@[execution_index as int]) == original[execution_index as int]);
+        }
+        let execution = executions
+            .get_mut(execution_index)
+            .ok_or_else(invalid_packet_header)?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(packet_execution_view(execution) == original[execution_index as int]);
+            assert(original[execution_index as int].across == execution.code_blocks_across);
+            assert(original[execution_index as int].down == execution.code_blocks_down);
+            assert(original[execution_index as int].maximum_zero == execution.maximum_zero_bitplanes);
+        }
+        if execution.code_blocks_across == 0
+            || execution.code_blocks_down == 0
+            || execution.maximum_zero_bitplanes == 0
+            || execution.maximum_zero_bitplanes > crate::tier1::MAX_TIER1_BITPLANES
+        {
+            return Err(invalid_packet_header());
+        }
+        let count = u64::from(execution.code_blocks_across)
+            .checked_mul(u64::from(execution.code_blocks_down))
+            .ok_or_else(packet_arithmetic_overflow)?;
+        total_code_blocks = total_code_blocks
+            .checked_add(count)
+            .ok_or_else(packet_arithmetic_overflow)?;
+        if total_code_blocks > limits.maximum_code_blocks() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::CodeBlocks,
+                limit: limits.maximum_code_blocks(),
+                actual: total_code_blocks,
+            });
+        }
+        if total_code_blocks > limits.maximum_work_units() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: total_code_blocks,
+            });
+        }
+        let count = match usize::try_from(count) {
+            Ok(count) => count,
+            Err(_) => return Err(packet_arithmetic_overflow()),
+        };
+        if execution.decoders.len() != count {
+            return Err(invalid_packet_header());
+        }
+        let first_decoder = decoders.len();
+        let prepared = prepare_precinct_contexts(
             states,
             contexts,
-            decoders,
-            subbands,
-        })
+            count,
+            execution.code_blocks_across,
+            execution.maximum_zero_bitplanes,
+            tier1_style,
+        )?;
+        states = prepared.0;
+        contexts = prepared.1;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost previous_decoders = decoders@;
+            let ghost row_decoders = execution.decoders@;
+        }
+        decoders.append(&mut execution.decoders);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder))
+                =~= previous_decoders.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder))
+                    + row_decoders.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)));
+        }
+        let inclusion_tree = tag_tree_new(
+            execution.code_blocks_across,
+            execution.code_blocks_down,
+            limits,
+        )?;
+        let zero_bitplane_tree = tag_tree_new(
+            execution.code_blocks_across,
+            execution.code_blocks_down,
+            limits,
+        )?;
+        let subband = PacketSubbandState {
+            orientation: execution.orientation,
+            first_decoder,
+            decoder_count: count,
+            code_blocks_across: execution.code_blocks_across,
+            code_blocks_down: execution.code_blocks_down,
+            inclusion_tree,
+            zero_bitplane_tree,
+        };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost previous_subbands = subbands@;
+            let ghost added_subband = packet_subband_view(&subband);
+        }
+        subbands.push(subband);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(subbands@.map_values(|value: PacketSubbandState| packet_subband_view(&value))
+                =~= previous_subbands.map_values(|value: PacketSubbandState| packet_subband_view(&value)).push(added_subband));
+            assert(crate::specs::part2_precinct_execution(previous_state, previous_total, row, tier1_style, limits)
+                == Ok((precinct_initialization_view((component, resolution, precinct),
+                    states@, contexts@, decoders@, subbands@), total_code_blocks)));
+            crate::proofs::production_impl::production_precinct_initialization_step(
+                original, tier1_style, limits, execution_index as nat, previous_state, previous_total,
+                precinct_initialization_view((component, resolution, precinct),
+                    states@, contexts@, decoders@, subbands@), total_code_blocks,
+            );
+        }
+        execution_index = execution_index
+            .checked_add(1)
+            .ok_or_else(packet_arithmetic_overflow)?;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part2_precinct_initialization_run); }
+    Ok(PacketPrecinctDecoder {
+        component,
+        resolution,
+        precinct,
+        states,
+        contexts,
+        decoders,
+        subbands,
+    })
+}
 
+impl PacketPrecinctDecoder {
     pub const fn coordinate(&self) -> (u16, u8, u32) {
         (self.component, self.resolution, self.precinct)
     }
@@ -6374,6 +6585,307 @@ const fn ceil_div_two(value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn precinct_context_preparation_preserves_raw_prefixes_and_exact_leaf_metadata() {
+        let style = Tier1CodingStyle {
+            force_high_throughput: true,
+            ..Tier1CodingStyle::default()
+        };
+        let mut cases = 0;
+        for states_len in [0, 1, 3] {
+            for contexts_len in [0, 1, 4] {
+                for count in [0, 1, 2, 3, 7, 32] {
+                    for across in [0, 1, 2, 3, u32::MAX] {
+                        for maximum_zero in [0, 1, u16::MAX] {
+                            let state = CodeBlockPacketState {
+                                included: true,
+                                zero_bitplanes: Some(u16::MAX),
+                                lblock: u8::MAX,
+                                total_passes: u32::MAX,
+                                high_throughput: Some(true),
+                            };
+                            let context = CodeBlockPacketContext {
+                                leaf_x: u32::MAX,
+                                leaf_y: u32::MAX,
+                                layer: u16::MAX,
+                                maximum_zero_bitplanes: u16::MAX,
+                                tier1_style: style,
+                            };
+                            let states = vec![state; states_len];
+                            let contexts = vec![context; contexts_len];
+                            let expected = if count != 0 && across == 0 {
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                })
+                            } else {
+                                let mut expected_states = states.clone();
+                                let mut expected_contexts = contexts.clone();
+                                for index in 0..count {
+                                    expected_states.push(CodeBlockPacketState {
+                                        included: false,
+                                        zero_bitplanes: None,
+                                        lblock: 3,
+                                        total_passes: 0,
+                                        high_throughput: None,
+                                    });
+                                    expected_contexts.push(CodeBlockPacketContext {
+                                        leaf_x: u32::try_from(index).unwrap() % across,
+                                        leaf_y: u32::try_from(index).unwrap() / across,
+                                        layer: 0,
+                                        maximum_zero_bitplanes: maximum_zero,
+                                        tier1_style: style,
+                                    });
+                                }
+                                Ok((expected_states, expected_contexts))
+                            };
+                            assert_eq!(
+                                prepare_precinct_contexts(
+                                    states,
+                                    contexts,
+                                    count,
+                                    across,
+                                    maximum_zero,
+                                    style
+                                ),
+                                expected
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 810);
+    }
+
+    fn precinct_execution_fixture(
+        rows: usize,
+        across: u32,
+        down: u32,
+        maximum_zero: u16,
+        count: usize,
+    ) -> Vec<PacketSubbandExecution> {
+        (0..rows)
+            .map(|row| {
+                let last = row + 1 == rows;
+                PacketSubbandExecution {
+                    orientation: [
+                        SubbandOrientation::Hh,
+                        SubbandOrientation::Ll,
+                        SubbandOrientation::Hl,
+                    ][row % 3],
+                    code_blocks_across: if last { across } else { 1 },
+                    code_blocks_down: if last { down } else { 1 },
+                    maximum_zero_bitplanes: if last { maximum_zero } else { 8 },
+                    decoders: (0..if last { count } else { 1 })
+                        .map(|index| {
+                            let mut decoder = Tier1CodeBlockDecoder::new(
+                                1,
+                                1,
+                                8,
+                                SubbandOrientation::Lh,
+                                Tier1CodingStyle::default(),
+                            )
+                            .unwrap();
+                            decoder.set_multiple_ht_sets_allowed(index % 2 != 0);
+                            decoder
+                                .set_ht_magnitude_bound(u8::try_from(index % 74 + 1).unwrap())
+                                .unwrap();
+                            decoder
+                        })
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+
+    fn reference_precinct_initialization(
+        coordinate: (u16, u8, u32),
+        style: Tier1CodingStyle,
+        executions: Vec<PacketSubbandExecution>,
+        limits: &ResourceLimits,
+    ) -> Result<PacketPrecinctDecoder, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidPacketHeader,
+        };
+        let arithmetic = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        if executions.len() > 3 {
+            return Err(invalid);
+        }
+        let mut states = Vec::new();
+        let mut contexts = Vec::new();
+        let mut decoders = Vec::new();
+        let mut subbands = Vec::new();
+        let mut total = 0_u64;
+        for execution in executions {
+            if execution.code_blocks_across == 0
+                || execution.code_blocks_down == 0
+                || execution.maximum_zero_bitplanes == 0
+                || execution.maximum_zero_bitplanes > crate::tier1::MAX_TIER1_BITPLANES
+            {
+                return Err(invalid);
+            }
+            let count =
+                u128::from(execution.code_blocks_across) * u128::from(execution.code_blocks_down);
+            total = u64::try_from(u128::from(total) + count).map_err(|_| arithmetic)?;
+            for (resource, limit) in [
+                (Resource::CodeBlocks, limits.maximum_code_blocks()),
+                (Resource::WorkUnits, limits.maximum_work_units()),
+            ] {
+                if total > limit {
+                    return Err(DecodeError::LimitExceeded {
+                        resource,
+                        limit,
+                        actual: total,
+                    });
+                }
+            }
+            let count = usize::try_from(count).map_err(|_| arithmetic)?;
+            if count != execution.decoders.len() {
+                return Err(invalid);
+            }
+            let first_decoder = decoders.len();
+            for index in 0..count {
+                let index = u32::try_from(index).map_err(|_| arithmetic)?;
+                states.push(CodeBlockPacketState {
+                    included: false,
+                    zero_bitplanes: None,
+                    lblock: 3,
+                    total_passes: 0,
+                    high_throughput: None,
+                });
+                contexts.push(CodeBlockPacketContext {
+                    leaf_x: index % execution.code_blocks_across,
+                    leaf_y: index / execution.code_blocks_across,
+                    layer: 0,
+                    maximum_zero_bitplanes: execution.maximum_zero_bitplanes,
+                    tier1_style: style,
+                });
+            }
+            decoders.extend(execution.decoders);
+            subbands.push(PacketSubbandState {
+                orientation: execution.orientation,
+                first_decoder,
+                decoder_count: count,
+                code_blocks_across: execution.code_blocks_across,
+                code_blocks_down: execution.code_blocks_down,
+                inclusion_tree: TagTree::new(
+                    execution.code_blocks_across,
+                    execution.code_blocks_down,
+                    limits,
+                )?,
+                zero_bitplane_tree: TagTree::new(
+                    execution.code_blocks_across,
+                    execution.code_blocks_down,
+                    limits,
+                )?,
+            });
+        }
+        Ok(PacketPrecinctDecoder {
+            component: coordinate.0,
+            resolution: coordinate.1,
+            precinct: coordinate.2,
+            states,
+            contexts,
+            decoders,
+            subbands,
+        })
+    }
+
+    #[test]
+    fn actual_precinct_initialization_keeps_all_owned_state_limits_and_empty_policy() {
+        let limits = [
+            ResourceLimits::HARDENED,
+            ResourceLimits::HARDENED
+                .with_maximum_code_blocks(1)
+                .unwrap(),
+            ResourceLimits::HARDENED.with_maximum_work_units(1).unwrap(),
+        ];
+        let styles = [
+            Tier1CodingStyle::default(),
+            Tier1CodingStyle {
+                block_coding: crate::tier1::Tier1BlockCoding::Mixed,
+                force_high_throughput: true,
+                reset_contexts: true,
+                ..Tier1CodingStyle::default()
+            },
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for rows in 0..=4 {
+            for across in [0, 1, 2, u32::MAX] {
+                for down in [0, 1, 2, u32::MAX] {
+                    for maximum_zero in [0, 1, 74, 75] {
+                        for count in [0, 1, 2, 3, 4] {
+                            for limit in &limits {
+                                for coordinate in
+                                    [(0, 0, 0), (u16::MAX, u8::MAX, u32::MAX), (1, 1, 17)]
+                                {
+                                    for style in styles {
+                                        let expected = reference_precinct_initialization(
+                                            coordinate,
+                                            style,
+                                            precinct_execution_fixture(
+                                                rows,
+                                                across,
+                                                down,
+                                                maximum_zero,
+                                                count,
+                                            ),
+                                            limit,
+                                        )
+                                        .map(|value| exact_packet_precinct_snapshot(&value));
+                                        let actual = packet_precinct_from_subbands(
+                                            coordinate.0,
+                                            coordinate.1,
+                                            coordinate.2,
+                                            style,
+                                            precinct_execution_fixture(
+                                                rows,
+                                                across,
+                                                down,
+                                                maximum_zero,
+                                                count,
+                                            ),
+                                            limit,
+                                        )
+                                        .map(|value| exact_packet_precinct_snapshot(&value));
+                                        let public = PacketPrecinctDecoder::new_subbands(
+                                            coordinate.0,
+                                            coordinate.1,
+                                            coordinate.2,
+                                            style,
+                                            precinct_execution_fixture(
+                                                rows,
+                                                across,
+                                                down,
+                                                maximum_zero,
+                                                count,
+                                            ),
+                                            limit,
+                                        )
+                                        .map(|value| exact_packet_precinct_snapshot(&value));
+                                        successes += usize::from(expected.is_ok());
+                                        assert_eq!(actual, expected);
+                                        assert_eq!(public, expected);
+                                        cases += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 28_800);
+        assert!(successes > 100, "{successes} full precinct states checked");
+    }
 
     fn literal_one_node_tree(low: u32, value: u32) -> TagTree {
         TagTree {

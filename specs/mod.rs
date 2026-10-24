@@ -3848,6 +3848,102 @@ pub open spec fn part1_packet_header_error() -> crate::DecodeError {
     crate::DecodeError::MalformedInput { offset: 0, kind: crate::MalformedKind::InvalidPacketHeader }
 }
 
+pub struct Part2PacketSubbandExecution {
+    pub orientation: crate::tier1::SubbandOrientation,
+    pub across: u32,
+    pub down: u32,
+    pub maximum_zero: u16,
+    pub decoders: Seq<Tier1DecoderState>,
+}
+
+pub open spec fn part2_precinct_contexts(
+    states: Seq<Part1CodeBlockPacketState>, contexts: Seq<crate::packet::CodeBlockPacketContext>,
+    count: usize, across: u32, maximum_zero: u16, style: crate::tier1::Tier1CodingStyle,
+) -> Result<(Seq<Part1CodeBlockPacketState>, Seq<crate::packet::CodeBlockPacketContext>), crate::DecodeError> {
+    if count as nat > u32::MAX as nat + 1 || (count != 0 && across == 0) {
+        Err(part1_block_placement_error(true))
+    } else {
+        Ok((states + Seq::new(count as nat, |index: int| part1_code_block_packet_initial()),
+            contexts + Seq::new(count as nat, |index: int| crate::packet::CodeBlockPacketContext {
+                leaf_x: if across == 0 { 0u32 } else { (index % across as int) as u32 },
+                leaf_y: if across == 0 { 0u32 } else { (index / across as int) as u32 },
+                layer: 0, maximum_zero_bitplanes: maximum_zero, tier1_style: style,
+            })))
+    }
+}
+
+pub open spec fn part2_precinct_execution(
+    before: Part1PacketPrecinctState, total: u64, execution: Part2PacketSubbandExecution,
+    style: crate::tier1::Tier1CodingStyle, limits: &crate::ResourceLimits,
+) -> Result<(Part1PacketPrecinctState, u64), crate::DecodeError> {
+    if execution.across == 0 || execution.down == 0 || execution.maximum_zero == 0
+        || execution.maximum_zero > crate::tier1::MAX_TIER1_BITPLANES {
+        Err(part1_packet_header_error())
+    } else {
+        let count = execution.across as nat * execution.down as nat;
+        let next = total as nat + count;
+        if count > u64::MAX || next > u64::MAX { Err(part1_block_placement_error(true)) }
+        else if next > crate::limits::resource_code_block_limit(limits) {
+            Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::CodeBlocks,
+                limit: crate::limits::resource_code_block_limit(limits), actual: next as u64 })
+        } else if next > crate::limits::resource_work_limit(limits) {
+            Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits,
+                limit: crate::limits::resource_work_limit(limits), actual: next as u64 })
+        } else if count > usize::MAX { Err(part1_block_placement_error(true)) }
+        else if execution.decoders.len() != count { Err(part1_packet_header_error()) }
+        else {
+            match part2_precinct_contexts(before.states, before.contexts, count as usize,
+                execution.across, execution.maximum_zero, style) {
+                Err(error) => Err(error),
+                Ok(contexts) => match part1_tag_initial(execution.across, execution.down,
+                    crate::limits::resource_tag_tree_node_limit(limits)) {
+                    Err(error) => Err(error),
+                    Ok(inclusion) => match part1_tag_initial(execution.across, execution.down,
+                        crate::limits::resource_tag_tree_node_limit(limits)) {
+                        Err(error) => Err(error),
+                        Ok(zero) => Ok((Part1PacketPrecinctState {
+                            states: contexts.0, contexts: contexts.1,
+                            decoders: before.decoders + execution.decoders,
+                            subbands: before.subbands.push(Part1PacketSubbandState {
+                                orientation: execution.orientation, first_decoder: before.decoders.len() as usize,
+                                decoder_count: count as usize, code_blocks_across: execution.across,
+                                code_blocks_down: execution.down, inclusion_tree: inclusion, zero_bitplane_tree: zero,
+                            }), ..before
+                        }, next as u64)),
+                    },
+                },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part2_precinct_initialization_run(
+    executions: Seq<Part2PacketSubbandExecution>, style: crate::tier1::Tier1CodingStyle,
+    limits: &crate::ResourceLimits, index: nat, state: Part1PacketPrecinctState, total: u64,
+) -> Result<Part1PacketPrecinctState, crate::DecodeError>
+    decreases if index < executions.len() { (executions.len() - index) as nat } else { 0nat },
+{
+    if index >= executions.len() { Ok(state) } else {
+        match part2_precinct_execution(state, total, executions[index as int], style, limits) {
+            Err(error) => Err(error),
+            Ok(next) => part2_precinct_initialization_run(executions, style, limits, index + 1, next.0, next.1),
+        }
+    }
+}
+
+pub open spec fn part2_precinct_from_executions(
+    component: u16, resolution: u8, precinct: u32, style: crate::tier1::Tier1CodingStyle,
+    executions: Seq<Part2PacketSubbandExecution>, limits: &crate::ResourceLimits,
+) -> Result<Part1PacketPrecinctState, crate::DecodeError> {
+    if executions.len() > 3 { Err(part1_packet_header_error()) } else {
+        part2_precinct_initialization_run(executions, style, limits, 0, Part1PacketPrecinctState {
+            component, resolution, precinct, states: Seq::empty(), contexts: Seq::empty(),
+            decoders: Seq::empty(), subbands: Seq::empty(),
+        }, 0)
+    }
+}
+
 pub open spec fn part1_packet_decoder_count(decoders: Seq<crate::tier1::Tier1CodeBlockDecoder>) -> nat {
     decoders.len()
 }
