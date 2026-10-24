@@ -224,6 +224,8 @@ def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
             r"(?:Tier1SymbolDecoder[ \t]+for[ \t]+)?"
             if symbol == "RawBitReader::decode" else ""
         )
+        if short == "clone":
+            trait_scope = r"(?:Clone[ \t]+for[ \t]+)?"
         implementations = re.finditer(
             rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
             rf"{trait_scope}{re.escape(owner)}\b(?![^{{}}\n]*\bfor\b)[^{{}}\n]*\{{", text,
@@ -787,6 +789,17 @@ _LAYER_STATE_CONTRACTS = {
         "part2_apply_chroma_key", r"\1",
         _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
         _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*keys\s*@",
+    ),
+}
+
+_TILE_COLLECTION_CONTRACTS = {
+    ("src/codestream.rs", "TilePartPayload::clone"): (
+        "part2_tile_part_copy", _coverage_call("tile_part_owned_view", r"&\s*\1"), None,
+        _coverage_call("tile_part_owned_view", "self"),
+    ),
+    ("src/decode.rs", "collect_tile_parts"): (
+        "part2_collect_tile_parts", _coverage_call("collected_tile_parts_outcome", r"\1"), None,
+        _coverage_call("codestream::tile_parts_owned_view", "parts@") + r"\s*,\s*tile",
     ),
 }
 
@@ -1818,6 +1831,7 @@ def validate_normative_coverage(
                 or _TILE_METADATA_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_POLICY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _RAW_TILE_DECODING_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TILE_COLLECTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

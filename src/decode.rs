@@ -5561,6 +5561,57 @@ pub(crate) fn decode_tile_parts_at(
     })
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn collected_tile_parts_outcome(result: Result<Vec<TilePartPayload<'_>>, DecodeError>)
+        -> Result<Seq<crate::specs::Part2OwnedTilePart>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(parts) => Ok(codestream::tile_parts_owned_view(parts@)) }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures collected_tile_parts_outcome(result) == crate::specs::part2_collect_tile_parts(
+        codestream::tile_parts_owned_view(parts@), tile,
+    ),
+))]
+pub(crate) fn collect_tile_parts<'data>(
+    parts: &[TilePartPayload<'data>],
+    tile: u16,
+) -> Result<Vec<TilePartPayload<'data>>, DecodeError> {
+    let mut output = Vec::new();
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(codestream::tile_parts_owned_view(output@) =~= Seq::empty()); }
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= parts.len(),
+            crate::specs::part2_collect_tile_parts(codestream::tile_parts_owned_view(parts@), tile)
+                == Ok(crate::specs::part2_collect_tile_parts_run(
+                    codestream::tile_parts_owned_view(parts@), tile, index as nat, codestream::tile_parts_owned_view(output@),
+                )),
+        decreases parts.len() - index,
+    ))]
+    while index < parts.len() {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = codestream::tile_parts_owned_view(output@); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part2_collect_tile_parts_run, 1); }
+        let part = parts.get(index).ok_or_else(invalid_decode)?.clone();
+        #[cfg(verus_keep_ghost)]
+        proof! { codestream::tile_part_owned_tile_known(&part); }
+        if part.tile_index == tile {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost copied = codestream::tile_part_owned_view(&part); }
+            output.push(part);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(codestream::tile_parts_owned_view(output@) =~= before.push(copied)); }
+        }
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part2_collect_tile_parts_run, 1); }
+    Ok(output)
+}
+
 fn decode_layout_selected(
     layout: &CodestreamLayout<'_>,
     requested: &DecodeSelection,
@@ -5586,26 +5637,7 @@ fn decode_layout_selected(
             .tiles
             .get(selected_tile)
             .ok_or_else(invalid_decode)?;
-        let mut tile_parts: Vec<TilePartPayload<'_>> = Vec::new();
-        let mut part_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant part_index <= layout.tile_parts.len(),
-                decreases layout.tile_parts.len() - part_index,
-            )
-        )]
-        while part_index < layout.tile_parts.len() {
-            let tile_part = layout
-                .tile_parts
-                .get(part_index)
-                .ok_or_else(invalid_decode)?
-                .clone();
-            if tile_part.tile_index == tile_index {
-                tile_parts.push(tile_part);
-            }
-            part_index = part_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        let tile_parts = collect_tile_parts(&layout.tile_parts, tile_index)?;
         let decoded = decode_tile_parts_at(
             &layout.info.image_size,
             tile_index,
@@ -6316,26 +6348,7 @@ fn decode_layout(
     )]
     while tile < tile_count {
         let tile_index = u16::try_from(tile).map_err(|_| arithmetic_overflow())?;
-        let mut tile_parts: Vec<TilePartPayload<'_>> = Vec::new();
-        let mut part_index = 0_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant part_index <= layout.tile_parts.len(),
-                decreases layout.tile_parts.len() - part_index,
-            )
-        )]
-        while part_index < layout.tile_parts.len() {
-            let tile_part = layout
-                .tile_parts
-                .get(part_index)
-                .ok_or_else(invalid_decode)?
-                .clone();
-            if tile_part.tile_index == tile_index {
-                tile_parts.push(tile_part);
-            }
-            part_index = part_index.checked_add(1).ok_or_else(arithmetic_overflow)?;
-        }
+        let tile_parts = collect_tile_parts(&layout.tile_parts, tile_index)?;
         let decoded = decode_tile_parts_at(
             &layout.info.image_size,
             tile_index,

@@ -1653,3 +1653,9 @@ actual metadata, policy, raw-owner planning, accounting and byte/reconstruction
 relations in source order; no successful intermediate plan/decoded/sample bank
 is supplied. Actual full/selected callers execute the sole native body.
 Collection/clone, whole layout/parser/file/F2/F4/F8 joins remain separate.
+Complete owned metadata observations retain every raw nonlinear/Part2/kernel/
+MCT/quantization/progression/header/flag/data field for actual Clone refinement.
+`part2_tile_part_copy` is logical data identity, not opaque allocation identity;
+`part2_collect_tile_parts` derives the ordered source-filtered observations
+through the actual clone-before-filter suffix. Native bodies preserve prior
+field and allocation order, with no assumed clone or successful outcome bank.

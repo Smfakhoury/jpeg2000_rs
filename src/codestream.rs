@@ -343,7 +343,6 @@ impl ProgressionChange {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct ProgressionChanges {
     records: Vec<ProgressionChange>,
@@ -970,7 +969,6 @@ impl ComponentCodingStyles {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 /// Bounded per-component quantization snapshots, stored off-stack.
 pub struct ComponentQuantizations {
@@ -1261,7 +1259,6 @@ pub enum DecompositionDirection {
     Vertical,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct DecompositionStructure {
     index: u8,
@@ -1278,7 +1275,6 @@ impl DecompositionStructure {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct ArbitraryDecomposition {
     index: u8,
@@ -1300,7 +1296,6 @@ impl ArbitraryDecomposition {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct NonlinearPointTransform {
     component: Option<u16>,
@@ -1410,7 +1405,6 @@ pub struct ComponentRegistration {
     pub vertical: u16,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct ArbitraryKernel {
     index: u8,
@@ -1491,7 +1485,6 @@ impl KernelCoefficient {
     }
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct KernelLiftingStep {
     offset: i8,
@@ -1634,7 +1627,7 @@ pub struct TilePartLength {
     pub length: u32,
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct Part2Extensions {
     decomposition_structures: Vec<DecompositionStructure>,
@@ -2152,7 +2145,6 @@ pub struct MctWavelet {
     component_offset: i32,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct MctArray {
     index: u8,
@@ -2162,20 +2154,17 @@ pub struct MctArray {
     values: Vec<i64>,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct MultipleComponentTransform {
     stages: Vec<MctStage>,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct MctStage {
     index: u8,
     collections: Vec<MctCollection>,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct MctCollection {
     reversible: bool,
@@ -3259,7 +3248,6 @@ pub struct CodestreamLayout<'a> {
     pub tile_parts: Vec<TilePartPayload<'a>>,
 }
 
-#[derive(Clone)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct TilePartPayload<'a> {
     pub tile_index: u16,
@@ -3278,6 +3266,293 @@ pub struct TilePartPayload<'a> {
     pub has_functional_header_marker: bool,
     pub has_roi_marker: bool,
     pub data: &'a [u8],
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn quantization_owner_view(value: &ComponentQuantizations) -> (u16, Seq<Quantization>) {
+        (value.components, value.quantizations@)
+    }
+
+    pub closed spec fn owned_decomposition_view(value: &DecompositionStructure) -> (u8, Seq<DecompositionDirection>) {
+        (value.index, value.directions@)
+    }
+
+    pub closed spec fn owned_arbitrary_decomposition_view(value: &ArbitraryDecomposition) -> (u8, Seq<u8>, Seq<DecompositionDirection>) {
+        (value.index, value.sublevel_depths@, value.subband_splits@)
+    }
+
+    pub closed spec fn owned_nonlinear_view(value: &NonlinearPointTransform) -> crate::specs::Part2OwnedNonlinear {
+        crate::specs::Part2OwnedNonlinear {
+            component: value.component, precision: value.precision, signed: value.signed, transform_type: value.transform_type,
+            parameters: value.parameters@, d_min: value.d_min, d_max: value.d_max, point_bits: value.point_bits,
+            points: value.points@, gamma: value.gamma_parameters,
+        }
+    }
+
+    pub closed spec fn owned_kernel_view(value: &ArbitraryKernel) -> (u8, u16, crate::specs::Part2RawKernel) {
+        (value.index, value.descriptor, raw_kernel_view(*value))
+    }
+
+    pub closed spec fn owned_extensions_view(value: &Part2Extensions) -> crate::specs::Part2OwnedExtensions {
+        crate::specs::Part2OwnedExtensions {
+            decompositions: value.decomposition_structures@.map_values(|entry: DecompositionStructure| owned_decomposition_view(&entry)),
+            arbitrary: value.arbitrary_decompositions@.map_values(|entry: ArbitraryDecomposition| owned_arbitrary_decomposition_view(&entry)),
+            nonlinear: value.nonlinear_transforms@.map_values(|entry: NonlinearPointTransform| owned_nonlinear_view(&entry)),
+            depths: value.component_bit_depths@,
+            kernels: value.arbitrary_kernels@.map_values(|entry: ArbitraryKernel| owned_kernel_view(&entry)),
+            registrations: value.component_registrations@, lengths: value.tile_part_lengths@, metadata_bytes: value.metadata_bytes,
+        }
+    }
+
+    pub closed spec fn tile_part_owned_view(value: &TilePartPayload<'_>) -> crate::specs::Part2OwnedTilePart {
+        crate::specs::Part2OwnedTilePart {
+            tile: value.tile_index, part: value.tile_part_index, count: value.tile_part_count,
+            coding_style: value.coding_style, quantization: value.quantization, coding_styles: value.component_coding_styles,
+            quantizations: quantization_owner_view(&value.component_quantizations), roi: value.roi_shifts,
+            progression: progression_changes_view(&value.progression_changes),
+            mct: match value.multiple_component_transform { None => None, Some(transform) => Some(multiple_component_transform_view(&transform)) },
+            extensions: owned_extensions_view(&value.part2_extensions), lengths: packet_lengths_view(&value.packet_lengths),
+            headers: packed_packet_headers_view(&value.packed_packet_headers),
+            functional_marker: value.has_functional_header_marker, roi_marker: value.has_roi_marker, data: value.data@,
+        }
+    }
+
+    pub open spec fn tile_parts_owned_view(values: Seq<TilePartPayload<'_>>) -> Seq<crate::specs::Part2OwnedTilePart> {
+        values.map_values(|value: TilePartPayload| tile_part_owned_view(&value))
+    }
+
+    pub proof fn tile_part_owned_tile_known(value: &TilePartPayload<'_>)
+        ensures tile_part_owned_view(value).tile == value.tile_index,
+    {
+        reveal(tile_part_owned_view);
+    }
+}
+
+impl Clone for ProgressionChanges {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures progression_changes_view(&result) == progression_changes_view(self),))]
+    fn clone(&self) -> Self {
+        Self {
+            records: self.records.clone(),
+        }
+    }
+}
+
+impl Clone for ComponentQuantizations {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures quantization_owner_view(&result) == quantization_owner_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(quantization_owner_view); }
+        Self {
+            components: self.components,
+            quantizations: self.quantizations.clone(),
+        }
+    }
+}
+
+impl Clone for DecompositionStructure {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures owned_decomposition_view(&result) == owned_decomposition_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(owned_decomposition_view); }
+        Self {
+            index: self.index,
+            directions: self.directions.clone(),
+        }
+    }
+}
+
+impl Clone for ArbitraryDecomposition {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures owned_arbitrary_decomposition_view(&result) == owned_arbitrary_decomposition_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(owned_arbitrary_decomposition_view); }
+        Self {
+            index: self.index,
+            sublevel_depths: self.sublevel_depths.clone(),
+            subband_splits: self.subband_splits.clone(),
+        }
+    }
+}
+
+impl Clone for NonlinearPointTransform {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures owned_nonlinear_view(&result) == owned_nonlinear_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(owned_nonlinear_view); }
+        Self {
+            component: self.component,
+            precision: self.precision,
+            signed: self.signed,
+            transform_type: self.transform_type,
+            parameters: self.parameters.clone(),
+            d_min: self.d_min,
+            d_max: self.d_max,
+            point_bits: self.point_bits,
+            points: self.points.clone(),
+            gamma_parameters: self.gamma_parameters,
+        }
+    }
+}
+
+impl Clone for KernelLiftingStep {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures raw_kernel_step_view(result) == raw_kernel_step_view(*self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(raw_kernel_step_view); }
+        Self {
+            offset: self.offset,
+            exponent: self.exponent,
+            residue: self.residue,
+            coefficients: self.coefficients.clone(),
+        }
+    }
+}
+
+impl Clone for ArbitraryKernel {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures owned_kernel_view(&result) == owned_kernel_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(owned_kernel_view); reveal(raw_kernel_view); }
+        Self {
+            index: self.index,
+            reversible: self.reversible,
+            descriptor: self.descriptor,
+            coefficient_type: self.coefficient_type,
+            whole_sample_filter: self.whole_sample_filter,
+            initial_odd: self.initial_odd,
+            whole_sample_extension: self.whole_sample_extension,
+            scaling: self.scaling,
+            steps: self.steps.clone(),
+        }
+    }
+}
+
+impl Clone for Part2Extensions {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures owned_extensions_view(&result) == owned_extensions_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(owned_extensions_view); }
+        let copied = Self {
+            decomposition_structures: self.decomposition_structures.clone(),
+            arbitrary_decompositions: self.arbitrary_decompositions.clone(),
+            nonlinear_transforms: self.nonlinear_transforms.clone(),
+            component_bit_depths: self.component_bit_depths.clone(),
+            arbitrary_kernels: self.arbitrary_kernels.clone(),
+            component_registrations: self.component_registrations.clone(),
+            tile_part_lengths: self.tile_part_lengths.clone(),
+            metadata_bytes: self.metadata_bytes,
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let a = owned_extensions_view(&copied);
+            let b = owned_extensions_view(self);
+            assert(a.decompositions =~= b.decompositions);
+            assert(a.arbitrary =~= b.arbitrary);
+            assert(a.nonlinear =~= b.nonlinear);
+            assert(a.depths =~= b.depths);
+            assert(a.kernels =~= b.kernels);
+            assert(a.registrations =~= b.registrations);
+            assert(a.lengths =~= b.lengths);
+        }
+        copied
+    }
+}
+
+impl Clone for MctArray {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_array_view(&result) == mct_array_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(mct_array_view); }
+        Self {
+            index: self.index,
+            kind: self.kind,
+            numeric_format: self.numeric_format,
+            fraction_bits: self.fraction_bits,
+            values: self.values.clone(),
+        }
+    }
+}
+
+impl Clone for MctCollection {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_collection_view(&result) == mct_collection_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(mct_collection_view); }
+        Self {
+            reversible: self.reversible,
+            input_components: self.input_components.clone(),
+            output_components: self.output_components.clone(),
+            kind: self.kind,
+            matrix: self.matrix.clone(),
+            offsets: self.offsets.clone(),
+            wavelet: self.wavelet,
+        }
+    }
+}
+
+impl Clone for MctStage {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures mct_stage_view(&result) == mct_stage_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(mct_stage_view); }
+        Self {
+            index: self.index,
+            collections: self.collections.clone(),
+        }
+    }
+}
+
+impl Clone for MultipleComponentTransform {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result => ensures multiple_component_transform_view(&result) == multiple_component_transform_view(self),))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(multiple_component_transform_view); }
+        Self {
+            stages: self.stages.clone(),
+        }
+    }
+}
+
+impl<'a> Clone for TilePartPayload<'a> {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures tile_part_owned_view(&result) == crate::specs::part2_tile_part_copy(tile_part_owned_view(self)),
+    ))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(tile_part_owned_view); }
+        Self {
+            tile_index: self.tile_index,
+            tile_part_index: self.tile_part_index,
+            tile_part_count: self.tile_part_count,
+            coding_style: self.coding_style,
+            quantization: self.quantization,
+            component_coding_styles: self.component_coding_styles,
+            component_quantizations: self.component_quantizations.clone(),
+            roi_shifts: self.roi_shifts,
+            progression_changes: self.progression_changes.clone(),
+            multiple_component_transform: self.multiple_component_transform.clone(),
+            part2_extensions: self.part2_extensions.clone(),
+            packet_lengths: self.packet_lengths,
+            packed_packet_headers: self.packed_packet_headers,
+            has_functional_header_marker: self.has_functional_header_marker,
+            has_roi_marker: self.has_roi_marker,
+            data: self.data,
+        }
+    }
 }
 
 impl<'a> TilePartPayload<'a> {
@@ -10506,6 +10781,224 @@ mod tests {
         assert!(!absent.part15_allows_multiple_ht_sets());
         assert_eq!(absent.part15_magnitude_bound(), 74);
         assert!(!absent.part15_requires_all_ht_blocks());
+    }
+
+    fn raw_owned_tile_part_fixture(variant: usize) -> TilePartPayload<'static> {
+        let coefficient = KernelCoefficient {
+            bytes: [u8::MAX; 16],
+            width: u8::MAX,
+        };
+        let kernel = ArbitraryKernel {
+            index: u8::MAX,
+            reversible: variant.is_multiple_of(2),
+            descriptor: u16::MAX,
+            coefficient_type: u8::MAX,
+            whole_sample_filter: true,
+            initial_odd: false,
+            whole_sample_extension: true,
+            scaling: Some(coefficient),
+            steps: vec![KernelLiftingStep {
+                offset: i8::MIN,
+                exponent: u8::MAX,
+                residue: Some(coefficient),
+                coefficients: vec![coefficient; variant % 4],
+            }],
+        };
+        let nonlinear = NonlinearPointTransform {
+            component: Some(u16::MAX),
+            precision: 0,
+            signed: true,
+            transform_type: u8::MAX,
+            parameters: vec![0, u8::MAX, 17],
+            d_min: Some(u32::MAX),
+            d_max: Some(0),
+            point_bits: Some(u8::MAX),
+            points: vec![0, u32::MAX, 31],
+            gamma_parameters: Some([u32::MAX, 0, 1, 2, 3]),
+        };
+        let style = raw_resolution_style(u8::MAX, variant % 8);
+        let quantization = raw_subband_quantization(QuantizationStyle::ScalarDerived, u16::MAX, 3);
+        TilePartPayload {
+            tile_index: u16::try_from(variant).unwrap(),
+            tile_part_index: u8::try_from(variant).unwrap(),
+            tile_part_count: 0,
+            coding_style: style,
+            quantization,
+            component_coding_styles: ComponentCodingStyles {
+                components: u16::MAX,
+                styles: [style; MAX_COMPONENTS],
+            },
+            component_quantizations: ComponentQuantizations {
+                components: u16::MAX,
+                quantizations: vec![quantization; variant % 4],
+            },
+            roi_shifts: RoiShifts {
+                shifts: [u8::MAX; MAX_COMPONENTS],
+            },
+            progression_changes: ProgressionChanges {
+                records: vec![ProgressionChange {
+                    resolution_start: u8::MAX,
+                    component_start: u16::MAX,
+                    layer_end: 0,
+                    resolution_end: 0,
+                    component_end: 0,
+                    progression_order: ProgressionOrder::Cprl,
+                }],
+            },
+            multiple_component_transform: Some(raw_mct_identity_fixture(variant % 24)),
+            part2_extensions: Part2Extensions {
+                decomposition_structures: vec![DecompositionStructure {
+                    index: u8::MAX,
+                    directions: vec![
+                        DecompositionDirection::None,
+                        DecompositionDirection::Horizontal,
+                        DecompositionDirection::TwoDimensional,
+                    ],
+                }],
+                arbitrary_decompositions: vec![ArbitraryDecomposition {
+                    index: 0,
+                    sublevel_depths: vec![0, u8::MAX],
+                    subband_splits: vec![
+                        DecompositionDirection::Vertical,
+                        DecompositionDirection::None,
+                    ],
+                }],
+                nonlinear_transforms: vec![nonlinear],
+                component_bit_depths: vec![
+                    ComponentBitDepth {
+                        precision: 0,
+                        signed: true,
+                    },
+                    ComponentBitDepth {
+                        precision: u8::MAX,
+                        signed: false,
+                    },
+                ],
+                arbitrary_kernels: vec![kernel],
+                component_registrations: vec![ComponentRegistration {
+                    horizontal: u16::MAX,
+                    vertical: 0,
+                }],
+                tile_part_lengths: vec![
+                    TilePartLength {
+                        tile_index: None,
+                        length: u32::MAX,
+                    },
+                    TilePartLength {
+                        tile_index: Some(u16::MAX),
+                        length: 0,
+                    },
+                ],
+                metadata_bytes: u64::MAX,
+            },
+            packet_lengths: PacketLengths {
+                source: PacketLengthSource::Plm(&[0, u8::MAX, 0x81]),
+                packet_count: u64::MAX,
+                encoded_bytes: 0,
+            },
+            packed_packet_headers: PackedPacketHeaders {
+                source: PackedPacketHeaderSource::MarkerSegments {
+                    header: &[0xff, 0x61, 0, 3, 0],
+                    marker: 0xff61,
+                    logical_start: usize::MAX,
+                },
+                length: usize::MAX,
+                fragments: u16::MAX,
+            },
+            has_functional_header_marker: true,
+            has_roi_marker: false,
+            data: &[0, 0xff, 0x81, 0x7f],
+        }
+    }
+
+    #[test]
+    fn actual_owned_tile_part_clone_preserves_every_raw_field_and_independent_nested_buffers() {
+        for variant in 0..24 {
+            let source = raw_owned_tile_part_fixture(variant);
+            let before = format!("{source:?}");
+            let mut copied = source.clone();
+            assert_eq!(copied, source);
+            assert!(core::ptr::eq(copied.data, source.data));
+            copied.component_quantizations.quantizations.clear();
+            copied.progression_changes.records.clear();
+            copied.part2_extensions.decomposition_structures[0]
+                .directions
+                .clear();
+            copied.part2_extensions.arbitrary_decompositions[0]
+                .sublevel_depths
+                .clear();
+            copied.part2_extensions.arbitrary_decompositions[0]
+                .subband_splits
+                .clear();
+            copied.part2_extensions.nonlinear_transforms[0]
+                .parameters
+                .clear();
+            copied.part2_extensions.nonlinear_transforms[0]
+                .points
+                .clear();
+            copied.part2_extensions.arbitrary_kernels[0].steps[0]
+                .coefficients
+                .clear();
+            copied.part2_extensions.arbitrary_kernels[0].steps.clear();
+            copied.part2_extensions.component_bit_depths.clear();
+            copied.part2_extensions.component_registrations.clear();
+            copied.part2_extensions.tile_part_lengths.clear();
+            if let Some(transform) = &mut copied.multiple_component_transform {
+                for stage in &mut transform.stages {
+                    for collection in &mut stage.collections {
+                        collection.input_components.clear();
+                        collection.output_components.clear();
+                        if let Some(array) = &mut collection.matrix {
+                            array.values.clear();
+                        }
+                        if let Some(array) = &mut collection.offsets {
+                            array.values.clear();
+                        }
+                    }
+                    stage.collections.clear();
+                }
+                transform.stages.clear();
+            }
+            assert_eq!(format!("{source:?}"), before);
+            assert_ne!(copied, source);
+        }
+    }
+
+    #[test]
+    fn actual_ordered_tile_collection_copies_raw_non_normalized_fields_and_retains_duplicate_order()
+    {
+        let mut cases = 0;
+        for length in 0..=64 {
+            for pattern in 0..4 {
+                let source = (0..length)
+                    .map(|index| {
+                        let mut value = raw_owned_tile_part_fixture(index % 24);
+                        value.tile_index = match pattern {
+                            0 => 0,
+                            1 => u16::try_from(index % 2).unwrap(),
+                            2 => u16::MAX,
+                            _ => u16::try_from(index % 3).unwrap(),
+                        };
+                        value.tile_part_index = u8::try_from(index).unwrap();
+                        value
+                    })
+                    .collect::<Vec<_>>();
+                for tile in [0, 1, 2, u16::MAX] {
+                    let actual = crate::decode::collect_tile_parts(&source, tile).unwrap();
+                    let expected = source
+                        .iter()
+                        .filter(|part| part.tile_index == tile)
+                        .collect::<Vec<_>>();
+                    assert_eq!(actual.len(), expected.len());
+                    for (copied, original) in actual.iter().zip(expected) {
+                        assert_eq!(copied, original);
+                        assert!(core::ptr::eq(copied.data, original.data));
+                    }
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 1_040);
     }
 
     fn reference_truncated_subband_count(style: CodingStyle) -> u16 {

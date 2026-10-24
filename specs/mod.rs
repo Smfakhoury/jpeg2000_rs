@@ -8593,6 +8593,67 @@ pub open spec fn part2_planned_tile_accounting(
     }
 }
 
+pub struct Part2OwnedNonlinear {
+    pub component: Option<u16>,
+    pub precision: u8,
+    pub signed: bool,
+    pub transform_type: u8,
+    pub parameters: Seq<u8>,
+    pub d_min: Option<u32>,
+    pub d_max: Option<u32>,
+    pub point_bits: Option<u8>,
+    pub points: Seq<u32>,
+    pub gamma: Option<[u32; 5]>,
+}
+
+pub struct Part2OwnedExtensions {
+    pub decompositions: Seq<(u8, Seq<crate::codestream::DecompositionDirection>)>,
+    pub arbitrary: Seq<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>,
+    pub nonlinear: Seq<Part2OwnedNonlinear>,
+    pub depths: Seq<crate::codestream::ComponentBitDepth>,
+    pub kernels: Seq<(u8, u16, Part2RawKernel)>,
+    pub registrations: Seq<crate::codestream::ComponentRegistration>,
+    pub lengths: Seq<crate::codestream::TilePartLength>,
+    pub metadata_bytes: u64,
+}
+
+pub struct Part2OwnedTilePart {
+    pub tile: u16,
+    pub part: u8,
+    pub count: u8,
+    pub coding_style: crate::codestream::CodingStyle,
+    pub quantization: crate::codestream::Quantization,
+    pub coding_styles: crate::codestream::ComponentCodingStyles,
+    pub quantizations: (u16, Seq<crate::codestream::Quantization>),
+    pub roi: crate::codestream::RoiShifts,
+    pub progression: Seq<crate::codestream::ProgressionChange>,
+    pub mct: Option<Seq<Part2MctStage>>,
+    pub extensions: Part2OwnedExtensions,
+    pub lengths: Part1PacketLengths,
+    pub headers: Part1PackedHeaders,
+    pub functional_marker: bool,
+    pub roi_marker: bool,
+    pub data: Seq<u8>,
+}
+
+pub open spec fn part2_tile_part_copy(value: Part2OwnedTilePart) -> Part2OwnedTilePart { value }
+
+#[verifier::opaque]
+pub open spec fn part2_collect_tile_parts_run(
+    parts: Seq<Part2OwnedTilePart>, tile: u16, index: nat, before: Seq<Part2OwnedTilePart>,
+) -> Seq<Part2OwnedTilePart>
+    decreases if index < parts.len() { (parts.len() - index) as nat } else { 0nat },
+{
+    if index >= parts.len() { before } else {
+        let copied = part2_tile_part_copy(parts[index as int]);
+        part2_collect_tile_parts_run(parts, tile, index + 1, if copied.tile == tile { before.push(copied) } else { before })
+    }
+}
+
+pub open spec fn part2_collect_tile_parts(parts: Seq<Part2OwnedTilePart>, tile: u16) -> Result<Seq<Part2OwnedTilePart>, crate::DecodeError> {
+    Ok(part2_collect_tile_parts_run(parts, tile, 0, Seq::empty()))
+}
+
 pub struct Part2DecodedLayoutTile {
     pub prepared: Seq<Part1AssemblyTile>,
     pub counters: (u64, u64, u64),
