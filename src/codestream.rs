@@ -1196,6 +1196,18 @@ verus! {
     pub closed spec fn quantization_view(value: &Quantization) -> crate::specs::Part2Quantization {
         (value.style, value.guard_bits, value.step_count, value.steps@)
     }
+
+    closed spec fn parsed_quantization_outcome(result: Result<Quantization, DecodeError>)
+        -> Result<crate::specs::Part2Quantization, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(quantization_view(&value)) }
+    }
+
+    closed spec fn parsed_component_quantization_outcome(result: Result<(u16, Quantization), DecodeError>)
+        -> Result<(u16, crate::specs::Part2Quantization), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((component, value)) => Ok((component, quantization_view(&value))) }
+    }
 }
 
 impl Quantization {
@@ -7480,6 +7492,10 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_quantization_outcome(result) == crate::specs::part1_parse_qcd_payload(
+            segment.offset, segment.payload@, parsed_coding_style_view(coding_style)),
+    ))]
     fn parse_qcd(
         &self,
         segment: Segment<'a>,
@@ -7488,17 +7504,24 @@ impl<'a> Parser<'a> {
         self.parse_qcd_payload(segment.offset, segment.payload, coding_style)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_quantization_outcome(result) == crate::specs::part1_parse_qcd_payload(
+            segment_offset, payload@, parsed_coding_style_view(coding_style)),
+    ))]
     fn parse_qcd_payload(
         &self,
         segment_offset: usize,
         payload: &[u8],
         coding_style: CodingStyle,
     ) -> Result<Quantization, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_qcd_payload);
+            reveal(crate::specs::part1_qcd_header);
+        }
         if payload.is_empty() {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidMarkerLength));
         }
 
         let guard_bits = payload[0] >> 5;
@@ -7507,10 +7530,7 @@ impl<'a> Parser<'a> {
             1 => QuantizationStyle::ScalarDerived,
             2 => QuantizationStyle::ScalarExpounded,
             _ => {
-                return Err(DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::InvalidQuantization,
-                ));
+                return Err(self.malformed_at(segment_offset, MalformedKind::InvalidQuantization));
             }
         };
         let subband_count = coding_style.subband_count();
@@ -7518,130 +7538,188 @@ impl<'a> Parser<'a> {
         let expected_step_bytes = match style {
             QuantizationStyle::None => usize::from(subband_count),
             QuantizationStyle::ScalarDerived => 2,
-            QuantizationStyle::ScalarExpounded => {
-                usize::from(subband_count).checked_mul(2).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?
-            }
+            QuantizationStyle::ScalarExpounded => match usize::from(subband_count).checked_mul(2) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            },
         };
         if step_bytes != expected_step_bytes {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidMarkerLength));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost h = crate::specs::Part1QcdHeader { style, guard_bits, subband_count };
+            let ghost goal = crate::specs::part1_parse_qcd_payload(
+                segment_offset, payload@, parsed_coding_style_view(coding_style));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part1_qcd_header(segment_offset, payload@, parsed_coding_style_view(coding_style)) == Ok(h));
         }
         if matches!(style, QuantizationStyle::None) {
             let mut index = 1_usize;
             #[cfg_attr(
                 verus_keep_ghost,
-                verus_spec(decreases payload.len() - index,)
+                verus_spec(
+                    invariant
+                        1 <= index <= payload.len(),
+                        style == QuantizationStyle::None,
+                        h == (crate::specs::Part1QcdHeader { style, guard_bits, subband_count }),
+                        goal == crate::specs::part1_parse_qcd_payload(
+                            segment_offset, payload@, parsed_coding_style_view(coding_style)),
+                        goal == match crate::specs::part1_qcd_validate_unscaled(segment_offset, payload@, index) {
+                            Err(error) => Err(error),
+                            Ok(()) => crate::specs::part1_qcd_after_validation(segment_offset, payload@, h),
+                        },
+                    decreases payload.len() - index,
+                )
             )]
             while index < payload.len() {
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal_with_fuel(crate::specs::part1_qcd_validate_unscaled, 1); }
                 if payload[index] & 0x07 != 0 {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::InvalidQuantization,
-                    ));
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::InvalidQuantization)
+                    );
                 }
-                index = index.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                index = match index.checked_add(1) {
+                    Some(value) => value,
+                    None => {
+                        return Err(
+                            self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                        );
+                    }
+                };
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_qcd_validate_unscaled, 1); }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(goal == crate::specs::part1_qcd_after_validation(segment_offset, payload@, h));
+            reveal(crate::specs::part1_qcd_after_validation);
         }
         let step_count = match style {
             QuantizationStyle::None | QuantizationStyle::ScalarExpounded => subband_count,
             QuantizationStyle::ScalarDerived => 1,
         };
         if usize::from(step_count) > MAX_QUANTIZATION_STEPS {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidQuantization,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidQuantization));
         }
         let mut steps = [QuantizationStep {
             exponent: 0,
             mantissa: 0,
         }; MAX_QUANTIZATION_STEPS];
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(steps@ =~= Seq::new(97, |i: int| QuantizationStep { exponent: 0, mantissa: 0 }));
+        }
         let step_total = usize::from(step_count);
         let mut step_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases step_total - step_index,)
+            verus_spec(
+                invariant
+                    step_index <= step_total <= MAX_QUANTIZATION_STEPS,
+                    step_total == step_count as usize,
+                    goal == crate::specs::part1_parse_qcd_payload(
+                        segment_offset, payload@, parsed_coding_style_view(coding_style)),
+                    goal == match crate::specs::part1_qcd_steps(
+                        segment_offset, payload@, style, step_total, step_index, steps@) {
+                        Err(error) => Err(error),
+                        Ok(values) => Ok((style, guard_bits, step_count, values)),
+                    },
+                decreases step_total - step_index,
+            )
         )]
         while step_index < step_total {
-            let payload_index = if matches!(style, QuantizationStyle::None) {
-                step_index.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?
-            } else {
-                step_index
-                    .checked_mul(2)
-                    .and_then(|index| index.checked_add(1))
-                    .ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(segment_offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?
-            };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_qcd_steps, 1);
+                reveal(crate::specs::part1_qcd_step);
+            }
+            let payload_index =
+                if matches!(style, QuantizationStyle::None) {
+                    match step_index.checked_add(1) {
+                        Some(value) => value,
+                        None => {
+                            return Err(self
+                                .malformed_at(segment_offset, MalformedKind::ArithmeticOverflow));
+                        }
+                    }
+                } else {
+                    let doubled = match step_index.checked_mul(2) {
+                        Some(value) => value,
+                        None => {
+                            return Err(self
+                                .malformed_at(segment_offset, MalformedKind::ArithmeticOverflow));
+                        }
+                    };
+                    match doubled.checked_add(1) {
+                        Some(value) => value,
+                        None => {
+                            return Err(self
+                                .malformed_at(segment_offset, MalformedKind::ArithmeticOverflow));
+                        }
+                    }
+                };
             let step = if matches!(style, QuantizationStyle::None) {
                 if payload_index >= payload.len() {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::InvalidQuantization,
-                    ));
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::InvalidQuantization)
+                    );
                 }
                 QuantizationStep {
                     exponent: payload[payload_index] >> 3,
                     mantissa: 0,
                 }
             } else {
-                let next_index = payload_index.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                let next_index = match payload_index.checked_add(1) {
+                    Some(value) => value,
+                    None => {
+                        return Err(
+                            self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                        );
+                    }
+                };
                 if next_index >= payload.len() {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::InvalidQuantization,
-                    ));
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::InvalidQuantization)
+                    );
                 }
                 let encoded = read_u16([payload[payload_index], payload[next_index]]);
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(encoded >> 11 <= 255) by (bit_vector); }
                 QuantizationStep {
                     exponent: u8::try_from(encoded >> 11).map_err(|_| {
-                        DecodeError::malformed(
-                            self.offset(segment_offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
+                        self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
                     })?,
                     mantissa: encoded & 0x07ff,
                 }
             };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(crate::specs::part1_qcd_step(segment_offset, payload@, style, step_index) == Ok(step));
+            }
             if step_index >= steps.len() {
-                return Err(DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::InvalidQuantization,
-                ));
+                return Err(self.malformed_at(segment_offset, MalformedKind::InvalidQuantization));
             }
             steps[step_index] = step;
-            step_index = step_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            step_index = match step_index.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_qcd_steps, 1); }
         Ok(Quantization {
             style,
             guard_bits,
@@ -7650,20 +7728,27 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_component_quantization_outcome(result) == crate::specs::part1_parse_qcc(
+            segment.offset, segment.payload@, components, parsed_coding_style_view(coding_style)),
+    ))]
     fn parse_qcc(
         &self,
         segment: Segment<'a>,
         components: u16,
         coding_style: CodingStyle,
     ) -> Result<(u16, Quantization), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_qcc);
+            reveal(crate::specs::part1_parse_component_index);
+        }
         let (component, component_bytes) =
             self.parse_component_index(segment, components, MalformedKind::InvalidQuantization)?;
-        let payload = segment.payload.get(component_bytes..).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )
-        })?;
+        let payload = segment
+            .payload
+            .get(component_bytes..)
+            .ok_or_else(|| self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength))?;
         let quantization = self.parse_qcd_payload(segment.offset, payload, coding_style)?;
         Ok((component, quantization))
     }
@@ -15254,6 +15339,324 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    fn reference_quantization_subbands(coding: CodingStyle) -> usize {
+        1 + coding
+            .decomposition_directions
+            .iter()
+            .take(usize::from(coding.decomposition_levels))
+            .map(|direction| match direction {
+                DecompositionDirection::None => 0,
+                DecompositionDirection::Horizontal | DecompositionDirection::Vertical => 1,
+                DecompositionDirection::TwoDimensional => 3,
+            })
+            .sum::<usize>()
+    }
+
+    fn reference_raw_quantization(
+        bytes: &[u8],
+        offset: usize,
+        coding: CodingStyle,
+    ) -> Result<Quantization, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let header = *bytes
+            .first()
+            .ok_or_else(|| malformed(MalformedKind::InvalidMarkerLength))?;
+        let style = match header % 32 {
+            0 => QuantizationStyle::None,
+            1 => QuantizationStyle::ScalarDerived,
+            2 => QuantizationStyle::ScalarExpounded,
+            _ => return Err(malformed(MalformedKind::InvalidQuantization)),
+        };
+        let bands = reference_quantization_subbands(coding);
+        let expected = match style {
+            QuantizationStyle::None => bands,
+            QuantizationStyle::ScalarDerived => 2,
+            QuantizationStyle::ScalarExpounded => 2 * bands,
+        };
+        if bytes.len() - 1 != expected {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        if matches!(style, QuantizationStyle::None) && bytes[1..].iter().any(|byte| byte % 8 != 0) {
+            return Err(malformed(MalformedKind::InvalidQuantization));
+        }
+        let count = if matches!(style, QuantizationStyle::ScalarDerived) {
+            1
+        } else {
+            bands
+        };
+        let mut steps = [QuantizationStep {
+            exponent: 0,
+            mantissa: 0,
+        }; 97];
+        if count > steps.len() {
+            return Err(malformed(MalformedKind::InvalidQuantization));
+        }
+        for (index, step) in steps[..count].iter_mut().enumerate() {
+            *step = if matches!(style, QuantizationStyle::None) {
+                QuantizationStep {
+                    exponent: bytes[1 + index] / 8,
+                    mantissa: 0,
+                }
+            } else {
+                let word = u16::from_be_bytes([bytes[1 + 2 * index], bytes[2 + 2 * index]]);
+                QuantizationStep {
+                    exponent: (word / 2048) as u8,
+                    mantissa: word % 2048,
+                }
+            };
+        }
+        Ok(Quantization {
+            style,
+            guard_bits: header / 32,
+            step_count: u16::try_from(count).unwrap(),
+            steps,
+        })
+    }
+
+    fn raw_quantization_payload(header: u8, coding: CodingStyle) -> Vec<u8> {
+        let count = reference_quantization_subbands(coding);
+        let mut bytes = vec![header];
+        match header % 32 {
+            0 => bytes.extend((0..count).map(|index| u8::try_from(index % 32).unwrap() * 8)),
+            1 | 2 => {
+                let total = if header % 32 == 1 { 1 } else { count };
+                for index in 0..total {
+                    bytes.extend(
+                        u16::try_from(index)
+                            .unwrap()
+                            .wrapping_mul(2089)
+                            .wrapping_add(0x8123)
+                            .to_be_bytes(),
+                    );
+                }
+            }
+            _ => {}
+        }
+        bytes
+    }
+
+    #[test]
+    fn actual_raw_quantization_derives_all_steps_defaults_and_ordered_errors() {
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let mut seed =
+            reference_raw_coding_style(&[0, 0, 0, 1, 0, 0, 0, 0, 0, 1], 0, &limits).unwrap();
+        seed.layers = 0;
+        seed.code_block_width = 0;
+        seed.code_block_height = u16::MAX;
+        seed.decomposition_structure = Some(127);
+        seed.transform = WaveletTransform::Arbitrary(255);
+        let mut words = 0;
+        for style in [1, 2] {
+            for word in 0..=u16::MAX {
+                let [high, low] = word.to_be_bytes();
+                for guard in [0, 7] {
+                    let bytes = [(guard << 5) | style, high, low];
+                    for offset in [0, usize::MAX] {
+                        let expected = reference_raw_quantization(&bytes, offset, seed);
+                        assert_eq!(parser.parse_qcd_payload(offset, &bytes, seed), expected);
+                        assert_eq!(
+                            parser.parse_qcd(
+                                Segment {
+                                    marker: 0x1234,
+                                    offset,
+                                    payload: &bytes
+                                },
+                                seed
+                            ),
+                            expected
+                        );
+                        words += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(words, 524_288);
+        let mut headers = 0;
+        for levels in 0..=u8::MAX {
+            for pattern in 0..5 {
+                let mut coding = seed;
+                coding.decomposition_levels = levels;
+                coding.decomposition_directions = core::array::from_fn(|index| match pattern {
+                    0 => DecompositionDirection::None,
+                    1 => DecompositionDirection::TwoDimensional,
+                    2 => DecompositionDirection::Horizontal,
+                    3 => DecompositionDirection::Vertical,
+                    _ => match index % 4 {
+                        0 => DecompositionDirection::None,
+                        1 => DecompositionDirection::Horizontal,
+                        2 => DecompositionDirection::Vertical,
+                        _ => DecompositionDirection::TwoDimensional,
+                    },
+                });
+                for header in 0..=u8::MAX {
+                    let source = raw_quantization_payload(header, coding);
+                    for variant in 0..3 {
+                        let mut bytes = source.clone();
+                        if variant == 1 {
+                            bytes.pop();
+                        } else if variant == 2 {
+                            bytes.push(0);
+                        }
+                        for offset in [0, usize::MAX] {
+                            let expected = reference_raw_quantization(&bytes, offset, coding);
+                            assert_eq!(parser.parse_qcd_payload(offset, &bytes, coding), expected);
+                            assert_eq!(
+                                parser.parse_qcd(
+                                    Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    },
+                                    coding
+                                ),
+                                expected
+                            );
+                            headers += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(headers, 1_966_080);
+        let mut low_bits = 0;
+        for levels in [0, 1, 31, 32, 255] {
+            let mut coding = seed;
+            coding.decomposition_levels = levels;
+            coding.decomposition_directions = [DecompositionDirection::TwoDimensional; 32];
+            let count = reference_quantization_subbands(coding);
+            for index in 0..count {
+                for byte in 0..=u8::MAX {
+                    let mut bytes = vec![0; count + 1];
+                    bytes[0] = 0xe0;
+                    bytes[index + 1] = byte;
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.parse_qcd_payload(offset, &bytes, coding),
+                            reference_raw_quantization(&bytes, offset, coding)
+                        );
+                        low_bits += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(low_bits, 150_016);
+        assert_eq!(words + headers + low_bits, 2_640_384);
+    }
+
+    #[test]
+    fn actual_component_quantization_binds_prefix_bytes_defaults_and_reader() {
+        fn reference(
+            bytes: &[u8],
+            offset: usize,
+            components: u16,
+            coding: CodingStyle,
+        ) -> Result<(u16, Quantization), DecodeError> {
+            let malformed = |kind| DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind,
+            };
+            let width = if components < 257 { 1 } else { 2 };
+            if bytes.len() < width {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let component = if width == 1 {
+                u16::from(bytes[0])
+            } else {
+                u16::from_be_bytes([bytes[0], bytes[1]])
+            };
+            if component >= components {
+                return Err(malformed(MalformedKind::InvalidQuantization));
+            }
+            reference_raw_quantization(&bytes[width..], offset, coding)
+                .map(|value| (component, value))
+        }
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let seed = reference_raw_coding_style(&[0, 0, 0, 1, 0, 0, 0, 0, 0, 1], 0, &limits).unwrap();
+        let mut cases = 0;
+        for pattern in 0..4 {
+            let mut coding = seed;
+            coding.decomposition_levels = if pattern == 0 { 0 } else { 255 };
+            coding.decomposition_directions = core::array::from_fn(|index| match pattern {
+                0 | 1 => DecompositionDirection::TwoDimensional,
+                2 => DecompositionDirection::None,
+                _ => {
+                    if index % 2 == 0 {
+                        DecompositionDirection::Horizontal
+                    } else {
+                        DecompositionDirection::Vertical
+                    }
+                }
+            });
+            for components in [0, 1, 256, 257, u16::MAX] {
+                let width = if components < 257 { 1 } else { 2 };
+                for component in [0_u16, 1, 255, 256, 65534, 65535] {
+                    let prefix = if width == 1 {
+                        vec![(component % 256) as u8]
+                    } else {
+                        component.to_be_bytes().to_vec()
+                    };
+                    for header in 0..=u8::MAX {
+                        let quantization = raw_quantization_payload(header, coding);
+                        for variant in 0..3 {
+                            let mut bytes = prefix.clone();
+                            if variant == 0 {
+                                bytes.extend(&quantization);
+                            } else if variant == 1 {
+                                bytes.truncate(width - 1);
+                            }
+                            for offset in [0, usize::MAX] {
+                                assert_eq!(
+                                    parser.parse_qcc(
+                                        Segment {
+                                            marker: 0x1234,
+                                            offset,
+                                            payload: &bytes
+                                        },
+                                        components,
+                                        coding
+                                    ),
+                                    reference(&bytes, offset, components, coding),
+                                );
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 184_320);
+        let payload = [0, 1, 0xe1, 0xff, 0xff];
+        let mut input = vec![255, 93];
+        input.extend(u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+        input.extend(payload);
+        let mut reader = new_parser(&input, &limits).unwrap();
+        let segment = reader.read_segment().unwrap();
+        let actual = reader.parse_qcc(segment, 257, seed).unwrap();
+        assert_eq!(Ok(actual), reference(&payload, 0, 257, seed));
+        assert_eq!(actual.0, 1);
+        assert_eq!(actual.1.guard_bits, 7);
+        assert_eq!(actual.1.step_count, 1);
+        assert_eq!(
+            actual.1.steps[0],
+            QuantizationStep {
+                exponent: 31,
+                mantissa: 2047
+            }
+        );
+        assert!(
+            actual.1.steps[1..]
+                .iter()
+                .all(|value| value.exponent == 0 && value.mantissa == 0)
+        );
+        assert_eq!(reader.position, input.len());
+        assert_eq!(reader.work_units, 1);
     }
 
     #[test]

@@ -4,6 +4,49 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-raw-quantization",
+      "topic": "Complete actual Parser::parse_qcd/parse_qcd_payload/parse_qcc Result/every Quantization field and all97 physical steps including untouched zeros, from raw segment bytes/offset, raw coding style and actual component count. Actual shared subband counting and proved component-index/word producers supply every count/index/byte; no normalized coding style, supplied step/count/result bank or valid-header premise. Preserve empty/style/length/None-lowbits-before-cap/checked-step order, all guard bits, None/ScalarDerived/ScalarExpounded modes, one/two-byte QCC threshold257 and component-error precedence. Marker identity and scalar/reversible compatibility remain at original callers; QCD-before-COD remains supported. Proved malformed helper and explicit checked-result branches change no runtime/error/pin/cap/trust policy. Remaining Part2/tile/layout parsing and file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_qcd"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_qcd_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_qcc"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_qcd_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_qcc"},
+        {"path": "specs/mod.rs", "symbol": "part1_qcd_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_qcd_validate_unscaled"},
+        {"path": "specs/mod.rs", "symbol": "part1_qcd_after_validation"},
+        {"path": "specs/mod.rs", "symbol": "part1_qcd_step"},
+        {"path": "specs/mod.rs", "symbol": "part1_qcd_steps"},
+        {"path": "specs/mod.rs", "symbol": "part2_subband_count"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_component_index"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_qcd"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_qcd_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_qcc"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "quantization_view"},
+        {"path": "src/codestream.rs", "symbol": "parsed_quantization_outcome"},
+        {"path": "src/codestream.rs", "symbol": "parsed_component_quantization_outcome"},
+        {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_component_index"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_at"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_raw_quantization_derives_all_steps_defaults_and_ordered_errors"},
+        {"path": "src/codestream.rs", "symbol": "actual_component_quantization_binds_prefix_bytes_defaults_and_reader"},
+        {"path": "src/codestream.rs", "symbol": "main_header_quantization_may_precede_coding_style"}
+      ]
+    },
+    {
       "id": "part1-complete-native-raw-component-style",
       "topic": "Complete actual Parser::parse_component_index and parse_coc Result/every CodingStyle field from raw Segment bytes/offset, component count, raw default and real limits. Preserve one/two-byte threshold257, truncation before component validation and caller error kind, minimum/SCOC/DSC selector order, native43-byte COD scratch, inherited progression/layers/MCT/SOP/EPH, DSC default-depth substitution, exact actual COD admission and final decomposition selector. No marker/DSC-registry/default normalization is newly imposed. All scratch/frame/narrowing facts derive internally without prepared payload/style/result banks or admitted header/budget premises. Original slice copy/allocation/order remain; proved malformed helper and equivalent explicit bool byte encoding supply missing standard-library facts. Remaining quantization/Part2/tile/layout parser-to-output/file/F2/F4/final F8 stay separate.",
       "implementation_refs": [

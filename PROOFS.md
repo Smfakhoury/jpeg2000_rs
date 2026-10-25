@@ -25,6 +25,36 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw QCD/QCC quantization producers
+
+Actual QCD segment/payload and QCC parsing derive complete Quantization
+Results from raw bytes/offset, raw coding style and component count. Every
+style/guard/count field and all 97 physical steps are bound, including unused
+zero entries. The actual proved subband counter and component-index/word
+producers supply their values; no normalized style, admitted count/header,
+prepared steps or successful-result bank is supplied.
+
+Empty input and low-five-bit style admission precede exact length, unscaled
+low-bit traversal, capacity and checked step decoding in native order.
+None, ScalarDerived and ScalarExpounded retain their exact exponent/mantissa
+and count semantics, including all guard bits. QCC retains the 257 threshold,
+component-error precedence and source-derived payload suffix. Marker checks,
+scalar/reversible compatibility and limit policy remain at original callers.
+In particular, main-header QCD-before-COD remains supported.
+
+Opaque mathematical traversals bind real validation/array loops and every
+error/offset. The existing proved malformed constructor and equivalent
+explicit checked-result stages provide functional facts without a new
+executable parser, trust, termination opt-out, solver budget or cap change.
+
+Independent endian/division/modulo references cover 524,288 full-word
+contexts, 1,966,080 header/length/direction contexts, 150,016 unscaled-byte
+frontiers and 184,320 QCC prefix/error contexts, plus a real reader join.
+All raw depth bytes and direction modes, each reserved style and every
+physical/default slot are compared. Three exact contract recipes reject
+adversarial input/result mutations. Remaining Part2/tile/layout parsing and
+file/layer/F2/F4/final F8 joins stay separate.
+
 ## Complete native raw COC component-style producer
 
 Actual component-index decoding and COC parsing derive their complete native
@@ -52,8 +82,8 @@ Independent endian/numeric references check 5,242,880 component-index cases,
 1,244,160 complete COC contexts and 132,480 length/error frontiers, plus an
 actual reader join. The COD reference is shared with its existing regression,
 not copied into production. Three curated exact contracts bind real source
-inputs/results and reject adversarial mutations. Remaining quantization,
-Part2/tile/layout parsing, file/layer/F2/F4 and final F8 joins stay separate.
+inputs/results and reject adversarial mutations. Remaining Part2/tile/layout
+parsing, file/layer/F2/F4 and final F8 joins stay separate.
 
 ## Complete native raw COD coding-style producer
 
