@@ -926,6 +926,12 @@ class FrameworkTests(WorkingFiles):
             framework._COMPONENT_STYLE_BYTES_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_raw_qcd_qcc_results_and_all_unused_quantization_steps(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-raw-quantization"},
+            framework._QUANTIZATION_BYTES_CONTRACTS, 3,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

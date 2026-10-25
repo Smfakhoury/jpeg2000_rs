@@ -1,5 +1,17 @@
 # Specification audit guide
 
+`part1_parse_qcd_payload` and `part1_parse_qcc` bind actual raw quantization
+bytes to every native style/guard/count/step field, all 97 physical slots
+and exact malformed offsets. Actual raw style counting, component-index
+decoding and word reads supply all intermediate values, not admitted
+counts or prepared results. Empty/style/length/unscaled-lowbits/capacity/
+checked-step order and QCC component precedence are retained. Derived and
+indexed modes, raw guard bits, depth/direction truncation and unused zeros
+are explicit. No marker/scalar-compatibility/cap validation is newly added;
+QCD-before-COD remains supported. Opaque mathematical folds observe real
+loops rather than implementing a second decoder. Remaining metadata/layout/
+file/F2/F4/final F8 joins stay separate.
+
 `part1_parse_component_index` and `part1_parse_coc` bind actual raw component
 index/COC Results and every CodingStyle field, including untouched direction
 and precinct defaults. The sole actual `prepare_coc_payload` body proves its

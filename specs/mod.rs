@@ -13335,6 +13335,149 @@ pub open spec fn part1_parse_coc(
     }
 }
 
+pub struct Part1QcdHeader {
+    pub style: crate::codestream::QuantizationStyle,
+    pub guard_bits: u8,
+    pub subband_count: u16,
+}
+
+#[verifier::opaque]
+pub open spec fn part1_qcd_header(offset: usize, payload: Seq<u8>, coding: Part1ParsedCodingStyle)
+    -> Result<Part1QcdHeader, crate::DecodeError>
+{
+    if payload.len() == 0 {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let style = match payload[0] & 31 {
+            0 => Some(crate::codestream::QuantizationStyle::None),
+            1 => Some(crate::codestream::QuantizationStyle::ScalarDerived),
+            2 => Some(crate::codestream::QuantizationStyle::ScalarExpounded),
+            _ => None,
+        };
+        match style {
+            None => Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidQuantization)),
+            Some(style) => {
+                let count = part2_subband_count(coding.decomposition_levels, coding.decomposition_directions);
+                let expected = match style {
+                    crate::codestream::QuantizationStyle::None => count as int,
+                    crate::codestream::QuantizationStyle::ScalarDerived => 2int,
+                    crate::codestream::QuantizationStyle::ScalarExpounded => count as int * 2,
+                };
+                if expected > usize::MAX {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+                } else if payload.len() - 1 != expected {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+                } else {
+                    Ok(Part1QcdHeader { style, guard_bits: payload[0] >> 5, subband_count: count })
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_qcd_validate_unscaled(offset: usize, payload: Seq<u8>, position: usize)
+    -> Result<(), crate::DecodeError>
+    decreases payload.len() - position,
+{
+    if position as nat >= payload.len() { Ok(()) }
+    else if payload[position as int] & 7 != 0 {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidQuantization))
+    } else if position == usize::MAX {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+    } else { part1_qcd_validate_unscaled(offset, payload, (position + 1) as usize) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_qcd_step(
+    offset: usize, payload: Seq<u8>, style: crate::codestream::QuantizationStyle, position: usize,
+) -> Result<crate::transform::QuantizationStep, crate::DecodeError> {
+    let index = if style == crate::codestream::QuantizationStyle::None { position as int + 1 } else { position as int * 2 + 1 };
+    if index > usize::MAX {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+    } else if style == crate::codestream::QuantizationStyle::None {
+        if index >= payload.len() {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidQuantization))
+        } else { Ok(crate::transform::QuantizationStep { exponent: payload[index] >> 3, mantissa: 0 }) }
+    } else if index + 1 > usize::MAX {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+    } else if index + 1 >= payload.len() {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidQuantization))
+    } else {
+        let word = part1_marker_value(payload[index], payload[index + 1]);
+        Ok(crate::transform::QuantizationStep { exponent: (word >> 11) as u8, mantissa: word & 2047 })
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_qcd_steps(
+    offset: usize, payload: Seq<u8>, style: crate::codestream::QuantizationStyle,
+    total: usize, position: usize, steps: Seq<crate::transform::QuantizationStep>,
+) -> Result<Seq<crate::transform::QuantizationStep>, crate::DecodeError>
+    decreases total - position,
+{
+    if position >= total { Ok(steps) }
+    else {
+        match part1_qcd_step(offset, payload, style, position) {
+            Err(error) => Err(error),
+            Ok(step) => if position as nat >= steps.len() {
+                Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidQuantization))
+            } else if position == usize::MAX {
+                Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+            } else {
+                part1_qcd_steps(offset, payload, style, total, (position + 1) as usize, steps.update(position as int, step))
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_qcd_after_validation(offset: usize, payload: Seq<u8>, h: Part1QcdHeader)
+    -> Result<Part2Quantization, crate::DecodeError>
+{
+    let count = if h.style == crate::codestream::QuantizationStyle::ScalarDerived { 1u16 } else { h.subband_count };
+    if count > 97 {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidQuantization))
+    } else {
+        let initial = Seq::new(97, |i: int| crate::transform::QuantizationStep { exponent: 0, mantissa: 0 });
+        match part1_qcd_steps(offset, payload, h.style, count as usize, 0, initial) {
+            Err(error) => Err(error),
+            Ok(steps) => Ok((h.style, h.guard_bits, count, steps)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_qcd_payload(offset: usize, payload: Seq<u8>, coding: Part1ParsedCodingStyle)
+    -> Result<Part2Quantization, crate::DecodeError>
+{
+    match part1_qcd_header(offset, payload, coding) {
+        Err(error) => Err(error),
+        Ok(h) => {
+            let validation = if h.style == crate::codestream::QuantizationStyle::None {
+                part1_qcd_validate_unscaled(offset, payload, 1)
+            } else { Ok(()) };
+            match validation {
+                Err(error) => Err(error),
+                Ok(()) => part1_qcd_after_validation(offset, payload, h),
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_qcc(
+    offset: usize, payload: Seq<u8>, components: u16, coding: Part1ParsedCodingStyle,
+) -> Result<(u16, Part2Quantization), crate::DecodeError> {
+    match part1_parse_component_index(offset, payload, components, crate::MalformedKind::InvalidQuantization) {
+        Err(error) => Err(error),
+        Ok((component, bytes)) => match part1_parse_qcd_payload(offset, payload.subrange(bytes as int, payload.len() as int), coding) {
+            Err(error) => Err(error),
+            Ok(quantization) => Ok((component, quantization)),
+        },
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }
