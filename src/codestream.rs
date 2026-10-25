@@ -3461,6 +3461,16 @@ verus! {
         match value { None => None, Some(value) => Some(owned_nonlinear_view(value)) }
     }
 
+    pub open spec fn nlt_payload_outcome(value: Result<NonlinearPointTransform, DecodeError>)
+        -> Result<crate::specs::Part2OwnedNonlinear, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(value) => Ok(owned_nonlinear_view(&value)) }
+    }
+
+    pub open spec fn segment_tail_outcome(value: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match value { Err(error) => Err(error), Ok(value) => Ok(value@) }
+    }
+
     pub closed spec fn owned_kernel_view(value: &ArbitraryKernel) -> (u8, u16, crate::specs::Part2RawKernel) {
         (value.index, value.descriptor, raw_kernel_view(*value))
     }
@@ -5283,18 +5293,94 @@ impl<'a> Parser<'a> {
         Ok(values)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_nlt(parser_view(old(self)), segment_view(segment),
+                components, owned_extensions_view(old(extensions))),
+    ))]
     fn parse_nlt(
         &mut self,
         segment: Segment<'a>,
         components: u16,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost goal = crate::specs::part1_parse_nlt(input, segment_view(segment), components, extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_nlt); }
         self.charge_extension_metadata(segment, extensions)?;
+        let replacement = self.decode_nlt_payload(segment, components)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+            let ghost decoded = owned_nonlinear_view(&replacement);
+            let ghost target = crate::specs::part1_nlt_replace(charged_extensions.nonlinear, decoded, 0);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(owned_nonlinear_view);
+            assert(goal == (Ok(()), charged_parser, crate::specs::part1_extension_nonlinear(charged_extensions, target)));
+        }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= extensions.nonlinear_transforms.len(),
+                input == parser_view(old(self)),
+                extension_input == owned_extensions_view(old(extensions)),
+                parser_view(self) == charged_parser,
+                owned_extensions_view(extensions) == charged_extensions,
+                owned_nonlinear_view(&replacement) == decoded,
+                target == crate::specs::part1_nlt_replace(charged_extensions.nonlinear, decoded, position as nat),
+                goal == crate::specs::part1_parse_nlt(input, segment_view(segment), components, extension_input),
+                goal == (Ok(()), charged_parser, crate::specs::part1_extension_nonlinear(charged_extensions, target)),
+            decreases extensions.nonlinear_transforms.len() - position,
+        ))]
+        while position < extensions.nonlinear_transforms.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_nlt_replace, 1); reveal(owned_nonlinear_view); }
+            if extensions.nonlinear_transforms[position].component == replacement.component {
+                extensions.nonlinear_transforms[position] = replacement;
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(owned_extensions_view(extensions).nonlinear =~=
+                        charged_extensions.nonlinear.update(position as int, decoded));
+                }
+                return Ok(());
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_nlt_replace, 1); }
+        extensions.nonlinear_transforms.push(replacement);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(owned_extensions_view(extensions).nonlinear =~= charged_extensions.nonlinear.push(decoded));
+        }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures nlt_payload_outcome(result) == crate::specs::part1_nlt_payload(segment_view(segment), components),
+    ))]
+    fn decode_nlt_payload(
+        &self,
+        segment: Segment<'a>,
+        components: u16,
+    ) -> Result<NonlinearPointTransform, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_nlt_payload); reveal(crate::specs::part1_nlt_header);
+            reveal(crate::specs::part1_nlt_points); reveal(crate::specs::part1_nlt_points_header);
+            reveal(crate::specs::part1_copy_segment_tail); reveal(owned_nonlinear_view);
+        }
         if segment.payload.len() < 4 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let raw_component = read_u16([segment.payload[0], segment.payload[1]]);
         let component = if raw_component == u16::MAX {
@@ -5302,26 +5388,15 @@ impl<'a> Parser<'a> {
         } else if raw_component < components {
             Some(raw_component)
         } else {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         };
-        let precision = (segment.payload[2] & 0x7f)
-            .checked_add(1)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let precision = crate::refinement::cbd_precision(segment.payload[2]);
         let transform_type = segment.payload[3];
         if precision > 38 || transform_type > 4 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         if matches!(transform_type, 0 | 3) && segment.payload.len() != 4 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let mut d_min = None;
         let mut d_max = None;
@@ -5329,63 +5404,25 @@ impl<'a> Parser<'a> {
         let mut points = Vec::new();
         let mut gamma_parameters = None;
         if transform_type == 1 {
-            if segment.payload.len() != 19 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
-            }
-            let mut parameters = [0_u32; 5];
-            let mut parameter = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant parameter <= parameters.len(),
-                    decreases parameters.len() - parameter,
-                )
-            )]
-            while parameter < parameters.len() {
-                let position =
-                    4_usize
-                        .checked_add(parameter.checked_mul(3).ok_or_else(|| {
-                            self.malformed_here(MalformedKind::ArithmeticOverflow)
-                        })?)
-                        .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-                parameters[parameter] = (u32::from(self.segment_byte(segment, position, 0)?) << 16)
-                    | (u32::from(self.segment_byte(segment, position, 1)?) << 8)
-                    | u32::from(self.segment_byte(segment, position, 2)?);
-                parameter = parameter
-                    .checked_add(1)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-            if parameters[0] == 0 || parameters[1] == 0 || parameters[3] == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
-            }
-            gamma_parameters = Some(parameters);
+            gamma_parameters = Some(self.decode_nlt_gamma(segment)?);
         }
         if matches!(transform_type, 2 | 4) {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_segment_byte); }
             if segment.payload.len() < 15 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
             }
             let stored_points = read_u16([
                 self.segment_byte(segment, 4, 0)?,
                 self.segment_byte(segment, 4, 1)?,
             ]);
             if stored_points == 0 || stored_points > 8191 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
-            let count = stored_points
-                .checked_add(1)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            let count = match stored_points.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
             let minimum = read_u32([
                 self.segment_byte(segment, 6, 0)?,
                 self.segment_byte(segment, 6, 1)?,
@@ -5400,10 +5437,7 @@ impl<'a> Parser<'a> {
             ]);
             let bits = segment.payload[14];
             if minimum >= maximum || bits == 0 || bits > 32 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
             let width = if bits <= 8 {
                 1_usize
@@ -5412,33 +5446,59 @@ impl<'a> Parser<'a> {
             } else {
                 4_usize
             };
-            let point_bytes = usize::from(count)
-                .checked_mul(width)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            let expected = 15_usize
-                .checked_add(point_bytes)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            let point_bytes = match usize::from(count).checked_mul(width) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+            let expected = match 15_usize.checked_add(point_bytes) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
             if segment.payload.len() != expected {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+            }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! {
+                let ghost header = (count, minimum, maximum, bits, width);
+                let ghost values = Seq::new(count as nat, |index: int|
+                    crate::specs::part1_nlt_point_value(segment.payload@, width, index));
             }
             let mut point = 0_u16;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant point <= count,
+                    invariant point <= count, 1 < count <= 8192,
+                        0 < bits <= 32,
+                        width == crate::specs::part1_nlt_point_width(bits),
+                        segment.payload.len() == 15 + count as int * width as int,
+                        crate::specs::part1_nlt_points_header(segment_view(segment)) == Ok(header),
+                        crate::specs::part1_nlt_header(segment_view(segment), components) ==
+                            Ok((component, precision, crate::specs::part2_cbd_signed(segment.payload@[2]), transform_type)),
+                        transform_type == 2 || transform_type == 4,
+                        header == (count, minimum, maximum, bits, width),
+                        values == Seq::new(count as nat, |index: int|
+                            crate::specs::part1_nlt_point_value(segment.payload@, width, index)),
+                        points@ == values.subrange(0, point as int),
+                        forall|index: int| 0 <= index < point ==>
+                            values[index] <= crate::specs::part1_nlt_point_maximum(bits),
                     decreases count - point,
                 )
             )]
             while point < count {
-                let position =
-                    15_usize
-                        .checked_add(usize::from(point).checked_mul(width).ok_or_else(|| {
-                            self.malformed_here(MalformedKind::ArithmeticOverflow)
-                        })?)
-                        .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    reveal(crate::specs::part1_segment_byte);
+                    reveal(crate::specs::part1_nlt_payload); reveal(crate::specs::part1_nlt_header);
+                    reveal(crate::specs::part1_nlt_points);
+                }
+                let relative = match usize::from(point).checked_mul(width) {
+                    Some(value) => value,
+                    None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+                };
+                let position = match 15_usize.checked_add(relative) {
+                    Some(value) => value,
+                    None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+                };
                 let value = if width == 1 {
                     u32::from(self.segment_byte(segment, position, 0)?)
                 } else if width == 2 {
@@ -5454,30 +5514,43 @@ impl<'a> Parser<'a> {
                         self.segment_byte(segment, position, 3)?,
                     ])
                 };
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(value == values[point as int]); }
                 let maximum_point = if bits == 32 {
                     u32::MAX
                 } else {
                     maximum_u32_for_bits(bits)?
                 };
                 if value > maximum_point {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment.offset),
-                        MalformedKind::InvalidTransform,
-                    ));
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(values[point as int] > crate::specs::part1_nlt_point_maximum(bits));
+                        assert(crate::specs::part1_nlt_points(segment_view(segment)) ==
+                            Err(crate::specs::part1_codestream_malformed(segment.offset, MalformedKind::InvalidTransform)));
+                    }
+                    return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
                 }
                 points.push(value);
-                point = point
-                    .checked_add(1)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(values.subrange(0, point as int + 1) =~= values.subrange(0, point as int).push(value)); }
+                point = match point.checked_add(1) {
+                    Some(value) => value,
+                    None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+                };
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(values.subrange(0, point as int) =~= values);
+                assert(crate::specs::part1_nlt_points(segment_view(segment)) == Ok((minimum, maximum, bits, points@)));
             }
             d_min = Some(minimum);
             d_max = Some(maximum);
             point_bits = Some(bits);
         }
-        let replacement = NonlinearPointTransform {
+        Ok(NonlinearPointTransform {
             component,
             precision,
-            signed: segment.payload[2] & 0x80 != 0,
+            signed: crate::refinement::cbd_signed(segment.payload[2]),
             transform_type,
             parameters: self.copy_segment_tail(segment, 4)?,
             d_min,
@@ -5485,17 +5558,7 @@ impl<'a> Parser<'a> {
             point_bits,
             points,
             gamma_parameters,
-        };
-        if let Some(existing) = extensions
-            .nonlinear_transforms
-            .iter_mut()
-            .find(|record| record.component == component)
-        {
-            *existing = replacement;
-        } else {
-            extensions.nonlinear_transforms.push(replacement);
-        }
-        Ok(())
+        })
     }
 
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
@@ -5855,39 +5918,102 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_nlt_gamma(segment_view(segment)),
+    ))]
+    fn decode_nlt_gamma(&self, segment: Segment<'a>) -> Result<[u32; 5], DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_nlt_gamma); }
+        if segment.payload.len() != 19 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let mut parameters = [0_u32; 5];
+        let mut parameter = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant parameter <= 5, segment.payload.len() == 19,
+                forall|index: int| 0 <= index < parameter ==>
+                    parameters@[index] == crate::specs::part1_nlt_gamma_word(segment.payload@, index),
+            decreases 5 - parameter,
+        ))]
+        while parameter < parameters.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_segment_byte); }
+            let relative = match parameter.checked_mul(3) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+            let position = match 4_usize.checked_add(relative) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+            parameters[parameter] = (u32::from(self.segment_byte(segment, position, 0)?) << 16)
+                | (u32::from(self.segment_byte(segment, position, 1)?) << 8)
+                | u32::from(self.segment_byte(segment, position, 2)?);
+            parameter = match parameter.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let expected = [
+                crate::specs::part1_nlt_gamma_word(segment.payload@, 0),
+                crate::specs::part1_nlt_gamma_word(segment.payload@, 1),
+                crate::specs::part1_nlt_gamma_word(segment.payload@, 2),
+                crate::specs::part1_nlt_gamma_word(segment.payload@, 3),
+                crate::specs::part1_nlt_gamma_word(segment.payload@, 4),
+            ];
+            assert(parameters@ =~= expected@);
+            assert(parameters =~= expected);
+        }
+        if parameters[0] == 0 || parameters[1] == 0 || parameters[3] == 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
+        }
+        Ok(parameters)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures segment_tail_outcome(result) == crate::specs::part1_copy_segment_tail(segment_view(segment), start),
+    ))]
     fn copy_segment_tail(
         &self,
         segment: Segment<'a>,
         start: usize,
     ) -> Result<Vec<u8>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_copy_segment_tail); }
         if start > segment.payload.len() {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let mut copied = Vec::with_capacity(segment.payload.len() - start);
         let mut position = start;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant position <= segment.payload.len(),
+                invariant start <= position <= segment.payload.len(),
+                    copied@ == segment.payload@.subrange(start as int, position as int),
                 decreases segment.payload.len() - position,
             )
         )]
         while position < segment.payload.len() {
-            copied.push(*segment.payload.get(position).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?);
-            position = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_segment_byte); }
+            copied.push(self.segment_byte(segment, position, 0)?);
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(segment.payload@.subrange(start as int, position as int + 1) =~=
+                    segment.payload@.subrange(start as int, position as int).push(segment.payload@[position as int]));
+            }
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
         }
         Ok(copied)
     }
@@ -9844,27 +9970,62 @@ fn count_set_bits(value: u32) -> u8 {
     count
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_maximum_u32_for_bits(bits),
+))]
 fn maximum_u32_for_bits(bits: u8) -> Result<u32, DecodeError> {
     if bits == 0 || bits > 31 {
-        return Err(DecodeError::malformed(0, MalformedKind::ArithmeticOverflow));
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        });
     }
     let mut value = 0_u32;
     let mut bit = 0_u8;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert((1u64 << 0u8) == 1u64) by (bit_vector); }
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant bit <= bits,
+            invariant bit <= bits, 0 < bits <= 31,
+                value as u64 == (1u64 << bit) - 1,
             decreases bits - bit,
         )
     )]
     while bit < bits {
-        value = value
-            .checked_mul(2)
-            .and_then(|value| value.checked_add(1))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-        bit = bit
-            .checked_add(1)
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(bit < 31 ==> (1u64 << bit) - 1 <= 1073741823u64) by (bit_vector);
+            assert(bit < 31 ==> ((1u64 << bit) - 1) * 2 + 1 == (1u64 << (bit + 1)) - 1) by (bit_vector);
+        }
+        let doubled = match value.checked_mul(2) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
+        value = match doubled.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
+        bit = match bit.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
     }
     Ok(value)
 }
@@ -16571,6 +16732,586 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_nlt_gamma(bytes: &[u8], offset: usize) -> Result<[u32; 5], DecodeError> {
+        if bytes.len() != 19 {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidMarkerLength,
+            });
+        }
+        let parameters = core::array::from_fn(|index| {
+            let position = 4 + 3 * index;
+            u32::from_be_bytes([0, bytes[position], bytes[position + 1], bytes[position + 2]])
+        });
+        if [0, 1, 3].iter().any(|index| parameters[*index] == 0) {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            });
+        }
+        Ok(parameters)
+    }
+
+    fn reference_nlt_payload(
+        bytes: &[u8],
+        components: u16,
+        offset: usize,
+    ) -> Result<NonlinearPointTransform, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if bytes.len() < 4 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let selector = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let component = if selector == u16::MAX {
+            None
+        } else if selector < components {
+            Some(selector)
+        } else {
+            return Err(malformed(MalformedKind::InvalidTransform));
+        };
+        let precision = bytes[2] % 128 + 1;
+        let kind = bytes[3];
+        if precision > 38 || kind > 4 {
+            return Err(malformed(MalformedKind::InvalidTransform));
+        }
+        if matches!(kind, 0 | 3) && bytes.len() != 4 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let mut result = NonlinearPointTransform {
+            component,
+            precision,
+            signed: bytes[2] / 128 == 1,
+            transform_type: kind,
+            parameters: bytes[4..].to_vec(),
+            d_min: None,
+            d_max: None,
+            point_bits: None,
+            points: vec![],
+            gamma_parameters: None,
+        };
+        if kind == 1 {
+            result.gamma_parameters = Some(reference_nlt_gamma(bytes, offset)?);
+        }
+        if matches!(kind, 2 | 4) {
+            if bytes.len() < 15 {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let stored = u16::from_be_bytes([bytes[4], bytes[5]]);
+            if !(1..=8191).contains(&stored) {
+                return Err(malformed(MalformedKind::InvalidTransform));
+            }
+            let minimum = u32::from_be_bytes(bytes[6..10].try_into().unwrap());
+            let maximum = u32::from_be_bytes(bytes[10..14].try_into().unwrap());
+            let bits = bytes[14];
+            if minimum >= maximum || !(1..=32).contains(&bits) {
+                return Err(malformed(MalformedKind::InvalidTransform));
+            }
+            let width = match bits {
+                1..=8 => 1,
+                9..=16 => 2,
+                _ => 4,
+            };
+            if bytes.len() != 15 + (usize::from(stored) + 1) * width {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            for chunk in bytes[15..].chunks_exact(width) {
+                let value = chunk
+                    .iter()
+                    .fold(0_u64, |previous, byte| previous * 256 + u64::from(*byte));
+                if value > (1_u64 << bits) - 1 {
+                    return Err(malformed(MalformedKind::InvalidTransform));
+                }
+                result.points.push(u32::try_from(value).unwrap());
+            }
+            result.d_min = Some(minimum);
+            result.d_max = Some(maximum);
+            result.point_bits = Some(bits);
+        }
+        Ok(result)
+    }
+
+    fn raw_nlt_gamma_payload(parameters: [u32; 5]) -> Vec<u8> {
+        let mut bytes = vec![255, 255, 0xa4, 1];
+        for value in parameters {
+            bytes.extend(&value.to_be_bytes()[1..]);
+        }
+        bytes
+    }
+
+    fn raw_nlt_points_payload(
+        kind: u8,
+        bits: u8,
+        stored: u16,
+        domain: (u32, u32),
+        values: &[u32],
+    ) -> Vec<u8> {
+        let mut bytes = vec![255, 255, 0xa4, kind];
+        bytes.extend(stored.to_be_bytes());
+        bytes.extend(domain.0.to_be_bytes());
+        bytes.extend(domain.1.to_be_bytes());
+        bytes.push(bits);
+        let width = match bits {
+            0..=8 => 1,
+            9..=16 => 2,
+            _ => 4,
+        };
+        for value in values {
+            bytes.extend(&value.to_be_bytes()[4 - width..]);
+        }
+        bytes
+    }
+
+    fn assert_nlt_payload_case(parser: &Parser<'_>, bytes: &[u8], components: u16, offset: usize) {
+        assert_eq!(
+            parser.decode_nlt_payload(
+                Segment {
+                    marker: 0x1234,
+                    offset,
+                    payload: bytes
+                },
+                components
+            ),
+            reference_nlt_payload(bytes, components, offset),
+            "bytes={bytes:?}, components={components}, offset={offset}",
+        );
+    }
+
+    #[test]
+    fn actual_nlt_preserves_all_component_selectors_precision_and_type_bytes() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut selectors = 0;
+        for selector in 0..=u16::MAX {
+            let [first, second] = selector.to_be_bytes();
+            for components in [0, 1, 257, u16::MAX] {
+                for offset in [0, usize::MAX] {
+                    assert_nlt_payload_case(&parser, &[first, second, 37, 3], components, offset);
+                    selectors += 1;
+                }
+            }
+        }
+        assert_eq!(selectors, 524_288);
+        let mut headers = 0;
+        for (selector, components) in [(0_u16, 0), (0, 1), (1, 1), (u16::MAX, 0)] {
+            for packed in 0..=u8::MAX {
+                for kind in 0..=u8::MAX {
+                    for length in [4, 19] {
+                        let mut bytes = vec![0; length];
+                        bytes[..2].copy_from_slice(&selector.to_be_bytes());
+                        bytes[2] = packed;
+                        bytes[3] = kind;
+                        assert_nlt_payload_case(&parser, &bytes, components, usize::MAX);
+                        headers += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(headers, 524_288);
+        for length in 0..=24 {
+            for pattern in [0, 255] {
+                assert_nlt_payload_case(&parser, &vec![pattern; length], u16::MAX, usize::MAX);
+            }
+        }
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_nlt_preserves_gamma_words_point_widths_caps_and_tail_bytes() {
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&[], &limits).unwrap();
+        parser.position = usize::MAX;
+        let mut gamma = 0;
+        for seed in [[1, 1, 0, 1, 0], [0x00ff_ffff; 5]] {
+            for parameter in 0..5 {
+                for byte in 0..3 {
+                    for value in 0..=u8::MAX {
+                        let mut bytes = raw_nlt_gamma_payload(seed);
+                        bytes[4 + 3 * parameter + byte] = value;
+                        for offset in [0, usize::MAX] {
+                            assert_eq!(
+                                parser.decode_nlt_gamma(Segment {
+                                    marker: 0x1234,
+                                    offset,
+                                    payload: &bytes
+                                }),
+                                reference_nlt_gamma(&bytes, offset)
+                            );
+                            assert_nlt_payload_case(&parser, &bytes, 0, offset);
+                            gamma += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(gamma, 15_360);
+        let source = raw_nlt_gamma_payload([1, 1, 0, 1, 0]);
+        let mut gamma_lengths = 0;
+        for length in 0..=24 {
+            let mut bytes = source.clone();
+            bytes.resize(length, 0);
+            for offset in [0, usize::MAX] {
+                assert_eq!(
+                    parser.decode_nlt_gamma(Segment {
+                        marker: 0x1234,
+                        offset,
+                        payload: &bytes
+                    }),
+                    reference_nlt_gamma(&bytes, offset),
+                );
+                gamma_lengths += 1;
+            }
+        }
+        assert_eq!(gamma_lengths, 50);
+        let mut frontiers = 0;
+        for bits in 0..=u8::MAX {
+            for stored in [0, 1, 2, 3, 31, 8191, 8192, u16::MAX] {
+                for domain in [
+                    (0, 0),
+                    (0, 1),
+                    (0, u32::MAX),
+                    (1, 0),
+                    (u32::MAX, 0),
+                    (u32::MAX - 1, u32::MAX),
+                ] {
+                    for kind in [2, 4] {
+                        let source =
+                            raw_nlt_points_payload(kind, bits, stored, domain, &[0, u32::MAX]);
+                        for variant in 0..3 {
+                            let mut bytes = source.clone();
+                            if variant == 0 {
+                                bytes.pop();
+                            } else if variant == 2 {
+                                bytes.push(0);
+                            }
+                            for offset in [0, usize::MAX] {
+                                assert_nlt_payload_case(&parser, &bytes, 0, offset);
+                                frontiers += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 147_456);
+        let mut admitted = 0;
+        for bits in 1..=32 {
+            let maximum = ((1_u64 << bits) - 1) as u32;
+            for stored in [1_u16, 2, 7] {
+                for kind in [2, 4] {
+                    for pattern in 0..4 {
+                        let values: Vec<u32> = (0..=stored)
+                            .map(|index| match pattern {
+                                0 => 0,
+                                1 => maximum,
+                                2 => u32::from(index).min(maximum),
+                                _ => {
+                                    if index % 2 == 0 {
+                                        0
+                                    } else {
+                                        maximum
+                                    }
+                                }
+                            })
+                            .collect();
+                        let bytes =
+                            raw_nlt_points_payload(kind, bits, stored, (0, u32::MAX), &values);
+                        assert_nlt_payload_case(&parser, &bytes, 0, usize::MAX);
+                        admitted += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(admitted, 768);
+        let mut large = 0;
+        for bits in [1, 8, 9, 16, 17, 31, 32] {
+            let maximum = ((1_u64 << bits) - 1) as u32;
+            for kind in [2, 4] {
+                for pattern in 0..3 {
+                    let values: Vec<u32> = (0..8192)
+                        .map(|index| {
+                            if pattern == 0 {
+                                0
+                            } else if pattern == 1 || index % 2 != 0 {
+                                maximum
+                            } else {
+                                0
+                            }
+                        })
+                        .collect();
+                    let bytes = raw_nlt_points_payload(kind, bits, 8191, (0, u32::MAX), &values);
+                    assert_nlt_payload_case(&parser, &bytes, 0, usize::MAX);
+                    large += 1;
+                }
+            }
+        }
+        assert_eq!(large, 42);
+        let mut rejected = 0;
+        for bits in [1, 7, 9, 15, 17, 24, 25, 31] {
+            for bad in 0..4 {
+                let mut values = vec![0; 4];
+                values[bad] = 1_u32 << bits;
+                for kind in [2, 4] {
+                    let source = raw_nlt_points_payload(kind, bits, 3, (0, 1), &values);
+                    for variant in 0..3 {
+                        let mut bytes = source.clone();
+                        if variant == 0 {
+                            bytes.pop();
+                        } else if variant == 2 {
+                            bytes.push(0);
+                        }
+                        for offset in [0, usize::MAX] {
+                            assert_nlt_payload_case(&parser, &bytes, 0, offset);
+                            rejected += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(rejected, 384);
+        for bits in 0..=u8::MAX {
+            let expected = if (1..=31).contains(&bits) {
+                Ok(((1_u64 << bits) - 1) as u32)
+            } else {
+                Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })
+            };
+            assert_eq!(maximum_u32_for_bits(bits), expected);
+        }
+        let mut tails = 0;
+        for byte in 0..=u8::MAX {
+            for length in 0..=12 {
+                let bytes = vec![byte; length];
+                for start in [0, 1, 2, length, length + 1, usize::MAX] {
+                    for offset in [0, usize::MAX] {
+                        let expected = match bytes.get(start..) {
+                            Some(tail) => Ok(tail.to_vec()),
+                            None => Err(DecodeError::MalformedInput {
+                                offset: offset as u64,
+                                kind: MalformedKind::InvalidMarkerLength,
+                            }),
+                        };
+                        assert_eq!(
+                            parser.copy_segment_tail(
+                                Segment {
+                                    marker: 0x1234,
+                                    offset,
+                                    payload: &bytes
+                                },
+                                start
+                            ),
+                            expected
+                        );
+                        tails += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(tails, 39_936);
+        assert_eq!(parser.position, usize::MAX);
+    }
+
+    fn assert_nlt_owner_case(
+        bytes: &[u8],
+        components: u16,
+        mode: usize,
+        limits: &ResourceLimits,
+        budget: (u64, u64),
+        offset: usize,
+    ) {
+        let selector = if bytes.len() >= 2 {
+            u16::from_be_bytes([bytes[0], bytes[1]])
+        } else {
+            u16::MAX
+        };
+        let component = (selector != u16::MAX).then_some(selector);
+        let seed = NonlinearPointTransform {
+            component: Some(u16::MAX),
+            precision: u8::MAX,
+            signed: true,
+            transform_type: u8::MAX,
+            parameters: vec![255, 17],
+            d_min: Some(u32::MAX),
+            d_max: None,
+            point_bits: Some(0),
+            points: vec![u32::MAX, 0, 17],
+            gamma_parameters: Some([0, 1, u32::MAX, 0, 17]),
+        };
+        let mut extensions = raw_owned_tile_part_fixture(0).part2_extensions;
+        extensions.nonlinear_transforms = if mode == 0 {
+            vec![]
+        } else {
+            vec![seed.clone()]
+        };
+        if mode == 2 {
+            let mut first = seed.clone();
+            first.component = component;
+            let mut later = first.clone();
+            later.precision = 0;
+            later.parameters.clear();
+            extensions.nonlinear_transforms.extend([first, seed, later]);
+        }
+        let (metadata, work) = budget;
+        extensions.metadata_bytes = metadata;
+        let mut expected = extensions.clone();
+        let (mut result, next_work, next_metadata) =
+            reference_extension_charge(bytes.len(), 17, work, metadata, limits);
+        expected.metadata_bytes = next_metadata;
+        if result.is_ok() {
+            result = match reference_nlt_payload(bytes, components, offset) {
+                Err(error) => Err(error),
+                Ok(replacement) => {
+                    if let Some(existing) = expected
+                        .nonlinear_transforms
+                        .iter_mut()
+                        .find(|entry| entry.component == replacement.component)
+                    {
+                        *existing = replacement;
+                    } else {
+                        expected.nonlinear_transforms.push(replacement);
+                    }
+                    Ok(())
+                }
+            };
+        }
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        parser.position = 17;
+        parser.work_units = work;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX - 1;
+        assert_eq!(
+            parser.parse_nlt(
+                Segment {
+                    marker: 0x1234,
+                    offset,
+                    payload: bytes
+                },
+                components,
+                &mut extensions
+            ),
+            result
+        );
+        assert_eq!(extensions, expected);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (17, next_work, u64::MAX, u64::MAX - 1)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, limits));
+    }
+
+    #[test]
+    fn actual_nlt_preserves_first_duplicate_all_owner_fields_and_ordered_budget_failures() {
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+            base.with_maximum_work_units(8).unwrap(),
+            base.with_maximum_metadata_bytes(4)
+                .unwrap()
+                .with_maximum_work_units(0)
+                .unwrap(),
+        ];
+        let gamma = raw_nlt_gamma_payload([1, 1, 0, 1, 0]);
+        let mut bad_gamma = gamma.clone();
+        bad_gamma[4..7].fill(0);
+        let mut long_gamma = gamma.clone();
+        long_gamma.push(0);
+        let points = raw_nlt_points_payload(2, 7, 1, (0, 1), &[0, 127]);
+        let bad_points = raw_nlt_points_payload(4, 7, 1, (0, 1), &[128, 0]);
+        let mut short_points = points.clone();
+        short_points.pop();
+        let payloads = [
+            vec![],
+            vec![255, 255, 0],
+            vec![255, 255, 0, 0],
+            vec![0, 0, 0xa4, 3],
+            vec![0, 1, 0xa6, 5],
+            gamma.clone(),
+            bad_gamma,
+            long_gamma,
+            points,
+            bad_points,
+            short_points,
+            vec![255, 255, 255, 0],
+        ];
+        assert_eq!(payloads.len(), 12);
+        let mut cases = 0;
+        for limit in &limits {
+            for bytes in &payloads {
+                for components in [0, 1, 257, u16::MAX] {
+                    for mode in 0..3 {
+                        for budget in [
+                            (0, 0),
+                            (0, u64::MAX),
+                            (u64::MAX, 0),
+                            (16_777_215, 8),
+                            (u64::MAX - 4, u64::MAX - 4),
+                        ] {
+                            for offset in [0, usize::MAX] {
+                                assert_nlt_owner_case(
+                                    bytes, components, mode, limit, budget, offset,
+                                );
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 8_640);
+        let mut input = segment(NLT, &[255, 255, 0xa4, 3]);
+        input.extend(segment(NLT, &gamma));
+        let mut parser = new_parser(&input, &base).unwrap();
+        let mut extensions = Part2Extensions::default();
+        let raw = parser.read_segment().unwrap();
+        parser.parse_nlt(raw, 0, &mut extensions).unwrap();
+        let raw = parser.read_segment().unwrap();
+        parser.parse_nlt(raw, 0, &mut extensions).unwrap();
+        assert_eq!(
+            extensions.nonlinear_transforms,
+            vec![reference_nlt_payload(&gamma, 0, 8).unwrap()]
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                extensions.metadata_bytes
+            ),
+            (31, 33, 31)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
     }
 
     fn reference_marker_words(

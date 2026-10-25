@@ -25,6 +25,42 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw nonlinear metadata
+
+Actual NLT parsing derives every nonlinear descriptor field and the complete
+parser/eight-field extension state from raw bytes, component count, limits
+and arbitrary existing registries. The real shared charge executes first;
+errors preserve its exact partial metadata/work commits without replacing a
+registry entry. Successful parsing replaces only the first matching component
+or default selector, leaving later duplicates and unrelated raw fields intact.
+
+The sole actual payload body retains header/component/precision/type order,
+four-byte identity/complement forms, five 24-bit gamma words with zero checks
+only at positions 0/1/3, and LUT domain/count/bit/width/length/value ordering.
+Stored point counts 1..8191 produce 2..8192 points; widths remain 1/2/4 bytes
+and 32-bit point masks retain their special full-width case. All raw parameter
+tail bytes are retained alongside decoded points and optional fields.
+
+Actual tail copying and maximum-bit production have total functional
+contracts. Existing precision/sign primitives replace equivalent safe
+arithmetic, and standard array extensionality binds all five gamma words.
+Loop invariants link real header admission to point errors and success, not
+to supplied decoded records, parameter banks or normalized owners.
+Five exact curated contracts bind these actual producers and both mutable
+owners. No new trust, runtime cap, verifier pin, solver budget or termination
+opt-out is introduced.
+
+Independent endian/byte-fold references compare 524,288 selector contexts,
+524,288 precision/type contexts, 15,360 gamma-byte mutations and 50 gamma
+length frontiers. LUT checks cover 147,456 header/domain/count/bit/length
+frontiers, 768 complete small-vector cases, 42 full 8,192-point cases and
+384 value-cap/length precedence cases across all width boundaries. All 256
+maximum-bit inputs, 39,936 raw tail contexts and 8,640 complete registry/
+budget-owner cases are checked, including first default/specific duplicate
+replacement and the actual reader join. These are maintained regressions,
+not official conformance. Remaining metadata/layout/file/layer/F2/F4/final F8
+joins stay separate.
+
 ## Complete native raw CAP and profile numbers
 
 Actual CAP and PRF/CPF parsing now binds complete Results from raw bytes and

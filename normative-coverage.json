@@ -4,6 +4,60 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-nonlinear-bytes",
+      "topic": "Complete actual raw NLT Result, every physical nonlinear descriptor field and complete parser/eight extension-owner state. Real shared charge precedes header, component/default selector, precision/type, short-form length, gamma/LUT header/length/value and retained parameter-tail admission. Sole actual gamma body retains five 24-bit words and zero rejection only at positions0/1/3. LUT retains stored count1..8191 plus one, ordered domain/bit1..32/width1/2/4/exact-length/value-cap checks and all decoded u32 points. Real tail/maximum primitives derive all bytes and masks without prepared records, normalized metadata or budget premises. Equivalent explicit first-match replacement preserves later duplicate/default selectors and all unrelated raw fields; failure retains exact charged metadata/work commits without registry mutation. Existing safe precision/sign primitive and standard array extensionality expose native values, not new trust. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_nlt"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_nlt_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_nlt_gamma"},
+        {"path": "src/codestream.rs", "symbol": "Parser::copy_segment_tail"},
+        {"path": "src/codestream.rs", "symbol": "maximum_u32_for_bits"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_nlt"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_record"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_gamma"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_gamma_word"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_points"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_points_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_point_width"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_point_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_point_maximum"},
+        {"path": "specs/mod.rs", "symbol": "part1_copy_segment_tail"},
+        {"path": "specs/mod.rs", "symbol": "part1_maximum_u32_for_bits"},
+        {"path": "specs/mod.rs", "symbol": "part1_nlt_replace"},
+        {"path": "specs/mod.rs", "symbol": "part1_extension_nonlinear"},
+        {"path": "specs/mod.rs", "symbol": "part1_charge_extension_metadata"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_nlt"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_nlt_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_nlt_gamma"},
+        {"path": "src/codestream.rs", "symbol": "Parser::copy_segment_tail"},
+        {"path": "src/codestream.rs", "symbol": "maximum_u32_for_bits"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},
+        {"path": "src/codestream.rs", "symbol": "nlt_payload_outcome"},
+        {"path": "src/codestream.rs", "symbol": "segment_tail_outcome"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"},
+        {"path": "src/refinement.rs", "symbol": "cbd_precision"},
+        {"path": "src/refinement.rs", "symbol": "cbd_signed"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_nlt_preserves_all_component_selectors_precision_and_type_bytes"},
+        {"path": "src/codestream.rs", "symbol": "actual_nlt_preserves_gamma_words_point_widths_caps_and_tail_bytes"},
+        {"path": "src/codestream.rs", "symbol": "actual_nlt_preserves_first_duplicate_all_owner_fields_and_ordered_budget_failures"}
+      ]
+    },
+    {
       "id": "part15-complete-native-raw-profile-bytes",
       "topic": "Complete actual CAP and PRF/CPF profile Results from raw segment bytes and offsets. Actual 32-bit mask counting and sole shared big-endian word traversal derive every retained mask/word and allocation count. CAP retains short-header before zero-mask before exact popcount-length admission, without new capability-value or profile/marker policy. Profiles retain nonempty/even length before most-significant last-word zero rejection; leading/intermediate zeros and arbitrary words remain raw. Factored traversal preserves original checked next/read/push/advance order, exact odd-tail errors and capacity; its start bound is derived by actual callers, not assumed codec admission. An internal explicit start-bound guard makes the helper total for arbitrary starts without changing real caller outcomes or adding a contract precondition. Actual getters expose unchanged raw vectors/mask, including unnormalized owners. No parsed-result bank, normalized-profile premise, trust, pin, cap or solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

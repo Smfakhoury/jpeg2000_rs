@@ -1,5 +1,18 @@
 # Specification audit guide
 
+`part1_parse_nlt` composes real metadata/work charging, complete actual raw
+payload production and first-component/default registry replacement.
+`part1_nlt_payload` retains every raw and decoded nonlinear field through
+header, gamma and LUT admission. Gamma's five words, domain/count/bit/width/
+length/value ordering, 32-bit special case and retained raw parameter tail
+remain explicit. `part1_copy_segment_tail` and `part1_maximum_u32_for_bits`
+observe actual native loops with total functional contracts. Parser and all
+eight extension fields, partial charge failures and later duplicate records
+are framed without supplied parsed records, successful budget premises or
+normalized registries. Existing safe precision/sign primitives and standard
+array extensionality add no codec trust or pin/budget changes. Remaining
+metadata/layout/file/F2/F4/final F8 joins remain separate.
+
 `part1_parse_cap` and `part1_parse_profile_number` bind actual raw CAP and
 PRF/CPF Results. `part1_set_bits_prefix` observes the real 32-bit count loop;
 `part1_marker_words` and `part1_marker_word_sequence` observe the sole shared
