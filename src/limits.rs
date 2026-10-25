@@ -98,6 +98,17 @@ verus! {
 
 impl ResourceLimits {
     #[cfg(test)]
+    pub(crate) fn with_coding_style_limits_for_test(
+        mut self,
+        layers: u16,
+        resolutions: u8,
+    ) -> Self {
+        self.maximum_layers = layers;
+        self.maximum_resolutions_per_component = resolutions;
+        self
+    }
+
+    #[cfg(test)]
     pub(crate) fn with_geometry_limits_for_test(
         mut self,
         components: u16,

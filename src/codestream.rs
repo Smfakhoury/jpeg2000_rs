@@ -456,6 +456,25 @@ pub struct CodingStyle {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    pub(crate) closed spec fn parsed_coding_style_view(style: CodingStyle) -> crate::specs::Part1ParsedCodingStyle {
+        crate::specs::Part1ParsedCodingStyle {
+            progression_order: style.progression_order, layers: style.layers,
+            multiple_component_transform: style.multiple_component_transform,
+            decomposition_levels: style.decomposition_levels, decomposition_structure: style.decomposition_structure,
+            decomposition_directions: style.decomposition_directions@,
+            code_block_width: style.code_block_width, code_block_height: style.code_block_height,
+            code_block_style: style.code_block_style, transform: style.transform,
+            precincts_defined: style.precincts_defined, sop_markers: style.sop_markers, eph_markers: style.eph_markers,
+            precinct_exponents: style.precinct_exponents@,
+        }
+    }
+
+    closed spec fn parsed_coding_style_outcome(result: Result<CodingStyle, DecodeError>)
+        -> Result<crate::specs::Part1ParsedCodingStyle, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(style) => Ok(parsed_coding_style_view(style)) }
+    }
+
     pub closed spec fn component_coding_style_result(styles: &ComponentCodingStyles, component: u16) -> Result<CodingStyle, DecodeError> {
         if component >= styles.components {
             Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
@@ -6718,27 +6737,32 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_coding_style_outcome(result) == crate::specs::part1_parse_cod_payload(segment.offset, segment.payload@, self.limits),
+    ))]
     fn parse_cod(&self, segment: Segment<'a>) -> Result<CodingStyle, DecodeError> {
         self.parse_cod_payload(segment.offset, segment.payload)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_coding_style_outcome(result) == crate::specs::part1_parse_cod_payload(segment_offset, payload@, self.limits),
+    ))]
     fn parse_cod_payload(
         &self,
         segment_offset: usize,
         payload: &[u8],
     ) -> Result<CodingStyle, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_cod_payload);
+            reveal(crate::specs::part1_cod_header);
+        }
         if payload.len() < 10 {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidMarkerLength));
         }
         let flags = payload[0];
         if flags & 0xf8 != 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidCodingStyle,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle));
         }
         let progression_order = match payload[1] {
             0 => ProgressionOrder::Lrcp,
@@ -6747,75 +6771,61 @@ impl<'a> Parser<'a> {
             3 => ProgressionOrder::Pcrl,
             4 => ProgressionOrder::Cprl,
             _ => {
-                return Err(DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::InvalidCodingStyle,
-                ));
+                return Err(self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle));
             }
         };
         let layers = read_u16([payload[2], payload[3]]);
         if layers == 0 || layers > self.limits.maximum_layers() {
             return Err(if layers > self.limits.maximum_layers() {
-                DecodeError::limit(
-                    Resource::Layers,
-                    u64::from(self.limits.maximum_layers()),
-                    u64::from(layers),
-                )
+                DecodeError::LimitExceeded {
+                    resource: Resource::Layers,
+                    limit: u64::from(self.limits.maximum_layers()),
+                    actual: u64::from(layers),
+                }
             } else {
-                DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::InvalidCodingStyle,
-                )
+                self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle)
             });
         }
         let multiple_component_transform = match payload[4] {
             0 => false,
             1 => true,
             _ => {
-                return Err(DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::InvalidCodingStyle,
-                ));
+                return Err(self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle));
             }
         };
         let decomposition_levels = payload[5];
-        let resolution_levels = decomposition_levels.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        let resolution_levels = match decomposition_levels.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if resolution_levels > self.limits.maximum_resolutions_per_component() {
-            return Err(DecodeError::limit(
-                Resource::Resolutions,
-                u64::from(self.limits.maximum_resolutions_per_component()),
-                u64::from(resolution_levels),
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Resolutions,
+                limit: u64::from(self.limits.maximum_resolutions_per_component()),
+                actual: u64::from(resolution_levels),
+            });
         }
         let width_exponent = payload[6];
         let height_exponent = payload[7];
         if width_exponent > 8 || height_exponent > 8 {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidCodingStyle,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle));
         }
         let code_block_width = 1_u16 << (u32::from(width_exponent) + 2);
         let code_block_height = 1_u16 << (u32::from(height_exponent) + 2);
-        let code_block_samples = u32::from(code_block_width)
+        let code_block_samples = match u32::from(code_block_width)
             .checked_mul(u32::from(code_block_height))
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-        if code_block_samples > 4096 || Tier1BlockCoding::from_code_block_style(payload[8]).is_err()
         {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidCodingStyle,
-            ));
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        if code_block_samples > 4096
+            || crate::tier1::tier1_block_coding_from_code_block_style(payload[8]).is_err()
+        {
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle));
         }
         let transform = match payload[9] {
             0 => WaveletTransform::Irreversible9x7,
@@ -6825,54 +6835,97 @@ impl<'a> Parser<'a> {
         let precincts_defined = flags & 1 != 0;
         let precinct_count = usize::from(resolution_levels);
         let expected_length = if precincts_defined {
-            10_usize.checked_add(precinct_count).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment_offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?
+            match 10_usize.checked_add(precinct_count) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            }
         } else {
             10
         };
         if payload.len() != expected_length {
-            return Err(DecodeError::malformed(
-                self.offset(segment_offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment_offset, MalformedKind::InvalidMarkerLength));
         }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost h = crate::specs::Part1CodHeader {
+                flags, progression_order, layers, multiple_component_transform, decomposition_levels,
+                code_block_width, code_block_height, code_block_style: payload@[8], transform, precinct_count,
+            };
+            let ghost initial_precincts = Seq::new(33, |i: int| (15u8, 15u8));
+            let ghost precinct_goal = if precincts_defined {
+                crate::specs::part1_cod_precincts(segment_offset, payload@, precinct_count, 0, initial_precincts)
+            } else { Ok(initial_precincts) };
+            let ghost goal = crate::specs::part1_parse_cod_payload(segment_offset, payload@, self.limits);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(crate::specs::part1_cod_header(segment_offset, payload@, self.limits) == Ok(h)); }
         let mut precinct_exponents = [(15_u8, 15_u8); 33];
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(precinct_exponents@ =~= initial_precincts); }
         if precincts_defined {
             let mut resolution = 0_usize;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
                     invariant resolution <= precinct_count,
+                    payload.len() as int == 10 + precinct_count as int,
+                    precincts_defined,
+                    flags & 1 != 0,
+                    h == (crate::specs::Part1CodHeader {
+                        flags, progression_order, layers, multiple_component_transform, decomposition_levels,
+                        code_block_width, code_block_height, code_block_style: payload@[8], transform, precinct_count,
+                    }),
+                    goal == crate::specs::part1_parse_cod_payload(segment_offset, payload@, self.limits),
+                    goal == match precinct_goal { Err(error) => Err(error), Ok(values) => Ok(crate::specs::part1_cod_from_header(h, values)) },
+                    precinct_goal == crate::specs::part1_cod_precincts(
+                        segment_offset, payload@, precinct_count, resolution, precinct_exponents@,
+                    ),
                     decreases precinct_count - resolution,
                 )
             )]
             while resolution < precinct_count {
-                let index = 10_usize.checked_add(resolution).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    reveal(crate::specs::part1_parse_cod_payload);
+                    reveal_with_fuel(crate::specs::part1_cod_precincts, 1);
+                }
+                let index = match 10_usize.checked_add(resolution) {
+                    Some(value) => value,
+                    None => {
+                        return Err(
+                            self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                        );
+                    }
+                };
                 if index >= payload.len() || resolution >= precinct_exponents.len() {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::InvalidCodingStyle,
-                    ));
+                    return Err(
+                        self.malformed_at(segment_offset, MalformedKind::InvalidCodingStyle)
+                    );
                 }
                 precinct_exponents[resolution] = (payload[index] & 0x0f, payload[index] >> 4);
-                resolution = resolution.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                resolution = match resolution.checked_add(1) {
+                    Some(value) => value,
+                    None => {
+                        return Err(
+                            self.malformed_at(segment_offset, MalformedKind::ArithmeticOverflow)
+                        );
+                    }
+                };
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_cod_precincts, 1); }
         }
-        Ok(CodingStyle {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_cod_payload);
+            assert(precinct_goal == Ok(precinct_exponents@));
+            assert(goal == Ok(crate::specs::part1_cod_from_header(h, precinct_exponents@)));
+        }
+        let style = CodingStyle {
             progression_order,
             layers,
             multiple_component_transform,
@@ -6887,7 +6940,13 @@ impl<'a> Parser<'a> {
             sop_markers: flags & 2 != 0,
             eph_markers: flags & 4 != 0,
             precinct_exponents,
-        })
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(style.decomposition_directions@ =~= Seq::new(32, |i: int| DecompositionDirection::TwoDimensional));
+            assert(goal == Ok(parsed_coding_style_view(style)));
+        }
+        Ok(style)
     }
 
     fn parse_component_index(
@@ -15127,6 +15186,210 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn actual_raw_cod_derives_full_style_defaults_precincts_and_ordered_admission() {
+        fn malformed(offset: usize, kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind,
+            }
+        }
+        fn payload(header: [u8; 10], variant: usize) -> Vec<u8> {
+            let mut bytes = header.to_vec();
+            if header[0] % 2 == 1 {
+                bytes.extend(
+                    (0..usize::from(header[5]) + 1).map(|index| (index as u8).wrapping_mul(17)),
+                );
+            }
+            if variant == 1 {
+                bytes.truncate(9);
+            } else if variant == 2 {
+                bytes.push(0);
+            }
+            bytes
+        }
+        fn reference(
+            bytes: &[u8],
+            offset: usize,
+            limits: &ResourceLimits,
+        ) -> Result<CodingStyle, DecodeError> {
+            if bytes.len() < 10 {
+                return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
+            }
+            let flags = bytes[0];
+            if flags >= 8 {
+                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+            }
+            let order = [
+                ProgressionOrder::Lrcp,
+                ProgressionOrder::Rlcp,
+                ProgressionOrder::Rpcl,
+                ProgressionOrder::Pcrl,
+                ProgressionOrder::Cprl,
+            ]
+            .get(usize::from(bytes[1]))
+            .copied()
+            .ok_or_else(|| malformed(offset, MalformedKind::InvalidCodingStyle))?;
+            let layers = u16::from_be_bytes([bytes[2], bytes[3]]);
+            if layers > limits.maximum_layers() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Layers,
+                    limit: u64::from(limits.maximum_layers()),
+                    actual: u64::from(layers),
+                });
+            }
+            if layers == 0 || bytes[4] > 1 {
+                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+            }
+            let resolutions = u16::from(bytes[5]) + 1;
+            if resolutions > u16::from(u8::MAX) {
+                return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+            }
+            if resolutions > u16::from(limits.maximum_resolutions_per_component()) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::Resolutions,
+                    limit: u64::from(limits.maximum_resolutions_per_component()),
+                    actual: u64::from(resolutions),
+                });
+            }
+            if bytes[6] > 8 || bytes[7] > 8 {
+                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+            }
+            let width = 2_u32.pow(u32::from(bytes[6]) + 2);
+            let height = 2_u32.pow(u32::from(bytes[7]) + 2);
+            let style_valid = match bytes[8] / 64 {
+                0 => true,
+                1 => (bytes[8] % 64) & 0x37 == 0,
+                2 => false,
+                _ => (bytes[8] % 64) & 5 == 0,
+            };
+            if u64::from(width) * u64::from(height) > 4096 || !style_valid {
+                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+            }
+            let defined = flags % 2 == 1;
+            if bytes.len() != 10 + if defined { usize::from(resolutions) } else { 0 } {
+                return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
+            }
+            let mut precincts = [(15, 15); 33];
+            if defined {
+                for (index, byte) in bytes[10..].iter().enumerate() {
+                    let slot = precincts
+                        .get_mut(index)
+                        .ok_or_else(|| malformed(offset, MalformedKind::InvalidCodingStyle))?;
+                    *slot = (byte % 16, byte / 16);
+                }
+            }
+            Ok(CodingStyle {
+                progression_order: order,
+                layers,
+                multiple_component_transform: bytes[4] == 1,
+                decomposition_levels: bytes[5],
+                decomposition_structure: None,
+                decomposition_directions: [DecompositionDirection::TwoDimensional; 32],
+                code_block_width: u16::try_from(width).unwrap(),
+                code_block_height: u16::try_from(height).unwrap(),
+                code_block_style: bytes[8],
+                transform: match bytes[9] {
+                    0 => WaveletTransform::Irreversible9x7,
+                    1 => WaveletTransform::Reversible5x3,
+                    index => WaveletTransform::Arbitrary(index),
+                },
+                precincts_defined: defined,
+                sop_markers: flags / 2 % 2 == 1,
+                eph_markers: flags / 4 % 2 == 1,
+                precinct_exponents: precincts,
+            })
+        }
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_coding_style_limits_for_test(0, 33),
+            base.with_coding_style_limits_for_test(1, 33),
+            base.with_coding_style_limits_for_test(u16::MAX, 0),
+            base.with_coding_style_limits_for_test(u16::MAX, 1),
+            base.with_coding_style_limits_for_test(u16::MAX, 33),
+            base.with_coding_style_limits_for_test(u16::MAX, u8::MAX),
+        ];
+        let mut cases = 0;
+        let mut successes = 0;
+        for flags in [0, 1, 7] {
+            for index in 0..10 {
+                for byte in 0..=u8::MAX {
+                    let mut header = [flags, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+                    header[index] = byte;
+                    for variant in 0..3 {
+                        let bytes = payload(header, variant);
+                        for limit in &limits {
+                            let parser = new_parser(&[], limit).unwrap();
+                            for offset in [0, 17, usize::MAX] {
+                                let expected = reference(&bytes, offset, limit);
+                                assert_eq!(parser.parse_cod_payload(offset, &bytes), expected);
+                                assert_eq!(
+                                    parser.parse_cod(Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    }),
+                                    expected
+                                );
+                                successes += usize::from(expected.is_ok());
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 483_840);
+        assert!(successes > 1_000);
+        let parser = new_parser(&[], &base).unwrap();
+        for width in 0..10 {
+            for height in 0..10 {
+                let bytes = [0, 0, 0, 1, 0, 0, width, height, 0, 1];
+                assert_eq!(
+                    parser.parse_cod_payload(31, &bytes),
+                    reference(&bytes, 31, &base)
+                );
+            }
+        }
+        let bytes = payload([7, 4, 0, 2, 1, 2, 4, 4, 0xc0, 255], 0);
+        let mut input = vec![255, 82];
+        input.extend(u16::try_from(bytes.len() + 2).unwrap().to_be_bytes());
+        input.extend(&bytes);
+        let mut parser = new_parser(&input, &base).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let actual = parser.parse_cod(segment).unwrap();
+        assert_eq!(actual, reference(&bytes, 0, &base).unwrap());
+        assert!(matches!(actual.transform, WaveletTransform::Arbitrary(255)));
+        assert!(
+            actual.precinct_exponents[3..]
+                .iter()
+                .all(|entry| *entry == (15, 15))
+        );
+        assert_eq!(parser.work_units, 1);
+        assert_eq!(parser.position, input.len());
+        let raw = base.with_coding_style_limits_for_test(u16::MAX, u8::MAX);
+        let parser = new_parser(&[], &raw).unwrap();
+        let no_precincts = payload([0, 0, 255, 255, 0, 254, 0, 0, 0, 255], 0);
+        assert_eq!(
+            parser
+                .parse_cod_payload(0, &no_precincts)
+                .unwrap()
+                .decomposition_levels,
+            254
+        );
+        let explicit = payload([1, 0, 0, 1, 0, 254, 0, 0, 0, 255], 0);
+        assert_eq!(
+            parser.parse_cod_payload(0, &explicit),
+            Err(malformed(0, MalformedKind::InvalidCodingStyle))
+        );
+        let overflow = payload([0, 0, 0, 1, 0, 255, 0, 0, 0, 1], 0);
+        assert_eq!(
+            parser.parse_cod_payload(0, &overflow),
+            Err(malformed(0, MalformedKind::ArithmeticOverflow))
+        );
     }
 
     #[test]

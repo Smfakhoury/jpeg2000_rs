@@ -25,6 +25,31 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw COD coding-style producer
+
+Actual COD segment/payload parsing now derives complete CodingStyle Results,
+including all 32 default decomposition directions and all 33 actual/default
+precinct entries, directly from source bytes/offset/limits. Header/flag/
+progression/layer/MCT/checked-u8 depth/resolution/block exponent/product/
+style/length/precinct-capacity order remains unchanged. Raw transform indices
+above one still yield arbitrary transforms; no registry admission is added.
+Precinct capacity stays lazy, so otherwise admitted high depths without
+explicit precincts retain their original behavior.
+
+The actual shared Tier1 block-style body is called directly rather than its
+unsupported pinned static facade; public APIs, masks and error translation
+remain unchanged. Explicit checked stages preserve every malformed/resource
+offset and first failure. Native arrays are tied extensionally to opaque
+terminating byte-derived models without style/precinct/result banks or new
+caller premises. A cfg(test)-only layer/resolution fixture does not change
+production caps or public configuration.
+
+Independent standard-endian/numeric-field references check 483,840 complete
+raw Results, every header byte, block-size frontiers, unknown transform
+indices, untouched defaults, raw depth/precinct capacity and an actual reader
+join. Remaining COC/quantization/Part2/tile/layout parsing and outer file/
+F2/F4/final F8 remain separate.
+
 ## Complete native raw SIZ image producer
 
 Actual `Parser::parse_siz` now derives a complete ImageSize/r_siz Result from
