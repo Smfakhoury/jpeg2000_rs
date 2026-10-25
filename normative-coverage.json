@@ -4,6 +4,57 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-transform-collection-bytes",
+      "topic": "Complete actual raw MCC record/index/collection Result, including all input/output route order, dependency/decorrelation flags and array indices, wavelet type/depth/signed32 offset, and final parallel-collection admission. Actual min7/Z/Y/index/count/TransformElements limit precedes collection reads; actual routing-list producers feed the sole factored collection body. Kind/reserved/list/count/order/three-byte flags/wavelet extension/type/depth/offset and terminal-before-parallel order retain native policy. Dependency lists must match in order, decorrelation may permute, wavelet route counts match; no referenced-array/graph validity is newly imposed. Actual signed-u32 and sole moved overlap scan bind all values. Parallel collections reject any cross-collection input/output intersection, while raw same-collection overlap and unrelated fields remain untouched. Private physical observations bind actual Results, not normalized/decoded collection banks or successful graph premises. No new trust/cap/pin/budget/termination bypass. Numeric arrays, fragmented state/graph and outer file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::consume_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mcc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_mcc_collection"},
+        {"path": "src/codestream.rs", "symbol": "validate_parallel_collections"},
+        {"path": "src/codestream.rs", "symbol": "component_lists_overlap"},
+        {"path": "src/codestream.rs", "symbol": "signed_u32"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mcc"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_records"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_collection"},
+        {"path": "specs/mod.rs", "symbol": "Part1MccCollectionReference"},
+        {"path": "specs/mod.rs", "symbol": "Part1MccTransformReference"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_transform_word"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_parallel_collections"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_parallel_conflict"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_lists_overlap"},
+        {"path": "specs/mod.rs", "symbol": "part1_signed_u32"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mcc_component_list"},
+        {"path": "src/limits.rs", "symbol": "resource_component_limit"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mcc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_mcc_collection"},
+        {"path": "src/codestream.rs", "symbol": "validate_parallel_collections"},
+        {"path": "src/codestream.rs", "symbol": "component_lists_overlap"},
+        {"path": "src/codestream.rs", "symbol": "signed_u32"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "mcc_record_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mcc_collection_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mcc_collection_references_view"},
+        {"path": "src/codestream.rs", "symbol": "mcc_collection_reference_view"},
+        {"path": "src/codestream.rs", "symbol": "mcc_reference_transform_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_wavelet_view"},
+        {"path": "src/codestream.rs", "symbol": "parse_mcc_component_list"},
+        {"path": "src/codestream.rs", "symbol": "u16_lists_equal"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_collections_preserve_all_kind_bytes_flags_routes_wavelets_and_offsets"},
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_records_preserve_header_limits_terminal_parallel_order_and_all_fields"},
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_parallel_and_signed_offsets_match_independent_sets_and_full_width_reference"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-transform-routing-bytes",
       "topic": "Complete actual raw MCO stage-order Result and MCC component-list Result/external cursor from raw bytes/count/offset, plus the sole actual u16 membership scan. MCO retains exact byte count before duplicate/nonzero admission, encounter order and valid zero-stage empty order; referenced-record existence is not newly checked. MCC retains high-bit width independent of Csiz, lower15 count, header advance before count/remaining-length checks, component0 acceptance, component bounds/duplicates and exact valid-prefix cursor on errors. Short/out-of-range headers leave cursor unchanged; invalid count/short data retain header advance; bad current references do not advance. The original nested scan is moved once and called by the actual MCC producer, not duplicated or replaced by a prepared reference bank. Bounds and safe count arithmetic derive from actual header/read producers without valid-list/order/graph premises. No new trust/cap/pin/budget/termination bypass; numeric array/collection parsing, fragmented state/graph resolution and outer file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [
@@ -11,6 +62,7 @@
         {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
         {"path": "src/codestream.rs", "symbol": "Parser::parse_mco"},
         {"path": "src/codestream.rs", "symbol": "Parser::parse_mcc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_mcc_collection"},
         {"path": "src/codestream.rs", "symbol": "parse_mcc_component_list"},
         {"path": "src/codestream.rs", "symbol": "u16_list_contains"}
       ],

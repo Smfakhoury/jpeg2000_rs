@@ -14670,6 +14670,154 @@ pub open spec fn part1_parse_mcc_component_list(
     }
 }
 
+pub enum Part1MccTransformReference {
+    Array { kind: crate::codestream::MctArrayKind, reversible: bool, transform_index: u8, offset_index: u8 },
+    Wavelet(Part2MctWavelet),
+}
+
+pub struct Part1MccCollectionReference {
+    pub inputs: Seq<u16>,
+    pub outputs: Seq<u16>,
+    pub transform: Part1MccTransformReference,
+}
+
+pub open spec fn part1_signed_u32(value: u32) -> i64 {
+    if value < 2147483648 { value as i64 } else { (value as int - 4294967296) as i64 }
+}
+
+pub open spec fn part1_mcc_transform_word(payload: Seq<u8>, position: int) -> u32 {
+    ((payload[position] as u32) << 16) | ((payload[position + 1] as u32) << 8) | payload[position + 2] as u32
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mcc_collection(
+    segment: Part1CodestreamSegment, components: u16, start: usize,
+) -> Result<(Part1MccCollectionReference, usize), crate::DecodeError> {
+    if start >= segment.payload.len() {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+    } else {
+        let kind = segment.payload[start as int];
+        if kind & 0xfc != 0 || kind & 3 == 2 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else {
+            let inputs = part1_parse_mcc_component_list(segment.payload, (start + 1) as usize, components, segment.offset);
+            match inputs.0 {
+                Err(error) => Err(error),
+                Ok(input) => {
+                    let outputs = part1_parse_mcc_component_list(segment.payload, inputs.1, components, segment.offset);
+                    match outputs.0 {
+                        Err(error) => Err(error),
+                        Ok(output) => if input.len() == 0 || outputs.1 as int + 3 > segment.payload.len() {
+                            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+                        } else {
+                            let word = part1_mcc_transform_word(segment.payload, outputs.1 as int);
+                            let position = (outputs.1 + 3) as usize;
+                            if kind == 0 || kind == 1 {
+                                if word & 0xfe0000 != 0 || input.len() != output.len() || (kind == 0 && input != output) {
+                                    Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+                                } else {
+                                    Ok((Part1MccCollectionReference { inputs: input, outputs: output,
+                                        transform: Part1MccTransformReference::Array {
+                                            kind: if kind == 0 { crate::codestream::MctArrayKind::Dependency }
+                                                else { crate::codestream::MctArrayKind::Decorrelation },
+                                            reversible: word & 0x010000 != 0,
+                                            transform_index: (word & 255) as u8,
+                                            offset_index: ((word >> 8) & 255) as u8,
+                                        } }, position))
+                                }
+                            } else if word & 0xc0ff00 != 0 || input.len() != output.len()
+                                || position as int + 4 > segment.payload.len() {
+                                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+                            } else {
+                                let transform = match (word & 255) as u8 {
+                                    0 => Some(crate::codestream::MctWaveletType::Irreversible9x7),
+                                    1 => Some(crate::codestream::MctWaveletType::Reversible5x3),
+                                    _ => None,
+                                };
+                                let levels = ((word >> 16) & 63) as u8;
+                                match transform {
+                                    None => Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)),
+                                    Some(transform) => if levels > 32 {
+                                        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+                                    } else {
+                                        Ok((Part1MccCollectionReference { inputs: input, outputs: output,
+                                            transform: Part1MccTransformReference::Wavelet(
+                                                (transform, levels, part1_signed_u32(part1_siz_word(segment.payload, position as int)) as i32)),
+                                        }, (position + 4) as usize))
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub open spec fn part1_mcc_lists_overlap(left: Seq<u16>, right: Seq<u16>) -> bool {
+    exists|i: int, j: int| 0 <= i < left.len() && 0 <= j < right.len() && left[i] == right[j]
+}
+
+pub open spec fn part1_mcc_parallel_conflict(left: Part1MccCollectionReference, right: Part1MccCollectionReference) -> bool {
+    part1_mcc_lists_overlap(left.inputs, right.inputs) || part1_mcc_lists_overlap(left.inputs, right.outputs)
+        || part1_mcc_lists_overlap(right.inputs, left.outputs) || part1_mcc_lists_overlap(right.outputs, left.outputs)
+}
+
+pub open spec fn part1_mcc_parallel_collections(collections: Seq<Part1MccCollectionReference>, offset: usize)
+    -> Result<(), crate::DecodeError>
+{
+    if forall|index: int, previous: int| 0 <= previous < index < collections.len() ==>
+        !part1_mcc_parallel_conflict(collections[index], collections[previous]) {
+        Ok(())
+    } else { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform)) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mcc_records(
+    segment: Part1CodestreamSegment, components: u16, position: usize, remaining: nat,
+    collections: Seq<Part1MccCollectionReference>,
+) -> Result<(u8, Seq<Part1MccCollectionReference>), crate::DecodeError>
+    decreases remaining,
+{
+    if remaining == 0 {
+        if position != segment.payload.len() {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else {
+            match part1_mcc_parallel_collections(collections, segment.offset) {
+                Err(error) => Err(error), Ok(()) => Ok((segment.payload[2], collections)),
+            }
+        }
+    } else {
+        match part1_mcc_collection(segment, components, position) {
+            Err(error) => Err(error),
+            Ok((collection, next)) => part1_mcc_records(segment, components, next,
+                (remaining - 1) as nat, collections.push(collection)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_mcc(
+    segment: Part1CodestreamSegment, components: u16, limits: &crate::ResourceLimits,
+) -> Result<(u8, Seq<Part1MccCollectionReference>), crate::DecodeError> {
+    if segment.payload.len() < 7 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+    } else if part1_marker_value(segment.payload[0], segment.payload[1]) != 0
+        || part1_marker_value(segment.payload[3], segment.payload[4]) != 0 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+    } else {
+        let index = segment.payload[2];
+        let count = part1_marker_value(segment.payload[5], segment.payload[6]);
+        if index == 0 || count == 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else if count > crate::limits::resource_component_limit(limits) {
+            Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TransformElements,
+                limit: crate::limits::resource_component_limit(limits) as u64, actual: count as u64 })
+        } else { part1_mcc_records(segment, components, 7, count as nat, Seq::empty()) }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

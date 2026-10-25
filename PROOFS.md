@@ -25,6 +25,39 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw MCC collection records
+
+Actual MCC parsing now binds the complete record/index and every collection
+field from raw bytes, component count and actual limits. Minimum header,
+Z/Y/index/count and TransformElements checks precede the sole factored
+collection body. Real routing-list producers supply all references; original
+kind/list/descriptor/wavelet/terminal order remains explicit.
+
+Dependency input/output lists must match in order, while decorrelation may
+permute. Raw reversible/array/offset indices, wavelet type, levels 0..32 and
+the complete signed-32 component offset are retained without graph or array
+existence premises. Actual signed conversion provides its safe i32 bound;
+derived-safe narrowing replaces an impossible conversion error. Existing
+proved list equality and explicit bit-mask facts expose actual source values.
+
+Terminal length admission precedes the actual parallel check. Its sole
+overlap body is moved and proved: any input/output intersection across
+collections fails, but within-collection overlap and unrelated raw fields are
+not newly validated. Explicit conflict witnesses bind both failure and success.
+Five exact contracts and private physical views compose without normalized
+collections, prepared descriptors, new trust, caps, pins or solver budgets.
+Actual numeric arrays, fragment state/graph and outer file/layer/F2/F4/final F8
+joins remain separate.
+
+Independent byte-arithmetic/endian/set references compare 40,960 kind/start
+contexts, 27,648 descriptor mutations, 35,280 routing/length contexts,
+262,144 count-limit contexts, 248,832 raw header contexts and 7,884 complete
+record/terminal/parallel contexts. Signed conversion and overlap scans each
+cover 262,144 cases; 2,592 raw parallel pairs and 1,152 wavelet-offset cases
+cover otherwise-invalid metadata and exact branch boundaries. A real reader
+joins disjoint array/wavelet records and later cross-route conflict failure.
+These are maintained regressions, not official conformance.
+
 ## Complete native raw transform-routing lists
 
 Actual MCO stage-order and MCC component-list syntax now bind full Results
