@@ -14445,6 +14445,163 @@ pub open spec fn part1_parse_poc(segment: Part1CodestreamSegment, components: u1
     } else { part1_poc_records(segment, components, 0, Seq::empty()) }
 }
 
+#[verifier::opaque]
+pub open spec fn part1_poc_validation_shape(
+    offset: usize, layers: u16, styles: &crate::codestream::ComponentCodingStyles,
+    component: u16, active: usize, maximum: u8,
+) -> Result<(usize, u8), crate::DecodeError>
+    decreases crate::codestream::component_coding_style_count(styles) - component,
+{
+    if component >= crate::codestream::component_coding_style_count(styles) { Ok((active, maximum)) }
+    else {
+        match crate::codestream::component_coding_style_result(styles, component) {
+            Err(error) => Err(error),
+            Ok(style) => if style.decomposition_levels == u8::MAX {
+                Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+            } else {
+                let resolutions = (style.decomposition_levels + 1) as u8;
+                let amount = layers as int * resolutions as int;
+                if amount > usize::MAX || active as int + amount > usize::MAX {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    part1_poc_validation_shape(offset, layers, styles, (component + 1) as u16,
+                        (active as int + amount) as usize, if resolutions > maximum { resolutions } else { maximum })
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_poc_mark_resolutions(
+    offset: usize, record: crate::codestream::ProgressionChange, coordinate: (u16, u16, u8),
+    resolution: u8, owners: Seq<bool>, progress: (usize, bool),
+) -> (Result<(usize, bool), crate::DecodeError>, Seq<bool>)
+    decreases coordinate.2 - resolution,
+{
+    if resolution >= coordinate.2 { (Ok(progress), owners) } else {
+        let contained = crate::codestream::progression_change_contains(record, coordinate.1, resolution, coordinate.0);
+        if contained && progress.0 as nat >= owners.len() {
+            (Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow)), owners)
+        } else {
+            let fresh = contained && !owners[progress.0 as int];
+            let updated = if fresh { owners.update(progress.0 as int, true) } else { owners };
+            if progress.0 == usize::MAX {
+                (Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow)), updated)
+            } else {
+                part1_poc_mark_resolutions(offset, record, coordinate, (resolution + 1) as u8, updated,
+                    ((progress.0 + 1) as usize, progress.1 || fresh))
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_poc_mark_layers(
+    offset: usize, record: crate::codestream::ProgressionChange, coordinate: (u16, u8),
+    layers: u16, layer: u16, owners: Seq<bool>, progress: (usize, bool),
+) -> (Result<(usize, bool), crate::DecodeError>, Seq<bool>)
+    decreases layers - layer,
+{
+    if layer >= layers { (Ok(progress), owners) } else {
+        let marked = part1_poc_mark_resolutions(offset, record, (coordinate.0, layer, coordinate.1), 0, owners, progress);
+        match marked.0 {
+            Err(error) => marked,
+            Ok(progress) => part1_poc_mark_layers(offset, record, coordinate, layers, (layer + 1) as u16, marked.1, progress),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_poc_mark_components(
+    offset: usize, record: crate::codestream::ProgressionChange, layers: u16,
+    styles: &crate::codestream::ComponentCodingStyles, component: u16, owners: Seq<bool>, progress: (usize, bool),
+) -> (Result<(usize, bool), crate::DecodeError>, Seq<bool>)
+    decreases crate::codestream::component_coding_style_count(styles) - component,
+{
+    if component >= crate::codestream::component_coding_style_count(styles) { (Ok(progress), owners) }
+    else {
+        match crate::codestream::component_coding_style_result(styles, component) {
+            Err(error) => (Err(error), owners),
+            Ok(style) => if style.decomposition_levels == u8::MAX {
+                (Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow)), owners)
+            } else {
+                let marked = part1_poc_mark_layers(offset, record, (component, (style.decomposition_levels + 1) as u8),
+                    layers, 0, owners, progress);
+                match marked.0 {
+                    Err(error) => marked,
+                    Ok(progress) => part1_poc_mark_components(offset, record, layers, styles, (component + 1) as u16, marked.1, progress),
+                }
+            },
+        }
+    }
+}
+
+pub open spec fn part1_poc_mark_record(
+    offset: usize, record: crate::codestream::ProgressionChange, layers: u16,
+    styles: &crate::codestream::ComponentCodingStyles, owners: Seq<bool>,
+) -> (Result<bool, crate::DecodeError>, Seq<bool>) {
+    let marked = part1_poc_mark_components(offset, record, layers, styles, 0, owners, (0, false));
+    (match marked.0 { Err(error) => Err(error), Ok(progress) => Ok(progress.1) }, marked.1)
+}
+
+pub open spec fn part1_progression_owners_complete(owners: Seq<bool>) -> bool {
+    forall|index: int| 0 <= index < owners.len() ==> owners[index]
+}
+
+#[verifier::opaque]
+pub open spec fn part1_poc_admit_records(
+    offset: usize, records: Seq<crate::codestream::ProgressionChange>, layers: u16,
+    styles: &crate::codestream::ComponentCodingStyles, maximum: u8, index: nat, owners: Seq<bool>,
+) -> Result<(), crate::DecodeError>
+    decreases records.len() - index,
+{
+    if index >= records.len() {
+        if part1_progression_owners_complete(owners) { Ok(()) }
+        else { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidProgressionOrderChange)) }
+    } else {
+        let record = records[index as int];
+        if !valid_poc_record(record.resolution_start as nat, record.resolution_end as nat,
+            record.component_start as nat, record.component_end as nat, record.layer_end as nat,
+            crate::codestream::component_coding_style_count(styles) as nat, layers as nat, maximum as nat,
+            part1_cod_progression_byte(record.progression_order) as nat) {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidProgressionOrderChange))
+        } else {
+            let marked = part1_poc_mark_record(offset, record, layers, styles, owners);
+            match marked.0 {
+                Err(error) => Err(error),
+                Ok(false) => Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidProgressionOrderChange)),
+                Ok(true) => part1_poc_admit_records(offset, records, layers, styles, maximum, index + 1, marked.1),
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_validate_progression_changes(
+    offset: usize, records: Seq<crate::codestream::ProgressionChange>, layers: u16,
+    styles: &crate::codestream::ComponentCodingStyles, limits: &crate::ResourceLimits,
+) -> Result<(), crate::DecodeError> {
+    if records.len() == 0 { Ok(()) } else {
+        match part1_poc_validation_shape(offset, layers, styles, 0, 0, 0) {
+            Err(error) => Err(error),
+            Ok(shape) => {
+                let count = records.len() as u64;
+                let active = shape.0 as u64;
+                let cost = count as int * active as int;
+                if cost > u64::MAX { Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow)) }
+                else if cost > crate::limits::resource_work_limit(limits) {
+                    Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::WorkUnits,
+                        limit: crate::limits::resource_work_limit(limits), actual: cost as u64 })
+                } else {
+                    part1_poc_admit_records(offset, records, layers, styles, shape.1, 0,
+                        Seq::new(shape.0 as nat, |index: int| false))
+                }
+            },
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

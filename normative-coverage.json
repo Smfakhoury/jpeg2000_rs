@@ -4,6 +4,55 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-progression-admission",
+      "topic": "Complete actual semantic progression admission Result from raw records/layers/component-style owner and actual work cap. Empty bypass precedes all shape/style checks; actual style lookup/depth increment/active-coordinate arithmetic and calculated records-times-active work comparison precede record bounds. Actual parser work counter is not charged. Sole factored component/layer/resolution loops bind arbitrary scratch-owner bitmap updates and exact partial error frames, without valid bitmap/style/window/coverage premises. Each record must contribute at least one previously-unowned active coordinate, so partial overlaps are accepted and entirely redundant records rejected; final full active-domain coverage is required. Heterogeneous depths, zero layers/counts, raw style lookup errors and untouched unrelated fields retain original precedence. Actual owner completion scan and existing raw predicates/range semantics compose rather than supplying accepted-record or decoder outcome banks. No new trust/cap/pin/solver/termination bypass; remaining fragmented-transform/packet/layout/file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::validate_progression_changes"},
+        {"path": "src/codestream.rs", "symbol": "Parser::progression_validation_shape"},
+        {"path": "src/codestream.rs", "symbol": "Parser::mark_progression_record"},
+        {"path": "src/codestream.rs", "symbol": "Parser::mark_progression_layers"},
+        {"path": "src/codestream.rs", "symbol": "Parser::mark_progression_resolutions"},
+        {"path": "src/codestream.rs", "symbol": "progression_owners_complete"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_validate_progression_changes"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_validation_shape"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_admit_records"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_mark_record"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_mark_components"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_mark_layers"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_mark_resolutions"},
+        {"path": "specs/mod.rs", "symbol": "part1_progression_owners_complete"},
+        {"path": "specs/mod.rs", "symbol": "valid_poc_record"},
+        {"path": "specs/mod.rs", "symbol": "part1_cod_progression_byte"},
+        {"path": "src/limits.rs", "symbol": "resource_work_limit"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::validate_progression_changes"},
+        {"path": "src/codestream.rs", "symbol": "Parser::progression_validation_shape"},
+        {"path": "src/codestream.rs", "symbol": "Parser::mark_progression_record"},
+        {"path": "src/codestream.rs", "symbol": "Parser::mark_progression_layers"},
+        {"path": "src/codestream.rs", "symbol": "Parser::mark_progression_resolutions"},
+        {"path": "src/codestream.rs", "symbol": "progression_owners_complete"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "component_coding_style_count"},
+        {"path": "src/codestream.rs", "symbol": "component_coding_style_result"},
+        {"path": "src/codestream.rs", "symbol": "progression_changes_view"},
+        {"path": "src/codestream.rs", "symbol": "progression_change_contains"},
+        {"path": "src/codestream.rs", "symbol": "ComponentCodingStyles::style"},
+        {"path": "src/codestream.rs", "symbol": "ProgressionChange::contains"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_work_units"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_progression_shape_preserves_raw_styles_empty_bypass_and_work_thresholds"},
+        {"path": "src/codestream.rs", "symbol": "actual_progression_marking_preserves_arbitrary_bitmaps_and_partial_failure_prefixes"},
+        {"path": "src/codestream.rs", "symbol": "actual_progression_admission_matches_independent_coordinate_sets_and_overlap_order"}
+      ]
+    },
+    {
       "id": "part1-complete-native-raw-progression-bytes",
       "topic": "Complete actual raw POC syntax Result and every progression-record field in source order, from actual component-count/segment offset/bytes. Real byte/component helpers preserve width1 versus every-other-width two-byte behavior, checked overflow-before-range for two-byte reads and segment rather than cursor error offsets. Actual parser derives7/9byte records at threshold257; empty/alignment rejection precedes reads, actual source fields and progression0..4 discrimination precede append, and encoded component-end0 becomes256 only for Csiz256. All other raw layer/resolution/component values remain untouched, including otherwise-invalid ranges. Actual alignment/count geometry establishes every read/advance/decrease bound without admitted records, successful syntax/range/coverage premises or result banks. Semantic range/coverage/duplicate validation in the real downstream validate_progression_changes remains separate, as do other metadata/layout/file/layer/F2/F4/final F8 joins. No new trust/cap/pin/budget/termination bypass.",
       "implementation_refs": [

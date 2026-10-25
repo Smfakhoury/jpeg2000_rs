@@ -792,6 +792,36 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_PROGRESSION_ADMISSION_CONTRACTS = {
+    ("src/codestream.rs", "Parser::progression_validation_shape"): (
+        "part1_poc_validation_shape", r"\1", None,
+        r"offset\s*,\s*layers\s*,\s*component_styles\s*,\s*0\s*,\s*0\s*,\s*0",
+    ),
+    ("src/codestream.rs", "Parser::mark_progression_resolutions"): (
+        "part1_poc_mark_resolutions", r"\1", _coverage_call("final", "owners") + r"\s*@",
+        r"offset\s*,\s*record\s*,\s*coordinate\s*,\s*0\s*,\s*"
+        + _coverage_call("old", "owners") + r"\s*@\s*,\s*progress",
+    ),
+    ("src/codestream.rs", "Parser::mark_progression_layers"): (
+        "part1_poc_mark_layers", r"\1", _coverage_call("final", "owners") + r"\s*@",
+        r"offset\s*,\s*record\s*,\s*coordinate\s*,\s*layers\s*,\s*0\s*,\s*"
+        + _coverage_call("old", "owners") + r"\s*@\s*,\s*progress",
+    ),
+    ("src/codestream.rs", "Parser::mark_progression_record"): (
+        "part1_poc_mark_record", r"\1", _coverage_call("final", "owners") + r"\s*@",
+        r"offset\s*,\s*record\s*,\s*layers\s*,\s*component_styles\s*,\s*"
+        + _coverage_call("old", "owners") + r"\s*@",
+    ),
+    ("src/codestream.rs", "progression_owners_complete"): (
+        "part1_progression_owners_complete", r"\1", None, r"owners\s*@",
+    ),
+    ("src/codestream.rs", "Parser::validate_progression_changes"): (
+        "part1_validate_progression_changes", r"\1", None,
+        r"offset\s*,\s*" + _coverage_call("progression_changes_view", "changes")
+        + r"\s*,\s*layers\s*,\s*component_styles\s*,\s*self\.limits",
+    ),
+}
+
 _PROGRESSION_BYTES_CONTRACTS = {
     ("src/codestream.rs", "Parser::read_poc_byte"): (
         "part1_poc_byte", r"\1", None,
@@ -2265,6 +2295,7 @@ def validate_normative_coverage(
                 or _TILE_LENGTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _KERNEL_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROGRESSION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PROGRESSION_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
