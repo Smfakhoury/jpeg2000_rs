@@ -938,6 +938,12 @@ class FrameworkTests(WorkingFiles):
             framework._COMPONENT_MARKER_BYTES_CONTRACTS, 5,
         )
 
+    def test_inventory_binds_raw_dfs_ads_payloads_first_replacement_and_all_owner_frames(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-decomposition-bytes"},
+            framework._DECOMPOSITION_BYTES_CONTRACTS, 5,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

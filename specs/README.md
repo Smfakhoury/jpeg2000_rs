@@ -1,5 +1,17 @@
 # Specification audit guide
 
+`part1_parse_dfs` and `part1_parse_ads` compose real charge, sole actual
+payload producers and first-match registry updates, binding complete parser/
+all-eight-field extension states on both success and failure.
+`part1_dfs_payload`, `part1_ads_payload` and `part1_unpack_two_bit_values`
+consume only raw source bytes/cursor/count/terminal inputs. Descriptor/index/
+length/value/padding order, DFS-unused-slot permissiveness, ADS-zero counts
+and first-duplicate replacement remain explicit. Every bounds/frame fact is
+derived internally; no decoded-vector or normalized-registry premise, trust,
+cap or verifier-budget change is introduced. The safe mask and shared bit
+primitive are proved equivalent to original operations, not lookup-result
+banks. Remaining metadata/layout/file/F2/F4/final F8 joins stay separate.
+
 `part1_parse_rgn` binds raw ROI bytes/count/offset to the complete native
 index/shift Result without a new shift or marker policy. `part1_parse_crg`
 composes the actual metadata/work charge and source-derived registration

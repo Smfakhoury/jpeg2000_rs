@@ -792,6 +792,38 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_DECOMPOSITION_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "Parser::unpack_two_bit_values"): (
+        "part1_unpack_two_bit_values", _coverage_call("two_bit_values_outcome", r"\1"), None,
+        r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
+        + r"\s*,\s*start\s*,\s*count\s*,\s*allow_terminal",
+    ),
+    ("src/codestream.rs", "Parser::decode_dfs_payload"): (
+        "part1_dfs_payload", _coverage_call("dfs_payload_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment"),
+    ),
+    ("src/codestream.rs", "Parser::decode_ads_payload"): (
+        "part1_ads_payload", _coverage_call("ads_payload_outcome", r"\1"), None,
+        r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment"),
+    ),
+    ("src/codestream.rs", "Parser::parse_dfs"): (
+        "part1_parse_dfs", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*"
+        + _coverage_call("segment_view", "segment") + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
+    ),
+    ("src/codestream.rs", "Parser::parse_ads"): (
+        "part1_parse_ads", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*"
+        + _coverage_call("segment_view", "segment") + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
+    ),
+}
+
 _COMPONENT_MARKER_BYTES_CONTRACTS = {
     ("src/limits.rs", "ResourceLimits::maximum_metadata_bytes"): (
         "part1_metadata_byte_limit", r"\1", None, "self",
@@ -2119,6 +2151,7 @@ def validate_normative_coverage(
                 or _COMPONENT_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _QUANTIZATION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

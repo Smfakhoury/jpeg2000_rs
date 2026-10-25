@@ -25,6 +25,39 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw DFS/ADS decomposition producers
+
+Actual DFS/ADS parsing now derives decoded vectors and complete final parser/
+extension states from raw segments, raw registries and actual metadata/work
+limits. The real shared charge executes first and preserves every partial
+error commit. No normalized registry, supplied decoded directions, successful
+payload or admitted-budget premise is consumed.
+
+The sole payload bodies are factored into stateless proved helpers. DFS
+retains descriptor/reserved-index/depth/length order, depths 1..32 and its
+permissive unused packed slots. ADS retains index 1..127, count-position and
+length before packed-value admission, including zero raw counts. The actual
+generic two-bit producer rejects zero depth codes before final padding while
+accepting zero split codes; all reads and distinct offsets derive from the
+real checked accessor.
+
+Original first-matching registry replacement is implemented as an equivalent
+bounded search, preserving later duplicates and appending absent keys. All
+eight extension fields and every parser field are framed. Real unpacking
+reuses the proved packed-bit primitive; remainder/shift bounds establish the
+equivalence of the original wrapping mask subtraction and ordinary safe
+subtraction. No new runtime validation, cap, trust, pin, solver budget or
+termination opt-out is introduced.
+
+Independent division/power/endian references compare 15,360 packed-byte
+contexts, 245,760 unpack frontiers, 3,538,944 DFS payload contexts, 46,656 DFS
+owner/budget contexts, 262,144 ADS count pairs, 153,600 ADS header contexts,
+1,032,192 full-byte mutations and 62,208 ADS owner/budget contexts. Full raw
+nested owners, duplicate order, DFS-unused bits and real reader joins are
+checked. Five curated exact contracts bind payload and complete owner
+results. Remaining metadata/layout parsing and outer file/layer/F2/F4/final
+F8 joins stay separate.
+
 ## Complete native raw RGN/CRG component markers
 
 Actual ROI and component-registration parsing now bind native Results from

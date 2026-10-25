@@ -3390,8 +3390,24 @@ verus! {
         (value.index, value.directions@)
     }
 
+    closed spec fn dfs_payload_outcome(result: Result<DecompositionStructure, DecodeError>)
+        -> Result<(u8, Seq<DecompositionDirection>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(owned_decomposition_view(&value)) }
+    }
+
     pub closed spec fn owned_arbitrary_decomposition_view(value: &ArbitraryDecomposition) -> (u8, Seq<u8>, Seq<DecompositionDirection>) {
         (value.index, value.sublevel_depths@, value.subband_splits@)
+    }
+
+    closed spec fn ads_payload_outcome(result: Result<ArbitraryDecomposition, DecodeError>)
+        -> Result<(u8, Seq<u8>, Seq<DecompositionDirection>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(owned_arbitrary_decomposition_view(&value)) }
+    }
+
+    closed spec fn two_bit_values_outcome(result: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(values) => Ok(values@) }
     }
 
     pub closed spec fn owned_nonlinear_view(value: &NonlinearPointTransform) -> crate::specs::Part2OwnedNonlinear {
@@ -4802,51 +4818,225 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_dfs(parser_view(old(self)), segment_view(segment),
+                owned_extensions_view(old(extensions))),
+    ))]
     fn parse_dfs(
         &mut self,
         segment: Segment<'a>,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost goal = crate::specs::part1_parse_dfs(input, segment_view(segment), extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_dfs); }
         self.charge_extension_metadata(segment, extensions)?;
+        let replacement = self.decode_dfs_payload(segment)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+            let ghost decoded = owned_decomposition_view(&replacement);
+            let ghost target = crate::specs::part1_dfs_replace(charged_extensions.decompositions, decoded, 0);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(goal == (Ok(()), charged_parser, crate::specs::part1_extension_decompositions(
+                charged_extensions, target, charged_extensions.arbitrary)));
+        }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                position <= extensions.decomposition_structures.len(),
+                input == parser_view(old(self)),
+                extension_input == owned_extensions_view(old(extensions)),
+                parser_view(self) == charged_parser,
+                owned_extensions_view(extensions) == charged_extensions,
+                owned_decomposition_view(&replacement) == decoded,
+                target == crate::specs::part1_dfs_replace(charged_extensions.decompositions, decoded, position as nat),
+                goal == crate::specs::part1_parse_dfs(input, segment_view(segment), extension_input),
+                goal == (Ok(()), charged_parser, crate::specs::part1_extension_decompositions(
+                    charged_extensions, target, charged_extensions.arbitrary)),
+            decreases extensions.decomposition_structures.len() - position,
+        ))]
+        while position < extensions.decomposition_structures.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_dfs_replace, 1); }
+            if extensions.decomposition_structures[position].index == replacement.index {
+                extensions.decomposition_structures[position] = replacement;
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(owned_extensions_view(extensions).decompositions =~=
+                        charged_extensions.decompositions.update(position as int, decoded));
+                }
+                return Ok(());
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_dfs_replace, 1); }
+        extensions.decomposition_structures.push(replacement);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(owned_extensions_view(extensions).decompositions =~=
+                charged_extensions.decompositions.push(decoded));
+        }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_ads(parser_view(old(self)), segment_view(segment),
+                owned_extensions_view(old(extensions))),
+    ))]
+    fn parse_ads(
+        &mut self,
+        segment: Segment<'a>,
+        extensions: &mut Part2Extensions,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost goal = crate::specs::part1_parse_ads(input, segment_view(segment), extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_ads); }
+        self.charge_extension_metadata(segment, extensions)?;
+        let replacement = self.decode_ads_payload(segment)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+            let ghost decoded = owned_arbitrary_decomposition_view(&replacement);
+            let ghost target = crate::specs::part1_ads_replace(charged_extensions.arbitrary, decoded, 0);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(goal == (Ok(()), charged_parser, crate::specs::part1_extension_decompositions(
+                charged_extensions, charged_extensions.decompositions, target)));
+        }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                position <= extensions.arbitrary_decompositions.len(),
+                input == parser_view(old(self)),
+                extension_input == owned_extensions_view(old(extensions)),
+                parser_view(self) == charged_parser,
+                owned_extensions_view(extensions) == charged_extensions,
+                owned_arbitrary_decomposition_view(&replacement) == decoded,
+                target == crate::specs::part1_ads_replace(charged_extensions.arbitrary, decoded, position as nat),
+                goal == crate::specs::part1_parse_ads(input, segment_view(segment), extension_input),
+                goal == (Ok(()), charged_parser, crate::specs::part1_extension_decompositions(
+                    charged_extensions, charged_extensions.decompositions, target)),
+            decreases extensions.arbitrary_decompositions.len() - position,
+        ))]
+        while position < extensions.arbitrary_decompositions.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_ads_replace, 1); }
+            if extensions.arbitrary_decompositions[position].index == replacement.index {
+                extensions.arbitrary_decompositions[position] = replacement;
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(owned_extensions_view(extensions).arbitrary =~=
+                        charged_extensions.arbitrary.update(position as int, decoded));
+                }
+                return Ok(());
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_ads_replace, 1); }
+        extensions.arbitrary_decompositions.push(replacement);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(owned_extensions_view(extensions).arbitrary =~=
+                charged_extensions.arbitrary.push(decoded));
+        }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures dfs_payload_outcome(result) == crate::specs::part1_dfs_payload(segment_view(segment)),
+    ))]
+    fn decode_dfs_payload(
+        &self,
+        segment: Segment<'a>,
+    ) -> Result<DecompositionStructure, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_dfs_payload); }
         if segment.payload.len() < 3 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let descriptor = read_u16([segment.payload[0], segment.payload[1]]);
-        let index = u8::try_from(descriptor & 0x0f)
-            .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(descriptor & 15 <= 255) by (bit_vector); }
+        let index = match u8::try_from(descriptor & 0x0f) {
+            Ok(value) => value,
+            Err(_) => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         let levels = segment.payload[2];
-        let packed = usize::from(levels)
-            .checked_add(3)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?
-            / 4;
-        let expected = 3_usize
-            .checked_add(packed)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let expanded = match usize::from(levels).checked_add(3) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        let packed = expanded / 4;
+        let expected = match 3_usize.checked_add(packed) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(!0x000fu16 == 65520u16) by (bit_vector);
+            assert(index == (descriptor & 15) as u8);
+            assert(packed as int == (levels as int + 3) / 4);
+            assert(expected as int == 3 + (levels as int + 3) / 4);
+        }
         if descriptor & !0x000f != 0 || index == 0 || levels == 0 || levels > 32 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidCodingStyle,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidCodingStyle));
         }
         if segment.payload.len() != expected {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost target = Seq::new(levels as nat, |level: int| crate::specs::part1_decomposition_code(
+                crate::specs::part2_dfs_direction_code(segment.payload@[3 + level / 4], (level % 4) as u8)));
+            let ghost goal = crate::specs::part1_dfs_payload(segment_view(segment));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(goal == Ok((index, target))); }
         let mut directions = Vec::with_capacity(usize::from(levels));
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(directions@ =~= target.subrange(0, 0)); }
         let mut level = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant level <= levels as usize,
+                invariant
+                    level <= levels as usize,
+                    0 < levels <= 32,
+                    segment.payload.len() == 3int + (levels as int + 3) / 4,
+                    goal == crate::specs::part1_dfs_payload(segment_view(segment)),
+                    goal == Ok((index, target)),
+                    target == Seq::new(levels as nat, |i: int| crate::specs::part1_decomposition_code(
+                        crate::specs::part2_dfs_direction_code(segment.payload@[3 + i / 4], (i % 4) as u8))),
+                    directions@ == target.subrange(0, level as int),
                 decreases levels as usize - level,
             )
         )]
         while level < usize::from(levels) {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal(crate::specs::part1_segment_byte); }
             let byte = self.segment_byte(segment, 3, level / 4)?;
             let slot = u8::try_from(level % 4)
                 .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
@@ -4860,70 +5050,76 @@ impl<'a> Parser<'a> {
                 .checked_add(1)
                 .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
         }
-        let replacement = DecompositionStructure { index, directions };
-        if let Some(existing) = extensions
-            .decomposition_structures
-            .iter_mut()
-            .find(|structure| structure.index == index)
-        {
-            *existing = replacement;
-        } else {
-            extensions.decomposition_structures.push(replacement);
-        }
-        Ok(())
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(directions@ =~= target); }
+        Ok(DecompositionStructure { index, directions })
     }
 
-    fn parse_ads(
-        &mut self,
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures ads_payload_outcome(result) == crate::specs::part1_ads_payload(self.position, segment_view(segment)),
+    ))]
+    fn decode_ads_payload(
+        &self,
         segment: Segment<'a>,
-        extensions: &mut Part2Extensions,
-    ) -> Result<(), DecodeError> {
-        self.charge_extension_metadata(segment, extensions)?;
+    ) -> Result<ArbitraryDecomposition, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_ads_payload); }
         if segment.payload.len() < 3 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let index = segment.payload[0];
         if index == 0 || index > 127 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidCodingStyle,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidCodingStyle));
         }
         let depth_count = usize::from(segment.payload[1]);
         let depth_bytes = crate::refinement::packed_two_bit_bytes(depth_count);
-        let split_count_position = 2_usize
-            .checked_add(depth_bytes)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        let split_count =
-            usize::from(*segment.payload.get(split_count_position).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?);
+        let split_count_position = match 2_usize.checked_add(depth_bytes) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        let split_count = match segment.payload.get(split_count_position) {
+            Some(value) => usize::from(*value),
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+            }
+        };
         let split_bytes = crate::refinement::packed_two_bit_bytes(split_count);
-        let expected = split_count_position
-            .checked_add(1)
-            .and_then(|value| value.checked_add(split_bytes))
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let fixed = match split_count_position.checked_add(1) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        let expected = match fixed.checked_add(split_bytes) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         if segment.payload.len() != expected {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let sublevel_depths = self.unpack_two_bit_values(segment, 2, depth_count, false)?;
         let split_values =
             self.unpack_two_bit_values(segment, split_count_position + 1, split_count, true)?;
         let mut subband_splits = Vec::with_capacity(split_values.len());
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost target = split_values@.map_values(|code: u8| crate::specs::part1_decomposition_code(code));
+            let ghost goal = crate::specs::part1_ads_payload(self.position, segment_view(segment));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(goal == Ok((index, sublevel_depths@, target)));
+            assert(subband_splits@ =~= target.subrange(0, 0));
+        }
         let mut split = 0_usize;
         #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant split <= split_values.len(),
+                    invariant
+                        split <= split_values.len(),
+                        goal == crate::specs::part1_ads_payload(self.position, segment_view(segment)),
+                        goal == Ok((index, sublevel_depths@, target)),
+                        target == split_values@.map_values(|code: u8| crate::specs::part1_decomposition_code(code)),
+                        subband_splits@ == target.subrange(0, split as int),
                     decreases split_values.len() - split,
                 )
             )]
@@ -4938,23 +5134,20 @@ impl<'a> Parser<'a> {
                 .checked_add(1)
                 .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
         }
-        let replacement = ArbitraryDecomposition {
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(subband_splits@ =~= target); }
+        Ok(ArbitraryDecomposition {
             index,
             sublevel_depths,
             subband_splits,
-        };
-        if let Some(existing) = extensions
-            .arbitrary_decompositions
-            .iter_mut()
-            .find(|record| record.index == index)
-        {
-            *existing = replacement;
-        } else {
-            extensions.arbitrary_decompositions.push(replacement);
-        }
-        Ok(())
+        })
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures two_bit_values_outcome(result) == crate::specs::part1_unpack_two_bit_values(
+            self.position, segment_view(segment), start, count, allow_terminal),
+    ))]
     fn unpack_two_bit_values(
         &self,
         segment: Segment<'a>,
@@ -4962,54 +5155,92 @@ impl<'a> Parser<'a> {
         count: usize,
         allow_terminal: bool,
     ) -> Result<Vec<u8>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost goal = crate::specs::part1_unpack_two_bit_values(
+                self.position, segment_view(segment), start, count, allow_terminal);
+        }
         let mut values = Vec::with_capacity(count);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(values@ =~= Seq::empty()); }
         let mut index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant index <= count,
+                invariant
+                    index <= count,
+                    goal == crate::specs::part1_unpack_two_bit_values(
+                        self.position, segment_view(segment), start, count, allow_terminal),
+                    goal == crate::specs::part1_unpack_two_bit_run(
+                        self.position, segment_view(segment), start, count, allow_terminal, index, values@),
                 decreases count - index,
             )
         )]
         while index < count {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_unpack_two_bit_run, 1); }
             let byte = self.segment_byte(segment, start, index / 4)?;
-            let shift = 6_u32
-                .checked_sub(
-                    2_u32
-                        .checked_mul(
-                            u32::try_from(index % 4).map_err(|_| {
-                                self.malformed_here(MalformedKind::ArithmeticOverflow)
-                            })?,
-                        )
-                        .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?,
-                )
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            let value = (byte >> shift) & 3;
+            let slot = u8::try_from(index % 4)
+                .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            let value = crate::refinement::dfs_direction_code(byte, slot);
             if !allow_terminal && value == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidCodingStyle,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidCodingStyle));
             }
             values.push(value);
             index = index
                 .checked_add(1)
                 .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
         }
-        if !count.is_multiple_of(4) {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_unpack_two_bit_run, 1); }
+        let remainder = count % 4;
+        if remainder != 0 {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(goal == match crate::specs::part1_segment_byte(
+                    self.position, segment_view(segment), start, count / 4) {
+                    Err(error) => Err(error),
+                    Ok(last) => if last & crate::specs::part1_two_bit_padding_mask(count) != 0 {
+                        Err(crate::specs::part1_codestream_malformed(segment.offset, MalformedKind::InvalidCodingStyle))
+                    } else { Ok(values@) },
+                });
+            }
             let last = self.segment_byte(segment, start, count / 4)?;
             let unused = 2_u32
                 .checked_mul(
-                    u32::try_from(4 - (count % 4))
+                    u32::try_from(4 - remainder)
                         .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?,
                 )
                 .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            let mask = (1_u8 << unused).wrapping_sub(1);
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(unused == 2 || unused == 4 || unused == 6);
+                assert((unused == 2 || unused == 4 || unused == 6) ==>
+                    (1u8 << unused) == if unused == 2 { 4u8 } else if unused == 4 { 16u8 } else { 64u8 })
+                    by (bit_vector);
+            }
+            let mask = (1_u8 << unused) - 1;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                if remainder == 1 {
+                    assert(unused == 6);
+                    assert(mask == 63);
+                } else if remainder == 2 {
+                    assert(unused == 4);
+                    assert(mask == 15);
+                } else {
+                    assert(remainder == 3);
+                    assert(unused == 2);
+                    assert(mask == 3);
+                }
+                assert(unused == (2 * (4 - remainder)) as u32);
+                assert((unused == 2 || unused == 4 || unused == 6) ==>
+                    ((1u16 << unused) - 1) as u8 == if unused == 2 { 3u8 } else if unused == 4 { 15u8 } else { 63u8 })
+                    by (bit_vector);
+                assert(mask == crate::specs::part1_two_bit_padding_mask(count));
+            }
             if last & mask != 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidCodingStyle,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidCodingStyle));
             }
         }
         Ok(values)
@@ -15418,6 +15649,653 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    fn reference_two_bit_values(
+        bytes: &[u8],
+        offset: usize,
+        cursor: usize,
+        start: usize,
+        count: usize,
+        allow_zero: bool,
+    ) -> Result<Vec<u8>, DecodeError> {
+        let read = |relative: usize| {
+            let index = start as u128 + relative as u128;
+            if index > usize::MAX as u128 {
+                Err(DecodeError::MalformedInput {
+                    offset: cursor as u64,
+                    kind: MalformedKind::ArithmeticOverflow,
+                })
+            } else {
+                bytes
+                    .get(index as usize)
+                    .copied()
+                    .ok_or(DecodeError::MalformedInput {
+                        offset: offset as u64,
+                        kind: MalformedKind::InvalidMarkerLength,
+                    })
+            }
+        };
+        let mut values = Vec::new();
+        for index in 0..count {
+            let byte = read(index / 4)?;
+            let divisor = 4_u8.pow(u32::try_from(3 - index % 4).unwrap());
+            let value = byte / divisor % 4;
+            if !allow_zero && value == 0 {
+                return Err(DecodeError::MalformedInput {
+                    offset: offset as u64,
+                    kind: MalformedKind::InvalidCodingStyle,
+                });
+            }
+            values.push(value);
+        }
+        if !count.is_multiple_of(4) {
+            let last = read(count / 4)?;
+            let divisor = 4_u8.pow(u32::try_from(4 - count % 4).unwrap());
+            if last % divisor != 0 {
+                return Err(DecodeError::MalformedInput {
+                    offset: offset as u64,
+                    kind: MalformedKind::InvalidCodingStyle,
+                });
+            }
+        }
+        Ok(values)
+    }
+
+    fn reference_decomposition_code(value: u8) -> DecompositionDirection {
+        [
+            DecompositionDirection::None,
+            DecompositionDirection::TwoDimensional,
+            DecompositionDirection::Horizontal,
+            DecompositionDirection::Vertical,
+        ][usize::from(value)]
+    }
+
+    fn reference_dfs_payload(
+        bytes: &[u8],
+        offset: usize,
+    ) -> Result<DecompositionStructure, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if bytes.len() < 3 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let descriptor = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let levels = usize::from(bytes[2]);
+        if !(1..16).contains(&descriptor) || !(1..=32).contains(&levels) {
+            return Err(malformed(MalformedKind::InvalidCodingStyle));
+        }
+        if bytes.len() != 3 + levels.div_ceil(4) {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let directions = (0..levels)
+            .map(|level| {
+                let divisor = 4_u8.pow(u32::try_from(3 - level % 4).unwrap());
+                reference_decomposition_code(bytes[3 + level / 4] / divisor % 4)
+            })
+            .collect();
+        Ok(DecompositionStructure {
+            index: descriptor as u8,
+            directions,
+        })
+    }
+
+    fn reference_ads_payload(
+        bytes: &[u8],
+        offset: usize,
+        cursor: usize,
+    ) -> Result<ArbitraryDecomposition, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if bytes.len() < 3 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        if !(1..=127).contains(&bytes[0]) {
+            return Err(malformed(MalformedKind::InvalidCodingStyle));
+        }
+        let depth_count = usize::from(bytes[1]);
+        let split_position = 2 + depth_count.div_ceil(4);
+        let split_count = usize::from(
+            *bytes
+                .get(split_position)
+                .ok_or_else(|| malformed(MalformedKind::InvalidMarkerLength))?,
+        );
+        if bytes.len() != split_position + 1 + split_count.div_ceil(4) {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let sublevel_depths =
+            reference_two_bit_values(bytes, offset, cursor, 2, depth_count, false)?;
+        let codes =
+            reference_two_bit_values(bytes, offset, cursor, split_position + 1, split_count, true)?;
+        Ok(ArbitraryDecomposition {
+            index: bytes[0],
+            sublevel_depths,
+            subband_splits: codes
+                .into_iter()
+                .map(reference_decomposition_code)
+                .collect(),
+        })
+    }
+
+    fn raw_dfs_payload(descriptor: u16, levels: u8) -> Vec<u8> {
+        let mut bytes = descriptor.to_be_bytes().to_vec();
+        bytes.push(levels);
+        bytes.extend((0..usize::from(levels).div_ceil(4)).map(|index| {
+            u8::try_from(index)
+                .unwrap()
+                .wrapping_mul(17)
+                .wrapping_add(0x1b)
+        }));
+        bytes
+    }
+
+    fn pack_decomposition_values(values: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![0; values.len().div_ceil(4)];
+        for (index, value) in values.iter().enumerate() {
+            bytes[index / 4] += *value * 4_u8.pow(u32::try_from(3 - index % 4).unwrap());
+        }
+        bytes
+    }
+
+    fn raw_ads_payload(index: u8, depth_count: u8, split_count: u8, pattern: usize) -> Vec<u8> {
+        let depths: Vec<u8> = (0..usize::from(depth_count))
+            .map(|position| {
+                if pattern == 0 {
+                    1
+                } else {
+                    1 + (position % 3) as u8
+                }
+            })
+            .collect();
+        let splits: Vec<u8> = (0..usize::from(split_count))
+            .map(|position| {
+                if pattern == 0 {
+                    0
+                } else {
+                    (position % 4) as u8
+                }
+            })
+            .collect();
+        let mut bytes = vec![index, depth_count];
+        bytes.extend(pack_decomposition_values(&depths));
+        bytes.push(split_count);
+        bytes.extend(pack_decomposition_values(&splits));
+        bytes
+    }
+
+    fn assert_decomposition_owner_case(
+        ads: bool,
+        bytes: &[u8],
+        mode: usize,
+        limits: &ResourceLimits,
+        budget: (u64, u64),
+        offset: usize,
+    ) {
+        let (metadata, work) = budget;
+        let index = if ads {
+            bytes.first().copied().unwrap_or(0)
+        } else if bytes.len() >= 2 {
+            (u16::from_be_bytes([bytes[0], bytes[1]]) % 16) as u8
+        } else {
+            0
+        };
+        let mut extensions = raw_owned_tile_part_fixture(0).part2_extensions;
+        if ads {
+            extensions.arbitrary_decompositions = if mode == 0 {
+                vec![]
+            } else {
+                vec![
+                    ArbitraryDecomposition {
+                        index: 0,
+                        sublevel_depths: vec![0],
+                        subband_splits: vec![DecompositionDirection::Vertical],
+                    },
+                    ArbitraryDecomposition {
+                        index: u8::MAX,
+                        sublevel_depths: vec![255],
+                        subband_splits: vec![],
+                    },
+                ]
+            };
+            if mode == 2 {
+                extensions.arbitrary_decompositions.insert(
+                    1,
+                    ArbitraryDecomposition {
+                        index,
+                        sublevel_depths: vec![2],
+                        subband_splits: vec![DecompositionDirection::Horizontal],
+                    },
+                );
+                extensions
+                    .arbitrary_decompositions
+                    .push(ArbitraryDecomposition {
+                        index,
+                        sublevel_depths: vec![3, 3],
+                        subband_splits: vec![DecompositionDirection::None],
+                    });
+            }
+        } else {
+            extensions.decomposition_structures = if mode == 0 {
+                vec![]
+            } else {
+                vec![
+                    DecompositionStructure {
+                        index: 0,
+                        directions: vec![DecompositionDirection::Vertical],
+                    },
+                    DecompositionStructure {
+                        index: u8::MAX,
+                        directions: vec![],
+                    },
+                ]
+            };
+            if mode == 2 {
+                extensions.decomposition_structures.insert(
+                    1,
+                    DecompositionStructure {
+                        index,
+                        directions: vec![DecompositionDirection::Horizontal],
+                    },
+                );
+                extensions
+                    .decomposition_structures
+                    .push(DecompositionStructure {
+                        index,
+                        directions: vec![
+                            DecompositionDirection::None,
+                            DecompositionDirection::Vertical,
+                        ],
+                    });
+            }
+        }
+        extensions.metadata_bytes = metadata;
+        let mut expected = extensions.clone();
+        let (mut result, next_work, next_metadata) =
+            reference_extension_charge(bytes.len(), 17, work, metadata, limits);
+        expected.metadata_bytes = next_metadata;
+        if result.is_ok() {
+            if ads {
+                result = match reference_ads_payload(bytes, offset, 17) {
+                    Err(error) => Err(error),
+                    Ok(replacement) => {
+                        if let Some(existing) = expected
+                            .arbitrary_decompositions
+                            .iter_mut()
+                            .find(|entry| entry.index == replacement.index)
+                        {
+                            *existing = replacement;
+                        } else {
+                            expected.arbitrary_decompositions.push(replacement);
+                        }
+                        Ok(())
+                    }
+                };
+            } else {
+                result = match reference_dfs_payload(bytes, offset) {
+                    Err(error) => Err(error),
+                    Ok(replacement) => {
+                        if let Some(existing) = expected
+                            .decomposition_structures
+                            .iter_mut()
+                            .find(|entry| entry.index == replacement.index)
+                        {
+                            *existing = replacement;
+                        } else {
+                            expected.decomposition_structures.push(replacement);
+                        }
+                        Ok(())
+                    }
+                };
+            }
+        }
+        let mut parser = new_parser(&[], limits).unwrap();
+        parser.position = 17;
+        parser.work_units = work;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX - 1;
+        let segment = Segment {
+            marker: 0x1234,
+            offset,
+            payload: bytes,
+        };
+        if ads {
+            assert_eq!(
+                parser.decode_ads_payload(segment),
+                reference_ads_payload(bytes, offset, 17)
+            );
+            assert_eq!(parser.parse_ads(segment, &mut extensions), result);
+        } else {
+            assert_eq!(
+                parser.decode_dfs_payload(segment),
+                reference_dfs_payload(bytes, offset)
+            );
+            assert_eq!(parser.parse_dfs(segment, &mut extensions), result);
+        }
+        assert_eq!(extensions, expected);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (17, next_work, u64::MAX, u64::MAX - 1)
+        );
+        assert!(core::ptr::eq(parser.limits, limits));
+        assert!(parser.input.is_empty());
+    }
+
+    #[test]
+    fn actual_two_bit_values_preserve_terminal_padding_and_error_order() {
+        let limits = ResourceLimits::HARDENED;
+        let mut byte_cases = 0;
+        for byte in 0..=u8::MAX {
+            let bytes = [0xa5, byte, 0];
+            for count in 0..=4 {
+                for allow in [false, true] {
+                    for cursor in [0, 17, usize::MAX] {
+                        let mut parser = new_parser(&[], &limits).unwrap();
+                        parser.position = cursor;
+                        for offset in [0, usize::MAX] {
+                            assert_eq!(
+                                parser.unpack_two_bit_values(
+                                    Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    },
+                                    1,
+                                    count,
+                                    allow
+                                ),
+                                reference_two_bit_values(&bytes, offset, cursor, 1, count, allow)
+                            );
+                            byte_cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(byte_cases, 15_360);
+        let mut frontiers = 0;
+        for count in 0..=255 {
+            for pattern in [0, 255, 0x55, 0xaa] {
+                for start in [0, 1, 5, usize::MAX] {
+                    for length in [0, 1, 4, 65, 129] {
+                        let bytes = vec![pattern; length];
+                        for allow in [false, true] {
+                            for cursor in [0, 17, usize::MAX] {
+                                let mut parser = new_parser(&[], &limits).unwrap();
+                                parser.position = cursor;
+                                for offset in [0, usize::MAX] {
+                                    assert_eq!(
+                                        parser.unpack_two_bit_values(
+                                            Segment {
+                                                marker: 0x1234,
+                                                offset,
+                                                payload: &bytes
+                                            },
+                                            start,
+                                            count,
+                                            allow
+                                        ),
+                                        reference_two_bit_values(
+                                            &bytes, offset, cursor, start, count, allow
+                                        )
+                                    );
+                                    frontiers += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 245_760);
+    }
+
+    #[test]
+    fn actual_dfs_preserves_descriptor_bytes_unused_padding_and_first_registry_slot() {
+        let base = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &base).unwrap();
+        let levels = [0, 1, 2, 3, 4, 31, 32, 33, 255];
+        let mut payload_cases = 0;
+        for descriptor in 0..=u16::MAX {
+            for level in levels {
+                let source = raw_dfs_payload(descriptor, level);
+                for variant in 0..3 {
+                    let mut bytes = source.clone();
+                    if variant == 1 {
+                        bytes.pop();
+                    } else if variant == 2 {
+                        bytes.push(0);
+                    }
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.decode_dfs_payload(Segment {
+                                marker: 0x1234,
+                                offset,
+                                payload: &bytes
+                            }),
+                            reference_dfs_payload(&bytes, offset)
+                        );
+                        payload_cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(payload_cases, 3_538_944);
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+        ];
+        let mut owners = 0;
+        for descriptor in [0_u16, 1, 5, 15, 16, 255, 256, u16::MAX] {
+            for level in levels {
+                for variant in 0..3 {
+                    let mut bytes = raw_dfs_payload(descriptor, level);
+                    if variant == 1 {
+                        bytes.pop();
+                    } else if variant == 2 {
+                        bytes.push(0);
+                    }
+                    for mode in 0..3 {
+                        for metadata in [0, u64::MAX - 4, u64::MAX] {
+                            for work in [0, u64::MAX - 4, u64::MAX] {
+                                for limit in &limits {
+                                    for offset in [0, usize::MAX] {
+                                        assert_decomposition_owner_case(
+                                            false,
+                                            &bytes,
+                                            mode,
+                                            limit,
+                                            (metadata, work),
+                                            offset,
+                                        );
+                                        owners += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(owners, 46_656);
+        let payload = [0, 5, 3, 0x1b];
+        let mut input = DFS.to_be_bytes().to_vec();
+        input.extend(u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+        input.extend(payload);
+        let mut parser = new_parser(&input, &base).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let mut extensions = Part2Extensions::default();
+        parser.parse_dfs(segment, &mut extensions).unwrap();
+        assert_eq!(
+            extensions.decomposition_structures,
+            vec![DecompositionStructure {
+                index: 5,
+                directions: vec![
+                    DecompositionDirection::None,
+                    DecompositionDirection::TwoDimensional,
+                    DecompositionDirection::Horizontal
+                ],
+            }]
+        );
+        assert_eq!(
+            (
+                extensions.metadata_bytes,
+                parser.work_units,
+                parser.position
+            ),
+            (8, 9, input.len())
+        );
+    }
+
+    #[test]
+    fn actual_ads_preserves_all_raw_counts_padding_first_duplicates_and_owner_fields() {
+        let base = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &base).unwrap();
+        let mut count_pairs = 0;
+        for depths in 0..=u8::MAX {
+            for splits in 0..=u8::MAX {
+                for pattern in 0..2 {
+                    let bytes = raw_ads_payload(1, depths, splits, pattern);
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.decode_ads_payload(Segment {
+                                marker: 0x1234,
+                                offset,
+                                payload: &bytes
+                            }),
+                            reference_ads_payload(&bytes, offset, 0)
+                        );
+                        count_pairs += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(count_pairs, 262_144);
+        let counts = [0, 1, 2, 3, 4, 31, 32, 33, 254, 255];
+        let mut headers = 0;
+        for index in 0..=u8::MAX {
+            for depths in counts {
+                for splits in counts {
+                    for variant in 0..3 {
+                        let mut bytes = raw_ads_payload(index, depths, splits, 1);
+                        if variant == 1 {
+                            bytes.pop();
+                        } else if variant == 2 {
+                            bytes.push(0);
+                        }
+                        for offset in [0, usize::MAX] {
+                            assert_eq!(
+                                parser.decode_ads_payload(Segment {
+                                    marker: 0x1234,
+                                    offset,
+                                    payload: &bytes
+                                }),
+                                reference_ads_payload(&bytes, offset, 0)
+                            );
+                            headers += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(headers, 153_600);
+        let mut mutations = 0;
+        for index in [1, 127] {
+            for depths in [0, 1, 3, 4, 32, 255] {
+                for splits in [0, 1, 3, 4, 32, 255] {
+                    let source = raw_ads_payload(index, depths, splits, 1);
+                    for position in 0..source.len() {
+                        for byte in 0..=u8::MAX {
+                            let mut bytes = source.clone();
+                            bytes[position] = byte;
+                            for offset in [0, usize::MAX] {
+                                assert_eq!(
+                                    parser.decode_ads_payload(Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    }),
+                                    reference_ads_payload(&bytes, offset, 0)
+                                );
+                                mutations += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(mutations, 1_032_192);
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+        ];
+        let mut owners = 0;
+        for index in [0, 1, 5, 127, 128, 255] {
+            for depths in [0, 1, 4, 255] {
+                for splits in [0, 1, 4, 255] {
+                    for variant in 0..3 {
+                        let mut bytes = raw_ads_payload(index, depths, splits, 1);
+                        if variant == 1 {
+                            bytes.pop();
+                        } else if variant == 2 {
+                            bytes.push(0);
+                        }
+                        for mode in 0..3 {
+                            for metadata in [0, u64::MAX - 4, u64::MAX] {
+                                for work in [0, u64::MAX - 4, u64::MAX] {
+                                    for limit in &limits {
+                                        for offset in [0, usize::MAX] {
+                                            assert_decomposition_owner_case(
+                                                true,
+                                                &bytes,
+                                                mode,
+                                                limit,
+                                                (metadata, work),
+                                                offset,
+                                            );
+                                            owners += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(owners, 62_208);
+        let payload = raw_ads_payload(5, 3, 5, 1);
+        let mut input = ADS.to_be_bytes().to_vec();
+        input.extend(u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+        input.extend(&payload);
+        let mut parser = new_parser(&input, &base).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let mut extensions = Part2Extensions::default();
+        parser.parse_ads(segment, &mut extensions).unwrap();
+        assert_eq!(
+            extensions.arbitrary_decompositions,
+            vec![reference_ads_payload(&payload, 0, 0).unwrap()]
+        );
+        assert_eq!(
+            (
+                extensions.metadata_bytes,
+                parser.work_units,
+                parser.position
+            ),
+            (10, 11, input.len())
+        );
     }
 
     #[test]
