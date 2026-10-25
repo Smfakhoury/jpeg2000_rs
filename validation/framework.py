@@ -792,6 +792,27 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_TRANSFORM_COLLECTION_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "signed_u32"): (
+        "part1_signed_u32", r"\1", None, "value",
+    ),
+    ("src/codestream.rs", "component_lists_overlap"): (
+        "part1_mcc_lists_overlap", r"\1", None, r"left\s*@\s*,\s*right\s*@",
+    ),
+    ("src/codestream.rs", "validate_parallel_collections"): (
+        "part1_mcc_parallel_collections", r"\1", None,
+        _coverage_call("mcc_collection_references_view", r"collections\s*@") + r"\s*,\s*marker_offset",
+    ),
+    ("src/codestream.rs", "Parser::decode_mcc_collection"): (
+        "part1_mcc_collection", _coverage_call("mcc_collection_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*start",
+    ),
+    ("src/codestream.rs", "Parser::parse_mcc"): (
+        "part1_parse_mcc", _coverage_call("mcc_record_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*self\.limits",
+    ),
+}
+
 _TRANSFORM_ROUTING_BYTES_CONTRACTS = {
     ("src/codestream.rs", "Parser::parse_mco"): (
         "part1_parse_mco", _coverage_call("segment_tail_outcome", r"\1"), None,
@@ -2313,6 +2334,7 @@ def validate_normative_coverage(
                 or _PROGRESSION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROGRESSION_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ROUTING_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TRANSFORM_COLLECTION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

@@ -1,5 +1,17 @@
 # Specification audit guide
 
+`part1_parse_mcc` and `part1_mcc_collection` bind the actual complete raw
+record/collection Results, including all route, array/dependency and wavelet
+fields. Header/limit and kind/list/descriptor/type/depth/signed-offset order
+remain explicit; terminal admission precedes parallel conflict checks.
+Actual routing, signed conversion, list equality and overlap producers
+provide values and bounds, not successful graph or normalized collection
+premises. Private views observe every physical field. The real parallel
+check rejects cross-collection intersections without adding same-collection
+or unrelated metadata policy. Five exact contracts introduce no trust/cap/
+pin/budget changes. Numeric arrays, fragments/graph and final outer joins
+remain separate.
+
 `part1_parse_mco` and `part1_parse_mcc_component_list` bind actual raw routing
 syntax, complete lists and every external-cursor error commit. MCO's empty
 zero-stage order, count/duplicate/nonzero ordering and raw encounter order

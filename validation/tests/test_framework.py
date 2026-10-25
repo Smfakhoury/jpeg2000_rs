@@ -992,6 +992,12 @@ class FrameworkTests(WorkingFiles):
             framework._TRANSFORM_ROUTING_BYTES_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_raw_mcc_complete_collections_signed_offsets_limits_and_parallel_checks(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-transform-collection-bytes"},
+            framework._TRANSFORM_COLLECTION_BYTES_CONTRACTS, 5,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
