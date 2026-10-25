@@ -4,6 +4,61 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-decomposition-bytes",
+      "topic": "Complete actual DFS/ADS payload Results and parser/all8 extension-owner states from raw bytes, current cursor, raw registries and actual limits/work counters. Shared real metadata charge runs first and retains exact partial failure commits. DFS preserves low4 nonzero index/reserved descriptor/depth1..32/header-length order and accepts unused packed slots. ADS preserves index1..127/count-position/expected-length/depth-zero/terminal/padding order and raw zero counts. Generic actual unpacking derives every byte and mask, rejecting depth zero before final padding while allowing zero split codes. Actual first-matching registry entry is replaced, later duplicates/unrelated raw fields retained; absent keys append in order. Sole payload bodies and explicit bounded first-match search supply functional facts without normalized registries/directions, prepared outputs or budget premises. Derived-safe shift/mask arithmetic and proved shared bit primitive retain native outcomes. No new trust/pin/cap/solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_dfs"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ads"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_dfs_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_ads_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::unpack_two_bit_values"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_dfs"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_ads"},
+        {"path": "specs/mod.rs", "symbol": "part1_dfs_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_ads_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_unpack_two_bit_values"},
+        {"path": "specs/mod.rs", "symbol": "part1_unpack_two_bit_run"},
+        {"path": "specs/mod.rs", "symbol": "part1_two_bit_padding_mask"},
+        {"path": "specs/mod.rs", "symbol": "part1_decomposition_code"},
+        {"path": "specs/mod.rs", "symbol": "part1_dfs_replace"},
+        {"path": "specs/mod.rs", "symbol": "part1_ads_replace"},
+        {"path": "specs/mod.rs", "symbol": "part1_extension_decompositions"},
+        {"path": "specs/mod.rs", "symbol": "part1_charge_extension_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part1_segment_byte"},
+        {"path": "specs/mod.rs", "symbol": "part2_packed_two_bit_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part2_dfs_direction_code"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::unpack_two_bit_values"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_dfs_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_ads_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_dfs"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ads"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "dfs_payload_outcome"},
+        {"path": "src/codestream.rs", "symbol": "ads_payload_outcome"},
+        {"path": "src/codestream.rs", "symbol": "two_bit_values_outcome"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_decomposition_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_arbitrary_decomposition_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"},
+        {"path": "src/refinement.rs", "symbol": "packed_two_bit_bytes"},
+        {"path": "src/refinement.rs", "symbol": "dfs_direction_code"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_two_bit_values_preserve_terminal_padding_and_error_order"},
+        {"path": "src/codestream.rs", "symbol": "actual_dfs_preserves_descriptor_bytes_unused_padding_and_first_registry_slot"},
+        {"path": "src/codestream.rs", "symbol": "actual_ads_preserves_all_raw_counts_padding_first_duplicates_and_owner_fields"}
+      ]
+    },
+    {
       "id": "part1-complete-native-raw-component-markers",
       "topic": "Complete actual RGN raw ROI Result and CRG registration/parser/Part2 owner mutation, including all eight extension fields and exact partial metadata/work commits on every failure. Charge payload+4 before length/duplicate admission; metadata overflow leaves old bytes, metadata cap retains increment without work charge, work overflow/cap retain original ordered fields. RGN preserves exact-length before component/style, threshold257 and unrestricted shift bytes. CRG preserves length-before-duplicate, four-byte endian entries and repeated empty zero-component behavior; marker identity and unrelated raw metadata are not newly validated. All bounds/frames arise from real byte/count/work producers without prepared registrations, normalized owners or successful admission premises. No new trust/pin/cap/termination bypass. Remaining metadata/layout parsing and file/layer/F2/F4/final F8 joins stay separate.",
       "implementation_refs": [

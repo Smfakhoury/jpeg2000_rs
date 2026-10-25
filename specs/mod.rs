@@ -13570,6 +13570,180 @@ pub open spec fn part1_parse_rgn(offset: usize, payload: Seq<u8>, components: u1
     }
 }
 
+pub open spec fn part1_decomposition_code(value: u8) -> crate::codestream::DecompositionDirection {
+    match value {
+        0 => crate::codestream::DecompositionDirection::None,
+        1 => crate::codestream::DecompositionDirection::TwoDimensional,
+        2 => crate::codestream::DecompositionDirection::Horizontal,
+        _ => crate::codestream::DecompositionDirection::Vertical,
+    }
+}
+
+pub open spec fn part1_two_bit_padding_mask(count: usize) -> u8 {
+    if count % 4 == 0 { 0 } else { ((1u16 << ((2 * (4 - count % 4)) as u32)) - 1) as u8 }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_unpack_two_bit_run(
+    parser_position: usize, segment: Part1CodestreamSegment, start: usize, count: usize,
+    allow_terminal: bool, position: usize, values: Seq<u8>,
+) -> Result<Seq<u8>, crate::DecodeError>
+    decreases count - position,
+{
+    if position < count {
+        match part1_segment_byte(parser_position, segment, start, position / 4) {
+            Err(error) => Err(error),
+            Ok(byte) => {
+                let value = part2_dfs_direction_code(byte, (position % 4) as u8);
+                if !allow_terminal && value == 0 {
+                    Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidCodingStyle))
+                } else if position == usize::MAX {
+                    Err(part1_codestream_malformed(parser_position, crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    part1_unpack_two_bit_run(parser_position, segment, start, count, allow_terminal,
+                        (position + 1) as usize, values.push(value))
+                }
+            },
+        }
+    } else if count % 4 != 0 {
+        match part1_segment_byte(parser_position, segment, start, count / 4) {
+            Err(error) => Err(error),
+            Ok(last) => if last & part1_two_bit_padding_mask(count) != 0 {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidCodingStyle))
+            } else { Ok(values) },
+        }
+    } else { Ok(values) }
+}
+
+pub open spec fn part1_unpack_two_bit_values(
+    parser_position: usize, segment: Part1CodestreamSegment, start: usize, count: usize, allow_terminal: bool,
+) -> Result<Seq<u8>, crate::DecodeError> {
+    part1_unpack_two_bit_run(parser_position, segment, start, count, allow_terminal, 0, Seq::empty())
+}
+
+#[verifier::opaque]
+pub open spec fn part1_dfs_payload(segment: Part1CodestreamSegment)
+    -> Result<(u8, Seq<crate::codestream::DecompositionDirection>), crate::DecodeError>
+{
+    if segment.payload.len() < 3 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let descriptor = part1_marker_value(segment.payload[0], segment.payload[1]);
+        let index = (descriptor & 15) as u8;
+        let levels = segment.payload[2];
+        let expected = 3int + (levels as int + 3) / 4;
+        if descriptor & 65520 != 0 || index == 0 || levels == 0 || levels > 32 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidCodingStyle))
+        } else if segment.payload.len() != expected {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+        } else {
+            Ok((index, Seq::new(levels as nat, |level: int| part1_decomposition_code(
+                part2_dfs_direction_code(segment.payload[3 + level / 4], (level % 4) as u8)))))
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_ads_payload(parser_position: usize, segment: Part1CodestreamSegment)
+    -> Result<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>), crate::DecodeError>
+{
+    if segment.payload.len() < 3 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let index = segment.payload[0];
+        if index == 0 || index > 127 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidCodingStyle))
+        } else {
+            let depth_count = segment.payload[1] as usize;
+            let split_position = 2int + part2_packed_two_bit_bytes(depth_count) as int;
+            if split_position >= segment.payload.len() {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+            } else {
+                let split_count = segment.payload[split_position] as usize;
+                let expected = split_position + 1 + part2_packed_two_bit_bytes(split_count) as int;
+                if segment.payload.len() != expected {
+                    Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+                } else {
+                    match part1_unpack_two_bit_values(parser_position, segment, 2, depth_count, false) {
+                        Err(error) => Err(error),
+                        Ok(depths) => match part1_unpack_two_bit_values(parser_position, segment,
+                            (split_position + 1) as usize, split_count, true) {
+                            Err(error) => Err(error),
+                            Ok(splits) => Ok((index, depths, splits.map_values(|code: u8| part1_decomposition_code(code)))),
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_dfs_replace(
+    entries: Seq<(u8, Seq<crate::codestream::DecompositionDirection>)>,
+    replacement: (u8, Seq<crate::codestream::DecompositionDirection>), position: nat,
+) -> Seq<(u8, Seq<crate::codestream::DecompositionDirection>)>
+    decreases entries.len() - position,
+{
+    if position as nat >= entries.len() { entries.push(replacement) }
+    else if entries[position as int].0 == replacement.0 { entries.update(position as int, replacement) }
+    else { part1_dfs_replace(entries, replacement, position + 1) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_ads_replace(
+    entries: Seq<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>,
+    replacement: (u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>), position: nat,
+) -> Seq<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>
+    decreases entries.len() - position,
+{
+    if position as nat >= entries.len() { entries.push(replacement) }
+    else if entries[position as int].0 == replacement.0 { entries.update(position as int, replacement) }
+    else { part1_ads_replace(entries, replacement, position + 1) }
+}
+
+pub open spec fn part1_extension_decompositions(
+    extensions: Part2OwnedExtensions,
+    decompositions: Seq<(u8, Seq<crate::codestream::DecompositionDirection>)>,
+    arbitrary: Seq<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>,
+) -> Part2OwnedExtensions {
+    Part2OwnedExtensions {
+        decompositions, arbitrary, nonlinear: extensions.nonlinear, depths: extensions.depths,
+        kernels: extensions.kernels, registrations: extensions.registrations,
+        lengths: extensions.lengths, metadata_bytes: extensions.metadata_bytes,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_dfs<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { charged }
+    else {
+        match part1_dfs_payload(segment) {
+            Err(error) => (Err(error), charged.1, charged.2),
+            Ok(replacement) => (Ok(()), charged.1, part1_extension_decompositions(charged.2,
+                part1_dfs_replace(charged.2.decompositions, replacement, 0), charged.2.arbitrary)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_ads<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { charged }
+    else {
+        match part1_ads_payload(charged.1.position, segment) {
+            Err(error) => (Err(error), charged.1, charged.2),
+            Ok(replacement) => (Ok(()), charged.1, part1_extension_decompositions(charged.2,
+                charged.2.decompositions, part1_ads_replace(charged.2.arbitrary, replacement, 0))),
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }
