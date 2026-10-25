@@ -25,6 +25,34 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw CAP and profile numbers
+
+Actual CAP and PRF/CPF parsing now binds complete Results from raw bytes and
+segment offsets. The real mask-count loop proves its exact 32-bit population
+count and bound; the existing capability-length primitive consumes it.
+CAP retains short-header, zero-mask and exact-length precedence. Capability
+values remain raw, without new profile or marker policy.
+
+The original identical word traversals share one executable body, preserving
+big-endian order, vector capacity and checked next/read/push/advance order.
+Its start bound comes from actual callers; an internal boundary guard makes
+the shared helper total even for an out-of-range start, without changing any
+actual parser outcome. Odd tails retain the original segment error offset.
+Profiles retain nonempty/even length before checking
+the last most-significant word, accepting leading and intermediate zeros.
+Actual mask/word getters expose the complete raw owners without admission.
+
+Four curated exact contracts bind both roots, actual word production and
+bit counting. No prepared parsed-word/result bank, normalized-profile
+premise, trust, cap, verifier pin or solver-budget change is introduced.
+Independent endian/chunk/popcount references compare 917,504 word-reader
+contexts, 524,288 profile-word contexts and 786,432 mask-half/length contexts,
+plus 24 start frontiers, 730 profile-length frontiers and 2,652 CAP count/
+length frontiers spanning every population count 0..32. They also compare
+raw getters, complete unchanged parser fields and a real CAP/PRF/CPF reader
+join. These are maintained native regressions, not official conformance.
+Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.
+
 ## Complete native raw CBD component depths
 
 Actual CBD parsing binds the complete parser Result and every parser/eight

@@ -1,5 +1,17 @@
 # Specification audit guide
 
+`part1_parse_cap` and `part1_parse_profile_number` bind actual raw CAP and
+PRF/CPF Results. `part1_set_bits_prefix` observes the real 32-bit count loop;
+`part1_marker_words` and `part1_marker_word_sequence` observe the sole shared
+word traversal, not an executable proof-only decoder. The real callers
+derive its start bound; the shared helper also explicitly rejects arbitrary
+out-of-range starts and has no precondition. Short-header/zero-mask/exact-popcount-length and
+nonempty/even-length/last-word-zero ordering remain explicit. All raw mask
+bits and word values are retained; actual getters do not impose admission.
+No normalized profile, prepared parsed-result bank, new marker/value policy,
+trust, budget or verifier-pin change is introduced. Remaining metadata/
+layout/file/F2/F4/final F8 joins remain separate.
+
 `part1_parse_cbd` composes the real shared charge and raw descriptor loop,
 binding the complete parser and all eight extension fields on success and
 failure. `part1_cbd_run` retains the exact valid prefix on invalid precision;
