@@ -15063,10 +15063,18 @@ pub open spec fn part1_mct_values(
 ) -> Result<Seq<i64>, crate::DecodeError>
     decreases data.len() - position,
 {
-    if position >= data.len() { Ok(values) } else {
+    let stride = match format {
+        crate::codestream::MctNumericFormat::Int16 => 2nat,
+        crate::codestream::MctNumericFormat::Int32 | crate::codestream::MctNumericFormat::Float32 => 4nat,
+        crate::codestream::MctNumericFormat::Float64 => 8nat,
+    };
+    if position >= data.len() { Ok(values) }
+    else if position + stride > data.len() {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform))
+    } else {
         match part1_mct_element(offset, data, position as usize, format) {
             Err(error) => Err(error),
-            Ok(value) => part1_mct_values(offset, data, format, position + part1_mct_element_width(format) as nat, values.push(value)),
+            Ok(value) => part1_mct_values(offset, data, format, position + stride, values.push(value)),
         }
     }
 }

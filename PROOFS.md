@@ -42,6 +42,13 @@ expose source values rather than assuming normalized IEEE inputs or supplying
 converted-element banks. Every read/advance/decrease bound follows from real
 header/count geometry.
 
+The mathematical value fold exposes each positive format stride and rejects
+an incomplete trailing element before recurring. Its remaining-byte measure
+therefore stays nonnegative and strictly decreases, including for arbitrary
+unaligned model inputs. The executable element checks and decoder are
+unchanged; a codestream-only proof does not check this specification's
+termination obligation, so complete-root verification remains mandatory.
+
 Seven exact contracts bind actual numerical and byte producers to the full
 array Result. No new trust, caps, pins, solver budgets or termination bypass
 is introduced. Actual MCT fragment state, graph and outer file/layer/F2/F4/

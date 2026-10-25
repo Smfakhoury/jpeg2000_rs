@@ -10,6 +10,11 @@ semantics and source-derived read/count bounds require no normalized-value
 premise, trust/cap/pin/budget change. Seven exact contracts leave actual MCT
 fragment/graph and final outer joins explicitly separate.
 
+The MCT value fold makes positive format strides and incomplete-element
+rejection explicit. Remaining-byte termination is checked in the complete
+root, not by a codestream-only check; no executable decoder change or
+termination opt-out is used.
+
 `part1_consume_mcc_fragment` composes the real staging, exact completion,
 swap-remove, stored-offset reconstruction and actual MCC parser, binding both
 pending and completed vectors on success and every failure. The actual scans
