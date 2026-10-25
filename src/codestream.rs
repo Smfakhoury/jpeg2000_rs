@@ -519,6 +519,10 @@ verus! {
         } else { Ok(styles.styles@[component as int]) }
     }
 
+    pub closed spec fn component_coding_style_count(styles: &ComponentCodingStyles) -> u16 {
+        styles.components
+    }
+
     pub closed spec fn coding_style_tier1_result(style: CodingStyle) -> Result<Tier1CodingStyle, DecodeError> {
         crate::specs::part1_tier1_coding_style_byte(style.code_block_style)
     }
@@ -8027,6 +8031,11 @@ impl<'a> Parser<'a> {
         Ok(*value)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_validate_progression_changes(
+            offset, progression_changes_view(changes), layers, component_styles, self.limits),
+    ))]
     fn validate_progression_changes(
         &self,
         changes: &ProgressionChanges,
@@ -8034,75 +8043,46 @@ impl<'a> Parser<'a> {
         component_styles: &ComponentCodingStyles,
         offset: usize,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_validate_progression_changes); }
         if changes.is_empty() {
             return Ok(());
         }
         let components = component_styles.components;
-        let mut active_coordinates = 0_usize;
-        let mut maximum_resolutions = 0_u8;
-        let mut component = 0_u16;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= components,
-                decreases components - component,
-            )
-        )]
-        while component < components {
-            let resolutions = component_styles
-                .style(component)?
-                .decomposition_levels
-                .checked_add(1)
-                .ok_or_else(|| {
-                    DecodeError::malformed(self.offset(offset), MalformedKind::ArithmeticOverflow)
-                })?;
-            maximum_resolutions = maximum_resolutions.max(resolutions);
-            active_coordinates = active_coordinates
-                .checked_add(
-                    usize::from(layers)
-                        .checked_mul(usize::from(resolutions))
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(offset),
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?,
-                )
-                .ok_or_else(|| {
-                    DecodeError::malformed(self.offset(offset), MalformedKind::ArithmeticOverflow)
-                })?;
-            component = component.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(self.offset(offset), MalformedKind::ArithmeticOverflow)
-            })?;
-        }
-        let validation_work = (changes.records.len() as u64)
-            .checked_mul(active_coordinates as u64)
-            .ok_or_else(|| {
-                DecodeError::malformed(self.offset(offset), MalformedKind::ArithmeticOverflow)
-            })?;
+        let (active_coordinates, maximum_resolutions) =
+            self.progression_validation_shape(layers, component_styles, offset)?;
+        let validation_work =
+            match (changes.records.len() as u64).checked_mul(active_coordinates as u64) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
         if validation_work > self.limits.maximum_work_units() {
-            return Err(DecodeError::limit(
-                Resource::WorkUnits,
-                self.limits.maximum_work_units(),
-                validation_work,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: self.limits.maximum_work_units(),
+                actual: validation_work,
+            });
         }
         let mut owners = vec![false; active_coordinates];
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(owners@ =~= Seq::new(active_coordinates as nat, |index: int| false)); }
         let mut record_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant record_index <= changes.records.len(),
+                    components == component_coding_style_count(component_styles),
+                    crate::specs::part1_validate_progression_changes(
+                        offset, progression_changes_view(changes), layers, component_styles, self.limits)
+                        == crate::specs::part1_poc_admit_records(offset, progression_changes_view(changes),
+                            layers, component_styles, maximum_resolutions, record_index as nat, owners@),
                 decreases changes.records.len() - record_index,
             )
         )]
         while record_index < changes.records.len() {
-            let record = *changes.records.get(record_index).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(offset),
-                    MalformedKind::InvalidProgressionOrderChange,
-                )
-            })?;
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_poc_admit_records, 1); }
+            let record = changes.records[record_index];
             if record.layer_end == 0
                 || record.layer_end > layers
                 || record.component_start >= record.component_end
@@ -8110,103 +8090,253 @@ impl<'a> Parser<'a> {
                 || record.resolution_start >= record.resolution_end
                 || record.resolution_end > maximum_resolutions
             {
-                return Err(DecodeError::malformed(
-                    self.offset(offset),
-                    MalformedKind::InvalidProgressionOrderChange,
-                ));
+                return Err(self.malformed_at(offset, MalformedKind::InvalidProgressionOrderChange));
             }
-            let mut contributed = false;
-            let mut linear = 0_usize;
-            component = 0;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant component <= components,
-                    decreases components - component,
-                )
-            )]
-            while component < components {
-                let resolutions = component_styles
-                    .style(component)?
-                    .decomposition_levels
-                    .checked_add(1)
-                    .ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?;
-                let mut layer = 0_u16;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant layer <= layers,
-                        decreases layers - layer,
-                    )
-                )]
-                while layer < layers {
-                    let mut resolution = 0_u8;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(
-                            invariant resolution <= resolutions,
-                            decreases resolutions - resolution,
-                        )
-                    )]
-                    while resolution < resolutions {
-                        if record.contains(layer, resolution, component) {
-                            let owner = owners.get_mut(linear).ok_or_else(|| {
-                                DecodeError::malformed(
-                                    self.offset(offset),
-                                    MalformedKind::ArithmeticOverflow,
-                                )
-                            })?;
-                            if !*owner {
-                                *owner = true;
-                                contributed = true;
-                            }
-                        }
-                        linear = linear.checked_add(1).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(offset),
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
-                        resolution = resolution.checked_add(1).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(offset),
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
-                    }
-                    layer = layer.checked_add(1).ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?;
-                }
-                component = component.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(self.offset(offset), MalformedKind::ArithmeticOverflow)
-                })?;
-            }
+            let contributed = self.mark_progression_record(
+                record,
+                layers,
+                component_styles,
+                &mut owners,
+                offset,
+            )?;
             if !contributed {
-                return Err(DecodeError::malformed(
-                    self.offset(offset),
-                    MalformedKind::InvalidProgressionOrderChange,
-                ));
+                return Err(self.malformed_at(offset, MalformedKind::InvalidProgressionOrderChange));
             }
-            record_index = record_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(self.offset(offset), MalformedKind::ArithmeticOverflow)
-            })?;
+            record_index = match record_index.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
         }
-        if owners.iter().any(|covered| !covered) {
-            return Err(DecodeError::malformed(
-                self.offset(offset),
-                MalformedKind::InvalidProgressionOrderChange,
-            ));
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_poc_admit_records, 1); }
+        if !progression_owners_complete(&owners) {
+            return Err(self.malformed_at(offset, MalformedKind::InvalidProgressionOrderChange));
         }
         Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_poc_validation_shape(offset, layers, component_styles, 0, 0, 0),
+    ))]
+    fn progression_validation_shape(
+        &self,
+        layers: u16,
+        component_styles: &ComponentCodingStyles,
+        offset: usize,
+    ) -> Result<(usize, u8), DecodeError> {
+        let components = component_styles.components;
+        let mut active_coordinates = 0_usize;
+        let mut maximum_resolutions = 0_u8;
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= components,
+                components == component_coding_style_count(component_styles),
+                crate::specs::part1_poc_validation_shape(offset, layers, component_styles, 0, 0, 0)
+                    == crate::specs::part1_poc_validation_shape(offset, layers, component_styles,
+                        component, active_coordinates, maximum_resolutions),
+            decreases components - component,
+        ))]
+        while component < components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_poc_validation_shape, 1); }
+            let depth = component_styles.style(component)?.decomposition_levels;
+            let resolutions = match depth.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+            if resolutions > maximum_resolutions {
+                maximum_resolutions = resolutions;
+            }
+            let amount = match usize::from(layers).checked_mul(usize::from(resolutions)) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+            active_coordinates = match active_coordinates.checked_add(amount) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+            component = match component.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_poc_validation_shape, 1); }
+        Ok((active_coordinates, maximum_resolutions))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, final(owners)@) == crate::specs::part1_poc_mark_resolutions(
+            offset, record, coordinate, 0, old(owners)@, progress),
+    ))]
+    fn mark_progression_resolutions(
+        &self,
+        record: ProgressionChange,
+        coordinate: (u16, u16, u8),
+        owners: &mut [bool],
+        progress: (usize, bool),
+        offset: usize,
+    ) -> Result<(usize, bool), DecodeError> {
+        let mut linear = progress.0;
+        let mut contributed = progress.1;
+        let mut resolution = 0_u8;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = owners@;
+            let ghost goal = crate::specs::part1_poc_mark_resolutions(offset, record, coordinate, 0, input, progress);
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant resolution <= coordinate.2, input == old(owners)@,
+                goal == crate::specs::part1_poc_mark_resolutions(offset, record, coordinate, 0, input, progress),
+                goal == crate::specs::part1_poc_mark_resolutions(offset, record, coordinate, resolution, owners@, (linear, contributed)),
+            decreases coordinate.2 - resolution,
+        ))]
+        while resolution < coordinate.2 {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_poc_mark_resolutions, 1); }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = owners@; }
+            if record.contains(coordinate.1, resolution, coordinate.0) {
+                let owner = match owners.get_mut(linear) {
+                    Some(value) => value,
+                    None => {
+                        return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow));
+                    }
+                };
+                if !*owner {
+                    *owner = true;
+                    contributed = true;
+                }
+            }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                let fresh = progression_change_contains(record, coordinate.1, resolution, coordinate.0)
+                    && !before[linear as int];
+                assert(owners@ =~= if fresh { before.update(linear as int, true) } else { before });
+            }
+            linear = match linear.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+            resolution = match resolution.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_poc_mark_resolutions, 1); }
+        Ok((linear, contributed))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, final(owners)@) == crate::specs::part1_poc_mark_layers(
+            offset, record, coordinate, layers, 0, old(owners)@, progress),
+    ))]
+    fn mark_progression_layers(
+        &self,
+        record: ProgressionChange,
+        coordinate: (u16, u8),
+        owners: &mut [bool],
+        progress: (usize, bool),
+        layers: u16,
+        offset: usize,
+    ) -> Result<(usize, bool), DecodeError> {
+        let mut linear = progress.0;
+        let mut contributed = progress.1;
+        let mut layer = 0_u16;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = owners@;
+            let ghost goal = crate::specs::part1_poc_mark_layers(offset, record, coordinate, layers, 0, input, progress);
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant layer <= layers, input == old(owners)@,
+                goal == crate::specs::part1_poc_mark_layers(offset, record, coordinate, layers, 0, input, progress),
+                goal == crate::specs::part1_poc_mark_layers(offset, record, coordinate, layers, layer, owners@, (linear, contributed)),
+            decreases layers - layer,
+        ))]
+        while layer < layers {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_poc_mark_layers, 1); }
+            let next = self.mark_progression_resolutions(
+                record,
+                (coordinate.0, layer, coordinate.1),
+                owners,
+                (linear, contributed),
+                offset,
+            )?;
+            linear = next.0;
+            contributed = next.1;
+            layer = match layer.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_poc_mark_layers, 1); }
+        Ok((linear, contributed))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, final(owners)@) == crate::specs::part1_poc_mark_record(
+            offset, record, layers, component_styles, old(owners)@),
+    ))]
+    fn mark_progression_record(
+        &self,
+        record: ProgressionChange,
+        layers: u16,
+        component_styles: &ComponentCodingStyles,
+        owners: &mut [bool],
+        offset: usize,
+    ) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_poc_mark_record); }
+        let components = component_styles.components;
+        let mut linear = 0_usize;
+        let mut contributed = false;
+        let mut component = 0_u16;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = owners@;
+            let ghost goal = crate::specs::part1_poc_mark_components(offset, record, layers, component_styles, 0, input, (0, false));
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= components, components == component_coding_style_count(component_styles),
+                input == old(owners)@,
+                goal == crate::specs::part1_poc_mark_components(offset, record, layers, component_styles, 0, input, (0, false)),
+                goal == crate::specs::part1_poc_mark_components(offset, record, layers, component_styles, component, owners@, (linear, contributed)),
+            decreases components - component,
+        ))]
+        while component < components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_poc_mark_components, 1); }
+            let depth = component_styles.style(component)?.decomposition_levels;
+            let resolutions = match depth.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+            let next = self.mark_progression_layers(
+                record,
+                (component, resolutions),
+                owners,
+                (linear, contributed),
+                layers,
+                offset,
+            )?;
+            linear = next.0;
+            contributed = next.1;
+            component = match component.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_poc_mark_components, 1); }
+        Ok(contributed)
     }
 
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
@@ -10769,6 +10899,25 @@ const fn is_allowed_tile_header(marker: u16) -> bool {
             | CBD
             | ATK
     )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_progression_owners_complete(owners@),
+))]
+fn progression_owners_complete(owners: &[bool]) -> bool {
+    let mut position = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant position <= owners.len(),
+            forall|index: int| 0 <= index < position ==> owners@[index],
+        decreases owners.len() - position,
+    ))]
+    while position < owners.len() {
+        if !owners[position] {
+            return false;
+        }
+        position += 1;
+    }
+    true
 }
 
 const fn progression_orders_equal(left: ProgressionOrder, right: ProgressionOrder) -> bool {
@@ -17036,6 +17185,613 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn raw_progression_styles(components: u16, depths: &[u8]) -> ComponentCodingStyles {
+        assert!(!depths.is_empty());
+        let mut seed = raw_owned_tile_part_fixture(0).coding_style;
+        seed.layers = u16::MAX;
+        seed.decomposition_levels = u8::MAX;
+        seed.code_block_width = 0;
+        seed.code_block_style = u8::MAX;
+        let mut styles = ComponentCodingStyles {
+            components,
+            styles: [seed; MAX_COMPONENTS],
+        };
+        for index in 0..usize::from(components).min(MAX_COMPONENTS) {
+            styles.styles[index].decomposition_levels = depths[index % depths.len()];
+        }
+        styles
+    }
+
+    fn reference_progression_shape(
+        layers: u16,
+        styles: &ComponentCodingStyles,
+        offset: usize,
+    ) -> Result<(usize, u8), DecodeError> {
+        let overflow = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let mut active = 0_u128;
+        let mut maximum = 0;
+        for component in 0..usize::from(styles.components) {
+            let style = styles
+                .styles
+                .get(component)
+                .ok_or(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidCodingStyle,
+                })?;
+            if style.decomposition_levels == u8::MAX {
+                return Err(overflow());
+            }
+            let resolutions = style.decomposition_levels + 1;
+            active += u128::from(layers) * u128::from(resolutions);
+            if active > usize::MAX as u128 {
+                return Err(overflow());
+            }
+            maximum = maximum.max(resolutions);
+        }
+        Ok((active as usize, maximum))
+    }
+
+    fn reference_progression_contains(
+        record: ProgressionChange,
+        component: u16,
+        layer: u16,
+        resolution: u8,
+    ) -> bool {
+        (0..record.layer_end).contains(&layer)
+            && (record.resolution_start..record.resolution_end).contains(&resolution)
+            && (record.component_start..record.component_end).contains(&component)
+    }
+
+    fn reference_mark_progression_resolutions(
+        record: ProgressionChange,
+        coordinate: (u16, u16, u8),
+        owners: &mut [bool],
+        progress: (usize, bool),
+        offset: usize,
+    ) -> Result<(usize, bool), DecodeError> {
+        let overflow = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let (mut linear, mut contributed) = progress;
+        for resolution in 0..coordinate.2 {
+            if reference_progression_contains(record, coordinate.0, coordinate.1, resolution) {
+                let owner = owners.get_mut(linear).ok_or_else(overflow)?;
+                if !*owner {
+                    *owner = true;
+                    contributed = true;
+                }
+            }
+            let next = linear as u128 + 1;
+            if next > usize::MAX as u128 {
+                return Err(overflow());
+            }
+            linear = next as usize;
+        }
+        Ok((linear, contributed))
+    }
+
+    fn reference_mark_progression_layers(
+        record: ProgressionChange,
+        coordinate: (u16, u8),
+        owners: &mut [bool],
+        progress: (usize, bool),
+        layers: u16,
+        offset: usize,
+    ) -> Result<(usize, bool), DecodeError> {
+        let mut progress = progress;
+        for layer in 0..layers {
+            progress = reference_mark_progression_resolutions(
+                record,
+                (coordinate.0, layer, coordinate.1),
+                owners,
+                progress,
+                offset,
+            )?;
+        }
+        Ok(progress)
+    }
+
+    fn reference_mark_progression_record(
+        record: ProgressionChange,
+        layers: u16,
+        styles: &ComponentCodingStyles,
+        owners: &mut [bool],
+        offset: usize,
+    ) -> Result<bool, DecodeError> {
+        let mut progress = (0, false);
+        for component in 0..styles.components {
+            let style =
+                styles
+                    .styles
+                    .get(usize::from(component))
+                    .ok_or(DecodeError::MalformedInput {
+                        offset: 0,
+                        kind: MalformedKind::InvalidCodingStyle,
+                    })?;
+            if style.decomposition_levels == u8::MAX {
+                return Err(DecodeError::MalformedInput {
+                    offset: offset as u64,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+            progress = reference_mark_progression_layers(
+                record,
+                (component, style.decomposition_levels + 1),
+                owners,
+                progress,
+                layers,
+                offset,
+            )?;
+        }
+        Ok(progress.1)
+    }
+
+    fn reference_progression_admission(
+        records: &[ProgressionChange],
+        layers: u16,
+        styles: &ComponentCodingStyles,
+        limits: &ResourceLimits,
+        offset: usize,
+    ) -> Result<(), DecodeError> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        let malformed = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::InvalidProgressionOrderChange,
+        };
+        let (active, maximum) = reference_progression_shape(layers, styles, offset)?;
+        let cost = records.len() as u128 * active as u128;
+        if cost > u128::from(u64::MAX) {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::ArithmeticOverflow,
+            });
+        }
+        if cost > u128::from(limits.maximum_work_units()) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: cost as u64,
+            });
+        }
+        let coordinates: Vec<(u16, u16, u8)> = (0..styles.components)
+            .flat_map(|component| {
+                let resolutions = styles.styles[usize::from(component)].decomposition_levels + 1;
+                (0..layers).flat_map(move |layer| {
+                    (0..resolutions).map(move |resolution| (component, layer, resolution))
+                })
+            })
+            .collect();
+        assert_eq!(coordinates.len(), active);
+        let mut owned = std::collections::BTreeSet::new();
+        for record in records {
+            if record.layer_end == 0
+                || record.layer_end > layers
+                || record.component_start >= record.component_end
+                || record.component_end > styles.components
+                || record.resolution_start >= record.resolution_end
+                || record.resolution_end > maximum
+            {
+                return Err(malformed());
+            }
+            let selected: std::collections::BTreeSet<_> = coordinates
+                .iter()
+                .copied()
+                .filter(|(component, layer, resolution)| {
+                    reference_progression_contains(*record, *component, *layer, *resolution)
+                })
+                .collect();
+            if selected.difference(&owned).next().is_none() {
+                return Err(malformed());
+            }
+            owned.extend(selected);
+        }
+        if owned.len() == active {
+            Ok(())
+        } else {
+            Err(malformed())
+        }
+    }
+
+    fn raw_progression_windows() -> [ProgressionChange; 4] {
+        [
+            ProgressionChange {
+                resolution_start: 0,
+                resolution_end: u8::MAX,
+                component_start: 0,
+                component_end: u16::MAX,
+                layer_end: u16::MAX,
+                progression_order: ProgressionOrder::Lrcp,
+            },
+            ProgressionChange {
+                resolution_start: 1,
+                resolution_end: 2,
+                component_start: 1,
+                component_end: 2,
+                layer_end: 1,
+                progression_order: ProgressionOrder::Cprl,
+            },
+            ProgressionChange {
+                resolution_start: 2,
+                resolution_end: 1,
+                component_start: u16::MAX,
+                component_end: 0,
+                layer_end: u16::MAX,
+                progression_order: ProgressionOrder::Rpcl,
+            },
+            ProgressionChange {
+                resolution_start: 0,
+                resolution_end: u8::MAX,
+                component_start: 0,
+                component_end: u16::MAX,
+                layer_end: 0,
+                progression_order: ProgressionOrder::Pcrl,
+            },
+        ]
+    }
+
+    fn raw_progression_bitmap(length: usize, pattern: usize) -> Vec<bool> {
+        (0..length)
+            .map(|index| pattern == 1 || (pattern == 2 && index % 2 != 0))
+            .collect()
+    }
+
+    #[test]
+    fn actual_progression_shape_preserves_raw_styles_empty_bypass_and_work_thresholds() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let patterns: &[&[u8]] = &[&[0], &[1], &[31], &[254], &[255], &[0, 254], &[255, 0]];
+        let empty = ProgressionChanges::from_records(vec![]);
+        let changes = ProgressionChanges::from_records(vec![raw_progression_windows()[0]]);
+        let mut cases = 0;
+        for components in [0, 1, 2, 3, 63, 64, 65, 255, 256, 257, u16::MAX] {
+            for layers in [0, 1, 2, 4, u16::MAX] {
+                for depths in patterns {
+                    let styles = raw_progression_styles(components, depths);
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.progression_validation_shape(layers, &styles, offset),
+                            reference_progression_shape(layers, &styles, offset)
+                        );
+                        assert_eq!(
+                            parser.validate_progression_changes(&empty, layers, &styles, offset),
+                            Ok(())
+                        );
+                        assert_eq!(
+                            parser.validate_progression_changes(&changes, layers, &styles, offset),
+                            reference_progression_admission(
+                                changes.records(),
+                                layers,
+                                &styles,
+                                &limits,
+                                offset
+                            )
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 770);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_progression_marking_preserves_arbitrary_bitmaps_and_partial_failure_prefixes() {
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&[], &limits).unwrap();
+        parser.position = usize::MAX;
+        let mut rows = 0;
+        for record in raw_progression_windows() {
+            for component in [0, 1, u16::MAX] {
+                for layer in [0, 1, u16::MAX] {
+                    for resolutions in [0, 1, 2, 3, u8::MAX] {
+                        for length in [0, 1, 2, 4, 8] {
+                            for pattern in 0..3 {
+                                for linear in [0, 1, 2, usize::MAX - 1, usize::MAX] {
+                                    for marked in [false, true] {
+                                        for offset in [0, usize::MAX] {
+                                            let mut owners =
+                                                raw_progression_bitmap(length, pattern);
+                                            let mut expected = owners.clone();
+                                            let result = reference_mark_progression_resolutions(
+                                                record,
+                                                (component, layer, resolutions),
+                                                &mut expected,
+                                                (linear, marked),
+                                                offset,
+                                            );
+                                            assert_eq!(
+                                                parser.mark_progression_resolutions(
+                                                    record,
+                                                    (component, layer, resolutions),
+                                                    &mut owners,
+                                                    (linear, marked),
+                                                    offset
+                                                ),
+                                                result
+                                            );
+                                            assert_eq!(owners, expected);
+                                            rows += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(rows, 54_000);
+        let mut layer_cases = 0;
+        for record in raw_progression_windows() {
+            for component in [0, 1, u16::MAX] {
+                for resolutions in 0..=3 {
+                    for layers in 0..=3 {
+                        for length in [0, 1, 2, 4, 8] {
+                            for pattern in 0..3 {
+                                for linear in [0, 1, 2, usize::MAX - 1, usize::MAX] {
+                                    for marked in [false, true] {
+                                        for offset in [0, usize::MAX] {
+                                            let mut owners =
+                                                raw_progression_bitmap(length, pattern);
+                                            let mut expected = owners.clone();
+                                            let result = reference_mark_progression_layers(
+                                                record,
+                                                (component, resolutions),
+                                                &mut expected,
+                                                (linear, marked),
+                                                layers,
+                                                offset,
+                                            );
+                                            assert_eq!(
+                                                parser.mark_progression_layers(
+                                                    record,
+                                                    (component, resolutions),
+                                                    &mut owners,
+                                                    (linear, marked),
+                                                    layers,
+                                                    offset
+                                                ),
+                                                result
+                                            );
+                                            assert_eq!(owners, expected);
+                                            layer_cases += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(layer_cases, 57_600);
+        let mut records = 0;
+        for components in [0, 1, 2, 3, 63, 64, 65, u16::MAX] {
+            let patterns: &[&[u8]] = if components <= 3 {
+                &[&[0], &[1], &[0, 2], &[254], &[255], &[0, 255]]
+            } else {
+                &[&[0], &[0, 2], &[0, 255]]
+            };
+            for depths in patterns {
+                let styles = raw_progression_styles(components, depths);
+                for layers in 0..=2 {
+                    for record in raw_progression_windows() {
+                        for length in [0, 1, 2, 4, 64] {
+                            for pattern in 0..3 {
+                                for offset in [0, usize::MAX] {
+                                    let mut owners = raw_progression_bitmap(length, pattern);
+                                    let mut expected = owners.clone();
+                                    let result = reference_mark_progression_record(
+                                        record,
+                                        layers,
+                                        &styles,
+                                        &mut expected,
+                                        offset,
+                                    );
+                                    assert_eq!(
+                                        parser.mark_progression_record(
+                                            record,
+                                            layers,
+                                            &styles,
+                                            &mut owners,
+                                            offset
+                                        ),
+                                        result
+                                    );
+                                    assert_eq!(owners, expected);
+                                    records += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(records, 12_960);
+        for marked in [false, true] {
+            for offset in [0, usize::MAX] {
+                let mut owners = vec![];
+                assert_eq!(
+                    parser.mark_progression_layers(
+                        raw_progression_windows()[0],
+                        (u16::MAX, 0),
+                        &mut owners,
+                        (usize::MAX, marked),
+                        u16::MAX,
+                        offset
+                    ),
+                    Ok((usize::MAX, marked))
+                );
+                assert!(owners.is_empty());
+            }
+        }
+        let mut completions = 0;
+        for length in 0..=12 {
+            for mask in 0..1_usize << length {
+                let owners: Vec<bool> = (0..length).map(|index| mask & (1 << index) != 0).collect();
+                assert_eq!(
+                    progression_owners_complete(&owners),
+                    owners.iter().all(|value| *value)
+                );
+                completions += 1;
+            }
+        }
+        assert_eq!(completions, 8_191);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn actual_progression_admission_matches_independent_coordinate_sets_and_overlap_order() {
+        let input = [0xa5, 0x5a];
+        let orders = [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ];
+        let mut cases = 0;
+        for components in 0..=3 {
+            for depths in [&[0_u8][..], &[0, 2], &[2, 0, 1]] {
+                let styles = raw_progression_styles(components, depths);
+                for layers in 0..=3 {
+                    let (active, maximum) =
+                        reference_progression_shape(layers, &styles, 0).unwrap();
+                    let full = ProgressionChange {
+                        resolution_start: 0,
+                        resolution_end: maximum,
+                        component_start: 0,
+                        component_end: components,
+                        layer_end: layers,
+                        progression_order: ProgressionOrder::Lrcp,
+                    };
+                    let mut pool = [full; 12];
+                    pool[1].layer_end = 0;
+                    pool[2].layer_end = layers + 1;
+                    pool[3].component_start = components;
+                    pool[4].component_end = components + 1;
+                    pool[5].resolution_start = maximum;
+                    pool[6].resolution_end = maximum + 1;
+                    pool[7].layer_end = 1;
+                    pool[8].resolution_end = 1;
+                    pool[9].component_end = 1;
+                    pool[10].resolution_start = 1;
+                    pool[11] = raw_progression_windows()[2];
+                    for (index, record) in pool.iter_mut().enumerate() {
+                        record.progression_order = orders[index % 5];
+                    }
+                    let mut sequences = vec![vec![]];
+                    for first in pool {
+                        sequences.push(vec![first]);
+                        for second in pool {
+                            sequences.push(vec![first, second]);
+                        }
+                    }
+                    assert_eq!(sequences.len(), 157);
+                    for records in sequences {
+                        let cost = active as u64 * records.len() as u64;
+                        let changes = ProgressionChanges::from_records(records.clone());
+                        for cap in [0, cost.saturating_sub(1), cost, cost + 1] {
+                            let limits = ResourceLimits::HARDENED
+                                .with_maximum_work_units(cap)
+                                .unwrap();
+                            let mut parser = new_parser(&input, &limits).unwrap();
+                            parser.position = usize::MAX;
+                            parser.work_units = u64::MAX;
+                            parser.packet_length_bytes = u64::MAX - 1;
+                            parser.packet_lengths = u64::MAX - 2;
+                            for offset in [0, usize::MAX] {
+                                assert_eq!(
+                                    parser.validate_progression_changes(
+                                        &changes, layers, &styles, offset
+                                    ),
+                                    reference_progression_admission(
+                                        &records, layers, &styles, &limits, offset
+                                    )
+                                );
+                                assert_eq!(changes.records(), records);
+                                assert_eq!(
+                                    (
+                                        parser.position,
+                                        parser.work_units,
+                                        parser.packet_length_bytes,
+                                        parser.packet_lengths
+                                    ),
+                                    (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+                                );
+                                assert_eq!(parser.input, &input);
+                                assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+                                assert!(core::ptr::eq(parser.limits, &limits));
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 60_288);
+        let styles = raw_progression_styles(1, &[2]);
+        let first = ProgressionChange {
+            resolution_start: 0,
+            resolution_end: 2,
+            component_start: 0,
+            component_end: 1,
+            layer_end: 1,
+            progression_order: ProgressionOrder::Lrcp,
+        };
+        let second = ProgressionChange {
+            resolution_start: 1,
+            resolution_end: 3,
+            ..first
+        };
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(6).unwrap();
+        let parser = new_parser(&[], &limits).unwrap();
+        let overlap = ProgressionChanges::from_records(vec![first, second]);
+        assert_eq!(
+            parser.validate_progression_changes(&overlap, 1, &styles, 17),
+            Ok(())
+        );
+        let redundant = ProgressionChanges::from_records(vec![first, first]);
+        assert_eq!(
+            parser.validate_progression_changes(&redundant, 1, &styles, 17),
+            Err(DecodeError::MalformedInput {
+                offset: 17,
+                kind: MalformedKind::InvalidProgressionOrderChange
+            })
+        );
     }
 
     fn reference_poc_component(

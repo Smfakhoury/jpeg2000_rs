@@ -25,6 +25,39 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native semantic progression admission
+
+Actual progression admission binds its complete Result from raw records,
+layers, the actual component-style owner and actual work cap. Empty input
+bypasses all style/budget checks. Otherwise real style lookup, depth increment
+and coordinate arithmetic precede the calculated records-times-active work
+comparison, then record bounds, fresh contribution and final coverage.
+Existing parser work counters are not charged by this read-only validation.
+
+The sole factored resolution/layer/component loops bind arbitrary scratch
+bitmaps and exact partial mutations on errors, without admitted rows, style/
+bitmap validity, successful coverage or prepared outcomes. Every record must
+add a previously-unowned active coordinate: partial overlaps remain legal,
+entirely redundant records fail, and the final union must cover every active
+coordinate. Heterogeneous depths, raw count/depth errors, zero layers and
+unused style fields retain native order and behavior.
+
+The real completion scan, existing window predicate and range denotation
+compose through six exact contracts. Explicit initial and already-owned
+sequence equalities expose actual bitmap effects rather than adding trust.
+No new caps, pins, solver budgets or termination opt-outs are introduced.
+Independent wide-arithmetic and coordinate-set references compare 770 raw
+shape/empty-bypass cases, 54,000 resolution scans, 57,600 layer scans, 12,960
+complete record/partial-bitmap cases and 8,191 completion bitmaps. Another
+60,288 complete-admission contexts check empty/single/pair windows against
+calculated-work caps at zero, cost-minus-one, exact cost and cost-plus-one.
+Explicit partial-overlap acceptance and redundant-record rejection distinguish
+the native fresh-contribution policy from an incorrect disjointness rule.
+All parser fields remain unchanged; these are maintained regressions, not
+official conformance.
+Remaining fragmented transform/packet/layout/file/layer/F2/F4/final F8 joins
+stay separate.
+
 ## Complete native raw POC progression records
 
 Actual POC syntax parsing binds the full Result and every physical record
@@ -43,6 +76,7 @@ Three curated exact contracts bind the actual readers and complete record
 production without prepared records, valid-range/coverage premises, new trust,
 caps, pins or solver-budget changes. The real downstream range, coverage and
 duplicate validation is explicitly not proved by this syntax milestone.
+The separate semantic-admission section above covers that actual consumer.
 Independent chunk/endian references compare 7,200 helper frontiers, 524,288
 word/fallback contexts, 131,072 component-count contexts, 786,432 raw record
 word contexts, 179,712 full-byte/alignment mutations and 600 length/error

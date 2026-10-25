@@ -1,5 +1,18 @@
 # Specification audit guide
 
+`part1_validate_progression_changes` binds the real read-only semantic
+validator to raw records/styles/layers and actual work limits. Shape folds
+observe real style lookup/depth/count arithmetic before budget and record
+checks. Owner folds observe the sole native coordinate loops, binding all
+partial bitmap effects for arbitrary inputs. No valid-window/style/bitmap
+premise is consumed. Partial overlap is legal only when each record adds a
+fresh active coordinate, and final full coverage is required. Empty bypass,
+heterogeneous/invalid styles and calculated-work-before-record precedence
+remain explicit; actual parser work counters stay untouched. Existing range/
+contains models and the real completion scan compose without result banks,
+new trust, caps, pins or solver-budget changes. Remaining outer joins remain
+separate.
+
 `part1_parse_poc` binds actual raw syntax to the complete progression-record
 Result, using real byte/component reads and source-derived count/alignment
 geometry. Threshold257, empty/alignment/order precedence, all physical raw
