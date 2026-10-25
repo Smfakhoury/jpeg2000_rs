@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part1_parse_mct` binds the actual full raw numeric array to source bytes and
+limits. Header/alignment/component-square checks precede all actual values.
+Signed16/32, packed64, IEEE32/64 and generic binary-to-Q32 producers compose
+through the sole element body, not converted-value banks. Existing ATK
+numerical denotations are reused with exact unit-error projection and the
+original MCT exponent guard. Native zero/nonfinite/tie/underflow/overflow
+semantics and source-derived read/count bounds require no normalized-value
+premise, trust/cap/pin/budget change. Seven exact contracts leave actual MCT
+fragment/graph and final outer joins explicitly separate.
+
 `part1_consume_mcc_fragment` composes the real staging, exact completion,
 swap-remove, stored-offset reconstruction and actual MCC parser, binding both
 pending and completed vectors on success and every failure. The actual scans

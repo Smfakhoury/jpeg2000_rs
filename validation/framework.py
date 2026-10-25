@@ -792,6 +792,31 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_TRANSFORM_ARRAY_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "read_u64"): (
+        "part1_codestream_u64", r"\1", None, r"bytes\s*@",
+    ),
+    ("src/codestream.rs", "signed_u16"): (
+        "part1_signed_u16", r"\1", None, "value",
+    ),
+    ("src/codestream.rs", "fixed_from_binary"): (
+        "part1_fixed_from_binary", r"\1", None, r"negative\s*,\s*significand\s*,\s*binary_exponent",
+    ),
+    ("src/codestream.rs", "float32_to_fixed"): (
+        "part1_float32_to_fixed", r"\1", None, "bits",
+    ),
+    ("src/codestream.rs", "float64_to_fixed"): (
+        "part1_float64_to_fixed", r"\1", None, "bits",
+    ),
+    ("src/codestream.rs", "Parser::decode_mct_element"): (
+        "part1_mct_element", r"\1", None, r"offset\s*,\s*data\s*@\s*,\s*position\s*,\s*numeric_format",
+    ),
+    ("src/codestream.rs", "Parser::parse_mct"): (
+        "part1_parse_mct", _coverage_call("mct_array_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits",
+    ),
+}
+
 _COLLECTION_FRAGMENT_CONTRACTS = {
     ("src/codestream.rs", "find_mcc_fragment"): (
         "part1_mcc_fragment_find", r"\1", None,
@@ -2361,6 +2386,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_ROUTING_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_COLLECTION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COLLECTION_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

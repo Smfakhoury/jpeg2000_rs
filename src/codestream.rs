@@ -2358,6 +2358,10 @@ verus! {
         (array.index, array.kind, array.numeric_format, array.fraction_bits, array.values@)
     }
 
+    closed spec fn mct_array_outcome(value: Result<MctArray, DecodeError>) -> Result<crate::specs::Part2MctArray, DecodeError> {
+        match value { Err(error) => Err(error), Ok(value) => Ok(mct_array_view(&value)) }
+    }
+
     pub open spec fn mct_array_option(value: Option<&MctArray>) -> Option<crate::specs::Part2MctArray> {
         match value { None => None, Some(array) => Some(mct_array_view(array)) }
     }
@@ -6888,49 +6892,40 @@ impl<'a> Parser<'a> {
         Ok((active_index, maximum_bytes))
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures mct_array_outcome(result) == crate::specs::part1_parse_mct(segment_view(segment), self.limits),
+    ))]
     fn parse_mct(&self, segment: Segment<'a>) -> Result<MctArray, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_mct); reveal(crate::specs::part1_mct_header);
+            mct_fixed_precision_is_q32();
+        }
         if segment.payload.len() < 8 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         let z = read_u16([segment.payload[0], segment.payload[1]]);
         let descriptor = read_u16([segment.payload[2], segment.payload[3]]);
         let y = read_u16([segment.payload[4], segment.payload[5]]);
         if z != 0 || y != 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         if descriptor & 0xf000 != 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
-        let index = u8::try_from(descriptor & 0xff).map_err(|_| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(descriptor & 255 <= 255u16) by (bit_vector); }
+        let index = (descriptor & 0xff) as u8;
         if index == 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         let kind = match (descriptor >> 8) & 3 {
             0 => MctArrayKind::Dependency,
             1 => MctArrayKind::Decorrelation,
             2 => MctArrayKind::Offset,
             _ => {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
         };
         let (numeric_format, element_bytes) = match (descriptor >> 10) & 3 {
@@ -6940,27 +6935,26 @@ impl<'a> Parser<'a> {
             _ => (MctNumericFormat::Float64, 8_usize),
         };
         let data = &segment.payload[6..];
-        if data.is_empty() || !data.len().is_multiple_of(element_bytes) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+        let remainder = data.len() % element_bytes;
+        if data.is_empty() || remainder != 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         let element_count = data.len() / element_bytes;
-        let maximum = u64::from(self.limits.maximum_components())
-            .checked_mul(u64::from(self.limits.maximum_components()))
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+        let cap = self.limits.maximum_components();
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(0 <= cap as int <= 65535 ==> cap as int * cap as int <= 4294836225) by (nonlinear_arith); }
+        let maximum = match u64::from(cap).checked_mul(u64::from(cap)) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if element_count as u64 > maximum {
-            return Err(DecodeError::limit(
-                Resource::TransformElements,
-                maximum,
-                element_count as u64,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::TransformElements,
+                limit: maximum,
+                actual: element_count as u64,
+            });
         }
         let fraction_bits = if matches!(
             numeric_format,
@@ -6973,151 +6967,61 @@ impl<'a> Parser<'a> {
         let mut values = Vec::with_capacity(element_count);
         let mut position = 0_usize;
         let mut remaining_elements = element_count;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost goal = crate::specs::part1_parse_mct(segment_view(segment), self.limits);
+            let ghost target = crate::specs::part1_mct_values(segment.offset, data@, numeric_format, 0, Seq::empty());
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(data.len() as int, element_bytes as int);
+            assert(element_bytes as int * remaining_elements as int == remaining_elements as int * element_bytes as int) by (nonlinear_arith);
+        }
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases remaining_elements,)
+            verus_spec(
+                invariant position <= data.len(), remaining_elements <= element_count,
+                    element_bytes == crate::specs::part1_mct_element_width(numeric_format),
+                    element_bytes == 2 || element_bytes == 4 || element_bytes == 8,
+                    position + remaining_elements as int * element_bytes as int == data.len(),
+                    target == crate::specs::part1_mct_values(segment.offset, data@, numeric_format, position as nat, values@),
+                    goal == crate::specs::part1_parse_mct(segment_view(segment), self.limits),
+                    goal == match target { Err(error) => Err(error), Ok(parsed) => Ok((index, kind, numeric_format, fraction_bits, parsed)) },
+                decreases remaining_elements,
+            )
         )]
         while position < data.len() {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost start = position; }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_mct_values, 1);
+                assert(element_bytes > 0 && position + remaining_elements as int * element_bytes as int == data.len()
+                    && position < data.len() ==> remaining_elements > 0 && position + element_bytes <= data.len()) by (nonlinear_arith);
+            }
             if remaining_elements == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
             remaining_elements -= 1;
-            if data.len().saturating_sub(position) < element_bytes {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
-            }
-            let position_1 = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let byte_0 = *data.get(position).ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
-            let byte_1 = *data.get(position_1).ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
-            let value = match numeric_format {
-                MctNumericFormat::Int16 => signed_u16(read_u16([byte_0, byte_1])),
-                MctNumericFormat::Int32 => {
-                    let position_2 = position.checked_add(2).ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(segment.offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?;
-                    let position_3 = position.checked_add(3).ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(segment.offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?;
-                    signed_u32(read_u32([
-                        byte_0,
-                        byte_1,
-                        *data.get(position_2).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidTransform,
-                            )
-                        })?,
-                        *data.get(position_3).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidTransform,
-                            )
-                        })?,
-                    ]))
-                }
-                MctNumericFormat::Float32 => {
-                    let position_2 = position.checked_add(2).ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(segment.offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?;
-                    let position_3 = position.checked_add(3).ok_or_else(|| {
-                        DecodeError::malformed(
-                            self.offset(segment.offset),
-                            MalformedKind::ArithmeticOverflow,
-                        )
-                    })?;
-                    let bits = read_u32([
-                        byte_0,
-                        byte_1,
-                        *data.get(position_2).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidTransform,
-                            )
-                        })?,
-                        *data.get(position_3).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidTransform,
-                            )
-                        })?,
-                    ]);
-                    float32_to_fixed(bits).map_err(|_| {
-                        DecodeError::malformed(
-                            self.offset(segment.offset),
-                            MalformedKind::InvalidTransform,
-                        )
-                    })?
-                }
-                MctNumericFormat::Float64 => {
-                    let mut bytes = [0_u8; 8];
-                    let mut byte_index = 0_usize;
-                    #[cfg_attr(
-                        verus_keep_ghost,
-                        verus_spec(
-                            invariant byte_index <= bytes.len(),
-                            decreases bytes.len() - byte_index,
-                        )
-                    )]
-                    while byte_index < bytes.len() {
-                        bytes[byte_index] = *data
-                            .get(position.checked_add(byte_index).ok_or_else(|| {
-                                DecodeError::malformed(
-                                    self.offset(segment.offset),
-                                    MalformedKind::ArithmeticOverflow,
-                                )
-                            })?)
-                            .ok_or_else(|| {
-                                DecodeError::malformed(
-                                    self.offset(segment.offset),
-                                    MalformedKind::InvalidTransform,
-                                )
-                            })?;
-                        byte_index = byte_index.checked_add(1).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
-                    }
-                    float64_to_fixed(read_u64(bytes)).map_err(|_| {
-                        DecodeError::malformed(
-                            self.offset(segment.offset),
-                            MalformedKind::InvalidTransform,
-                        )
-                    })?
+            let value = self.decode_mct_element(data, position, numeric_format, segment.offset)?;
+            values.push(value);
+            position = match position.checked_add(element_bytes) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
-            values.push(value);
-            position = position.checked_add(element_bytes).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(position == start + element_bytes);
+                assert((remaining_elements as int + 1) * element_bytes as int ==
+                    remaining_elements as int * element_bytes as int + element_bytes as int) by (nonlinear_arith);
+            }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_values, 1); reveal(mct_array_view); }
         Ok(MctArray {
             index,
             kind,
@@ -7125,6 +7029,88 @@ impl<'a> Parser<'a> {
             fraction_bits,
             values,
         })
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_mct_element(offset, data@, position, numeric_format),
+    ))]
+    fn decode_mct_element(
+        &self,
+        data: &[u8],
+        position: usize,
+        numeric_format: MctNumericFormat,
+        offset: usize,
+    ) -> Result<i64, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_mct_element); }
+        let width = match numeric_format {
+            MctNumericFormat::Int16 => 2usize,
+            MctNumericFormat::Int32 | MctNumericFormat::Float32 => 4,
+            MctNumericFormat::Float64 => 8,
+        };
+        if position > data.len() || data.len() - position < width {
+            return Err(self.malformed_at(offset, MalformedKind::InvalidTransform));
+        }
+        let position_1 = match position.checked_add(1) {
+            Some(value) => value,
+            None => return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow)),
+        };
+        let byte_0 = data[position];
+        let byte_1 = data[position_1];
+        match numeric_format {
+            MctNumericFormat::Int16 => Ok(signed_u16(read_u16([byte_0, byte_1]))),
+            MctNumericFormat::Int32 | MctNumericFormat::Float32 => {
+                let position_2 = match position.checked_add(2) {
+                    Some(value) => value,
+                    None => {
+                        return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow));
+                    }
+                };
+                let position_3 = match position.checked_add(3) {
+                    Some(value) => value,
+                    None => {
+                        return Err(self.malformed_at(offset, MalformedKind::ArithmeticOverflow));
+                    }
+                };
+                let bits = read_u32([byte_0, byte_1, data[position_2], data[position_3]]);
+                if matches!(numeric_format, MctNumericFormat::Int32) {
+                    Ok(signed_u32(bits))
+                } else {
+                    match float32_to_fixed(bits) {
+                        Ok(value) => Ok(value),
+                        Err(()) => Err(self.malformed_at(offset, MalformedKind::InvalidTransform)),
+                    }
+                }
+            }
+            MctNumericFormat::Float64 => {
+                let mut bytes = [0_u8; 8];
+                let mut byte_index = 0_usize;
+                #[cfg_attr(verus_keep_ghost, verus_spec(
+                    invariant byte_index <= 8, position as int + 8 <= data.len(),
+                        forall|index: int| 0 <= index < byte_index ==> bytes@[index] == data@[position as int + index],
+                    decreases 8 - byte_index,
+                ))]
+                while byte_index < bytes.len() {
+                    let source = match position.checked_add(byte_index) {
+                        Some(value) => value,
+                        None => {
+                            return Err(
+                                self.malformed_at(offset, MalformedKind::ArithmeticOverflow)
+                            );
+                        }
+                    };
+                    bytes[byte_index] = data[source];
+                    byte_index += 1;
+                }
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(bytes@ =~= data@.subrange(position as int, position as int + 8)); }
+                match float64_to_fixed(read_u64(bytes)) {
+                    Ok(value) => Ok(value),
+                    Err(()) => Err(self.malformed_at(offset, MalformedKind::InvalidTransform)),
+                }
+            }
+        }
     }
 
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
@@ -11028,10 +11014,25 @@ fn u16_list_contains(values: &[u16], value: u16) -> bool {
     false
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_float32_to_fixed(bits),
+))]
 fn float32_to_fixed(bits: u32) -> Result<i64, ()> {
     let negative = bits >> 31 != 0;
     let exponent = (bits >> 23) & 0xff;
     let fraction = bits & 0x7f_ffff;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part2_atk_binary_format);
+        assert(((1u128 << 8) - 1) as u128 == 255u128) by (bit_vector);
+        assert(((1u128 << 23) - 1) as u128 == 0x7fffffu128) by (bit_vector);
+        assert(((bits as u128) >> 31 != 0) == (bits >> 31 != 0)) by (bit_vector);
+        assert((((bits as u128) >> 23) & (((1u128 << 8) - 1) as u128)) == (((bits >> 23) & 255) as u128)) by (bit_vector);
+        assert(((bits as u128) & (((1u128 << 23) - 1) as u128)) == ((bits & 0x7fffff) as u128)) by (bit_vector);
+        assert(((1u32 << 23) | fraction) as u128 == (1u128 << 23) | fraction as u128) by (bit_vector);
+        assert((bits >> 23) & 255 <= 255u32) by (bit_vector);
+    }
     if exponent == 0xff {
         return Err(());
     }
@@ -11041,18 +11042,30 @@ fn float32_to_fixed(bits: u32) -> Result<i64, ()> {
     let (significand, binary_exponent) = if exponent == 0 {
         (u128::from(fraction), -149_i32)
     } else {
-        (
-            u128::from((1_u32 << 23) | fraction),
-            i32::try_from(exponent).map_err(|_| ())? - 150,
-        )
+        (u128::from((1_u32 << 23) | fraction), exponent as i32 - 150)
     };
     fixed_from_binary(negative, significand, binary_exponent)
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_float64_to_fixed(bits),
+))]
 fn float64_to_fixed(bits: u64) -> Result<i64, ()> {
     let negative = bits >> 63 != 0;
     let exponent = (bits >> 52) & 0x7ff;
     let fraction = bits & 0x000f_ffff_ffff_ffff;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(crate::specs::part2_atk_binary_format);
+        assert(((1u128 << 11) - 1) as u128 == 2047u128) by (bit_vector);
+        assert(((1u128 << 52) - 1) as u128 == 0x000fffffffffffffu128) by (bit_vector);
+        assert(((bits as u128) >> 63 != 0) == (bits >> 63 != 0)) by (bit_vector);
+        assert((((bits as u128) >> 52) & (((1u128 << 11) - 1) as u128)) == (((bits >> 52) & 2047) as u128)) by (bit_vector);
+        assert(((bits as u128) & (((1u128 << 52) - 1) as u128)) == ((bits & 0x000fffffffffffff) as u128)) by (bit_vector);
+        assert(((1u64 << 52) | fraction) as u128 == (1u128 << 52) | fraction as u128) by (bit_vector);
+        assert((bits >> 52) & 2047 <= 2047u64) by (bit_vector);
+    }
     if exponent == 0x7ff {
         return Err(());
     }
@@ -11062,15 +11075,18 @@ fn float64_to_fixed(bits: u64) -> Result<i64, ()> {
     let (significand, binary_exponent) = if exponent == 0 {
         (u128::from(fraction), -1074_i32)
     } else {
-        (
-            u128::from((1_u64 << 52) | fraction),
-            i32::try_from(exponent).map_err(|_| ())? - 1075,
-        )
+        (u128::from((1_u64 << 52) | fraction), exponent as i32 - 1075)
     };
     fixed_from_binary(negative, significand, binary_exponent)
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_fixed_from_binary(negative, significand, binary_exponent),
+))]
 fn fixed_from_binary(negative: bool, significand: u128, binary_exponent: i32) -> Result<i64, ()> {
+    #[cfg(verus_keep_ghost)]
+    proof! { mct_fixed_precision_is_q32(); }
     if binary_exponent < i32::MIN + i32::from(MCT_FIXED_BITS)
         || binary_exponent > i32::MAX - i32::from(MCT_FIXED_BITS)
     {
@@ -11089,6 +11105,8 @@ fn fixed_from_binary(negative: bool, significand: u128, binary_exponent: i32) ->
             0
         } else {
             let truncated = significand >> right;
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(right < 128 ==> (1u128 << right) > 0u128) by (bit_vector); }
             let remainder_mask = if right == 0 {
                 0
             } else {
@@ -11097,7 +11115,9 @@ fn fixed_from_binary(negative: bool, significand: u128, binary_exponent: i32) ->
             let remainder = significand & remainder_mask;
             let half = if right == 0 { 0 } else { 1_u128 << (right - 1) };
             let round_up = remainder > half || (remainder == half && truncated & 1 != 0);
-            truncated.checked_add(u128::from(round_up)).ok_or(())?
+            truncated
+                .checked_add(if round_up { 1u128 } else { 0u128 })
+                .ok_or(())?
         }
     };
     if negative {
@@ -11341,6 +11361,9 @@ fn read_u32(bytes: [u8; 4]) -> u32 {
         | u32::from(bytes[3])
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_codestream_u64(bytes@),
+))]
 fn read_u64(bytes: [u8; 8]) -> u64 {
     (u64::from(bytes[0]) << 56)
         | (u64::from(bytes[1]) << 48)
@@ -11352,6 +11375,9 @@ fn read_u64(bytes: [u8; 8]) -> u64 {
         | u64::from(bytes[7])
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_signed_u16(value),
+))]
 fn signed_u16(value: u16) -> i64 {
     let value = i64::from(value);
     if value < 32_768 {
@@ -17483,6 +17509,560 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_mct_fixed_binary(
+        negative: bool,
+        significand: u128,
+        binary_exponent: i32,
+    ) -> Result<i64, ()> {
+        if !(i32::MIN + 32..=i32::MAX - 32).contains(&binary_exponent) {
+            return Err(());
+        }
+        let shift = i64::from(binary_exponent) + 32;
+        let magnitude = if shift >= 0 {
+            if shift >= 128 {
+                return Err(());
+            }
+            significand.checked_mul(1_u128 << shift).ok_or(())?
+        } else {
+            let right = -shift;
+            if right >= 128 {
+                0
+            } else {
+                let divisor = 1_u128 << right;
+                let quotient = significand / divisor;
+                let remainder = significand % divisor;
+                let half = divisor / 2;
+                quotient
+                    + u128::from(
+                        remainder > half || (remainder == half && !quotient.is_multiple_of(2)),
+                    )
+            }
+        };
+        if negative {
+            if magnitude > 1_u128 << 63 {
+                Err(())
+            } else if magnitude == 1_u128 << 63 {
+                Ok(i64::MIN)
+            } else {
+                Ok(-(magnitude as i64))
+            }
+        } else {
+            i64::try_from(magnitude).map_err(|_| ())
+        }
+    }
+
+    fn reference_mct_float32(bits: u32) -> Result<i64, ()> {
+        let negative = bits >= 0x80000000;
+        let exponent = bits / 0x800000 % 256;
+        let fraction = bits % 0x800000;
+        if exponent == 255 {
+            return Err(());
+        }
+        if exponent == 0 && fraction == 0 {
+            return Ok(0);
+        }
+        reference_mct_fixed_binary(
+            negative,
+            if exponent == 0 {
+                u128::from(fraction)
+            } else {
+                0x800000 + u128::from(fraction)
+            },
+            if exponent == 0 {
+                -149
+            } else {
+                exponent as i32 - 150
+            },
+        )
+    }
+
+    fn reference_mct_float64(bits: u64) -> Result<i64, ()> {
+        let negative = bits >= 0x8000000000000000;
+        let exponent = bits / 0x10000000000000 % 2048;
+        let fraction = bits % 0x10000000000000;
+        if exponent == 2047 {
+            return Err(());
+        }
+        if exponent == 0 && fraction == 0 {
+            return Ok(0);
+        }
+        reference_mct_fixed_binary(
+            negative,
+            if exponent == 0 {
+                u128::from(fraction)
+            } else {
+                0x10000000000000 + u128::from(fraction)
+            },
+            if exponent == 0 {
+                -1074
+            } else {
+                exponent as i32 - 1075
+            },
+        )
+    }
+
+    fn reference_mct_element(
+        bytes: &[u8],
+        position: usize,
+        format: MctNumericFormat,
+        offset: usize,
+    ) -> Result<i64, DecodeError> {
+        let malformed = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let width = match format {
+            MctNumericFormat::Int16 => 2,
+            MctNumericFormat::Int32 | MctNumericFormat::Float32 => 4,
+            MctNumericFormat::Float64 => 8,
+        };
+        if position as u128 + width as u128 > bytes.len() as u128 {
+            return Err(malformed());
+        }
+        let source = &bytes[position..position + width];
+        match format {
+            MctNumericFormat::Int16 => {
+                Ok(i64::from(i16::from_be_bytes(source.try_into().unwrap())))
+            }
+            MctNumericFormat::Int32 => {
+                Ok(i64::from(i32::from_be_bytes(source.try_into().unwrap())))
+            }
+            MctNumericFormat::Float32 => {
+                reference_mct_float32(u32::from_be_bytes(source.try_into().unwrap()))
+                    .map_err(|_| malformed())
+            }
+            MctNumericFormat::Float64 => {
+                reference_mct_float64(u64::from_be_bytes(source.try_into().unwrap()))
+                    .map_err(|_| malformed())
+            }
+        }
+    }
+
+    fn reference_mct_array(
+        bytes: &[u8],
+        limits: &ResourceLimits,
+        offset: usize,
+    ) -> Result<MctArray, DecodeError> {
+        let malformed = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        };
+        if bytes.len() < 8 || bytes[..2] != [0, 0] || bytes[4..6] != [0, 0] {
+            return Err(malformed());
+        }
+        let descriptor = u16::from_be_bytes([bytes[2], bytes[3]]);
+        let index = descriptor % 256;
+        if descriptor >= 4096 || index == 0 {
+            return Err(malformed());
+        }
+        let kind = match descriptor / 256 % 4 {
+            0 => MctArrayKind::Dependency,
+            1 => MctArrayKind::Decorrelation,
+            2 => MctArrayKind::Offset,
+            _ => return Err(malformed()),
+        };
+        let (format, width, fraction) = match descriptor / 1024 % 4 {
+            0 => (MctNumericFormat::Int16, 2, 0),
+            1 => (MctNumericFormat::Int32, 4, 0),
+            2 => (MctNumericFormat::Float32, 4, 32),
+            _ => (MctNumericFormat::Float64, 8, 32),
+        };
+        let chunks = bytes[6..].chunks_exact(width);
+        if !chunks.remainder().is_empty() {
+            return Err(malformed());
+        }
+        let count = chunks.len();
+        let maximum = u128::from(limits.maximum_components()).pow(2);
+        if count as u128 > maximum {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::TransformElements,
+                limit: maximum as u64,
+                actual: count as u64,
+            });
+        }
+        let mut values = Vec::new();
+        for chunk in chunks {
+            values.push(reference_mct_element(chunk, 0, format, offset)?);
+        }
+        Ok(MctArray {
+            index: index as u8,
+            kind,
+            numeric_format: format,
+            fraction_bits: fraction,
+            values,
+        })
+    }
+
+    fn raw_mct_array_payload(descriptor: u16, elements: &[u64]) -> Vec<u8> {
+        let mut bytes = vec![0, 0];
+        bytes.extend(descriptor.to_be_bytes());
+        bytes.extend([0, 0]);
+        let width = match descriptor / 1024 % 4 {
+            0 => 2,
+            1 | 2 => 4,
+            _ => 8,
+        };
+        for element in elements {
+            bytes.extend(&element.to_be_bytes()[8 - width..]);
+        }
+        bytes
+    }
+
+    fn assert_mct_array_case(parser: &Parser<'_>, bytes: &[u8], offset: usize) {
+        assert_eq!(
+            parser.parse_mct(Segment {
+                marker: 0x1234,
+                offset,
+                payload: bytes
+            }),
+            reference_mct_array(bytes, parser.limits, offset)
+        );
+    }
+
+    #[test]
+    fn actual_mct_numeric_scalars_preserve_ieee_fields_ties_underflow_and_full_word_bytes() {
+        let significands = [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            (1_u128 << 23) - 1,
+            1_u128 << 23,
+            1_u128 << 52,
+            (1_u128 << 53) - 1,
+            (1_u128 << 63) - 1,
+            1_u128 << 63,
+            (1_u128 << 64) - 1,
+            1_u128 << 64,
+            (1_u128 << 127) - 1,
+            1_u128 << 127,
+            u128::MAX,
+        ];
+        let exponents = [
+            i32::MIN,
+            i32::MIN + 31,
+            i32::MIN + 32,
+            i32::MIN + 33,
+            -161,
+            -160,
+            -159,
+            -33,
+            -32,
+            -31,
+            -1,
+            0,
+            1,
+            31,
+            32,
+            63,
+            64,
+            95,
+            96,
+            97,
+            i32::MAX - 33,
+            i32::MAX - 32,
+            i32::MAX - 31,
+            i32::MAX,
+        ];
+        let mut binary = 0;
+        for negative in [false, true] {
+            for significand in significands {
+                for exponent in exponents {
+                    assert_eq!(
+                        fixed_from_binary(negative, significand, exponent),
+                        reference_mct_fixed_binary(negative, significand, exponent)
+                    );
+                    binary += 1;
+                }
+            }
+        }
+        assert_eq!(binary, 816);
+        let mut ties = 0;
+        for right in 1..=127 {
+            let divisor = 1_u128 << right;
+            let half = divisor / 2;
+            let quotient_limit = if right == 127 { 2 } else { 4 };
+            for quotient in 0..quotient_limit {
+                for remainder in [0, half - 1, half, half + 1, divisor - 1] {
+                    let significand = quotient * divisor + remainder;
+                    for negative in [false, true] {
+                        assert_eq!(
+                            fixed_from_binary(negative, significand, -right - 32),
+                            reference_mct_fixed_binary(negative, significand, -right - 32)
+                        );
+                        ties += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(ties, 5_060);
+        let mut f32_fields = 0;
+        for exponent in 0_u32..256 {
+            for fraction in [0, 1, 2, 0x3fffff, 0x400000, 0x7ffffe, 0x7fffff] {
+                for sign in [0, 0x80000000] {
+                    let bits = sign + exponent * 0x800000 + fraction;
+                    assert_eq!(float32_to_fixed(bits), reference_mct_float32(bits));
+                    f32_fields += 1;
+                }
+            }
+        }
+        assert_eq!(f32_fields, 3_584);
+        let mut f64_fields = 0;
+        for exponent in 0_u64..2048 {
+            for fraction in [
+                0,
+                1,
+                2,
+                0x7ffffffffffff,
+                0x8000000000000,
+                0xffffffffffffe,
+                0xfffffffffffff,
+            ] {
+                for sign in [0, 0x8000000000000000] {
+                    let bits = sign + exponent * 0x10000000000000 + fraction;
+                    assert_eq!(float64_to_fixed(bits), reference_mct_float64(bits));
+                    f64_fields += 1;
+                }
+            }
+        }
+        assert_eq!(f64_fields, 28_672);
+        let mut bit_patterns = 0;
+        for half in 0..=u16::MAX {
+            let words32 = [
+                u32::from(half),
+                u32::from(half) << 16,
+                (u32::from(half) << 16) | 65535,
+                (u32::from(half) << 16) | u32::from(half.wrapping_mul(31337)),
+            ];
+            let words64 = [
+                u64::from(half),
+                u64::from(half) << 48,
+                (u64::from(half) << 48) | 0x0000ffffffffffff,
+                (u64::from(half) << 48)
+                    | (u64::from(half.wrapping_mul(31337)) << 16)
+                    | u64::from(half),
+            ];
+            for index in 0..4 {
+                assert_eq!(
+                    float32_to_fixed(words32[index]),
+                    reference_mct_float32(words32[index])
+                );
+                assert_eq!(
+                    float64_to_fixed(words64[index]),
+                    reference_mct_float64(words64[index])
+                );
+                bit_patterns += 1;
+            }
+            let [first, second] = half.to_be_bytes();
+            let bytes = [first, second, second, first, 0x80, 0x7f, 255, 0];
+            assert_eq!(read_u64(bytes), u64::from_be_bytes(bytes));
+            assert_eq!(
+                signed_u16(half),
+                i64::from(i16::from_be_bytes(half.to_be_bytes()))
+            );
+        }
+        assert_eq!(bit_patterns, 262_144);
+        let mut byte_patterns = 0;
+        for position in 0..8 {
+            for value in 0..=u8::MAX {
+                let mut bytes = [1, 2, 3, 4, 5, 6, 7, 8];
+                bytes[position] = value;
+                assert_eq!(read_u64(bytes), u64::from_be_bytes(bytes));
+                byte_patterns += 1;
+            }
+        }
+        assert_eq!(byte_patterns, 2_048);
+        assert_eq!(fixed_from_binary(false, u128::MAX, -160), Ok(0));
+        assert_eq!(float32_to_fixed(0x4f000000), Err(()));
+        assert_eq!(float32_to_fixed(0xcf000000), Ok(i64::MIN));
+        assert_eq!(float64_to_fixed(0x41e0000000000000), Err(()));
+        assert_eq!(float64_to_fixed(0xc1e0000000000000), Ok(i64::MIN));
+    }
+
+    #[test]
+    fn actual_mct_arrays_preserve_all_descriptors_formats_limits_and_first_value_errors() {
+        let input = [0xa5, 0x5a];
+        let mut descriptors = 0;
+        for descriptor in 0..=u16::MAX {
+            for length in [7, 8, 14] {
+                let mut bytes = vec![0; length];
+                bytes[2..4].copy_from_slice(&descriptor.to_be_bytes());
+                for cap in [1, 64] {
+                    let limits = mcc_record_test_limits(cap);
+                    let mut parser = new_parser(&input, &limits).unwrap();
+                    parser.position = usize::MAX;
+                    for offset in [0, usize::MAX] {
+                        assert_mct_array_case(&parser, &bytes, offset);
+                        descriptors += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(descriptors, 786_432);
+        let mut arrays = 0;
+        for format in 0_u16..4 {
+            let special = if format == 2 {
+                vec![
+                    0, 0x80000000, 0x3f800000, 0xbf800000, 0x4effffff, 0xcf000000,
+                ]
+            } else if format == 3 {
+                vec![
+                    0,
+                    0x8000000000000000,
+                    0x3ff0000000000000,
+                    0xbff0000000000000,
+                    0x41dfffffffffffff,
+                    0xc1e0000000000000,
+                ]
+            } else {
+                vec![0, 1, 0x7fff, 0x8000, 0x7fffffff, 0x80000000]
+            };
+            let invalid = if format == 2 {
+                0x7fc00000
+            } else if format == 3 {
+                0x7ff8000000000000
+            } else {
+                u64::MAX
+            };
+            let vectors = [
+                vec![],
+                vec![0],
+                special,
+                vec![invalid],
+                vec![0, invalid, 0],
+                vec![invalid, 0, invalid],
+            ];
+            for kind in 0_u16..3 {
+                for index in [1, 255] {
+                    let descriptor = index + (kind << 8) + (format << 10);
+                    for elements in &vectors {
+                        let source = raw_mct_array_payload(descriptor, elements);
+                        for cap in [0, 1, 2, 64] {
+                            let limits = mcc_record_test_limits(cap)
+                                .with_maximum_work_units(0)
+                                .unwrap();
+                            let mut parser = new_parser(&input, &limits).unwrap();
+                            parser.position = usize::MAX;
+                            parser.work_units = u64::MAX;
+                            parser.packet_length_bytes = u64::MAX - 1;
+                            parser.packet_lengths = u64::MAX - 2;
+                            for variant in 0..3 {
+                                let mut bytes = source.clone();
+                                if variant == 0 {
+                                    bytes.pop();
+                                } else if variant == 2 {
+                                    bytes.push(0);
+                                }
+                                for offset in [0, usize::MAX] {
+                                    assert_mct_array_case(&parser, &bytes, offset);
+                                    assert_eq!(
+                                        (
+                                            parser.position,
+                                            parser.work_units,
+                                            parser.packet_length_bytes,
+                                            parser.packet_lengths
+                                        ),
+                                        (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+                                    );
+                                    assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+                                    assert!(core::ptr::eq(parser.limits, &limits));
+                                    arrays += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(arrays, 3_456);
+        let mut limits_cases = 0;
+        for format in 0_u16..4 {
+            for count in [1, 2, 4, 5, 4096, 4097] {
+                let source = raw_mct_array_payload(1 + 0x0100 + (format << 10), &vec![0; count]);
+                for cap in [0, 1, 2, 64] {
+                    let limits = mcc_record_test_limits(cap);
+                    let parser = new_parser(&input, &limits).unwrap();
+                    for variant in 0..3 {
+                        let mut bytes = source.clone();
+                        if variant == 0 {
+                            bytes.pop();
+                        } else if variant == 2 {
+                            bytes.push(0);
+                        }
+                        for offset in [0, usize::MAX] {
+                            assert_mct_array_case(&parser, &bytes, offset);
+                            limits_cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(limits_cases, 576);
+    }
+
+    #[test]
+    fn actual_mct_element_bounds_and_real_reader_preserve_all_array_fields() {
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&[], &limits).unwrap();
+        parser.position = usize::MAX;
+        let formats = [
+            MctNumericFormat::Int16,
+            MctNumericFormat::Int32,
+            MctNumericFormat::Float32,
+            MctNumericFormat::Float64,
+        ];
+        let mut bounds = 0;
+        for format in formats {
+            for position in [0, 1, 2, 8, usize::MAX - 1, usize::MAX] {
+                for length in 0..=17 {
+                    for pattern in [0, 0x7f, 0x80, 255] {
+                        let bytes = vec![pattern; length];
+                        for offset in [0, usize::MAX] {
+                            assert_eq!(
+                                parser.decode_mct_element(&bytes, position, format, offset),
+                                reference_mct_element(&bytes, position, format, offset)
+                            );
+                            bounds += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(bounds, 3_456);
+        let f32_payload = raw_mct_array_payload(0x0907, &[0, 0x80000000, 0x3f800000, 0xcf000000]);
+        let f64_payload = raw_mct_array_payload(0x0e09, &[0x3ff0000000000000, 0xc1e0000000000000]);
+        let bad_payload = raw_mct_array_payload(0x090b, &[0x7fc00000]);
+        let mut input = segment(MCT, &f32_payload);
+        input.extend(segment(MCT, &f64_payload));
+        let bad_offset = input.len();
+        input.extend(segment(MCT, &bad_payload));
+        let mut reader = new_parser(&input, &limits).unwrap();
+        let raw = reader.read_segment().unwrap();
+        let first = reader.parse_mct(raw).unwrap();
+        assert_eq!(
+            first,
+            reference_mct_array(&f32_payload, &limits, 0).unwrap()
+        );
+        assert_eq!(first.values(), &[0, 0, 1_i64 << 32, i64::MIN]);
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.parse_mct(raw),
+            reference_mct_array(&f64_payload, &limits, f32_payload.len() + 4)
+        );
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.parse_mct(raw),
+            Err(DecodeError::MalformedInput {
+                offset: bad_offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            })
+        );
+        assert_eq!((reader.position, reader.work_units), (input.len(), 3));
+        assert!(core::ptr::eq(reader.input.as_ptr(), input.as_ptr()));
     }
 
     fn reference_prepare_mcc_fragment(
