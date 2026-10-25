@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part1_parse_cbd` composes the real shared charge and raw descriptor loop,
+binding the complete parser and all eight extension fields on success and
+failure. `part1_cbd_run` retains the exact valid prefix on invalid precision;
+`part1_cbd_expand` retains repeated-zero-count behavior rather than imposing
+a normalized owner. Count/length admission precedes the original depth
+clear, while charge precedes header checks. Real byte/precision/sign
+producers supply all bounds and values. No prepared depths, successful
+admission premise, runtime cap/policy, trust or verifier-budget change is
+added. Remaining metadata/layout/file/F2/F4/final F8 joins remain separate.
+
 `part1_parse_dfs` and `part1_parse_ads` compose real charge, sole actual
 payload producers and first-match registry updates, binding complete parser/
 all-eight-field extension states on both success and failure.

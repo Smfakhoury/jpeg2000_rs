@@ -13744,6 +13744,70 @@ pub open spec fn part1_parse_ads<'a>(
     }
 }
 
+pub open spec fn part1_extension_depths(
+    extensions: Part2OwnedExtensions, depths: Seq<crate::codestream::ComponentBitDepth>,
+) -> Part2OwnedExtensions {
+    Part2OwnedExtensions {
+        decompositions: extensions.decompositions, arbitrary: extensions.arbitrary,
+        nonlinear: extensions.nonlinear, depths, kernels: extensions.kernels,
+        registrations: extensions.registrations, lengths: extensions.lengths,
+        metadata_bytes: extensions.metadata_bytes,
+    }
+}
+
+pub open spec fn part1_cbd_expand(
+    depths: Seq<crate::codestream::ComponentBitDepth>, repeated: bool, components: u16,
+) -> Seq<crate::codestream::ComponentBitDepth> {
+    if repeated && depths.len() > 0 {
+        Seq::new(if components == 0 { 1 } else { components as nat }, |index: int| depths[0])
+    } else { depths }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_cbd_run(
+    segment: Part1CodestreamSegment, position: nat,
+    depths: Seq<crate::codestream::ComponentBitDepth>, repeated: bool, components: u16,
+) -> (Result<(), crate::DecodeError>, Seq<crate::codestream::ComponentBitDepth>)
+    decreases segment.payload.len() - position,
+{
+    if position >= segment.payload.len() {
+        (Ok(()), part1_cbd_expand(depths, repeated, components))
+    } else {
+        let packed = segment.payload[position as int];
+        let precision = part2_cbd_precision(packed);
+        if precision > 38 {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)), depths)
+        } else {
+            part1_cbd_run(segment, position + 1, depths.push(crate::codestream::ComponentBitDepth {
+                precision, signed: part2_cbd_signed(packed),
+            }), repeated, components)
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_cbd<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, components: u16,
+    extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { charged }
+    else if segment.payload.len() < 2 {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)), charged.1, charged.2)
+    } else {
+        let descriptor = part1_marker_value(segment.payload[0], segment.payload[1]);
+        let repeated = descriptor & 32768 != 0;
+        let count = descriptor & 32767;
+        let expected = 2 + if repeated { 1int } else { count as int };
+        if count != components || segment.payload.len() != expected {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)), charged.1, charged.2)
+        } else {
+            let decoded = part1_cbd_run(segment, 2, Seq::empty(), repeated, components);
+            (decoded.0, charged.1, part1_extension_depths(charged.2, decoded.1))
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

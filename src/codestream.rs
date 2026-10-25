@@ -5461,18 +5461,34 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_cbd(parser_view(old(self)), segment_view(segment),
+                components, owned_extensions_view(old(extensions))),
+    ))]
     fn parse_cbd(
         &mut self,
         segment: Segment<'a>,
         components: u16,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost goal = crate::specs::part1_parse_cbd(input, segment_view(segment), components, extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_cbd); }
         self.charge_extension_metadata(segment, extensions)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+        }
         if segment.payload.len() < 2 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let descriptor = read_u16([segment.payload[0], segment.payload[1]]);
         let repeated = descriptor & 0x8000 != 0;
@@ -5482,57 +5498,93 @@ impl<'a> Parser<'a> {
         } else {
             usize::from(count)
         };
-        let expected = 2_usize
-            .checked_add(descriptor_count)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(descriptor & 0x7fff <= 32767u16) by (bit_vector); }
+        let expected = match 2_usize.checked_add(descriptor_count) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         if count != components || segment.payload.len() != expected {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost target = crate::specs::part1_cbd_run(
+                segment_view(segment), 2, Seq::empty(), repeated, components);
         }
         extensions.component_bit_depths.clear();
         let mut position = 2_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant position <= segment.payload.len(),
+                invariant
+                    2 <= position <= segment.payload.len(),
+                    repeated ==> segment.payload.len() == 3,
+                    extensions.component_bit_depths.len() == position - 2,
+                    input == parser_view(old(self)),
+                    extension_input == owned_extensions_view(old(extensions)),
+                    parser_view(self) == charged_parser,
+                    owned_extensions_view(extensions) == crate::specs::part1_extension_depths(
+                        charged_extensions, extensions.component_bit_depths@),
+                    target == crate::specs::part1_cbd_run(segment_view(segment), position as nat,
+                        extensions.component_bit_depths@, repeated, components),
+                    goal == crate::specs::part1_parse_cbd(input, segment_view(segment), components, extension_input),
+                    goal == (target.0, charged_parser,
+                        crate::specs::part1_extension_depths(charged_extensions, target.1)),
                 decreases segment.payload.len() - position,
             )
         )]
         while position < segment.payload.len() {
-            let packed = *segment.payload.get(position).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_cbd_run, 1);
+                reveal(crate::specs::part1_segment_byte);
+            }
+            let packed = self.segment_byte(segment, position, 0)?;
             let precision = crate::refinement::cbd_precision(packed);
             if precision > 38 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
             extensions.component_bit_depths.push(ComponentBitDepth {
                 precision,
                 signed: crate::refinement::cbd_signed(packed),
             });
-            position = position
-                .checked_add(1)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_cbd_run, 1); }
         if repeated {
-            let depth = *extensions.component_bit_depths.first().ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
+            let depth = match extensions.component_bit_depths.first() {
+                Some(value) => *value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength)
+                    );
+                }
+            };
             let component_count = usize::from(components);
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
+                    invariant
+                        1 <= extensions.component_bit_depths.len(),
+                        extensions.component_bit_depths.len() <= if component_count == 0 { 1int } else { component_count as int },
+                        forall|index: int| 0 <= index < extensions.component_bit_depths.len() ==>
+                            extensions.component_bit_depths@[index] == depth,
+                        target.0 == Ok(()),
+                        target.1 == Seq::new(if component_count == 0 { 1nat } else { component_count as nat },
+                            |index: int| depth),
+                        input == parser_view(old(self)),
+                        extension_input == owned_extensions_view(old(extensions)),
+                        parser_view(self) == charged_parser,
+                        owned_extensions_view(extensions) == crate::specs::part1_extension_depths(
+                            charged_extensions, extensions.component_bit_depths@),
+                        goal == crate::specs::part1_parse_cbd(input, segment_view(segment), components, extension_input),
+                        goal == (target.0, charged_parser,
+                            crate::specs::part1_extension_depths(charged_extensions, target.1)),
                     decreases component_count as int
                         - extensions.component_bit_depths.len() as int,
                 )
@@ -5540,6 +5592,8 @@ impl<'a> Parser<'a> {
             while extensions.component_bit_depths.len() < component_count {
                 extensions.component_bit_depths.push(depth);
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(extensions.component_bit_depths@ =~= target.1); }
         }
         Ok(())
     }
@@ -16459,6 +16513,243 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_cbd_payload(
+        bytes: &[u8],
+        components: u16,
+        offset: usize,
+        depths: &mut Vec<ComponentBitDepth>,
+    ) -> Result<(), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let Some(header) = bytes.get(..2) else {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        };
+        let descriptor = u16::from_be_bytes([header[0], header[1]]);
+        let repeated = descriptor / 32768 == 1;
+        let count = descriptor % 32768;
+        let expected = if repeated { 3 } else { 2 + usize::from(count) };
+        if count != components || bytes.len() != expected {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        depths.clear();
+        for packed in &bytes[2..] {
+            let precision = packed % 128 + 1;
+            if precision > 38 {
+                return Err(malformed(MalformedKind::InvalidTransform));
+            }
+            depths.push(ComponentBitDepth {
+                precision,
+                signed: packed / 128 == 1,
+            });
+        }
+        if repeated {
+            depths.resize(usize::from(components).max(1), depths[0]);
+        }
+        Ok(())
+    }
+
+    fn assert_cbd_owner_case(
+        bytes: &[u8],
+        components: u16,
+        limits: &ResourceLimits,
+        budget: (u64, u64),
+        offset: usize,
+    ) {
+        let (metadata, work) = budget;
+        let mut extensions = raw_owned_tile_part_fixture(0).part2_extensions;
+        extensions.component_bit_depths.push(ComponentBitDepth {
+            precision: u8::MAX,
+            signed: true,
+        });
+        extensions.metadata_bytes = metadata;
+        let mut expected = extensions.clone();
+        let (mut result, next_work, next_metadata) =
+            reference_extension_charge(bytes.len(), 17, work, metadata, limits);
+        expected.metadata_bytes = next_metadata;
+        if result.is_ok() {
+            result = reference_cbd_payload(
+                bytes,
+                components,
+                offset,
+                &mut expected.component_bit_depths,
+            );
+        }
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        parser.position = 17;
+        parser.work_units = work;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX - 1;
+        assert_eq!(
+            parser.parse_cbd(
+                Segment {
+                    marker: 0x1234,
+                    offset,
+                    payload: bytes,
+                },
+                components,
+                &mut extensions,
+            ),
+            result,
+            "bytes={bytes:?}, components={components}, budget={budget:?}, offset={offset}"
+        );
+        assert_eq!(extensions, expected);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (17, next_work, u64::MAX, u64::MAX - 1)
+        );
+        assert!(core::ptr::eq(parser.limits, limits));
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert_eq!(parser.input, &input);
+    }
+
+    #[test]
+    fn actual_cbd_preserves_all_raw_descriptors_and_partial_depth_prefixes() {
+        let limits = ResourceLimits::HARDENED;
+        let mut descriptors = 0;
+        for descriptor in 0..=u16::MAX {
+            for components in [0, 1, 3, u16::MAX] {
+                for length in [2, 3, 5] {
+                    let mut bytes = vec![0xa4; length];
+                    bytes[..2].copy_from_slice(&descriptor.to_be_bytes());
+                    assert_cbd_owner_case(&bytes, components, &limits, (0, 0), usize::MAX);
+                    descriptors += 1;
+                }
+            }
+        }
+        assert_eq!(descriptors, 786_432);
+        let mut prefixes = 0;
+        for count in 1_u16..=8 {
+            for position in 0..usize::from(count) {
+                for packed in 0..=u8::MAX {
+                    for mutation in 0..3 {
+                        let mut bytes = count.to_be_bytes().to_vec();
+                        bytes.resize(usize::from(count) + 2, 0xa4);
+                        bytes[position + 2] = packed;
+                        if mutation == 1 && position > 0 {
+                            bytes[2] = 0x7f;
+                        } else if mutation == 2 && position + 1 < usize::from(count) {
+                            bytes[usize::from(count) + 1] = 0x7f;
+                        }
+                        assert_cbd_owner_case(&bytes, count, &limits, (0, 0), 9);
+                        prefixes += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(prefixes, 27_648);
+        let mut repeated = 0;
+        for count in [0_u16, 1, 2, 3, 31, 32767] {
+            for packed in 0..=u8::MAX {
+                let [first, second] = (count + 32768).to_be_bytes();
+                for offset in [0, usize::MAX] {
+                    assert_cbd_owner_case(&[first, second, packed], count, &limits, (0, 0), offset);
+                    repeated += 1;
+                }
+            }
+        }
+        assert_eq!(repeated, 3_072);
+    }
+
+    #[test]
+    fn actual_cbd_preserves_budget_header_and_reader_order_with_all_owner_fields() {
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(6).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+            base.with_maximum_work_units(8).unwrap(),
+            base.with_maximum_metadata_bytes(6)
+                .unwrap()
+                .with_maximum_work_units(0)
+                .unwrap(),
+        ];
+        let payloads: &[&[u8]] = &[
+            &[],
+            &[0],
+            &[0, 0],
+            &[0x80, 0, 0],
+            &[0, 3, 0xa4, 0, 37],
+            &[0, 3, 0xa4, 38, 0],
+            &[0, 3, 38, 0xa4, 0],
+            &[0x80, 3, 0xa4],
+            &[0x80, 3, 0xa6],
+            &[0, 1, 127, 0],
+            &[255, 255],
+        ];
+        let mut frontiers = 0;
+        for limit in &limits {
+            for bytes in payloads {
+                for components in [0, 1, 3, u16::MAX] {
+                    for metadata in [0, 1, 7, 16_777_215, 16_777_216, u64::MAX - 4, u64::MAX] {
+                        for work in [0, 1, 8, u64::MAX - 4, u64::MAX] {
+                            for offset in [0, usize::MAX] {
+                                assert_cbd_owner_case(
+                                    bytes,
+                                    components,
+                                    limit,
+                                    (metadata, work),
+                                    offset,
+                                );
+                                frontiers += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 21_560);
+        let input = [255, 120, 0, 5, 0x80, 3, 0xa4, 255, 254, 0, 2];
+        let mut parser = new_parser(&input, &base).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let mut extensions = Part2Extensions::default();
+        parser.parse_cbd(segment, 3, &mut extensions).unwrap();
+        assert_eq!(
+            extensions.component_bit_depths,
+            vec![
+                ComponentBitDepth {
+                    precision: 37,
+                    signed: true
+                };
+                3
+            ]
+        );
+        assert_eq!(
+            (
+                extensions.metadata_bytes,
+                parser.work_units,
+                parser.position
+            ),
+            (7, 8, 7)
+        );
+        let segment = parser.read_segment().unwrap();
+        assert_eq!(
+            parser.parse_cbd(segment, 3, &mut extensions),
+            Err(DecodeError::MalformedInput {
+                offset: 7,
+                kind: MalformedKind::InvalidMarkerLength,
+            })
+        );
+        assert_eq!(extensions.component_bit_depths.len(), 3);
+        assert_eq!(
+            (
+                extensions.metadata_bytes,
+                parser.work_units,
+                parser.position
+            ),
+            (11, 13, 11)
+        );
     }
 
     fn reference_extension_charge(
