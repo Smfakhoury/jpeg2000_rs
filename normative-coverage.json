@@ -4,6 +4,41 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-raw-tile-length-bytes",
+      "topic": "Complete actual TLM Result, every parser/eight extension field and external next_index counter from raw header/style/record bytes, arbitrary old lengths and actual limits/work. Real charge precedes header/index order; counter increment commits before style/alignment/row checks, including255 to256. Actual descriptor primitives derive tile0/1/2-byte and length2/4-byte strides. Source-derived alignment guarantees every read and stride; optional absent tile indices remain legal even with tile_count0, and existing raw length entries are not normalized. Tile bounds precede minimum length14; every valid appended row prefix is retained on later failure. Full mutable frames and terminal folds bind native effects without prepared records, successful budgets, row-validity premises, new trust/pin/cap/solver/termination bypass. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_tlm"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_tlm"},
+        {"path": "specs/mod.rs", "symbol": "part1_tlm_records"},
+        {"path": "specs/mod.rs", "symbol": "part1_tlm_tile_index"},
+        {"path": "specs/mod.rs", "symbol": "part1_tlm_length"},
+        {"path": "specs/mod.rs", "symbol": "part1_extension_lengths"},
+        {"path": "specs/mod.rs", "symbol": "part2_tlm_tile_index_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part2_tlm_length_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_charge_extension_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part1_segment_byte"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_tlm"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"},
+        {"path": "src/refinement.rs", "symbol": "tlm_tile_index_bytes"},
+        {"path": "src/refinement.rs", "symbol": "tlm_length_bytes"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_tlm_preserves_every_header_style_index_and_external_counter"},
+        {"path": "src/codestream.rs", "symbol": "actual_tlm_preserves_endian_words_valid_prefixes_and_record_alignment"},
+        {"path": "src/codestream.rs", "symbol": "actual_tlm_preserves_three_owner_frames_partial_charges_and_real_reader"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-nonlinear-bytes",
       "topic": "Complete actual raw NLT Result, every physical nonlinear descriptor field and complete parser/eight extension-owner state. Real shared charge precedes header, component/default selector, precision/type, short-form length, gamma/LUT header/length/value and retained parameter-tail admission. Sole actual gamma body retains five 24-bit words and zero rejection only at positions0/1/3. LUT retains stored count1..8191 plus one, ordered domain/bit1..32/width1/2/4/exact-length/value-cap checks and all decoded u32 points. Real tail/maximum primitives derive all bytes and masks without prepared records, normalized metadata or budget premises. Equivalent explicit first-match replacement preserves later duplicate/default selectors and all unrelated raw fields; failure retains exact charged metadata/work commits without registry mutation. Existing safe precision/sign primitive and standard array extensionality expose native values, not new trust. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

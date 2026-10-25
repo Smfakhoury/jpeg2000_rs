@@ -25,6 +25,35 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw TLM tile lengths
+
+Actual TLM parsing binds its Result, complete parser and all eight extension
+fields, and the external next-marker index. Real metadata/work charge runs
+before header/index admission; index increment commits before style,
+alignment and record admission. A matching byte index 255 advances to 256,
+while subsequent mismatches leave it unchanged after charging.
+
+Actual descriptor primitives derive optional 0/1/2-byte tile indices and
+2/4-byte lengths. Source-derived alignment and standard Euclidean-remainder
+lemmas establish every read/stride bound without admitted valid rows. Tile
+bounds precede minimum length 14; each valid appended prefix remains after
+a later row fails. Absent tile indices remain accepted at tile count zero,
+and arbitrary existing length records and unrelated owners are preserved.
+
+The curated complete contract binds all three mutable owners and raw inputs.
+Equivalent explicit checked matches and remainder caching retain native
+ordering without new normalization, result banks, trust, caps, solver budgets
+or verifier pins. Remaining metadata/layout/file/layer/F2/F4/final F8 joins
+stay separate.
+
+Independent division/chunk/endian references compare 327,680 complete
+header/style/index contexts, 131,072 external-counter contexts, 786,432
+record-word contexts, 6,912 alignment/tile/length/prefix frontiers and 18,000
+budget/three-owner cases. All comparisons include arbitrary existing length
+entries and complete parser/extension fields. A real two-marker reader join
+retains the first valid records and the second marker's committed index on
+failure. These are maintained native regressions, not official conformance.
+
 ## Complete native raw nonlinear metadata
 
 Actual NLT parsing derives every nonlinear descriptor field and the complete

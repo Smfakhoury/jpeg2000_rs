@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part1_parse_tlm` binds the actual raw header/record Result and all three
+mutable frames: parser, external next-marker index and eight-field extension
+owner. Real shared charge precedes index matching and increment, style,
+alignment, tile bounds and minimum length. `part1_tlm_records` observes the
+actual append/error prefix over arbitrary old records; absent tile indices,
+zero tile counts and index255-to256 commits remain explicit. Actual style
+primitives and standard remainder lemmas derive bounds from source, without
+valid-row/budget premises, normalized owners, result banks, trust or pin/cap/
+solver changes. Remaining metadata/layout/file/F2/F4/final F8 joins stay separate.
+
 `part1_parse_nlt` composes real metadata/work charging, complete actual raw
 payload production and first-component/default registry replacement.
 `part1_nlt_payload` retains every raw and decoded nonlinear field through
