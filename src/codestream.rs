@@ -7870,20 +7870,26 @@ impl<'a> Parser<'a> {
             position = match position.checked_add(1) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             let component_start = self.read_poc_component(segment, position, component_bytes)?;
             position = match position.checked_add(component_bytes) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             let layer_end_position = match position.checked_add(2) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             let layer_bytes = match segment.payload.get(position..layer_end_position) {
@@ -7898,14 +7904,18 @@ impl<'a> Parser<'a> {
             position = match position.checked_add(2) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             let resolution_end = self.read_poc_byte(segment, position)?;
             position = match position.checked_add(1) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             let encoded_component_end =
@@ -7919,7 +7929,9 @@ impl<'a> Parser<'a> {
             position = match position.checked_add(component_bytes) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             let progression_order = match self.read_poc_byte(segment, position)? {
@@ -7938,7 +7950,9 @@ impl<'a> Parser<'a> {
             position = match position.checked_add(1) {
                 Some(value) => value,
                 None => {
-                    return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
                 }
             };
             records.push(ProgressionChange {
