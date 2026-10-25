@@ -13232,6 +13232,109 @@ pub open spec fn part1_parse_cod_payload(offset: usize, payload: Seq<u8>, limits
     }
 }
 
+#[verifier::opaque]
+pub open spec fn part1_parse_component_index(
+    offset: usize, payload: Seq<u8>, components: u16, invalid_kind: crate::MalformedKind,
+) -> Result<(u16, usize), crate::DecodeError> {
+    let bytes = if components < 257 { 1usize } else { 2usize };
+    if payload.len() < bytes {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let component = if bytes == 1 { payload[0] as u16 } else { part1_marker_value(payload[0], payload[1]) };
+        if component >= components { Err(part1_codestream_malformed(offset, invalid_kind)) }
+        else { Ok((component, bytes)) }
+    }
+}
+
+pub struct Part1CocPrepared {
+    pub component: u16,
+    pub payload: Seq<u8>,
+    pub decomposition_structure: Option<u8>,
+}
+
+pub open spec fn part1_cod_progression_byte(order: crate::codestream::ProgressionOrder) -> u8 {
+    match order {
+        crate::codestream::ProgressionOrder::Lrcp => 0,
+        crate::codestream::ProgressionOrder::Rlcp => 1,
+        crate::codestream::ProgressionOrder::Rpcl => 2,
+        crate::codestream::ProgressionOrder::Pcrl => 3,
+        crate::codestream::ProgressionOrder::Cprl => 4,
+    }
+}
+
+pub open spec fn part1_coc_cod_payload(
+    parameters: Seq<u8>, scoc: u8, default: Part1ParsedCodingStyle, structure: Option<u8>,
+) -> Seq<u8>
+    recommends parameters.len() >= 5,
+{
+    let prefix = seq![
+        (scoc & 1) | (if default.sop_markers { 2u8 } else { 0u8 }) | (if default.eph_markers { 4u8 } else { 0u8 }),
+        part1_cod_progression_byte(default.progression_order),
+        (default.layers >> 8) as u8,
+        (default.layers & 255) as u8,
+        if default.multiple_component_transform { 1u8 } else { 0u8 },
+    ];
+    let payload = prefix + parameters;
+    if structure.is_some() { payload.update(5, default.decomposition_levels) } else { payload }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_coc_prepare(
+    offset: usize, payload: Seq<u8>, components: u16, default: Part1ParsedCodingStyle,
+) -> Result<Part1CocPrepared, crate::DecodeError> {
+    match part1_parse_component_index(offset, payload, components, crate::MalformedKind::InvalidCodingStyle) {
+        Err(error) => Err(error),
+        Ok((component, bytes)) => {
+            if payload.len() < bytes as int + 6 {
+                Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+            } else if payload[bytes as int] & 254 != 0 {
+                Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle))
+            } else {
+                let parameters = payload.subrange(bytes as int + 1, payload.len() as int);
+                let structure = if parameters[0] & 128 != 0 { Some(parameters[0] & 127) } else { None };
+                if structure == Some(0u8) {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidCodingStyle))
+                } else if parameters.len() + 5 > usize::MAX {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+                } else if parameters.len() + 5 > 43 {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+                } else {
+                    Ok(Part1CocPrepared { component,
+                        payload: part1_coc_cod_payload(parameters, payload[bytes as int], default, structure),
+                        decomposition_structure: structure })
+                }
+            }
+        },
+    }
+}
+
+pub open spec fn part1_coc_style(style: Part1ParsedCodingStyle, structure: Option<u8>) -> Part1ParsedCodingStyle {
+    Part1ParsedCodingStyle {
+        progression_order: style.progression_order, layers: style.layers,
+        multiple_component_transform: style.multiple_component_transform,
+        decomposition_levels: style.decomposition_levels, decomposition_structure: structure,
+        decomposition_directions: style.decomposition_directions,
+        code_block_width: style.code_block_width, code_block_height: style.code_block_height,
+        code_block_style: style.code_block_style, transform: style.transform,
+        precincts_defined: style.precincts_defined, sop_markers: style.sop_markers, eph_markers: style.eph_markers,
+        precinct_exponents: style.precinct_exponents,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_coc(
+    offset: usize, payload: Seq<u8>, components: u16, default: Part1ParsedCodingStyle,
+    limits: &crate::ResourceLimits,
+) -> Result<(u16, Part1ParsedCodingStyle), crate::DecodeError> {
+    match part1_coc_prepare(offset, payload, components, default) {
+        Err(error) => Err(error),
+        Ok(prepared) => match part1_parse_cod_payload(offset, prepared.payload, limits) {
+            Err(error) => Err(error),
+            Ok(style) => Ok((prepared.component, part1_coc_style(style, prepared.decomposition_structure))),
+        },
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

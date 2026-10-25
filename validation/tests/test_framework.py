@@ -920,6 +920,12 @@ class FrameworkTests(WorkingFiles):
             framework._CODING_STYLE_BYTES_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_raw_component_index_and_complete_coc_style(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-raw-component-style"},
+            framework._COMPONENT_STYLE_BYTES_CONTRACTS, 3,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

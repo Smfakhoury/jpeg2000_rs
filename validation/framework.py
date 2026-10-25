@@ -792,6 +792,23 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_COMPONENT_STYLE_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "Parser::prepare_coc_payload"): (
+        "part1_coc_prepare", _coverage_call("parsed_component_coding_style_payload_outcome", r"\1"), None,
+        r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
+        + _coverage_call("parsed_coding_style_view", "default"),
+    ),
+    ("src/codestream.rs", "Parser::parse_component_index"): (
+        "part1_parse_component_index", r"\1", None,
+        r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*invalid_kind",
+    ),
+    ("src/codestream.rs", "Parser::parse_coc"): (
+        "part1_parse_coc", _coverage_call("parsed_component_coding_style_outcome", r"\1"), None,
+        r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
+        + _coverage_call("parsed_coding_style_view", "default") + r"\s*,\s*self\.limits",
+    ),
+}
+
 _CODING_STYLE_BYTES_CONTRACTS = {
     ("src/codestream.rs", "Parser::parse_cod"): (
         "part1_parse_cod_payload", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
@@ -2050,6 +2067,7 @@ def validate_normative_coverage(
                 or _CODESTREAM_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SIZ_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODING_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COMPONENT_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

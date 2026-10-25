@@ -454,6 +454,13 @@ pub struct CodingStyle {
     pub precinct_exponents: [(u8, u8); 33],
 }
 
+struct ComponentCodingStylePayload {
+    component: u16,
+    payload: [u8; 43],
+    length: usize,
+    decomposition_structure: Option<u8>,
+}
+
 #[cfg(verus_keep_ghost)]
 verus! {
     pub(crate) closed spec fn parsed_coding_style_view(style: CodingStyle) -> crate::specs::Part1ParsedCodingStyle {
@@ -473,6 +480,29 @@ verus! {
         -> Result<crate::specs::Part1ParsedCodingStyle, DecodeError>
     {
         match result { Err(error) => Err(error), Ok(style) => Ok(parsed_coding_style_view(style)) }
+    }
+
+    closed spec fn parsed_component_coding_style_outcome(result: Result<(u16, CodingStyle), DecodeError>)
+        -> Result<(u16, crate::specs::Part1ParsedCodingStyle), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((component, style)) => Ok((component, parsed_coding_style_view(style))) }
+    }
+
+    closed spec fn component_coding_style_payload_is_bounded(result: Result<ComponentCodingStylePayload, DecodeError>) -> bool {
+        match result { Err(_) => true, Ok(prepared) => prepared.length <= 43 }
+    }
+
+    closed spec fn parsed_component_coding_style_payload_outcome(result: Result<ComponentCodingStylePayload, DecodeError>)
+        -> Result<crate::specs::Part1CocPrepared, DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(prepared) => Ok(crate::specs::Part1CocPrepared {
+                component: prepared.component,
+                payload: prepared.payload@.subrange(0, prepared.length as int),
+                decomposition_structure: prepared.decomposition_structure,
+            }),
+        }
     }
 
     pub closed spec fn component_coding_style_result(styles: &ComponentCodingStyles, component: u16) -> Result<CodingStyle, DecodeError> {
@@ -6949,18 +6979,20 @@ impl<'a> Parser<'a> {
         Ok(style)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_parse_component_index(segment.offset, segment.payload@, components, invalid_kind),
+    ))]
     fn parse_component_index(
         &self,
         segment: Segment<'a>,
         components: u16,
         invalid_kind: MalformedKind,
     ) -> Result<(u16, usize), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_component_index); }
         let component_bytes = if components < 257 { 1_usize } else { 2_usize };
         if segment.payload.len() < component_bytes {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let component = if component_bytes == 1 {
             u16::from(segment.payload[0])
@@ -6968,10 +7000,7 @@ impl<'a> Parser<'a> {
             read_u16([segment.payload[0], segment.payload[1]])
         };
         if component >= components {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                invalid_kind,
-            ));
+            return Err(self.malformed_at(segment.offset, invalid_kind));
         }
         Ok((component, component_bytes))
     }
@@ -7322,46 +7351,63 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_component_coding_style_outcome(result) == crate::specs::part1_parse_coc(
+            segment.offset, segment.payload@, components, parsed_coding_style_view(default), self.limits),
+    ))]
     fn parse_coc(
         &self,
         segment: Segment<'a>,
         components: u16,
         default: CodingStyle,
     ) -> Result<(u16, CodingStyle), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_coc); }
+        let prepared = self.prepare_coc_payload(segment, components, default)?;
+        let mut style =
+            self.parse_cod_payload(segment.offset, &prepared.payload[..prepared.length])?;
+        style.decomposition_structure = prepared.decomposition_structure;
+        Ok((prepared.component, style))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_component_coding_style_payload_outcome(result) == crate::specs::part1_coc_prepare(
+            segment.offset, segment.payload@, components, parsed_coding_style_view(default)),
+        component_coding_style_payload_is_bounded(result),
+    ))]
+    fn prepare_coc_payload(
+        &self,
+        segment: Segment<'a>,
+        components: u16,
+        default: CodingStyle,
+    ) -> Result<ComponentCodingStylePayload, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_coc_prepare);
+            reveal(crate::specs::part1_parse_component_index);
+        }
         let (component, component_bytes) =
             self.parse_component_index(segment, components, MalformedKind::InvalidCodingStyle)?;
-        let minimum = component_bytes.checked_add(6).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        let minimum = component_bytes
+            .checked_add(6)
+            .ok_or_else(|| self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow))?;
         if segment.payload.len() < minimum {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let scoc = segment.payload[component_bytes];
         if scoc & 0xfe != 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidCodingStyle,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidCodingStyle));
         }
-        let parameters = segment.payload.get(component_bytes + 1..).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )
-        })?;
+        let parameters = segment
+            .payload
+            .get(component_bytes + 1..)
+            .ok_or_else(|| self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength))?;
         let decomposition_structure = if parameters[0] & 0x80 != 0 {
             let index = parameters[0] & 0x7f;
             if index == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidCodingStyle,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidCodingStyle));
             }
             Some(index)
         } else {
@@ -7378,38 +7424,60 @@ impl<'a> Parser<'a> {
             ProgressionOrder::Pcrl => 3,
             ProgressionOrder::Cprl => 4,
         };
-        cod_payload[2] = u8::try_from(default.layers >> 8).map_err(|_| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        cod_payload[3] = u8::try_from(default.layers & 0xff).map_err(|_| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        cod_payload[4] = u8::from(default.multiple_component_transform);
-        let end = 5_usize.checked_add(parameters.len()).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            let layers = default.layers;
+            assert(layers >> 8 <= 255) by (bit_vector);
+            assert(layers & 0xff <= 255) by (bit_vector);
+        }
+        cod_payload[2] = u8::try_from(default.layers >> 8)
+            .map_err(|_| self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow))?;
+        cod_payload[3] = u8::try_from(default.layers & 0xff)
+            .map_err(|_| self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow))?;
+        cod_payload[4] = if default.multiple_component_transform {
+            1
+        } else {
+            0
+        };
+        let end = match 5_usize.checked_add(parameters.len()) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if end > cod_payload.len() {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before_parameters = cod_payload@; }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(cod_payload@[0] == (scoc & 1) | (if default.sop_markers { 2u8 } else { 0u8 }) | (if default.eph_markers { 4u8 } else { 0u8 }));
+            assert(cod_payload@[1] == crate::specs::part1_cod_progression_byte(default.progression_order));
+            assert(cod_payload@[2] == (default.layers >> 8) as u8);
+            assert(cod_payload@[3] == (default.layers & 255) as u8);
+            assert(cod_payload@[4] == if default.multiple_component_transform { 1u8 } else { 0u8 });
         }
         cod_payload[5..end].copy_from_slice(parameters);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(cod_payload@.subrange(0, 5) =~= before_parameters.subrange(0, 5));
+            assert(cod_payload@.subrange(5, end as int) =~= parameters@);
+        }
         if decomposition_structure.is_some() {
             cod_payload[5] = default.decomposition_levels;
         }
-        let mut style = self.parse_cod_payload(segment.offset, &cod_payload[..end])?;
-        style.decomposition_structure = decomposition_structure;
-        Ok((component, style))
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(cod_payload@.subrange(0, end as int) =~= crate::specs::part1_coc_cod_payload(
+                parameters@, scoc, parsed_coding_style_view(default), decomposition_structure));
+        }
+        Ok(ComponentCodingStylePayload {
+            component,
+            payload: cod_payload,
+            length: end,
+            decomposition_structure,
+        })
     }
 
     fn parse_qcd(
@@ -15189,6 +15257,348 @@ mod tests {
     }
 
     #[test]
+    fn actual_component_index_preserves_width_threshold_error_kind_and_marker_independence() {
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let mut cases = 0;
+        for components in [0, 1, 256, 257, u16::MAX] {
+            let width = if components < 257 { 1 } else { 2 };
+            for word in 0..=u16::MAX {
+                let [high, low] = word.to_be_bytes();
+                let bytes = [high, low, 0xa5];
+                let component = if width == 1 { u16::from(high) } else { word };
+                for length in 0..=bytes.len() {
+                    for kind in [
+                        MalformedKind::InvalidCodingStyle,
+                        MalformedKind::InvalidQuantization,
+                    ] {
+                        for offset in [0, usize::MAX] {
+                            let expected = if length < width {
+                                Err(DecodeError::MalformedInput {
+                                    offset: offset as u64,
+                                    kind: MalformedKind::InvalidMarkerLength,
+                                })
+                            } else if component >= components {
+                                Err(DecodeError::MalformedInput {
+                                    offset: offset as u64,
+                                    kind,
+                                })
+                            } else {
+                                Ok((component, width))
+                            };
+                            let segment = Segment {
+                                marker: if high % 2 == 0 { 0xff53 } else { 0x1234 },
+                                offset,
+                                payload: &bytes[..length],
+                            };
+                            assert_eq!(
+                                parser.parse_component_index(segment, components, kind),
+                                expected
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 5_242_880);
+    }
+
+    #[test]
+    fn actual_raw_component_styles_preserve_source_defaults_selectors_and_first_errors() {
+        fn reference(
+            bytes: &[u8],
+            offset: usize,
+            components: u16,
+            default: CodingStyle,
+            limits: &ResourceLimits,
+        ) -> Result<(u16, CodingStyle), DecodeError> {
+            let malformed = |kind| DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind,
+            };
+            let width = if components < 257 { 1 } else { 2 };
+            if bytes.len() < width {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let component = if width == 1 {
+                u16::from(bytes[0])
+            } else {
+                u16::from_be_bytes([bytes[0], bytes[1]])
+            };
+            if component >= components {
+                return Err(malformed(MalformedKind::InvalidCodingStyle));
+            }
+            if bytes.len() < width + 6 {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let scoc = bytes[width];
+            if scoc > 1 {
+                return Err(malformed(MalformedKind::InvalidCodingStyle));
+            }
+            let parameters = &bytes[width + 1..];
+            let structure = if parameters[0] >= 128 {
+                let index = parameters[0] - 128;
+                if index == 0 {
+                    return Err(malformed(MalformedKind::InvalidCodingStyle));
+                }
+                Some(index)
+            } else {
+                None
+            };
+            if parameters.len() > 38 {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let mut cod = vec![
+                scoc + 2 * u8::from(default.sop_markers) + 4 * u8::from(default.eph_markers),
+                match default.progression_order {
+                    ProgressionOrder::Lrcp => 0,
+                    ProgressionOrder::Rlcp => 1,
+                    ProgressionOrder::Rpcl => 2,
+                    ProgressionOrder::Pcrl => 3,
+                    ProgressionOrder::Cprl => 4,
+                },
+            ];
+            cod.extend(default.layers.to_be_bytes());
+            cod.push(u8::from(default.multiple_component_transform));
+            cod.extend(parameters);
+            if structure.is_some() {
+                cod[5] = default.decomposition_levels;
+            }
+            let mut style = reference_raw_coding_style(&cod, offset, limits)?;
+            style.decomposition_structure = structure;
+            Ok((component, style))
+        }
+
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_coding_style_limits_for_test(0, 0),
+            base.with_coding_style_limits_for_test(u16::MAX, u8::MAX),
+        ];
+        let seed = reference_raw_coding_style(&[6, 0, 0, 1, 0, 2, 0, 0, 0, 1], 0, &base).unwrap();
+        let orders = [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ];
+        let mut defaults = Vec::new();
+        for (index, order) in orders.into_iter().enumerate() {
+            let mut default = seed;
+            default.progression_order = order;
+            default.layers = [0, 1, 256, u16::MAX, 2][index];
+            default.multiple_component_transform = index % 2 == 1;
+            default.sop_markers = index % 2 == 1;
+            default.eph_markers = index / 2 % 2 == 1;
+            default.decomposition_levels = [0, 1, 32, 255, 2][index];
+            default.decomposition_structure = Some(127);
+            default.code_block_width = 0;
+            default.code_block_height = 0;
+            default.code_block_style = 255;
+            default.transform = WaveletTransform::Arbitrary(255);
+            default.precincts_defined = true;
+            default.precinct_exponents = [(0, 0); 33];
+            defaults.push(default);
+        }
+        defaults.push(seed);
+        let mut cases = 0;
+        let mut successes = 0;
+        for default in &defaults {
+            for components in [0, 1, 256, 257, u16::MAX] {
+                let width = if components < 257 { 1 } else { 2 };
+                for variant in 0..3 {
+                    let mut source = vec![0; width];
+                    source.push(u8::from(variant == 2));
+                    source.extend([if variant == 1 { 0x81 } else { 0 }, 0, 0, 0, 1]);
+                    if variant == 2 {
+                        source.push(0x21);
+                    }
+                    for position in 0..9 {
+                        for byte in 0..=u8::MAX {
+                            let mut bytes = source.clone();
+                            bytes.resize(bytes.len().max(position + 1), 0);
+                            bytes[position] = byte;
+                            for limit in &limits {
+                                let parser = new_parser(&[], limit).unwrap();
+                                for offset in [0, usize::MAX] {
+                                    let expected =
+                                        reference(&bytes, offset, components, *default, limit);
+                                    let actual = parser.parse_coc(
+                                        Segment {
+                                            marker: 0x1234,
+                                            offset,
+                                            payload: &bytes,
+                                        },
+                                        components,
+                                        *default,
+                                    );
+                                    assert_eq!(actual, expected);
+                                    successes += usize::from(actual.is_ok());
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1_244_160);
+        assert!(successes > 1_000);
+        let mut frontiers = 0;
+        for default in &defaults {
+            for components in [0, 1, 256, 257, u16::MAX] {
+                let width = if components < 257 { 1 } else { 2 };
+                for length in 0..=45 {
+                    for scoc in [0, 1, 2, 255] {
+                        for selector in [0, 128, 129, 255] {
+                            let mut bytes = vec![0; length];
+                            if let Some(value) = bytes.get_mut(width) {
+                                *value = scoc;
+                            }
+                            if let Some(value) = bytes.get_mut(width + 1) {
+                                *value = selector;
+                            }
+                            for limit in &limits {
+                                let parser = new_parser(&[], limit).unwrap();
+                                for offset in [0, usize::MAX] {
+                                    assert_eq!(
+                                        parser.parse_coc(
+                                            Segment {
+                                                marker: 0xff53,
+                                                offset,
+                                                payload: &bytes
+                                            },
+                                            components,
+                                            *default,
+                                        ),
+                                        reference(&bytes, offset, components, *default, limit),
+                                    );
+                                    frontiers += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 132_480);
+        let payload = [0, 0, 1, 0x81, 0, 0, 0, 1, 0x11, 0x22, 0x33];
+        let mut input = vec![255, 83];
+        input.extend(u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+        input.extend(payload);
+        let mut parser = new_parser(&input, &base).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let actual = parser.parse_coc(segment, 257, seed).unwrap();
+        assert_eq!(Ok(actual), reference(&payload, 0, 257, seed, &base));
+        assert_eq!(actual.1.decomposition_structure, Some(1));
+        assert_eq!(actual.1.decomposition_levels, 2);
+        assert_eq!(actual.1.precinct_exponents[..3], [(1, 1), (2, 2), (3, 3)]);
+        assert_eq!(parser.position, input.len());
+        assert_eq!(parser.work_units, 1);
+    }
+
+    fn reference_raw_coding_style(
+        bytes: &[u8],
+        offset: usize,
+        limits: &ResourceLimits,
+    ) -> Result<CodingStyle, DecodeError> {
+        fn malformed(offset: usize, kind: MalformedKind) -> DecodeError {
+            DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind,
+            }
+        }
+        if bytes.len() < 10 {
+            return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
+        }
+        let flags = bytes[0];
+        if flags >= 8 {
+            return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+        }
+        let order = [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ]
+        .get(usize::from(bytes[1]))
+        .copied()
+        .ok_or_else(|| malformed(offset, MalformedKind::InvalidCodingStyle))?;
+        let layers = u16::from_be_bytes([bytes[2], bytes[3]]);
+        if layers > limits.maximum_layers() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Layers,
+                limit: u64::from(limits.maximum_layers()),
+                actual: u64::from(layers),
+            });
+        }
+        if layers == 0 || bytes[4] > 1 {
+            return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+        }
+        let resolutions = u16::from(bytes[5]) + 1;
+        if resolutions > u16::from(u8::MAX) {
+            return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+        }
+        if resolutions > u16::from(limits.maximum_resolutions_per_component()) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Resolutions,
+                limit: u64::from(limits.maximum_resolutions_per_component()),
+                actual: u64::from(resolutions),
+            });
+        }
+        if bytes[6] > 8 || bytes[7] > 8 {
+            return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+        }
+        let width = 2_u32.pow(u32::from(bytes[6]) + 2);
+        let height = 2_u32.pow(u32::from(bytes[7]) + 2);
+        let style_valid = match bytes[8] / 64 {
+            0 => true,
+            1 => (bytes[8] % 64) & 0x37 == 0,
+            2 => false,
+            _ => (bytes[8] % 64) & 5 == 0,
+        };
+        if u64::from(width) * u64::from(height) > 4096 || !style_valid {
+            return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
+        }
+        let defined = flags % 2 == 1;
+        if bytes.len() != 10 + if defined { usize::from(resolutions) } else { 0 } {
+            return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
+        }
+        let mut precincts = [(15, 15); 33];
+        if defined {
+            for (index, byte) in bytes[10..].iter().enumerate() {
+                let slot = precincts
+                    .get_mut(index)
+                    .ok_or_else(|| malformed(offset, MalformedKind::InvalidCodingStyle))?;
+                *slot = (byte % 16, byte / 16);
+            }
+        }
+        Ok(CodingStyle {
+            progression_order: order,
+            layers,
+            multiple_component_transform: bytes[4] == 1,
+            decomposition_levels: bytes[5],
+            decomposition_structure: None,
+            decomposition_directions: [DecompositionDirection::TwoDimensional; 32],
+            code_block_width: u16::try_from(width).unwrap(),
+            code_block_height: u16::try_from(height).unwrap(),
+            code_block_style: bytes[8],
+            transform: match bytes[9] {
+                0 => WaveletTransform::Irreversible9x7,
+                1 => WaveletTransform::Reversible5x3,
+                index => WaveletTransform::Arbitrary(index),
+            },
+            precincts_defined: defined,
+            sop_markers: flags / 2 % 2 == 1,
+            eph_markers: flags / 4 % 2 == 1,
+            precinct_exponents: precincts,
+        })
+    }
+
+    #[test]
     fn actual_raw_cod_derives_full_style_defaults_precincts_and_ordered_admission() {
         fn malformed(offset: usize, kind: MalformedKind) -> DecodeError {
             DecodeError::MalformedInput {
@@ -15209,98 +15619,6 @@ mod tests {
                 bytes.push(0);
             }
             bytes
-        }
-        fn reference(
-            bytes: &[u8],
-            offset: usize,
-            limits: &ResourceLimits,
-        ) -> Result<CodingStyle, DecodeError> {
-            if bytes.len() < 10 {
-                return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
-            }
-            let flags = bytes[0];
-            if flags >= 8 {
-                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
-            }
-            let order = [
-                ProgressionOrder::Lrcp,
-                ProgressionOrder::Rlcp,
-                ProgressionOrder::Rpcl,
-                ProgressionOrder::Pcrl,
-                ProgressionOrder::Cprl,
-            ]
-            .get(usize::from(bytes[1]))
-            .copied()
-            .ok_or_else(|| malformed(offset, MalformedKind::InvalidCodingStyle))?;
-            let layers = u16::from_be_bytes([bytes[2], bytes[3]]);
-            if layers > limits.maximum_layers() {
-                return Err(DecodeError::LimitExceeded {
-                    resource: Resource::Layers,
-                    limit: u64::from(limits.maximum_layers()),
-                    actual: u64::from(layers),
-                });
-            }
-            if layers == 0 || bytes[4] > 1 {
-                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
-            }
-            let resolutions = u16::from(bytes[5]) + 1;
-            if resolutions > u16::from(u8::MAX) {
-                return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
-            }
-            if resolutions > u16::from(limits.maximum_resolutions_per_component()) {
-                return Err(DecodeError::LimitExceeded {
-                    resource: Resource::Resolutions,
-                    limit: u64::from(limits.maximum_resolutions_per_component()),
-                    actual: u64::from(resolutions),
-                });
-            }
-            if bytes[6] > 8 || bytes[7] > 8 {
-                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
-            }
-            let width = 2_u32.pow(u32::from(bytes[6]) + 2);
-            let height = 2_u32.pow(u32::from(bytes[7]) + 2);
-            let style_valid = match bytes[8] / 64 {
-                0 => true,
-                1 => (bytes[8] % 64) & 0x37 == 0,
-                2 => false,
-                _ => (bytes[8] % 64) & 5 == 0,
-            };
-            if u64::from(width) * u64::from(height) > 4096 || !style_valid {
-                return Err(malformed(offset, MalformedKind::InvalidCodingStyle));
-            }
-            let defined = flags % 2 == 1;
-            if bytes.len() != 10 + if defined { usize::from(resolutions) } else { 0 } {
-                return Err(malformed(offset, MalformedKind::InvalidMarkerLength));
-            }
-            let mut precincts = [(15, 15); 33];
-            if defined {
-                for (index, byte) in bytes[10..].iter().enumerate() {
-                    let slot = precincts
-                        .get_mut(index)
-                        .ok_or_else(|| malformed(offset, MalformedKind::InvalidCodingStyle))?;
-                    *slot = (byte % 16, byte / 16);
-                }
-            }
-            Ok(CodingStyle {
-                progression_order: order,
-                layers,
-                multiple_component_transform: bytes[4] == 1,
-                decomposition_levels: bytes[5],
-                decomposition_structure: None,
-                decomposition_directions: [DecompositionDirection::TwoDimensional; 32],
-                code_block_width: u16::try_from(width).unwrap(),
-                code_block_height: u16::try_from(height).unwrap(),
-                code_block_style: bytes[8],
-                transform: match bytes[9] {
-                    0 => WaveletTransform::Irreversible9x7,
-                    1 => WaveletTransform::Reversible5x3,
-                    index => WaveletTransform::Arbitrary(index),
-                },
-                precincts_defined: defined,
-                sop_markers: flags / 2 % 2 == 1,
-                eph_markers: flags / 4 % 2 == 1,
-                precinct_exponents: precincts,
-            })
         }
         let base = ResourceLimits::HARDENED;
         let limits = [
@@ -15324,7 +15642,7 @@ mod tests {
                         for limit in &limits {
                             let parser = new_parser(&[], limit).unwrap();
                             for offset in [0, 17, usize::MAX] {
-                                let expected = reference(&bytes, offset, limit);
+                                let expected = reference_raw_coding_style(&bytes, offset, limit);
                                 assert_eq!(parser.parse_cod_payload(offset, &bytes), expected);
                                 assert_eq!(
                                     parser.parse_cod(Segment {
@@ -15350,7 +15668,7 @@ mod tests {
                 let bytes = [0, 0, 0, 1, 0, 0, width, height, 0, 1];
                 assert_eq!(
                     parser.parse_cod_payload(31, &bytes),
-                    reference(&bytes, 31, &base)
+                    reference_raw_coding_style(&bytes, 31, &base)
                 );
             }
         }
@@ -15361,7 +15679,10 @@ mod tests {
         let mut parser = new_parser(&input, &base).unwrap();
         let segment = parser.read_segment().unwrap();
         let actual = parser.parse_cod(segment).unwrap();
-        assert_eq!(actual, reference(&bytes, 0, &base).unwrap());
+        assert_eq!(
+            actual,
+            reference_raw_coding_style(&bytes, 0, &base).unwrap()
+        );
         assert!(matches!(actual.transform, WaveletTransform::Arbitrary(255)));
         assert!(
             actual.precinct_exponents[3..]
