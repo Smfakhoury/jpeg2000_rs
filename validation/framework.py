@@ -792,6 +792,31 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_NONLINEAR_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "maximum_u32_for_bits"): (
+        "part1_maximum_u32_for_bits", r"\1", None, "bits",
+    ),
+    ("src/codestream.rs", "Parser::copy_segment_tail"): (
+        "part1_copy_segment_tail", _coverage_call("segment_tail_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*start",
+    ),
+    ("src/codestream.rs", "Parser::decode_nlt_gamma"): (
+        "part1_nlt_gamma", r"\1", None, _coverage_call("segment_view", "segment"),
+    ),
+    ("src/codestream.rs", "Parser::decode_nlt_payload"): (
+        "part1_nlt_payload", _coverage_call("nlt_payload_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*components",
+    ),
+    ("src/codestream.rs", "Parser::parse_nlt"): (
+        "part1_parse_nlt", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*"
+        + _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
+    ),
+}
+
 _PROFILE_BYTES_CONTRACTS = {
     ("src/codestream.rs", "count_set_bits"): (
         "part1_set_bits_prefix", r"\1\s+as\s+nat", None, r"value\s*,\s*32",
@@ -2183,6 +2208,7 @@ def validate_normative_coverage(
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

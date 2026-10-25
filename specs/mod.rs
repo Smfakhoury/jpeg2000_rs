@@ -13868,6 +13868,196 @@ pub open spec fn part1_parse_profile_number(segment: Part1CodestreamSegment)
     }
 }
 
+#[verifier::opaque]
+pub open spec fn part1_copy_segment_tail(segment: Part1CodestreamSegment, start: usize)
+    -> Result<Seq<u8>, crate::DecodeError>
+{
+    if start > segment.payload.len() {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else { Ok(segment.payload.subrange(start as int, segment.payload.len() as int)) }
+}
+
+pub open spec fn part1_maximum_u32_for_bits(bits: u8) -> Result<u32, crate::DecodeError> {
+    if bits == 0 || bits > 31 {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::ArithmeticOverflow))
+    } else { Ok(((1u64 << bits) - 1) as u32) }
+}
+
+pub open spec fn part1_nlt_gamma_word(payload: Seq<u8>, index: int) -> u32
+    recommends 0 <= index < 5, payload.len() == 19,
+{
+    ((payload[4 + 3 * index] as u32) << 16)
+        | ((payload[5 + 3 * index] as u32) << 8) | payload[6 + 3 * index] as u32
+}
+
+#[verifier::opaque]
+pub open spec fn part1_nlt_gamma(segment: Part1CodestreamSegment) -> Result<[u32; 5], crate::DecodeError> {
+    if segment.payload.len() != 19 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let parameters = [
+            part1_nlt_gamma_word(segment.payload, 0), part1_nlt_gamma_word(segment.payload, 1),
+            part1_nlt_gamma_word(segment.payload, 2), part1_nlt_gamma_word(segment.payload, 3),
+            part1_nlt_gamma_word(segment.payload, 4),
+        ];
+        if parameters[0] == 0 || parameters[1] == 0 || parameters[3] == 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else { Ok(parameters) }
+    }
+}
+
+pub open spec fn part1_nlt_point_width(bits: u8) -> usize {
+    if bits <= 8 { 1 } else if bits <= 16 { 2 } else { 4 }
+}
+
+pub open spec fn part1_nlt_point_value(payload: Seq<u8>, width: usize, index: int) -> u32
+    recommends 0 <= index, width == 1 || width == 2 || width == 4,
+        15 + width as int * (index + 1) <= payload.len(),
+{
+    let position = 15 + width as int * index;
+    if width == 1 { payload[position] as u32 }
+    else if width == 2 { part1_marker_value(payload[position], payload[position + 1]) as u32 }
+    else { part1_siz_word(payload, position) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_nlt_points_header(segment: Part1CodestreamSegment)
+    -> Result<(u16, u32, u32, u8, usize), crate::DecodeError>
+{
+    if segment.payload.len() < 15 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let stored = part1_marker_value(segment.payload[4], segment.payload[5]);
+        if stored == 0 || stored > 8191 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else {
+            let minimum = part1_siz_word(segment.payload, 6);
+            let maximum = part1_siz_word(segment.payload, 10);
+            let bits = segment.payload[14];
+            let width = part1_nlt_point_width(bits);
+            if minimum >= maximum || bits == 0 || bits > 32 {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+            } else if segment.payload.len() != 15 + (stored as int + 1) * width as int {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+            } else { Ok(((stored + 1) as u16, minimum, maximum, bits, width)) }
+        }
+    }
+}
+
+pub open spec fn part1_nlt_point_maximum(bits: u8) -> u32 {
+    if bits == 32 { u32::MAX } else { ((1u64 << bits) - 1) as u32 }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_nlt_points(segment: Part1CodestreamSegment)
+    -> Result<(u32, u32, u8, Seq<u32>), crate::DecodeError>
+{
+    match part1_nlt_points_header(segment) {
+        Err(error) => Err(error),
+        Ok(header) => {
+            let values = Seq::new(header.0 as nat, |index: int| part1_nlt_point_value(segment.payload, header.4, index));
+            if forall|index: int| 0 <= index < values.len() ==> values[index] <= part1_nlt_point_maximum(header.3) {
+                Ok((header.1, header.2, header.3, values))
+            } else { Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)) }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_nlt_header(segment: Part1CodestreamSegment, components: u16)
+    -> Result<(Option<u16>, u8, bool, u8), crate::DecodeError>
+{
+    if segment.payload.len() < 4 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let raw = part1_marker_value(segment.payload[0], segment.payload[1]);
+        if raw != u16::MAX && raw >= components {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else {
+            let precision = part2_cbd_precision(segment.payload[2]);
+            let kind = segment.payload[3];
+            if precision > 38 || kind > 4 {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+            } else if (kind == 0 || kind == 3) && segment.payload.len() != 4 {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+            } else {
+                Ok((if raw == u16::MAX { None } else { Some(raw) }, precision,
+                    part2_cbd_signed(segment.payload[2]), kind))
+            }
+        }
+    }
+}
+
+pub open spec fn part1_nlt_record(
+    segment: Part1CodestreamSegment, header: (Option<u16>, u8, bool, u8),
+    points: Option<(u32, u32, u8, Seq<u32>)>, gamma: Option<[u32; 5]>,
+) -> Part2OwnedNonlinear {
+    Part2OwnedNonlinear {
+        component: header.0, precision: header.1, signed: header.2, transform_type: header.3,
+        parameters: segment.payload.subrange(4, segment.payload.len() as int),
+        d_min: match points { None => None, Some(value) => Some(value.0) },
+        d_max: match points { None => None, Some(value) => Some(value.1) },
+        point_bits: match points { None => None, Some(value) => Some(value.2) },
+        points: match points { None => Seq::empty(), Some(value) => value.3 },
+        gamma,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_nlt_payload(segment: Part1CodestreamSegment, components: u16)
+    -> Result<Part2OwnedNonlinear, crate::DecodeError>
+{
+    match part1_nlt_header(segment, components) {
+        Err(error) => Err(error),
+        Ok(header) => if header.3 == 1 {
+            match part1_nlt_gamma(segment) {
+                Err(error) => Err(error),
+                Ok(gamma) => Ok(part1_nlt_record(segment, header, None, Some(gamma))),
+            }
+        } else if header.3 == 2 || header.3 == 4 {
+            match part1_nlt_points(segment) {
+                Err(error) => Err(error),
+                Ok(points) => Ok(part1_nlt_record(segment, header, Some(points), None)),
+            }
+        } else { Ok(part1_nlt_record(segment, header, None, None)) },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_nlt_replace(entries: Seq<Part2OwnedNonlinear>, replacement: Part2OwnedNonlinear, position: nat)
+    -> Seq<Part2OwnedNonlinear>
+    decreases entries.len() - position,
+{
+    if position >= entries.len() { entries.push(replacement) }
+    else if entries[position as int].component == replacement.component { entries.update(position as int, replacement) }
+    else { part1_nlt_replace(entries, replacement, position + 1) }
+}
+
+pub open spec fn part1_extension_nonlinear(extensions: Part2OwnedExtensions, nonlinear: Seq<Part2OwnedNonlinear>)
+    -> Part2OwnedExtensions
+{
+    Part2OwnedExtensions {
+        decompositions: extensions.decompositions, arbitrary: extensions.arbitrary, nonlinear,
+        depths: extensions.depths, kernels: extensions.kernels, registrations: extensions.registrations,
+        lengths: extensions.lengths, metadata_bytes: extensions.metadata_bytes,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_nlt<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, components: u16,
+    extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { charged } else {
+        match part1_nlt_payload(segment, components) {
+            Err(error) => (Err(error), charged.1, charged.2),
+            Ok(replacement) => (Ok(()), charged.1, part1_extension_nonlinear(charged.2,
+                part1_nlt_replace(charged.2.nonlinear, replacement, 0))),
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

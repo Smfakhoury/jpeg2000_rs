@@ -956,6 +956,12 @@ class FrameworkTests(WorkingFiles):
             framework._PROFILE_BYTES_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_raw_nlt_gamma_points_parameters_and_complete_registry_owner_frames(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-nonlinear-bytes"},
+            framework._NONLINEAR_BYTES_CONTRACTS, 5,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
