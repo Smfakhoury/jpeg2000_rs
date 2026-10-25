@@ -1,5 +1,16 @@
 # Specification audit guide
 
+`part1_parse_atk` composes actual shared charge, full raw payload production
+and first-index kernel replacement, framing all parser/eight extension fields.
+`part1_atk_payload`, header/step/terminal folds and `part1_kernel_coefficient`
+observe the sole real native bodies. They retain every raw descriptor/flag,
+offset/exponent/residue/coefficient field and all sixteen physical coefficient
+bytes. Arbitrary reader widths/types, integer sign extension, exact failure
+offsets and first-error/terminal order are explicit without normalized kernels
+or prepared step/byte/result banks. Equivalent bounded copying, safe casts
+and standard fresh-query isolation add no trust, cap, pin or solver-budget
+change. Remaining metadata/layout/file/F2/F4/final F8 joins remain separate.
+
 `part1_parse_tlm` binds the actual raw header/record Result and all three
 mutable frames: parser, external next-marker index and eight-field extension
 owner. Real shared charge precedes index matching and increment, style,

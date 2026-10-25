@@ -792,6 +792,31 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_KERNEL_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "Parser::read_kernel_coefficient"): (
+        "part1_kernel_coefficient", _coverage_call("kernel_coefficient_outcome", r"\1"), None,
+        r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
+        + r"\s*,\s*position\s*,\s*width\s*,\s*coefficient_type",
+    ),
+    ("src/codestream.rs", "Parser::decode_atk_step"): (
+        "part1_atk_step", _coverage_call("kernel_step_outcome", r"\1"), None,
+        r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
+        + r"\s*,\s*start\s*,\s*width\s*,\s*coefficient_type\s*,\s*reversible\s*,\s*whole_sample_filter",
+    ),
+    ("src/codestream.rs", "Parser::decode_atk_payload"): (
+        "part1_atk_payload", _coverage_call("atk_payload_outcome", r"\1"), None,
+        r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment"),
+    ),
+    ("src/codestream.rs", "Parser::parse_atk"): (
+        "part1_parse_atk", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*"
+        + _coverage_call("segment_view", "segment") + r"\s*,\s*"
+        + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
+    ),
+}
+
 _TILE_LENGTH_BYTES_CONTRACTS = {
     ("src/codestream.rs", "Parser::parse_tlm"): (
         "part1_parse_tlm", r"\1",
@@ -2223,6 +2248,7 @@ def validate_normative_coverage(
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_LENGTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _KERNEL_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
