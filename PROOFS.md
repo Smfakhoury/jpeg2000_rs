@@ -25,6 +25,45 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw MCT numeric arrays
+
+Actual MCT parsing binds every array index/kind/format/fraction/value field
+from raw source bytes and actual limits. Minimum header, Z/Y/reserved/index/
+kind/alignment and actual component-square element limits precede numerical
+conversion. The sole factored element body consumes real signed/packed word
+and deterministic IEEE32/64 producers for all four original formats.
+
+The existing proved ATK binary-format/Q32 mathematical definitions are reused
+through exact unit-error projection, retaining the original stricter MCT
+exponent guard. Signed zeros, nonfinite rejection, ties-to-even, large-right
+underflow and signed/unsigned overflow branches preserve native outcomes.
+Explicit cross-width bit facts, safe exponent casts and boolean increments
+expose source values rather than assuming normalized IEEE inputs or supplying
+converted-element banks. Every read/advance/decrease bound follows from real
+header/count geometry.
+
+The mathematical value fold exposes each positive format stride and rejects
+an incomplete trailing element before recurring. Its remaining-byte measure
+therefore stays nonnegative and strictly decreases, including for arbitrary
+unaligned model inputs. The executable element checks and decoder are
+unchanged; a codestream-only proof does not check this specification's
+termination obligation, so complete-root verification remains mandatory.
+
+Seven exact contracts bind actual numerical and byte producers to the full
+array Result. No new trust, caps, pins, solver budgets or termination bypass
+is introduced. Actual MCT fragment state, graph and outer file/layer/F2/F4/
+final F8 joins remain separate.
+
+Independent division/remainder/endian references compare 816 generic binary
+frontiers, 5,060 ties-to-even cases, 3,584 binary32 and 28,672 binary64 field
+contexts, and 262,144 paired full-word patterns for both formats. Packed64/
+signed16 checks cover all 65,536 word values plus 2,048 byte mutations.
+Complete arrays cover 786,432 descriptor contexts, 3,456 mixed-format/value
+contexts, 576 count/alignment/limit boundaries and 3,456 element bounds.
+A real reader joins accepted binary32/binary64 arrays and later nonfinite
+rejection. Generic right shifts of 128 or more retain native zero-underflow
+policy; these maintained regressions are not official conformance.
+
 ## Complete native MCC fragment state and record production
 
 Actual MCC fragment consumption binds the optional genuine record Result,

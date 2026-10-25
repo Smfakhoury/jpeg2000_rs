@@ -4,6 +4,64 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-transform-array-bytes",
+      "topic": "Complete actual raw MCT array Result and all index/kind/format/fraction/value fields from source bytes and actual limits. Original min8/Z/Y/reserved/index/kind/alignment/component-square TransformElements checks precede element conversion. Sole actual element body composes signed16/32 and packed64 reads plus deterministic IEEE32/64-to-Q32 producers, observing every actual value and first conversion error. Existing proved ATK binary-format/Q32 mathematical definitions are reused through exact unit-error projection and the original stricter MCT exponent guard, not duplicated or replaced by supplied numeric results. Cross-width bit facts, safe exponent casts and explicit boolean increments expose native signed zero/NaN/Inf/round-to-even/large-right-underflow/overflow behavior. Source count geometry derives every read/advance/decrease bound; all four real formats are retained without normalized IEEE/value/header premises. No new trust/cap/pin/budget/termination bypass. Actual MCT fragment/graph and final outer joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::consume_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mct"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_mct_element"},
+        {"path": "src/codestream.rs", "symbol": "read_u64"},
+        {"path": "src/codestream.rs", "symbol": "signed_u16"},
+        {"path": "src/codestream.rs", "symbol": "float32_to_fixed"},
+        {"path": "src/codestream.rs", "symbol": "float64_to_fixed"},
+        {"path": "src/codestream.rs", "symbol": "fixed_from_binary"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mct"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_header"},
+        {"path": "specs/mod.rs", "symbol": "Part1MctHeader"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_values"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_element"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_element_width"},
+        {"path": "specs/mod.rs", "symbol": "part1_float32_to_fixed"},
+        {"path": "specs/mod.rs", "symbol": "part1_float64_to_fixed"},
+        {"path": "specs/mod.rs", "symbol": "part1_fixed_from_binary"},
+        {"path": "specs/mod.rs", "symbol": "part1_numeric_unit_outcome"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_u64"},
+        {"path": "specs/mod.rs", "symbol": "part1_signed_u16"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_binary_format"},
+        {"path": "specs/mod.rs", "symbol": "part2_atk_binary_q32"},
+        {"path": "specs/mod.rs", "symbol": "part2_binary_fixed_shift"},
+        {"path": "src/limits.rs", "symbol": "resource_component_limit"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mct"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_mct_element"},
+        {"path": "src/codestream.rs", "symbol": "float32_to_fixed"},
+        {"path": "src/codestream.rs", "symbol": "float64_to_fixed"},
+        {"path": "src/codestream.rs", "symbol": "fixed_from_binary"},
+        {"path": "src/codestream.rs", "symbol": "read_u64"},
+        {"path": "src/codestream.rs", "symbol": "signed_u16"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "mct_array_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_fixed_precision_is_q32"},
+        {"path": "src/codestream.rs", "symbol": "signed_u32"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"},
+        {"path": "src/codestream.rs", "symbol": "read_u32"},
+        {"path": "src/refinement.rs", "symbol": "binary_fixed_shift"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mct_numeric_scalars_preserve_ieee_fields_ties_underflow_and_full_word_bytes"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_arrays_preserve_all_descriptors_formats_limits_and_first_value_errors"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_element_bounds_and_real_reader_preserve_all_array_fields"}
+      ]
+    },
+    {
       "id": "part2-complete-native-mcc-fragment-production",
       "topic": "Complete actual MCC fragment Result/optional decoded record, every pending fragment field/data/order and completed-ID vector from raw segment/components/limits and arbitrary prior state. Actual first-match/completed scans and sole staging body preserve header/zero/duplicate/continuity/byte-bound order, new-state prechecks, append-before-limit/next-overflow partial commits, and exact next==final+1 completion. Continuations do not newly reject previously completed IDs. Actual swap_remove order and removal-before-cap/real parse_mcc errors are retained, with original first-fragment offset and source-derived seven-byte reconstruction; completed append occurs only after genuine record success. All bounds come from real producers, not normalized pending/completed consistency or reconstructed/decoded record banks. Original allocation/cap/pin/trust/solver/termination policies remain unchanged. Numeric MCT/other fragment/graph and outer file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

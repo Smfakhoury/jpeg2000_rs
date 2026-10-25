@@ -1004,6 +1004,12 @@ class FrameworkTests(WorkingFiles):
             framework._COLLECTION_FRAGMENT_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-transform-array-bytes"},
+            framework._TRANSFORM_ARRAY_BYTES_CONTRACTS, 7,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

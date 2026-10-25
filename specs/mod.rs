@@ -14940,6 +14940,157 @@ pub open spec fn part1_consume_mcc_fragment(
     }
 }
 
+pub open spec fn part1_numeric_unit_outcome(value: Result<i64, crate::DecodeError>) -> Result<i64, ()> {
+    match value { Err(error) => Err(()), Ok(value) => Ok(value) }
+}
+
+pub open spec fn part1_fixed_from_binary(negative: bool, significand: u128, binary_exponent: i32) -> Result<i64, ()> {
+    if binary_exponent < i32::MIN + 32 || binary_exponent > i32::MAX - 32 { Err(()) }
+    else { part1_numeric_unit_outcome(part2_atk_binary_q32(negative, significand, binary_exponent)) }
+}
+
+pub open spec fn part1_float32_to_fixed(bits: u32) -> Result<i64, ()> {
+    part1_numeric_unit_outcome(part2_atk_binary_format(bits as u128, 32, 8, 23, 127))
+}
+
+pub open spec fn part1_float64_to_fixed(bits: u64) -> Result<i64, ()> {
+    part1_numeric_unit_outcome(part2_atk_binary_format(bits as u128, 64, 11, 52, 1023))
+}
+
+pub open spec fn part1_codestream_u64(bytes: Seq<u8>) -> u64
+    recommends bytes.len() == 8,
+{
+    ((bytes[0] as u64) << 56) | ((bytes[1] as u64) << 48) | ((bytes[2] as u64) << 40)
+        | ((bytes[3] as u64) << 32) | ((bytes[4] as u64) << 24) | ((bytes[5] as u64) << 16)
+        | ((bytes[6] as u64) << 8) | bytes[7] as u64
+}
+
+pub open spec fn part1_signed_u16(value: u16) -> i64 {
+    if value < 32768 { value as i64 } else { (value as int - 65536) as i64 }
+}
+
+pub open spec fn part1_mct_element_width(format: crate::codestream::MctNumericFormat) -> usize {
+    match format {
+        crate::codestream::MctNumericFormat::Int16 => 2,
+        crate::codestream::MctNumericFormat::Int32 | crate::codestream::MctNumericFormat::Float32 => 4,
+        crate::codestream::MctNumericFormat::Float64 => 8,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_element(offset: usize, data: Seq<u8>, position: usize, format: crate::codestream::MctNumericFormat)
+    -> Result<i64, crate::DecodeError>
+{
+    let width = part1_mct_element_width(format);
+    if position as int + width as int > data.len() {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform))
+    } else {
+        match format {
+            crate::codestream::MctNumericFormat::Int16 =>
+                Ok(part1_signed_u16(part1_marker_value(data[position as int], data[position as int + 1]))),
+            crate::codestream::MctNumericFormat::Int32 => Ok(part1_signed_u32(part1_siz_word(data, position as int))),
+            crate::codestream::MctNumericFormat::Float32 => match part1_float32_to_fixed(part1_siz_word(data, position as int)) {
+                Err(error) => Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform)), Ok(value) => Ok(value),
+            },
+            crate::codestream::MctNumericFormat::Float64 => match part1_float64_to_fixed(
+                part1_codestream_u64(data.subrange(position as int, position as int + 8))) {
+                Err(error) => Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform)), Ok(value) => Ok(value),
+            },
+        }
+    }
+}
+
+pub struct Part1MctHeader {
+    pub index: u8, pub kind: crate::codestream::MctArrayKind, pub format: crate::codestream::MctNumericFormat,
+    pub width: usize, pub count: usize, pub fraction: u8,
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_header(segment: Part1CodestreamSegment, limits: &crate::ResourceLimits)
+    -> Result<Part1MctHeader, crate::DecodeError>
+{
+    if segment.payload.len() < 8 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+    } else {
+        let descriptor = part1_marker_value(segment.payload[2], segment.payload[3]);
+        let index = (descriptor & 255) as u8;
+        if part1_marker_value(segment.payload[0], segment.payload[1]) != 0
+            || part1_marker_value(segment.payload[4], segment.payload[5]) != 0
+            || descriptor & 0xf000 != 0 || index == 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else {
+            let kind = match (descriptor >> 8) & 3 {
+                0 => Some(crate::codestream::MctArrayKind::Dependency),
+                1 => Some(crate::codestream::MctArrayKind::Decorrelation),
+                2 => Some(crate::codestream::MctArrayKind::Offset),
+                _ => None,
+            };
+            match kind {
+                None => Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)),
+                Some(kind) => {
+                    let format = match (descriptor >> 10) & 3 {
+                        0 => crate::codestream::MctNumericFormat::Int16,
+                        1 => crate::codestream::MctNumericFormat::Int32,
+                        2 => crate::codestream::MctNumericFormat::Float32,
+                        _ => crate::codestream::MctNumericFormat::Float64,
+                    };
+                    let width = part1_mct_element_width(format);
+                    let length = segment.payload.len() - 6;
+                    let maximum = crate::limits::resource_component_limit(limits) as int
+                        * crate::limits::resource_component_limit(limits) as int;
+                    if length == 0 || length % (width as int) != 0 {
+                        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+                    } else if (length / width as int) as u64 > maximum {
+                        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TransformElements,
+                            limit: maximum as u64, actual: (length / width as int) as u64 })
+                    } else {
+                        Ok(Part1MctHeader { index, kind, format, width, count: (length / width as int) as usize,
+                            fraction: match format {
+                                crate::codestream::MctNumericFormat::Float32 | crate::codestream::MctNumericFormat::Float64 => 32,
+                                _ => 0,
+                            },
+                        })
+                    }
+                },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_values(
+    offset: usize, data: Seq<u8>, format: crate::codestream::MctNumericFormat, position: nat, values: Seq<i64>,
+) -> Result<Seq<i64>, crate::DecodeError>
+    decreases data.len() - position,
+{
+    let stride = match format {
+        crate::codestream::MctNumericFormat::Int16 => 2nat,
+        crate::codestream::MctNumericFormat::Int32 | crate::codestream::MctNumericFormat::Float32 => 4nat,
+        crate::codestream::MctNumericFormat::Float64 => 8nat,
+    };
+    if position >= data.len() { Ok(values) }
+    else if position + stride > data.len() {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform))
+    } else {
+        match part1_mct_element(offset, data, position as usize, format) {
+            Err(error) => Err(error),
+            Ok(value) => part1_mct_values(offset, data, format, position + stride, values.push(value)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_mct(segment: Part1CodestreamSegment, limits: &crate::ResourceLimits)
+    -> Result<Part2MctArray, crate::DecodeError>
+{
+    match part1_mct_header(segment, limits) {
+        Err(error) => Err(error),
+        Ok(header) => match part1_mct_values(segment.offset, segment.payload.subrange(6, segment.payload.len() as int), header.format, 0, Seq::empty()) {
+            Err(error) => Err(error), Ok(values) => Ok((header.index, header.kind, header.format, header.fraction, values)),
+        },
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }
