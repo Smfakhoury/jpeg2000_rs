@@ -729,18 +729,24 @@ class FrameworkTests(WorkingFiles):
 
     def test_decoder_unit_state_contracts_reject_nonunit_return_signatures(self):
         coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
-        source = framework.ROOT / "src/tier1.rs"
-        original = source.read_text()
         read_text = Path.read_text
-        for symbol in ("set_force_high_throughput", "set_multiple_ht_sets_allowed"):
-            start = original.index(f"pub fn {symbol}(")
-            end = original.index(")", start) + 1
-            modified = original[:end] + " -> u8" + original[end:]
-            def altered(path, *args, **kwargs):
-                return modified if path == source else read_text(path, *args, **kwargs)
-            with self.subTest(symbol=symbol), mock.patch.object(Path, "read_text", altered), \
-                    self.assertRaisesRegex(ValueError, "actual implicit unit return"):
-                framework.validate_normative_coverage(coverage)
+        for relative, symbols in (
+            ("src/tier1.rs", ("set_force_high_throughput", "set_multiple_ht_sets_allowed")),
+            ("src/codestream.rs", ("replace_mct_array", "replace_mct_record")),
+        ):
+            source = framework.ROOT / relative
+            original = source.read_text()
+            for symbol in symbols:
+                start = original.index(f"fn {symbol}(")
+                end = original.index(")", start) + 1
+                for return_type in ("u8", "()"):
+                    modified = original[:end] + f" -> {return_type}" + original[end:]
+                    def altered(path, *args, **kwargs):
+                        return modified if path == source else read_text(path, *args, **kwargs)
+                    with self.subTest(symbol=symbol, return_type=return_type), \
+                            mock.patch.object(Path, "read_text", altered), \
+                            self.assertRaisesRegex(ValueError, "actual implicit unit return"):
+                        framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_actual_codeblock_geometry_and_configured_decoder_inputs(self):
         self._assert_complete_packet_contract_bindings(
@@ -1008,6 +1014,12 @@ class FrameworkTests(WorkingFiles):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-mct-fragment-production"},
             framework._TRANSFORM_FRAGMENT_CONTRACTS, 4,
+        )
+
+    def test_inventory_binds_actual_mct_registry_last_only_admission_replacement_and_unique_reference(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-mct-registry-production"},
+            framework._TRANSFORM_REGISTRY_CONTRACTS, 7,
         )
 
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):

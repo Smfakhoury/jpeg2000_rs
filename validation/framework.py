@@ -842,6 +842,41 @@ _COLLECTION_FRAGMENT_CONTRACTS = {
     ),
 }
 
+_TRANSFORM_REGISTRY_CONTRACTS = {
+    ("src/codestream.rs", "find_mct_array_index"): (
+        "part1_mct_registry_array_find", r"\1", None,
+        _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream.rs", "find_mct_record_index"): (
+        "part1_mct_registry_record_find", r"\1", None,
+        _coverage_call("mct_records_view", r"records\s*@") + r"\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream.rs", "validate_unique_mct_array_indexes"): (
+        "part1_mct_registry_unique_array", r"\1", None,
+        _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*marker_offset",
+    ),
+    ("src/codestream.rs", "validate_unique_mct_record_indexes"): (
+        "part1_mct_registry_unique_record", r"\1", None,
+        _coverage_call("mct_records_view", r"records\s*@") + r"\s*,\s*marker_offset",
+    ),
+    ("src/codestream.rs", "replace_mct_array"): (
+        "part1_mct_registry_replace_array", r"\(\s*\)",
+        _coverage_call("mct_arrays_view", _coverage_call("final", "arrays") + r"\s*@"),
+        _coverage_call("mct_arrays_view", _coverage_call("old", "arrays") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("mct_array_view", r"&\s*replacement"),
+    ),
+    ("src/codestream.rs", "replace_mct_record"): (
+        "part1_mct_registry_replace_record", r"\(\s*\)",
+        _coverage_call("mct_records_view", _coverage_call("final", "records") + r"\s*@"),
+        _coverage_call("mct_records_view", _coverage_call("old", "records") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("mct_record_view", r"&\s*replacement"),
+    ),
+    ("src/codestream.rs", "referenced_mct_array"): (
+        "part1_mct_registry_reference", _coverage_call("mct_array_reference_outcome", r"\1"), None,
+        _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*index\s*,\s*kind",
+    ),
+}
+
 _TRANSFORM_FRAGMENT_CONTRACTS = {
     ("src/codestream.rs", "find_mct_fragment"): (
         "part1_mct_fragment_find", r"\1", None,
@@ -2412,6 +2447,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_COLLECTION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COLLECTION_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TRANSFORM_REGISTRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
@@ -2429,6 +2465,8 @@ def validate_normative_coverage(
             if (reference["path"], reference["symbol"]) in (
                 ("src/tier1.rs", "Tier1CodingStyle::set_force_high_throughput"),
                 ("src/tier1.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),
+                ("src/codestream.rs", "replace_mct_array"),
+                ("src/codestream.rs", "replace_mct_record"),
             ) and re.search(r"\)\s*->", text[signature:body_start]):
                 raise ValueError(f"linked unit-state contract requires the actual implicit unit return: {short}")
             projected_result = re.search(

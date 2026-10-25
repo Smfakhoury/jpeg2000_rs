@@ -25,6 +25,35 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Native MCT registry admission, replacement and reference production
+
+Actual array and MCC-record admission checks only the last element against
+the earlier prefix. Earlier duplicates remain admissible when the last ID is
+unique; no whole-registry uniqueness premise is introduced. Sole first-index
+lookups serve both this check and replace-or-append. Replacement uses the ID
+alone, preserves later duplicates and order, and binds every raw array field
+and every record/collection/reference field.
+
+Actual borrowed-array resolution requires exactly one matching ID and kind.
+Other kinds with the same ID are ignored; zero or multiple matching arrays
+retain `InvalidTransform` at offset zero. Numerical format, fraction bits,
+values and dimensions remain unvalidated by this lookup. The canonical root
+and traversal invariant are explicitly linked, including early duplicate
+failure, rather than relying on a locally prepared lookup result.
+
+Seven exact contracts bind both read-only results and the full old/final
+unit-return mutation frames, without changing the implicit unit signatures.
+No normalized registries, unique-index assumptions, result banks, new trust,
+caps, pins, budgets or termination bypass are introduced. Actual transform
+graph dimensions/resolution and the outer parser/F2/F4/F8 joins remain separate.
+
+Independent iterator/reference updates check 55,296 array and 18,432 raw
+record contexts, including empty/zero/duplicate IDs and every raw array
+kind/format/fraction regime. They compare 442,368 full array replacements
+and 147,456 full record replacements, and 73,728 exact ID/kind references
+including borrowed input identity. These are maintained regressions, not
+official conformance evidence.
+
 ## Complete native MCT fragment state and numeric-array production
 
 Actual MCT fragment consumption binds every pending descriptor, next/final

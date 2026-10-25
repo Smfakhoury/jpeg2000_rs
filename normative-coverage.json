@@ -4,6 +4,56 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-mct-registry-production",
+      "topic": "Actual raw MCT array/record first-index lookup, last-element-only duplicate admission, first-index replace-or-append and unique (index,kind) borrowed array reference. Full array index/kind/format/fraction/value and every record/collection/reference field remain unconstrained and observed. Earlier duplicate IDs do not fail admission when the last ID is unique; replacement is by index only and preserves later duplicates/order. Reference lookup ignores other kinds, errors at offset zero on zero or multiple matching arrays, and does not validate numerical values or dimensions. Unit-return mutations bind complete old/final vectors without signature changes. No prepared registries, uniqueness/normalization premises, result banks, new trust/caps/pins/budgets or termination bypass. Actual graph dimensions/resolution and outer parser/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_multiple_component_transform"},
+        {"path": "src/codestream.rs", "symbol": "validate_unique_mct_array_indexes"},
+        {"path": "src/codestream.rs", "symbol": "validate_unique_mct_record_indexes"},
+        {"path": "src/codestream.rs", "symbol": "replace_mct_array"},
+        {"path": "src/codestream.rs", "symbol": "replace_mct_record"},
+        {"path": "src/codestream.rs", "symbol": "referenced_mct_array"},
+        {"path": "src/codestream.rs", "symbol": "find_mct_array_index"},
+        {"path": "src/codestream.rs", "symbol": "find_mct_record_index"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "Part1MctRecord"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_array_find"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_record_find"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_unique_array"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_unique_record"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_replace_array"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_replace_record"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_reference"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_reference_from"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "find_mct_array_index"},
+        {"path": "src/codestream.rs", "symbol": "find_mct_record_index"},
+        {"path": "src/codestream.rs", "symbol": "validate_unique_mct_array_indexes"},
+        {"path": "src/codestream.rs", "symbol": "validate_unique_mct_record_indexes"},
+        {"path": "src/codestream.rs", "symbol": "replace_mct_array"},
+        {"path": "src/codestream.rs", "symbol": "replace_mct_record"},
+        {"path": "src/codestream.rs", "symbol": "referenced_mct_array"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "mct_arrays_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_records_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_record_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_reference_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_view"},
+        {"path": "src/codestream.rs", "symbol": "mcc_collection_references_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_kinds_equal"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mct_registry_preserves_last_only_admission_and_all_array_replacements"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_registry_preserves_complete_raw_record_replacements"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_registry_references_require_exactly_one_matching_index_and_kind"}
+      ]
+    },
+    {
       "id": "part2-complete-native-mct-fragment-production",
       "topic": "Complete actual MCT fragment Result and all pending descriptor/next/final/offset/data fields plus completed IDs from raw segment bytes and actual component limits. First low-byte pending match, exact full-descriptor continuation, initial-only completed rejection and original square-times-eight byte bound precede staging. Continuations retain appended bytes on cap/next-overflow errors. Exact completion, native swap removal, original first-fragment offset and real reconstructed payload compose the proved numeric-array parser, including every array field and conversion failure. Pending removal precedes parser errors; completed append follows genuine success and may duplicate an already-present ID on continuation. No normalized fragments, supplied reconstructed/parsed results, extra trust/caps/pins/budgets or termination bypass. Graph replacement/resolution and final outer F2/F4/F8 joins remain separate.",
       "implementation_refs": [

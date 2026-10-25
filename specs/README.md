@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part1_mct_registry_*` binds actual last-element-only array/record admission,
+first-ID replace-or-append and exactly-one ID/kind borrowed lookup. Full
+private views retain arbitrary array numeric fields and all record/collection
+references. Earlier duplicates, ID-zero entries, other-kind matches, invalid
+dimensions and numeric encodings are not normalized away. The root/traversal
+equality covers early duplicate failure; unit-return mutations bind complete
+old/final vectors without signature changes. Seven exact contracts leave
+graph dimensions/resolution and outer joins separate, with no unique-registry
+premise, supplied lookup result or trust/cap/pin/budget change.
+
 `part1_consume_mct_fragment` composes the actual staging, first-ID lookup,
 exact completion, swap removal and reconstructed source bytes with
 `part1_parse_mct`. Full private observations bind arbitrary descriptor/
