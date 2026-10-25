@@ -7187,65 +7187,88 @@ impl<'a> Parser<'a> {
         Ok(MctRecord { index, collections })
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures segment_tail_outcome(result) == crate::specs::part1_parse_mco(segment_view(segment)),
+    ))]
     fn parse_mco(&self, segment: Segment<'a>) -> Result<Vec<u8>, DecodeError> {
-        let count = *segment.payload.first().ok_or_else(|| {
-            DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-        })? as usize;
-        if segment.payload.len() != count.saturating_add(1) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_mco); }
+        let count = match segment.payload.first() {
+            Some(value) => usize::from(*value),
+            None => return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform)),
+        };
+        if segment.payload.len() != count + 1 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         let mut order = Vec::with_capacity(count);
         let mut index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant index <= count,
+                invariant index <= count <= 255, order.len() == index,
+                    segment.payload.len() == count + 1,
+                    crate::specs::part1_parse_mco(segment_view(segment))
+                        == crate::specs::part1_mco_run(segment_view(segment), index as nat, order@),
                 decreases count - index,
             )
         )]
         while index < count {
-            let stage = *segment.payload.get(index + 1).ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_mco_run, 1); }
+            let stage = match segment.payload.get(index + 1) {
+                Some(value) => *value,
+                None => {
+                    return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
+                }
+            };
             let mut previous = 0_usize;
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant previous <= order.len(),
+                    invariant previous <= order.len(), order.len() == index,
+                        index < count <= 255, segment.payload.len() == count + 1,
+                        stage == segment.payload@[index as int + 1],
+                        forall|position: int| 0 <= position < previous ==> order@[position] != stage,
+                        crate::specs::part1_parse_mco(segment_view(segment))
+                            == crate::specs::part1_mco_run(segment_view(segment), index as nat, order@),
                     decreases order.len() - previous,
                 )
             )]
             while previous < order.len() {
-                if order.get(previous) == Some(&stage) {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment.offset),
-                        MalformedKind::InvalidTransform,
-                    ));
+                #[cfg(verus_keep_ghost)]
+                proof! { reveal_with_fuel(crate::specs::part1_mco_run, 1); }
+                if order[previous] == stage {
+                    #[cfg(verus_keep_ghost)]
+                    proof! { assert(order@.contains(stage)); }
+                    return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
                 }
-                previous = previous.checked_add(1).ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment.offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                previous = match previous.checked_add(1) {
+                    Some(value) => value,
+                    None => {
+                        return Err(
+                            self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                        );
+                    }
+                };
             }
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(!order@.contains(stage)); }
             if stage == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
             order.push(stage);
-            index = index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            index = match index.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mco_run, 1); }
         Ok(order)
     }
 
@@ -10628,110 +10651,186 @@ fn validate_parallel_collections(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (marker_words_outcome(result), *final(position)) == crate::specs::part1_parse_mcc_component_list(
+        payload@, *old(position), components, marker_offset),
+))]
 fn parse_mcc_component_list(
     payload: &[u8],
     position: &mut usize,
     components: u16,
     marker_offset: usize,
 ) -> Result<Vec<u16>, DecodeError> {
-    if payload.len().saturating_sub(*position) < 2 {
-        return Err(DecodeError::malformed(
-            marker_offset as u64,
-            MalformedKind::InvalidTransform,
-        ));
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost start = *position;
+        let ghost goal = crate::specs::part1_parse_mcc_component_list(payload@, start, components, marker_offset);
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_parse_mcc_component_list); }
+    if *position > payload.len() || payload.len() - *position < 2 {
+        return Err(DecodeError::MalformedInput {
+            offset: marker_offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        });
     }
     let encoded_count = read_u16([payload[*position], payload[*position + 1]]);
-    *position = position.checked_add(2).ok_or_else(|| {
-        DecodeError::malformed(marker_offset as u64, MalformedKind::ArithmeticOverflow)
-    })?;
+    *position = match position.checked_add(2) {
+        Some(value) => value,
+        None => {
+            return Err(DecodeError::MalformedInput {
+                offset: marker_offset as u64,
+                kind: MalformedKind::ArithmeticOverflow,
+            });
+        }
+    };
     let reference_bytes = if encoded_count & 0x8000 == 0 {
         1_usize
     } else {
         2_usize
     };
     let count = encoded_count & 0x7fff;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(encoded_count & 0x7fff <= 32767u16) by (bit_vector); }
     if count == 0 || count > components {
-        return Err(DecodeError::malformed(
-            marker_offset as u64,
-            MalformedKind::InvalidTransform,
-        ));
+        return Err(DecodeError::MalformedInput {
+            offset: marker_offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        });
     }
-    let required = usize::from(count)
-        .checked_mul(reference_bytes)
-        .ok_or_else(|| {
-            DecodeError::malformed(marker_offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-    if payload.len().saturating_sub(*position) < required {
-        return Err(DecodeError::malformed(
-            marker_offset as u64,
-            MalformedKind::InvalidTransform,
-        ));
+    let required = match usize::from(count).checked_mul(reference_bytes) {
+        Some(value) => value,
+        None => {
+            return Err(DecodeError::MalformedInput {
+                offset: marker_offset as u64,
+                kind: MalformedKind::ArithmeticOverflow,
+            });
+        }
+    };
+    if *position > payload.len() || payload.len() - *position < required {
+        return Err(DecodeError::MalformedInput {
+            offset: marker_offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        });
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost end = *position as int + required as int;
+        let ghost target = crate::specs::part1_mcc_reference_run(
+            payload@, components, marker_offset, *position, reference_bytes, count as nat, Seq::empty());
     }
     let mut references = Vec::with_capacity(usize::from(count));
     let mut reference_index = 0_u16;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant reference_index <= count,
+            invariant reference_index <= count <= 32767, references.len() == reference_index,
+                reference_bytes == 1 || reference_bytes == 2,
+                start == *old(position),
+                *position as int + (count - reference_index) * reference_bytes as int == end,
+                end <= payload.len(),
+                goal == crate::specs::part1_parse_mcc_component_list(payload@, start, components, marker_offset),
+                goal == target,
+                target == crate::specs::part1_mcc_reference_run(
+                    payload@, components, marker_offset, *position, reference_bytes, (count - reference_index) as nat, references@),
             decreases count - reference_index,
         )
     )]
     while reference_index < count {
-        let current = *payload.get(*position).ok_or_else(|| {
-            DecodeError::malformed(marker_offset as u64, MalformedKind::InvalidTransform)
-        })?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part1_mcc_reference_run, 1);
+            assert(*position + reference_bytes <= payload.len());
+        }
+        let current = match payload.get(*position) {
+            Some(value) => *value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: marker_offset as u64,
+                    kind: MalformedKind::InvalidTransform,
+                });
+            }
+        };
         let reference = if reference_bytes == 1 {
             u16::from(current)
         } else {
-            let next = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(marker_offset as u64, MalformedKind::ArithmeticOverflow)
-            })?;
+            let next = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(DecodeError::MalformedInput {
+                        offset: marker_offset as u64,
+                        kind: MalformedKind::ArithmeticOverflow,
+                    });
+                }
+            };
             read_u16([
                 current,
-                *payload.get(next).ok_or_else(|| {
-                    DecodeError::malformed(marker_offset as u64, MalformedKind::InvalidTransform)
-                })?,
+                match payload.get(next) {
+                    Some(value) => *value,
+                    None => {
+                        return Err(DecodeError::MalformedInput {
+                            offset: marker_offset as u64,
+                            kind: MalformedKind::InvalidTransform,
+                        });
+                    }
+                },
             ])
         };
         if reference >= components {
-            return Err(DecodeError::malformed(
-                marker_offset as u64,
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(DecodeError::MalformedInput {
+                offset: marker_offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            });
         }
         if u16_list_contains(&references, reference) {
-            return Err(DecodeError::malformed(
-                marker_offset as u64,
-                MalformedKind::InvalidTransform,
-            ));
-        }
-
-        fn u16_list_contains(values: &[u16], value: u16) -> bool {
-            let mut index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant index <= values.len(),
-                    decreases values.len() - index,
-                )
-            )]
-            while index < values.len() {
-                if values.get(index) == Some(&value) {
-                    return true;
-                }
-                index += 1;
-            }
-            false
+            return Err(DecodeError::MalformedInput {
+                offset: marker_offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            });
         }
         references.push(reference);
-        *position = position.checked_add(reference_bytes).ok_or_else(|| {
-            DecodeError::malformed(marker_offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
-        reference_index = reference_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(marker_offset as u64, MalformedKind::ArithmeticOverflow)
-        })?;
+        *position = match position.checked_add(reference_bytes) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: marker_offset as u64,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
+        reference_index = match reference_index.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: marker_offset as u64,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_mcc_reference_run, 1); }
     Ok(references)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_mcc_reference_present(values@, value),
+))]
+fn u16_list_contains(values: &[u16], value: u16) -> bool {
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= values.len(),
+            forall|position: int| 0 <= position < index ==> values@[position] != value,
+        decreases values.len() - index,
+    ))]
+    while index < values.len() {
+        if values[index] == value {
+            return true;
+        }
+        index += 1;
+    }
+    false
 }
 
 fn float32_to_fixed(bits: u32) -> Result<i64, ()> {
@@ -17185,6 +17284,329 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_mco_order(bytes: &[u8], offset: usize) -> Result<Vec<u8>, DecodeError> {
+        let malformed = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let Some(count) = bytes.first() else {
+            return Err(malformed());
+        };
+        if bytes.len() != usize::from(*count) + 1 {
+            return Err(malformed());
+        }
+        let order = &bytes[1..];
+        let unique: std::collections::BTreeSet<_> = order.iter().copied().collect();
+        if order.contains(&0) || unique.len() != order.len() {
+            return Err(malformed());
+        }
+        Ok(order.to_vec())
+    }
+
+    fn reference_mcc_component_list(
+        bytes: &[u8],
+        position: &mut usize,
+        components: u16,
+        offset: usize,
+    ) -> Result<Vec<u16>, DecodeError> {
+        let malformed = || DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        };
+        if *position as u128 + 2 > bytes.len() as u128 {
+            return Err(malformed());
+        }
+        let encoded = u16::from_be_bytes([bytes[*position], bytes[*position + 1]]);
+        *position += 2;
+        let count = encoded % 32768;
+        let width = if encoded / 32768 == 0 { 1 } else { 2 };
+        if count == 0 || count > components {
+            return Err(malformed());
+        }
+        if *position as u128 + u128::from(count) * width as u128 > bytes.len() as u128 {
+            return Err(malformed());
+        }
+        let mut references = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..count {
+            let value = if width == 1 {
+                u16::from(bytes[*position])
+            } else {
+                u16::from_be_bytes([bytes[*position], bytes[*position + 1]])
+            };
+            if value >= components || !seen.insert(value) {
+                return Err(malformed());
+            }
+            references.push(value);
+            *position += width;
+        }
+        Ok(references)
+    }
+
+    fn raw_mcc_reference_list(wide: bool, count: u16, references: &[u16]) -> Vec<u8> {
+        assert!(count <= 32767);
+        let encoded = count + if wide { 32768 } else { 0 };
+        let mut bytes = vec![0xa5];
+        bytes.extend(encoded.to_be_bytes());
+        for reference in references {
+            if wide {
+                bytes.extend(reference.to_be_bytes());
+            } else {
+                bytes.push(*reference as u8);
+            }
+        }
+        bytes
+    }
+
+    fn assert_mcc_reference_case(bytes: &[u8], start: usize, components: u16, offset: usize) {
+        let mut actual_position = start;
+        let mut expected_position = start;
+        let expected =
+            reference_mcc_component_list(bytes, &mut expected_position, components, offset);
+        assert_eq!(
+            parse_mcc_component_list(bytes, &mut actual_position, components, offset),
+            expected
+        );
+        assert_eq!(actual_position, expected_position);
+    }
+
+    #[test]
+    fn actual_mco_preserves_zero_order_all_stage_pairs_and_count_frontiers() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut counts = 0;
+        for count in 0..=u8::MAX {
+            let mut source = vec![count];
+            source.extend(1..=count);
+            for variant in 0..7 {
+                let mut bytes = source.clone();
+                match variant {
+                    0 => {
+                        bytes.pop();
+                    }
+                    2 => bytes.push(0),
+                    3 if count > 0 => bytes[1] = 0,
+                    4 if count > 0 => bytes[usize::from(count) / 2 + 1] = 0,
+                    5 if count > 0 => bytes[usize::from(count)] = 0,
+                    6 if count > 1 => bytes[usize::from(count)] = bytes[1],
+                    _ => {}
+                }
+                for offset in [0, usize::MAX] {
+                    assert_eq!(
+                        parser.parse_mco(Segment {
+                            marker: 0x1234,
+                            offset,
+                            payload: &bytes
+                        }),
+                        reference_mco_order(&bytes, offset)
+                    );
+                    counts += 1;
+                }
+            }
+        }
+        assert_eq!(counts, 3_584);
+        let mut pairs = 0;
+        for first in 0..=u8::MAX {
+            for second in 0..=u8::MAX {
+                let bytes = [2, first, second];
+                for offset in [0, usize::MAX] {
+                    assert_eq!(
+                        parser.parse_mco(Segment {
+                            marker: 0x1234,
+                            offset,
+                            payload: &bytes
+                        }),
+                        reference_mco_order(&bytes, offset)
+                    );
+                    pairs += 1;
+                }
+            }
+        }
+        assert_eq!(pairs, 131_072);
+        let mut mutations = 0;
+        for count in [1_u8, 2, 3, 16] {
+            let mut source = vec![count];
+            source.extend((1..=count).rev());
+            for position in 1..source.len() {
+                for value in 0..=u8::MAX {
+                    let mut bytes = source.clone();
+                    bytes[position] = value;
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.parse_mco(Segment {
+                                marker: 0x1234,
+                                offset,
+                                payload: &bytes
+                            }),
+                            reference_mco_order(&bytes, offset)
+                        );
+                        mutations += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(mutations, 11_264);
+        assert_eq!(
+            parser.parse_mco(Segment {
+                marker: 0x1234,
+                offset: usize::MAX,
+                payload: &[0]
+            }),
+            Ok(vec![])
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_mcc_component_lists_preserve_all_headers_words_and_partial_cursors() {
+        let mut frontiers = 0;
+        for length in [0, 1, 2, 3, 8, 12] {
+            for pattern in [0, 1, 0x7f, 0x80, 255] {
+                let bytes = vec![pattern; length];
+                for start in [0, 1, 2, 7, length, length + 1, usize::MAX - 1, usize::MAX] {
+                    for components in [0, 1, 64, 256, u16::MAX] {
+                        for offset in [0, usize::MAX] {
+                            assert_mcc_reference_case(&bytes, start, components, offset);
+                            frontiers += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 2_400);
+        let mut headers = 0;
+        for encoded in 0..=u16::MAX {
+            let [first, second] = encoded.to_be_bytes();
+            let bytes = [0xa5, first, second, 0, 1, 2, 3, 4, 5, 6, 7];
+            for components in [0, 1, 63, 64, 255, 256, 257, 32767, 32768, u16::MAX] {
+                for offset in [0, usize::MAX] {
+                    assert_mcc_reference_case(&bytes, 1, components, offset);
+                    headers += 1;
+                }
+            }
+        }
+        assert_eq!(headers, 1_310_720);
+        let mut words = 0;
+        for word in 0..=u16::MAX {
+            let [first, second] = word.to_be_bytes();
+            let bytes = [0xa5, 0x80, 1, first, second, 255];
+            for components in [0, 1, 255, 256, 257, u16::MAX] {
+                for offset in [0, usize::MAX] {
+                    assert_mcc_reference_case(&bytes, 1, components, offset);
+                    words += 1;
+                }
+            }
+        }
+        assert_eq!(words, 786_432);
+        let mut lists = 0;
+        for wide in [false, true] {
+            for count in [1_u16, 2, 3, 63, 64, 255, 256, 257] {
+                for components in [0, 1, 64, 256, 257, u16::MAX] {
+                    for pattern in 0..5 {
+                        let mut values: Vec<u16> = (0..count).collect();
+                        match pattern {
+                            1 => values.reverse(),
+                            2 if count > 1 => values[usize::from(count) - 1] = values[0],
+                            3 => values[usize::from(count) - 1] = components,
+                            4 => values[0] = components,
+                            _ => {}
+                        }
+                        let source = raw_mcc_reference_list(wide, count, &values);
+                        for variant in 0..3 {
+                            let mut bytes = source.clone();
+                            if variant == 0 {
+                                bytes.pop();
+                            } else if variant == 2 {
+                                bytes.extend([255, 0]);
+                            }
+                            for offset in [0, usize::MAX] {
+                                assert_mcc_reference_case(&bytes, 1, components, offset);
+                                lists += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(lists, 2_880);
+    }
+
+    #[test]
+    fn actual_transform_routing_membership_and_real_mcc_mco_callers_preserve_order() {
+        let mut memberships = 0;
+        for value in 0..=u16::MAX {
+            for values in [
+                vec![],
+                vec![value],
+                vec![u16::MAX],
+                vec![value.wrapping_add(1)],
+                vec![0, value, u16::MAX, value],
+            ] {
+                assert_eq!(u16_list_contains(&values, value), values.contains(&value));
+                memberships += 1;
+            }
+        }
+        assert_eq!(memberships, 327_680);
+        let mut input = mco(&[7, 1]);
+        input.extend(mcc(7, 2, true, 1, 2));
+        let mut wide_payload = vec![0, 0, 9, 0, 0, 0, 1, 1];
+        wide_payload.extend(&raw_mcc_reference_list(true, 2, &[0, 256])[1..]);
+        wide_payload.extend(&raw_mcc_reference_list(true, 2, &[256, 0])[1..]);
+        wide_payload.extend([1, 2, 1]);
+        input.extend(segment(MCC, &wide_payload));
+        let bad_offset = input.len();
+        input.extend(mco(&[7, 7]));
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let raw = parser.read_segment().unwrap();
+        assert_eq!(parser.parse_mco(raw).unwrap(), vec![7, 1]);
+        let raw = parser.read_segment().unwrap();
+        let record = parser.parse_mcc(raw, 2).unwrap();
+        assert_eq!(record.index, 7);
+        assert_eq!(record.collections.len(), 1);
+        assert_eq!(record.collections[0].input_components, vec![0, 1]);
+        assert_eq!(record.collections[0].output_components, vec![0, 1]);
+        let raw = parser.read_segment().unwrap();
+        let record = parser.parse_mcc(raw, 257).unwrap();
+        assert_eq!(record.index, 9);
+        assert_eq!(record.collections[0].input_components, vec![0, 256]);
+        assert_eq!(record.collections[0].output_components, vec![256, 0]);
+        let raw = parser.read_segment().unwrap();
+        assert_eq!(
+            parser.parse_mco(raw),
+            Err(DecodeError::MalformedInput {
+                offset: bad_offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            })
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (input.len(), 4, 0, 0)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
     }
 
     fn raw_progression_styles(components: u16, depths: &[u8]) -> ComponentCodingStyles {

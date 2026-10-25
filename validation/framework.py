@@ -792,6 +792,22 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_TRANSFORM_ROUTING_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "Parser::parse_mco"): (
+        "part1_parse_mco", _coverage_call("segment_tail_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment"),
+    ),
+    ("src/codestream.rs", "parse_mcc_component_list"): (
+        "part1_parse_mcc_component_list", _coverage_call("marker_words_outcome", r"\1"),
+        r"\*\s*" + _coverage_call("final", "position"),
+        r"payload\s*@\s*,\s*\*\s*" + _coverage_call("old", "position")
+        + r"\s*,\s*components\s*,\s*marker_offset",
+    ),
+    ("src/codestream.rs", "u16_list_contains"): (
+        "part1_mcc_reference_present", r"\1", None, r"values\s*@\s*,\s*value",
+    ),
+}
+
 _PROGRESSION_ADMISSION_CONTRACTS = {
     ("src/codestream.rs", "Parser::progression_validation_shape"): (
         "part1_poc_validation_shape", r"\1", None,
@@ -2296,6 +2312,7 @@ def validate_normative_coverage(
                 or _KERNEL_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROGRESSION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROGRESSION_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TRANSFORM_ROUTING_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

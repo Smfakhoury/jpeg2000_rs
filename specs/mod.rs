@@ -14602,6 +14602,74 @@ pub open spec fn part1_validate_progression_changes(
     }
 }
 
+#[verifier::opaque]
+pub open spec fn part1_mco_run(segment: Part1CodestreamSegment, index: nat, order: Seq<u8>)
+    -> Result<Seq<u8>, crate::DecodeError>
+    decreases segment.payload.len() - index,
+{
+    if index + 1 >= segment.payload.len() { Ok(order) } else {
+        let stage = segment.payload[index as int + 1];
+        if order.contains(stage) || stage == 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else { part1_mco_run(segment, index + 1, order.push(stage)) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_mco(segment: Part1CodestreamSegment) -> Result<Seq<u8>, crate::DecodeError> {
+    if segment.payload.len() == 0 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+    } else if segment.payload.len() != segment.payload[0] as int + 1 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+    } else { part1_mco_run(segment, 0, Seq::empty()) }
+}
+
+pub open spec fn part1_mcc_reference_present(values: Seq<u16>, value: u16) -> bool {
+    values.contains(value)
+}
+
+pub open spec fn part1_mcc_reference_value(payload: Seq<u8>, position: int, width: usize) -> u16 {
+    if width == 1 { payload[position] as u16 } else { part1_marker_value(payload[position], payload[position + 1]) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mcc_reference_run(
+    payload: Seq<u8>, components: u16, marker_offset: usize, position: usize, width: usize,
+    remaining: nat, references: Seq<u16>,
+) -> (Result<Seq<u16>, crate::DecodeError>, usize)
+    decreases remaining,
+{
+    if remaining == 0 { (Ok(references), position) }
+    else if (width != 1 && width != 2) || position as int + width as int > payload.len() {
+        (Err(part1_codestream_malformed(marker_offset, crate::MalformedKind::InvalidTransform)), position)
+    } else {
+        let reference = part1_mcc_reference_value(payload, position as int, width);
+        if reference >= components || part1_mcc_reference_present(references, reference) {
+            (Err(part1_codestream_malformed(marker_offset, crate::MalformedKind::InvalidTransform)), position)
+        } else {
+            part1_mcc_reference_run(payload, components, marker_offset, (position + width) as usize,
+                width, (remaining - 1) as nat, references.push(reference))
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_mcc_component_list(
+    payload: Seq<u8>, start: usize, components: u16, marker_offset: usize,
+) -> (Result<Seq<u16>, crate::DecodeError>, usize) {
+    if start as int + 2 > payload.len() {
+        (Err(part1_codestream_malformed(marker_offset, crate::MalformedKind::InvalidTransform)), start)
+    } else {
+        let encoded = part1_marker_value(payload[start as int], payload[start as int + 1]);
+        let position = (start + 2) as usize;
+        let width = if encoded & 0x8000 == 0 { 1usize } else { 2usize };
+        let count = encoded & 0x7fff;
+        if count == 0 || count > components || position as int + count as int * width as int > payload.len() {
+            (Err(part1_codestream_malformed(marker_offset, crate::MalformedKind::InvalidTransform)), position)
+        } else { part1_mcc_reference_run(payload, components, marker_offset, position, width, count as nat, Seq::empty()) }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }
