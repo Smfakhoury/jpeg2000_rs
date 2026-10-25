@@ -792,6 +792,24 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_PROFILE_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "count_set_bits"): (
+        "part1_set_bits_prefix", r"\1\s+as\s+nat", None, r"value\s*,\s*32",
+    ),
+    ("src/codestream.rs", "Parser::read_marker_words"): (
+        "part1_marker_words", _coverage_call("marker_words_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*start",
+    ),
+    ("src/codestream.rs", "Parser::parse_cap"): (
+        "part1_parse_cap", _coverage_call("cap_payload_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment"),
+    ),
+    ("src/codestream.rs", "Parser::parse_profile_number"): (
+        "part1_parse_profile_number", _coverage_call("profile_number_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment"),
+    ),
+}
+
 _COMPONENT_DEPTH_BYTES_CONTRACTS = {
     ("src/codestream.rs", "Parser::parse_cbd"): (
         "part1_parse_cbd", r"\1",
@@ -2164,6 +2182,7 @@ def validate_normative_coverage(
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

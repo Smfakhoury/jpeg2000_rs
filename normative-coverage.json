@@ -4,6 +4,49 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part15-complete-native-raw-profile-bytes",
+      "topic": "Complete actual CAP and PRF/CPF profile Results from raw segment bytes and offsets. Actual 32-bit mask counting and sole shared big-endian word traversal derive every retained mask/word and allocation count. CAP retains short-header before zero-mask before exact popcount-length admission, without new capability-value or profile/marker policy. Profiles retain nonempty/even length before most-significant last-word zero rejection; leading/intermediate zeros and arbitrary words remain raw. Factored traversal preserves original checked next/read/push/advance order, exact odd-tail errors and capacity; its start bound is derived by actual callers, not assumed codec admission. An internal explicit start-bound guard makes the helper total for arbitrary starts without changing real caller outcomes or adding a contract precondition. Actual getters expose unchanged raw vectors/mask, including unnormalized owners. No parsed-result bank, normalized-profile premise, trust, pin, cap or solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cap"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_profile_number"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_marker_words"},
+        {"path": "src/codestream.rs", "symbol": "count_set_bits"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_cap"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_profile_number"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_words"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_word_sequence"},
+        {"path": "specs/mod.rs", "symbol": "part1_set_bits_prefix"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_u32"},
+        {"path": "specs/mod.rs", "symbol": "part15_cap_payload_length"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cap"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_profile_number"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_marker_words"},
+        {"path": "src/codestream.rs", "symbol": "count_set_bits"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "cap_payload_outcome"},
+        {"path": "src/codestream.rs", "symbol": "profile_number_outcome"},
+        {"path": "src/codestream.rs", "symbol": "marker_words_outcome"},
+        {"path": "src/codestream.rs", "symbol": "extended_capabilities_view"},
+        {"path": "src/codestream.rs", "symbol": "profile_number_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"},
+        {"path": "src/codestream.rs", "symbol": "read_u32"},
+        {"path": "src/refinement.rs", "symbol": "part15_cap_payload_length"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_marker_word_reader_preserves_all_endian_pairs_and_odd_tail_offsets"},
+        {"path": "src/codestream.rs", "symbol": "actual_profile_numbers_preserve_word_order_and_last_zero_error_precedence"},
+        {"path": "src/codestream.rs", "symbol": "actual_cap_preserves_mask_halves_bit_counts_length_order_and_reader_join"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-component-depth-bytes",
       "topic": "Complete actual CBD parser Result and all parser/eight extension-owner fields from raw payload/count/limits and prior unnormalized metadata. Actual shared metadata/work charge precedes header admission; descriptor count and exact length precede clearing old depths. Every byte derives precision/sign from real proved primitives. Invalid precision retains exactly the valid decoded prefix after clearing; budget/header failures retain the original depths. Repeated descriptors expand to component count, including the existing one-depth outcome for zero components. Nonrepeated empty payload clears depths successfully. Mathematical terminal folds observe the sole real loop; no normalized owner, prepared depth/result bank, new trust, runtime validation, cap, pin or solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins stay separate.",
       "implementation_refs": [

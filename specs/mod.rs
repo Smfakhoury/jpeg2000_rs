@@ -13808,6 +13808,66 @@ pub open spec fn part1_parse_cbd<'a>(
     }
 }
 
+pub open spec fn part1_set_bits_prefix(value: u32, bits: nat) -> nat
+    recommends bits <= 32,
+    decreases bits,
+{
+    if bits == 0 { 0 } else {
+        part1_set_bits_prefix(value, (bits - 1) as nat)
+            + if value & (1u32 << ((bits - 1) as u32)) != 0 { 1nat } else { 0nat }
+    }
+}
+
+pub open spec fn part1_marker_word_sequence(payload: Seq<u8>) -> Seq<u16> {
+    Seq::new(payload.len() / 2, |index: int| part1_marker_value(payload[2 * index], payload[2 * index + 1]))
+}
+
+#[verifier::opaque]
+pub open spec fn part1_marker_words(segment: Part1CodestreamSegment, start: usize)
+    -> Result<Seq<u16>, crate::DecodeError>
+{
+    if start > segment.payload.len() || (segment.payload.len() - start as int) % 2 != 0 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else { Ok(part1_marker_word_sequence(segment.payload.subrange(start as int, segment.payload.len() as int))) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_cap(segment: Part1CodestreamSegment)
+    -> Result<(u32, Seq<u16>), crate::DecodeError>
+{
+    if segment.payload.len() < 4 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let p_cap = part1_siz_word(segment.payload, 0);
+        if p_cap == 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidProfile))
+        } else if segment.payload.len() != part15_cap_payload_length(part1_set_bits_prefix(p_cap, 32) as u8) {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+        } else {
+            match part1_marker_words(segment, 4) {
+                Err(error) => Err(error),
+                Ok(words) => Ok((p_cap, words)),
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_profile_number(segment: Part1CodestreamSegment)
+    -> Result<Seq<u16>, crate::DecodeError>
+{
+    if segment.payload.len() < 2 || segment.payload.len() % 2 != 0 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        match part1_marker_words(segment, 0) {
+            Err(error) => Err(error),
+            Ok(words) => if words[words.len() as int - 1] == 0 {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidProfile))
+            } else { Ok(words) },
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

@@ -2019,17 +2019,49 @@ verus! {
         (value.p_cap, value.c_capabilities@)
     }
 
+    pub closed spec fn profile_number_view(value: &ProfileNumber) -> Seq<u16> {
+        value.words@
+    }
+
+    pub open spec fn cap_payload_outcome(value: Result<ExtendedCapabilities, DecodeError>)
+        -> Result<(u32, Seq<u16>), DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(capabilities) => Ok(extended_capabilities_view(&capabilities)) }
+    }
+
+    pub open spec fn profile_number_outcome(value: Result<ProfileNumber, DecodeError>)
+        -> Result<Seq<u16>, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(profile) => Ok(profile_number_view(&profile)) }
+    }
+
+    pub open spec fn marker_words_outcome(value: Result<Vec<u16>, DecodeError>)
+        -> Result<Seq<u16>, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(words) => Ok(words@) }
+    }
+
     pub closed spec fn codestream_profile_capabilities(value: &CodestreamProfile) -> Option<(u32, Seq<u16>)> {
         match value.extended_capabilities { None => None, Some(capabilities) => Some(extended_capabilities_view(&capabilities)) }
     }
 }
 
 impl ExtendedCapabilities {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == extended_capabilities_view(self).0,
+    ))]
     pub const fn p_cap(&self) -> u32 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(extended_capabilities_view); }
         self.p_cap
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result@ == extended_capabilities_view(self).1,
+    ))]
     pub fn c_capabilities(&self) -> &[u16] {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(extended_capabilities_view); }
         &self.c_capabilities
     }
 
@@ -2148,7 +2180,12 @@ impl ExtendedCapabilities {
 }
 
 impl ProfileNumber {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result@ == profile_number_view(self),
+    ))]
     pub fn words(&self) -> &[u16] {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(profile_number_view); }
         &self.words
     }
 }
@@ -5855,12 +5892,15 @@ impl<'a> Parser<'a> {
         Ok(copied)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures cap_payload_outcome(result) == crate::specs::part1_parse_cap(segment_view(segment)),
+    ))]
     fn parse_cap(&self, segment: Segment<'a>) -> Result<ExtendedCapabilities, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_cap); reveal(extended_capabilities_view); }
         if segment.payload.len() < 4 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let p_cap = read_u32([
             segment.payload[0],
@@ -5869,111 +5909,122 @@ impl<'a> Parser<'a> {
             segment.payload[3],
         ]);
         if p_cap == 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidProfile,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidProfile));
         }
         let capability_count = count_set_bits(p_cap);
         let expected_length = crate::refinement::part15_cap_payload_length(capability_count);
         if segment.payload.len() != expected_length {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
-        let mut c_capabilities = Vec::with_capacity(usize::from(capability_count));
-        let mut position = 4_usize;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant position <= segment.payload.len(),
-                decreases segment.payload.len() - position,
-            )
-        )]
-        while position < segment.payload.len() {
-            let next = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let first = *segment.payload.get(position).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
-            let second = *segment.payload.get(next).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
-            c_capabilities.push(read_u16([first, second]));
-            position = position.checked_add(2).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-        }
+        let c_capabilities = self.read_marker_words(segment, 4)?;
         Ok(ExtendedCapabilities {
             p_cap,
             c_capabilities,
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures profile_number_outcome(result) == crate::specs::part1_parse_profile_number(segment_view(segment)),
+    ))]
     fn parse_profile_number(&self, segment: Segment<'a>) -> Result<ProfileNumber, DecodeError> {
-        if segment.payload.len() < 2 || !segment.payload.len().is_multiple_of(2) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_profile_number); reveal(profile_number_view); }
+        let remainder = segment.payload.len() % 2;
+        if segment.payload.len() < 2 || remainder != 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
-        let mut words = Vec::with_capacity(segment.payload.len() / 2);
-        let mut position = 0_usize;
+        let words = self.read_marker_words(segment, 0)?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_marker_words); }
+        if matches!(words.last(), Some(value) if *value == 0) {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidProfile));
+        }
+        Ok(ProfileNumber { words })
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures marker_words_outcome(result) == crate::specs::part1_marker_words(segment_view(segment), start),
+    ))]
+    fn read_marker_words(
+        &self,
+        segment: Segment<'a>,
+        start: usize,
+    ) -> Result<Vec<u16>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_marker_words); }
+        if start > segment.payload.len() {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let mut words = Vec::with_capacity((segment.payload.len() - start) / 2);
+        let mut position = start;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant position <= segment.payload.len(),
+                invariant
+                    start <= position <= segment.payload.len(),
+                    (position - start) % 2 == 0,
+                    words@ == crate::specs::part1_marker_word_sequence(
+                        segment.payload@.subrange(start as int, position as int)),
                 decreases segment.payload.len() - position,
             )
         )]
         while position < segment.payload.len() {
-            let next = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let first = *segment.payload.get(position).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
-            let second = *segment.payload.get(next).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part1_segment_byte);
+                reveal(crate::specs::part1_marker_words);
+            }
+            let next = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            let first = self.segment_byte(segment, position, 0)?;
+            let second = match self.segment_byte(segment, next, 0) {
+                Ok(value) => value,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(next == segment.payload.len());
+                        assert((segment.payload.len() - start) % 2 == 1);
+                    }
+                    return Err(error);
+                }
+            };
             words.push(read_u16([first, second]));
-            position = position.checked_add(2).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            let next_position = match position.checked_add(2) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                let raw = segment.payload@;
+                let previous = crate::specs::part1_marker_word_sequence(raw.subrange(start as int, position as int));
+                let next_words = crate::specs::part1_marker_word_sequence(raw.subrange(start as int, next_position as int));
+                assert(next_words =~= previous.push(crate::specs::part1_marker_value(raw[position as int], raw[position as int + 1]))) by {
+                    assert forall|index: int| 0 <= index < next_words.len() implies
+                        next_words[index] == previous.push(crate::specs::part1_marker_value(raw[position as int], raw[position as int + 1]))[index] by {
+                        if index >= previous.len() { assert(2 * index == position - start); }
+                    };
+                }
+            }
+            position = next_position;
         }
-        if matches!(words.last(), Some(value) if *value == 0) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidProfile,
-            ));
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(segment.payload@.subrange(start as int, position as int)
+                =~= segment.payload@.subrange(start as int, segment.payload.len() as int));
         }
-        Ok(ProfileNumber { words })
+        Ok(words)
     }
 
     fn consume_mct_fragment(
@@ -9762,17 +9813,24 @@ fn observe_block_coding(
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result as nat == crate::specs::part1_set_bits_prefix(value, 32),
+        result <= 32,
+))]
 fn count_set_bits(value: u32) -> u8 {
     let mut count = 0_u8;
     let mut bit = 0_u8;
     #[cfg_attr(
         verus_keep_ghost,
         verus_spec(
-            invariant bit <= 32,
+            invariant bit <= 32, count <= bit,
+                count as nat == crate::specs::part1_set_bits_prefix(value, bit as nat),
             decreases 32 - bit,
         )
     )]
     while bit < 32 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_set_bits_prefix, 1); }
         if value & (1_u32 << u32::from(bit)) != 0 {
             count = match count.checked_add(1) {
                 Some(value) => value,
@@ -16513,6 +16571,313 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_marker_words(
+        bytes: &[u8],
+        start: usize,
+        offset: usize,
+    ) -> Result<Vec<u16>, DecodeError> {
+        let Some(tail) = bytes.get(start..) else {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidMarkerLength,
+            });
+        };
+        let chunks = tail.chunks_exact(2);
+        if !chunks.remainder().is_empty() {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidMarkerLength,
+            });
+        }
+        Ok(chunks
+            .map(|word| u16::from_be_bytes([word[0], word[1]]))
+            .collect())
+    }
+
+    fn reference_cap_payload(bytes: &[u8], offset: usize) -> Result<(u32, Vec<u16>), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let Some(header) = bytes.get(..4) else {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        };
+        let mask = u32::from_be_bytes([header[0], header[1], header[2], header[3]]);
+        if mask == 0 {
+            return Err(malformed(MalformedKind::InvalidProfile));
+        }
+        if bytes.len() != 4 + 2 * mask.count_ones() as usize {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        Ok((mask, reference_marker_words(bytes, 4, offset)?))
+    }
+
+    fn reference_profile_payload(bytes: &[u8], offset: usize) -> Result<Vec<u16>, DecodeError> {
+        if bytes.len() < 2 {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidMarkerLength,
+            });
+        }
+        let words = reference_marker_words(bytes, 0, offset)?;
+        if words.last() == Some(&0) {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidProfile,
+            });
+        }
+        Ok(words)
+    }
+
+    fn assert_profile_payload_case(parser: &Parser<'_>, bytes: &[u8], offset: usize) {
+        let segment = Segment {
+            marker: 0x1234,
+            offset,
+            payload: bytes,
+        };
+        assert_eq!(
+            parser
+                .parse_cap(segment)
+                .map(|value| (value.p_cap(), value.c_capabilities().to_vec())),
+            reference_cap_payload(bytes, offset),
+        );
+        assert_eq!(
+            parser
+                .parse_profile_number(segment)
+                .map(|value| value.words().to_vec()),
+            reference_profile_payload(bytes, offset),
+        );
+    }
+
+    #[test]
+    fn actual_marker_word_reader_preserves_all_endian_pairs_and_odd_tail_offsets() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut cases = 0;
+        for word in 0..=u16::MAX {
+            let [first, second] = word.to_be_bytes();
+            let bytes = [7, first, second, second, first, 255];
+            for start in 0..=bytes.len() {
+                for offset in [0, usize::MAX] {
+                    assert_eq!(
+                        parser.read_marker_words(
+                            Segment {
+                                marker: 0x1234,
+                                offset,
+                                payload: &bytes
+                            },
+                            start
+                        ),
+                        reference_marker_words(&bytes, start, offset),
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 917_504);
+        let mut frontiers = 0;
+        for bytes in [vec![], vec![1], vec![1, 2, 3, 4]] {
+            for start in [0, bytes.len(), bytes.len() + 1, usize::MAX] {
+                for offset in [0, usize::MAX] {
+                    assert_eq!(
+                        parser.read_marker_words(
+                            Segment {
+                                marker: 0x1234,
+                                offset,
+                                payload: &bytes
+                            },
+                            start
+                        ),
+                        reference_marker_words(&bytes, start, offset),
+                    );
+                    frontiers += 1;
+                }
+            }
+        }
+        assert_eq!(frontiers, 24);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2),
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_profile_numbers_preserve_word_order_and_last_zero_error_precedence() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut cases = 0;
+        for word in 0..=u16::MAX {
+            let [first, second] = word.to_be_bytes();
+            let payloads: &[&[u8]] = &[
+                &[first, second],
+                &[0, 0, first, second],
+                &[first, second, 0, 0],
+                &[first, second, 255],
+            ];
+            for bytes in payloads {
+                for offset in [0, usize::MAX] {
+                    assert_profile_payload_case(&parser, bytes, offset);
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 524_288);
+        let mut frontiers = 0;
+        for length in 0..=72 {
+            for pattern in [0, 1, 0x55, 0xaa, 255] {
+                for offset in [0, usize::MAX] {
+                    assert_profile_payload_case(&parser, &vec![pattern; length], offset);
+                    frontiers += 1;
+                }
+            }
+        }
+        assert_eq!(frontiers, 730);
+        for words in [vec![], vec![0], vec![0, 1, 0], vec![u16::MAX, 0]] {
+            let raw = ProfileNumber {
+                words: words.clone(),
+            };
+            assert_eq!(raw.words(), words);
+        }
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2),
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_cap_preserves_mask_halves_bit_counts_length_order_and_reader_join() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut cases = 0;
+        for half in 0..=u16::MAX {
+            for mask in [u32::from(half), u32::from(half) << 16] {
+                assert_eq!(u32::from(count_set_bits(mask)), mask.count_ones());
+                let mut source = mask.to_be_bytes().to_vec();
+                for index in 0..mask.count_ones() {
+                    let word = half.wrapping_add(index as u16).wrapping_mul(31337);
+                    source.extend(word.to_be_bytes());
+                }
+                for variant in 0..3 {
+                    let mut bytes = source.clone();
+                    if variant == 0 {
+                        bytes.pop();
+                    } else if variant == 2 {
+                        bytes.push(255);
+                    }
+                    for offset in [0, usize::MAX] {
+                        assert_profile_payload_case(&parser, &bytes, offset);
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 786_432);
+        let mut frontiers = 0;
+        for mask in [
+            0_u32,
+            1,
+            u32::MAX,
+            0x5555_5555,
+            0xaaaa_aaaa,
+            PART_15_CAPABILITY_FLAG,
+        ]
+        .into_iter()
+        .chain((0..=32).map(|bits| {
+            if bits == 0 {
+                0
+            } else {
+                u32::MAX >> (32 - bits)
+            }
+        })) {
+            assert_eq!(u32::from(count_set_bits(mask)), mask.count_ones());
+            for count in 0..=33 {
+                let mut bytes = mask.to_be_bytes().to_vec();
+                bytes.extend((0..count).flat_map(|index| (index as u16).to_be_bytes()));
+                for offset in [0, usize::MAX] {
+                    assert_profile_payload_case(&parser, &bytes, offset);
+                    frontiers += 1;
+                }
+            }
+        }
+        assert_eq!(frontiers, 2_652);
+        let raw = ExtendedCapabilities {
+            p_cap: 0,
+            c_capabilities: vec![0, u16::MAX, 17],
+        };
+        assert_eq!(raw.p_cap(), 0);
+        assert_eq!(raw.c_capabilities(), &[0, u16::MAX, 17]);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2),
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+
+        let cap = [0, 2, 0, 0, 0, 8];
+        let mut stream = segment(CAP, &cap);
+        stream.extend(segment(PRF, &[0, 0, 0x12, 0x34]));
+        stream.extend(segment(CPF, &[0, 0]));
+        let limits = ResourceLimits::HARDENED;
+        let mut reader = new_parser(&stream, &limits).unwrap();
+        let raw = reader.read_segment().unwrap();
+        let capabilities = reader.parse_cap(raw).unwrap();
+        assert_eq!(capabilities.p_cap(), PART_15_CAPABILITY_FLAG);
+        assert_eq!(capabilities.c_capabilities(), &[8]);
+        assert_eq!(capabilities.part15_value(), Some(8));
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.parse_profile_number(raw).unwrap().words(),
+            &[0, 0x1234]
+        );
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.parse_profile_number(raw),
+            Err(DecodeError::MalformedInput {
+                offset: 18,
+                kind: MalformedKind::InvalidProfile
+            }),
+        );
+        assert_eq!((reader.position, reader.work_units), (stream.len(), 3));
+        assert!(core::ptr::eq(reader.input.as_ptr(), stream.as_ptr()));
     }
 
     fn reference_cbd_payload(

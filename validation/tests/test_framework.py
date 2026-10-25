@@ -950,6 +950,12 @@ class FrameworkTests(WorkingFiles):
             framework._COMPONENT_DEPTH_BYTES_CONTRACTS, 1,
         )
 
+    def test_inventory_binds_raw_cap_profile_words_and_actual_bit_count_without_parsed_banks(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part15-complete-native-raw-profile-bytes"},
+            framework._PROFILE_BYTES_CONTRACTS, 4,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
