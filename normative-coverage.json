@@ -4,6 +4,43 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-transform-routing-bytes",
+      "topic": "Complete actual raw MCO stage-order Result and MCC component-list Result/external cursor from raw bytes/count/offset, plus the sole actual u16 membership scan. MCO retains exact byte count before duplicate/nonzero admission, encounter order and valid zero-stage empty order; referenced-record existence is not newly checked. MCC retains high-bit width independent of Csiz, lower15 count, header advance before count/remaining-length checks, component0 acceptance, component bounds/duplicates and exact valid-prefix cursor on errors. Short/out-of-range headers leave cursor unchanged; invalid count/short data retain header advance; bad current references do not advance. The original nested scan is moved once and called by the actual MCC producer, not duplicated or replaced by a prepared reference bank. Bounds and safe count arithmetic derive from actual header/read producers without valid-list/order/graph premises. No new trust/cap/pin/budget/termination bypass; numeric array/collection parsing, fragmented state/graph resolution and outer file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mco"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mcc"},
+        {"path": "src/codestream.rs", "symbol": "parse_mcc_component_list"},
+        {"path": "src/codestream.rs", "symbol": "u16_list_contains"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mco"},
+        {"path": "specs/mod.rs", "symbol": "part1_mco_run"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mcc_component_list"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_reference_run"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_reference_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_reference_present"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mco"},
+        {"path": "src/codestream.rs", "symbol": "parse_mcc_component_list"},
+        {"path": "src/codestream.rs", "symbol": "u16_list_contains"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "segment_tail_outcome"},
+        {"path": "src/codestream.rs", "symbol": "marker_words_outcome"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mco_preserves_zero_order_all_stage_pairs_and_count_frontiers"},
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_component_lists_preserve_all_headers_words_and_partial_cursors"},
+        {"path": "src/codestream.rs", "symbol": "actual_transform_routing_membership_and_real_mcc_mco_callers_preserve_order"}
+      ]
+    },
+    {
       "id": "part1-complete-native-progression-admission",
       "topic": "Complete actual semantic progression admission Result from raw records/layers/component-style owner and actual work cap. Empty bypass precedes all shape/style checks; actual style lookup/depth increment/active-coordinate arithmetic and calculated records-times-active work comparison precede record bounds. Actual parser work counter is not charged. Sole factored component/layer/resolution loops bind arbitrary scratch-owner bitmap updates and exact partial error frames, without valid bitmap/style/window/coverage premises. Each record must contribute at least one previously-unowned active coordinate, so partial overlaps are accepted and entirely redundant records rejected; final full active-domain coverage is required. Heterogeneous depths, zero layers/counts, raw style lookup errors and untouched unrelated fields retain original precedence. Actual owner completion scan and existing raw predicates/range semantics compose rather than supplying accepted-record or decoder outcome banks. No new trust/cap/pin/solver/termination bypass; remaining fragmented-transform/packet/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

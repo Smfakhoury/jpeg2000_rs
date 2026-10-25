@@ -25,6 +25,37 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw transform-routing lists
+
+Actual MCO stage-order and MCC component-list syntax now bind full Results
+from raw bytes and offsets. MCO preserves exact count before duplicate/
+nonzero checks, encounter order and the valid zero-stage empty order; stage
+existence belongs to later graph resolution, not a new syntax condition.
+
+MCC derives one/two-byte references from the header's high bit independently
+of Csiz, and lower-fifteen-bit counts from the actual word. Header truncation
+leaves the external cursor untouched; invalid count or remaining length
+retains its two-byte advance. Valid references advance in order, while an
+out-of-range or duplicate current value fails at that value's start.
+Component zero remains valid. The sole existing membership scan is moved out
+of its nested declaration and proved, without duplicating runtime bodies.
+
+Three exact contracts bind these actual producers and every cursor failure
+frame. Existing byte/word outcome observations, explicit equivalent range
+guards and derived-safe count arithmetic require no normalized route/order,
+reference banks, graph-success premises, trust, cap, pin or solver changes.
+Numeric/collection parsing, fragment state and graph resolution, and outer
+file/layer/F2/F4/final F8 joins remain separate.
+
+Independent set/endian/wide-cursor references compare 3,584 MCO count
+frontiers, 131,072 stage-pair contexts and 11,264 byte mutations. MCC checks
+cover 2,400 cursor frontiers, 1,310,720 encoded-header contexts, 786,432
+reference-word contexts and 2,880 complete-list/order/length cases.
+The actual membership scan is checked in 327,680 contexts. A real reader
+joins MCO with narrow and wide actual MCC callers, preserving route order
+and the later duplicate-MCO error offset. These are maintained native
+regressions, not official conformance.
+
 ## Complete native semantic progression admission
 
 Actual progression admission binds its complete Result from raw records,

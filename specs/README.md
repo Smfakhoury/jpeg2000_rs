@@ -1,5 +1,16 @@
 # Specification audit guide
 
+`part1_parse_mco` and `part1_parse_mcc_component_list` bind actual raw routing
+syntax, complete lists and every external-cursor error commit. MCO's empty
+zero-stage order, count/duplicate/nonzero ordering and raw encounter order
+remain explicit. MCC's width flag is independent of component count; header
+advance, count/length admission and per-reference bounds/membership checks
+retain exact cursor semantics. The sole actual membership scan is observed
+by `part1_mcc_reference_present`, not supplied as an accepted-reference bank.
+No route/graph-success premise, trust, cap, pin or budget change is added.
+Actual numeric/collection/fragment/graph and outer file/F2/F4/final F8 joins
+remain separate.
+
 `part1_validate_progression_changes` binds the real read-only semantic
 validator to raw records/styles/layers and actual work limits. Shape folds
 observe real style lookup/depth/count arithmetic before budget and record
