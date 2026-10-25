@@ -25,6 +25,28 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw CBD component depths
+
+Actual CBD parsing binds the complete parser Result and every parser/eight
+extension-owner field from raw segment bytes, component count, limits and
+prior metadata. The real metadata/work charge runs first. Count and exact
+length admission precede clearing old depths; an invalid precision then
+retains exactly the valid decoded prefix. Header and charging failures keep
+old depths, including arbitrary raw entries. The real shared byte accessor
+and existing precision/sign primitives supply every decoded field.
+
+Repeated descriptors preserve expansion to the component count, including
+the native one-entry outcome when the count is zero. A nonrepeated zero
+count clears depths successfully. No new marker/scope/count/cap policy,
+normalization, trust, solver budget or verifier pin is introduced.
+Mathematical recursive terminal folds observe the sole executable loop.
+Independent arithmetic/endian references compare 786,432 raw descriptor
+contexts, 27,648 prefix/error-order mutations, 3,072 repeated-descriptor
+contexts and 21,560 budget/header frontiers. Tests compare complete raw
+owners and parser fields and join the actual byte reader. The curated
+contract binds both mutable owners and all raw inputs; remaining
+metadata/layout/file/layer/F2/F4/final F8 composition stays separate.
+
 ## Complete native raw DFS/ADS decomposition producers
 
 Actual DFS/ADS parsing now derives decoded vectors and complete final parser/

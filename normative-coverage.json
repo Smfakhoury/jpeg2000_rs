@@ -4,6 +4,40 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-component-depth-bytes",
+      "topic": "Complete actual CBD parser Result and all parser/eight extension-owner fields from raw payload/count/limits and prior unnormalized metadata. Actual shared metadata/work charge precedes header admission; descriptor count and exact length precede clearing old depths. Every byte derives precision/sign from real proved primitives. Invalid precision retains exactly the valid decoded prefix after clearing; budget/header failures retain the original depths. Repeated descriptors expand to component count, including the existing one-depth outcome for zero components. Nonrepeated empty payload clears depths successfully. Mathematical terminal folds observe the sole real loop; no normalized owner, prepared depth/result bank, new trust, runtime validation, cap, pin or solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins stay separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cbd"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_cbd"},
+        {"path": "specs/mod.rs", "symbol": "part1_cbd_run"},
+        {"path": "specs/mod.rs", "symbol": "part1_cbd_expand"},
+        {"path": "specs/mod.rs", "symbol": "part1_extension_depths"},
+        {"path": "specs/mod.rs", "symbol": "part1_charge_extension_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part1_segment_byte"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"},
+        {"path": "specs/mod.rs", "symbol": "part2_cbd_precision"},
+        {"path": "specs/mod.rs", "symbol": "part2_cbd_signed"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cbd"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"},
+        {"path": "src/refinement.rs", "symbol": "cbd_precision"},
+        {"path": "src/refinement.rs", "symbol": "cbd_signed"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_cbd_preserves_all_raw_descriptors_and_partial_depth_prefixes"},
+        {"path": "src/codestream.rs", "symbol": "actual_cbd_preserves_budget_header_and_reader_order_with_all_owner_fields"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-decomposition-bytes",
       "topic": "Complete actual DFS/ADS payload Results and parser/all8 extension-owner states from raw bytes, current cursor, raw registries and actual limits/work counters. Shared real metadata charge runs first and retains exact partial failure commits. DFS preserves low4 nonzero index/reserved descriptor/depth1..32/header-length order and accepts unused packed slots. ADS preserves index1..127/count-position/expected-length/depth-zero/terminal/padding order and raw zero counts. Generic actual unpacking derives every byte and mask, rejecting depth zero before final padding while allowing zero split codes. Actual first-matching registry entry is replaced, later duplicates/unrelated raw fields retained; absent keys append in order. Sole payload bodies and explicit bounded first-match search supply functional facts without normalized registries/directions, prepared outputs or budget premises. Derived-safe shift/mask arithmetic and proved shared bit primitive retain native outcomes. No new trust/pin/cap/solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [
