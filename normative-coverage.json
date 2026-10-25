@@ -4,6 +4,53 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-raw-component-markers",
+      "topic": "Complete actual RGN raw ROI Result and CRG registration/parser/Part2 owner mutation, including all eight extension fields and exact partial metadata/work commits on every failure. Charge payload+4 before length/duplicate admission; metadata overflow leaves old bytes, metadata cap retains increment without work charge, work overflow/cap retain original ordered fields. RGN preserves exact-length before component/style, threshold257 and unrestricted shift bytes. CRG preserves length-before-duplicate, four-byte endian entries and repeated empty zero-component behavior; marker identity and unrelated raw metadata are not newly validated. All bounds/frames arise from real byte/count/work producers without prepared registrations, normalized owners or successful admission premises. No new trust/pin/cap/termination bypass. Remaining metadata/layout parsing and file/layer/F2/F4/final F8 joins stay separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_rgn"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_crg"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_rgn"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_crg"},
+        {"path": "specs/mod.rs", "symbol": "part1_charge_extension_metadata"},
+        {"path": "specs/mod.rs", "symbol": "part1_metadata_byte_limit"},
+        {"path": "specs/mod.rs", "symbol": "part1_segment_byte"},
+        {"path": "specs/mod.rs", "symbol": "part1_extension_components"},
+        {"path": "specs/mod.rs", "symbol": "part1_crg_registrations"},
+        {"path": "specs/mod.rs", "symbol": "part2_crg_payload_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_charge_work"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"},
+        {"path": "src/limits.rs", "symbol": "resource_metadata_byte_limit"}
+      ],
+      "contract_refs": [
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_metadata_bytes"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_crg"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_rgn"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_work"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_here"},
+        {"path": "src/codestream.rs", "symbol": "Parser::malformed_at"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_raw_roi_preserves_length_component_style_and_full_shift_order"},
+        {"path": "src/codestream.rs", "symbol": "actual_segment_byte_preserves_checked_index_and_error_offset"},
+        {"path": "src/codestream.rs", "symbol": "actual_crg_preserves_all_owner_fields_partial_budget_commits_and_registration_bytes"}
+      ]
+    },
+    {
       "id": "part1-complete-native-raw-quantization",
       "topic": "Complete actual Parser::parse_qcd/parse_qcd_payload/parse_qcc Result/every Quantization field and all97 physical steps including untouched zeros, from raw segment bytes/offset, raw coding style and actual component count. Actual shared subband counting and proved component-index/word producers supply every count/index/byte; no normalized coding style, supplied step/count/result bank or valid-header premise. Preserve empty/style/length/None-lowbits-before-cap/checked-step order, all guard bits, None/ScalarDerived/ScalarExpounded modes, one/two-byte QCC threshold257 and component-error precedence. Marker identity and scalar/reversible compatibility remain at original callers; QCD-before-COD remains supported. Proved malformed helper and explicit checked-result branches change no runtime/error/pin/cap/trust policy. Remaining Part2/tile/layout parsing and file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

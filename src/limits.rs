@@ -38,6 +38,10 @@ verus! {
         limits.maximum_input_bytes
     }
 
+    pub closed spec fn resource_metadata_byte_limit(limits: &ResourceLimits) -> u64 {
+        limits.maximum_metadata_bytes
+    }
+
     pub closed spec fn resource_work_limit(limits: &ResourceLimits) -> u64 {
         limits.maximum_work_units
     }
@@ -160,6 +164,7 @@ impl ResourceLimits {
         self.maximum_input_bytes
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == crate::specs::part1_metadata_byte_limit(self),))]
     pub const fn maximum_metadata_bytes(&self) -> u64 {
         self.maximum_metadata_bytes
     }

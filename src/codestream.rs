@@ -4448,43 +4448,55 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_charge_extension_metadata(
+                parser_view(old(self)), segment_view(segment), owned_extensions_view(old(extensions))),
+    ))]
     fn charge_extension_metadata(
         &mut self,
         segment: Segment<'a>,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
-        let bytes = (segment.payload.len() as u64)
-            .checked_add(4)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        extensions.metadata_bytes = extensions
-            .metadata_bytes
-            .checked_add(bytes)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_charge_extension_metadata); }
+        let bytes = match (segment.payload.len() as u64).checked_add(4) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        extensions.metadata_bytes = match extensions.metadata_bytes.checked_add(bytes) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         if extensions.metadata_bytes > self.limits.maximum_metadata_bytes() {
-            return Err(DecodeError::limit(
-                Resource::MetadataBytes,
-                self.limits.maximum_metadata_bytes(),
-                extensions.metadata_bytes,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::MetadataBytes,
+                limit: self.limits.maximum_metadata_bytes(),
+                actual: extensions.metadata_bytes,
+            });
         }
         self.charge_work(bytes)
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_segment_byte(self.position, segment_view(segment), position, relative),
+    ))]
     fn segment_byte(
         &self,
         segment: Segment<'a>,
         position: usize,
         relative: usize,
     ) -> Result<u8, DecodeError> {
-        let index = position
-            .checked_add(relative)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_segment_byte); }
+        let index = match position.checked_add(relative) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         match segment.payload.get(index) {
             Some(value) => Ok(*value),
-            None => Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )),
+            None => Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength)),
         }
     }
 
@@ -4672,17 +4684,36 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_crg(parser_view(old(self)), segment_view(segment),
+                components, owned_extensions_view(old(extensions))),
+    ))]
     fn parse_crg(
         &mut self,
         segment: Segment<'a>,
         components: u16,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost goal = crate::specs::part1_parse_crg(input, segment_view(segment), components, extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_crg); }
         self.charge_extension_metadata(segment, extensions)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+        }
         let expected = crate::refinement::crg_payload_bytes(components);
         if segment.payload.len() != expected || !extensions.component_registrations.is_empty() {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
+            return Err(self.malformed_at(
+                segment.offset,
                 if segment.payload.len() == expected {
                     MalformedKind::InvalidMarkerOrder
                 } else {
@@ -4690,15 +4721,39 @@ impl<'a> Parser<'a> {
                 },
             ));
         }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(goal == (Ok(()), charged_parser, crate::specs::part1_extension_components(
+                charged_extensions, charged_extensions.metadata_bytes, crate::specs::part1_crg_registrations(segment.payload@))));
+            assert(charged_extensions.registrations =~= Seq::empty());
+            assert(crate::specs::part1_crg_registrations(segment.payload@.subrange(0, 0)) =~= Seq::empty());
+        }
         let mut position = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant position <= segment.payload.len(),
+                invariant
+                    position <= segment.payload.len(),
+                    position % 4 == 0,
+                    segment.payload.len() == 4int * components as int,
+                    input == parser_view(old(self)),
+                    extension_input == owned_extensions_view(old(extensions)),
+                    parser_view(self) == charged_parser,
+                    owned_extensions_view(extensions) == crate::specs::part1_extension_components(
+                        charged_extensions, charged_extensions.metadata_bytes,
+                        crate::specs::part1_crg_registrations(segment.payload@.subrange(0, position as int))),
+                    goal == crate::specs::part1_parse_crg(input, segment_view(segment), components, extension_input),
+                    goal == (Ok(()), charged_parser, crate::specs::part1_extension_components(
+                        charged_extensions, charged_extensions.metadata_bytes, crate::specs::part1_crg_registrations(segment.payload@))),
                 decreases segment.payload.len() - position,
             )
         )]
         while position < segment.payload.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part1_segment_byte);
+                assert(position as int + 4 <= segment.payload.len());
+            }
             extensions
                 .component_registrations
                 .push(ComponentRegistration {
@@ -4717,7 +4772,32 @@ impl<'a> Parser<'a> {
             if next_position > segment.payload.len() {
                 return Err(self.malformed_here(MalformedKind::InvalidMarkerLength));
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                let raw = segment.payload@;
+                let previous = crate::specs::part1_crg_registrations(raw.subrange(0, position as int));
+                let next = crate::specs::part1_crg_registrations(raw.subrange(0, next_position as int));
+                let entry = ComponentRegistration {
+                    horizontal: crate::specs::part1_marker_value(raw[position as int], raw[position as int + 1]),
+                    vertical: crate::specs::part1_marker_value(raw[position as int + 2], raw[position as int + 3]),
+                };
+                assert(next =~= previous.push(entry)) by {
+                    assert forall|index: int| 0 <= index < next.len() implies
+                        next[index] == previous.push(entry)[index] by {
+                        if index < previous.len() {
+                        } else {
+                            assert(4 * index == position as int);
+                        }
+                    };
+                }
+                assert(extensions.component_registrations@ =~= next);
+            }
             position = next_position;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(segment.payload@.subrange(0, position as int) =~= segment.payload@);
+            assert((Ok(()), parser_view(self), owned_extensions_view(extensions)) == goal);
         }
         Ok(())
     }
@@ -7753,19 +7833,21 @@ impl<'a> Parser<'a> {
         Ok((component, quantization))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_parse_rgn(segment.offset, segment.payload@, components),
+    ))]
     fn parse_rgn(&self, segment: Segment<'a>, components: u16) -> Result<(u16, u8), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_rgn); }
         let component_bytes = if components < 257 { 1_usize } else { 2_usize };
-        let expected_length = component_bytes.checked_add(2).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        let expected_length = match component_bytes.checked_add(2) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if segment.payload.len() != expected_length {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let component = if component_bytes == 1 {
             u16::from(segment.payload[0])
@@ -7773,21 +7855,18 @@ impl<'a> Parser<'a> {
             read_u16([segment.payload[0], segment.payload[1]])
         };
         let style_index = component_bytes;
-        let shift_index = component_bytes.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        let shift_index = match component_bytes.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if component >= components
             || style_index >= segment.payload.len()
             || shift_index >= segment.payload.len()
             || segment.payload[style_index] != 0
         {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidRegionOfInterest,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidRegionOfInterest));
         }
         Ok((component, segment.payload[shift_index]))
     }
@@ -15339,6 +15418,440 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn actual_raw_roi_preserves_length_component_style_and_full_shift_order() {
+        fn reference(
+            bytes: &[u8],
+            offset: usize,
+            components: u16,
+        ) -> Result<(u16, u8), DecodeError> {
+            let malformed = |kind| DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind,
+            };
+            let width = if components < 257 { 1 } else { 2 };
+            if bytes.len() != width + 2 {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let component = if width == 1 {
+                u16::from(bytes[0])
+            } else {
+                u16::from_be_bytes([bytes[0], bytes[1]])
+            };
+            if component >= components || bytes[width] != 0 {
+                return Err(malformed(MalformedKind::InvalidRegionOfInterest));
+            }
+            Ok((component, bytes[width + 1]))
+        }
+        fn payload(word: u16, components: u16, style: u8, shift: u8) -> Vec<u8> {
+            let mut bytes = if components < 257 {
+                vec![(word % 256) as u8]
+            } else {
+                word.to_be_bytes().to_vec()
+            };
+            bytes.extend([style, shift]);
+            bytes
+        }
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let mut words = 0;
+        for components in [0, 1, 256, 257, u16::MAX] {
+            for component in 0..=u16::MAX {
+                for style in [0, 1, 255] {
+                    let bytes = payload(component, components, style, (component % 256) as u8);
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.parse_rgn(
+                                Segment {
+                                    marker: 0x1234,
+                                    offset,
+                                    payload: &bytes
+                                },
+                                components
+                            ),
+                            reference(&bytes, offset, components)
+                        );
+                        words += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(words, 1_966_080);
+        let mut shifts = 0;
+        for components in [0, 1, 256, 257, u16::MAX] {
+            for style in 0..=u8::MAX {
+                for shift in 0..=u8::MAX {
+                    let bytes = payload(0, components, style, shift);
+                    for offset in [0, usize::MAX] {
+                        assert_eq!(
+                            parser.parse_rgn(
+                                Segment {
+                                    marker: 0xff5e,
+                                    offset,
+                                    payload: &bytes
+                                },
+                                components
+                            ),
+                            reference(&bytes, offset, components)
+                        );
+                        shifts += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(shifts, 655_360);
+        let mut lengths = 0;
+        for components in [0, 1, 256, 257, u16::MAX] {
+            for component in [0, 1, 255, 256, u16::MAX] {
+                for style in [0, 1, 255] {
+                    for shift in [0, 255] {
+                        for length in 0..=6 {
+                            let mut bytes = payload(component, components, style, shift);
+                            bytes.resize(length, 0);
+                            for offset in [0, usize::MAX] {
+                                assert_eq!(
+                                    parser.parse_rgn(
+                                        Segment {
+                                            marker: 0x1234,
+                                            offset,
+                                            payload: &bytes
+                                        },
+                                        components
+                                    ),
+                                    reference(&bytes, offset, components)
+                                );
+                                lengths += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(lengths, 2_100);
+    }
+
+    #[test]
+    fn actual_segment_byte_preserves_checked_index_and_error_offset() {
+        let limits = ResourceLimits::HARDENED;
+        let mut cases = 0;
+        for length in 0..=8 {
+            let bytes: Vec<u8> = (0..length)
+                .map(|index| u8::try_from(index).unwrap().wrapping_mul(37))
+                .collect();
+            for position in [0, 1, 7, usize::MAX - 1, usize::MAX] {
+                for relative in [0, 1, 3, usize::MAX] {
+                    for cursor in [0, 17, usize::MAX] {
+                        let mut parser = new_parser(&[], &limits).unwrap();
+                        parser.position = cursor;
+                        for offset in [0, usize::MAX] {
+                            let index = position as u128 + relative as u128;
+                            let expected = if index > usize::MAX as u128 {
+                                Err(DecodeError::MalformedInput {
+                                    offset: cursor as u64,
+                                    kind: MalformedKind::ArithmeticOverflow,
+                                })
+                            } else if index >= length as u128 {
+                                Err(DecodeError::MalformedInput {
+                                    offset: offset as u64,
+                                    kind: MalformedKind::InvalidMarkerLength,
+                                })
+                            } else {
+                                Ok(bytes[index as usize])
+                            };
+                            assert_eq!(
+                                parser.segment_byte(
+                                    Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    },
+                                    position,
+                                    relative
+                                ),
+                                expected
+                            );
+                            assert_eq!(parser.position, cursor);
+                            assert_eq!(parser.work_units, 0);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 1_080);
+    }
+
+    fn reference_extension_charge(
+        length: usize,
+        cursor: usize,
+        work: u64,
+        metadata: u64,
+        limits: &ResourceLimits,
+    ) -> (Result<(), DecodeError>, u64, u64) {
+        let overflow = || DecodeError::MalformedInput {
+            offset: cursor as u64,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let amount = length as u128 + 4;
+        if amount > u128::from(u64::MAX) {
+            return (Err(overflow()), work, metadata);
+        }
+        let total = u128::from(metadata) + amount;
+        if total > u128::from(u64::MAX) {
+            return (Err(overflow()), work, metadata);
+        }
+        let total = total as u64;
+        if total > limits.maximum_metadata_bytes() {
+            return (
+                Err(DecodeError::LimitExceeded {
+                    resource: Resource::MetadataBytes,
+                    limit: limits.maximum_metadata_bytes(),
+                    actual: total,
+                }),
+                work,
+                total,
+            );
+        }
+        let charged = u128::from(work) + amount;
+        if charged > u128::from(u64::MAX) {
+            return (Err(overflow()), work, total);
+        }
+        let charged = charged as u64;
+        let result = if charged > limits.maximum_work_units() {
+            Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: charged,
+            })
+        } else {
+            Ok(())
+        };
+        (result, charged, total)
+    }
+
+    #[test]
+    fn actual_crg_preserves_all_owner_fields_partial_budget_commits_and_registration_bytes() {
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(4).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+            base.with_maximum_work_units(8).unwrap(),
+            base.with_maximum_metadata_bytes(4)
+                .unwrap()
+                .with_maximum_work_units(0)
+                .unwrap(),
+        ];
+        let mut matrix = 0;
+        for limit in &limits {
+            for components in [0_u16, 1, 2, 3, 63, 64, 65, 255, 256, 257, u16::MAX] {
+                let source: Vec<u8> = (0..usize::from(components))
+                    .flat_map(|index| {
+                        let word = u16::try_from(index).unwrap();
+                        let [h0, h1] = word.to_be_bytes();
+                        let [v0, v1] = word.wrapping_mul(31337).wrapping_add(17).to_be_bytes();
+                        [h0, h1, v0, v1]
+                    })
+                    .collect();
+                for variant in 0..3 {
+                    let mut bytes = source.clone();
+                    if variant == 1 {
+                        bytes.pop();
+                    } else if variant == 2 {
+                        bytes.push(0);
+                    }
+                    for duplicate in [false, true] {
+                        for metadata in [0, 1, 7, 16_777_215, 16_777_216, u64::MAX - 4, u64::MAX] {
+                            for work in [0, 1, 8, u64::MAX - 4, u64::MAX] {
+                                for offset in [0, usize::MAX] {
+                                    let mut extensions =
+                                        raw_owned_tile_part_fixture(0).part2_extensions;
+                                    if !duplicate {
+                                        extensions.component_registrations.clear();
+                                    }
+                                    assert_eq!(
+                                        !extensions.component_registrations.is_empty(),
+                                        duplicate
+                                    );
+                                    extensions.metadata_bytes = metadata;
+                                    let before = extensions.clone();
+                                    let (charged_result, next_work, next_metadata) =
+                                        reference_extension_charge(
+                                            bytes.len(),
+                                            17,
+                                            work,
+                                            metadata,
+                                            limit,
+                                        );
+                                    let mut expected_charge = before.clone();
+                                    expected_charge.metadata_bytes = next_metadata;
+                                    let mut charge_parser = new_parser(&[], limit).unwrap();
+                                    charge_parser.position = 17;
+                                    charge_parser.work_units = work;
+                                    charge_parser.packet_length_bytes = u64::MAX;
+                                    charge_parser.packet_lengths = u64::MAX - 1;
+                                    let mut charge_extensions = before.clone();
+                                    assert_eq!(
+                                        charge_parser.charge_extension_metadata(
+                                            Segment {
+                                                marker: 0x1234,
+                                                offset,
+                                                payload: &bytes
+                                            },
+                                            &mut charge_extensions
+                                        ),
+                                        charged_result,
+                                    );
+                                    assert_eq!(charge_extensions, expected_charge);
+                                    assert_eq!(
+                                        (
+                                            charge_parser.position,
+                                            charge_parser.work_units,
+                                            charge_parser.packet_length_bytes,
+                                            charge_parser.packet_lengths
+                                        ),
+                                        (17, next_work, u64::MAX, u64::MAX - 1)
+                                    );
+                                    let mut expected = expected_charge;
+                                    let result = if charged_result.is_err() {
+                                        charged_result
+                                    } else if bytes.len() != 4 * usize::from(components) {
+                                        Err(DecodeError::MalformedInput {
+                                            offset: offset as u64,
+                                            kind: MalformedKind::InvalidMarkerLength,
+                                        })
+                                    } else if duplicate {
+                                        Err(DecodeError::MalformedInput {
+                                            offset: offset as u64,
+                                            kind: MalformedKind::InvalidMarkerOrder,
+                                        })
+                                    } else {
+                                        expected.component_registrations = bytes
+                                            .chunks_exact(4)
+                                            .map(|part| ComponentRegistration {
+                                                horizontal: u16::from_be_bytes([part[0], part[1]]),
+                                                vertical: u16::from_be_bytes([part[2], part[3]]),
+                                            })
+                                            .collect();
+                                        Ok(())
+                                    };
+                                    let mut parser = new_parser(&[], limit).unwrap();
+                                    parser.position = 17;
+                                    parser.work_units = work;
+                                    parser.packet_length_bytes = u64::MAX;
+                                    parser.packet_lengths = u64::MAX - 1;
+                                    assert_eq!(
+                                        parser.parse_crg(
+                                            Segment {
+                                                marker: 0x1234,
+                                                offset,
+                                                payload: &bytes
+                                            },
+                                            components,
+                                            &mut extensions
+                                        ),
+                                        result
+                                    );
+                                    assert_eq!(extensions, expected);
+                                    assert_eq!(
+                                        (
+                                            parser.position,
+                                            parser.work_units,
+                                            parser.packet_length_bytes,
+                                            parser.packet_lengths
+                                        ),
+                                        (17, next_work, u64::MAX, u64::MAX - 1)
+                                    );
+                                    assert!(core::ptr::eq(parser.limits, limit));
+                                    assert!(parser.input.is_empty());
+                                    matrix += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(matrix, 32_340);
+        let mut words = 0;
+        for horizontal in 0..=u16::MAX {
+            let vertical = horizontal.wrapping_mul(31337).wrapping_add(17);
+            let [h0, h1] = horizontal.to_be_bytes();
+            let [v0, v1] = vertical.to_be_bytes();
+            let bytes = [h0, h1, v0, v1];
+            for offset in [0, usize::MAX] {
+                let mut parser = new_parser(&[], &base).unwrap();
+                let mut extensions = Part2Extensions::default();
+                parser
+                    .parse_crg(
+                        Segment {
+                            marker: 0x1234,
+                            offset,
+                            payload: &bytes,
+                        },
+                        1,
+                        &mut extensions,
+                    )
+                    .unwrap();
+                assert_eq!(
+                    extensions.component_registrations,
+                    vec![ComponentRegistration {
+                        horizontal,
+                        vertical
+                    }]
+                );
+                assert_eq!((extensions.metadata_bytes, parser.work_units), (8, 8));
+                words += 1;
+            }
+        }
+        assert_eq!(words, 131_072);
+        let input = [255, 99, 0, 10, 0, 1, 128, 2, 255, 254, 0, 0];
+        let mut parser = new_parser(&input, &base).unwrap();
+        let segment = parser.read_segment().unwrap();
+        let mut extensions = Part2Extensions::default();
+        parser.parse_crg(segment, 2, &mut extensions).unwrap();
+        assert_eq!(
+            extensions.component_registrations,
+            vec![
+                ComponentRegistration {
+                    horizontal: 1,
+                    vertical: 0x8002
+                },
+                ComponentRegistration {
+                    horizontal: u16::MAX - 1,
+                    vertical: 0
+                },
+            ]
+        );
+        assert_eq!(
+            (
+                extensions.metadata_bytes,
+                parser.work_units,
+                parser.position
+            ),
+            (12, 13, input.len())
+        );
+        let mut empty_parser = new_parser(&[], &base).unwrap();
+        let mut empty = Part2Extensions::default();
+        for _ in 0..2 {
+            empty_parser
+                .parse_crg(
+                    Segment {
+                        marker: 0x1234,
+                        offset: usize::MAX,
+                        payload: &[],
+                    },
+                    0,
+                    &mut empty,
+                )
+                .unwrap();
+        }
+        assert!(empty.component_registrations.is_empty());
+        assert_eq!((empty.metadata_bytes, empty_parser.work_units), (8, 8));
     }
 
     fn reference_quantization_subbands(coding: CodingStyle) -> usize {

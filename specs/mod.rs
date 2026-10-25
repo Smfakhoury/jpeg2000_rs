@@ -13478,6 +13478,98 @@ pub open spec fn part1_parse_qcc(
     }
 }
 
+pub open spec fn part1_metadata_byte_limit(limits: &crate::ResourceLimits) -> u64 {
+    crate::limits::resource_metadata_byte_limit(limits)
+}
+
+pub open spec fn part1_extension_components(
+    extensions: Part2OwnedExtensions, metadata_bytes: u64,
+    registrations: Seq<crate::codestream::ComponentRegistration>,
+) -> Part2OwnedExtensions {
+    Part2OwnedExtensions {
+        decompositions: extensions.decompositions, arbitrary: extensions.arbitrary,
+        nonlinear: extensions.nonlinear, depths: extensions.depths, kernels: extensions.kernels,
+        registrations, lengths: extensions.lengths, metadata_bytes,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_charge_extension_metadata<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let length = segment.payload.len() as u64;
+    if length as int + 4 > u64::MAX {
+        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state, extensions)
+    } else {
+        let bytes = (length + 4) as u64;
+        if extensions.metadata_bytes as int + bytes as int > u64::MAX {
+            (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state, extensions)
+        } else {
+            let next = (extensions.metadata_bytes + bytes) as u64;
+            let updated = part1_extension_components(extensions, next, extensions.registrations);
+            let maximum = part1_metadata_byte_limit(state.limits);
+            if next > maximum {
+                (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::MetadataBytes,
+                    limit: maximum, actual: next }), state, updated)
+            } else {
+                let charged = part1_codestream_charge_work(state, bytes);
+                (charged.0, charged.1, updated)
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_segment_byte(
+    parser_position: usize, segment: Part1CodestreamSegment, position: usize, relative: usize,
+) -> Result<u8, crate::DecodeError> {
+    let index = position as int + relative as int;
+    if index > usize::MAX {
+        Err(part1_codestream_malformed(parser_position, crate::MalformedKind::ArithmeticOverflow))
+    } else if index >= segment.payload.len() {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else { Ok(segment.payload[index]) }
+}
+
+pub open spec fn part1_crg_registrations(payload: Seq<u8>) -> Seq<crate::codestream::ComponentRegistration> {
+    Seq::new(payload.len() / 4, |index: int| crate::codestream::ComponentRegistration {
+        horizontal: part1_marker_value(payload[4 * index], payload[4 * index + 1]),
+        vertical: part1_marker_value(payload[4 * index + 2], payload[4 * index + 3]),
+    })
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_crg<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, components: u16,
+    extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { charged }
+    else if segment.payload.len() != part2_crg_payload_bytes(components) {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)), charged.1, charged.2)
+    } else if charged.2.registrations.len() != 0 {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerOrder)), charged.1, charged.2)
+    } else {
+        (Ok(()), charged.1, part1_extension_components(charged.2, charged.2.metadata_bytes,
+            part1_crg_registrations(segment.payload)))
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_rgn(offset: usize, payload: Seq<u8>, components: u16)
+    -> Result<(u16, u8), crate::DecodeError>
+{
+    let bytes = if components < 257 { 1usize } else { 2usize };
+    if payload.len() != bytes as int + 2 {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let component = if bytes == 1 { payload[0] as u16 } else { part1_marker_value(payload[0], payload[1]) };
+        if component >= components || payload[bytes as int] != 0 {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidRegionOfInterest))
+        } else { Ok((component, payload[bytes as int + 1])) }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

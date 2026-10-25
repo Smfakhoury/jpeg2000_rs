@@ -1,5 +1,17 @@
 # Specification audit guide
 
+`part1_parse_rgn` binds raw ROI bytes/count/offset to the complete native
+index/shift Result without a new shift or marker policy. `part1_parse_crg`
+composes the actual metadata/work charge and source-derived registration
+prefixes, binding the complete parser and all eight extension fields on
+every error and success. Charge-before-length/duplicate ordering and exact
+partial counter commits remain explicit, including empty markers and raw
+unrelated owners. `part1_segment_byte` retains distinct cursor/segment
+error offsets; `part1_metadata_byte_limit` is the actual field observation,
+not a supplied budget. No normalized owner, prepared registration/result
+bank, trust, cap or pin change is added. Remaining metadata/layout/file/
+F2/F4/final F8 joins stay separate.
+
 `part1_parse_qcd_payload` and `part1_parse_qcc` bind actual raw quantization
 bytes to every native style/guard/count/step field, all 97 physical slots
 and exact malformed offsets. Actual raw style counting, component-index

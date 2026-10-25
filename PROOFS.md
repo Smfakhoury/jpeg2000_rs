@@ -25,6 +25,39 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw RGN/CRG component markers
+
+Actual ROI and component-registration parsing now bind native Results from
+raw segment bytes/offsets and component counts. RGN retains exact length
+before index/style admission, the one/two-byte threshold 257 and every raw
+shift byte, including 255. Marker identity and later shift execution policy
+are not newly checked in this helper.
+
+CRG binds the complete final parser and all eight Part2 extension fields on
+both success and failure. The actual shared metadata charge runs first:
+payload plus four bytes, checked metadata accumulation, metadata cap and
+actual work charging. Overflow leaves the original relevant counter;
+metadata-cap failure retains the increment without work charging, and work
+overflow/cap retain the native earlier metadata commit. Length precedes
+duplicate admission, all four-byte endian entries derive from source, and
+repeated empty zero-component markers preserve the original empty-owner
+behavior. Other raw metadata is neither normalized nor newly validated.
+
+The real checked segment-byte accessor distinguishes cursor-offset
+arithmetic errors from segment-offset bounds errors. Whole owned-extension
+observations and exact prefix equalities frame every unrelated field.
+The metadata getter is bound to its raw field through the canonical cap
+model. No extra decoder, caller admission premise, trust, cap, pin or solver
+budget is introduced.
+
+Independent references compare 1,966,080 ROI word cases, 655,360 full
+style/shift cases, 2,100 length frontiers, 1,080 accessor frontiers,
+32,340 complete budget/owner cases and 131,072 full registration-word
+contexts. Raw nested metadata fixtures, limit/overflow ordering and a real
+reader join check actual partial commits. Five exact contract recipes bind
+source/results and both mutable frames. Remaining metadata/layout parsing
+and outer file/layer/F2/F4/final F8 joins remain separate.
+
 ## Complete native raw QCD/QCC quantization producers
 
 Actual QCD segment/payload and QCC parsing derive complete Quantization
