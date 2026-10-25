@@ -335,6 +335,12 @@ verus! {
     pub closed spec fn progression_changes_view(changes: &ProgressionChanges) -> Seq<ProgressionChange> {
         changes.records@
     }
+
+    pub open spec fn parsed_progression_outcome(value: Result<ProgressionChanges, DecodeError>)
+        -> Result<Seq<ProgressionChange>, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(value) => Ok(progression_changes_view(&value)) }
+    }
 }
 
 impl ProgressionChange {
@@ -7793,85 +7799,125 @@ impl<'a> Parser<'a> {
         Ok((component, component_bytes))
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_progression_outcome(result) == crate::specs::part1_parse_poc(segment_view(segment), components),
+    ))]
     fn parse_poc(
         &self,
         segment: Segment<'a>,
         components: u16,
     ) -> Result<ProgressionChanges, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_poc); }
         let component_bytes = if components < 257 { 1_usize } else { 2_usize };
-        let record_bytes = component_bytes
-            .checked_mul(2)
-            .and_then(|value| value.checked_add(5))
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-        if segment.payload.is_empty() || !segment.payload.len().is_multiple_of(record_bytes) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+        let doubled = match component_bytes.checked_mul(2) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let record_bytes = match doubled.checked_add(5) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let remainder = segment.payload.len() % record_bytes;
+        if segment.payload.is_empty() || remainder != 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let mut records = Vec::with_capacity(segment.payload.len() / record_bytes);
         let mut position = 0_usize;
         let mut remaining_records = segment.payload.len() / record_bytes;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(segment.payload.len() as int, record_bytes as int);
+            assert((record_bytes as int) * (remaining_records as int) ==
+                (remaining_records as int) * (record_bytes as int)) by (nonlinear_arith);
+        }
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases remaining_records,)
+            verus_spec(
+                invariant position <= segment.payload.len(),
+                    component_bytes == if components < 257 { 1usize } else { 2usize },
+                    record_bytes == 2 * component_bytes + 5,
+                    record_bytes == 7 || record_bytes == 9,
+                    position + remaining_records as int * record_bytes as int == segment.payload.len(),
+                    crate::specs::part1_parse_poc(segment_view(segment), components)
+                        == crate::specs::part1_poc_records(segment_view(segment), components, position as nat, records@),
+                decreases remaining_records,
+            )
         )]
         while position < segment.payload.len() {
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost record_start = position; }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_poc_records, 1);
+                reveal(crate::specs::part1_poc_byte); reveal(crate::specs::part1_poc_component);
+                assert(record_bytes > 0 && position + remaining_records as int * record_bytes as int == segment.payload.len()
+                    && position < segment.payload.len() ==> remaining_records > 0
+                        && position + record_bytes <= segment.payload.len()) by (nonlinear_arith);
+                assert(remaining_records > 0);
+                assert(position + record_bytes <= segment.payload.len());
+            }
             if remaining_records == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
             }
             remaining_records -= 1;
             let resolution_start = self.read_poc_byte(segment, position)?;
-            position = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
             let component_start = self.read_poc_component(segment, position, component_bytes)?;
-            position = position.checked_add(component_bytes).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let layer_end_position = position.checked_add(2).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let layer_bytes = segment
-                .payload
-                .get(position..layer_end_position)
-                .ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(segment.offset),
-                        MalformedKind::InvalidMarkerLength,
-                    )
-                })?;
+            position = match position.checked_add(component_bytes) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            let layer_end_position = match position.checked_add(2) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            let layer_bytes = match segment.payload.get(position..layer_end_position) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength)
+                    );
+                }
+            };
             let layer_end = read_u16([layer_bytes[0], layer_bytes[1]]);
-            position = position.checked_add(2).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            position = match position.checked_add(2) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
             let resolution_end = self.read_poc_byte(segment, position)?;
-            position = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
             let encoded_component_end =
                 self.read_poc_component(segment, position, component_bytes)?;
             let component_end =
@@ -7880,12 +7926,14 @@ impl<'a> Parser<'a> {
                 } else {
                     encoded_component_end
                 };
-            position = position.checked_add(component_bytes).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            position = match position.checked_add(component_bytes) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
             let progression_order = match self.read_poc_byte(segment, position)? {
                 0 => ProgressionOrder::Lrcp,
                 1 => ProgressionOrder::Rlcp,
@@ -7893,18 +7941,20 @@ impl<'a> Parser<'a> {
                 3 => ProgressionOrder::Pcrl,
                 4 => ProgressionOrder::Cprl,
                 _ => {
-                    return Err(DecodeError::malformed(
-                        self.offset(segment.offset),
+                    return Err(self.malformed_at(
+                        segment.offset,
                         MalformedKind::InvalidProgressionOrderChange,
                     ));
                 }
             };
-            position = position.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
             records.push(ProgressionChange {
                 resolution_start,
                 component_start,
@@ -7913,47 +7963,67 @@ impl<'a> Parser<'a> {
                 component_end,
                 progression_order,
             });
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(position == record_start + record_bytes);
+                assert((remaining_records as int + 1) * (record_bytes as int) ==
+                    (remaining_records as int) * (record_bytes as int) + record_bytes as int) by (nonlinear_arith);
+            }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_poc_records, 1); reveal(progression_changes_view); }
         Ok(ProgressionChanges { records })
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_poc_component(segment_view(segment), position, width),
+    ))]
     fn read_poc_component(
         &self,
         segment: Segment<'a>,
         position: usize,
         width: usize,
     ) -> Result<u16, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_poc_component); }
         if width == 1 {
-            let value = segment.payload.get(position).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
+            let value = match segment.payload.get(position) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength)
+                    );
+                }
+            };
             return Ok(*value as u16);
         }
-        let end = position.checked_add(2).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        let bytes = segment.payload.get(position..end).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )
-        })?;
+        let end = match position.checked_add(2) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let bytes = match segment.payload.get(position..end) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+            }
+        };
         Ok(read_u16([bytes[0], bytes[1]]))
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_poc_byte(segment_view(segment), position),
+    ))]
     fn read_poc_byte(&self, segment: Segment<'a>, position: usize) -> Result<u8, DecodeError> {
-        let value = segment.payload.get(position).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )
-        })?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_poc_byte); }
+        let value = match segment.payload.get(position) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+            }
+        };
         Ok(*value)
     }
 
@@ -16966,6 +17036,347 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_poc_component(
+        bytes: &[u8],
+        position: usize,
+        width: usize,
+        offset: usize,
+    ) -> Result<u16, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if width == 1 {
+            return bytes
+                .get(position)
+                .map(|byte| u16::from(*byte))
+                .ok_or(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let end = position as u128 + 2;
+        if end > usize::MAX as u128 {
+            return Err(malformed(MalformedKind::ArithmeticOverflow));
+        }
+        let source = bytes
+            .get(position..end as usize)
+            .ok_or(malformed(MalformedKind::InvalidMarkerLength))?;
+        Ok(u16::from_be_bytes([source[0], source[1]]))
+    }
+
+    fn reference_poc_payload(
+        bytes: &[u8],
+        components: u16,
+        offset: usize,
+    ) -> Result<Vec<ProgressionChange>, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let width = if components <= 256 { 1 } else { 2 };
+        let chunks = bytes.chunks_exact(5 + 2 * width);
+        if bytes.is_empty() || !chunks.remainder().is_empty() {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let orders = [
+            ProgressionOrder::Lrcp,
+            ProgressionOrder::Rlcp,
+            ProgressionOrder::Rpcl,
+            ProgressionOrder::Pcrl,
+            ProgressionOrder::Cprl,
+        ];
+        let mut records = Vec::new();
+        for chunk in chunks {
+            let progression_order = orders
+                .get(usize::from(chunk[4 + 2 * width]))
+                .copied()
+                .ok_or(malformed(MalformedKind::InvalidProgressionOrderChange))?;
+            let component_start = if width == 1 {
+                u16::from(chunk[1])
+            } else {
+                u16::from_be_bytes([chunk[1], chunk[2]])
+            };
+            let component_end = if width == 1 {
+                u16::from(chunk[5])
+            } else {
+                u16::from_be_bytes([chunk[6], chunk[7]])
+            };
+            records.push(ProgressionChange {
+                resolution_start: chunk[0],
+                component_start,
+                layer_end: u16::from_be_bytes([chunk[1 + width], chunk[2 + width]]),
+                resolution_end: chunk[3 + width],
+                component_end: if components == 256 && component_end == 0 {
+                    256
+                } else {
+                    component_end
+                },
+                progression_order,
+            });
+        }
+        Ok(records)
+    }
+
+    fn raw_poc_payload(components: u16, records: &[[u16; 6]]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for [
+            resolution_start,
+            component_start,
+            layer_end,
+            resolution_end,
+            component_end,
+            order,
+        ] in records
+        {
+            bytes.push(*resolution_start as u8);
+            if components <= 256 {
+                bytes.push(*component_start as u8);
+            } else {
+                bytes.extend(component_start.to_be_bytes());
+            }
+            bytes.extend(layer_end.to_be_bytes());
+            bytes.push(*resolution_end as u8);
+            if components <= 256 {
+                bytes.push(*component_end as u8);
+            } else {
+                bytes.extend(component_end.to_be_bytes());
+            }
+            bytes.push(*order as u8);
+        }
+        bytes
+    }
+
+    fn assert_poc_payload_case(parser: &Parser<'_>, bytes: &[u8], components: u16, offset: usize) {
+        assert_eq!(
+            parser
+                .parse_poc(
+                    Segment {
+                        marker: 0x1234,
+                        offset,
+                        payload: bytes
+                    },
+                    components
+                )
+                .map(|changes| changes.records().to_vec()),
+            reference_poc_payload(bytes, components, offset),
+        );
+    }
+
+    #[test]
+    fn actual_poc_reads_preserve_width_fallback_endian_bytes_and_segment_error_offsets() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut frontiers = 0;
+        for length in [0, 1, 2, 3, 8] {
+            for pattern in [0, 1, 0x7f, 0x80, 255] {
+                let bytes = vec![pattern; length];
+                for position in [0, 1, 2, 7, 8, usize::MAX - 2, usize::MAX - 1, usize::MAX] {
+                    for width in [0, 1, 2, 3, 16, usize::MAX] {
+                        for cursor in [0, 17, usize::MAX] {
+                            parser.position = cursor;
+                            for offset in [0, usize::MAX] {
+                                let segment = Segment {
+                                    marker: 0x1234,
+                                    offset,
+                                    payload: &bytes,
+                                };
+                                assert_eq!(
+                                    parser.read_poc_component(segment, position, width),
+                                    reference_poc_component(&bytes, position, width, offset)
+                                );
+                                assert_eq!(
+                                    parser.read_poc_byte(segment, position),
+                                    bytes.get(position).copied().ok_or(
+                                        DecodeError::MalformedInput {
+                                            offset: offset as u64,
+                                            kind: MalformedKind::InvalidMarkerLength
+                                        }
+                                    )
+                                );
+                                frontiers += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 7_200);
+        let mut words = 0;
+        for word in 0..=u16::MAX {
+            let [first, second] = word.to_be_bytes();
+            let bytes = [0xa5, first, second, 0x5a];
+            for width in [0, 1, 2, usize::MAX] {
+                for offset in [0, usize::MAX] {
+                    let segment = Segment {
+                        marker: 0x1234,
+                        offset,
+                        payload: &bytes,
+                    };
+                    assert_eq!(
+                        parser.read_poc_component(segment, 1, width),
+                        reference_poc_component(&bytes, 1, width, offset)
+                    );
+                    assert_eq!(parser.read_poc_byte(segment, 1), Ok(first));
+                    words += 1;
+                }
+            }
+        }
+        assert_eq!(words, 524_288);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_poc_preserves_raw_records_width_thresholds_end256_and_error_precedence() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut counts = 0;
+        for components in 0..=u16::MAX {
+            let bytes = raw_poc_payload(components, &[[255, u16::MAX, 0, 0, 0, 4]]);
+            for offset in [0, usize::MAX] {
+                assert_poc_payload_case(&parser, &bytes, components, offset);
+                counts += 1;
+            }
+        }
+        assert_eq!(counts, 131_072);
+        let mut words = 0;
+        for word in 0..=u16::MAX {
+            for components in [0, 1, 255, 256, 257, u16::MAX] {
+                let bytes = raw_poc_payload(components, &[[0, word, word, 255, word, word % 5]]);
+                for offset in [0, usize::MAX] {
+                    assert_poc_payload_case(&parser, &bytes, components, offset);
+                    words += 1;
+                }
+            }
+        }
+        assert_eq!(words, 786_432);
+        let mut mutations = 0;
+        for components in [0, 255, 256, 257, u16::MAX] {
+            let source = raw_poc_payload(
+                components,
+                &[
+                    [1, 0, 1, 2, 1, 0],
+                    [255, 255, 0, 0, 0, 4],
+                    [0, u16::MAX, u16::MAX, 255, u16::MAX, 2],
+                ],
+            );
+            for position in 0..source.len() {
+                for value in 0..=u8::MAX {
+                    for variant in 0..3 {
+                        let mut bytes = source.clone();
+                        bytes[position] = value;
+                        if variant == 0 {
+                            bytes.pop();
+                        } else if variant == 2 {
+                            bytes.push(0);
+                        }
+                        for offset in [0, usize::MAX] {
+                            assert_poc_payload_case(&parser, &bytes, components, offset);
+                            mutations += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(mutations, 179_712);
+        let mut lengths = 0;
+        for length in 0..=29 {
+            for pattern in [0, 255] {
+                for components in [0, 1, 256, 257, u16::MAX] {
+                    for offset in [0, usize::MAX] {
+                        assert_poc_payload_case(
+                            &parser,
+                            &vec![pattern; length],
+                            components,
+                            offset,
+                        );
+                        lengths += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(lengths, 600);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_poc_reader_join_retains_raw_invalid_ranges_and_rejects_bad_order() {
+        let limits = ResourceLimits::HARDENED;
+        let first = raw_poc_payload(256, &[[255, 255, 0, 0, 0, 4]]);
+        let second = raw_poc_payload(256, &[[0, 0, 1, 255, 1, 0], [1, 1, u16::MAX, 2, 0, 2]]);
+        let third = raw_poc_payload(256, &[[0, 0, 1, 1, 1, 255]]);
+        let mut input = segment(POC, &first);
+        input.extend(segment(POC, &second));
+        input.extend(segment(POC, &third));
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let raw = parser.read_segment().unwrap();
+        let changes = parser.parse_poc(raw, 256).unwrap();
+        assert_eq!(
+            changes.records(),
+            reference_poc_payload(&first, 256, 0).unwrap()
+        );
+        assert_eq!(
+            (
+                changes.records()[0].resolution_start,
+                changes.records()[0].resolution_end,
+                changes.records()[0].layer_end,
+                changes.records()[0].component_end
+            ),
+            (255, 0, 0, 256)
+        );
+        let raw = parser.read_segment().unwrap();
+        assert_eq!(
+            parser.parse_poc(raw, 256).unwrap().records(),
+            reference_poc_payload(&second, 256, 11).unwrap()
+        );
+        let raw = parser.read_segment().unwrap();
+        assert_eq!(
+            parser.parse_poc(raw, 256),
+            Err(DecodeError::MalformedInput {
+                offset: 29,
+                kind: MalformedKind::InvalidProgressionOrderChange,
+            })
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (40, 3, 0, 0)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
     }
 
     fn reference_kernel_coefficient(
