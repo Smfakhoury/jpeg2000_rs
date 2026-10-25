@@ -962,6 +962,12 @@ class FrameworkTests(WorkingFiles):
             framework._NONLINEAR_BYTES_CONTRACTS, 5,
         )
 
+    def test_inventory_binds_raw_tlm_all_three_mutable_frames_and_partial_length_prefix(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-raw-tile-length-bytes"},
+            framework._TILE_LENGTH_BYTES_CONTRACTS, 1,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

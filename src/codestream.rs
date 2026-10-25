@@ -4563,6 +4563,12 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), *final(next_index), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_tlm(parser_view(old(self)), segment_view(segment),
+                *old(next_index), tile_count, owned_extensions_view(old(extensions))),
+    ))]
     fn parse_tlm(
         &mut self,
         segment: Segment<'a>,
@@ -4570,54 +4576,95 @@ impl<'a> Parser<'a> {
         tile_count: u64,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost index_input = *next_index;
+            let ghost goal = crate::specs::part1_parse_tlm(input, segment_view(segment), index_input, tile_count, extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_tlm); }
         self.charge_extension_metadata(segment, extensions)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+        }
         if segment.payload.len() < 2 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let index = u16::from(segment.payload[0]);
         if index != *next_index {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerOrder,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerOrder));
         }
-        *next_index = next_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        *next_index = match next_index.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         let style = segment.payload[1];
         let tile_bytes = crate::refinement::tlm_tile_index_bytes(style);
         let length_bytes = crate::refinement::tlm_length_bytes(style);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert((style >> 4) & 3 <= 3u8) by (bit_vector); }
         if style & 0x8f != 0 || tile_bytes == 3 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTilePart,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTilePart));
         }
-        let record_bytes = tile_bytes
-            .checked_add(length_bytes)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let record_bytes = match tile_bytes.checked_add(length_bytes) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
         let records = segment.payload.len() - 2;
-        if record_bytes == 0 || !records.is_multiple_of(record_bytes) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+        if record_bytes == 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let remainder = records % record_bytes;
+        if remainder != 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost target = crate::specs::part1_tlm_records(segment_view(segment), tile_count,
+                tile_bytes, length_bytes, 2, charged_extensions.lengths);
         }
         let mut position = 2_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant position <= segment.payload.len(),
+                invariant
+                    2 <= position <= segment.payload.len(),
+                    tile_bytes <= 2, length_bytes == 2 || length_bytes == 4,
+                    2 <= record_bytes <= 6,
+                    record_bytes == tile_bytes + length_bytes,
+                    (segment.payload.len() - position) % (record_bytes as int) == 0,
+                    input == parser_view(old(self)),
+                    extension_input == owned_extensions_view(old(extensions)),
+                    index_input == *old(next_index),
+                    index_input <= 255, *next_index == index_input + 1,
+                    parser_view(self) == charged_parser,
+                    owned_extensions_view(extensions) == crate::specs::part1_extension_lengths(
+                        charged_extensions, extensions.tile_part_lengths@),
+                    target == crate::specs::part1_tlm_records(segment_view(segment), tile_count,
+                        tile_bytes, length_bytes, position as nat, extensions.tile_part_lengths@),
+                    goal == crate::specs::part1_parse_tlm(input, segment_view(segment), index_input, tile_count, extension_input),
+                    goal == (target.0, charged_parser, *next_index,
+                        crate::specs::part1_extension_lengths(charged_extensions, target.1)),
                 decreases segment.payload.len() - position,
             )
         )]
         while position < segment.payload.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_tlm_records, 1);
+                reveal(crate::specs::part1_segment_byte);
+                if segment.payload.len() - position < record_bytes {
+                    vstd::arithmetic::div_mod::lemma_small_mod(
+                        (segment.payload.len() - position) as nat, record_bytes as nat);
+                }
+                assert(position + record_bytes <= segment.payload.len());
+            }
             let tile_index = if tile_bytes == 0 {
                 None
             } else if tile_bytes == 1 {
@@ -4629,14 +4676,12 @@ impl<'a> Parser<'a> {
                 ]))
             };
             if matches!(tile_index, Some(value) if u64::from(value) >= tile_count) {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTilePart,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTilePart));
             }
-            let length_position = position
-                .checked_add(tile_bytes)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            let length_position = match position.checked_add(tile_bytes) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
             let length = if length_bytes == 2 {
                 u32::from(read_u16([
                     self.segment_byte(segment, length_position, 0)?,
@@ -4651,22 +4696,27 @@ impl<'a> Parser<'a> {
                 ])
             };
             if length < 14 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTilePart,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTilePart));
             }
             extensions
                 .tile_part_lengths
                 .push(TilePartLength { tile_index, length });
-            let next_position = position
-                .checked_add(record_bytes)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            let next_position = match position.checked_add(record_bytes) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
             if next_position <= position || next_position > segment.payload.len() {
                 return Err(self.malformed_here(MalformedKind::InvalidMarkerLength));
             }
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                vstd::arithmetic::div_mod::lemma_mod_sub_multiples_vanish(
+                    segment.payload.len() as int - position as int, record_bytes as int);
+            }
             position = next_position;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_tlm_records, 1); }
         Ok(())
     }
 
@@ -16732,6 +16782,320 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_tlm_payload(
+        bytes: &[u8],
+        next_index: &mut u16,
+        tile_count: u64,
+        offset: usize,
+        lengths: &mut Vec<TilePartLength>,
+    ) -> Result<(), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if bytes.len() < 2 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        if u16::from(bytes[0]) != *next_index {
+            return Err(malformed(MalformedKind::InvalidMarkerOrder));
+        }
+        *next_index += 1;
+        let style = bytes[1];
+        let tile_bytes = usize::from(style / 16 % 4);
+        let length_bytes = if matches!(style / 64, 0 | 2) { 2 } else { 4 };
+        let reserved = style % 16;
+        if style >= 128 || reserved != 0 || tile_bytes == 3 {
+            return Err(malformed(MalformedKind::InvalidTilePart));
+        }
+        let chunks = bytes[2..].chunks_exact(tile_bytes + length_bytes);
+        if !chunks.remainder().is_empty() {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        for chunk in chunks {
+            let tile_index = match tile_bytes {
+                0 => None,
+                1 => Some(u16::from(chunk[0])),
+                _ => Some(u16::from_be_bytes([chunk[0], chunk[1]])),
+            };
+            if tile_index.is_some_and(|value| u64::from(value) >= tile_count) {
+                return Err(malformed(MalformedKind::InvalidTilePart));
+            }
+            let length = if length_bytes == 2 {
+                u32::from(u16::from_be_bytes(chunk[tile_bytes..].try_into().unwrap()))
+            } else {
+                u32::from_be_bytes(chunk[tile_bytes..].try_into().unwrap())
+            };
+            if length < 14 {
+                return Err(malformed(MalformedKind::InvalidTilePart));
+            }
+            lengths.push(TilePartLength { tile_index, length });
+        }
+        Ok(())
+    }
+
+    fn raw_tlm_payload(index: u8, style: u8, records: &[(u16, u32)]) -> Vec<u8> {
+        let tile_bytes = usize::from(style / 16 % 4);
+        let length_bytes = if matches!(style / 64, 0 | 2) { 2 } else { 4 };
+        let mut bytes = vec![index, style];
+        for (tile, length) in records {
+            bytes.extend(&u32::from(*tile).to_be_bytes()[4 - tile_bytes..]);
+            bytes.extend(&length.to_be_bytes()[4 - length_bytes..]);
+        }
+        bytes
+    }
+
+    fn assert_tlm_owner_case(
+        bytes: &[u8],
+        next_index: u16,
+        tile_count: u64,
+        limits: &ResourceLimits,
+        budget: (u64, u64),
+        offset: usize,
+    ) {
+        let (metadata, work) = budget;
+        let mut extensions = raw_owned_tile_part_fixture(0).part2_extensions;
+        extensions.tile_part_lengths = vec![
+            TilePartLength {
+                tile_index: Some(u16::MAX),
+                length: 0,
+            },
+            TilePartLength {
+                tile_index: None,
+                length: u32::MAX,
+            },
+        ];
+        extensions.metadata_bytes = metadata;
+        let mut expected = extensions.clone();
+        let mut expected_index = next_index;
+        let (mut result, next_work, next_metadata) =
+            reference_extension_charge(bytes.len(), 17, work, metadata, limits);
+        expected.metadata_bytes = next_metadata;
+        if result.is_ok() {
+            result = reference_tlm_payload(
+                bytes,
+                &mut expected_index,
+                tile_count,
+                offset,
+                &mut expected.tile_part_lengths,
+            );
+        }
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        parser.position = 17;
+        parser.work_units = work;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX - 1;
+        let mut actual_index = next_index;
+        assert_eq!(
+            parser.parse_tlm(
+                Segment {
+                    marker: 0x1234,
+                    offset,
+                    payload: bytes
+                },
+                &mut actual_index,
+                tile_count,
+                &mut extensions
+            ),
+            result,
+        );
+        assert_eq!(actual_index, expected_index);
+        assert_eq!(extensions, expected);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (17, next_work, u64::MAX, u64::MAX - 1)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, limits));
+    }
+
+    #[test]
+    fn actual_tlm_preserves_every_header_style_index_and_external_counter() {
+        let limits = ResourceLimits::HARDENED;
+        let mut headers = 0;
+        for index in 0..=u8::MAX {
+            for style in 0..=u8::MAX {
+                for next in [0, u16::from(index), u16::from(index) + 1, 256, u16::MAX] {
+                    assert_tlm_owner_case(&[index, style], next, 0, &limits, (0, 0), usize::MAX);
+                    headers += 1;
+                }
+            }
+        }
+        assert_eq!(headers, 327_680);
+        let mut counters = 0;
+        for next in 0..=u16::MAX {
+            for index in [0, u8::MAX] {
+                assert_tlm_owner_case(&[index, 0], next, u64::MAX, &limits, (0, 0), usize::MAX);
+                counters += 1;
+            }
+        }
+        assert_eq!(counters, 131_072);
+    }
+
+    #[test]
+    fn actual_tlm_preserves_endian_words_valid_prefixes_and_record_alignment() {
+        let limits = ResourceLimits::HARDENED;
+        let styles = [0, 0x10, 0x20, 0x40, 0x50, 0x60];
+        let mut words = 0;
+        for word in 0..=u16::MAX {
+            for style in styles {
+                let length = if style < 0x40 {
+                    u32::from(word)
+                } else {
+                    (u32::from(word) << 16) + u32::from(word.wrapping_mul(31337))
+                };
+                let source = raw_tlm_payload(0, style, &[(0, 14), (word, length), (1, 15)]);
+                let tile = if style / 16 % 4 == 1 {
+                    u64::from(word as u8)
+                } else {
+                    u64::from(word)
+                };
+                for count in [tile, tile + 1] {
+                    assert_tlm_owner_case(&source, 0, count, &limits, (0, 0), usize::MAX);
+                    words += 1;
+                }
+            }
+        }
+        assert_eq!(words, 786_432);
+        let mut frontiers = 0;
+        for style in styles {
+            for tile_count in [0, 1, 255, 256, 257, 65535, 65536, u64::MAX] {
+                for length in [0, 1, 13, 14, 15, 65535, 65536, u32::MAX] {
+                    for bad_position in 0..3 {
+                        let mut records = [(0, 14); 3];
+                        records[bad_position] = (u16::MAX, length);
+                        let source = raw_tlm_payload(255, style, &records);
+                        for variant in 0..3 {
+                            let mut bytes = source.clone();
+                            if variant == 0 {
+                                bytes.pop();
+                            } else if variant == 2 {
+                                bytes.push(0);
+                            }
+                            for offset in [0, usize::MAX] {
+                                assert_tlm_owner_case(
+                                    &bytes,
+                                    255,
+                                    tile_count,
+                                    &limits,
+                                    (0, 0),
+                                    offset,
+                                );
+                                frontiers += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 6_912);
+    }
+
+    #[test]
+    fn actual_tlm_preserves_three_owner_frames_partial_charges_and_real_reader() {
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+            base.with_maximum_work_units(8).unwrap(),
+            base.with_maximum_metadata_bytes(4)
+                .unwrap()
+                .with_maximum_work_units(0)
+                .unwrap(),
+        ];
+        let mut short = raw_tlm_payload(0, 0x20, &[(0, 14)]);
+        short.pop();
+        let mut long = raw_tlm_payload(0, 0x20, &[(0, 14)]);
+        long.push(0);
+        let payloads = [
+            vec![],
+            vec![0],
+            vec![0, 0],
+            vec![255, 0],
+            vec![255, 0x80],
+            vec![1, 0x30],
+            raw_tlm_payload(0, 0, &[(0, 0)]),
+            raw_tlm_payload(0, 0x10, &[(1, 14)]),
+            raw_tlm_payload(1, 0x20, &[(0, 14), (1, 15), (u16::MAX, 13)]),
+            raw_tlm_payload(0, 0x40, &[(0, u32::MAX)]),
+            short,
+            long,
+        ];
+        assert_eq!(payloads.len(), 12);
+        let mut cases = 0;
+        for limit in &limits {
+            for bytes in &payloads {
+                for next in [0, 1, 255, 256, u16::MAX] {
+                    for tile_count in [0, 1, 2, 65536, u64::MAX] {
+                        for budget in [
+                            (0, 0),
+                            (0, u64::MAX),
+                            (u64::MAX, 0),
+                            (16_777_215, 8),
+                            (u64::MAX - 4, u64::MAX - 4),
+                        ] {
+                            for offset in [0, usize::MAX] {
+                                assert_tlm_owner_case(
+                                    bytes, next, tile_count, limit, budget, offset,
+                                );
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 18_000);
+        let mut input = segment(TLM, &raw_tlm_payload(0, 0, &[(0, 14), (0, 65535)]));
+        input.extend(segment(TLM, &raw_tlm_payload(1, 0, &[(0, 13)])));
+        let mut parser = new_parser(&input, &base).unwrap();
+        let mut extensions = Part2Extensions::default();
+        let mut next = 0;
+        let raw = parser.read_segment().unwrap();
+        parser
+            .parse_tlm(raw, &mut next, 0, &mut extensions)
+            .unwrap();
+        let raw = parser.read_segment().unwrap();
+        assert_eq!(
+            parser.parse_tlm(raw, &mut next, 0, &mut extensions),
+            Err(DecodeError::MalformedInput {
+                offset: 10,
+                kind: MalformedKind::InvalidTilePart
+            }),
+        );
+        assert_eq!(
+            extensions.tile_part_lengths,
+            vec![
+                TilePartLength {
+                    tile_index: None,
+                    length: 14
+                },
+                TilePartLength {
+                    tile_index: None,
+                    length: 65535
+                },
+            ]
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                extensions.metadata_bytes,
+                next
+            ),
+            (18, 20, 18, 2)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
     }
 
     fn reference_nlt_gamma(bytes: &[u8], offset: usize) -> Result<[u32; 5], DecodeError> {

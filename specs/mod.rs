@@ -14058,6 +14058,87 @@ pub open spec fn part1_parse_nlt<'a>(
     }
 }
 
+pub open spec fn part1_extension_lengths(
+    extensions: Part2OwnedExtensions, lengths: Seq<crate::codestream::TilePartLength>,
+) -> Part2OwnedExtensions {
+    Part2OwnedExtensions {
+        decompositions: extensions.decompositions, arbitrary: extensions.arbitrary,
+        nonlinear: extensions.nonlinear, depths: extensions.depths, kernels: extensions.kernels,
+        registrations: extensions.registrations, lengths, metadata_bytes: extensions.metadata_bytes,
+    }
+}
+
+pub open spec fn part1_tlm_tile_index(payload: Seq<u8>, position: int, tile_bytes: usize) -> Option<u16> {
+    if tile_bytes == 0 { None } else if tile_bytes == 1 { Some(payload[position] as u16) }
+    else { Some(part1_marker_value(payload[position], payload[position + 1])) }
+}
+
+pub open spec fn part1_tlm_length(payload: Seq<u8>, position: int, length_bytes: usize) -> u32 {
+    if length_bytes == 2 { part1_marker_value(payload[position], payload[position + 1]) as u32 }
+    else { part1_siz_word(payload, position) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_tlm_records(
+    segment: Part1CodestreamSegment, tile_count: u64, tile_bytes: usize, length_bytes: usize,
+    position: nat, lengths: Seq<crate::codestream::TilePartLength>,
+) -> (Result<(), crate::DecodeError>, Seq<crate::codestream::TilePartLength>)
+    decreases segment.payload.len() - position,
+{
+    if position >= segment.payload.len() { (Ok(()), lengths) }
+    else if tile_bytes > 2 || (length_bytes != 2 && length_bytes != 4) {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTilePart)), lengths)
+    } else if position + tile_bytes as nat + length_bytes as nat > segment.payload.len() {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)), lengths)
+    } else {
+        let tile_index = part1_tlm_tile_index(segment.payload, position as int, tile_bytes);
+        if match tile_index { None => false, Some(value) => value as u64 >= tile_count } {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTilePart)), lengths)
+        } else {
+            let length = part1_tlm_length(segment.payload, position as int + tile_bytes as int, length_bytes);
+            if length < 14 {
+                (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTilePart)), lengths)
+            } else {
+                part1_tlm_records(segment, tile_count, tile_bytes, length_bytes,
+                    position + tile_bytes as nat + length_bytes as nat,
+                    lengths.push(crate::codestream::TilePartLength { tile_index, length }))
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_tlm<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, next_index: u16,
+    tile_count: u64, extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, u16, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { (charged.0, charged.1, next_index, charged.2) }
+    else if segment.payload.len() < 2 {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)),
+            charged.1, next_index, charged.2)
+    } else if segment.payload[0] as u16 != next_index {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerOrder)),
+            charged.1, next_index, charged.2)
+    } else {
+        let index = (next_index as int + 1) as u16;
+        let style = segment.payload[1];
+        let tile_bytes = part2_tlm_tile_index_bytes(style);
+        let length_bytes = part2_tlm_length_bytes(style);
+        let record_bytes = (tile_bytes + length_bytes) as usize;
+        if style & 0x8f != 0 || tile_bytes == 3 {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTilePart)),
+                charged.1, index, charged.2)
+        } else if record_bytes == 0 || (segment.payload.len() - 2) % record_bytes as int != 0 {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)),
+                charged.1, index, charged.2)
+        } else {
+            let records = part1_tlm_records(segment, tile_count, tile_bytes, length_bytes, 2, charged.2.lengths);
+            (records.0, charged.1, index, part1_extension_lengths(charged.2, records.1))
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }
