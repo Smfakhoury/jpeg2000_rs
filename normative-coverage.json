@@ -4,6 +4,60 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-raw-kernel-bytes",
+      "topic": "Complete actual raw ATK kernel Result, all16 physical bytes and width of every coefficient, every offset/exponent/residue/coefficient step field, raw descriptor/index/flags/scaling/steps and complete parser/eight extension fields. Real shared charge precedes minimum7/header/index/type/reserved admission, optional scaling, raw step count and original offset/exponent/residue/count/coefficient/terminal order. Actual coefficient reader retains width-before-overflow-before-range precedence, distinct cursor/segment offsets, exact right alignment and integer-only sign extension for arbitrary raw widths/types. Sole factored step/payload bodies and explicit first-index replacement consume actual source reads without normalized kernels, prepared steps/byte banks or successful budget premises. Derived-safe casts and bounded equivalent array copying expose original values. Standard fresh-query isolation handles an observed pre-freeze supplemental packed-header reassembly rlimit without cap/pin/trust changes; the original failure is retained privately. Remaining fragmented transform/packet/layout/file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_atk"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_atk_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_atk_step"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_kernel_coefficient"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_atk"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_header"},
+        {"path": "specs/mod.rs", "symbol": "Part1AtkHeader"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_kernel"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_steps"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_step"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_step_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_coefficients"},
+        {"path": "specs/mod.rs", "symbol": "part1_kernel_coefficient"},
+        {"path": "specs/mod.rs", "symbol": "part1_kernel_coefficient_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_kernel_advance"},
+        {"path": "specs/mod.rs", "symbol": "part1_atk_replace"},
+        {"path": "specs/mod.rs", "symbol": "part1_extension_kernels"},
+        {"path": "specs/mod.rs", "symbol": "part1_charge_extension_metadata"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::read_kernel_coefficient"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_atk_step"},
+        {"path": "src/codestream.rs", "symbol": "Parser::decode_atk_payload"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_atk"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "kernel_coefficient_outcome"},
+        {"path": "src/codestream.rs", "symbol": "kernel_step_outcome"},
+        {"path": "src/codestream.rs", "symbol": "atk_payload_outcome"},
+        {"path": "src/codestream.rs", "symbol": "raw_kernel_coefficient_view"},
+        {"path": "src/codestream.rs", "symbol": "raw_kernel_coefficients_view"},
+        {"path": "src/codestream.rs", "symbol": "raw_kernel_step_view"},
+        {"path": "src/codestream.rs", "symbol": "raw_kernel_steps_view"},
+        {"path": "src/codestream.rs", "symbol": "raw_kernel_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_kernel_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_extension_metadata"},
+        {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_atk_coefficients_preserve_all_raw_bytes_widths_signs_and_error_offsets"},
+        {"path": "src/codestream.rs", "symbol": "actual_atk_preserves_all_descriptors_steps_counts_and_terminal_order"},
+        {"path": "src/codestream.rs", "symbol": "actual_atk_preserves_first_duplicates_all_owner_fields_and_ordered_budget_failures"}
+      ]
+    },
+    {
       "id": "part1-complete-native-raw-tile-length-bytes",
       "topic": "Complete actual TLM Result, every parser/eight extension field and external next_index counter from raw header/style/record bytes, arbitrary old lengths and actual limits/work. Real charge precedes header/index order; counter increment commits before style/alignment/row checks, including255 to256. Actual descriptor primitives derive tile0/1/2-byte and length2/4-byte strides. Source-derived alignment guarantees every read and stride; optional absent tile indices remain legal even with tile_count0, and existing raw length entries are not normalized. Tile bounds precede minimum length14; every valid appended row prefix is retained on later failure. Full mutable frames and terminal folds bind native effects without prepared records, successful budgets, row-validity premises, new trust/pin/cap/solver/termination bypass. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

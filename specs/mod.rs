@@ -14139,6 +14139,244 @@ pub open spec fn part1_parse_tlm<'a>(
     }
 }
 
+pub open spec fn part1_kernel_advance(cursor: usize, position: usize, amount: usize)
+    -> Result<usize, crate::DecodeError>
+{
+    if position as int + amount as int > usize::MAX {
+        Err(part1_codestream_malformed(cursor, crate::MalformedKind::ArithmeticOverflow))
+    } else { Ok((position + amount) as usize) }
+}
+
+pub open spec fn part1_kernel_coefficient_bytes(
+    payload: Seq<u8>, position: usize, width: usize, coefficient_type: u8,
+) -> Seq<u8>
+    recommends 0 < width <= 16, position as int + width as int <= payload.len(),
+{
+    let start = 16 - width as int;
+    let negative = coefficient_type <= 1 && payload[position as int] & 0x80 != 0;
+    Seq::new(16, |index: int| if index < start { if negative { 255u8 } else { 0u8 } }
+        else { payload[position as int + index - start] })
+}
+
+#[verifier::opaque]
+pub open spec fn part1_kernel_coefficient(
+    cursor: usize, segment: Part1CodestreamSegment, position: usize, width: usize, coefficient_type: u8,
+) -> Result<Part2RawKernelCoefficient, crate::DecodeError> {
+    if width == 0 || width > 16 {
+        Err(part1_codestream_malformed(cursor, crate::MalformedKind::InvalidTransform))
+    } else {
+        match part1_kernel_advance(cursor, position, width) {
+            Err(error) => Err(error),
+            Ok(end) => if end > segment.payload.len() {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+            } else { Ok((part1_kernel_coefficient_bytes(segment.payload, position, width, coefficient_type), width as u8)) },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_coefficients(
+    cursor: usize, segment: Part1CodestreamSegment, position: usize, width: usize, coefficient_type: u8,
+    remaining: nat, coefficients: Seq<Part2RawKernelCoefficient>,
+) -> Result<(Seq<Part2RawKernelCoefficient>, usize), crate::DecodeError>
+    decreases remaining,
+{
+    if remaining == 0 { Ok((coefficients, position)) } else {
+        match part1_kernel_coefficient(cursor, segment, position, width, coefficient_type) {
+            Err(error) => Err(error),
+            Ok(value) => match part1_kernel_advance(cursor, position, width) {
+                Err(error) => Err(error),
+                Ok(next) => part1_atk_coefficients(cursor, segment, next, width, coefficient_type,
+                    (remaining - 1) as nat, coefficients.push(value)),
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_step_header(
+    cursor: usize, segment: Part1CodestreamSegment, start: usize, width: usize,
+    coefficient_type: u8, reversible: bool, whole_sample_filter: bool,
+) -> Result<(i8, u8, Option<Part2RawKernelCoefficient>, usize, usize), crate::DecodeError> {
+    let offset = if whole_sample_filter { Ok((0i8, start)) } else {
+        match part1_segment_byte(cursor, segment, start, 0) {
+            Err(error) => Err(error),
+            Ok(value) => match part1_kernel_advance(cursor, start, 1) {
+                Err(error) => Err(error), Ok(next) => Ok((value as i8, next)),
+            },
+        }
+    };
+    match offset {
+        Err(error) => Err(error),
+        Ok((offset, position)) => {
+            let parameters = if !reversible { Ok((0u8, None, position)) } else {
+                match part1_segment_byte(cursor, segment, position, 0) {
+                    Err(error) => Err(error),
+                    Ok(exponent) => match part1_kernel_advance(cursor, position, 1) {
+                        Err(error) => Err(error),
+                        Ok(position) => match part1_kernel_coefficient(cursor, segment, position, width, coefficient_type) {
+                            Err(error) => Err(error),
+                            Ok(residue) => match part1_kernel_advance(cursor, position, width) {
+                                Err(error) => Err(error), Ok(next) => Ok((exponent, Some(residue), next)),
+                            },
+                        },
+                    },
+                }
+            };
+            match parameters {
+                Err(error) => Err(error),
+                Ok((exponent, residue, position)) => match part1_segment_byte(cursor, segment, position, 0) {
+                    Err(error) => Err(error),
+                    Ok(count) => match part1_kernel_advance(cursor, position, 1) {
+                        Err(error) => Err(error),
+                        Ok(next) => if count == 0 {
+                            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+                        } else { Ok((offset, exponent, residue, count as usize, next)) },
+                    },
+                },
+            }
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_step(
+    cursor: usize, segment: Part1CodestreamSegment, start: usize, width: usize,
+    coefficient_type: u8, reversible: bool, whole_sample_filter: bool,
+) -> Result<(Part2RawKernelStep, usize), crate::DecodeError> {
+    match part1_atk_step_header(cursor, segment, start, width, coefficient_type, reversible, whole_sample_filter) {
+        Err(error) => Err(error),
+        Ok(header) => match part1_atk_coefficients(cursor, segment, header.4, width, coefficient_type,
+            header.3 as nat, Seq::empty()) {
+            Err(error) => Err(error),
+            Ok((coefficients, next)) => Ok(((header.0, header.1, header.2, coefficients), next)),
+        },
+    }
+}
+
+pub struct Part1AtkHeader {
+    pub index: u8, pub descriptor: u16, pub coefficient_type: u8, pub width: usize,
+    pub whole_sample_filter: bool, pub reversible: bool, pub initial_odd: bool, pub whole_sample_extension: bool,
+    pub scaling: Option<Part2RawKernelCoefficient>, pub step_count: usize, pub position: usize,
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_header(cursor: usize, segment: Part1CodestreamSegment)
+    -> Result<Part1AtkHeader, crate::DecodeError>
+{
+    if segment.payload.len() < 7 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let descriptor = part1_marker_value(segment.payload[0], segment.payload[1]);
+        let index = (descriptor & 255) as u8;
+        let coefficient_type = ((descriptor >> 8) & 7) as u8;
+        let width = if coefficient_type == 0 { 1usize } else if coefficient_type == 1 { 2 }
+            else if coefficient_type == 2 { 4 } else if coefficient_type == 3 { 8 } else { 16 };
+        let reversible = descriptor & 0x1000 != 0;
+        if index < 2 || coefficient_type > 4 || descriptor & 0x8000 != 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform))
+        } else {
+            let scaling = if reversible { Ok((None, 2usize)) } else {
+                match part1_kernel_coefficient(cursor, segment, 2, width, coefficient_type) {
+                    Err(error) => Err(error),
+                    Ok(coefficient) => match part1_kernel_advance(cursor, 2, width) {
+                        Err(error) => Err(error), Ok(next) => Ok((Some(coefficient), next)),
+                    },
+                }
+            };
+            match scaling {
+                Err(error) => Err(error),
+                Ok((scaling, position)) => match part1_segment_byte(cursor, segment, position, 0) {
+                    Err(error) => Err(error),
+                    Ok(count) => match part1_kernel_advance(cursor, position, 1) {
+                        Err(error) => Err(error),
+                        Ok(next) => Ok(Part1AtkHeader {
+                            index, descriptor, coefficient_type, width, reversible, scaling,
+                            whole_sample_filter: descriptor & 0x0800 != 0,
+                            initial_odd: descriptor & 0x2000 != 0,
+                            whole_sample_extension: descriptor & 0x4000 != 0,
+                            step_count: count as usize, position: next,
+                        }),
+                    },
+                },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_steps(
+    cursor: usize, segment: Part1CodestreamSegment, position: usize, width: usize,
+    coefficient_type: u8, reversible: bool, whole_sample_filter: bool,
+    remaining: nat, steps: Seq<Part2RawKernelStep>,
+) -> Result<(Seq<Part2RawKernelStep>, usize), crate::DecodeError>
+    decreases remaining,
+{
+    if remaining == 0 { Ok((steps, position)) } else {
+        match part1_atk_step(cursor, segment, position, width, coefficient_type, reversible, whole_sample_filter) {
+            Err(error) => Err(error),
+            Ok((step, next)) => part1_atk_steps(cursor, segment, next, width, coefficient_type,
+                reversible, whole_sample_filter, (remaining - 1) as nat, steps.push(step)),
+        }
+    }
+}
+
+pub open spec fn part1_atk_kernel(header: Part1AtkHeader, steps: Seq<Part2RawKernelStep>) -> (u8, u16, Part2RawKernel) {
+    (header.index, header.descriptor, (header.reversible, header.coefficient_type,
+        header.whole_sample_filter, header.initial_odd, header.whole_sample_extension, header.scaling, steps))
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_payload(cursor: usize, segment: Part1CodestreamSegment)
+    -> Result<(u8, u16, Part2RawKernel), crate::DecodeError>
+{
+    match part1_atk_header(cursor, segment) {
+        Err(error) => Err(error),
+        Ok(header) => match part1_atk_steps(cursor, segment, header.position, header.width,
+            header.coefficient_type, header.reversible, header.whole_sample_filter, header.step_count as nat, Seq::empty()) {
+            Err(error) => Err(error),
+            Ok((steps, next)) => if next != segment.payload.len() {
+                Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+            } else { Ok(part1_atk_kernel(header, steps)) },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_atk_replace(
+    entries: Seq<(u8, u16, Part2RawKernel)>, replacement: (u8, u16, Part2RawKernel), position: nat,
+) -> Seq<(u8, u16, Part2RawKernel)>
+    decreases entries.len() - position,
+{
+    if position >= entries.len() { entries.push(replacement) }
+    else if entries[position as int].0 == replacement.0 { entries.update(position as int, replacement) }
+    else { part1_atk_replace(entries, replacement, position + 1) }
+}
+
+pub open spec fn part1_extension_kernels(extensions: Part2OwnedExtensions, kernels: Seq<(u8, u16, Part2RawKernel)>)
+    -> Part2OwnedExtensions
+{
+    Part2OwnedExtensions {
+        decompositions: extensions.decompositions, arbitrary: extensions.arbitrary,
+        nonlinear: extensions.nonlinear, depths: extensions.depths, kernels,
+        registrations: extensions.registrations, lengths: extensions.lengths, metadata_bytes: extensions.metadata_bytes,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_atk<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, extensions: Part2OwnedExtensions,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, Part2OwnedExtensions) {
+    let charged = part1_charge_extension_metadata(state, segment, extensions);
+    if charged.0.is_err() { charged } else {
+        match part1_atk_payload(charged.1.position, segment) {
+            Err(error) => (Err(error), charged.1, charged.2),
+            Ok(replacement) => (Ok(()), charged.1, part1_extension_kernels(charged.2,
+                part1_atk_replace(charged.2.kernels, replacement, 0))),
+        }
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

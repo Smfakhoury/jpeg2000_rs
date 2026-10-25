@@ -1509,6 +1509,12 @@ verus! {
         (value.bytes@, value.width)
     }
 
+    pub open spec fn kernel_coefficient_outcome(value: Result<KernelCoefficient, DecodeError>)
+        -> Result<crate::specs::Part2RawKernelCoefficient, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(value) => Ok(raw_kernel_coefficient_view(value)) }
+    }
+
     pub open spec fn raw_kernel_coefficient_option(value: Option<KernelCoefficient>)
         -> Option<crate::specs::Part2RawKernelCoefficient>
     {
@@ -1527,6 +1533,12 @@ verus! {
     pub closed spec fn raw_kernel_step_view(value: KernelLiftingStep) -> crate::specs::Part2RawKernelStep {
         (value.offset, value.exponent, raw_kernel_coefficient_option(value.residue),
             raw_kernel_coefficients_view(value.coefficients@))
+    }
+
+    pub open spec fn kernel_step_outcome(value: Result<(KernelLiftingStep, usize), DecodeError>)
+        -> Result<(crate::specs::Part2RawKernelStep, usize), DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok((step, next)) => Ok((raw_kernel_step_view(step), next)) }
     }
 
     pub open spec fn raw_kernel_steps_view(values: Seq<KernelLiftingStep>) -> Seq<crate::specs::Part2RawKernelStep> {
@@ -2926,6 +2938,7 @@ impl PackedPacketHeaders<'_> {
         self.fragments
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures packed_header_reassembly_outcome(result) == crate::specs::part1_packed_header_reassembly(
             packed_packet_headers_view(self), crate::limits::resource_packet_header_byte_limit(limits)),
@@ -3473,6 +3486,12 @@ verus! {
 
     pub closed spec fn owned_kernel_view(value: &ArbitraryKernel) -> (u8, u16, crate::specs::Part2RawKernel) {
         (value.index, value.descriptor, raw_kernel_view(*value))
+    }
+
+    pub open spec fn atk_payload_outcome(value: Result<ArbitraryKernel, DecodeError>)
+        -> Result<(u8, u16, crate::specs::Part2RawKernel), DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(value) => Ok(owned_kernel_view(&value)) }
     }
 
     pub closed spec fn owned_extensions_view(value: &Part2Extensions) -> crate::specs::Part2OwnedExtensions {
@@ -5748,28 +5767,90 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), owned_extensions_view(final(extensions)))
+            == crate::specs::part1_parse_atk(parser_view(old(self)), segment_view(segment), owned_extensions_view(old(extensions))),
+    ))]
     fn parse_atk(
         &mut self,
         segment: Segment<'a>,
         extensions: &mut Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost extension_input = owned_extensions_view(extensions);
+            let ghost goal = crate::specs::part1_parse_atk(input, segment_view(segment), extension_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_atk); }
         self.charge_extension_metadata(segment, extensions)?;
+        let replacement = self.decode_atk_payload(segment)?;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost charged_parser = parser_view(self);
+            let ghost charged_extensions = owned_extensions_view(extensions);
+            let ghost decoded = owned_kernel_view(&replacement);
+            let ghost target = crate::specs::part1_atk_replace(charged_extensions.kernels, decoded, 0);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(owned_kernel_view);
+            assert(goal == (Ok(()), charged_parser, crate::specs::part1_extension_kernels(charged_extensions, target)));
+        }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= extensions.arbitrary_kernels.len(),
+                input == parser_view(old(self)), extension_input == owned_extensions_view(old(extensions)),
+                parser_view(self) == charged_parser, owned_extensions_view(extensions) == charged_extensions,
+                owned_kernel_view(&replacement) == decoded,
+                target == crate::specs::part1_atk_replace(charged_extensions.kernels, decoded, position as nat),
+                goal == crate::specs::part1_parse_atk(input, segment_view(segment), extension_input),
+                goal == (Ok(()), charged_parser, crate::specs::part1_extension_kernels(charged_extensions, target)),
+            decreases extensions.arbitrary_kernels.len() - position,
+        ))]
+        while position < extensions.arbitrary_kernels.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_atk_replace, 1); reveal(owned_kernel_view); }
+            if extensions.arbitrary_kernels[position].index == replacement.index {
+                extensions.arbitrary_kernels[position] = replacement;
+                #[cfg(verus_keep_ghost)]
+                proof! { assert(owned_extensions_view(extensions).kernels =~= charged_extensions.kernels.update(position as int, decoded)); }
+                return Ok(());
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_atk_replace, 1); }
+        extensions.arbitrary_kernels.push(replacement);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(owned_extensions_view(extensions).kernels =~= charged_extensions.kernels.push(decoded)); }
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures atk_payload_outcome(result) == crate::specs::part1_atk_payload(self.position, segment_view(segment)),
+    ))]
+    fn decode_atk_payload(&self, segment: Segment<'a>) -> Result<ArbitraryKernel, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost goal = crate::specs::part1_atk_payload(self.position, segment_view(segment)); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_atk_payload); reveal(crate::specs::part1_atk_header); }
         if segment.payload.len() < 7 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let descriptor = read_u16([segment.payload[0], segment.payload[1]]);
-        let index = u8::try_from(descriptor & 0xff)
-            .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        let coefficient_type = u8::try_from((descriptor >> 8) & 7)
-            .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(descriptor & 0xff <= 255u16) by (bit_vector);
+            assert((descriptor >> 8) & 7 <= 7u16) by (bit_vector);
+        }
+        let index = (descriptor & 0xff) as u8;
+        let coefficient_type = ((descriptor >> 8) & 7) as u8;
         if index < 2 || coefficient_type > 4 || descriptor & 0x8000 != 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         let width = match coefficient_type {
             0 => 1_usize,
@@ -5778,10 +5859,7 @@ impl<'a> Parser<'a> {
             3 => 8,
             4 => 16,
             _ => {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
         };
         let whole_sample_filter = descriptor & 0x0800 != 0;
@@ -5794,104 +5872,81 @@ impl<'a> Parser<'a> {
         } else {
             let coefficient =
                 self.read_kernel_coefficient(segment, position, width, coefficient_type)?;
-            position = position
-                .checked_add(width)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            position = match position.checked_add(width) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
             Some(coefficient)
         };
         let step_count = usize::from(self.segment_byte(segment, position, 0)?);
-        position = position
-            .checked_add(1)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        position = match position.checked_add(1) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost header = crate::specs::Part1AtkHeader {
+                index, descriptor, coefficient_type, width, reversible, whole_sample_filter, initial_odd, whole_sample_extension,
+                scaling: raw_kernel_coefficient_option(scaling), step_count, position,
+            };
+            let ghost target = crate::specs::part1_atk_steps(self.position, segment_view(segment), position,
+                width, coefficient_type, reversible, whole_sample_filter, step_count as nat, Seq::empty());
+        }
         let mut steps = Vec::with_capacity(step_count);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(raw_kernel_steps_view(steps@) =~= Seq::empty()); }
         let mut step = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
-                invariant step <= step_count,
+                invariant step <= step_count <= 255,
+                    header.index == index, header.descriptor == descriptor, header.coefficient_type == coefficient_type,
+                    header.width == width, header.reversible == reversible, header.whole_sample_filter == whole_sample_filter,
+                    header.initial_odd == initial_odd, header.whole_sample_extension == whole_sample_extension,
+                    header.scaling == raw_kernel_coefficient_option(scaling),
+                    target == crate::specs::part1_atk_steps(self.position, segment_view(segment), position,
+                        width, coefficient_type, reversible, whole_sample_filter, (step_count - step) as nat, raw_kernel_steps_view(steps@)),
+                    goal == crate::specs::part1_atk_payload(self.position, segment_view(segment)),
+                    goal == match target {
+                        Err(error) => Err(error),
+                        Ok((values, next)) => if next != segment.payload.len() {
+                            Err(crate::specs::part1_codestream_malformed(segment.offset, MalformedKind::InvalidMarkerLength))
+                        } else { Ok(crate::specs::part1_atk_kernel(header, values)) },
+                    },
                 decreases step_count - step,
             )
         )]
         while step < step_count {
-            let offset = if whole_sample_filter {
-                0
-            } else {
-                self.segment_byte(segment, position, 0)? as i8
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_atk_steps, 1); }
+            let (decoded, next) = self.decode_atk_step(
+                segment,
+                position,
+                width,
+                coefficient_type,
+                reversible,
+                whole_sample_filter,
+            )?;
+            position = next;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost previous = raw_kernel_steps_view(steps@); let ghost value = raw_kernel_step_view(decoded); }
+            steps.push(decoded);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(raw_kernel_steps_view(steps@) =~= previous.push(value)); }
+            step = match step.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
             };
-            if !whole_sample_filter {
-                position = position
-                    .checked_add(1)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-            let exponent = if reversible {
-                let value = self.segment_byte(segment, position, 0)?;
-                position = position
-                    .checked_add(1)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-                value
-            } else {
-                0
-            };
-            let residue = if reversible {
-                let value =
-                    self.read_kernel_coefficient(segment, position, width, coefficient_type)?;
-                position = position
-                    .checked_add(width)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-                Some(value)
-            } else {
-                None
-            };
-            let coefficient_count = usize::from(self.segment_byte(segment, position, 0)?);
-            position = position
-                .checked_add(1)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            if coefficient_count == 0 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
-            }
-            let mut coefficients = Vec::with_capacity(coefficient_count);
-            let mut coefficient = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant coefficient <= coefficient_count,
-                    decreases coefficient_count - coefficient,
-                )
-            )]
-            while coefficient < coefficient_count {
-                coefficients.push(self.read_kernel_coefficient(
-                    segment,
-                    position,
-                    width,
-                    coefficient_type,
-                )?);
-                position = position
-                    .checked_add(width)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-                coefficient = coefficient
-                    .checked_add(1)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-            steps.push(KernelLiftingStep {
-                offset,
-                exponent,
-                residue,
-                coefficients,
-            });
-            step = step
-                .checked_add(1)
-                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part1_atk_steps, 1);
+            reveal(owned_kernel_view); reveal(raw_kernel_view);
         }
         if position != segment.payload.len() {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
-        let replacement = ArbitraryKernel {
+        Ok(ArbitraryKernel {
             index,
             reversible,
             descriptor,
@@ -5901,19 +5956,128 @@ impl<'a> Parser<'a> {
             whole_sample_extension,
             scaling,
             steps,
-        };
-        if let Some(existing) = extensions
-            .arbitrary_kernels
-            .iter_mut()
-            .find(|kernel| kernel.index == index)
-        {
-            *existing = replacement;
-        } else {
-            extensions.arbitrary_kernels.push(replacement);
-        }
-        Ok(())
+        })
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures kernel_step_outcome(result) == crate::specs::part1_atk_step(
+            self.position, segment_view(segment), start, width, coefficient_type, reversible, whole_sample_filter),
+    ))]
+    fn decode_atk_step(
+        &self,
+        segment: Segment<'a>,
+        start: usize,
+        width: usize,
+        coefficient_type: u8,
+        reversible: bool,
+        whole_sample_filter: bool,
+    ) -> Result<(KernelLiftingStep, usize), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost goal = crate::specs::part1_atk_step(
+                self.position, segment_view(segment), start, width, coefficient_type, reversible, whole_sample_filter);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_atk_step); reveal(crate::specs::part1_atk_step_header); }
+        let mut position = start;
+        let offset = if whole_sample_filter {
+            0
+        } else {
+            self.segment_byte(segment, position, 0)? as i8
+        };
+        if !whole_sample_filter {
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        let exponent = if reversible {
+            let value = self.segment_byte(segment, position, 0)?;
+            position = match position.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+            value
+        } else {
+            0
+        };
+        let residue = if reversible {
+            let value = self.read_kernel_coefficient(segment, position, width, coefficient_type)?;
+            position = match position.checked_add(width) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+            Some(value)
+        } else {
+            None
+        };
+        let coefficient_count = usize::from(self.segment_byte(segment, position, 0)?);
+        position = match position.checked_add(1) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        if coefficient_count == 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost target = crate::specs::part1_atk_coefficients(
+                self.position, segment_view(segment), position, width, coefficient_type, coefficient_count as nat, Seq::empty());
+        }
+        let mut coefficients = Vec::with_capacity(coefficient_count);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(raw_kernel_coefficients_view(coefficients@) =~= Seq::empty()); }
+        let mut coefficient = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant coefficient <= coefficient_count <= 255,
+                target == crate::specs::part1_atk_coefficients(self.position, segment_view(segment), position,
+                    width, coefficient_type, (coefficient_count - coefficient) as nat,
+                    raw_kernel_coefficients_view(coefficients@)),
+                goal == crate::specs::part1_atk_step(self.position, segment_view(segment), start,
+                    width, coefficient_type, reversible, whole_sample_filter),
+                goal == match target {
+                    Err(error) => Err(error),
+                    Ok((values, next)) => Ok(((offset, exponent, raw_kernel_coefficient_option(residue), values), next)),
+                },
+            decreases coefficient_count - coefficient,
+        ))]
+        while coefficient < coefficient_count {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_atk_coefficients, 1); }
+            let value = self.read_kernel_coefficient(segment, position, width, coefficient_type)?;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost previous = raw_kernel_coefficients_view(coefficients@); }
+            coefficients.push(value);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(raw_kernel_coefficients_view(coefficients@) =~= previous.push(raw_kernel_coefficient_view(value))); }
+            position = match position.checked_add(width) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+            coefficient = match coefficient.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_atk_coefficients, 1); reveal(raw_kernel_step_view); }
+        Ok((
+            KernelLiftingStep {
+                offset,
+                exponent,
+                residue,
+                coefficients,
+            },
+            position,
+        ))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures kernel_coefficient_outcome(result) == crate::specs::part1_kernel_coefficient(
+            self.position, segment_view(segment), position, width, coefficient_type),
+    ))]
     fn read_kernel_coefficient(
         &self,
         segment: Segment<'a>,
@@ -5921,24 +6085,39 @@ impl<'a> Parser<'a> {
         width: usize,
         coefficient_type: u8,
     ) -> Result<KernelCoefficient, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_kernel_coefficient); reveal(raw_kernel_coefficient_view); }
         if width == 0 || width > 16 {
             return Err(self.malformed_here(MalformedKind::InvalidTransform));
         }
-        let end = position
-            .checked_add(width)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        let source = segment.payload.get(position..end).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )
-        })?;
+        let end = match position.checked_add(width) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        let source = match segment.payload.get(position..end) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+            }
+        };
         let mut bytes = [0_u8; 16];
-        let start = bytes
-            .len()
-            .checked_sub(width)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        bytes[start..].copy_from_slice(source);
+        let start = match bytes.len().checked_sub(width) {
+            Some(value) => value,
+            None => return Err(self.malformed_here(MalformedKind::ArithmeticOverflow)),
+        };
+        let mut copied = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant 0 < width <= 16, start == 16 - width, copied <= width,
+                source.len() == width,
+                source@ == segment.payload@.subrange(position as int, end as int),
+                forall|index: int| 0 <= index < 16 ==> bytes@[index] ==
+                    if start <= index < start + copied { source@[index - start as int] } else { 0u8 },
+            decreases width - copied,
+        ))]
+        while copied < width {
+            bytes[start + copied] = source[copied];
+            copied += 1;
+        }
         let negative_integer = match source.first() {
             Some(byte) => *byte & 0x80 != 0,
             None => false,
@@ -5948,23 +6127,28 @@ impl<'a> Parser<'a> {
             #[cfg_attr(
                 verus_keep_ghost,
                 verus_spec(
-                    invariant fill <= start,
+                    invariant fill <= start, start == 16 - width, 0 < width <= 16,
+                        source.len() == width,
+                        source@ == segment.payload@.subrange(position as int, end as int),
+                        coefficient_type <= 1, source@[0] & 0x80 != 0,
+                        forall|index: int| 0 <= index < 16 ==> bytes@[index] ==
+                            if index < fill { 255u8 } else if index < start { 0u8 } else { source@[index - start as int] },
                     decreases start - fill,
                 )
             )]
             while fill < start {
-                *bytes
-                    .get_mut(fill)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))? = 0xff;
-                fill = fill
-                    .checked_add(1)
-                    .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+                bytes[fill] = 0xff;
+                fill += 1;
             }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(bytes@ =~= crate::specs::part1_kernel_coefficient_bytes(
+                segment.payload@, position, width, coefficient_type));
         }
         Ok(KernelCoefficient {
             bytes,
-            width: u8::try_from(width)
-                .map_err(|_| self.malformed_here(MalformedKind::ArithmeticOverflow))?,
+            width: width as u8,
         })
     }
 
@@ -16782,6 +16966,618 @@ mod tests {
             }
         }
         assert_eq!(cases, 1_080);
+    }
+
+    fn reference_kernel_coefficient(
+        bytes: &[u8],
+        cursor: usize,
+        offset: usize,
+        position: usize,
+        width: usize,
+        coefficient_type: u8,
+    ) -> Result<KernelCoefficient, DecodeError> {
+        if !(1..=16).contains(&width) {
+            return Err(DecodeError::MalformedInput {
+                offset: cursor as u64,
+                kind: MalformedKind::InvalidTransform,
+            });
+        }
+        let end = position as u128 + width as u128;
+        if end > usize::MAX as u128 {
+            return Err(DecodeError::MalformedInput {
+                offset: cursor as u64,
+                kind: MalformedKind::ArithmeticOverflow,
+            });
+        }
+        let Some(source) = bytes.get(position..end as usize) else {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidMarkerLength,
+            });
+        };
+        let mut value = source
+            .iter()
+            .fold(0_u128, |previous, byte| previous * 256 + u128::from(*byte));
+        if coefficient_type <= 1 && source[0] >= 128 && width < 16 {
+            value |= u128::MAX << (width * 8);
+        }
+        Ok(KernelCoefficient {
+            bytes: value.to_be_bytes(),
+            width: width as u8,
+        })
+    }
+
+    fn reference_atk_byte(
+        bytes: &[u8],
+        position: &mut usize,
+        offset: usize,
+    ) -> Result<u8, DecodeError> {
+        let byte = *bytes.get(*position).ok_or(DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind: MalformedKind::InvalidMarkerLength,
+        })?;
+        *position += 1;
+        Ok(byte)
+    }
+
+    fn reference_atk_step(
+        bytes: &[u8],
+        cursor: usize,
+        offset: usize,
+        start: usize,
+        format: (usize, u8),
+        flags: (bool, bool),
+    ) -> Result<(KernelLiftingStep, usize), DecodeError> {
+        let (width, coefficient_type) = format;
+        let (reversible, whole_sample_filter) = flags;
+        let mut position = start;
+        let step_offset = if whole_sample_filter {
+            0
+        } else {
+            i8::from_be_bytes([reference_atk_byte(bytes, &mut position, offset)?])
+        };
+        let exponent = if reversible {
+            reference_atk_byte(bytes, &mut position, offset)?
+        } else {
+            0
+        };
+        let residue = if reversible {
+            let value = reference_kernel_coefficient(
+                bytes,
+                cursor,
+                offset,
+                position,
+                width,
+                coefficient_type,
+            )?;
+            position += width;
+            Some(value)
+        } else {
+            None
+        };
+        let count = reference_atk_byte(bytes, &mut position, offset)?;
+        if count == 0 {
+            return Err(DecodeError::MalformedInput {
+                offset: offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            });
+        }
+        let mut coefficients = Vec::new();
+        for _ in 0..count {
+            coefficients.push(reference_kernel_coefficient(
+                bytes,
+                cursor,
+                offset,
+                position,
+                width,
+                coefficient_type,
+            )?);
+            position += width;
+        }
+        Ok((
+            KernelLiftingStep {
+                offset: step_offset,
+                exponent,
+                residue,
+                coefficients,
+            },
+            position,
+        ))
+    }
+
+    fn reference_atk_payload(
+        bytes: &[u8],
+        cursor: usize,
+        offset: usize,
+    ) -> Result<ArbitraryKernel, DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if bytes.len() < 7 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let descriptor = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let index = (descriptor % 256) as u8;
+        let coefficient_type = (descriptor / 256 % 8) as u8;
+        if index < 2 || coefficient_type > 4 || descriptor >= 32768 {
+            return Err(malformed(MalformedKind::InvalidTransform));
+        }
+        let width = 1_usize << coefficient_type;
+        let whole_sample_filter = descriptor / 2048 % 2 == 1;
+        let reversible = descriptor / 4096 % 2 == 1;
+        let initial_odd = descriptor / 8192 % 2 == 1;
+        let whole_sample_extension = descriptor / 16384 % 2 == 1;
+        let mut position = 2;
+        let scaling = if reversible {
+            None
+        } else {
+            let value = reference_kernel_coefficient(
+                bytes,
+                cursor,
+                offset,
+                position,
+                width,
+                coefficient_type,
+            )?;
+            position += width;
+            Some(value)
+        };
+        let count = reference_atk_byte(bytes, &mut position, offset)?;
+        let mut steps = Vec::new();
+        for _ in 0..count {
+            let (step, next) = reference_atk_step(
+                bytes,
+                cursor,
+                offset,
+                position,
+                (width, coefficient_type),
+                (reversible, whole_sample_filter),
+            )?;
+            position = next;
+            steps.push(step);
+        }
+        if position != bytes.len() {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        Ok(ArbitraryKernel {
+            index,
+            reversible,
+            descriptor,
+            coefficient_type,
+            whole_sample_filter,
+            initial_odd,
+            whole_sample_extension,
+            scaling,
+            steps,
+        })
+    }
+
+    fn raw_atk_payload(descriptor: u16, counts: &[u8], pattern: u8) -> Vec<u8> {
+        let coefficient_type = ((descriptor >> 8) & 7) as usize;
+        let width = 1_usize << coefficient_type.min(4);
+        let reversible = descriptor & 0x1000 != 0;
+        let whole_sample_filter = descriptor & 0x0800 != 0;
+        let mut bytes = descriptor.to_be_bytes().to_vec();
+        if !reversible {
+            bytes.extend((0..width).map(|index| pattern.wrapping_add(index as u8)));
+        }
+        bytes.push(u8::try_from(counts.len()).unwrap());
+        for (step, count) in counts.iter().enumerate() {
+            if !whole_sample_filter {
+                bytes.push(pattern.wrapping_add(step as u8));
+            }
+            if reversible {
+                bytes.push(pattern.wrapping_mul(3));
+                bytes.extend((0..width).map(|index| pattern ^ index as u8));
+            }
+            bytes.push(*count);
+            for coefficient in 0..*count {
+                bytes.extend(
+                    (0..width).map(|index| {
+                        pattern.wrapping_add(coefficient).wrapping_mul(17) ^ index as u8
+                    }),
+                );
+            }
+        }
+        bytes
+    }
+
+    fn assert_atk_payload_case(parser: &Parser<'_>, bytes: &[u8], offset: usize) {
+        assert_eq!(
+            parser.decode_atk_payload(Segment {
+                marker: 0x1234,
+                offset,
+                payload: bytes
+            }),
+            reference_atk_payload(bytes, parser.position, offset),
+        );
+    }
+
+    #[test]
+    fn actual_atk_coefficients_preserve_all_raw_bytes_widths_signs_and_error_offsets() {
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&[], &limits).unwrap();
+        let mut frontiers = 0;
+        for width in (0..=17).chain(core::iter::once(usize::MAX)) {
+            for coefficient_type in [0, 1, 2, 3, 4, 5, u8::MAX] {
+                for position in [0, 1, 8, 16, 32, usize::MAX - 16, usize::MAX - 1, usize::MAX] {
+                    for length in [0, 1, 2, 16, 17, 32] {
+                        for pattern in [0, 0x7f, 0x80, 255] {
+                            let bytes = vec![pattern; length];
+                            for cursor in [0, 17, usize::MAX] {
+                                parser.position = cursor;
+                                for offset in [0, usize::MAX] {
+                                    assert_eq!(
+                                        parser.read_kernel_coefficient(
+                                            Segment {
+                                                marker: 0x1234,
+                                                offset,
+                                                payload: &bytes
+                                            },
+                                            position,
+                                            width,
+                                            coefficient_type
+                                        ),
+                                        reference_kernel_coefficient(
+                                            &bytes,
+                                            cursor,
+                                            offset,
+                                            position,
+                                            width,
+                                            coefficient_type
+                                        ),
+                                    );
+                                    frontiers += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(frontiers, 153_216);
+        let mut mutations = 0;
+        for width in 1..=16 {
+            for byte in 0..width {
+                for value in 0..=u8::MAX {
+                    let mut bytes: Vec<u8> = (0..=width)
+                        .map(|index| (index as u8).wrapping_mul(17).wrapping_add(0x80))
+                        .collect();
+                    bytes[1 + byte] = value;
+                    for coefficient_type in [0, 1, 4, u8::MAX] {
+                        for offset in [0, usize::MAX] {
+                            assert_eq!(
+                                parser.read_kernel_coefficient(
+                                    Segment {
+                                        marker: 0x1234,
+                                        offset,
+                                        payload: &bytes
+                                    },
+                                    1,
+                                    width,
+                                    coefficient_type
+                                ),
+                                reference_kernel_coefficient(
+                                    &bytes,
+                                    usize::MAX,
+                                    offset,
+                                    1,
+                                    width,
+                                    coefficient_type
+                                ),
+                            );
+                            mutations += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(mutations, 278_528);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, 0, 0, 0)
+        );
+        assert!(parser.input.is_empty());
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    #[test]
+    fn actual_atk_preserves_all_descriptors_steps_counts_and_terminal_order() {
+        let limits = ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap();
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut descriptors = 0;
+        for descriptor in 0..=u16::MAX {
+            for length in [0, 1, 6, 7, 8, 19, 32] {
+                let mut bytes = descriptor.to_be_bytes().to_vec();
+                bytes.resize(length, 0);
+                for offset in [0, usize::MAX] {
+                    assert_atk_payload_case(&parser, &bytes, offset);
+                    descriptors += 1;
+                }
+            }
+        }
+        assert_eq!(descriptors, 917_504);
+        let mut steps = 0;
+        for width in [0, 1, 2, 3, 4, 8, 16, 17, usize::MAX] {
+            for coefficient_type in [0, 1, 2, 4, u8::MAX] {
+                for reversible in [false, true] {
+                    for whole_sample_filter in [false, true] {
+                        for start in [0, 1, 8, usize::MAX] {
+                            for length in [0, 1, 3, 7, 19, 65] {
+                                for pattern in [0, 1, 0x80, 255] {
+                                    let bytes = vec![pattern; length];
+                                    for cursor in [0, usize::MAX] {
+                                        parser.position = cursor;
+                                        for offset in [0, usize::MAX] {
+                                            assert_eq!(
+                                                parser.decode_atk_step(
+                                                    Segment {
+                                                        marker: 0x1234,
+                                                        offset,
+                                                        payload: &bytes
+                                                    },
+                                                    start,
+                                                    width,
+                                                    coefficient_type,
+                                                    reversible,
+                                                    whole_sample_filter
+                                                ),
+                                                reference_atk_step(
+                                                    &bytes,
+                                                    cursor,
+                                                    offset,
+                                                    start,
+                                                    (width, coefficient_type),
+                                                    (reversible, whole_sample_filter)
+                                                ),
+                                            );
+                                            steps += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(steps, 69_120);
+        let mut records = 0;
+        for coefficient_type in 0_u16..=4 {
+            for flags in 0_u16..16 {
+                for index in [2, 255] {
+                    let descriptor = index + (coefficient_type << 8) + (flags << 11);
+                    for counts in [
+                        vec![],
+                        vec![0],
+                        vec![1],
+                        vec![2, 1],
+                        vec![255],
+                        vec![1; 255],
+                    ] {
+                        let source = raw_atk_payload(descriptor, &counts, 0x80);
+                        for variant in 0..3 {
+                            let mut bytes = source.clone();
+                            if variant == 0 {
+                                bytes.pop();
+                            } else if variant == 2 {
+                                bytes.push(0);
+                            }
+                            for offset in [0, usize::MAX] {
+                                assert_atk_payload_case(&parser, &bytes, offset);
+                                records += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(records, 5_760);
+        let maximum = raw_atk_payload(0x0402, &vec![255; 255], 0x80);
+        assert_eq!(maximum.len(), 1_040_929);
+        for offset in [0, usize::MAX] {
+            assert_atk_payload_case(&parser, &maximum, offset);
+        }
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (usize::MAX, u64::MAX, u64::MAX - 1, u64::MAX - 2)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    fn assert_atk_owner_case(
+        bytes: &[u8],
+        mode: usize,
+        limits: &ResourceLimits,
+        budget: (u64, u64),
+        offset: usize,
+    ) {
+        let index = bytes.get(1).copied().unwrap_or(0);
+        let seed = ArbitraryKernel {
+            index: 0,
+            descriptor: u16::MAX,
+            reversible: true,
+            coefficient_type: u8::MAX,
+            whole_sample_filter: false,
+            initial_odd: true,
+            whole_sample_extension: false,
+            scaling: Some(KernelCoefficient {
+                bytes: [0x80; 16],
+                width: 0,
+            }),
+            steps: vec![KernelLiftingStep {
+                offset: i8::MIN,
+                exponent: u8::MAX,
+                residue: Some(KernelCoefficient {
+                    bytes: [255; 16],
+                    width: u8::MAX,
+                }),
+                coefficients: vec![],
+            }],
+        };
+        let mut extensions = raw_owned_tile_part_fixture(0).part2_extensions;
+        extensions.arbitrary_kernels = if mode == 0 {
+            vec![]
+        } else {
+            vec![seed.clone()]
+        };
+        if mode == 2 {
+            let mut first = seed.clone();
+            first.index = index;
+            let mut later = first.clone();
+            later.reversible = false;
+            later.steps.clear();
+            extensions.arbitrary_kernels.extend([first, seed, later]);
+        }
+        let (metadata, work) = budget;
+        extensions.metadata_bytes = metadata;
+        let mut expected = extensions.clone();
+        let (mut result, next_work, next_metadata) =
+            reference_extension_charge(bytes.len(), 17, work, metadata, limits);
+        expected.metadata_bytes = next_metadata;
+        if result.is_ok() {
+            result = match reference_atk_payload(bytes, 17, offset) {
+                Err(error) => Err(error),
+                Ok(replacement) => {
+                    if let Some(existing) = expected
+                        .arbitrary_kernels
+                        .iter_mut()
+                        .find(|entry| entry.index == replacement.index)
+                    {
+                        *existing = replacement;
+                    } else {
+                        expected.arbitrary_kernels.push(replacement);
+                    }
+                    Ok(())
+                }
+            };
+        }
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        parser.position = 17;
+        parser.work_units = work;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX - 1;
+        assert_eq!(
+            parser.parse_atk(
+                Segment {
+                    marker: 0x1234,
+                    offset,
+                    payload: bytes
+                },
+                &mut extensions
+            ),
+            result
+        );
+        assert_eq!(extensions, expected);
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (17, next_work, u64::MAX, u64::MAX - 1)
+        );
+        assert_eq!(parser.input, &input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, limits));
+    }
+
+    #[test]
+    fn actual_atk_preserves_first_duplicates_all_owner_fields_and_ordered_budget_failures() {
+        let base = ResourceLimits::HARDENED;
+        let limits = [
+            base,
+            base.with_maximum_metadata_bytes(0).unwrap(),
+            base.with_maximum_metadata_bytes(8).unwrap(),
+            base.with_maximum_work_units(0).unwrap(),
+            base.with_maximum_work_units(8).unwrap(),
+            base.with_maximum_metadata_bytes(4)
+                .unwrap()
+                .with_maximum_work_units(0)
+                .unwrap(),
+        ];
+        let first = raw_atk_payload(0x1802, &[2, 1], 0x80);
+        let second = raw_atk_payload(0x0402, &[1], 255);
+        let mut short = first.clone();
+        short.pop();
+        let mut long = first.clone();
+        long.push(0);
+        let payloads = [
+            vec![],
+            vec![0; 6],
+            vec![0; 7],
+            vec![5, 2, 0, 0, 0, 0, 0],
+            raw_atk_payload(0x0202, &[], 0),
+            first.clone(),
+            second.clone(),
+            raw_atk_payload(0x04ff, &[1], 0x80),
+            raw_atk_payload(0x1802, &[0], 0),
+            raw_atk_payload(0x1802, &[1, 0], 0),
+            short,
+            long,
+        ];
+        assert_eq!(payloads.len(), 12);
+        let mut cases = 0;
+        for limit in &limits {
+            for bytes in &payloads {
+                for mode in 0..3 {
+                    for budget in [
+                        (0, 0),
+                        (0, u64::MAX),
+                        (u64::MAX, 0),
+                        (16_777_215, 8),
+                        (u64::MAX - 4, u64::MAX - 4),
+                    ] {
+                        for offset in [0, usize::MAX] {
+                            assert_atk_owner_case(bytes, mode, limit, budget, offset);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 2_160);
+        let mut input = segment(ATK, &first);
+        input.extend(segment(ATK, &second));
+        let mut parser = new_parser(&input, &base).unwrap();
+        let mut extensions = Part2Extensions::default();
+        let raw = parser.read_segment().unwrap();
+        parser.parse_atk(raw, &mut extensions).unwrap();
+        let raw = parser.read_segment().unwrap();
+        parser.parse_atk(raw, &mut extensions).unwrap();
+        assert_eq!(
+            extensions.arbitrary_kernels,
+            vec![reference_atk_payload(&second, input.len(), first.len() + 4).unwrap()]
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                extensions.metadata_bytes
+            ),
+            (input.len(), input.len() as u64 + 2, input.len() as u64)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
     }
 
     fn reference_tlm_payload(

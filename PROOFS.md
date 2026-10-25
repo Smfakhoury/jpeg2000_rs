@@ -25,6 +25,39 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw ATK kernels
+
+Actual ATK parsing binds the complete raw kernel Result, every coefficient
+byte/width and lifting-step field, and all parser/eight extension fields.
+Real metadata/work charge precedes the minimum-seven-byte header, descriptor
+index/type/reserved admission, optional scaling and raw step traversal.
+Original offset/exponent/residue/count/coefficient/terminal ordering remains
+explicit, including zero-count and trailing-byte errors. First-index registry
+replacement preserves later duplicates and unrelated arbitrary raw owners.
+
+The sole actual lifting-step and payload bodies compose real coefficient
+reads. The reader binds all sixteen physical slots with exact right alignment
+and integer-only sign extension, including arbitrary raw width/type inputs.
+Width errors precede cursor overflow, then segment range errors; distinct
+offsets are retained. Equivalent bounded copying and derived-safe casts replace
+operations lacking useful pinned functional facts, without adding validation.
+
+Four exact curated contracts bind these real producers without normalized
+kernels, prepared step/coefficient banks or admitted budgets. The initial
+pre-freeze supplemental whole-module check hit the unchanged shared-context
+rlimit in existing packed-header reassembly; its original log is retained.
+The standard existing fresh-query attribute resolves that query without
+changing its executable body, caps, trust, pins or termination policy.
+Independent u128/endian references compare 153,216 coefficient frontiers,
+278,528 full-byte mutations, 917,504 descriptor/header contexts, 69,120 raw
+step contexts and 5,760 complete payload/count/terminal contexts. Two maximum
+encoded-count payloads contain 255 steps of 255 coefficients (1,040,929 input
+bytes); 2,160 complete owner/budget cases and a real replacement reader join
+check arbitrary prior registries and unchanged fields. These are maintained
+native regressions, not official conformance.
+Remaining fragmented transform/packet/layout/file/layer/F2/F4/final F8 joins
+stay separate.
+
 ## Complete native raw TLM tile lengths
 
 Actual TLM parsing binds its Result, complete parser and all eight extension
