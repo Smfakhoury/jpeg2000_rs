@@ -25,6 +25,37 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native MCT fragment state and numeric-array production
+
+Actual MCT fragment consumption binds every pending descriptor, next/final
+index, original offset and data byte, plus every completed ID, on success
+and failure. The sole staging body derives its square-times-eight byte bound
+from the actual component limit. Lookup selects the first matching low-byte
+array ID; continuations then require the full descriptor and exact next
+index. Initial fragments alone reject previously completed IDs.
+
+Continuation append precedes byte-cap and next-index overflow errors, and
+those writes remain observable. Exact completion uses native swap removal,
+reconstructs the actual six-byte header and source data, and composes the
+proved numeric-array parser rather than accepting an array result. Removal
+precedes numeric/header errors; successful continuation may append a duplicate
+completed ID. The stored first-fragment offset governs parser errors.
+
+Four exact contracts bind the sole staging, lookup, shared membership and
+consuming bodies, including both mutable frames. Source-derived bounds prove
+every read, cast, multiplication and traversal without normalized prior
+fragments, supplied payloads/results, new trust, caps, pins, budgets or a
+termination bypass. Transform graph replacement/resolution and outer
+file/layer/F2/F4/final F8 joins remain separate.
+
+Independent endian/u128/staging and existing numeric references cover all
+65,536 descriptors in 262,144 state contexts, 105 short headers, 1,278 numeric
+split/reassembly contexts, 1,280 first-match lookups, 270 byte/overflow
+boundaries, all 65,536 component-limit words and 196,608 final-index contexts.
+A real reader joins split binary64 success and later binary32 nonfinite
+failure, checking pending removal, original error offset and completed IDs.
+These maintained regressions are not official conformance.
+
 ## Complete native raw MCT numeric arrays
 
 Actual MCT parsing binds every array index/kind/format/fraction/value field

@@ -4,6 +4,52 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-mct-fragment-production",
+      "topic": "Complete actual MCT fragment Result and all pending descriptor/next/final/offset/data fields plus completed IDs from raw segment bytes and actual component limits. First low-byte pending match, exact full-descriptor continuation, initial-only completed rejection and original square-times-eight byte bound precede staging. Continuations retain appended bytes on cap/next-overflow errors. Exact completion, native swap removal, original first-fragment offset and real reconstructed payload compose the proved numeric-array parser, including every array field and conversion failure. Pending removal precedes parser errors; completed append follows genuine success and may duplicate an already-present ID on continuation. No normalized fragments, supplied reconstructed/parsed results, extra trust/caps/pins/budgets or termination bypass. Graph replacement/resolution and final outer F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::consume_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::prepare_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "find_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "u8_list_contains"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mct"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "Part1MctFragment"},
+        {"path": "specs/mod.rs", "symbol": "part1_consume_mct_fragment"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_mct_fragment"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_fragment_find"},
+        {"path": "specs/mod.rs", "symbol": "part1_byte_list_contains"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_fragment_maximum_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_fragment_updated"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_fragment_swap_remove"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_fragment_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mct"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::consume_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::prepare_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "find_mct_fragment"},
+        {"path": "src/codestream.rs", "symbol": "u8_list_contains"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "mct_fragment_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_pending_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_fragment_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mct"},
+        {"path": "src/refinement.rs", "symbol": "mct_fragment_complete"},
+        {"path": "src/refinement.rs", "symbol": "mct_fragment_next"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mct_fragments_preserve_descriptors_first_matches_and_partial_commits"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_fragments_compose_numeric_arrays_swap_order_offsets_and_reader"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_fragment_lookup_caps_and_overflow_preserve_raw_prior_state"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-transform-array-bytes",
       "topic": "Complete actual raw MCT array Result and all index/kind/format/fraction/value fields from source bytes and actual limits. Original min8/Z/Y/reserved/index/kind/alignment/component-square TransformElements checks precede element conversion. Sole actual element body composes signed16/32 and packed64 reads plus deterministic IEEE32/64-to-Q32 producers, observing every actual value and first conversion error. Existing proved ATK binary-format/Q32 mathematical definitions are reused through exact unit-error projection and the original stricter MCT exponent guard, not duplicated or replaced by supplied numeric results. Cross-width bit facts, safe exponent casts and explicit boolean increments expose native signed zero/NaN/Inf/round-to-even/large-right-underflow/overflow behavior. Source count geometry derives every read/advance/decrease bound; all four real formats are retained without normalized IEEE/value/header premises. No new trust/cap/pin/budget/termination bypass. Actual MCT fragment/graph and final outer joins remain separate.",
       "implementation_refs": [

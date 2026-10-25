@@ -1,5 +1,16 @@
 # Specification audit guide
 
+`part1_consume_mct_fragment` composes the actual staging, first-ID lookup,
+exact completion, swap removal and reconstructed source bytes with
+`part1_parse_mct`. Full private observations bind arbitrary descriptor/
+next/final/offset/data fields and completed IDs on every result. The actual
+component limit derives the square-times-eight byte cap. Full-descriptor
+continuation checks, append-before-error commits, initial-only completed
+rejection, first-fragment error offsets and continuation duplicate-ID policy
+are preserved. Four exact contracts add no normalized fragment, supplied
+payload/array result, trust/cap/pin/budget change or termination opt-out.
+Graph replacement/resolution and outer joins remain separate.
+
 `part1_parse_mct` binds the actual full raw numeric array to source bytes and
 limits. Header/alignment/component-square checks precede all actual values.
 Signed16/32, packed64, IEEE32/64 and generic binary-to-Q32 producers compose
