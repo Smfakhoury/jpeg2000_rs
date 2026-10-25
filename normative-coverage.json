@@ -4,6 +4,43 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-raw-progression-bytes",
+      "topic": "Complete actual raw POC syntax Result and every progression-record field in source order, from actual component-count/segment offset/bytes. Real byte/component helpers preserve width1 versus every-other-width two-byte behavior, checked overflow-before-range for two-byte reads and segment rather than cursor error offsets. Actual parser derives7/9byte records at threshold257; empty/alignment rejection precedes reads, actual source fields and progression0..4 discrimination precede append, and encoded component-end0 becomes256 only for Csiz256. All other raw layer/resolution/component values remain untouched, including otherwise-invalid ranges. Actual alignment/count geometry establishes every read/advance/decrease bound without admitted records, successful syntax/range/coverage premises or result banks. Semantic range/coverage/duplicate validation in the real downstream validate_progression_changes remains separate, as do other metadata/layout/file/layer/F2/F4/final F8 joins. No new trust/cap/pin/budget/termination bypass.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_poc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_poc_byte"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_poc_component"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_poc"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_records"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_record"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_component"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_component_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_poc_byte"},
+        {"path": "specs/mod.rs", "symbol": "part1_cod_progression"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_poc"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_poc_component"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_poc_byte"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parsed_progression_outcome"},
+        {"path": "src/codestream.rs", "symbol": "progression_changes_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_poc_reads_preserve_width_fallback_endian_bytes_and_segment_error_offsets"},
+        {"path": "src/codestream.rs", "symbol": "actual_poc_preserves_raw_records_width_thresholds_end256_and_error_precedence"},
+        {"path": "src/codestream.rs", "symbol": "actual_poc_reader_join_retains_raw_invalid_ranges_and_rejects_bad_order"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-kernel-bytes",
       "topic": "Complete actual raw ATK kernel Result, all16 physical bytes and width of every coefficient, every offset/exponent/residue/coefficient step field, raw descriptor/index/flags/scaling/steps and complete parser/eight extension fields. Real shared charge precedes minimum7/header/index/type/reserved admission, optional scaling, raw step count and original offset/exponent/residue/count/coefficient/terminal order. Actual coefficient reader retains width-before-overflow-before-range precedence, distinct cursor/segment offsets, exact right alignment and integer-only sign extension for arbitrary raw widths/types. Sole factored step/payload bodies and explicit first-index replacement consume actual source reads without normalized kernels, prepared steps/byte banks or successful budget premises. Derived-safe casts and bounded equivalent array copying expose original values. Standard fresh-query isolation handles an observed pre-freeze supplemental packed-header reassembly rlimit without cap/pin/trust changes; the original failure is retained privately. Remaining fragmented transform/packet/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

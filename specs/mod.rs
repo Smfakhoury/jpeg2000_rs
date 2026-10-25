@@ -14377,6 +14377,74 @@ pub open spec fn part1_parse_atk<'a>(
     }
 }
 
+#[verifier::opaque]
+pub open spec fn part1_poc_byte(segment: Part1CodestreamSegment, position: usize) -> Result<u8, crate::DecodeError> {
+    if position >= segment.payload.len() {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else { Ok(segment.payload[position as int]) }
+}
+
+pub open spec fn part1_poc_component_value(payload: Seq<u8>, position: int, width: usize) -> u16 {
+    if width == 1 { payload[position] as u16 } else { part1_marker_value(payload[position], payload[position + 1]) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_poc_component(segment: Part1CodestreamSegment, position: usize, width: usize)
+    -> Result<u16, crate::DecodeError>
+{
+    if width != 1 && position as int + 2 > usize::MAX {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::ArithmeticOverflow))
+    } else if position as int + if width == 1 { 1int } else { 2int } > segment.payload.len() {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else { Ok(part1_poc_component_value(segment.payload, position as int, width)) }
+}
+
+pub open spec fn part1_poc_record(segment: Part1CodestreamSegment, components: u16, position: int)
+    -> Result<crate::codestream::ProgressionChange, crate::DecodeError>
+{
+    let width = if components < 257 { 1usize } else { 2usize };
+    let component_end = part1_poc_component_value(segment.payload, position + 4 + width as int, width);
+    match part1_cod_progression(segment.payload[position + 4 + 2 * width as int]) {
+        None => Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidProgressionOrderChange)),
+        Some(progression_order) => Ok(crate::codestream::ProgressionChange {
+            resolution_start: segment.payload[position],
+            component_start: part1_poc_component_value(segment.payload, position + 1, width),
+            layer_end: part1_marker_value(segment.payload[position + 1 + width as int], segment.payload[position + 2 + width as int]),
+            resolution_end: segment.payload[position + 3 + width as int],
+            component_end: if width == 1 && component_end == 0 && components == 256 { 256 } else { component_end },
+            progression_order,
+        }),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_poc_records(
+    segment: Part1CodestreamSegment, components: u16, position: nat, records: Seq<crate::codestream::ProgressionChange>,
+) -> Result<Seq<crate::codestream::ProgressionChange>, crate::DecodeError>
+    decreases segment.payload.len() - position,
+{
+    let width = if components < 257 { 7nat } else { 9nat };
+    if position >= segment.payload.len() { Ok(records) }
+    else if position + width > segment.payload.len() {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        match part1_poc_record(segment, components, position as int) {
+            Err(error) => Err(error),
+            Ok(record) => part1_poc_records(segment, components, position + width, records.push(record)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_poc(segment: Part1CodestreamSegment, components: u16)
+    -> Result<Seq<crate::codestream::ProgressionChange>, crate::DecodeError>
+{
+    let width = if components < 257 { 7int } else { 9int };
+    if segment.payload.len() == 0 || (segment.payload.len() as int) % width != 0 {
+        Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength))
+    } else { part1_poc_records(segment, components, 0, Seq::empty()) }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

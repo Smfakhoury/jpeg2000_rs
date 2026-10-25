@@ -25,6 +25,33 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw POC progression records
+
+Actual POC syntax parsing binds the full Result and every physical record
+field from raw bytes, component count and segment offset. The real byte/
+component readers retain width-one versus every-other-width two-byte behavior,
+overflow/range ordering and segment rather than current-cursor offsets.
+
+Source-derived alignment and count geometry establish every seven/nine-byte
+read, advance and termination bound at component threshold 257. Empty and
+alignment errors precede progression-byte admission; order codes 0..4 retain
+the existing shared mathematical mapping. Encoded component end zero becomes
+256 only for Csiz 256. Other raw layer/resolution/component fields, including
+otherwise-invalid ranges, are retained without normalization.
+
+Three curated exact contracts bind the actual readers and complete record
+production without prepared records, valid-range/coverage premises, new trust,
+caps, pins or solver-budget changes. The real downstream range, coverage and
+duplicate validation is explicitly not proved by this syntax milestone.
+Independent chunk/endian references compare 7,200 helper frontiers, 524,288
+word/fallback contexts, 131,072 component-count contexts, 786,432 raw record
+word contexts, 179,712 full-byte/alignment mutations and 600 length/error
+frontiers. A real three-marker reader join retains syntactically accepted
+invalid ranges and rejects the later bad order byte at its segment offset.
+Complete unchanged parser fields and arbitrary helper widths are checked;
+these are maintained native regressions, not official conformance.
+Remaining metadata/layout/file/layer/F2/F4/final F8 joins stay separate.
+
 ## Complete native raw ATK kernels
 
 Actual ATK parsing binds the complete raw kernel Result, every coefficient

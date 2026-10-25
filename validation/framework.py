@@ -792,6 +792,21 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_PROGRESSION_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "Parser::read_poc_byte"): (
+        "part1_poc_byte", r"\1", None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*position",
+    ),
+    ("src/codestream.rs", "Parser::read_poc_component"): (
+        "part1_poc_component", r"\1", None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*position\s*,\s*width",
+    ),
+    ("src/codestream.rs", "Parser::parse_poc"): (
+        "part1_parse_poc", _coverage_call("parsed_progression_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*components",
+    ),
+}
+
 _KERNEL_BYTES_CONTRACTS = {
     ("src/codestream.rs", "Parser::read_kernel_coefficient"): (
         "part1_kernel_coefficient", _coverage_call("kernel_coefficient_outcome", r"\1"), None,
@@ -2249,6 +2264,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_LENGTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _KERNEL_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PROGRESSION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

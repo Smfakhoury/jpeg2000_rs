@@ -1,5 +1,16 @@
 # Specification audit guide
 
+`part1_parse_poc` binds actual raw syntax to the complete progression-record
+Result, using real byte/component reads and source-derived count/alignment
+geometry. Threshold257, empty/alignment/order precedence, all physical raw
+fields and the Csiz256 zero-end encoding remain explicit. Generic component
+reads retain their nonunit-width two-byte fallback and distinct checked
+segment-offset failures. `part1_poc_record` reuses the existing progression
+order mapping without normalizing other fields or assuming valid ranges.
+Three exact producer contracts add no trust/cap/pin/budget changes; actual
+downstream range/coverage/duplicate validation and outer file/F2/F4/final F8
+composition remain separate.
+
 `part1_parse_atk` composes actual shared charge, full raw payload production
 and first-index kernel replacement, framing all parser/eight extension fields.
 `part1_atk_payload`, header/step/terminal folds and `part1_kernel_coefficient`
