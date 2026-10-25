@@ -14940,6 +14940,131 @@ pub open spec fn part1_consume_mcc_fragment(
     }
 }
 
+pub struct Part1MctFragment {
+    pub descriptor: u16, pub next_index: u16, pub final_index: u16,
+    pub offset: usize, pub data: Seq<u8>,
+}
+
+pub open spec fn part1_mct_fragment_maximum_bytes(limits: &crate::ResourceLimits) -> u64 {
+    let components = crate::limits::resource_component_limit(limits) as int;
+    (components * components * 8) as u64
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_fragment_find(pending: Seq<Part1MctFragment>, index: u8, position: nat) -> Option<usize>
+    decreases pending.len() - position,
+{
+    if position >= pending.len() { None }
+    else if (pending[position as int].descriptor & 255) as u8 == index { Some(position as usize) }
+    else { part1_mct_fragment_find(pending, index, position + 1) }
+}
+
+pub open spec fn part1_mct_fragment_updated(state: Part1MctFragment, data: Seq<u8>, next_index: u16) -> Part1MctFragment {
+    Part1MctFragment { descriptor: state.descriptor, next_index, final_index: state.final_index,
+        offset: state.offset, data }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_prepare_mct_fragment(
+    segment: Part1CodestreamSegment, limits: &crate::ResourceLimits,
+    pending: Seq<Part1MctFragment>, completed: Seq<u8>,
+) -> (Result<(usize, u64), crate::DecodeError>, Seq<Part1MctFragment>) {
+    if segment.payload.len() < 4 {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)), pending)
+    } else {
+        let fragment = part1_marker_value(segment.payload[0], segment.payload[1]);
+        let descriptor = part1_marker_value(segment.payload[2], segment.payload[3]);
+        let index = (descriptor & 255) as u8;
+        if index == 0 {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)), pending)
+        } else {
+            let maximum = part1_mct_fragment_maximum_bytes(limits);
+            let found = part1_mct_fragment_find(pending, index, 0);
+            if fragment == 0 {
+                if segment.payload.len() < 6 || found.is_some() || completed.contains(index) {
+                    (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)), pending)
+                } else {
+                    let final_index = part1_marker_value(segment.payload[4], segment.payload[5]);
+                    let data = segment.payload.subrange(6, segment.payload.len() as int);
+                    if final_index as u64 + 1 > maximum {
+                        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TransformElements,
+                            limit: maximum, actual: (final_index as u64 + 1) as u64 }), pending)
+                    } else if data.len() as u64 > maximum {
+                        (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TransformElements,
+                            limit: maximum, actual: data.len() as u64 }), pending)
+                    } else {
+                        (Ok((pending.len() as usize, maximum)), pending.push(Part1MctFragment {
+                            descriptor, next_index: 1, final_index, offset: segment.offset, data,
+                        }))
+                    }
+                }
+            } else {
+                match found {
+                    None => (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)), pending),
+                    Some(position) => {
+                        let state = pending[position as int];
+                        if state.descriptor != descriptor || fragment != state.next_index || fragment > state.final_index {
+                            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTransform)), pending)
+                        } else {
+                            let data = state.data + segment.payload.subrange(4, segment.payload.len() as int);
+                            let appended = pending.update(position as int, part1_mct_fragment_updated(state, data, state.next_index));
+                            if data.len() as u64 > maximum {
+                                (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TransformElements,
+                                    limit: maximum, actual: data.len() as u64 }), appended)
+                            } else if state.next_index == u16::MAX {
+                                (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::ArithmeticOverflow)), appended)
+                            } else {
+                                (Ok((position, maximum)), pending.update(position as int,
+                                    part1_mct_fragment_updated(state, data, part2_fragment_next(state.next_index))))
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+pub open spec fn part1_mct_fragment_swap_remove(pending: Seq<Part1MctFragment>, index: usize) -> Seq<Part1MctFragment>
+    recommends index < pending.len(),
+{
+    pending.update(index as int, pending.last()).drop_last()
+}
+
+pub open spec fn part1_mct_fragment_payload(state: Part1MctFragment) -> Seq<u8> {
+    seq![0u8, 0u8, (state.descriptor >> 8) as u8, (state.descriptor & 255) as u8, 0u8, 0u8] + state.data
+}
+
+#[verifier::opaque]
+pub open spec fn part1_consume_mct_fragment(
+    segment: Part1CodestreamSegment, limits: &crate::ResourceLimits,
+    pending: Seq<Part1MctFragment>, completed: Seq<u8>,
+) -> (Result<Option<Part2MctArray>, crate::DecodeError>, Seq<Part1MctFragment>, Seq<u8>) {
+    let prepared = part1_prepare_mct_fragment(segment, limits, pending, completed);
+    match prepared.0 {
+        Err(error) => (Err(error), prepared.1, completed),
+        Ok((index, maximum)) => {
+            let state = prepared.1[index as int];
+            if !part2_fragment_complete(state.next_index, state.final_index) {
+                (Ok(None), prepared.1, completed)
+            } else {
+                let removed = part1_mct_fragment_swap_remove(prepared.1, index);
+                if state.data.len() as u64 > maximum {
+                    (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TransformElements,
+                        limit: maximum, actual: state.data.len() as u64 }), removed, completed)
+                } else {
+                    let raw = Part1CodestreamSegment { marker: 0xff74, offset: state.offset,
+                        payload: part1_mct_fragment_payload(state) };
+                    match part1_parse_mct(raw, limits) {
+                        Err(error) => (Err(error), removed, completed),
+                        Ok(array) => (Ok(Some(array)), removed, completed.push(segment.payload[3])),
+                    }
+                }
+            }
+        },
+    }
+}
+
 pub open spec fn part1_numeric_unit_outcome(value: Result<i64, crate::DecodeError>) -> Result<i64, ()> {
     match value { Err(error) => Err(()), Ok(value) => Ok(value) }
 }

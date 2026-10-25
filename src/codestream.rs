@@ -3434,6 +3434,25 @@ struct MccFragment {
 
 #[cfg(verus_keep_ghost)]
 verus! {
+    closed spec fn mct_fragment_view(value: &MctFragment) -> crate::specs::Part1MctFragment {
+        crate::specs::Part1MctFragment { descriptor: value.descriptor, next_index: value.next_index,
+            final_index: value.final_index, offset: value.offset, data: value.data@ }
+    }
+
+    closed spec fn mct_pending_view(values: Seq<MctFragment>) -> Seq<crate::specs::Part1MctFragment> {
+        values.map_values(|value: MctFragment| mct_fragment_view(&value))
+    }
+
+    closed spec fn mct_fragment_outcome(value: Result<Option<MctArray>, DecodeError>)
+        -> Result<Option<crate::specs::Part2MctArray>, DecodeError>
+    {
+        match value {
+            Err(error) => Err(error),
+            Ok(None) => Ok(None),
+            Ok(Some(array)) => Ok(Some(mct_array_view(&array))),
+        }
+    }
+
     closed spec fn mcc_fragment_view(value: &MccFragment) -> crate::specs::Part1MccFragment {
         crate::specs::Part1MccFragment { record_index: value.record_index, next_index: value.next_index,
             final_index: value.final_index, collection_count: value.collection_count, offset: value.offset, data: value.data@ }
@@ -3452,6 +3471,32 @@ verus! {
             Ok(Some(record)) => Ok(Some((record.index, mcc_collection_references_view(record.collections@)))),
         }
     }
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_mct_fragment_find(mct_pending_view(pending@), index, 0),
+        match result { Some(position) => position < pending.len(), None => true },
+))]
+fn find_mct_fragment(pending: &[MctFragment], index: u8) -> Option<usize> {
+    let mut position = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant position <= pending.len(),
+            crate::specs::part1_mct_fragment_find(mct_pending_view(pending@), index, 0)
+                == crate::specs::part1_mct_fragment_find(mct_pending_view(pending@), index, position as nat),
+        decreases pending.len() - position,
+    ))]
+    while position < pending.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_fragment_find, 1); reveal(mct_fragment_view); }
+        if (pending[position].descriptor & 255) as u8 == index {
+            return Some(position);
+        }
+        position += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_mct_fragment_find, 1); }
+    None
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
@@ -6502,106 +6547,147 @@ impl<'a> Parser<'a> {
         Ok(words)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (mct_fragment_outcome(result), mct_pending_view(final(pending)@), final(completed)@)
+            == crate::specs::part1_consume_mct_fragment(segment_view(segment), self.limits,
+                mct_pending_view(old(pending)@), old(completed)@),
+    ))]
     fn consume_mct_fragment(
         &self,
         segment: Segment<'a>,
         pending: &mut Vec<MctFragment>,
         completed: &mut Vec<u8>,
     ) -> Result<Option<MctArray>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = mct_pending_view(pending@);
+            let ghost completed_input = completed@;
+            let ghost goal = crate::specs::part1_consume_mct_fragment(
+                segment_view(segment), self.limits, input, completed_input);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_consume_mct_fragment); }
+        let (active_index, maximum_bytes) =
+            self.prepare_mct_fragment(segment, pending, completed)?;
+        let complete = {
+            let state = &pending[active_index];
+            crate::refinement::mct_fragment_complete(state.next_index, state.final_index)
+        };
+        if !complete {
+            return Ok(None);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost prepared = mct_pending_view(pending@); }
+        let state = pending.swap_remove(active_index);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(mct_fragment_view(&state) == prepared[active_index as int]);
+            assert(mct_pending_view(pending@) =~= crate::specs::part1_mct_fragment_swap_remove(prepared, active_index));
+        }
+        if state.data.len() as u64 > maximum_bytes {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::TransformElements,
+                limit: maximum_bytes,
+                actual: state.data.len() as u64,
+            });
+        }
+        let mut payload = Vec::with_capacity(state.data.len().saturating_add(6));
+        payload.extend_from_slice(&[0, 0]);
+        let descriptor = state.descriptor;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(descriptor >> 8 <= 255u16) by (bit_vector);
+            assert(descriptor & 255 <= 255u16) by (bit_vector);
+        }
+        payload.push((descriptor >> 8) as u8);
+        payload.push((descriptor & 255) as u8);
+        payload.extend_from_slice(&[0, 0]);
+        payload.extend_from_slice(&state.data);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(payload@ =~= crate::specs::part1_mct_fragment_payload(mct_fragment_view(&state))); }
+        let array = self.parse_mct(Segment {
+            marker: MCT,
+            offset: state.offset,
+            payload: &payload,
+        })?;
+        completed.push(segment.payload[3]);
+        Ok(Some(array))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, mct_pending_view(final(pending)@)) == crate::specs::part1_prepare_mct_fragment(
+            segment_view(segment), self.limits, mct_pending_view(old(pending)@), completed@),
+        match result { Ok((index, maximum)) => segment.payload.len() >= 4 && index < final(pending).len()
+            && maximum == crate::specs::part1_mct_fragment_maximum_bytes(self.limits), Err(_) => true },
+    ))]
+    fn prepare_mct_fragment(
+        &self,
+        segment: Segment<'a>,
+        pending: &mut Vec<MctFragment>,
+        completed: &[u8],
+    ) -> Result<(usize, u64), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost input = mct_pending_view(pending@); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_prepare_mct_fragment); reveal(mct_fragment_view); }
         if segment.payload.len() < 4 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
         let fragment_index = read_u16([segment.payload[0], segment.payload[1]]);
         let descriptor = read_u16([segment.payload[2], segment.payload[3]]);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(descriptor & 255 <= 255u16) by (bit_vector); }
         let array_index = (descriptor & 0xff) as u8;
         if array_index == 0 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidTransform,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
         }
-        let maximum_bytes = u64::from(self.limits.maximum_components())
-            .checked_mul(u64::from(self.limits.maximum_components()))
-            .and_then(|value| value.checked_mul(8))
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-        let mut state_index = None;
-        let mut search_index = 0_usize;
-        #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant search_index <= pending.len(),
-                    decreases pending.len() - search_index,
-                )
-            )]
-        while search_index < pending.len() {
-            let state = pending.get(search_index).ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
-            if (state.descriptor & 0xff) as u8 == array_index {
-                state_index = Some(search_index);
-                break;
+        let components = self.limits.maximum_components();
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(0 <= components as int <= 65535 ==>
+                components as int * components as int <= 4294967296
+                && components as int * components as int * 8 <= 34359738368) by (nonlinear_arith);
+        }
+        let square = match u64::from(components).checked_mul(u64::from(components)) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
             }
-            search_index = search_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-        }
-        let mut already_completed = false;
-        search_index = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant search_index <= completed.len(),
-                decreases completed.len() - search_index,
-            )
-        )]
-        while search_index < completed.len() {
-            if completed.get(search_index) == Some(&array_index) {
-                already_completed = true;
-                break;
+        };
+        let maximum_bytes = match square.checked_mul(8) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
             }
-            search_index = search_index.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-        }
+        };
+        let state_index = find_mct_fragment(pending, array_index);
+        let already_completed = u8_list_contains(completed, array_index);
         let active_index;
         if fragment_index == 0 {
             if segment.payload.len() < 6 || state_index.is_some() || already_completed {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
             let final_index = read_u16([segment.payload[4], segment.payload[5]]);
-            if u64::from(final_index).saturating_add(1) > maximum_bytes {
-                return Err(DecodeError::limit(
-                    Resource::TransformElements,
-                    maximum_bytes,
-                    u64::from(final_index).saturating_add(1),
-                ));
+            if u64::from(final_index) + 1 > maximum_bytes {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TransformElements,
+                    limit: maximum_bytes,
+                    actual: u64::from(final_index) + 1,
+                });
             }
             if segment.payload[6..].len() as u64 > maximum_bytes {
-                return Err(DecodeError::limit(
-                    Resource::TransformElements,
-                    maximum_bytes,
-                    segment.payload[6..].len() as u64,
-                ));
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TransformElements,
+                    limit: maximum_bytes,
+                    actual: segment.payload[6..].len() as u64,
+                });
             }
             let mut data = Vec::new();
             data.extend_from_slice(&segment.payload[6..]);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(data@ =~= segment.payload@.subrange(6, segment.payload.len() as int)); }
             active_index = pending.len();
             pending.push(MctFragment {
                 descriptor,
@@ -6610,69 +6696,66 @@ impl<'a> Parser<'a> {
                 offset: segment.offset,
                 data,
             });
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(mct_pending_view(pending@) =~= input.push(crate::specs::Part1MctFragment {
+                    descriptor, next_index: 1, final_index, offset: segment.offset,
+                    data: segment.payload@.subrange(6, segment.payload.len() as int),
+                }));
+            }
         } else {
-            let index = state_index.ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
-            let state = pending.get_mut(index).ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
+            let index = match state_index {
+                Some(index) => index,
+                None => {
+                    return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
+                }
+            };
+            #[cfg(verus_keep_ghost)]
+            proof_decl! {
+                let ghost before = mct_fragment_view(&pending[index as int]);
+                let ghost appended_data = before.data + segment.payload@.subrange(4, segment.payload.len() as int);
+            }
+            let state = &mut pending[index];
             if state.descriptor != descriptor
                 || fragment_index != state.next_index
                 || fragment_index > state.final_index
             {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidTransform,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidTransform));
             }
             state.data.extend_from_slice(&segment.payload[4..]);
-            if state.data.len() as u64 > maximum_bytes {
-                return Err(DecodeError::limit(
-                    Resource::TransformElements,
-                    maximum_bytes,
-                    state.data.len() as u64,
-                ));
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(state.data@ =~= appended_data); }
+            let actual_bytes = state.data.len() as u64;
+            if actual_bytes > maximum_bytes {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(mct_pending_view(pending@) =~= input.update(index as int,
+                        crate::specs::part1_mct_fragment_updated(before, appended_data, before.next_index)));
+                }
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TransformElements,
+                    limit: maximum_bytes,
+                    actual: actual_bytes,
+                });
             }
-            if state.next_index == u16::MAX {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                ));
+            let next_index = state.next_index;
+            if next_index == u16::MAX {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(mct_pending_view(pending@) =~= input.update(index as int,
+                        crate::specs::part1_mct_fragment_updated(before, appended_data, before.next_index)));
+                }
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
             }
-            state.next_index = crate::refinement::mct_fragment_next(state.next_index);
+            state.next_index = crate::refinement::mct_fragment_next(next_index);
             active_index = index;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(mct_pending_view(pending@) =~= input.update(index as int,
+                    crate::specs::part1_mct_fragment_updated(before, appended_data, (next_index + 1) as u16)));
+            }
         }
-        let complete = {
-            let state = pending.get(active_index).ok_or_else(|| {
-                DecodeError::malformed(self.offset(segment.offset), MalformedKind::InvalidTransform)
-            })?;
-            crate::refinement::mct_fragment_complete(state.next_index, state.final_index)
-        };
-        if !complete {
-            return Ok(None);
-        }
-        let state = pending.swap_remove(active_index);
-        if state.data.len() as u64 > maximum_bytes {
-            return Err(DecodeError::limit(
-                Resource::TransformElements,
-                maximum_bytes,
-                state.data.len() as u64,
-            ));
-        }
-        let mut payload = Vec::with_capacity(state.data.len().saturating_add(6));
-        payload.extend_from_slice(&[0, 0]);
-        payload.push((state.descriptor >> 8) as u8);
-        payload.push(state.descriptor as u8);
-        payload.extend_from_slice(&[0, 0]);
-        payload.extend_from_slice(&state.data);
-        let array = self.parse_mct(Segment {
-            marker: MCT,
-            offset: state.offset,
-            payload: &payload,
-        })?;
-        completed.push(array_index);
-        Ok(Some(array))
+        Ok((active_index, maximum_bytes))
     }
 
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
@@ -18063,6 +18146,465 @@ mod tests {
         );
         assert_eq!((reader.position, reader.work_units), (input.len(), 3));
         assert!(core::ptr::eq(reader.input.as_ptr(), input.as_ptr()));
+    }
+
+    fn reference_prepare_mct_fragment(
+        bytes: &[u8],
+        limits: &ResourceLimits,
+        pending: &mut Vec<MctFragment>,
+        completed: &[u8],
+        offset: usize,
+    ) -> Result<(usize, u64), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if bytes.len() < 4 || bytes[3] == 0 {
+            return Err(malformed(MalformedKind::InvalidTransform));
+        }
+        let fragment = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let descriptor = u16::from_be_bytes([bytes[2], bytes[3]]);
+        let index = bytes[3];
+        let maximum = u64::try_from(u128::from(limits.maximum_components()).pow(2) * 8).unwrap();
+        let found = pending
+            .iter()
+            .position(|state| state.descriptor.to_be_bytes()[1] == index);
+        if fragment == 0 {
+            if bytes.len() < 6 || found.is_some() || completed.contains(&index) {
+                return Err(malformed(MalformedKind::InvalidTransform));
+            }
+            let final_index = u16::from_be_bytes([bytes[4], bytes[5]]);
+            if u64::from(final_index) + 1 > maximum {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TransformElements,
+                    limit: maximum,
+                    actual: u64::from(final_index) + 1,
+                });
+            }
+            if bytes[6..].len() as u64 > maximum {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TransformElements,
+                    limit: maximum,
+                    actual: bytes[6..].len() as u64,
+                });
+            }
+            let active = pending.len();
+            pending.push(MctFragment {
+                descriptor,
+                next_index: 1,
+                final_index,
+                offset,
+                data: bytes[6..].to_vec(),
+            });
+            Ok((active, maximum))
+        } else {
+            let active = found.ok_or_else(|| malformed(MalformedKind::InvalidTransform))?;
+            let state = &mut pending[active];
+            if state.descriptor != descriptor
+                || fragment != state.next_index
+                || fragment > state.final_index
+            {
+                return Err(malformed(MalformedKind::InvalidTransform));
+            }
+            state.data = [state.data.as_slice(), &bytes[4..]].concat();
+            if state.data.len() as u64 > maximum {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TransformElements,
+                    limit: maximum,
+                    actual: state.data.len() as u64,
+                });
+            }
+            if state.next_index == u16::MAX {
+                return Err(malformed(MalformedKind::ArithmeticOverflow));
+            }
+            state.next_index += 1;
+            Ok((active, maximum))
+        }
+    }
+
+    fn reference_consume_mct_fragment(
+        bytes: &[u8],
+        limits: &ResourceLimits,
+        pending: &mut Vec<MctFragment>,
+        completed: &mut Vec<u8>,
+        offset: usize,
+    ) -> Result<Option<MctArray>, DecodeError> {
+        let (active, maximum) =
+            reference_prepare_mct_fragment(bytes, limits, pending, completed, offset)?;
+        if u32::from(pending[active].next_index) != u32::from(pending[active].final_index) + 1 {
+            return Ok(None);
+        }
+        let state = pending[active].clone();
+        let last = pending.pop().unwrap();
+        if active < pending.len() {
+            pending[active] = last;
+        }
+        if state.data.len() as u64 > maximum {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::TransformElements,
+                limit: maximum,
+                actual: state.data.len() as u64,
+            });
+        }
+        let mut payload = vec![0, 0];
+        payload.extend(state.descriptor.to_be_bytes());
+        payload.extend([0, 0]);
+        payload.extend(&state.data);
+        let array = reference_mct_array(&payload, limits, state.offset)?;
+        completed.push(bytes[3]);
+        Ok(Some(array))
+    }
+
+    fn raw_mct_fragment_state(descriptor: u16, variant: usize) -> MctFragment {
+        MctFragment {
+            descriptor,
+            next_index: if variant == 0 { 1 } else { u16::MAX },
+            final_index: if variant == 0 { 1 } else { 0 },
+            offset: usize::MAX - variant,
+            data: vec![255, variant as u8, 17],
+        }
+    }
+
+    fn raw_mct_fragment_payload(
+        descriptor: u16,
+        fragment: u16,
+        final_index: u16,
+        data: &[u8],
+    ) -> Vec<u8> {
+        let mut bytes = fragment.to_be_bytes().to_vec();
+        bytes.extend(descriptor.to_be_bytes());
+        if fragment == 0 {
+            bytes.extend(final_index.to_be_bytes());
+        }
+        bytes.extend(data);
+        bytes
+    }
+
+    fn assert_mct_fragment_case(
+        parser: &Parser<'_>,
+        bytes: &[u8],
+        pending: &[MctFragment],
+        completed: &[u8],
+        offset: usize,
+    ) -> (
+        Result<Option<MctArray>, DecodeError>,
+        Vec<MctFragment>,
+        Vec<u8>,
+    ) {
+        let mut actual_prepared = pending.to_vec();
+        let mut expected_prepared = pending.to_vec();
+        let expected = reference_prepare_mct_fragment(
+            bytes,
+            parser.limits,
+            &mut expected_prepared,
+            completed,
+            offset,
+        );
+        assert_eq!(
+            parser.prepare_mct_fragment(
+                Segment {
+                    marker: 0x1234,
+                    offset,
+                    payload: bytes,
+                },
+                &mut actual_prepared,
+                completed,
+            ),
+            expected
+        );
+        assert_eq!(actual_prepared, expected_prepared);
+        let mut actual_pending = pending.to_vec();
+        let mut expected_pending = pending.to_vec();
+        let mut actual_completed = completed.to_vec();
+        let mut expected_completed = completed.to_vec();
+        let expected = reference_consume_mct_fragment(
+            bytes,
+            parser.limits,
+            &mut expected_pending,
+            &mut expected_completed,
+            offset,
+        );
+        let actual = parser.consume_mct_fragment(
+            Segment {
+                marker: 0x1234,
+                offset,
+                payload: bytes,
+            },
+            &mut actual_pending,
+            &mut actual_completed,
+        );
+        assert_eq!(actual, expected);
+        assert_eq!(actual_pending, expected_pending);
+        assert_eq!(actual_completed, expected_completed);
+        (actual, actual_pending, actual_completed)
+    }
+
+    #[test]
+    fn actual_mct_fragments_preserve_descriptors_first_matches_and_partial_commits() {
+        let limits = ResourceLimits::HARDENED;
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX - 1;
+        parser.packet_lengths = u64::MAX - 2;
+        let mut descriptors = 0;
+        for descriptor in 0..=u16::MAX {
+            let index = descriptor.to_be_bytes()[1];
+            let first = raw_mct_fragment_payload(descriptor, 0, 1, &[0, 1]);
+            let _ = assert_mct_fragment_case(&parser, &first, &[], &[], 13);
+            let duplicate = [
+                raw_mct_fragment_state(descriptor, 0),
+                raw_mct_fragment_state(descriptor ^ 0x0100, 1),
+            ];
+            let _ = assert_mct_fragment_case(&parser, &first, &duplicate, &[index], usize::MAX);
+            let active = MctFragment {
+                descriptor,
+                next_index: 1,
+                final_index: 1,
+                offset: 13,
+                data: vec![0, 1],
+            };
+            let other = raw_mct_fragment_state(u16::from(index.wrapping_add(1)), 1);
+            let next = raw_mct_fragment_payload(descriptor, 1, 0, &[0, 2]);
+            let _ = assert_mct_fragment_case(
+                &parser,
+                &next,
+                &[other.clone(), active.clone(), duplicate[1].clone()],
+                &[index, index],
+                usize::MAX,
+            );
+            let wrong_first = MctFragment {
+                descriptor: descriptor ^ 0x0100,
+                ..active.clone()
+            };
+            let _ = assert_mct_fragment_case(&parser, &next, &[wrong_first, active, other], &[], 0);
+            descriptors += 4;
+        }
+        assert_eq!(descriptors, 262_144);
+        let mut headers = 0;
+        for length in 0..=6 {
+            for fragment in [0_u16, 1, u16::MAX] {
+                for descriptor in [0_u16, 7, 0x0407, 0x0e07, u16::MAX] {
+                    let mut bytes = fragment.to_be_bytes().to_vec();
+                    bytes.extend(descriptor.to_be_bytes());
+                    bytes.extend([0, 1]);
+                    let _ =
+                        assert_mct_fragment_case(&parser, &bytes[..length], &[], &[], usize::MAX);
+                    headers += 1;
+                }
+            }
+        }
+        assert_eq!(headers, 105);
+        assert_eq!((parser.position, parser.work_units), (usize::MAX, u64::MAX));
+        assert_eq!(
+            (parser.packet_length_bytes, parser.packet_lengths),
+            (u64::MAX - 1, u64::MAX - 2)
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+    }
+
+    #[test]
+    fn actual_mct_fragments_compose_numeric_arrays_swap_order_offsets_and_reader() {
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let mut splits = 0;
+        for format in 0_u16..4 {
+            for kind in 0_u16..3 {
+                for index in [1_u8, 7, 255] {
+                    let descriptor = format * 1024 + kind * 256 + u16::from(index);
+                    for elements in [
+                        vec![0_u64],
+                        vec![1, u64::MAX],
+                        vec![0x3f800000, 0x7f800000],
+                        vec![0x3ff0000000000000, 0x7ff8000000000000],
+                    ] {
+                        let payload = raw_mct_array_payload(descriptor, &elements);
+                        let data = &payload[6..];
+                        for split in 0..=data.len() {
+                            let first = raw_mct_fragment_payload(descriptor, 0, 1, &data[..split]);
+                            let other = raw_mct_fragment_state(u16::from(index.wrapping_add(1)), 1);
+                            let (result, mut pending, _) =
+                                assert_mct_fragment_case(&parser, &first, &[other], &[], 13);
+                            assert_eq!(result, Ok(None));
+                            pending
+                                .push(raw_mct_fragment_state(u16::from(index.wrapping_add(2)), 0));
+                            let next = raw_mct_fragment_payload(descriptor, 1, 0, &data[split..]);
+                            let (result, remaining, completed) = assert_mct_fragment_case(
+                                &parser,
+                                &next,
+                                &pending,
+                                &[index, 0, index],
+                                usize::MAX,
+                            );
+                            assert_eq!(remaining, vec![pending[0].clone(), pending[2].clone()]);
+                            match reference_mct_array(&payload, &limits, 13) {
+                                Ok(array) => {
+                                    assert_eq!(result, Ok(Some(array)));
+                                    assert_eq!(completed, vec![index, 0, index, index]);
+                                }
+                                Err(error) => {
+                                    assert_eq!(result, Err(error));
+                                    assert_eq!(completed, vec![index, 0, index]);
+                                }
+                            }
+                            splits += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(splits, 1_278);
+        let good = raw_mct_array_payload(0x0d07, &[0x3ff0000000000000, 0x8000000000000000]);
+        let bad = raw_mct_array_payload(0x0909, &[0x3f800000, 0x7fc00000]);
+        let first = raw_mct_fragment_payload(0x0d07, 0, 1, &good[6..11]);
+        let next = raw_mct_fragment_payload(0x0d07, 1, 0, &good[11..]);
+        let bad_first = raw_mct_fragment_payload(0x0909, 0, 1, &bad[6..9]);
+        let bad_next = raw_mct_fragment_payload(0x0909, 1, 0, &bad[9..]);
+        let mut input = segment(MCT, &first);
+        input.extend(segment(MCT, &next));
+        let bad_offset = input.len();
+        input.extend(segment(MCT, &bad_first));
+        input.extend(segment(MCT, &bad_next));
+        let mut reader = new_parser(&input, &limits).unwrap();
+        let mut pending = Vec::new();
+        let mut completed = Vec::new();
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.consume_mct_fragment(raw, &mut pending, &mut completed),
+            Ok(None)
+        );
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.consume_mct_fragment(raw, &mut pending, &mut completed),
+            Ok(Some(reference_mct_array(&good, &limits, 0).unwrap()))
+        );
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.consume_mct_fragment(raw, &mut pending, &mut completed),
+            Ok(None)
+        );
+        let raw = reader.read_segment().unwrap();
+        assert_eq!(
+            reader.consume_mct_fragment(raw, &mut pending, &mut completed),
+            Err(DecodeError::MalformedInput {
+                offset: bad_offset as u64,
+                kind: MalformedKind::InvalidTransform,
+            })
+        );
+        assert!(pending.is_empty());
+        assert_eq!(completed, vec![7]);
+        assert_eq!((reader.position, reader.work_units), (input.len(), 4));
+        assert!(core::ptr::eq(reader.input.as_ptr(), input.as_ptr()));
+    }
+
+    #[test]
+    fn actual_mct_fragment_lookup_caps_and_overflow_preserve_raw_prior_state() {
+        let mut lookups = 0;
+        for index in 0..=u8::MAX {
+            for indices in [
+                vec![],
+                vec![index],
+                vec![index.wrapping_add(1)],
+                vec![0, index, 255, index],
+                vec![255, 0],
+            ] {
+                let pending: Vec<MctFragment> = indices
+                    .iter()
+                    .enumerate()
+                    .map(|(variant, value)| {
+                        raw_mct_fragment_state(0xf000 | u16::from(*value), variant)
+                    })
+                    .collect();
+                assert_eq!(
+                    find_mct_fragment(&pending, index),
+                    pending
+                        .iter()
+                        .position(|state| state.descriptor.to_be_bytes()[1] == index)
+                );
+                lookups += 1;
+            }
+        }
+        assert_eq!(lookups, 1_280);
+        let mut bounds = 0;
+        for cap in [0_u16, 1, 2, 3, 255, u16::MAX] {
+            let limits = mcc_record_test_limits(cap);
+            let parser = new_parser(&[], &limits).unwrap();
+            let maximum = u128::from(cap).pow(2) * 8;
+            let lengths = if maximum <= 72 {
+                vec![0, maximum as usize, maximum as usize + 1]
+            } else {
+                vec![0, 1, 73]
+            };
+            for length in &lengths {
+                for final_index in [0, 1, 7, 8, u16::MAX - 1, u16::MAX] {
+                    let bytes = raw_mct_fragment_payload(7, 0, final_index, &vec![0; *length]);
+                    let _ = assert_mct_fragment_case(&parser, &bytes, &[], &[], usize::MAX);
+                    bounds += 1;
+                }
+                for next in [1, u16::MAX - 1, u16::MAX] {
+                    for tail in [0, 1, 8] {
+                        let pending = [MctFragment {
+                            descriptor: 7,
+                            next_index: next,
+                            final_index: u16::MAX,
+                            offset: 17,
+                            data: vec![0; *length],
+                        }];
+                        let bytes = raw_mct_fragment_payload(7, next, 0, &vec![0; tail]);
+                        let _ =
+                            assert_mct_fragment_case(&parser, &bytes, &pending, &[7], usize::MAX);
+                        bounds += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(bounds, 270);
+        let bytes = raw_mct_fragment_payload(7, 0, 1, &[]);
+        let mut component_words = 0;
+        for cap in 0..=u16::MAX {
+            let limits = mcc_record_test_limits(cap);
+            let parser = new_parser(&[], &limits).unwrap();
+            let mut pending = Vec::new();
+            let actual = parser.prepare_mct_fragment(
+                Segment {
+                    marker: MCT,
+                    offset: 13,
+                    payload: &bytes,
+                },
+                &mut pending,
+                &[],
+            );
+            let maximum = u64::try_from(u128::from(cap).pow(2) * 8).unwrap();
+            if cap == 0 {
+                assert_eq!(
+                    actual,
+                    Err(DecodeError::LimitExceeded {
+                        resource: Resource::TransformElements,
+                        limit: 0,
+                        actual: 2,
+                    })
+                );
+                assert!(pending.is_empty());
+            } else {
+                assert_eq!(actual, Ok((0, maximum)));
+                assert_eq!(pending.len(), 1);
+                assert_eq!(pending[0].descriptor, 7);
+            }
+            component_words += 1;
+        }
+        assert_eq!(component_words, 65_536);
+        let mut finals = 0;
+        for cap in [0, 1, 2] {
+            let limits = mcc_record_test_limits(cap);
+            let parser = new_parser(&[], &limits).unwrap();
+            for final_index in 0..=u16::MAX {
+                let bytes = raw_mct_fragment_payload(7, 0, final_index, &[]);
+                let _ = assert_mct_fragment_case(&parser, &bytes, &[], &[], 13);
+                finals += 1;
+            }
+        }
+        assert_eq!(finals, 196_608);
     }
 
     fn reference_prepare_mcc_fragment(

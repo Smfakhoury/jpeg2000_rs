@@ -1004,6 +1004,12 @@ class FrameworkTests(WorkingFiles):
             framework._COLLECTION_FRAGMENT_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_actual_mct_fragment_descriptors_frames_limits_and_real_array_results(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-mct-fragment-production"},
+            framework._TRANSFORM_FRAGMENT_CONTRACTS, 4,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

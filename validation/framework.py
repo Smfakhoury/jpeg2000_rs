@@ -842,6 +842,31 @@ _COLLECTION_FRAGMENT_CONTRACTS = {
     ),
 }
 
+_TRANSFORM_FRAGMENT_CONTRACTS = {
+    ("src/codestream.rs", "find_mct_fragment"): (
+        "part1_mct_fragment_find", r"\1", None,
+        _coverage_call("mct_pending_view", r"pending\s*@") + r"\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream.rs", "u8_list_contains"): _COLLECTION_FRAGMENT_CONTRACTS[
+        ("src/codestream.rs", "u8_list_contains")
+    ],
+    ("src/codestream.rs", "Parser::prepare_mct_fragment"): (
+        "part1_prepare_mct_fragment", r"\1",
+        _coverage_call("mct_pending_view", _coverage_call("final", "pending") + r"\s*@"),
+        _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits\s*,\s*"
+        + _coverage_call("mct_pending_view", _coverage_call("old", "pending") + r"\s*@")
+        + r"\s*,\s*completed\s*@",
+    ),
+    ("src/codestream.rs", "Parser::consume_mct_fragment"): (
+        "part1_consume_mct_fragment", _coverage_call("mct_fragment_outcome", r"\1"),
+        _coverage_call("mct_pending_view", _coverage_call("final", "pending") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("final", "completed") + r"\s*@",
+        _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits\s*,\s*"
+        + _coverage_call("mct_pending_view", _coverage_call("old", "pending") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("old", "completed") + r"\s*@",
+    ),
+}
+
 _TRANSFORM_COLLECTION_BYTES_CONTRACTS = {
     ("src/codestream.rs", "signed_u32"): (
         "part1_signed_u32", r"\1", None, "value",
@@ -2386,6 +2411,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_ROUTING_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_COLLECTION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COLLECTION_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TRANSFORM_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
