@@ -25,6 +25,36 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw COC component-style producer
+
+Actual component-index decoding and COC parsing derive their complete native
+Result from raw segment bytes/offset, component count, raw default style and
+limits. The one/two-byte threshold remains 257; truncation precedes the
+component check and retains each caller's malformed kind. The COC helper
+still leaves marker identity and DSC registry admission to its real callers.
+
+Minimum length, SCOC flags and the nonzero DSC selector are admitted in their
+original order. The original 43-byte COD scratch inherits progression,
+layers, MCT and SOP/EPH; selected DSC replaces only its depth byte. Its sole
+actual preparation body is factored into a proved private helper to isolate
+the query, not duplicated or supplied by a caller. The complete real COD
+producer is then executed, and only the decomposition selector is replaced
+in its result. Every style field, all default directions/precincts, checked
+error and offset are bound without a valid-default or prepared-payload bank.
+
+The existing proved malformed constructor and equivalent explicit bool byte
+encoding supply missing pinned standard-library facts. Checked overflow,
+copy order, scratch capacity, public APIs, solver budgets, pins, resource
+caps and the trust boundary are unchanged. Large new denotations stay opaque;
+the real producer uses the repository's fresh-query isolation pattern.
+
+Independent endian/numeric references check 5,242,880 component-index cases,
+1,244,160 complete COC contexts and 132,480 length/error frontiers, plus an
+actual reader join. The COD reference is shared with its existing regression,
+not copied into production. Three curated exact contracts bind real source
+inputs/results and reject adversarial mutations. Remaining quantization,
+Part2/tile/layout parsing, file/layer/F2/F4 and final F8 joins stay separate.
+
 ## Complete native raw COD coding-style producer
 
 Actual COD segment/payload parsing now derives complete CodingStyle Results,
@@ -47,7 +77,7 @@ production caps or public configuration.
 Independent standard-endian/numeric-field references check 483,840 complete
 raw Results, every header byte, block-size frontiers, unknown transform
 indices, untouched defaults, raw depth/precinct capacity and an actual reader
-join. Remaining COC/quantization/Part2/tile/layout parsing and outer file/
+join. Remaining quantization/Part2/tile/layout parsing and outer file/
 F2/F4/final F8 remain separate.
 
 ## Complete native raw SIZ image producer

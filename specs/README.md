@@ -1,5 +1,18 @@
 # Specification audit guide
 
+`part1_parse_component_index` and `part1_parse_coc` bind actual raw component
+index/COC Results and every CodingStyle field, including untouched direction
+and precinct defaults. The sole actual `prepare_coc_payload` body proves its
+43-byte scratch prefix/length from source bytes and raw defaults; the real
+COD body then supplies the complete style before selector replacement.
+Threshold257, truncation/component/SCOC/DSC/capacity/COD error order and
+default progression/layers/MCT/SOP/EPH/depth inheritance remain explicit.
+No marker/registry/default validation, normalized style, prepared payload,
+result bank, trust or solver/resource-budget change is introduced. The
+preparation/composition split isolates queries rather than duplicating an
+executable parser. Actual main/tile callers use these bodies; quantization,
+remaining metadata/layout/file/F2/F4/final F8 joins are separate.
+
 `part1_parse_cod_payload` binds actual raw COD bytes to every native style
 field and default/precinct slot, not an admitted style or lookup result.
 Ordered flags/progression/layers/MCT/depth/block/length admission and the
