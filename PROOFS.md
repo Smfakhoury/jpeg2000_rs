@@ -25,6 +25,37 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native MCC fragment state and record production
+
+Actual MCC fragment consumption binds the optional genuine record Result,
+all pending fields/data/order and completed IDs for arbitrary raw prior state.
+The sole staging body composes real first-match and completed-membership scans.
+Initial fragments reject prior active/completed IDs before byte limits;
+continuations retain their original completed-ID permissiveness. Source-derived
+component byte limits and append-before-cap/next-overflow commits remain exact.
+
+Completion uses the existing exact next-equals-final-plus-one producer, not
+an assumed valid sequence. Actual swap-remove ordering is framed. Pending
+removal happens before cap/record errors, and the real seven-byte reconstruction
+uses stored metadata/data and original offset before the actual proved MCC
+parser runs. Completed IDs append only after real record success.
+
+Four exact contracts expose these producers and every mutable frame without
+normalized pending/completed consistency, prepared reconstruction or decoded
+record banks. Explicit concatenation/update equalities bind nested data writes;
+standard vector removal facts retain native order and allocation policy.
+No new trust, caps, pins, solver budgets or termination bypass is introduced.
+Numeric MCT/other fragment/graph and outer file/layer/F2/F4/final F8 joins
+remain separate.
+
+Independent wide-limit/state-transition references compare 1,179,648 fragment
+header contexts, 10,080 initial-admission contexts and 135,000 continuation/
+first-match/partial-failure contexts. Thirty-three real record split sequences,
+1,280 arbitrary lookup/membership cases and 120 byte/next-boundary cases
+check raw prior state, swap ordering, original error offsets and continuation
+completed-ID permissiveness. A real two-marker reader reconstructs and parses
+the genuine record. These are maintained regressions, not official conformance.
+
 ## Complete native raw MCC collection records
 
 Actual MCC parsing now binds the complete record/index and every collection

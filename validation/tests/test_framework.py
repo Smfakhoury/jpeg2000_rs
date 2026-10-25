@@ -998,6 +998,12 @@ class FrameworkTests(WorkingFiles):
             framework._TRANSFORM_COLLECTION_BYTES_CONTRACTS, 5,
         )
 
+    def test_inventory_binds_actual_mcc_fragment_pending_completed_and_real_record_results(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-mcc-fragment-production"},
+            framework._COLLECTION_FRAGMENT_CONTRACTS, 4,
+        )
+
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")

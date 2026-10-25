@@ -4,6 +4,52 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-mcc-fragment-production",
+      "topic": "Complete actual MCC fragment Result/optional decoded record, every pending fragment field/data/order and completed-ID vector from raw segment/components/limits and arbitrary prior state. Actual first-match/completed scans and sole staging body preserve header/zero/duplicate/continuity/byte-bound order, new-state prechecks, append-before-limit/next-overflow partial commits, and exact next==final+1 completion. Continuations do not newly reject previously completed IDs. Actual swap_remove order and removal-before-cap/real parse_mcc errors are retained, with original first-fragment offset and source-derived seven-byte reconstruction; completed append occurs only after genuine record success. All bounds come from real producers, not normalized pending/completed consistency or reconstructed/decoded record banks. Original allocation/cap/pin/trust/solver/termination policies remain unchanged. Numeric MCT/other fragment/graph and outer file/layer/F2/F4/final F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::consume_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::prepare_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "find_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "u8_list_contains"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_consume_mcc_fragment"},
+        {"path": "specs/mod.rs", "symbol": "part1_prepare_mcc_fragment"},
+        {"path": "specs/mod.rs", "symbol": "Part1MccFragment"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_fragment_maximum_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_fragment_find"},
+        {"path": "specs/mod.rs", "symbol": "part1_byte_list_contains"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_fragment_updated"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_fragment_swap_remove"},
+        {"path": "specs/mod.rs", "symbol": "part1_mcc_fragment_payload"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_mcc"},
+        {"path": "specs/mod.rs", "symbol": "part2_fragment_next"},
+        {"path": "specs/mod.rs", "symbol": "part2_fragment_complete"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::consume_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::prepare_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "find_mcc_fragment"},
+        {"path": "src/codestream.rs", "symbol": "u8_list_contains"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "mcc_fragment_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mcc_fragment_view"},
+        {"path": "src/codestream.rs", "symbol": "mcc_pending_view"},
+        {"path": "src/codestream.rs", "symbol": "mcc_record_outcome"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_mcc"},
+        {"path": "src/refinement.rs", "symbol": "mct_fragment_next"},
+        {"path": "src/refinement.rs", "symbol": "mct_fragment_complete"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_fragments_preserve_all_index_headers_first_matches_and_partial_failure_commits"},
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_fragments_compose_real_records_swap_order_offsets_and_completed_policy"},
+        {"path": "src/codestream.rs", "symbol": "actual_mcc_fragment_lookup_and_component_byte_bounds_preserve_raw_prior_state"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-transform-collection-bytes",
       "topic": "Complete actual raw MCC record/index/collection Result, including all input/output route order, dependency/decorrelation flags and array indices, wavelet type/depth/signed32 offset, and final parallel-collection admission. Actual min7/Z/Y/index/count/TransformElements limit precedes collection reads; actual routing-list producers feed the sole factored collection body. Kind/reserved/list/count/order/three-byte flags/wavelet extension/type/depth/offset and terminal-before-parallel order retain native policy. Dependency lists must match in order, decorrelation may permute, wavelet route counts match; no referenced-array/graph validity is newly imposed. Actual signed-u32 and sole moved overlap scan bind all values. Parallel collections reject any cross-collection input/output intersection, while raw same-collection overlap and unrelated fields remain untouched. Private physical observations bind actual Results, not normalized/decoded collection banks or successful graph premises. No new trust/cap/pin/budget/termination bypass. Numeric arrays, fragmented state/graph and outer file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [
