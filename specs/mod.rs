@@ -12933,6 +12933,170 @@ pub open spec fn part1_codestream_find_eoc<'a>(state: Part1CodestreamReader<'a>)
     }
 }
 
+pub open spec fn part1_codestream_u32(a: u8, b: u8, c: u8, d: u8) -> u32 {
+    ((a as u32) << 24) | ((b as u32) << 16) | ((c as u32) << 8) | d as u32
+}
+
+pub open spec fn part1_siz_word(payload: Seq<u8>, offset: int) -> u32
+    recommends 0 <= offset && offset + 4 <= payload.len(),
+{
+    part1_codestream_u32(payload[offset], payload[offset + 1], payload[offset + 2], payload[offset + 3])
+}
+
+pub struct Part1SizHeader {
+    pub xsiz: u32, pub ysiz: u32, pub xosiz: u32, pub yosiz: u32,
+    pub xtsiz: u32, pub ytsiz: u32, pub xtosiz: u32, pub ytosiz: u32,
+    pub components: u16, pub r_siz: u16,
+}
+
+pub struct Part1ParsedImageSize {
+    pub geometry: Part2SelectionGeometry,
+    pub components: u16,
+    pub uniform_bit_depth: Option<u8>,
+    pub uniform_signed: Option<bool>,
+    pub infos: Seq<crate::codestream::ComponentInfo>,
+}
+
+pub struct Part1SizComponents {
+    pub offset: usize, pub component: u16,
+    pub infos: Seq<crate::codestream::ComponentInfo>,
+    pub first_precision: u8, pub first_signed: bool, pub uniform: bool,
+}
+
+pub open spec fn part1_empty_component_info() -> crate::codestream::ComponentInfo {
+    crate::codestream::ComponentInfo { precision: 0, signed: false, x_subsampling: 0, y_subsampling: 0,
+        x_registration: 0, y_registration: 0 }
+}
+
+pub(crate) open spec fn part1_siz_components_initial() -> Part1SizComponents {
+    Part1SizComponents { offset: 36, component: 0,
+        infos: Seq::new(crate::codestream::MAX_COMPONENTS as nat, |i: int| part1_empty_component_info()),
+        first_precision: 0, first_signed: false, uniform: true }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_siz_header(segment: Part1CodestreamSegment, limits: &crate::ResourceLimits)
+    -> Result<Part1SizHeader, crate::DecodeError>
+{
+    let payload = segment.payload;
+    if payload.len() < 36 { Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)) }
+    else {
+        let h = Part1SizHeader {
+            xsiz: part1_siz_word(payload, 2), ysiz: part1_siz_word(payload, 6),
+            xosiz: part1_siz_word(payload, 10), yosiz: part1_siz_word(payload, 14),
+            xtsiz: part1_siz_word(payload, 18), ytsiz: part1_siz_word(payload, 22),
+            xtosiz: part1_siz_word(payload, 26), ytosiz: part1_siz_word(payload, 30),
+            components: part1_marker_value(payload[34], payload[35]), r_siz: part1_marker_value(payload[0], payload[1]),
+        };
+        let first_x = h.xtosiz as int + h.xtsiz as int;
+        let first_y = h.ytosiz as int + h.ytsiz as int;
+        let bytes = h.components as int * 3;
+        if first_x > u32::MAX || first_y > u32::MAX || bytes > usize::MAX || 36 + bytes > usize::MAX {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::ArithmeticOverflow))
+        } else if payload.len() != 36 + bytes || h.xsiz <= h.xosiz || h.ysiz <= h.yosiz
+            || h.xtsiz == 0 || h.ytsiz == 0 || h.xtosiz > h.xosiz || h.ytosiz > h.yosiz
+            || first_x <= h.xosiz || first_y <= h.yosiz || h.components == 0 {
+            Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidImageGeometry))
+        } else if h.components > crate::limits::resource_component_limit(limits) {
+            Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Components,
+                limit: crate::limits::resource_component_limit(limits) as u64, actual: h.components as u64 })
+        } else { Ok(h) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_siz_components(
+    payload: Seq<u8>, offset: usize, state: Part1SizComponents,
+) -> Result<Part1SizComponents, crate::DecodeError>
+    decreases payload.len() - state.offset,
+{
+    if state.offset >= payload.len() { Ok(state) }
+    else if payload.len() - state.offset < 3 {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidMarkerLength))
+    } else {
+        let precision = (payload[state.offset as int] & 127) as u16 + 1;
+        let signed = payload[state.offset as int] & 128 != 0;
+        if precision > 38 || payload[state.offset as int + 1] == 0 || payload[state.offset as int + 2] == 0 {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidImageGeometry))
+        } else if state.component as nat >= state.infos.len() {
+            Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidImageGeometry))
+        } else {
+            let info = crate::codestream::ComponentInfo { precision: precision as u8, signed,
+                x_subsampling: payload[state.offset as int + 1], y_subsampling: payload[state.offset as int + 2],
+                x_registration: 0, y_registration: 0 };
+            if state.component == u16::MAX || state.offset as int + 3 > usize::MAX {
+                Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+            } else {
+                part1_siz_components(payload, offset, Part1SizComponents {
+                    offset: (state.offset + 3) as usize, component: (state.component + 1) as u16,
+                    infos: state.infos.update(state.component as int, info),
+                    first_precision: if state.component == 0 { precision as u8 } else { state.first_precision },
+                    first_signed: if state.component == 0 { signed } else { state.first_signed },
+                    uniform: if state.component > 0 && (precision != state.first_precision || signed != state.first_signed) {
+                        false
+                    } else { state.uniform },
+                })
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_siz_finish(
+    h: Part1SizHeader, components: Part1SizComponents, offset: usize, limits: &crate::ResourceLimits,
+) -> Result<(Part1ParsedImageSize, u16), crate::DecodeError>
+    recommends h.xsiz > h.xosiz, h.ysiz > h.yosiz, h.xsiz > h.xtosiz, h.ysiz > h.ytosiz,
+{
+    let width = (h.xsiz - h.xosiz) as u32;
+    let height = (h.ysiz - h.yosiz) as u32;
+    if width > crate::limits::resource_width_limit(limits) {
+        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Width,
+            limit: crate::limits::resource_width_limit(limits) as u64, actual: width as u64 })
+    } else if height > crate::limits::resource_height_limit(limits) {
+        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Height,
+            limit: crate::limits::resource_height_limit(limits) as u64, actual: height as u64 })
+    } else if width as int * height as int > u64::MAX {
+        Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+    } else if width as int * height as int > crate::limits::resource_pixel_limit(limits) {
+        Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Pixels,
+            limit: crate::limits::resource_pixel_limit(limits), actual: (width * height) as u64 })
+    } else {
+        match part1_image_ceil_div((h.xsiz - h.xtosiz) as u32, h.xtsiz) {
+            Err(error) => Err(error),
+            Ok(across) => match part1_image_ceil_div((h.ysiz - h.ytosiz) as u32, h.ytsiz) {
+                Err(error) => Err(error),
+                Ok(down) => if across as int * down as int > u64::MAX {
+                    Err(part1_codestream_malformed(offset, crate::MalformedKind::ArithmeticOverflow))
+                } else if across as int * down as int > crate::limits::resource_tile_limit(limits) {
+                    Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::Tiles,
+                        limit: crate::limits::resource_tile_limit(limits) as u64, actual: (across * down) as u64 })
+                } else {
+                    Ok((Part1ParsedImageSize {
+                        geometry: (width, height, h.xosiz, h.yosiz, h.xtsiz, h.ytsiz, h.xtosiz, h.ytosiz, across, down),
+                        components: h.components,
+                        uniform_bit_depth: if components.uniform { Some(components.first_precision) } else { None },
+                        uniform_signed: if components.uniform { Some(components.first_signed) } else { None },
+                        infos: components.infos,
+                    }, h.r_siz))
+                },
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub(crate) open spec fn part1_parse_siz(segment: Part1CodestreamSegment, limits: &crate::ResourceLimits)
+    -> Result<(Part1ParsedImageSize, u16), crate::DecodeError>
+{
+    match part1_siz_header(segment, limits) {
+        Err(error) => Err(error),
+        Ok(h) => match part1_siz_components(segment.payload, segment.offset, part1_siz_components_initial()) {
+            Err(error) => Err(error),
+            Ok(components) => part1_siz_finish(h, components, segment.offset, limits),
+        },
+    }
+}
+
 pub open spec fn part1_main_header_boundary(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9
 }

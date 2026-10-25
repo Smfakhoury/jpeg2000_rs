@@ -25,6 +25,33 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native raw SIZ image producer
+
+Actual `Parser::parse_siz` now derives a complete ImageSize/r_siz Result from
+the actual raw segment payload/offset and limits. Every geometry/count/flag
+and all 64 private component slots are bound, including unused zero entries
+and registration defaults. The helper does not newly check marker identity:
+its actual parser caller already enforces SIZ at the original earlier point.
+
+First-tile checked overflow precedes expected-length/geometry admission;
+component limits precede ordered precision/subsampling/capacity checks.
+Uniform precision and sign remain the original paired sticky policy, so a
+sign-only mismatch still clears both flags. Width, height, pixel and tile
+admission follow all components in native order. Byte words, shared ceiling
+and segment-offset malformed errors have actual complete contracts, as do
+the four geometry cap getters. A literal matches the former derived zero
+default array; no caller supplies normalized headers, descriptors or results.
+Every loop/frame/bound is proved internally under an opaque terminating fold
+with unchanged trust, pins, budgets and native policy.
+
+Independent endian chunks and wide geometry/resource references cover
+69,888 complete raw cases, 2,304 descriptor boundaries, 4,096 word encodings,
+ceiling frontiers and an actual reader-to-SIZ join. A test-only raw geometry
+limit fixture exercises otherwise non-public cap combinations and array
+frontiers; no production cap or public configuration API changes. Remaining coding/
+quantization/Part2/tile/layout parsing and outer file/F2/F4/final F8 remain
+separate.
+
 ## Complete native raw codestream reader
 
 Actual parser input admission and every raw reader operation now bind the

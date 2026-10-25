@@ -1,5 +1,14 @@
 # Specification audit guide
 
+`part1_parse_siz` binds actual raw SIZ bytes to every native ImageSize field,
+all private component slots and raw r_siz, not supplied parsed geometry.
+Header/first-tile/length/geometry/component/descriptor/array/resource order,
+paired sticky uniform flags and unused defaults remain explicit. No marker
+identity validation, normalized metadata or admitted-image premise is added.
+The actual parser checks SIZ before invoking this sole body. The real reader
+already binds its segment bytes; remaining metadata/tile/layout parsing and
+file/F2/F4/final F8 joins remain separate.
+
 `part1_codestream_*` reader models consume actual raw input/limits and all
 cursor/work/packet-counter fields, not supplied parsed results. They retain
 marker validation, source-derived segment payload, standalone advancement,

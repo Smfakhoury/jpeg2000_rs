@@ -792,6 +792,23 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_SIZ_GEOMETRY_CONTRACTS = {
+    ("src/codestream.rs", "Parser::parse_siz"): (
+        "part1_parse_siz", _coverage_call("parsed_siz_outcome", r"\1"), None,
+        _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits",
+    ),
+    ("src/codestream.rs", "Parser::malformed_at"): (
+        "part1_codestream_malformed", r"\1", None, r"value\s*,\s*kind",
+    ),
+    ("src/codestream.rs", "read_u32"): (
+        "part1_codestream_u32", r"\1", None,
+        r"bytes\s*\[\s*0\s*\]\s*,\s*bytes\s*\[\s*1\s*\]\s*,\s*bytes\s*\[\s*2\s*\]\s*,\s*bytes\s*\[\s*3\s*\]",
+    ),
+    ("src/codestream.rs", "ceil_div"): (
+        "part1_image_ceil_div", r"\1", None, r"value\s*,\s*divisor",
+    ),
+}
+
 _CODESTREAM_READER_CONTRACTS = {
     ("src/codestream.rs", "new_parser"): (
         "part1_codestream_reader_new", _coverage_call("parser_initial_outcome", r"\1"), None, r"input\s*@\s*,\s*limits",
@@ -2020,6 +2037,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TYPED_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODESTREAM_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _SIZ_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))

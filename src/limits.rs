@@ -78,6 +78,11 @@ verus! {
         limits.maximum_components
     }
 
+    pub closed spec fn resource_width_limit(limits: &ResourceLimits) -> u32 { limits.maximum_width }
+    pub closed spec fn resource_height_limit(limits: &ResourceLimits) -> u32 { limits.maximum_height }
+    pub closed spec fn resource_pixel_limit(limits: &ResourceLimits) -> u64 { limits.maximum_pixels }
+    pub closed spec fn resource_tile_limit(limits: &ResourceLimits) -> u32 { limits.maximum_tiles }
+
     pub closed spec fn resource_tile_part_limit(limits: &ResourceLimits) -> u32 {
         limits.maximum_tile_parts
     }
@@ -92,6 +97,23 @@ verus! {
 }
 
 impl ResourceLimits {
+    #[cfg(test)]
+    pub(crate) fn with_geometry_limits_for_test(
+        mut self,
+        components: u16,
+        width: u32,
+        height: u32,
+        pixels: u64,
+        tiles: u32,
+    ) -> Self {
+        self.maximum_components = components;
+        self.maximum_width = width;
+        self.maximum_height = height;
+        self.maximum_pixels = pixels;
+        self.maximum_tiles = tiles;
+        self
+    }
+
     pub const HARDENED: Self = Self {
         maximum_input_bytes: 2_147_483_648,
         maximum_metadata_bytes: 16_777_216,
@@ -143,14 +165,17 @@ impl ResourceLimits {
         self.maximum_codestreams
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == resource_width_limit(self),))]
     pub const fn maximum_width(&self) -> u32 {
         self.maximum_width
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == resource_height_limit(self),))]
     pub const fn maximum_height(&self) -> u32 {
         self.maximum_height
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == resource_pixel_limit(self),))]
     pub const fn maximum_pixels(&self) -> u64 {
         self.maximum_pixels
     }
@@ -162,6 +187,7 @@ impl ResourceLimits {
         self.maximum_components
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(value => ensures value == resource_tile_limit(self),))]
     pub const fn maximum_tiles(&self) -> u32 {
         self.maximum_tiles
     }
