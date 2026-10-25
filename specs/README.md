@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part1_consume_mcc_fragment` composes the real staging, exact completion,
+swap-remove, stored-offset reconstruction and actual MCC parser, binding both
+pending and completed vectors on success and every failure. The actual scans
+and `part1_prepare_mcc_fragment` derive all header/continuity/byte/next bounds
+from raw bytes and arbitrary prior fields. Append-before-error and removal-
+before-record-error commits remain explicit; continuation completed-ID policy
+is not strengthened. Private full-state observations and actual vector/byte
+producers add no normalized-state, reconstructed-result or graph-success
+premise, trust/cap/pin/budget change. Remaining outer joins stay separate.
+
 `part1_parse_mcc` and `part1_mcc_collection` bind the actual complete raw
 record/collection Results, including all route, array/dependency and wavelet
 fields. Header/limit and kind/list/descriptor/type/depth/signed-offset order

@@ -792,6 +792,31 @@ _LAYER_STATE_CONTRACTS = {
     ),
 }
 
+_COLLECTION_FRAGMENT_CONTRACTS = {
+    ("src/codestream.rs", "find_mcc_fragment"): (
+        "part1_mcc_fragment_find", r"\1", None,
+        _coverage_call("mcc_pending_view", r"pending\s*@") + r"\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream.rs", "u8_list_contains"): (
+        "part1_byte_list_contains", r"\1", None, r"values\s*@\s*,\s*value",
+    ),
+    ("src/codestream.rs", "Parser::prepare_mcc_fragment"): (
+        "part1_prepare_mcc_fragment", r"\1",
+        _coverage_call("mcc_pending_view", _coverage_call("final", "pending") + r"\s*@"),
+        _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*"
+        + _coverage_call("mcc_pending_view", _coverage_call("old", "pending") + r"\s*@")
+        + r"\s*,\s*completed\s*@",
+    ),
+    ("src/codestream.rs", "Parser::consume_mcc_fragment"): (
+        "part1_consume_mcc_fragment", _coverage_call("mcc_fragment_outcome", r"\1"),
+        _coverage_call("mcc_pending_view", _coverage_call("final", "pending") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("final", "completed") + r"\s*@",
+        _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*self\.limits\s*,\s*"
+        + _coverage_call("mcc_pending_view", _coverage_call("old", "pending") + r"\s*@")
+        + r"\s*,\s*" + _coverage_call("old", "completed") + r"\s*@",
+    ),
+}
+
 _TRANSFORM_COLLECTION_BYTES_CONTRACTS = {
     ("src/codestream.rs", "signed_u32"): (
         "part1_signed_u32", r"\1", None, "value",
@@ -2335,6 +2360,7 @@ def validate_normative_coverage(
                 or _PROGRESSION_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ROUTING_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_COLLECTION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COLLECTION_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYER_STATE_CONTRACTS.get((reference["path"], reference["symbol"]))
