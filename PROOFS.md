@@ -25,6 +25,32 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual packed-header fragment and PPM-frame byte production
+
+Actual packed-fragment admission binds the complete parser state and every
+external next-index, fragment-count and accumulated-byte field on all results.
+Marker/empty/order checks precede the index increment; that increment survives
+fragment-count overflow. Both increments survive later byte/work errors.
+Packet-header bytes commit before the genuine work charge, so work overflow
+or limits retain that byte-counter update without appending payload bytes.
+Work errors retain the parser-position offset, distinct from segment errors.
+
+Actual PPM framing derives every big-endian source length, frame start and
+checked end position. Zero fragments bypass all source validation and yield
+no frames; nonzero fragments retain empty input, zero-length frames,
+short-header versus oversized-body offsets, and the post-push tile-part cap.
+Both sole executable bodies have exact contracts without admitted frames,
+prepared payloads, normalized counters, result banks, new trust/caps/pins/
+budgets or termination bypass. PLM/PLT and final metadata/parser/F2/F4/F8
+joins remain separate.
+
+Independent wide-arithmetic and byte references cover 147,456 index/marker/
+counter contexts, 24 empty payloads, 18,000 charge/overflow/limit contexts,
+1,179,648 PPM length/count/cap contexts and 435 compound truncations.
+A real two-segment PPM reader joins a split length word to three genuine
+frames and checks all counters, data, input identity and work. These
+regressions are not official conformance evidence.
+
 ## Complete native MCT graph resolution
 
 The actual resolver derives its full optional graph from every raw array,

@@ -1,5 +1,15 @@
 # Specification audit guide
 
+`part1_parse_packed_fragment` binds raw marker/index bytes, full parser
+state and every next-index/fragment-count/accumulated-byte frame, including
+counter-before-error and header-byte-before-work-failure commits.
+`part1_parse_ppm_frames` and its source-derived traversal retain the
+fragments-zero bypass, all big-endian frame lengths/starts, checked error
+offsets and post-push tile-part limit. Two exact contracts consume genuine
+charge/read producers without normalized state, admitted frames/payloads,
+extra trust/caps/pins/budgets or termination bypass. PLM/PLT, final metadata
+and outer parser/F2/F4/F8 joins remain separate.
+
 `part1_mct_graph*` composes actual full raw MCT parameters, first record
 lookup, unique ID/kind arrays, real collection admission and native
 stage/graph construction. Checked count arithmetic models intermediate
