@@ -1022,6 +1022,12 @@ class FrameworkTests(WorkingFiles):
             framework._TRANSFORM_REGISTRY_CONTRACTS, 7,
         )
 
+    def test_inventory_binds_actual_mct_graph_raw_parameters_checked_shapes_and_complete_resolved_fields(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-mct-graph-production"},
+            framework._TRANSFORM_GRAPH_CONTRACTS, 4,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

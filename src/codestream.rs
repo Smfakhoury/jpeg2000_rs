@@ -2380,6 +2380,41 @@ verus! {
         match value { Err(error) => Err(error), Ok(array) => Ok(mct_array_view(array)) }
     }
 
+    closed spec fn mct_parameters_view(value: &MctParameters) -> crate::specs::Part1MctParameters {
+        crate::specs::Part1MctParameters {
+            arrays: mct_arrays_view(value.arrays@), records: mct_records_view(value.records@), order: value.order@,
+        }
+    }
+
+    closed spec fn mct_collections_view(values: Seq<MctCollection>) -> Seq<crate::specs::Part2MctCollection> {
+        values.map_values(|value: MctCollection| mct_collection_view(&value))
+    }
+
+    closed spec fn mct_stages_view(values: Seq<MctStage>) -> Seq<crate::specs::Part2MctStage> {
+        values.map_values(|value: MctStage| mct_stage_view(&value))
+    }
+
+    closed spec fn mct_collection_outcome(value: Result<MctCollection, DecodeError>)
+        -> Result<crate::specs::Part2MctCollection, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(collection) => Ok(mct_collection_view(&collection)) }
+    }
+
+    closed spec fn mct_stage_outcome(value: Result<MctStage, DecodeError>)
+        -> Result<crate::specs::Part2MctStage, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(stage) => Ok(mct_stage_view(&stage)) }
+    }
+
+    closed spec fn mct_graph_outcome(value: Result<Option<MultipleComponentTransform>, DecodeError>)
+        -> Result<Option<Seq<crate::specs::Part2MctStage>>, DecodeError>
+    {
+        match value {
+            Err(error) => Err(error), Ok(None) => Ok(None),
+            Ok(Some(graph)) => Ok(Some(multiple_component_transform_view(&graph))),
+        }
+    }
+
     pub open spec fn mct_array_option(value: Option<&MctArray>) -> Option<crate::specs::Part2MctArray> {
         match value { None => None, Some(array) => Some(mct_array_view(array)) }
     }
@@ -7515,159 +7550,233 @@ impl<'a> Parser<'a> {
         Ok(order)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures mct_graph_outcome(result) == crate::specs::part1_mct_graph(mct_parameters_view(parameters)),
+    ))]
     fn resolve_multiple_component_transform(
         &self,
         parameters: &MctParameters,
     ) -> Result<Option<MultipleComponentTransform>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost goal = crate::specs::part1_mct_graph(mct_parameters_view(parameters)); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_mct_graph); reveal(mct_parameters_view); }
         if parameters.order.is_empty() {
-            if parameters.arrays.is_empty() && parameters.records.is_empty() {
-                return Ok(None);
-            }
             return Ok(None);
         }
         let mut stages = Vec::with_capacity(parameters.order.len());
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(mct_stages_view(stages@) =~= Seq::empty()); }
         let mut order_index = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant order_index <= parameters.order.len(),
+                    goal == crate::specs::part1_mct_graph(mct_parameters_view(parameters)),
+                    goal == crate::specs::part1_mct_graph_from(
+                        mct_parameters_view(parameters), order_index as nat, mct_stages_view(stages@)),
                 decreases parameters.order.len() - order_index,
             )
         )]
         while order_index < parameters.order.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_mct_graph_from, 1); reveal(mct_parameters_view); }
             let record_index = parameters.order[order_index];
-            let record = parameters
-                .records
-                .iter()
-                .find(|record| record.index == record_index)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTransform))?;
-            let mut collections = Vec::with_capacity(record.collections.len());
-            let mut collection_index = 0_usize;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant collection_index <= record.collections.len(),
-                    decreases record.collections.len() - collection_index,
-                )
-            )]
-            while collection_index < record.collections.len() {
-                let reference = record
-                    .collections
-                    .get(collection_index)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTransform))?;
-                let rows = reference.input_components.len();
-                let columns = reference.output_components.len();
-                if rows == 0 || rows != columns {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-                }
-                let collection = match reference.transform {
-                    MctCollectionReferenceTransform::Array {
-                        kind,
-                        reversible,
-                        transform_index,
-                        offset_index,
-                    } => {
-                        let offsets = if offset_index == 0 {
-                            None
-                        } else {
-                            Some(
-                                referenced_mct_array(
-                                    &parameters.arrays,
-                                    offset_index,
-                                    MctArrayKind::Offset,
-                                )?
-                                .clone(),
-                            )
-                        };
-                        let invalid_offset_dimensions = match &offsets {
-                            Some(array) => array.values.len() != rows,
-                            None => false,
-                        };
-                        let floating_offsets = match &offsets {
-                            Some(array) => array.fraction_bits != 0,
-                            None => false,
-                        };
-                        let matrix = if transform_index == 0 {
-                            None
-                        } else {
-                            Some(
-                                referenced_mct_array(&parameters.arrays, transform_index, kind)?
-                                    .clone(),
-                            )
-                        };
-                        let expected_elements =
-                            if mct_array_kinds_equal(kind, MctArrayKind::Decorrelation) {
-                                rows.checked_mul(columns).ok_or_else(|| {
-                                    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                                })?
-                            } else if reversible {
-                                rows.checked_mul(rows.checked_add(1).ok_or_else(|| {
-                                    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                                })?)
-                                .and_then(|value| value.checked_div(2))
-                                .and_then(|value| value.checked_sub(1))
-                                .ok_or_else(|| {
-                                    DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                                })?
-                            } else {
-                                rows.checked_mul(rows.saturating_sub(1))
-                                    .and_then(|value| value.checked_div(2))
-                                    .ok_or_else(|| {
-                                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                                    })?
-                            };
-                        let invalid_matrix_dimensions = match &matrix {
-                            Some(array) => array.values.len() != expected_elements,
-                            None => false,
-                        };
-                        let floating_matrix = match &matrix {
-                            Some(array) => array.fraction_bits != 0,
-                            None => false,
-                        };
-                        if invalid_offset_dimensions
-                            || invalid_matrix_dimensions
-                            || (reversible && (floating_matrix || floating_offsets))
-                        {
-                            return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
-                        }
-                        MctCollection {
-                            reversible,
-                            input_components: reference.input_components.clone(),
-                            output_components: reference.output_components.clone(),
-                            kind: if mct_array_kinds_equal(kind, MctArrayKind::Dependency) {
-                                MctCollectionKind::Dependency
-                            } else {
-                                MctCollectionKind::Decorrelation
-                            },
-                            matrix,
-                            offsets,
-                            wavelet: None,
-                        }
-                    }
-                    MctCollectionReferenceTransform::Wavelet(wavelet) => MctCollection {
-                        reversible: matches!(wavelet.transform, MctWaveletType::Reversible5x3),
-                        input_components: reference.input_components.clone(),
-                        output_components: reference.output_components.clone(),
-                        kind: MctCollectionKind::Wavelet,
-                        matrix: None,
-                        offsets: None,
-                        wavelet: Some(wavelet),
-                    },
-                };
-                collections.push(collection);
-                collection_index = collection_index
-                    .checked_add(1)
-                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
-            }
-            stages.push(MctStage {
-                index: record.index,
-                collections,
-            });
-            order_index = order_index
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            let position = match find_mct_record_index(&parameters.records, record_index) {
+                Some(position) => position,
+                None => return Err(self.malformed_at(0, MalformedKind::InvalidTransform)),
+            };
+            let stage =
+                self.resolve_mct_stage(&parameters.records[position], &parameters.arrays)?;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = mct_stages_view(stages@); let ghost value = mct_stage_view(&stage); }
+            stages.push(stage);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(mct_stages_view(stages@) =~= before.push(value)); }
+            order_index += 1;
         }
-        Ok(Some(MultipleComponentTransform { stages }))
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_graph_from, 1); }
+        let graph = MultipleComponentTransform { stages };
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(multiple_component_transform_view(&graph) =~= mct_stages_view(graph.stages@)); }
+        Ok(Some(graph))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures mct_stage_outcome(result) == crate::specs::part1_mct_graph_stage(
+            mct_record_view(record), mct_arrays_view(arrays@)),
+    ))]
+    fn resolve_mct_stage(
+        &self,
+        record: &MctRecord,
+        arrays: &[MctArray],
+    ) -> Result<MctStage, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost goal = crate::specs::part1_mct_graph_stage(mct_record_view(record), mct_arrays_view(arrays@)); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_mct_graph_stage); reveal(mct_record_view); }
+        let mut collections = Vec::with_capacity(record.collections.len());
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(mct_collections_view(collections@) =~= Seq::empty()); }
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= record.collections.len(),
+                goal == crate::specs::part1_mct_graph_stage(mct_record_view(record), mct_arrays_view(arrays@)),
+                goal == crate::specs::part1_mct_graph_stage_from(
+                    mct_record_view(record), mct_arrays_view(arrays@), position as nat, mct_collections_view(collections@)),
+            decreases record.collections.len() - position,
+        ))]
+        while position < record.collections.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_mct_graph_stage_from, 1); reveal(mct_record_view); }
+            let collection = self.resolve_mct_collection(&record.collections[position], arrays)?;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = mct_collections_view(collections@); let ghost value = mct_collection_view(&collection); }
+            collections.push(collection);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(mct_collections_view(collections@) =~= before.push(value)); }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_graph_stage_from, 1); }
+        let stage = MctStage {
+            index: record.index,
+            collections,
+        };
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(mct_stage_view(&stage).1 =~= mct_collections_view(stage.collections@)); }
+        Ok(stage)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures mct_collection_outcome(result) == crate::specs::part1_mct_graph_collection(
+            mcc_collection_reference_view(reference), mct_arrays_view(arrays@)),
+    ))]
+    fn resolve_mct_collection(
+        &self,
+        reference: &MctCollectionReference,
+        arrays: &[MctArray],
+    ) -> Result<MctCollection, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_mct_graph_collection);
+            reveal(mcc_collection_reference_view); reveal(mcc_reference_transform_view);
+            reveal(mct_array_view); reveal(mct_wavelet_view);
+        }
+        let rows = reference.input_components.len();
+        let columns = reference.output_components.len();
+        if rows == 0 || rows != columns {
+            return Err(self.malformed_at(0, MalformedKind::InvalidTransform));
+        }
+        let collection = match reference.transform {
+            MctCollectionReferenceTransform::Array {
+                kind,
+                reversible,
+                transform_index,
+                offset_index,
+            } => {
+                let offsets = if offset_index == 0 {
+                    None
+                } else {
+                    Some(referenced_mct_array(arrays, offset_index, MctArrayKind::Offset)?.clone())
+                };
+                let invalid_offset_dimensions = match &offsets {
+                    Some(array) => array.values.len() != rows,
+                    None => false,
+                };
+                let floating_offsets = match &offsets {
+                    Some(array) => array.fraction_bits != 0,
+                    None => false,
+                };
+                let matrix = if transform_index == 0 {
+                    None
+                } else {
+                    Some(referenced_mct_array(arrays, transform_index, kind)?.clone())
+                };
+                let expected_elements =
+                    self.expected_mct_elements(rows, columns, kind, reversible)?;
+                let invalid_matrix_dimensions = match &matrix {
+                    Some(array) => array.values.len() != expected_elements,
+                    None => false,
+                };
+                let floating_matrix = match &matrix {
+                    Some(array) => array.fraction_bits != 0,
+                    None => false,
+                };
+                if invalid_offset_dimensions
+                    || invalid_matrix_dimensions
+                    || (reversible && (floating_matrix || floating_offsets))
+                {
+                    return Err(self.malformed_at(0, MalformedKind::InvalidTransform));
+                }
+                MctCollection {
+                    reversible,
+                    input_components: reference.input_components.clone(),
+                    output_components: reference.output_components.clone(),
+                    kind: if mct_array_kinds_equal(kind, MctArrayKind::Dependency) {
+                        MctCollectionKind::Dependency
+                    } else {
+                        MctCollectionKind::Decorrelation
+                    },
+                    matrix,
+                    offsets,
+                    wavelet: None,
+                }
+            }
+            MctCollectionReferenceTransform::Wavelet(wavelet) => MctCollection {
+                reversible: matches!(wavelet.transform, MctWaveletType::Reversible5x3),
+                input_components: reference.input_components.clone(),
+                output_components: reference.output_components.clone(),
+                kind: MctCollectionKind::Wavelet,
+                matrix: None,
+                offsets: None,
+                wavelet: Some(wavelet),
+            },
+        };
+        Ok(collection)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_mct_graph_element_count(rows, columns, kind, reversible),
+    ))]
+    fn expected_mct_elements(
+        &self,
+        rows: usize,
+        columns: usize,
+        kind: MctArrayKind,
+        reversible: bool,
+    ) -> Result<usize, DecodeError> {
+        if mct_array_kinds_equal(kind, MctArrayKind::Decorrelation) {
+            match rows.checked_mul(columns) {
+                Some(value) => Ok(value),
+                None => Err(self.malformed_at(0, MalformedKind::ArithmeticOverflow)),
+            }
+        } else if reversible {
+            let partner = match rows.checked_add(1) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(0, MalformedKind::ArithmeticOverflow)),
+            };
+            let product = match rows.checked_mul(partner) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(0, MalformedKind::ArithmeticOverflow)),
+            };
+            match (product / 2).checked_sub(1) {
+                Some(value) => Ok(value),
+                None => Err(self.malformed_at(0, MalformedKind::ArithmeticOverflow)),
+            }
+        } else {
+            let partner = rows.saturating_sub(1);
+            let product = match rows.checked_mul(partner) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(0, MalformedKind::ArithmeticOverflow)),
+            };
+            Ok(product / 2)
+        }
     }
 
     #[cfg(any())]
@@ -18300,6 +18409,509 @@ mod tests {
         );
         assert_eq!((reader.position, reader.work_units), (input.len(), 3));
         assert!(core::ptr::eq(reader.input.as_ptr(), input.as_ptr()));
+    }
+
+    fn reference_mct_graph_element_count(
+        rows: usize,
+        columns: usize,
+        kind: MctArrayKind,
+        reversible: bool,
+    ) -> Result<usize, DecodeError> {
+        let error = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        };
+        let wide = rows as u128;
+        let maximum = usize::MAX as u128;
+        let result = if kind == MctArrayKind::Decorrelation {
+            let product = wide * columns as u128;
+            if product > maximum {
+                return Err(error);
+            }
+            product
+        } else if reversible {
+            let product = wide * (wide + 1);
+            if rows == usize::MAX || product > maximum || product / 2 == 0 {
+                return Err(error);
+            }
+            product / 2 - 1
+        } else {
+            let product = wide * wide.saturating_sub(1);
+            if product > maximum {
+                return Err(error);
+            }
+            product / 2
+        };
+        Ok(usize::try_from(result).unwrap())
+    }
+
+    fn reference_mct_graph_array(
+        arrays: &[MctArray],
+        index: u8,
+        kind: MctArrayKind,
+    ) -> Result<MctArray, DecodeError> {
+        let matches: Vec<&MctArray> = arrays
+            .iter()
+            .filter(|array| array.index == index && array.kind == kind)
+            .collect();
+        if matches.len() == 1 {
+            Ok(matches[0].clone())
+        } else {
+            Err(DecodeError::MalformedInput {
+                offset: 0,
+                kind: MalformedKind::InvalidTransform,
+            })
+        }
+    }
+
+    fn reference_mct_graph_collection(
+        reference: &MctCollectionReference,
+        arrays: &[MctArray],
+    ) -> Result<MctCollection, DecodeError> {
+        let invalid = DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        };
+        let rows = reference.input_components.len();
+        let columns = reference.output_components.len();
+        if rows == 0 || rows != columns {
+            return Err(invalid);
+        }
+        match reference.transform {
+            MctCollectionReferenceTransform::Wavelet(wavelet) => Ok(MctCollection {
+                reversible: wavelet.transform == MctWaveletType::Reversible5x3,
+                input_components: reference.input_components.clone(),
+                output_components: reference.output_components.clone(),
+                kind: MctCollectionKind::Wavelet,
+                matrix: None,
+                offsets: None,
+                wavelet: Some(wavelet),
+            }),
+            MctCollectionReferenceTransform::Array {
+                kind,
+                reversible,
+                transform_index,
+                offset_index,
+            } => {
+                let offsets = if offset_index == 0 {
+                    None
+                } else {
+                    Some(reference_mct_graph_array(
+                        arrays,
+                        offset_index,
+                        MctArrayKind::Offset,
+                    )?)
+                };
+                let matrix = if transform_index == 0 {
+                    None
+                } else {
+                    Some(reference_mct_graph_array(arrays, transform_index, kind)?)
+                };
+                let expected = reference_mct_graph_element_count(rows, columns, kind, reversible)?;
+                if offsets.as_ref().is_some_and(|array| {
+                    array.values.len() != rows || (reversible && array.fraction_bits != 0)
+                }) || matrix.as_ref().is_some_and(|array| {
+                    array.values.len() != expected || (reversible && array.fraction_bits != 0)
+                }) {
+                    return Err(invalid);
+                }
+                Ok(MctCollection {
+                    reversible,
+                    input_components: reference.input_components.clone(),
+                    output_components: reference.output_components.clone(),
+                    kind: if kind == MctArrayKind::Dependency {
+                        MctCollectionKind::Dependency
+                    } else {
+                        MctCollectionKind::Decorrelation
+                    },
+                    matrix,
+                    offsets,
+                    wavelet: None,
+                })
+            }
+        }
+    }
+
+    fn reference_mct_graph_stage(
+        record: &MctRecord,
+        arrays: &[MctArray],
+    ) -> Result<MctStage, DecodeError> {
+        let collections = record
+            .collections
+            .iter()
+            .map(|reference| reference_mct_graph_collection(reference, arrays))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(MctStage {
+            index: record.index,
+            collections,
+        })
+    }
+
+    fn reference_mct_graph(
+        parameters: &MctParameters,
+    ) -> Result<Option<MultipleComponentTransform>, DecodeError> {
+        if parameters.order.is_empty() {
+            return Ok(None);
+        }
+        let mut stages = Vec::new();
+        for index in &parameters.order {
+            let record = parameters
+                .records
+                .iter()
+                .find(|record| record.index == *index)
+                .ok_or(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidTransform,
+                })?;
+            stages.push(reference_mct_graph_stage(record, &parameters.arrays)?);
+        }
+        Ok(Some(MultipleComponentTransform { stages }))
+    }
+
+    fn raw_mct_graph_reference(
+        rows: usize,
+        columns: usize,
+        kind: MctArrayKind,
+        reversible: bool,
+        transform_index: u8,
+        offset_index: u8,
+    ) -> MctCollectionReference {
+        MctCollectionReference {
+            input_components: (0..rows)
+                .map(|position| {
+                    if position.is_multiple_of(2) {
+                        0
+                    } else {
+                        u16::MAX
+                    }
+                })
+                .collect(),
+            output_components: vec![u16::MAX; columns],
+            transform: MctCollectionReferenceTransform::Array {
+                kind,
+                reversible,
+                transform_index,
+                offset_index,
+            },
+        }
+    }
+
+    #[test]
+    fn actual_mct_graph_element_counts_preserve_checked_intermediate_overflow() {
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let boundary = 1_usize << (usize::BITS / 2);
+        let mut rows: Vec<usize> = (0..=256).collect();
+        rows.extend([
+            65535,
+            65536,
+            65537,
+            boundary - 1,
+            boundary,
+            boundary + 1,
+            usize::MAX / 2,
+            usize::MAX / 2 + 1,
+            usize::MAX - 1,
+            usize::MAX,
+        ]);
+        rows.sort_unstable();
+        rows.dedup();
+        let columns = [
+            0,
+            1,
+            2,
+            255,
+            256,
+            65535,
+            65536,
+            usize::MAX / 2,
+            usize::MAX - 1,
+            usize::MAX,
+        ];
+        let mut cases = 0;
+        for row in &rows {
+            for column in columns {
+                for kind in [
+                    MctArrayKind::Dependency,
+                    MctArrayKind::Decorrelation,
+                    MctArrayKind::Offset,
+                ] {
+                    for reversible in [false, true] {
+                        assert_eq!(
+                            parser.expected_mct_elements(*row, column, kind, reversible),
+                            reference_mct_graph_element_count(*row, column, kind, reversible)
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert!(rows.len() >= 264);
+        assert_eq!(cases, rows.len() * columns.len() * 6);
+    }
+
+    #[test]
+    fn actual_mct_graph_collections_preserve_lookup_shape_flags_and_all_fields() {
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&[], &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        let mut arrays_checked = 0;
+        for rows in 0..=5 {
+            for columns in 0..=5 {
+                for kind in [
+                    MctArrayKind::Dependency,
+                    MctArrayKind::Decorrelation,
+                    MctArrayKind::Offset,
+                ] {
+                    for reversible in [false, true] {
+                        for transform_index in [0, 7, 8, 255] {
+                            for offset_index in [0, 7, 8, 255] {
+                                let reference = raw_mct_graph_reference(
+                                    rows,
+                                    columns,
+                                    kind,
+                                    reversible,
+                                    transform_index,
+                                    offset_index,
+                                );
+                                let expected = if rows == 0 {
+                                    0
+                                } else {
+                                    reference_mct_graph_element_count(
+                                        rows, columns, kind, reversible,
+                                    )
+                                    .unwrap()
+                                };
+                                for variant in 0..12 {
+                                    let mut matrix = raw_mct_registry_array(7, variant);
+                                    matrix.kind = kind;
+                                    matrix.fraction_bits = [0, 32, 255][variant / 4];
+                                    matrix.values = vec![
+                                        i64::MIN;
+                                        match variant % 4 {
+                                            0 => 0,
+                                            1 => expected.saturating_sub(1),
+                                            2 => expected,
+                                            _ => expected + 1,
+                                        }
+                                    ];
+                                    let mut offsets = raw_mct_registry_array(8, variant + 1);
+                                    offsets.kind = MctArrayKind::Offset;
+                                    offsets.fraction_bits =
+                                        if variant.is_multiple_of(2) { 0 } else { 32 };
+                                    offsets.values = vec![
+                                        i64::MAX;
+                                        match variant / 4 {
+                                            0 => rows,
+                                            1 => rows + 1,
+                                            _ => 0,
+                                        }
+                                    ];
+                                    let mut other_kind = matrix.clone();
+                                    other_kind.kind = if kind == MctArrayKind::Dependency {
+                                        MctArrayKind::Decorrelation
+                                    } else {
+                                        MctArrayKind::Dependency
+                                    };
+                                    for duplicate in 0..4 {
+                                        let mut arrays = vec![
+                                            matrix.clone(),
+                                            offsets.clone(),
+                                            other_kind.clone(),
+                                        ];
+                                        match duplicate {
+                                            0 => {}
+                                            1 => arrays.push(matrix.clone()),
+                                            2 => arrays.push(offsets.clone()),
+                                            _ => arrays.clear(),
+                                        }
+                                        assert_eq!(
+                                            parser.resolve_mct_collection(&reference, &arrays),
+                                            reference_mct_graph_collection(&reference, &arrays)
+                                        );
+                                        arrays_checked += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(arrays_checked, 165_888);
+        let mut wavelets = 0;
+        for rows in 0..=5 {
+            for columns in 0..=5 {
+                for transform in [
+                    MctWaveletType::Reversible5x3,
+                    MctWaveletType::Irreversible9x7,
+                ] {
+                    for levels in [0, 1, 255] {
+                        for component_offset in [i32::MIN, 0, i32::MAX] {
+                            let reference = MctCollectionReference {
+                                input_components: vec![u16::MAX; rows],
+                                output_components: vec![0; columns],
+                                transform: MctCollectionReferenceTransform::Wavelet(MctWavelet {
+                                    transform,
+                                    levels,
+                                    component_offset,
+                                }),
+                            };
+                            assert_eq!(
+                                parser.resolve_mct_collection(&reference, &[]),
+                                reference_mct_graph_collection(&reference, &[])
+                            );
+                            wavelets += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(wavelets, 648);
+        assert_eq!((parser.position, parser.work_units), (usize::MAX, u64::MAX));
+    }
+
+    #[test]
+    fn actual_mct_graph_complete_parameters_preserve_order_first_records_and_empty_bypass() {
+        let limits = ResourceLimits::HARDENED;
+        let parser = new_parser(&[], &limits).unwrap();
+        let mut dependency = raw_mct_registry_array(7, 3);
+        dependency.kind = MctArrayKind::Dependency;
+        dependency.fraction_bits = 0;
+        dependency.values = vec![i64::MIN];
+        let mut decorrelation = dependency.clone();
+        decorrelation.kind = MctArrayKind::Decorrelation;
+        decorrelation.values = vec![i64::MAX; 4];
+        let mut reversible = dependency.clone();
+        reversible.index = 9;
+        reversible.values = vec![0; 2];
+        let mut offsets = dependency.clone();
+        offsets.index = 8;
+        offsets.kind = MctArrayKind::Offset;
+        offsets.values = vec![i64::MAX; 2];
+        let arrays = vec![dependency, decorrelation, reversible, offsets];
+        let mut cases = 0;
+        for index in 0..=u8::MAX {
+            for variant in 0..9 {
+                let reference = match variant {
+                    0 => None,
+                    1 => Some(raw_mct_graph_reference(
+                        2,
+                        2,
+                        MctArrayKind::Dependency,
+                        false,
+                        7,
+                        8,
+                    )),
+                    2 => Some(raw_mct_graph_reference(
+                        2,
+                        2,
+                        MctArrayKind::Decorrelation,
+                        true,
+                        7,
+                        8,
+                    )),
+                    3 => Some(raw_mct_graph_reference(
+                        2,
+                        2,
+                        MctArrayKind::Dependency,
+                        true,
+                        9,
+                        8,
+                    )),
+                    4 | 5 => Some(MctCollectionReference {
+                        input_components: vec![0, u16::MAX],
+                        output_components: vec![9, 9],
+                        transform: MctCollectionReferenceTransform::Wavelet(MctWavelet {
+                            transform: if variant == 4 {
+                                MctWaveletType::Reversible5x3
+                            } else {
+                                MctWaveletType::Irreversible9x7
+                            },
+                            levels: 255,
+                            component_offset: i32::MIN,
+                        }),
+                    }),
+                    6 => Some(raw_mct_graph_reference(
+                        2,
+                        2,
+                        MctArrayKind::Dependency,
+                        false,
+                        7,
+                        255,
+                    )),
+                    7 => Some(raw_mct_graph_reference(
+                        2,
+                        1,
+                        MctArrayKind::Dependency,
+                        false,
+                        7,
+                        8,
+                    )),
+                    _ => Some(raw_mct_graph_reference(
+                        2,
+                        2,
+                        MctArrayKind::Offset,
+                        false,
+                        8,
+                        0,
+                    )),
+                };
+                let record = MctRecord {
+                    index,
+                    collections: reference.into_iter().collect(),
+                };
+                let bad = MctRecord {
+                    index,
+                    collections: vec![raw_mct_graph_reference(
+                        0,
+                        0,
+                        MctArrayKind::Dependency,
+                        true,
+                        0,
+                        0,
+                    )],
+                };
+                let other = MctRecord {
+                    index: index.wrapping_add(1),
+                    collections: vec![],
+                };
+                for records in [
+                    vec![record.clone()],
+                    vec![record.clone(), bad.clone()],
+                    vec![other, record.clone(), bad.clone()],
+                    vec![bad, record.clone()],
+                ] {
+                    assert_eq!(
+                        parser.resolve_mct_stage(&record, &arrays),
+                        reference_mct_graph_stage(&record, &arrays)
+                    );
+                    for order in [
+                        vec![],
+                        vec![index],
+                        vec![index, index],
+                        vec![index.wrapping_add(1), index],
+                        vec![index, index.wrapping_add(1)],
+                        vec![0],
+                        vec![255],
+                        vec![index, index.wrapping_add(1), index],
+                    ] {
+                        let parameters = MctParameters {
+                            arrays: arrays.clone(),
+                            records: records.clone(),
+                            order,
+                        };
+                        assert_eq!(
+                            parser.resolve_multiple_component_transform(&parameters),
+                            reference_mct_graph(&parameters)
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 73_728);
     }
 
     fn raw_mct_registry_array(index: u8, variant: usize) -> MctArray {
