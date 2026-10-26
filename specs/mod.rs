@@ -13577,6 +13577,147 @@ pub open spec fn part1_resolve_decompositions(owner: (u16, Seq<Part1ParsedCoding
     part1_resolve_decompositions_from(owner, extensions, 0)
 }
 
+pub open spec fn part1_component_styles_new(components: u16, default: Part1ParsedCodingStyle)
+    -> Result<(u16, Seq<Part1ParsedCodingStyle>), crate::DecodeError>
+{
+    if components == 0 || components > crate::codestream::component_style_capacity() {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidImageGeometry))
+    } else { Ok((components, Seq::new(crate::codestream::component_style_capacity() as nat, |_i: int| default))) }
+}
+
+pub open spec fn part1_component_quantizations_new(components: u16, default: Part2Quantization)
+    -> Result<(u16, Seq<Part2Quantization>), crate::DecodeError>
+{
+    if components == 0 || components > crate::codestream::component_style_capacity() {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidImageGeometry))
+    } else { Ok((components, Seq::new(components as nat, |_i: int| default))) }
+}
+
+pub open spec fn part1_set_component_quantization(
+    owner: (u16, Seq<Part2Quantization>), component: u16, quantization: Part2Quantization,
+) -> (Result<(), crate::DecodeError>, (u16, Seq<Part2Quantization>)) {
+    if component >= owner.0 || component >= owner.1.len() {
+        (Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidQuantization)), owner)
+    } else { (Ok(()), (owner.0, owner.1.update(component as int, quantization))) }
+}
+
+pub open spec fn part1_quantization_compatible(
+    quantization: Part2Quantization, levels: u8, directions: Seq<crate::codestream::DecompositionDirection>,
+) -> bool {
+    match quantization.0 {
+        crate::codestream::QuantizationStyle::None | crate::codestream::QuantizationStyle::ScalarExpounded =>
+            quantization.2 == part2_subband_count(levels, directions),
+        crate::codestream::QuantizationStyle::ScalarDerived => quantization.2 == 1,
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_main_styles_from(
+    owner: (u16, Seq<Part1ParsedCodingStyle>), default: Part1ParsedCodingStyle,
+    slots: Seq<Option<Part1CodestreamSegment>>, extensions: Part2OwnedExtensions,
+    limits: &crate::ResourceLimits, component: nat,
+) -> Result<(u16, Seq<Part1ParsedCodingStyle>), crate::DecodeError>
+    decreases owner.0 as nat - component,
+{
+    if component >= owner.0 {
+        let resolved = part1_resolve_decompositions(owner, extensions);
+        match resolved.0 { Err(error) => Err(error), Ok(()) => Ok(resolved.1) }
+    } else {
+        let slot = if component < slots.len() { slots[component as int] } else { None };
+        match slot {
+            None => part1_main_styles_from(owner, default, slots, extensions, limits, component + 1),
+            Some(segment) => match part1_parse_coc(segment.offset, segment.payload, owner.0, default, limits) {
+                Err(error) => Err(error),
+                Ok((_, style)) => {
+                    let stored = part1_set_component_style(owner, component as u16, style);
+                    match stored.0 {
+                        Err(error) => Err(error),
+                        Ok(()) => part1_main_styles_from((owner.0, stored.1.1), default, slots, extensions, limits, component + 1),
+                    }
+                },
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_finish_main_styles(
+    components: u16, default: Part1ParsedCodingStyle, slots: Seq<Option<Part1CodestreamSegment>>,
+    extensions: Part2OwnedExtensions, limits: &crate::ResourceLimits,
+) -> Result<(u16, Seq<Part1ParsedCodingStyle>), crate::DecodeError> {
+    match part1_component_styles_new(components, default) {
+        Err(error) => Err(error),
+        Ok(owner) => part1_main_styles_from(owner, default, slots, extensions, limits, 0),
+    }
+}
+
+pub open spec fn part1_style_owner_lookup(owner: (u16, Seq<Part1ParsedCodingStyle>), component: u16)
+    -> Result<Part1ParsedCodingStyle, crate::DecodeError>
+{
+    if component >= owner.0 || component >= owner.1.len() {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidCodingStyle))
+    } else { Ok(owner.1[component as int]) }
+}
+
+pub open spec fn part1_quantization_owner_lookup(owner: (u16, Seq<Part2Quantization>), component: u16)
+    -> Result<Part2Quantization, crate::DecodeError>
+{
+    if component >= owner.0 || component >= owner.1.len() {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidQuantization))
+    } else { Ok(owner.1[component as int]) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_main_quantizations_from(
+    owner: (u16, Seq<Part2Quantization>), styles: (u16, Seq<Part1ParsedCodingStyle>),
+    slots: Seq<Option<Part1CodestreamSegment>>, component: nat,
+) -> Result<(u16, Seq<Part2Quantization>), crate::DecodeError>
+    decreases owner.0 as nat - component,
+{
+    if component >= owner.0 { Ok(owner) }
+    else {
+        let slot = if component < slots.len() { slots[component as int] } else { None };
+        let selected = match slot {
+            None => Ok(owner),
+            Some(segment) => match part1_style_owner_lookup(styles, component as u16) {
+                Err(error) => Err(error),
+                Ok(style) => match part1_parse_qcc(segment.offset, segment.payload, owner.0, style) {
+                    Err(error) => Err(error),
+                    Ok((_, quantization)) => {
+                        let stored = part1_set_component_quantization(owner, component as u16, quantization);
+                        match stored.0 { Err(error) => Err(error), Ok(()) => Ok(stored.1) }
+                    },
+                },
+            },
+        };
+        match selected {
+            Err(error) => Err(error),
+            Ok(updated) => match part1_quantization_owner_lookup(updated, component as u16) {
+                Err(error) => Err(error),
+                Ok(quantization) => match part1_style_owner_lookup(styles, component as u16) {
+                    Err(error) => Err(error),
+                    Ok(style) => {
+                        if !part1_quantization_compatible(quantization, style.decomposition_levels, style.decomposition_directions) {
+                            Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidQuantization))
+                        } else { part1_main_quantizations_from(updated, styles, slots, component + 1) }
+                    },
+                },
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_finish_main_quantizations(
+    components: u16, default: Part2Quantization, styles: (u16, Seq<Part1ParsedCodingStyle>),
+    slots: Seq<Option<Part1CodestreamSegment>>,
+) -> Result<(u16, Seq<Part2Quantization>), crate::DecodeError> {
+    match part1_component_quantizations_new(components, default) {
+        Err(error) => Err(error),
+        Ok(owner) => part1_main_quantizations_from(owner, styles, slots, 0),
+    }
+}
+
 pub struct Part1CodHeader {
     pub flags: u8, pub progression_order: crate::codestream::ProgressionOrder,
     pub layers: u16, pub multiple_component_transform: bool, pub decomposition_levels: u8,

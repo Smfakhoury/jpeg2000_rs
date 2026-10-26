@@ -1108,6 +1108,12 @@ class FrameworkTests(WorkingFiles):
             framework._DECOMPOSITION_RESOLUTION_CONTRACTS, 5,
         )
 
+    def test_inventory_binds_actual_main_coc_qcc_tables_native_factories_and_compatibility(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-main-component-configuration"},
+            framework._MAIN_COMPONENT_CONFIGURATION_CONTRACTS, 6,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

@@ -640,10 +640,20 @@ verus! {
         styles.components
     }
 
+    pub closed spec fn component_style_capacity() -> usize {
+        MAX_COMPONENTS
+    }
+
     closed spec fn component_style_owner_view(styles: &ComponentCodingStyles)
         -> (u16, Seq<crate::specs::Part1ParsedCodingStyle>)
     {
         (styles.components, styles.styles@.map(|_i: int, style: CodingStyle| parsed_coding_style_view(style)))
+    }
+
+    closed spec fn component_style_owner_outcome(result: Result<ComponentCodingStyles, DecodeError>)
+        -> Result<(u16, Seq<crate::specs::Part1ParsedCodingStyle>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(owner) => Ok(component_style_owner_view(&owner)) }
     }
 
     pub closed spec fn coding_style_tier1_result(style: CodingStyle) -> Result<Tier1CodingStyle, DecodeError> {
@@ -1078,19 +1088,31 @@ pub struct ComponentCodingStyles {
     styles: [CodingStyle; MAX_COMPONENTS],
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures component_style_owner_outcome(result) == crate::specs::part1_component_styles_new(
+        components, parsed_coding_style_view(default)),
+))]
+fn new_component_coding_styles(
+    components: u16,
+    default: CodingStyle,
+) -> Result<ComponentCodingStyles, DecodeError> {
+    if components == 0 || usize::from(components) > MAX_COMPONENTS {
+        return Err(packet_input_error(0, MalformedKind::InvalidImageGeometry));
+    }
+    let owner = ComponentCodingStyles {
+        components,
+        styles: [default; MAX_COMPONENTS],
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(component_style_owner_view(&owner).1 =~= Seq::new(MAX_COMPONENTS as nat, |_i: int| parsed_coding_style_view(default)));
+    }
+    Ok(owner)
+}
+
 impl ComponentCodingStyles {
     fn new(components: u16, default: CodingStyle) -> Result<Self, DecodeError> {
-        if components == 0 || usize::from(components) > MAX_COMPONENTS {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
-        }
-
-        Ok(Self {
-            components,
-            styles: [default; MAX_COMPONENTS],
-        })
+        new_component_coding_styles(components, default)
     }
 
     pub(crate) fn uniform(components: u16, default: CodingStyle) -> Result<Self, DecodeError> {
@@ -1184,19 +1206,31 @@ verus! {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures parsed_quantization_owner_outcome(result) == crate::specs::part1_component_quantizations_new(
+        components, quantization_view(&default)),
+))]
+fn new_component_quantizations(
+    components: u16,
+    default: Quantization,
+) -> Result<ComponentQuantizations, DecodeError> {
+    if components == 0 || usize::from(components) > MAX_COMPONENTS {
+        return Err(packet_input_error(0, MalformedKind::InvalidImageGeometry));
+    }
+    let owner = ComponentQuantizations {
+        components,
+        quantizations: vec![default; usize::from(components)],
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(parsed_quantization_owner_view(&owner).1 =~= Seq::new(components as nat, |_i: int| quantization_view(&default)));
+    }
+    Ok(owner)
+}
+
 impl ComponentQuantizations {
     fn new(components: u16, default: Quantization) -> Result<Self, DecodeError> {
-        if components == 0 || usize::from(components) > MAX_COMPONENTS {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidImageGeometry,
-            ));
-        }
-
-        Ok(Self {
-            components,
-            quantizations: vec![default; usize::from(components)],
-        })
+        new_component_quantizations(components, default)
     }
 
     pub(crate) fn uniform(components: u16, default: Quantization) -> Result<Self, DecodeError> {
@@ -1222,18 +1256,21 @@ impl ComponentQuantizations {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parsed_quantization_owner_view(final(self))) == crate::specs::part1_set_component_quantization(
+            parsed_quantization_owner_view(old(self)), component, quantization_view(&quantization)),
+    ))]
     fn set(&mut self, component: u16, quantization: Quantization) -> Result<(), DecodeError> {
-        if component >= self.components {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidQuantization,
-            ));
+        if component >= self.components || usize::from(component) >= self.quantizations.len() {
+            return Err(packet_input_error(0, MalformedKind::InvalidQuantization));
         }
-        let slot = self
-            .quantizations
-            .get_mut(usize::from(component))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidQuantization))?;
-        *slot = quantization;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = parsed_quantization_owner_view(self); }
+        self.quantizations[usize::from(component)] = quantization;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(parsed_quantization_owner_view(self).1 =~= before.1.update(component as int, quantization_view(&quantization)));
+        }
         Ok(())
     }
 
@@ -1430,6 +1467,10 @@ impl Quantization {
         true
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part1_quantization_compatible(quantization_view(&self),
+            decomposition_selector_view(coding_style).0, decomposition_selector_view(coding_style).1),
+    ))]
     pub fn is_compatible_with(self, coding_style: CodingStyle) -> bool {
         match self.style {
             QuantizationStyle::None | QuantizationStyle::ScalarExpounded => {
@@ -3823,6 +3864,18 @@ verus! {
         (value.components, value.quantizations@)
     }
 
+    closed spec fn parsed_quantization_owner_view(value: &ComponentQuantizations)
+        -> (u16, Seq<crate::specs::Part2Quantization>)
+    {
+        (value.components, value.quantizations@.map(|_i: int, quantization: Quantization| quantization_view(&quantization)))
+    }
+
+    closed spec fn parsed_quantization_owner_outcome(result: Result<ComponentQuantizations, DecodeError>)
+        -> Result<(u16, Seq<crate::specs::Part2Quantization>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(owner) => Ok(parsed_quantization_owner_view(&owner)) }
+    }
+
     pub closed spec fn owned_decomposition_view(value: &DecompositionStructure) -> (u8, Seq<DecompositionDirection>) {
         (value.index, value.directions@)
     }
@@ -4238,6 +4291,10 @@ verus! {
         crate::specs::Part1CodestreamSegment { marker: segment.marker, offset: segment.offset, payload: segment.payload@ }
     }
 
+    closed spec fn segment_slots_view(slots: Seq<Option<Segment>>) -> Seq<Option<crate::specs::Part1CodestreamSegment>> {
+        slots.map(|_i: int, slot: Option<Segment>| match slot { None => None, Some(segment) => Some(segment_view(segment)) })
+    }
+
     closed spec fn segment_outcome(result: Result<Segment<'_>, DecodeError>)
         -> Result<crate::specs::Part1CodestreamSegment, DecodeError>
     {
@@ -4280,6 +4337,113 @@ fn new_parser<'a>(input: &'a [u8], limits: &'a ResourceLimits) -> Result<Parser<
 }
 
 impl<'a> Parser<'a> {
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures component_style_owner_outcome(result) == crate::specs::part1_finish_main_styles(
+            components, parsed_coding_style_view(default), segment_slots_view(slots@),
+            owned_extensions_view(extensions), self.limits),
+    ))]
+    fn finish_main_component_styles(
+        &self,
+        components: u16,
+        default: CodingStyle,
+        slots: &[Option<Segment<'a>>],
+        extensions: &Part2Extensions,
+    ) -> Result<ComponentCodingStyles, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost goal = crate::specs::part1_finish_main_styles(components, parsed_coding_style_view(default),
+                segment_slots_view(slots@), owned_extensions_view(extensions), self.limits);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_finish_main_styles); }
+        let mut owner = new_component_coding_styles(components, default)?;
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= components, owner.components == components,
+                goal == crate::specs::part1_finish_main_styles(components, parsed_coding_style_view(default),
+                    segment_slots_view(slots@), owned_extensions_view(extensions), self.limits),
+                goal == crate::specs::part1_main_styles_from(component_style_owner_view(&owner),
+                    parsed_coding_style_view(default), segment_slots_view(slots@),
+                    owned_extensions_view(extensions), self.limits, component as nat),
+            decreases components - component,
+        ))]
+        while component < components {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_main_styles_from, 1);
+                reveal(crate::specs::part1_set_component_style);
+            }
+            let slot = match slots.get(usize::from(component)) {
+                Some(value) => *value,
+                None => None,
+            };
+            if let Some(segment) = slot {
+                let (_, style) = self.parse_coc(segment, components, default)?;
+                owner.set(component, style)?;
+            }
+            component += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_main_styles_from, 1); }
+        self.resolve_decomposition_structures(&mut owner, extensions)?;
+        Ok(owner)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures parsed_quantization_owner_outcome(result) == crate::specs::part1_finish_main_quantizations(
+            components, quantization_view(&default), component_style_owner_view(styles), segment_slots_view(slots@)),
+    ))]
+    fn finish_main_component_quantizations(
+        &self,
+        components: u16,
+        default: Quantization,
+        styles: &ComponentCodingStyles,
+        slots: &[Option<Segment<'a>>],
+    ) -> Result<ComponentQuantizations, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost goal = crate::specs::part1_finish_main_quantizations(components, quantization_view(&default),
+                component_style_owner_view(styles), segment_slots_view(slots@));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_finish_main_quantizations); }
+        let mut owner = new_component_quantizations(components, default)?;
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= components, owner.components == components,
+                goal == crate::specs::part1_finish_main_quantizations(components, quantization_view(&default),
+                    component_style_owner_view(styles), segment_slots_view(slots@)),
+                goal == crate::specs::part1_main_quantizations_from(parsed_quantization_owner_view(&owner),
+                    component_style_owner_view(styles), segment_slots_view(slots@), component as nat),
+            decreases components - component,
+        ))]
+        while component < components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_main_quantizations_from, 1); }
+            let slot = match slots.get(usize::from(component)) {
+                Some(value) => *value,
+                None => None,
+            };
+            if let Some(segment) = slot {
+                let style = styles.style(component)?;
+                let (_, quantization) = self.parse_qcc(segment, components, style)?;
+                owner.set(component, quantization)?;
+            }
+            if !owner
+                .quantization(component)?
+                .is_compatible_with(styles.style(component)?)
+            {
+                return Err(packet_input_error(0, MalformedKind::InvalidQuantization));
+            }
+            component += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_main_quantizations_from, 1); }
+        Ok(owner)
+    }
+
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures (result, parsed_image_size_view(final(size))) == crate::specs::part1_apply_component_depths(
@@ -4657,64 +4821,18 @@ impl<'a> Parser<'a> {
         let qcd_segment = qcd_segment
             .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
         let quantization = parser.parse_qcd(qcd_segment, coding_style)?;
-        let mut component_coding_styles =
-            ComponentCodingStyles::new(image_size.components, coding_style)?;
-        let mut component = 0_u16;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= image_size.components,
-                decreases image_size.components - component,
-            )
-        )]
-        while component < image_size.components {
-            let coc_segment = match coc_segments.get(usize::from(component)) {
-                Some(segment) => *segment,
-                None => None,
-            };
-            if let Some(segment) = coc_segment {
-                let (_, style) = parser.parse_coc(segment, image_size.components, coding_style)?;
-                component_coding_styles.set(component, style)?;
-            }
-            component = component
-                .checked_add(1)
-                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        }
-        parser.resolve_decomposition_structures(&mut component_coding_styles, &part2_extensions)?;
-        let mut component_quantizations =
-            ComponentQuantizations::new(image_size.components, quantization)?;
-        component = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= image_size.components,
-                decreases image_size.components - component,
-            )
-        )]
-        while component < image_size.components {
-            let qcc_segment = match qcc_segments.get(usize::from(component)) {
-                Some(segment) => *segment,
-                None => None,
-            };
-            if let Some(segment) = qcc_segment {
-                let style = component_coding_styles.style(component)?;
-                let (_, component_quantization) =
-                    parser.parse_qcc(segment, image_size.components, style)?;
-                component_quantizations.set(component, component_quantization)?;
-            }
-            if !component_quantizations
-                .quantization(component)?
-                .is_compatible_with(component_coding_styles.style(component)?)
-            {
-                return Err(DecodeError::malformed(
-                    0,
-                    MalformedKind::InvalidQuantization,
-                ));
-            }
-            component = component
-                .checked_add(1)
-                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        }
+        let component_coding_styles = parser.finish_main_component_styles(
+            image_size.components,
+            coding_style,
+            &coc_segments,
+            &part2_extensions,
+        )?;
+        let component_quantizations = parser.finish_main_component_quantizations(
+            image_size.components,
+            quantization,
+            &component_coding_styles,
+            &qcc_segments,
+        )?;
         parser.validate_progression_changes(
             &progression_changes,
             coding_style.layers,
@@ -20401,6 +20519,459 @@ mod tests {
         assert_packet_admission_state(&parser, before, &input, &limits);
     }
 
+    fn reference_main_styles(
+        components: u16,
+        default: CodingStyle,
+        slots: &[Option<Segment<'_>>],
+        extensions: &Part2Extensions,
+        limits: &ResourceLimits,
+    ) -> Result<ComponentCodingStyles, DecodeError> {
+        if components == 0 || usize::from(components) > MAX_COMPONENTS {
+            return Err(input_error_literal(0, MalformedKind::InvalidImageGeometry));
+        }
+        let mut owner = ComponentCodingStyles {
+            components,
+            styles: [default; MAX_COMPONENTS],
+        };
+        for index in 0..usize::from(components) {
+            if let Some(Some(segment)) = slots.get(index) {
+                let (_, style) = reference_component_coding_style(
+                    segment.payload,
+                    segment.offset,
+                    components,
+                    default,
+                    limits,
+                )?;
+                owner.styles[index] = style;
+            }
+        }
+        reference_decomposition_owner(&mut owner, extensions)?;
+        Ok(owner)
+    }
+
+    fn reference_main_quantizations(
+        components: u16,
+        default: Quantization,
+        styles: &ComponentCodingStyles,
+        slots: &[Option<Segment<'_>>],
+    ) -> Result<ComponentQuantizations, DecodeError> {
+        if components == 0 || usize::from(components) > MAX_COMPONENTS {
+            return Err(input_error_literal(0, MalformedKind::InvalidImageGeometry));
+        }
+        let lookup = |index: usize| {
+            if index >= usize::from(styles.components) {
+                Err(input_error_literal(0, MalformedKind::InvalidCodingStyle))
+            } else {
+                styles
+                    .styles
+                    .get(index)
+                    .copied()
+                    .ok_or_else(|| input_error_literal(0, MalformedKind::InvalidCodingStyle))
+            }
+        };
+        let mut owner = ComponentQuantizations {
+            components,
+            quantizations: vec![default; usize::from(components)],
+        };
+        for index in 0..usize::from(components) {
+            if let Some(Some(segment)) = slots.get(index) {
+                let style = lookup(index)?;
+                let (_, quantization) = reference_component_quantization(
+                    segment.payload,
+                    segment.offset,
+                    components,
+                    style,
+                )?;
+                owner.quantizations[index] = quantization;
+            }
+            let quantization = owner.quantizations[index];
+            let style = lookup(index)?;
+            let expected = if quantization.style == QuantizationStyle::ScalarDerived {
+                1
+            } else {
+                reference_quantization_subbands(style) as u16
+            };
+            if quantization.step_count != expected {
+                return Err(input_error_literal(0, MalformedKind::InvalidQuantization));
+            }
+        }
+        Ok(owner)
+    }
+
+    #[test]
+    fn actual_component_owner_factories_preserve_fixed_styles_and_logical_quantization_lengths() {
+        for components in [
+            0,
+            1,
+            2,
+            MAX_COMPONENTS as u16 - 1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for levels in [0, 1, 32, 33, u8::MAX] {
+                for pattern in 0..4 {
+                    let style = raw_resolution_style(levels, pattern);
+                    let expected = if components == 0 || usize::from(components) > MAX_COMPONENTS {
+                        Err(input_error_literal(0, MalformedKind::InvalidImageGeometry))
+                    } else {
+                        Ok((components, [style; MAX_COMPONENTS]))
+                    };
+                    for result in [
+                        new_component_coding_styles(components, style),
+                        ComponentCodingStyles::new(components, style),
+                        ComponentCodingStyles::uniform(components, style),
+                    ] {
+                        assert_eq!(
+                            result.map(|owner| (owner.components, owner.styles)),
+                            expected
+                        );
+                    }
+                }
+            }
+            for kind in [
+                QuantizationStyle::None,
+                QuantizationStyle::ScalarDerived,
+                QuantizationStyle::ScalarExpounded,
+            ] {
+                for count in [0, 1, MAX_QUANTIZATION_STEPS as u16, u16::MAX] {
+                    for pattern in 0..4 {
+                        let quantization = raw_subband_quantization(kind, count, pattern);
+                        let expected =
+                            if components == 0 || usize::from(components) > MAX_COMPONENTS {
+                                Err(input_error_literal(0, MalformedKind::InvalidImageGeometry))
+                            } else {
+                                Ok((components, vec![quantization; usize::from(components)]))
+                            };
+                        for result in [
+                            new_component_quantizations(components, quantization),
+                            ComponentQuantizations::new(components, quantization),
+                            ComponentQuantizations::uniform(components, quantization),
+                        ] {
+                            assert_eq!(
+                                result.map(|owner| (owner.components, owner.quantizations)),
+                                expected
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn actual_quantization_owner_setter_preserves_raw_logical_physical_and_full_step_frames() {
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for length in [0, 1, MAX_COMPONENTS - 1, MAX_COMPONENTS, MAX_COMPONENTS + 1] {
+                for component in [
+                    0,
+                    1,
+                    MAX_COMPONENTS as u16 - 1,
+                    MAX_COMPONENTS as u16,
+                    MAX_COMPONENTS as u16 + 1,
+                    u16::MAX,
+                ] {
+                    for kind in [
+                        QuantizationStyle::None,
+                        QuantizationStyle::ScalarDerived,
+                        QuantizationStyle::ScalarExpounded,
+                    ] {
+                        for count in [0, 1, MAX_QUANTIZATION_STEPS as u16, u16::MAX] {
+                            let values: Vec<_> = (0..length)
+                                .map(|index| {
+                                    raw_subband_quantization(
+                                        QuantizationStyle::None,
+                                        index as u16,
+                                        index % 8,
+                                    )
+                                })
+                                .collect();
+                            let mut expected = values.clone();
+                            let mut owner = ComponentQuantizations {
+                                components,
+                                quantizations: values,
+                            };
+                            let quantization = raw_subband_quantization(kind, count, 3);
+                            let result =
+                                if component < components && usize::from(component) < length {
+                                    expected[usize::from(component)] = quantization;
+                                    Ok(())
+                                } else {
+                                    Err(input_error_literal(0, MalformedKind::InvalidQuantization))
+                                };
+                            assert_eq!(owner.set(component, quantization), result);
+                            assert_eq!(
+                                (owner.components, owner.quantizations),
+                                (components, expected)
+                            );
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 1_800);
+    }
+
+    #[test]
+    fn actual_quantization_compatibility_uses_real_direction_count_not_normalized_levels() {
+        let mut contexts = 0;
+        for levels in 0..=u8::MAX {
+            for pattern in 0..8 {
+                let coding = raw_resolution_style(levels, pattern);
+                for kind in [
+                    QuantizationStyle::None,
+                    QuantizationStyle::ScalarDerived,
+                    QuantizationStyle::ScalarExpounded,
+                ] {
+                    for count in [0, 1, 2, 32, 97, 98, u16::MAX] {
+                        let quantization = raw_subband_quantization(kind, count, pattern);
+                        let expected = if kind == QuantizationStyle::ScalarDerived {
+                            1
+                        } else {
+                            reference_quantization_subbands(coding) as u16
+                        };
+                        assert_eq!(quantization.is_compatible_with(coding), count == expected);
+                        contexts += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 43_008);
+        let coding = raw_resolution_style(0, 7);
+        for count in 0..=u16::MAX {
+            for kind in [
+                QuantizationStyle::None,
+                QuantizationStyle::ScalarDerived,
+                QuantizationStyle::ScalarExpounded,
+            ] {
+                assert_eq!(
+                    raw_subband_quantization(kind, count, 1).is_compatible_with(coding),
+                    count == 1
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn actual_main_component_styles_consume_raw_slots_defaults_limits_and_real_resolver() {
+        let input = [0xa5, 0x5a];
+        let base = ResourceLimits::HARDENED;
+        let payloads: &[&[u8]] = &[
+            &[],
+            &[0, 0, 0, 0, 0, 0, 1],
+            &[1, 0, 0, 0, 0, 0, 1],
+            &[0, 2, 0, 0, 0, 0, 1],
+            &[0, 0, 0x81, 0, 0, 0, 1],
+        ];
+        let seed = reference_raw_coding_style(&[0, 0, 0, 1, 0, 0, 0, 0, 0, 1], 0, &base).unwrap();
+        let mut defaults = [
+            seed,
+            raw_resolution_style(0, 4),
+            raw_resolution_style(33, 6),
+            raw_resolution_style(2, 7),
+        ];
+        defaults[1].decomposition_structure = None;
+        defaults[2].decomposition_structure = None;
+        defaults[3].decomposition_structure = Some(0);
+        let mut contexts = 0;
+        for limits in [base, base.with_coding_style_limits_for_test(0, 0)] {
+            let mut parser = new_parser(&input, &limits).unwrap();
+            parser.position = usize::MAX;
+            parser.work_units = u64::MAX;
+            parser.packet_length_bytes = u64::MAX;
+            parser.packet_lengths = u64::MAX;
+            let before = component_application_reader_state(&parser);
+            for components in [
+                0,
+                1,
+                2,
+                MAX_COMPONENTS as u16,
+                MAX_COMPONENTS as u16 + 1,
+                u16::MAX,
+            ] {
+                for default in defaults {
+                    for length in [0, 1, 2, MAX_COMPONENTS, MAX_COMPONENTS + 1] {
+                        for payload in payloads {
+                            for variant in [0, 1, 5] {
+                                let extensions = raw_decomposition_extensions(variant, 2);
+                                for offset in [0, usize::MAX] {
+                                    for index in [0, 1, MAX_COMPONENTS - 1] {
+                                        let mut slots = vec![None; length];
+                                        if let Some(slot) = slots.get_mut(index) {
+                                            *slot = Some(Segment {
+                                                marker: QCC,
+                                                offset,
+                                                payload,
+                                            });
+                                        }
+                                        let expected = reference_main_styles(
+                                            components,
+                                            default,
+                                            &slots,
+                                            &extensions,
+                                            &limits,
+                                        );
+                                        let actual = parser.finish_main_component_styles(
+                                            components,
+                                            default,
+                                            &slots,
+                                            &extensions,
+                                        );
+                                        assert_eq!(
+                                            actual.map(|owner| (owner.components, owner.styles)),
+                                            expected.map(|owner| (owner.components, owner.styles))
+                                        );
+                                        assert_packet_admission_state(
+                                            &parser, before, &input, &limits,
+                                        );
+                                        contexts += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 21_600);
+    }
+
+    #[test]
+    fn actual_main_component_quantizations_preserve_first_errors_raw_slots_and_compatibility() {
+        let input = [0xa5, 0x5a];
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.position = usize::MAX;
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX;
+        let before = component_application_reader_state(&parser);
+        let seed = reference_raw_coding_style(&[0, 0, 0, 1, 0, 0, 0, 0, 0, 1], 0, &limits).unwrap();
+        let defaults = [
+            raw_subband_quantization(QuantizationStyle::ScalarDerived, 1, 3),
+            raw_subband_quantization(QuantizationStyle::None, 1, 1),
+            raw_subband_quantization(QuantizationStyle::ScalarExpounded, u16::MAX, 7),
+        ];
+        let payloads: &[&[u8]] = &[&[], &[0, 0, 0], &[1, 0, 0x28], &[0, 1, 0, 0], &[255, 0, 0]];
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            2,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for default in defaults {
+                for coding in [
+                    seed,
+                    raw_resolution_style(0, 0),
+                    raw_resolution_style(u8::MAX, 4),
+                ] {
+                    for style_count in [0, 1, 2, MAX_COMPONENTS as u16] {
+                        let styles = ComponentCodingStyles {
+                            components: style_count,
+                            styles: [coding; MAX_COMPONENTS],
+                        };
+                        for length in [0, 1, 2, MAX_COMPONENTS + 1] {
+                            for index in [0, 1] {
+                                for payload in payloads {
+                                    for offset in [0, usize::MAX] {
+                                        let mut slots = vec![None; length];
+                                        if let Some(slot) = slots.get_mut(index) {
+                                            *slot = Some(Segment {
+                                                marker: COC,
+                                                offset,
+                                                payload,
+                                            });
+                                        }
+                                        let expected = reference_main_quantizations(
+                                            components, default, &styles, &slots,
+                                        );
+                                        let actual = parser.finish_main_component_quantizations(
+                                            components, default, &styles, &slots,
+                                        );
+                                        assert_eq!(
+                                            actual.map(|owner| (
+                                                owner.components,
+                                                owner.quantizations
+                                            )),
+                                            expected.map(|owner| (
+                                                owner.components,
+                                                owner.quantizations
+                                            ))
+                                        );
+                                        assert_packet_admission_state(
+                                            &parser, before, &input, &limits,
+                                        );
+                                        contexts += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 17_280);
+    }
+
+    #[test]
+    fn actual_main_component_configuration_joins_cod_coc_qcd_qcc_reader_producers() {
+        let mut input = segment(COD, &[0, 0, 0, 1, 0, 0, 0, 0, 0, 1]);
+        input.extend(segment(COC, &[1, 0, 0, 0, 0, 0, 1]));
+        input.extend(segment(QCD, &[0, 0x28]));
+        input.extend(segment(QCC, &[1, 0, 0x30]));
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let raw = parser.read_segment().unwrap();
+        let default_style = parser.parse_cod(raw).unwrap();
+        let coc = parser.read_segment().unwrap();
+        let raw = parser.read_segment().unwrap();
+        let default_quantization = parser.parse_qcd(raw, default_style).unwrap();
+        let qcc = parser.read_segment().unwrap();
+        let before = component_application_reader_state(&parser);
+        let extensions = Part2Extensions::default();
+        let styles = parser
+            .finish_main_component_styles(2, default_style, &[None, Some(coc)], &extensions)
+            .unwrap();
+        let quantizations = parser
+            .finish_main_component_quantizations(
+                2,
+                default_quantization,
+                &styles,
+                &[None, Some(qcc)],
+            )
+            .unwrap();
+        assert_eq!(
+            (
+                styles.components,
+                quantizations.components,
+                quantizations.quantizations.len()
+            ),
+            (2, 2, 2)
+        );
+        assert_eq!(styles.styles[0], default_style);
+        assert_eq!(
+            styles.styles[1],
+            reference_component_coding_style(coc.payload, coc.offset, 2, default_style, &limits)
+                .unwrap()
+                .1
+        );
+        assert_eq!(quantizations.quantizations[0], default_quantization);
+        assert_eq!(quantizations.quantizations[1].steps[0].exponent, 6);
+        assert_eq!(parser.position, input.len());
+        assert_packet_admission_state(&parser, before, &input, &limits);
+    }
+
     fn reference_packet_sum(source: PacketLengthSource<'_>) -> Result<u64, DecodeError> {
         let bytes = match source {
             PacketLengthSource::None => return Ok(0),
@@ -27216,33 +27787,32 @@ mod tests {
         assert_eq!(words + headers + low_bits, 2_640_384);
     }
 
+    fn reference_component_quantization(
+        bytes: &[u8],
+        offset: usize,
+        components: u16,
+        coding: CodingStyle,
+    ) -> Result<(u16, Quantization), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let width = if components < 257 { 1 } else { 2 };
+        if bytes.len() < width {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let component = if width == 1 {
+            u16::from(bytes[0])
+        } else {
+            u16::from_be_bytes([bytes[0], bytes[1]])
+        };
+        if component >= components {
+            return Err(malformed(MalformedKind::InvalidQuantization));
+        }
+        reference_raw_quantization(&bytes[width..], offset, coding).map(|value| (component, value))
+    }
     #[test]
     fn actual_component_quantization_binds_prefix_bytes_defaults_and_reader() {
-        fn reference(
-            bytes: &[u8],
-            offset: usize,
-            components: u16,
-            coding: CodingStyle,
-        ) -> Result<(u16, Quantization), DecodeError> {
-            let malformed = |kind| DecodeError::MalformedInput {
-                offset: offset as u64,
-                kind,
-            };
-            let width = if components < 257 { 1 } else { 2 };
-            if bytes.len() < width {
-                return Err(malformed(MalformedKind::InvalidMarkerLength));
-            }
-            let component = if width == 1 {
-                u16::from(bytes[0])
-            } else {
-                u16::from_be_bytes([bytes[0], bytes[1]])
-            };
-            if component >= components {
-                return Err(malformed(MalformedKind::InvalidQuantization));
-            }
-            reference_raw_quantization(&bytes[width..], offset, coding)
-                .map(|value| (component, value))
-        }
         let limits = ResourceLimits::HARDENED;
         let parser = new_parser(&[], &limits).unwrap();
         let seed = reference_raw_coding_style(&[0, 0, 0, 1, 0, 0, 0, 0, 0, 1], 0, &limits).unwrap();
@@ -27289,7 +27859,9 @@ mod tests {
                                         components,
                                         coding
                                     ),
-                                    reference(&bytes, offset, components, coding),
+                                    reference_component_quantization(
+                                        &bytes, offset, components, coding
+                                    ),
                                 );
                                 cases += 1;
                             }
@@ -27306,7 +27878,10 @@ mod tests {
         let mut reader = new_parser(&input, &limits).unwrap();
         let segment = reader.read_segment().unwrap();
         let actual = reader.parse_qcc(segment, 257, seed).unwrap();
-        assert_eq!(Ok(actual), reference(&payload, 0, 257, seed));
+        assert_eq!(
+            Ok(actual),
+            reference_component_quantization(&payload, 0, 257, seed)
+        );
         assert_eq!(actual.0, 1);
         assert_eq!(actual.1.guard_bits, 7);
         assert_eq!(actual.1.step_count, 1);
@@ -27374,72 +27949,72 @@ mod tests {
         assert_eq!(cases, 5_242_880);
     }
 
+    fn reference_component_coding_style(
+        bytes: &[u8],
+        offset: usize,
+        components: u16,
+        default: CodingStyle,
+        limits: &ResourceLimits,
+    ) -> Result<(u16, CodingStyle), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let width = if components < 257 { 1 } else { 2 };
+        if bytes.len() < width {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let component = if width == 1 {
+            u16::from(bytes[0])
+        } else {
+            u16::from_be_bytes([bytes[0], bytes[1]])
+        };
+        if component >= components {
+            return Err(malformed(MalformedKind::InvalidCodingStyle));
+        }
+        if bytes.len() < width + 6 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let scoc = bytes[width];
+        if scoc > 1 {
+            return Err(malformed(MalformedKind::InvalidCodingStyle));
+        }
+        let parameters = &bytes[width + 1..];
+        let structure = if parameters[0] >= 128 {
+            let index = parameters[0] - 128;
+            if index == 0 {
+                return Err(malformed(MalformedKind::InvalidCodingStyle));
+            }
+            Some(index)
+        } else {
+            None
+        };
+        if parameters.len() > 38 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        let mut cod = vec![
+            scoc + 2 * u8::from(default.sop_markers) + 4 * u8::from(default.eph_markers),
+            match default.progression_order {
+                ProgressionOrder::Lrcp => 0,
+                ProgressionOrder::Rlcp => 1,
+                ProgressionOrder::Rpcl => 2,
+                ProgressionOrder::Pcrl => 3,
+                ProgressionOrder::Cprl => 4,
+            },
+        ];
+        cod.extend(default.layers.to_be_bytes());
+        cod.push(u8::from(default.multiple_component_transform));
+        cod.extend(parameters);
+        if structure.is_some() {
+            cod[5] = default.decomposition_levels;
+        }
+        let mut style = reference_raw_coding_style(&cod, offset, limits)?;
+        style.decomposition_structure = structure;
+        Ok((component, style))
+    }
+
     #[test]
     fn actual_raw_component_styles_preserve_source_defaults_selectors_and_first_errors() {
-        fn reference(
-            bytes: &[u8],
-            offset: usize,
-            components: u16,
-            default: CodingStyle,
-            limits: &ResourceLimits,
-        ) -> Result<(u16, CodingStyle), DecodeError> {
-            let malformed = |kind| DecodeError::MalformedInput {
-                offset: offset as u64,
-                kind,
-            };
-            let width = if components < 257 { 1 } else { 2 };
-            if bytes.len() < width {
-                return Err(malformed(MalformedKind::InvalidMarkerLength));
-            }
-            let component = if width == 1 {
-                u16::from(bytes[0])
-            } else {
-                u16::from_be_bytes([bytes[0], bytes[1]])
-            };
-            if component >= components {
-                return Err(malformed(MalformedKind::InvalidCodingStyle));
-            }
-            if bytes.len() < width + 6 {
-                return Err(malformed(MalformedKind::InvalidMarkerLength));
-            }
-            let scoc = bytes[width];
-            if scoc > 1 {
-                return Err(malformed(MalformedKind::InvalidCodingStyle));
-            }
-            let parameters = &bytes[width + 1..];
-            let structure = if parameters[0] >= 128 {
-                let index = parameters[0] - 128;
-                if index == 0 {
-                    return Err(malformed(MalformedKind::InvalidCodingStyle));
-                }
-                Some(index)
-            } else {
-                None
-            };
-            if parameters.len() > 38 {
-                return Err(malformed(MalformedKind::InvalidMarkerLength));
-            }
-            let mut cod = vec![
-                scoc + 2 * u8::from(default.sop_markers) + 4 * u8::from(default.eph_markers),
-                match default.progression_order {
-                    ProgressionOrder::Lrcp => 0,
-                    ProgressionOrder::Rlcp => 1,
-                    ProgressionOrder::Rpcl => 2,
-                    ProgressionOrder::Pcrl => 3,
-                    ProgressionOrder::Cprl => 4,
-                },
-            ];
-            cod.extend(default.layers.to_be_bytes());
-            cod.push(u8::from(default.multiple_component_transform));
-            cod.extend(parameters);
-            if structure.is_some() {
-                cod[5] = default.decomposition_levels;
-            }
-            let mut style = reference_raw_coding_style(&cod, offset, limits)?;
-            style.decomposition_structure = structure;
-            Ok((component, style))
-        }
-
         let base = ResourceLimits::HARDENED;
         let limits = [
             base,
@@ -27493,8 +28068,9 @@ mod tests {
                             for limit in &limits {
                                 let parser = new_parser(&[], limit).unwrap();
                                 for offset in [0, usize::MAX] {
-                                    let expected =
-                                        reference(&bytes, offset, components, *default, limit);
+                                    let expected = reference_component_coding_style(
+                                        &bytes, offset, components, *default, limit,
+                                    );
                                     let actual = parser.parse_coc(
                                         Segment {
                                             marker: 0x1234,
@@ -27543,7 +28119,9 @@ mod tests {
                                             components,
                                             *default,
                                         ),
-                                        reference(&bytes, offset, components, *default, limit),
+                                        reference_component_coding_style(
+                                            &bytes, offset, components, *default, limit
+                                        ),
                                     );
                                     frontiers += 1;
                                 }
@@ -27561,7 +28139,10 @@ mod tests {
         let mut parser = new_parser(&input, &base).unwrap();
         let segment = parser.read_segment().unwrap();
         let actual = parser.parse_coc(segment, 257, seed).unwrap();
-        assert_eq!(Ok(actual), reference(&payload, 0, 257, seed, &base));
+        assert_eq!(
+            Ok(actual),
+            reference_component_coding_style(&payload, 0, 257, seed, &base)
+        );
         assert_eq!(actual.1.decomposition_structure, Some(1));
         assert_eq!(actual.1.decomposition_levels, 2);
         assert_eq!(actual.1.precinct_exponents[..3], [(1, 1), (2, 2), (3, 3)]);

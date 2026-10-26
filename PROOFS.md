@@ -25,6 +25,35 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual main component style and quantization production
+
+The actual main-header COC/QCC loops now call sole native producer methods.
+They consume the real parsers, decomposition resolver, table operations and
+direction-count compatibility query. Raw defaults and arbitrary optional
+segments are not normalized: short slot arrays omit overrides, extra slots
+are ignored, and a parsed component ID is not assumed to equal its slot.
+Constructor errors precede marker errors; a QCC slot checks its style before
+decoding, and every component retains the original compatibility/error order.
+
+The existing constructor APIs delegate to sole checked native factory bodies,
+following the reader-factory pattern. Full observations preserve the fixed
+physical style array versus logical-length quantization vector, all raw
+direction/precinct/flag/transform/step fields, and unused tails. A closed ghost
+observation exposes the actual private capacity without duplicating or
+changing its bound. Both genuine producers are wired back to main parsing.
+
+Independent byte references are shared with the existing exhaustive COC/QCC
+regressions without changing their cases. New tests exercise factory API
+paths, 1,800 raw setter frames, 43,008 compatibility contexts and all u16
+counts at zero levels, 21,600 COC table contexts, 17,280 QCC table contexts,
+and an actual COD/COC/QCD/QCC reader chain. Six exact mutation-tested recipes
+and two mathematical termination checks bind all results. The COC fold
+explicitly carries the setter's unchanged logical count to prove progress.
+No validity premises, normalized tables, supplied outcomes, new trust,
+caps, pins, budgets or termination bypass are introduced. These are not
+official conformance results; actual header collection and outer
+header/tile/file/parser/F2/F4/F8 composition remain separate.
+
 ## Actual DFS/ADS decomposition resolution
 
 The actual DFS/ADS lookup bodies now bind the complete first matching record,

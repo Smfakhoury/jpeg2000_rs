@@ -996,6 +996,41 @@ _DECOMPOSITION_RESOLUTION_CONTRACTS = {
     ),
 }
 
+_MAIN_COMPONENT_CONFIGURATION_CONTRACTS = {
+    ("src/codestream.rs", "new_component_coding_styles"): (
+        "part1_component_styles_new", _coverage_call("component_style_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("parsed_coding_style_view", "default"),
+    ),
+    ("src/codestream.rs", "new_component_quantizations"): (
+        "part1_component_quantizations_new", _coverage_call("parsed_quantization_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("quantization_view", r"&\s*default"),
+    ),
+    ("src/codestream.rs", "ComponentQuantizations::set"): (
+        "part1_set_component_quantization", r"\1",
+        _coverage_call("parsed_quantization_owner_view", _coverage_call("final", "self")),
+        _coverage_call("parsed_quantization_owner_view", _coverage_call("old", "self"))
+        + r"\s*,\s*component\s*,\s*" + _coverage_call("quantization_view", r"&\s*quantization"),
+    ),
+    ("src/codestream.rs", "Quantization::is_compatible_with"): (
+        "part1_quantization_compatible", r"\1", None,
+        _coverage_call("quantization_view", r"&\s*self")
+        + r"\s*,\s*" + _coverage_call("decomposition_selector_view", "coding_style") + r"\.0"
+        + r"\s*,\s*" + _coverage_call("decomposition_selector_view", "coding_style") + r"\.1",
+    ),
+    ("src/codestream.rs", "Parser::finish_main_component_styles"): (
+        "part1_finish_main_styles", _coverage_call("component_style_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("parsed_coding_style_view", "default")
+        + r"\s*,\s*" + _coverage_call("segment_slots_view", r"slots\s*@")
+        + r"\s*,\s*" + _coverage_call("owned_extensions_view", "extensions") + r"\s*,\s*self\.limits",
+    ),
+    ("src/codestream.rs", "Parser::finish_main_component_quantizations"): (
+        "part1_finish_main_quantizations", _coverage_call("parsed_quantization_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("quantization_view", r"&\s*default")
+        + r"\s*,\s*" + _coverage_call("component_style_owner_view", "styles")
+        + r"\s*,\s*" + _coverage_call("segment_slots_view", r"slots\s*@"),
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2642,6 +2677,7 @@ def validate_normative_coverage(
                 or _TILE_PACKET_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_RESOLUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _MAIN_COMPONENT_CONFIGURATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
