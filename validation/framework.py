@@ -211,7 +211,10 @@ def _coverage_symbol_present(path: Path, symbol: str, *, text: str | None = None
     ))
 
 
-def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
+def _coverage_function_header(
+    text: str, symbol: str, *,
+    implementation_ranges: dict[tuple[str, str, str], list[tuple[int, int, str]] | None] | None = None,
+) -> re.Match[str] | None:
     """Resolve formatted methods in their actual impl, never another short name."""
     short = symbol.rsplit("::", 1)[-1]
     pattern = re.compile(
@@ -226,23 +229,34 @@ def _coverage_function_header(text: str, symbol: str) -> re.Match[str] | None:
         )
         if short == "clone":
             trait_scope = r"(?:Clone[ \t]+for[ \t]+)?"
-        implementations = re.finditer(
-            rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
-            rf"{trait_scope}{re.escape(owner)}\b(?![^{{}}\n]*\bfor\b)[^{{}}\n]*\{{", text,
-        )
+        if implementation_ranges is None:
+            implementation_ranges = {}
+        key = (text, owner, trait_scope)
+        if key not in implementation_ranges:
+            ranges = []
+            for implementation in re.finditer(
+                rf"(?m)^([ \t]*)impl(?:[ \t]*<[^{{}}\n]*>)?[ \t]+"
+                rf"{trait_scope}{re.escape(owner)}\b(?![^{{}}\n]*\bfor\b)[^{{}}\n]*\{{", text,
+            ):
+                closing = re.search(
+                    rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
+                    text[implementation.end():],
+                )
+                if closing is None:
+                    implementation_ranges[key] = None
+                    break
+                start = implementation.end()
+                ranges.append((start, start + closing.start(), implementation[1]))
+            else:
+                implementation_ranges[key] = ranges
+        resolved_ranges = implementation_ranges[key]
+        if resolved_ranges is None:
+            return None
         matches = []
-        for implementation in implementations:
-            closing = re.search(
-                rf"(?m)^{re.escape(implementation[1])}\}}[ \t]*(?://[^\n]*)?$",
-                text[implementation.end():],
-            )
-            if closing is None:
-                return None
-            start = implementation.end()
-            end = start + closing.start()
+        for start, end, indentation in resolved_ranges:
             matches.extend(
                 match for match in pattern.finditer(text, start, end)
-                if match[1] == implementation[1] + "    "
+                if match[1] == indentation + "    "
             )
         return matches[0] if len(matches) == 1 else None
     return pattern.search(text)
@@ -1965,6 +1979,8 @@ def validate_normative_coverage(
     symbols: dict[Path, set[str]] = {}
     headers: dict[tuple[Path, str], re.Match[str] | None] = {}
     bodies: dict[tuple[Path, str], str | None] = {}
+    implementation_ranges: dict[tuple[str, str, str], list[tuple[int, int, str]] | None] = {}
+    file_calls: dict[Path, set[str]] = {}
 
     def source_text(path: Path) -> str:
         if path not in texts:
@@ -1974,8 +1990,18 @@ def validate_normative_coverage(
     def function_header(path: Path, symbol: str) -> re.Match[str] | None:
         key = (path, symbol)
         if key not in headers:
-            headers[key] = _coverage_function_header(source_text(path), symbol)
+            headers[key] = _coverage_function_header(
+                source_text(path), symbol, implementation_ranges=implementation_ranges,
+            )
         return headers[key]
+
+    def cross_file_call(path: Path, callee: str) -> bool:
+        text = source_text(path)
+        if re.fullmatch(r"\w+", callee) is None:
+            return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
+        if path not in file_calls:
+            file_calls[path] = set(re.findall(r"\b(\w+)\s*\(", text))
+        return callee in file_calls[path]
 
     def same_file_call(path: Path, caller: str, callee: str) -> bool:
         if caller.rsplit("::", 1)[-1] == callee:
@@ -2995,7 +3021,7 @@ def validate_normative_coverage(
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if claimed_consumer and not any(
                 ref != reference
-                and (re.search(rf"\b{re.escape(short)}\s*\(", source_text((ROOT / ref["path"]).resolve()))
+                and (cross_file_call((ROOT / ref["path"]).resolve(), short)
                  if ref["path"] != reference["path"] else
                  same_file_call(path, ref["symbol"], short))
                 for ref in entry["implementation_refs"]
