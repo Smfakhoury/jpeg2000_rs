@@ -11,6 +11,12 @@ malware detection, an XML engine, an ICC execution engine, or network security.
 Rust, Verus, the solver, their standard-library contracts, and the build
 environment remain part of the trusted computing base.
 
+First-party library/example Rust and the standalone fuzz package forbid unsafe
+code through their manifests; the library also has a crate-level prohibition.
+The decoder's default runtime dependency graph is empty. This policy does not
+audit unsafe internals of the standard library, verification tools, libFuzzer
+or the separately executed native oracles.
+
 ## Threats and controls
 
 | Threat | Controls |

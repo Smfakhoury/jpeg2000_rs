@@ -86,6 +86,28 @@ publish the crate or change `publish = false`.
   oracle binaries, local research material, or generated run reports.
 - Minimize a redistributable failing input before adding it as a regression.
 - Avoid unreviewed additions to the supported standards profile.
+- Preserve `unsafe_code = "forbid"` in both Cargo manifests and the library's
+  crate-level prohibition. Safe code still needs panic, arithmetic, resource
+  and functional review; do not substitute a token scan for those checks.
+- Keep maintained JSON inputs in [validation/](validation/) and generated
+  evidence in ignored `target/`. Use issues/PRs for execution tracking rather
+  than committing session plans, run reports or approval records.
+
+## Coordinated proof work
+
+The repository's [Verus proof worker](.github/agents/verus-proof-worker.agent.md)
+is for a coordinator-assigned, bounded implementation task. It pins
+GPT-6.1 Sol; do not silently fall back to another model. A task must name its
+accepted source base, prerequisites, actual producer/consumer boundary and
+required gates. Dependent tasks wait until their prerequisite changes are
+accepted on `main`; they must not repeat work from an older base or create
+unreviewed parallel edits to the same proof chain.
+
+The coordinator audits exact PR-head evidence, keeps remaining proof work
+explicit, and does not infer completion from task status or a focused verifier
+run. Cloud agent profiles and setup workflows become usable after merging
+them into the default branch. They do not authorize merges, pin/budget
+changes, repository visibility changes or crate publication.
 
 ## Fuzzing
 

@@ -1,0 +1,48 @@
+name: Copilot setup steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install development and verification toolchains
+        run: |
+          rustup show active-toolchain
+          rustup component add clippy rustfmt
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
+      - name: Install validation prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y python3-venv time
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r validation/requirements.txt
+      - name: Install the released pinned verifier
+        run: |
+          mkdir -p .verus-tool target/validation
+          curl --fail --location --retry 3 \
+            --output .verus-tool/verus.zip \
+            https://github.com/verus-lang/verus/releases/download/release/0.2026.10.04.426d8b0/verus-0.2026.10.04.426d8b0-x86-linux.zip
+          echo "624018662868563a7bec0dd07be5e4dd0c3d61124b4b55105765884bf2d4d1a0  .verus-tool/verus.zip" \
+            | sha256sum --check
+          unzip -q .verus-tool/verus.zip -d .verus-tool
+          echo "$GITHUB_WORKSPACE/.verus-tool/verus-x86-linux" >> "$GITHUB_PATH"
+      - name: Build pinned independent references
+        run: |
+          bash validation/build-openjpeg.sh
+          bash validation/build-openjph.sh
+          echo "$GITHUB_WORKSPACE/target/validation/oracles/openjpeg-build/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/target/validation/oracles/openjph-build/src/apps/ojph_compress" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/target/validation/oracles/openjph-build/src/apps/ojph_expand" >> "$GITHUB_PATH"

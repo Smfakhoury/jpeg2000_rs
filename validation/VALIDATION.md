@@ -810,7 +810,11 @@ the existing release harness.
 
 ## Technical reference inventory
 
-`normative-coverage.json` is a static inventory of topics and implementation,
+[normative-coverage.json](normative-coverage.json), validated by
+[its schema](normative-coverage.schema.json), is a maintained input under
+`validation/`, not a generated report or implementation-progress record.
+Its source-reference paths remain relative to the repository root.
+It is a static inventory of topics and implementation,
 specification, executable contract, proof/view, and test references. Its
 validator checks every present item, including contracts that ensure a listed
 spec and are called by the claimed implementation. Shadow-only links fail.
