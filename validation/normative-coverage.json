@@ -4,12 +4,59 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-mct-graph-production",
+      "topic": "Actual complete optional transform graph from raw MctParameters arrays/records/order, using first record ID and genuine unique ID/kind array references. Empty order bypasses all unused metadata; repeated raw order IDs and empty raw records retain native results. Sole collection, stage and graph traversal preserve row/column admission, offset-before-matrix lookup, zero-index bypass, exact checked intermediate element arithmetic before halving/subtraction, final dimensions/floating rejection and every cloned array/collection/wavelet/stage field. Full root/traversal links include every early error; no prepared graphs, validated dimensions/registries, supplied decoder outcomes, new trust/caps/pins/budgets or termination bypass. Actual parser-to-parameters and final file/layer/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_multiple_component_transform"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_mct_stage"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_mct_collection"},
+        {"path": "src/codestream.rs", "symbol": "Parser::expected_mct_elements"},
+        {"path": "src/codestream.rs", "symbol": "find_mct_record_index"},
+        {"path": "src/codestream.rs", "symbol": "referenced_mct_array"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "Part1MctParameters"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_graph"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_graph_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_graph_stage"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_graph_stage_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_graph_collection"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_graph_element_count"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_record_find"},
+        {"path": "specs/mod.rs", "symbol": "part1_mct_registry_reference"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_multiple_component_transform"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_mct_stage"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_mct_collection"},
+        {"path": "src/codestream.rs", "symbol": "Parser::expected_mct_elements"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "mct_parameters_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_graph_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mct_stage_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mct_collection_outcome"},
+        {"path": "src/codestream.rs", "symbol": "mct_stages_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_collections_view"},
+        {"path": "src/codestream.rs", "symbol": "mct_array_kinds_equal"},
+        {"path": "src/codestream.rs", "symbol": "MctArray::clone"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_mct_graph_element_counts_preserve_checked_intermediate_overflow"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_graph_collections_preserve_lookup_shape_flags_and_all_fields"},
+        {"path": "src/codestream.rs", "symbol": "actual_mct_graph_complete_parameters_preserve_order_first_records_and_empty_bypass"}
+      ]
+    },
+    {
       "id": "part2-complete-native-mct-registry-production",
       "topic": "Actual raw MCT array/record first-index lookup, last-element-only duplicate admission, first-index replace-or-append and unique (index,kind) borrowed array reference. Full array index/kind/format/fraction/value and every record/collection/reference field remain unconstrained and observed. Earlier duplicate IDs do not fail admission when the last ID is unique; replacement is by index only and preserves later duplicates/order. Reference lookup ignores other kinds, errors at offset zero on zero or multiple matching arrays, and does not validate numerical values or dimensions. Unit-return mutations bind complete old/final vectors without signature changes. No prepared registries, uniqueness/normalization premises, result banks, new trust/caps/pins/budgets or termination bypass. Actual graph dimensions/resolution and outer parser/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
         {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
         {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
         {"path": "src/codestream.rs", "symbol": "Parser::resolve_multiple_component_transform"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_mct_collection"},
         {"path": "src/codestream.rs", "symbol": "validate_unique_mct_array_indexes"},
         {"path": "src/codestream.rs", "symbol": "validate_unique_mct_record_indexes"},
         {"path": "src/codestream.rs", "symbol": "replace_mct_array"},

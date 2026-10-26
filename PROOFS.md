@@ -40,6 +40,38 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Complete native MCT graph resolution
+
+The actual resolver derives its full optional graph from every raw array,
+record and order field, consuming the proved first-record and unique ID/kind
+array producers. An empty order retains the native `None` bypass even with
+unused arrays or records. Nonempty raw orders may repeat IDs, first duplicate
+records win, and raw empty records produce empty stages without a validated
+registry premise.
+
+The sole collection body checks nonzero/equal dimensions, resolves offsets
+before matrices with zero-index bypasses, executes actual checked element
+arithmetic, then rejects bad dimensions or floating reversible arrays. The
+count model preserves overflow of the intermediate product before halving,
+reversible row increment and final subtraction, including arbitrary native
+usize boundaries. The raw Offset kind retains its original non-Dependency
+collection-kind mapping rather than being normalized out.
+
+Array clones retain index, kind, numeric format, fraction bits and all values.
+Wavelet fields, reversibility, arbitrary component lists, stage IDs and
+encounter order are all bound. Canonical-root and suffix-fold invariants
+cover every early error in the actual collection/stage/graph traversal.
+Four exact contracts add no prepared graph, admitted dimension, supplied
+decoder outcome, new trust/cap/pin/budget or termination bypass. Actual
+parser-to-parameter and outer file/layer/F2/F4/F8 joins remain separate.
+
+Independent u128 arithmetic and iterator/reference construction exercise
+native word boundaries, 165,888 array-collection contexts, 648 wavelet
+contexts, 9,216 stages and 73,728 complete parameter/order contexts. Full raw
+outputs and first-error behavior are compared, including duplicate IDs,
+unused data, missing references and reversible/irreversible field regimes.
+These engineering regressions are not official conformance evidence.
+
 ## Native MCT registry admission, replacement and reference production
 
 Actual array and MCC-record admission checks only the last element against

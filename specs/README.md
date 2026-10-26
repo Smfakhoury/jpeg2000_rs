@@ -1,5 +1,16 @@
 # Specification audit guide
 
+`part1_mct_graph*` composes actual full raw MCT parameters, first record
+lookup, unique ID/kind arrays, real collection admission and native
+stage/graph construction. Checked count arithmetic models intermediate
+overflow before division/subtraction, not merely the final mathematical
+shape. Four exact contracts bind all cloned array/collection/wavelet/stage
+fields and every early error. Empty-order bypass, repeated raw order IDs,
+first duplicate records, zero-index optional references and raw empty stages
+are retained without normalized shape/registry or prepared-graph premises.
+No trust/cap/pin/budget or termination bypass is added. Actual parsed-state
+production and outer file/layer/F2/F4/F8 joins remain separate.
+
 `part1_mct_registry_*` binds actual last-element-only array/record admission,
 first-ID replace-or-append and exactly-one ID/kind borrowed lookup. Full
 private views retain arbitrary array numeric fields and all record/collection
