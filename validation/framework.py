@@ -861,6 +861,27 @@ _PACKED_HEADER_BYTES_CONTRACTS = {
     ),
 }
 
+_PACKET_LENGTH_ADMISSION_CONTRACTS = {
+    ("src/codestream.rs", "Parser::validate_packet_lengths"): (
+        "part1_validate_packet_lengths", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*encoded\s*@\s*,\s*marker_offset",
+    ),
+    ("src/codestream.rs", "Parser::parse_plm"): (
+        "part1_parse_plm", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self"))
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
+        + r"\s*,\s*" + _coverage_call(
+            "packet_length_groups_view", _coverage_call("final", "groups") + r"\s*@"),
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*" + _coverage_call("segment_view", "segment")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "next_index")
+        + r"\s*,\s*" + _coverage_call(
+            "packet_length_groups_view", _coverage_call("old", "groups") + r"\s*@"),
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2490,6 +2511,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_REGISTRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_GRAPH_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKED_HEADER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PACKET_LENGTH_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

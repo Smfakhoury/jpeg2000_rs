@@ -40,6 +40,34 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual packet-length admission and PLM group production
+
+Actual packet-length admission binds its full parser state and result to the
+raw encoded bytes and marker offset. Header-byte addition commits before its
+limit check, and genuine work charging precedes the actual variable-length
+decoder. Malformed varints retain those charges but do not commit packet
+counts. Completed traversal commits the global packet count before its limit
+check. Work errors use the parser position; byte/count overflow and malformed
+varints use the marker offset. Empty input still performs all counter checks.
+
+Actual PLM parsing derives every group length and borrowed source slice from
+the payload. Minimum length and index checks precede incrementing the index,
+including 255 to 256. That increment and genuine admission partial commits
+survive later errors. Successful groups append before the tile-part cap, so
+that error retains the appended group. Arbitrary preexisting groups retain
+their order, source variants, counters and encoded-byte metadata.
+
+Both sole executable bodies have exact total contracts, full initial-state
+and recursive-fold loop links, and checked mathematical termination. No
+admitted varints, normalized groups/counters, result banks, new trust,
+caps, pins, budgets or termination bypass are introduced. Independent
+wide-arithmetic references cover 786,432 short-varint contexts, 12,000
+charge/overflow/limit contexts, 156,672 PLM index/truncation/frame contexts,
+262,144 raw length words and 1,080 PLM partial-commit contexts. A real segment
+reader joins three borrowed groups, including an empty group. These tests
+are not official conformance evidence. PLT/final metadata and outer
+parser/F2/F4/F8 joins remain separate.
+
 ## Actual packed-header fragment and PPM-frame byte production
 
 Actual packed-fragment admission binds the complete parser state and every
@@ -56,7 +84,7 @@ no frames; nonzero fragments retain empty input, zero-length frames,
 short-header versus oversized-body offsets, and the post-push tile-part cap.
 Both sole executable bodies have exact contracts without admitted frames,
 prepared payloads, normalized counters, result banks, new trust/caps/pins/
-budgets or termination bypass. PLM/PLT and final metadata/parser/F2/F4/F8
+budgets or termination bypass. PLT and final metadata/parser/F2/F4/F8
 joins remain separate.
 
 Independent wide-arithmetic and byte references cover 147,456 index/marker/

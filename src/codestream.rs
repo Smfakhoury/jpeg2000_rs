@@ -3195,6 +3195,10 @@ verus! {
         }
     }
 
+    closed spec fn packet_length_groups_view(groups: Seq<PacketLengths>) -> Seq<crate::specs::Part1PacketLengths> {
+        groups.map(|_i: int, group: PacketLengths| packet_lengths_view(&group))
+    }
+
     pub closed spec fn packet_length_iter_view(iter: &PacketLengthIter) -> crate::specs::Part1PacketLengthIter {
         crate::specs::Part1PacketLengthIter {
             source: packet_length_source_view(iter.source), position: iter.position, segment_end: iter.segment_end,
@@ -9155,99 +9159,108 @@ impl<'a> Parser<'a> {
         Ok((component, segment.payload[shift_index]))
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), *final(next_index), packet_length_groups_view(final(groups)@))
+            == crate::specs::part1_parse_plm(parser_view(old(self)), segment_view(segment),
+                *old(next_index), packet_length_groups_view(old(groups)@)),
+    ))]
     fn parse_plm(
         &mut self,
         segment: Segment<'a>,
         next_index: &mut u16,
         groups: &mut Vec<PacketLengths<'a>>,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost initial_index = *next_index;
+            let ghost initial_groups = packet_length_groups_view(groups@);
+            let ghost goal = crate::specs::part1_parse_plm(input, segment_view(segment), initial_index, initial_groups);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_plm); }
         if segment.payload.len() < 5 {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let index = u16::from(segment.payload[0]);
         if index != *next_index || index > u16::from(u8::MAX) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerOrder,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerOrder));
         }
-        *next_index = next_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        *next_index += 1;
 
         let mut position = 1_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant position <= segment.payload.len(),
+                    input == parser_view(old(self)),
+                    initial_index == *old(next_index),
+                    initial_groups == packet_length_groups_view(old(groups)@),
+                    goal == crate::specs::part1_parse_plm(input, segment_view(segment), initial_index, initial_groups),
+                    goal == crate::specs::part1_plm_groups_from(parser_view(self), segment_view(segment),
+                        *next_index, position as nat, packet_length_groups_view(groups@)),
                 decreases segment.payload.len() - position,
             )
         )]
         while position < segment.payload.len() {
-            let previous_position = position;
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_plm_groups_from, 1); }
             if segment.payload.len() - position < 4 {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
             }
-            let encoded_length = usize::try_from(read_u32([
+            let encoded_length = match usize::try_from(read_u32([
                 segment.payload[position],
                 segment.payload[position + 1],
                 segment.payload[position + 2],
                 segment.payload[position + 3],
-            ]))
-            .map_err(|_| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            position = position.checked_add(4).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let end = position.checked_add(encoded_length).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            let encoded = segment.payload.get(position..end).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                )
-            })?;
+            ])) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            position += 4;
+            let end = match position.checked_add(encoded_length) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            if end > segment.payload.len() {
+                return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+            }
+            let encoded = &segment.payload[position..end];
             let (packet_count, _) = self.validate_packet_lengths(encoded, segment.offset)?;
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = packet_length_groups_view(groups@); }
             groups.push(PacketLengths {
                 source: PacketLengthSource::Plm(encoded),
                 packet_count,
                 encoded_bytes: encoded.len() as u64,
             });
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(packet_length_groups_view(groups@) =~= before.push(crate::specs::Part1PacketLengths {
+                    source: crate::specs::Part1PacketLengthSource::Plm(encoded@), packet_count,
+                    encoded_bytes: encoded.len() as u64,
+                }));
+            }
             if groups.len() as u64 > u64::from(self.limits.maximum_tile_parts()) {
-                return Err(DecodeError::limit(
-                    Resource::TileParts,
-                    u64::from(self.limits.maximum_tile_parts()),
-                    groups.len() as u64,
-                ));
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TileParts,
+                    limit: u64::from(self.limits.maximum_tile_parts()),
+                    actual: groups.len() as u64,
+                });
             }
             position = end;
-            if position <= previous_position || position > segment.payload.len() {
-                return Err(DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::InvalidMarkerLength,
-                ));
-            }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_plm_groups_from, 1); }
         Ok(())
     }
 
@@ -9386,27 +9399,34 @@ impl<'a> Parser<'a> {
         Ok(frames)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self))) == crate::specs::part1_validate_packet_lengths(
+            parser_view(old(self)), encoded@, marker_offset),
+    ))]
     fn validate_packet_lengths(
         &mut self,
         encoded: &[u8],
         marker_offset: usize,
     ) -> Result<(u64, u64), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost goal = crate::specs::part1_validate_packet_lengths(input, encoded@, marker_offset);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_validate_packet_lengths); }
         let encoded_bytes = encoded.len() as u64;
-        self.packet_length_bytes = self
-            .packet_length_bytes
-            .checked_add(encoded_bytes)
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(marker_offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+        self.packet_length_bytes = match self.packet_length_bytes.checked_add(encoded_bytes) {
+            Some(value) => value,
+            None => return Err(self.malformed_at(marker_offset, MalformedKind::ArithmeticOverflow)),
+        };
         if self.packet_length_bytes > self.limits.maximum_packet_header_bytes() {
-            return Err(DecodeError::limit(
-                Resource::PacketHeaderBytes,
-                self.limits.maximum_packet_header_bytes(),
-                self.packet_length_bytes,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::PacketHeaderBytes,
+                limit: self.limits.maximum_packet_header_bytes(),
+                actual: self.packet_length_bytes,
+            });
         }
         self.charge_work(encoded_bytes)?;
         let mut position = 0_usize;
@@ -9416,49 +9436,53 @@ impl<'a> Parser<'a> {
             verus_keep_ghost,
             verus_spec(
                 invariant position <= encoded.len(),
+                    input == parser_view(old(self)),
+                    goal == crate::specs::part1_validate_packet_lengths(input, encoded@, marker_offset),
+                    goal == crate::specs::part1_packet_length_admission_from(parser_view(self), encoded@,
+                        marker_offset, position, count, total),
                 decreases encoded.len() - position,
             )
         )]
         while position < encoded.len() {
-            let (length, next) =
-                decode_packet_length(encoded, position, encoded.len()).map_err(|_| {
-                    DecodeError::malformed(
-                        self.offset(marker_offset),
-                        MalformedKind::InvalidPacketLength,
-                    )
-                })?;
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_packet_length_admission_from, 1); }
+            let (length, next) = match decode_packet_length(encoded, position, encoded.len()) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Err(
+                        self.malformed_at(marker_offset, MalformedKind::InvalidPacketLength)
+                    );
+                }
+            };
             if next <= position || next > encoded.len() {
-                return Err(DecodeError::malformed(
-                    self.offset(marker_offset),
-                    MalformedKind::InvalidPacketLength,
-                ));
+                return Err(self.malformed_at(marker_offset, MalformedKind::InvalidPacketLength));
             }
-            count = count.checked_add(1).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(marker_offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
-            total = total.checked_add(u64::from(length)).ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(marker_offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+            count = match count.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(self.malformed_at(marker_offset, MalformedKind::ArithmeticOverflow));
+                }
+            };
+            total = match total.checked_add(u64::from(length)) {
+                Some(value) => value,
+                None => {
+                    return Err(self.malformed_at(marker_offset, MalformedKind::ArithmeticOverflow));
+                }
+            };
             position = next;
         }
-        self.packet_lengths = self.packet_lengths.checked_add(count).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(marker_offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_packet_length_admission_from, 1); }
+        self.packet_lengths = match self.packet_lengths.checked_add(count) {
+            Some(value) => value,
+            None => return Err(self.malformed_at(marker_offset, MalformedKind::ArithmeticOverflow)),
+        };
         if self.packet_lengths > self.limits.maximum_packets() {
-            return Err(DecodeError::limit(
-                Resource::Packets,
-                self.limits.maximum_packets(),
-                self.packet_lengths,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Packets,
+                limit: self.limits.maximum_packets(),
+                actual: self.packet_lengths,
+            });
         }
         Ok((count, total))
     }
@@ -18631,6 +18655,428 @@ mod tests {
             actual,
             reference_ppm_producer(bytes, fragments, parser.limits)
         );
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct PacketAdmissionState {
+        position: usize,
+        work: u64,
+        header_bytes: u64,
+        packet_count: u64,
+    }
+
+    fn raw_packet_admission_state() -> PacketAdmissionState {
+        PacketAdmissionState {
+            position: 17,
+            work: 0,
+            header_bytes: 0,
+            packet_count: 0,
+        }
+    }
+
+    fn reference_packet_admission(
+        limits: &ResourceLimits,
+        state: &mut PacketAdmissionState,
+        encoded: &[u8],
+        offset: usize,
+    ) -> Result<(u64, u64), DecodeError> {
+        let malformed = |position, kind| DecodeError::MalformedInput {
+            offset: position as u64,
+            kind,
+        };
+        let bytes = u128::from(state.header_bytes) + encoded.len() as u128;
+        if bytes > u128::from(u64::MAX) {
+            return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+        }
+        state.header_bytes = bytes as u64;
+        if state.header_bytes > limits.maximum_packet_header_bytes() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::PacketHeaderBytes,
+                limit: limits.maximum_packet_header_bytes(),
+                actual: state.header_bytes,
+            });
+        }
+        let work = u128::from(state.work) + encoded.len() as u128;
+        if work > u128::from(u64::MAX) {
+            return Err(malformed(state.position, MalformedKind::ArithmeticOverflow));
+        }
+        state.work = work as u64;
+        if state.work > limits.maximum_work_units() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: state.work,
+            });
+        }
+        let mut values = Vec::new();
+        let mut position = 0;
+        while position < encoded.len() {
+            let (value, next) = packet_length_wide_window(encoded, position, encoded.len())
+                .map_err(|_| malformed(offset, MalformedKind::InvalidPacketLength))?;
+            values.push(value);
+            position = next;
+        }
+        let count = values.len() as u128;
+        let total: u128 = values.into_iter().map(u128::from).sum();
+        let packets = u128::from(state.packet_count) + count;
+        if count > u128::from(u64::MAX)
+            || total > u128::from(u64::MAX)
+            || packets > u128::from(u64::MAX)
+        {
+            return Err(malformed(offset, MalformedKind::ArithmeticOverflow));
+        }
+        state.packet_count = packets as u64;
+        if state.packet_count > limits.maximum_packets() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::Packets,
+                limit: limits.maximum_packets(),
+                actual: state.packet_count,
+            });
+        }
+        Ok((count as u64, total as u64))
+    }
+
+    fn set_packet_admission_state(parser: &mut Parser<'_>, state: PacketAdmissionState) {
+        parser.position = state.position;
+        parser.work_units = state.work;
+        parser.packet_length_bytes = state.header_bytes;
+        parser.packet_lengths = state.packet_count;
+    }
+
+    fn assert_packet_admission_state(
+        parser: &Parser<'_>,
+        expected: PacketAdmissionState,
+        input: &[u8],
+        limits: &ResourceLimits,
+    ) {
+        assert_eq!(
+            PacketAdmissionState {
+                position: parser.position,
+                work: parser.work_units,
+                header_bytes: parser.packet_length_bytes,
+                packet_count: parser.packet_lengths,
+            },
+            expected
+        );
+        assert_eq!(parser.input, input);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, limits));
+    }
+
+    fn assert_packet_admission_case(
+        limits: &ResourceLimits,
+        state: PacketAdmissionState,
+        encoded: &[u8],
+        offset: usize,
+    ) {
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        set_packet_admission_state(&mut parser, state);
+        let mut expected = state;
+        let result = reference_packet_admission(limits, &mut expected, encoded, offset);
+        assert_eq!(parser.validate_packet_lengths(encoded, offset), result);
+        assert_packet_admission_state(&parser, expected, &input, limits);
+    }
+
+    #[derive(Clone)]
+    struct PlmProducerCase<'a> {
+        payload: &'a [u8],
+        marker: u16,
+        offset: usize,
+        next: u16,
+        groups: Vec<PacketLengths<'a>>,
+        state: PacketAdmissionState,
+    }
+
+    fn raw_plm_producer_case(payload: &[u8], next: u16) -> PlmProducerCase<'_> {
+        PlmProducerCase {
+            payload,
+            marker: PLM,
+            offset: usize::MAX,
+            next,
+            groups: vec![
+                PacketLengths {
+                    source: PacketLengthSource::None,
+                    packet_count: u64::MAX,
+                    encoded_bytes: 19,
+                },
+                PacketLengths {
+                    source: PacketLengthSource::Plt(&[0, 0xff]),
+                    packet_count: 7,
+                    encoded_bytes: u64::MAX,
+                },
+            ],
+            state: raw_packet_admission_state(),
+        }
+    }
+
+    fn reference_plm_producer(
+        limits: &ResourceLimits,
+        case: &mut PlmProducerCase<'_>,
+    ) -> Result<(), DecodeError> {
+        let malformed = |kind| DecodeError::MalformedInput {
+            offset: case.offset as u64,
+            kind,
+        };
+        if case.payload.len() < 5 {
+            return Err(malformed(MalformedKind::InvalidMarkerLength));
+        }
+        if u16::from(case.payload[0]) != case.next {
+            return Err(malformed(MalformedKind::InvalidMarkerOrder));
+        }
+        case.next += 1;
+        let mut remaining = &case.payload[1..];
+        while !remaining.is_empty() {
+            if remaining.len() < 4 {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let length = u32::from_be_bytes(remaining[..4].try_into().unwrap()) as u128;
+            let start = case.payload.len() as u128 - remaining.len() as u128 + 4;
+            if length > usize::MAX as u128 || start + length > usize::MAX as u128 {
+                return Err(malformed(MalformedKind::ArithmeticOverflow));
+            }
+            remaining = &remaining[4..];
+            if length > remaining.len() as u128 {
+                return Err(malformed(MalformedKind::InvalidMarkerLength));
+            }
+            let (encoded, tail) = remaining.split_at(length as usize);
+            let (packet_count, _) =
+                reference_packet_admission(limits, &mut case.state, encoded, case.offset)?;
+            case.groups.push(PacketLengths {
+                source: PacketLengthSource::Plm(encoded),
+                packet_count,
+                encoded_bytes: length as u64,
+            });
+            if case.groups.len() as u64 > u64::from(limits.maximum_tile_parts()) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TileParts,
+                    limit: u64::from(limits.maximum_tile_parts()),
+                    actual: case.groups.len() as u64,
+                });
+            }
+            remaining = tail;
+        }
+        Ok(())
+    }
+
+    fn assert_plm_producer_case(limits: &ResourceLimits, case: PlmProducerCase<'_>) {
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        set_packet_admission_state(&mut parser, case.state);
+        let mut next = case.next;
+        let mut groups = case.groups.clone();
+        let mut expected = case.clone();
+        let result = reference_plm_producer(limits, &mut expected);
+        assert_eq!(
+            parser.parse_plm(
+                Segment {
+                    marker: case.marker,
+                    offset: case.offset,
+                    payload: case.payload,
+                },
+                &mut next,
+                &mut groups,
+            ),
+            result
+        );
+        assert_eq!(next, expected.next);
+        assert_eq!(groups, expected.groups);
+        for (actual, expected) in groups.iter().zip(&expected.groups) {
+            if let (PacketLengthSource::Plm(actual), PacketLengthSource::Plm(expected)) =
+                (actual.source, expected.source)
+            {
+                assert!(core::ptr::eq(actual.as_ptr(), expected.as_ptr()));
+            }
+        }
+        assert_packet_admission_state(&parser, expected.state, &input, limits);
+    }
+
+    #[test]
+    fn actual_packet_length_admission_derives_all_short_varints_and_full_reader_results() {
+        let limits = ResourceLimits::HARDENED;
+        let mut contexts = 0;
+        for word in 0..=u16::MAX {
+            let bytes = word.to_be_bytes();
+            for end in 0..=bytes.len() {
+                for packet_count in [0, u64::MAX] {
+                    for offset in [0, usize::MAX] {
+                        let mut state = raw_packet_admission_state();
+                        state.packet_count = packet_count;
+                        assert_packet_admission_case(&limits, state, &bytes[..end], offset);
+                        contexts += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 786_432);
+    }
+
+    #[test]
+    fn actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits() {
+        let payloads: &[&[u8]] = &[
+            &[],
+            &[1],
+            &[0],
+            &[0x81, 0],
+            &[0x80],
+            &[0x8f, 0xff, 0xff, 0xff, 0x7f],
+            &[0xff, 0xff, 0xff, 0xff, 0x7f],
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 1],
+        ];
+        let mut contexts = 0;
+        for cap in [0, 1, 3, 8, 32] {
+            let limits = ResourceLimits::HARDENED
+                .with_maximum_packet_header_bytes(cap)
+                .unwrap()
+                .with_maximum_work_units(cap)
+                .unwrap()
+                .with_maximum_packets(cap)
+                .unwrap();
+            for work in [0, 1, 2, 8, u64::MAX - 1, u64::MAX] {
+                for header_bytes in [0, 1, 8, u64::MAX - 1, u64::MAX] {
+                    for packet_count in [0, 1, 8, u64::MAX - 1, u64::MAX] {
+                        for encoded in payloads {
+                            for offset in [0, usize::MAX] {
+                                assert_packet_admission_case(
+                                    &limits,
+                                    PacketAdmissionState {
+                                        position: 17,
+                                        work,
+                                        header_bytes,
+                                        packet_count,
+                                    },
+                                    encoded,
+                                    offset,
+                                );
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 12_000);
+    }
+
+    #[test]
+    fn actual_plm_groups_derive_raw_lengths_indexes_borrowed_sources_and_partial_commits() {
+        let mut contexts = 0;
+        for index in 0..=u8::MAX {
+            let mut payload = vec![index];
+            for encoded in [&[1, 2][..], &[][..], &[0][..]] {
+                payload.extend((encoded.len() as u32).to_be_bytes());
+                payload.extend(encoded);
+            }
+            for end in 0..=payload.len() {
+                for next in [0, 1, 254, 255, 256, u16::MAX] {
+                    for initial in [0, 2] {
+                        for cap in [0, 1, 3] {
+                            let limits = ResourceLimits::HARDENED
+                                .with_maximum_tile_parts(cap)
+                                .unwrap();
+                            let mut case = raw_plm_producer_case(&payload[..end], next);
+                            case.groups.truncate(initial);
+                            case.marker = PPT;
+                            assert_plm_producer_case(&limits, case);
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 156_672);
+        let mut lengths = 0;
+        for low in 0..=u16::MAX {
+            for high in [0_u32, 0xffff0000] {
+                for index in [0, 255] {
+                    let mut payload = vec![index];
+                    payload.extend((high | u32::from(low)).to_be_bytes());
+                    payload.extend([1, 2]);
+                    assert_plm_producer_case(
+                        &ResourceLimits::HARDENED,
+                        raw_plm_producer_case(&payload, u16::from(index)),
+                    );
+                    lengths += 1;
+                }
+            }
+        }
+        assert_eq!(lengths, 262_144);
+    }
+
+    #[test]
+    fn actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join() {
+        let mut payload = vec![0];
+        for encoded in [&[3][..], &[][..], &[0x81, 0][..]] {
+            payload.extend((encoded.len() as u32).to_be_bytes());
+            payload.extend(encoded);
+        }
+        let mut contexts = 0;
+        for cap in [0, 1, 2, 3, 32] {
+            for charge_cap in [0, 1, 2, 8] {
+                let limits = ResourceLimits::HARDENED
+                    .with_maximum_tile_parts(cap)
+                    .unwrap()
+                    .with_maximum_packet_header_bytes(charge_cap)
+                    .unwrap()
+                    .with_maximum_work_units(charge_cap)
+                    .unwrap()
+                    .with_maximum_packets(charge_cap)
+                    .unwrap();
+                for initial in [0, 2] {
+                    for work in [0, 1, u64::MAX] {
+                        for header_bytes in [0, 1, u64::MAX] {
+                            for packet_count in [0, 1, u64::MAX] {
+                                let mut case = raw_plm_producer_case(&payload, 0);
+                                case.groups.truncate(initial);
+                                case.state.work = work;
+                                case.state.header_bytes = header_bytes;
+                                case.state.packet_count = packet_count;
+                                assert_plm_producer_case(&limits, case);
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 1_080);
+        let input = segment(PLM, &payload);
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let raw = parser.read_segment().unwrap();
+        let before = parser.work_units;
+        let mut next = 0;
+        let mut groups = Vec::new();
+        parser.parse_plm(raw, &mut next, &mut groups).unwrap();
+        assert_eq!((next, groups.len()), (1, 3));
+        assert_eq!(
+            groups
+                .iter()
+                .map(|group| group.packet_count)
+                .collect::<Vec<_>>(),
+            [1, 0, 1]
+        );
+        assert_eq!(
+            groups
+                .iter()
+                .map(|group| group.encoded_bytes)
+                .collect::<Vec<_>>(),
+            [1, 0, 2]
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths,
+            ),
+            (input.len(), before + 3, 3, 2)
+        );
+        for (group, expected) in groups.iter().zip([&[3][..], &[][..], &[0x81, 0][..]]) {
+            assert_eq!(group.source, PacketLengthSource::Plm(expected));
+        }
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, &limits));
     }
 
     #[test]
