@@ -96,8 +96,14 @@ publish the crate or change `publish = false`.
 ## Coordinated proof work
 
 The repository's [Verus proof worker](.github/agents/verus-proof-worker.agent.md)
-is for a coordinator-assigned, bounded implementation task. It pins
-GPT-6.1 Sol; do not silently fall back to another model. A task must name its
+is for a coordinator-assigned, bounded implementation task. Its profile requests
+GPT-6.1 Sol, but selecting the profile alone does not guarantee the task's
+top-level model: `gh agent-task create --custom-agent` can still use Auto.
+Set both `model: gpt-6.1-sol` and `custom_agent: verus-proof-worker` explicitly
+when dispatching through the [agent-tasks REST API](https://docs.github.com/en/rest/agent-tasks/agent-tasks#start-a-task).
+Verify the resulting session's model in platform metadata or original runner
+logs, not the worker's self-identification. Stop on a mismatch or unavailable
+model; do not silently fall back. A task must name its
 accepted source base, prerequisites, actual producer/consumer boundary and
 required gates. Dependent tasks wait until their prerequisite changes are
 accepted on `main`; they must not repeat work from an older base or create

@@ -12,6 +12,12 @@ model is GPT-6.1 Sol (`gpt-6.1-sol`). If the platform reports another model or
 cannot honor this configuration, stop and report the blocker before editing;
 do not substitute Auto or another model. Do not launch other agents.
 
+The coordinator must explicitly select both the task-level `gpt-6.1-sol` model
+and this custom agent, then verify routing through platform metadata or original
+runner logs. Profile selection alone can leave the top-level task on Auto.
+Model selection is not an in-worker action, and self-identification is not
+verification.
+
 ## Source and dependency boundary
 
 - Start from the coordinator's exact accepted `main` base. Check its prerequisite
