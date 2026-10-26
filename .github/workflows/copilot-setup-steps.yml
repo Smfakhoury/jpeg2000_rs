@@ -19,7 +19,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Install development and verification toolchains
         run: |
+          unset RUSTUP_TOOLCHAIN
           rustup show active-toolchain
+          echo "RUSTUP_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')" >> "$GITHUB_ENV"
           rustup component add clippy rustfmt
           rustup toolchain install 1.88.0 --profile minimal
           rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
