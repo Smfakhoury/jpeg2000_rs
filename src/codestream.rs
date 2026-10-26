@@ -2944,6 +2944,12 @@ verus! {
     pub closed spec fn packed_packet_headers_present(headers: &PackedPacketHeaders) -> bool {
         !matches!(headers.source, PackedPacketHeaderSource::None)
     }
+
+    closed spec fn packed_packet_headers_outcome(result: Result<PackedPacketHeaders, DecodeError>)
+        -> Result<crate::specs::Part1PackedHeaders, DecodeError>
+    {
+        match result { Ok(headers) => Ok(packed_packet_headers_view(&headers)), Err(error) => Err(error) }
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec(result =>
@@ -3197,6 +3203,12 @@ verus! {
 
     closed spec fn packet_length_groups_view(groups: Seq<PacketLengths>) -> Seq<crate::specs::Part1PacketLengths> {
         groups.map(|_i: int, group: PacketLengths| packet_lengths_view(&group))
+    }
+
+    closed spec fn packet_lengths_outcome(result: Result<PacketLengths, DecodeError>)
+        -> Result<crate::specs::Part1PacketLengths, DecodeError>
+    {
+        match result { Ok(lengths) => Ok(packet_lengths_view(&lengths)), Err(error) => Err(error) }
     }
 
     pub closed spec fn packet_length_iter_view(iter: &PacketLengthIter) -> crate::specs::Part1PacketLengthIter {
@@ -10305,6 +10317,13 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packet_lengths_outcome(result) == crate::specs::part1_finish_packet_lengths(
+            self.input@, tile_header_start, tile_header_end, packet_lengths_view(&main_packet_lengths),
+            plt_seen, plt_packet_count, plt_encoded_bytes, plt_payload_bytes,
+            data_length, packed_header_length, tile_part_offset),
+    ))]
     fn finish_packet_lengths(
         &self,
         tile_header_start: usize,
@@ -10318,18 +10337,14 @@ impl<'a> Parser<'a> {
         packed_header_length: usize,
         tile_part_offset: usize,
     ) -> Result<PacketLengths<'a>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_finish_packet_lengths); }
         let packet_lengths = if plt_seen {
+            if tile_header_start > tile_header_end || tile_header_end > self.input.len() {
+                return Err(self.malformed_at(tile_part_offset, MalformedKind::InvalidTilePart));
+            }
             PacketLengths {
-                source: PacketLengthSource::Plt(
-                    self.input
-                        .get(tile_header_start..tile_header_end)
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(tile_part_offset),
-                                MalformedKind::InvalidTilePart,
-                            )
-                        })?,
-                ),
+                source: PacketLengthSource::Plt(&self.input[tile_header_start..tile_header_end]),
                 packet_count: plt_packet_count,
                 encoded_bytes: plt_encoded_bytes,
             }
@@ -10342,24 +10357,28 @@ impl<'a> Parser<'a> {
             } else {
                 sum_packet_lengths(packet_lengths.source)?
             };
-            let logical_payload_bytes = (data_length as u64)
-                .checked_add(packed_header_length as u64)
-                .ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(tile_part_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+            let logical_payload_bytes =
+                match (data_length as u64).checked_add(packed_header_length as u64) {
+                    Some(value) => value,
+                    None => {
+                        return Err(
+                            self.malformed_at(tile_part_offset, MalformedKind::ArithmeticOverflow)
+                        );
+                    }
+                };
             if declared_payload_bytes != logical_payload_bytes {
-                return Err(DecodeError::malformed(
-                    self.offset(tile_part_offset),
-                    MalformedKind::InvalidPacketLength,
-                ));
+                return Err(self.malformed_at(tile_part_offset, MalformedKind::InvalidPacketLength));
             }
         }
         Ok(packet_lengths)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packed_packet_headers_outcome(result) == crate::specs::part1_finish_packed_packet_headers(
+            self.input@, tile_header_start, tile_header_end, packed_packet_headers_view(&main),
+            ppt_fragments, ppt_length, tile_part_offset),
+    ))]
     fn finish_packed_packet_headers(
         &self,
         tile_header_start: usize,
@@ -10369,18 +10388,15 @@ impl<'a> Parser<'a> {
         ppt_length: usize,
         tile_part_offset: usize,
     ) -> Result<PackedPacketHeaders<'a>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_finish_packed_packet_headers); }
         if ppt_fragments == 0 {
             return Ok(main);
         }
-        let header = self
-            .input
-            .get(tile_header_start..tile_header_end)
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(tile_part_offset),
-                    MalformedKind::InvalidTilePart,
-                )
-            })?;
+        if tile_header_start > tile_header_end || tile_header_end > self.input.len() {
+            return Err(self.malformed_at(tile_part_offset, MalformedKind::InvalidTilePart));
+        }
+        let header = &self.input[tile_header_start..tile_header_end];
         Ok(PackedPacketHeaders {
             source: PackedPacketHeaderSource::MarkerSegments {
                 header,
@@ -11885,15 +11901,20 @@ fn decode_packet_length(
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_sum_packet_lengths(packet_length_source_view(source)),
+))]
 fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part1_sum_packet_lengths(packet_length_source_view(source)); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_sum_packet_lengths); }
     let bytes = match source {
         PacketLengthSource::Plm(bytes) => bytes,
         PacketLengthSource::None => return Ok(0),
         PacketLengthSource::Plt(_) => {
-            return Err(DecodeError::malformed(
-                0,
-                MalformedKind::InvalidPacketLength,
-            ));
+            return Err(packet_input_error(0, MalformedKind::InvalidPacketLength));
         }
     };
     let mut position = 0_usize;
@@ -11902,22 +11923,29 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
         verus_keep_ghost,
         verus_spec(
             invariant position <= bytes.len(),
+                goal == crate::specs::part1_sum_packet_lengths(packet_length_source_view(source)),
+                goal == crate::specs::part1_sum_packet_lengths_from(bytes@, position, total),
             decreases bytes.len() - position,
         )
     )]
     while position < bytes.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_sum_packet_lengths_from, 1); }
         let (length, next) = decode_packet_length(bytes, position, bytes.len())?;
         if next <= position || next > bytes.len() {
-            return Err(DecodeError::malformed(
+            return Err(packet_input_error(
                 position as u64,
                 MalformedKind::InvalidPacketLength,
             ));
         }
-        total = total
-            .checked_add(u64::from(length))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        total = match total.checked_add(u64::from(length)) {
+            Some(value) => value,
+            None => return Err(packet_input_error(0, MalformedKind::ArithmeticOverflow)),
+        };
         position = next;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_sum_packet_lengths_from, 1); }
     Ok(total)
 }
 
@@ -18889,6 +18917,365 @@ mod tests {
             }
         }
         assert_packet_admission_state(&parser, expected.state, &input, limits);
+    }
+
+    fn reference_packet_sum(source: PacketLengthSource<'_>) -> Result<u64, DecodeError> {
+        let bytes = match source {
+            PacketLengthSource::None => return Ok(0),
+            PacketLengthSource::Plt(_) => {
+                return Err(input_error_literal(0, MalformedKind::InvalidPacketLength));
+            }
+            PacketLengthSource::Plm(bytes) => bytes,
+        };
+        let mut position = 0;
+        let mut values = Vec::new();
+        while position < bytes.len() {
+            let (value, next) = packet_length_wide_window(bytes, position, bytes.len())?;
+            values.push(value);
+            position = next;
+        }
+        let total: u128 = values.into_iter().map(u128::from).sum();
+        if total > u128::from(u64::MAX) {
+            Err(input_error_literal(0, MalformedKind::ArithmeticOverflow))
+        } else {
+            Ok(total as u64)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct LengthFinalizationCase<'a> {
+        range: (usize, usize),
+        main: PacketLengths<'a>,
+        seen: bool,
+        plt_count: u64,
+        plt_bytes: u64,
+        plt_payload: u64,
+        data_length: usize,
+        packed_length: usize,
+        offset: usize,
+    }
+
+    fn reference_length_finalization<'a>(
+        input: &'a [u8],
+        case: LengthFinalizationCase<'a>,
+    ) -> Result<PacketLengths<'a>, DecodeError> {
+        let lengths = if case.seen {
+            let header = input
+                .get(case.range.0..case.range.1)
+                .ok_or_else(|| input_error_literal(case.offset, MalformedKind::InvalidTilePart))?;
+            PacketLengths {
+                source: PacketLengthSource::Plt(header),
+                packet_count: case.plt_count,
+                encoded_bytes: case.plt_bytes,
+            }
+        } else {
+            case.main
+        };
+        if lengths.source == PacketLengthSource::None {
+            return Ok(lengths);
+        }
+        let declared = if case.seen {
+            case.plt_payload
+        } else {
+            reference_packet_sum(lengths.source)?
+        };
+        let logical = case.data_length as u128 + case.packed_length as u128;
+        if logical > u128::from(u64::MAX) {
+            Err(input_error_literal(
+                case.offset,
+                MalformedKind::ArithmeticOverflow,
+            ))
+        } else if u128::from(declared) != logical {
+            Err(input_error_literal(
+                case.offset,
+                MalformedKind::InvalidPacketLength,
+            ))
+        } else {
+            Ok(lengths)
+        }
+    }
+
+    #[test]
+    fn actual_packet_sum_derives_raw_sources_all_short_varints_and_original_error_offsets() {
+        let mut contexts = 0;
+        for word in 0..=u16::MAX {
+            let bytes = word.to_be_bytes();
+            for end in 0..=bytes.len() {
+                for source in [
+                    PacketLengthSource::None,
+                    PacketLengthSource::Plm(&bytes[..end]),
+                    PacketLengthSource::Plt(&bytes[..end]),
+                ] {
+                    assert_eq!(sum_packet_lengths(source), reference_packet_sum(source));
+                    contexts += 1;
+                }
+            }
+        }
+        assert_eq!(contexts, 589_824);
+        for suffix in [
+            &[0][..],
+            &[0x80],
+            &[0x8f, 0xff, 0xff, 0xff, 0x7f],
+            &[0x90, 0x80, 0x80, 0x80, 0],
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 1],
+        ] {
+            let mut bytes = vec![1, 0x81, 0];
+            bytes.extend(suffix);
+            assert_eq!(
+                sum_packet_lengths(PacketLengthSource::Plm(&bytes)),
+                reference_packet_sum(PacketLengthSource::Plm(&bytes))
+            );
+        }
+        assert_eq!(
+            sum_packet_lengths(PacketLengthSource::Plm(&[1, 0x81, 0, 0])),
+            Err(input_error_literal(3, MalformedKind::InvalidPacketLength))
+        );
+    }
+
+    #[test]
+    fn actual_length_finalization_preserves_precedence_raw_fields_bounds_sums_and_reader() {
+        let input = [0xde, 0, 1, 0xff];
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let state = PacketAdmissionState {
+            position: usize::MAX,
+            work: u64::MAX,
+            header_bytes: u64::MAX,
+            packet_count: u64::MAX,
+        };
+        set_packet_admission_state(&mut parser, state);
+        let mut contexts = 0;
+        for source in [
+            PacketLengthSource::None,
+            PacketLengthSource::Plm(&[1, 2]),
+            PacketLengthSource::Plm(&[0]),
+            PacketLengthSource::Plm(&[]),
+            PacketLengthSource::Plt(&[]),
+        ] {
+            for (count, bytes) in [(0, 0), (u64::MAX, u64::MAX), (9, 17)] {
+                for start in [0, 1, 4, 5, usize::MAX] {
+                    for end in [0, 1, 4, 5, usize::MAX] {
+                        for seen in [false, true] {
+                            for payload in [0, 1, 3, u64::MAX] {
+                                for data in [0, 1, 3, usize::MAX] {
+                                    for packed in [0, 1, usize::MAX] {
+                                        for offset in [0, usize::MAX] {
+                                            let case = LengthFinalizationCase {
+                                                range: (start, end),
+                                                main: PacketLengths {
+                                                    source,
+                                                    packet_count: count,
+                                                    encoded_bytes: bytes,
+                                                },
+                                                seen,
+                                                plt_count: bytes,
+                                                plt_bytes: count,
+                                                plt_payload: payload,
+                                                data_length: data,
+                                                packed_length: packed,
+                                                offset,
+                                            };
+                                            let expected =
+                                                reference_length_finalization(&input, case);
+                                            let actual = parser.finish_packet_lengths(
+                                                start, end, case.main, seen, bytes, count, payload,
+                                                data, packed, offset,
+                                            );
+                                            assert_eq!(actual, expected);
+                                            if let (Ok(actual), Ok(expected)) = (actual, expected) {
+                                                match (actual.source, expected.source) {
+                                                    (
+                                                        PacketLengthSource::Plm(actual),
+                                                        PacketLengthSource::Plm(expected),
+                                                    )
+                                                    | (
+                                                        PacketLengthSource::Plt(actual),
+                                                        PacketLengthSource::Plt(expected),
+                                                    ) => assert!(core::ptr::eq(
+                                                        actual.as_ptr(),
+                                                        expected.as_ptr()
+                                                    )),
+                                                    _ => {}
+                                                }
+                                            }
+                                            assert_packet_admission_state(
+                                                &parser, state, &input, &limits,
+                                            );
+                                            contexts += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 72_000);
+    }
+
+    #[test]
+    fn actual_packed_finalization_preserves_zero_bypass_raw_main_and_exact_source_borrows() {
+        let input = [0xde, 0, 1, 0xff];
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let state = PacketAdmissionState {
+            position: usize::MAX,
+            work: u64::MAX,
+            header_bytes: u64::MAX,
+            packet_count: u64::MAX,
+        };
+        set_packet_admission_state(&mut parser, state);
+        let mut contexts = 0;
+        for main in [
+            PackedPacketHeaders {
+                source: PackedPacketHeaderSource::None,
+                length: usize::MAX,
+                fragments: u16::MAX,
+            },
+            PackedPacketHeaders {
+                source: PackedPacketHeaderSource::MarkerSegments {
+                    header: &[0, 0xff],
+                    marker: u16::MAX,
+                    logical_start: usize::MAX,
+                },
+                length: usize::MAX,
+                fragments: u16::MAX,
+            },
+            PackedPacketHeaders {
+                source: PackedPacketHeaderSource::MarkerSegments {
+                    header: &[],
+                    marker: PPM,
+                    logical_start: 17,
+                },
+                length: 0,
+                fragments: 0,
+            },
+        ] {
+            for start in [0, 1, 4, 5, usize::MAX] {
+                for end in [0, 1, 4, 5, usize::MAX] {
+                    for fragments in [0, 1, u16::MAX] {
+                        for length in [0, 1, usize::MAX] {
+                            for offset in [0, usize::MAX] {
+                                let expected = if fragments == 0 {
+                                    Ok(main)
+                                } else {
+                                    input.get(start..end).map_or_else(
+                                        || {
+                                            Err(input_error_literal(
+                                                offset,
+                                                MalformedKind::InvalidTilePart,
+                                            ))
+                                        },
+                                        |header| {
+                                            Ok(PackedPacketHeaders {
+                                                source: PackedPacketHeaderSource::MarkerSegments {
+                                                    header,
+                                                    marker: PPT,
+                                                    logical_start: 0,
+                                                },
+                                                length,
+                                                fragments,
+                                            })
+                                        },
+                                    )
+                                };
+                                let actual = parser.finish_packed_packet_headers(
+                                    start, end, main, fragments, length, offset,
+                                );
+                                assert_eq!(actual, expected);
+                                if let (Ok(actual), Ok(expected)) = (actual, expected)
+                                    && let (
+                                        PackedPacketHeaderSource::MarkerSegments {
+                                            header: actual,
+                                            ..
+                                        },
+                                        PackedPacketHeaderSource::MarkerSegments {
+                                            header: expected,
+                                            ..
+                                        },
+                                    ) = (actual.source, expected.source)
+                                {
+                                    assert!(core::ptr::eq(actual.as_ptr(), expected.as_ptr()));
+                                }
+                                assert_packet_admission_state(&parser, state, &input, &limits);
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 1_350);
+    }
+
+    #[test]
+    fn actual_packet_metadata_joins_real_plm_and_ppt_producers_without_prepared_results() {
+        let mut input = segment(PLM, &[0, 0, 0, 0, 1, 3]);
+        input.extend(segment(PPT, &[0, 0xab]));
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let raw = parser.read_segment().unwrap();
+        let mut groups = Vec::new();
+        let mut next_plm = 0;
+        parser.parse_plm(raw, &mut next_plm, &mut groups).unwrap();
+        let start = parser.position;
+        let raw = parser.read_segment().unwrap();
+        let end = parser.position;
+        let (mut next_ppt, mut fragments, mut bytes) = (0, 0, Vec::new());
+        parser
+            .parse_packed_fragment(raw, PPT, &mut next_ppt, &mut fragments, &mut bytes)
+            .unwrap();
+        let state = PacketAdmissionState {
+            position: parser.position,
+            work: parser.work_units,
+            header_bytes: parser.packet_length_bytes,
+            packet_count: parser.packet_lengths,
+        };
+        let packed = parser
+            .finish_packed_packet_headers(
+                start,
+                end,
+                PackedPacketHeaders::none(),
+                fragments,
+                bytes.len(),
+                17,
+            )
+            .unwrap();
+        let lengths = parser
+            .finish_packet_lengths(
+                usize::MAX,
+                0,
+                groups[0],
+                false,
+                u64::MAX,
+                u64::MAX,
+                u64::MAX,
+                2,
+                packed.length,
+                17,
+            )
+            .unwrap();
+        assert_eq!((next_plm, next_ppt, fragments), (1, 1, 1));
+        assert_eq!(bytes, [0xab]);
+        assert_eq!(lengths, groups[0]);
+        assert_eq!((lengths.packet_count, lengths.encoded_bytes), (1, 1));
+        assert_eq!(packed.length, 1);
+        assert_eq!(packed.fragments, 1);
+        assert_eq!(
+            packed.source,
+            PackedPacketHeaderSource::MarkerSegments {
+                header: &input[start..end],
+                marker: PPT,
+                logical_start: 0,
+            }
+        );
+        if let PackedPacketHeaderSource::MarkerSegments { header, .. } = packed.source {
+            assert!(core::ptr::eq(header.as_ptr(), input[start..end].as_ptr()));
+        } else {
+            panic!("actual PPT source was discarded");
+        }
+        assert_packet_admission_state(&parser, state, &input, &limits);
     }
 
     #[test]

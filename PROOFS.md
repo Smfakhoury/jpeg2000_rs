@@ -25,6 +25,33 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual packet metadata finalization
+
+The actual packet-length sum consumes raw source variants and the genuine
+variable-length decoder: absent lengths sum to zero, raw PLT rejects at
+offset zero, PLM decode errors retain their source positions, and checked
+total overflow retains offset zero. Full root/recursive loop links and
+mathematical termination bind this sole executable traversal.
+
+Actual length finalization derives a borrowed PLT header only after checking
+the input range, otherwise preserving every raw main field. Absent lengths
+bypass even invalid ranges and overflowing logical byte sizes. Present
+lengths use the actual source sum, or the raw PLT payload count, before
+checked data-plus-packed byte comparison. Error order and offsets remain
+native; packet counts and encoded-byte metadata are not normalized.
+Packed-header finalization unconditionally preserves arbitrary main metadata
+when PPT fragments are zero. Nonzero fragments derive the real input slice
+and all PPT marker/source/start/length/count fields without admitted headers.
+
+Exact total contracts cover all three actual bodies and complete result
+views, with no new trust, validity premises, supplied results, caps, pins,
+budgets or termination bypass. Independent references cover 589,824
+short-source/varint contexts, 72,000 length-finalization contexts and 1,350
+packed-finalization contexts, including every reader field and source-borrow
+identity. A real segment reader feeds actual PLM/PPT producers into both
+finishers. These are not official conformance results; actual PLT production
+and outer main/tile/file/parser/F2/F4/F8 composition remain separate.
+
 ## Actual packet-length admission and PLM group production
 
 Actual packet-length admission binds its full parser state and result to the

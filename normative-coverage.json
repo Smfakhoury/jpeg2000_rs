@@ -4,6 +4,47 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-packet-metadata-finalization",
+      "topic": "Actual raw packet-length sum and full packet-length/packed-header final Results. Sum keeps None zero, raw Plt rejection at zero, actual Plm varint errors at their source positions and checked total overflow at zero. PLT overrides main only after genuine input bounds/slice; absent selected lengths skip all range/sum/logical-size checks, while present data derives the actual declared sum and checked data-plus-packed byte comparison in native error order. Raw counts/encoded-byte/source fields are not normalized. PPT zero fragments preserves every arbitrary main field even invalid supplied ranges; nonzero derives the exact borrowed input header, PPT marker, logical start, length and fragment fields. Independent full-reader frames and actual PLM/PPT producer-to-finisher regression; no prepared payload/results, validity premises, new trust/caps/pins/budgets or termination bypass. Actual PLT producer and outer main/tile/file/parser/F2/F4/F8 composition remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::finish_packet_lengths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::finish_packed_packet_headers"},
+        {"path": "src/codestream.rs", "symbol": "sum_packet_lengths"}
+      ],
+      "spec_refs": [
+        {"path": "specs/packet_input.rs", "symbol": "part1_sum_packet_lengths"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_sum_packet_lengths_from"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_finish_packet_lengths"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_finish_packed_packet_headers"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_packet_length_decode"},
+        {"path": "specs/packet_input.rs", "symbol": "Part1PacketLengths"},
+        {"path": "specs/packet_input.rs", "symbol": "Part1PackedHeaders"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "sum_packet_lengths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::finish_packet_lengths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::finish_packed_packet_headers"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "packet_lengths_view"},
+        {"path": "src/codestream.rs", "symbol": "packet_lengths_outcome"},
+        {"path": "src/codestream.rs", "symbol": "packet_length_source_view"},
+        {"path": "src/codestream.rs", "symbol": "packed_packet_headers_view"},
+        {"path": "src/codestream.rs", "symbol": "packed_packet_headers_outcome"},
+        {"path": "src/codestream.rs", "symbol": "decode_packet_length"},
+        {"path": "src/codestream.rs", "symbol": "PacketLengths::is_present"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_plm"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_packed_fragment"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_packet_sum_derives_raw_sources_all_short_varints_and_original_error_offsets"},
+        {"path": "src/codestream.rs", "symbol": "actual_length_finalization_preserves_precedence_raw_fields_bounds_sums_and_reader"},
+        {"path": "src/codestream.rs", "symbol": "actual_packed_finalization_preserves_zero_bypass_raw_main_and_exact_source_borrows"},
+        {"path": "src/codestream.rs", "symbol": "actual_packet_metadata_joins_real_plm_and_ppt_producers_without_prepared_results"}
+      ]
+    },
+    {
       "id": "part1-complete-native-packet-length-admission",
       "topic": "Actual raw encoded packet-length admission and actual PLM group Result, complete parser state, next index and full borrowed group frames. Byte addition commits before its header-byte cap; genuine work charge precedes source-derived variable-length traversal; all varint errors map to the marker offset; global packet count commits only after complete traversal and before its packet cap. PLM minimum length and index admission precede the increment, retained on later failures including index 255 to 256. Every group length and borrowed source derives from real big-endian bytes; native admission partial commits survive errors; successful groups append before the TileParts cap. Preserve arbitrary prior groups and raw fields, source/order/error offsets and all parser input/limits/position/work/byte/count fields. No normalized lengths/groups/counters, admitted varints, supplied results, new trust/caps/pins/budgets or termination bypass. PLT/final metadata and outer parser/F2/F4/F8 joins remain separate.",
       "implementation_refs": [

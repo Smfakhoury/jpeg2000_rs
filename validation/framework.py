@@ -896,6 +896,26 @@ _PACKET_LENGTH_ADMISSION_CONTRACTS = {
     ),
 }
 
+_PACKET_METADATA_FINALIZATION_CONTRACTS = {
+    ("src/codestream.rs", "sum_packet_lengths"): (
+        "part1_sum_packet_lengths", r"\1", None,
+        _coverage_call("packet_length_source_view", "source"),
+    ),
+    ("src/codestream.rs", "Parser::finish_packet_lengths"): (
+        "part1_finish_packet_lengths", _coverage_call("packet_lengths_outcome", r"\1"), None,
+        r"self\.input\s*@\s*,\s*tile_header_start\s*,\s*tile_header_end\s*,\s*"
+        + _coverage_call("packet_lengths_view", r"&\s*main_packet_lengths")
+        + r"\s*,\s*plt_seen\s*,\s*plt_packet_count\s*,\s*plt_encoded_bytes\s*,\s*plt_payload_bytes"
+        + r"\s*,\s*data_length\s*,\s*packed_header_length\s*,\s*tile_part_offset",
+    ),
+    ("src/codestream.rs", "Parser::finish_packed_packet_headers"): (
+        "part1_finish_packed_packet_headers", _coverage_call("packed_packet_headers_outcome", r"\1"), None,
+        r"self\.input\s*@\s*,\s*tile_header_start\s*,\s*tile_header_end\s*,\s*"
+        + _coverage_call("packed_packet_headers_view", r"&\s*main")
+        + r"\s*,\s*ppt_fragments\s*,\s*ppt_length\s*,\s*tile_part_offset",
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2538,6 +2558,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_GRAPH_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKED_HEADER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_LENGTH_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PACKET_METADATA_FINALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

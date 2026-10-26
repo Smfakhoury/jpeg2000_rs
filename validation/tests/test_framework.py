@@ -1084,6 +1084,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_LENGTH_ADMISSION_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_packet_sums_and_complete_length_header_finalization(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-packet-metadata-finalization"},
+            framework._PACKET_METADATA_FINALIZATION_CONTRACTS, 3,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},
