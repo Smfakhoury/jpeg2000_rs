@@ -4,6 +4,44 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-tile-packet-admission",
+      "topic": "Actual PLT/PPT tile packet admission, factored from the sole real read_tile_part branches and wired back as actual callers. Raw main source presence rejects before empty payload, marker/index, counters or work; absent sources remain absent even with nonzero raw metadata. PLT index commits before genuine raw varint admission, seen commits only after that succeeds, and packet-count, encoded-byte and payload-total additions commit sequentially. All errors retain exact complete parser and five external scalar frames. Index-only PLT payloads and index 255 to 256 remain native. PPT consumes actual packed-fragment production only after the raw main conflict check, preserving next/fragment/byte/full-reader frames and first error ordering. No prepared main/counters/results, normalized metadata, new trust/caps/pins/budgets or termination bypass. Outer main/tile/file/parser/F2/F4/F8 composition remains separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_plt"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ppt"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_plt"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_ppt"},
+        {"path": "specs/mod.rs", "symbol": "part1_validate_packet_lengths"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_packed_fragment"},
+        {"path": "specs/mod.rs", "symbol": "Part1CodestreamReader"},
+        {"path": "specs/packet_input.rs", "symbol": "Part1PacketLengths"},
+        {"path": "specs/packet_input.rs", "symbol": "Part1PackedHeaders"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_plt"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ppt"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "packet_lengths_view"},
+        {"path": "src/codestream.rs", "symbol": "packed_packet_headers_view"},
+        {"path": "src/codestream.rs", "symbol": "PacketLengths::is_present"},
+        {"path": "src/codestream.rs", "symbol": "PackedPacketHeaders::is_present"},
+        {"path": "src/codestream.rs", "symbol": "Parser::validate_packet_lengths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_packed_fragment"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_plt_admission_preserves_raw_main_precedence_all_indexes_and_short_varints"},
+        {"path": "src/codestream.rs", "symbol": "actual_plt_admission_preserves_reader_charges_seen_and_sequential_counter_commits"},
+        {"path": "src/codestream.rs", "symbol": "actual_ppt_admission_preserves_main_conflicts_before_all_fragment_errors_and_frames"},
+        {"path": "src/codestream.rs", "symbol": "actual_tile_packet_admission_joins_segment_reader_producers_and_final_metadata"}
+      ]
+    },
+    {
       "id": "part1-complete-native-packet-metadata-finalization",
       "topic": "Actual raw packet-length sum and full packet-length/packed-header final Results. Sum keeps None zero, raw Plt rejection at zero, actual Plm varint errors at their source positions and checked total overflow at zero. PLT overrides main only after genuine input bounds/slice; absent selected lengths skip all range/sum/logical-size checks, while present data derives the actual declared sum and checked data-plus-packed byte comparison in native error order. Raw counts/encoded-byte/source fields are not normalized. PPT zero fragments preserves every arbitrary main field even invalid supplied ranges; nonzero derives the exact borrowed input header, PPT marker, logical start, length and fragment fields. Independent full-reader frames and actual PLM/PPT producer-to-finisher regression; no prepared payload/results, validity premises, new trust/caps/pins/budgets or termination bypass. Actual PLT producer and outer main/tile/file/parser/F2/F4/F8 composition remain separate.",
       "implementation_refs": [
@@ -50,6 +88,7 @@
       "implementation_refs": [
         {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
         {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_plt"},
         {"path": "src/codestream.rs", "symbol": "Parser::validate_packet_lengths"},
         {"path": "src/codestream.rs", "symbol": "Parser::parse_plm"}
       ],
@@ -92,6 +131,7 @@
       "implementation_refs": [
         {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
         {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ppt"},
         {"path": "src/codestream.rs", "symbol": "Parser::parse_packed_fragment"},
         {"path": "src/codestream.rs", "symbol": "Parser::parse_ppm_frames"}
       ],

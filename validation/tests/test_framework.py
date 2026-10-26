@@ -1090,6 +1090,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_METADATA_FINALIZATION_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_plt_ppt_main_conflicts_and_full_sequential_counter_frames(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-tile-packet-admission"},
+            framework._TILE_PACKET_ADMISSION_CONTRACTS, 2,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

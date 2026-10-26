@@ -25,6 +25,34 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual PLT/PPT tile packet admission
+
+The sole actual PLT/PPT tile-header branches now call their factored native
+producers, consuming the existing raw main descriptors and actual
+packet-length/packed-fragment producers. Source presence, not raw counts or
+lengths, rejects main-header conflicts before all other admission checks.
+Absent source variants still admit raw nonzero metadata.
+
+PLT retains index-only payloads. Its index increment survives subsequent
+admission errors; seen becomes true only after genuine varint admission
+succeeds. Packet count, encoded-byte count and payload sum commit in order,
+including partial state on each checked overflow. The full parser and all
+five mutable scalar frames bind every result. The method-local
+too-many-arguments lint allowance follows the existing tile-reader and
+length-finalizer pattern, keeping original state arguments explicit rather
+than introducing a normalization adapter. PPT preserves every actual
+fragment/counter/byte/parser partial commit after the raw main conflict gate.
+
+Exact total contracts and two strict mutation-tested recipes cover these
+bodies and real caller wiring. Independent references exercise 46,080
+PLT index/source contexts, 36 empty cases, 131,072 short varint contexts,
+13,500 sequential-charge/overflow contexts, 55,296 PPT conflict/index/count
+contexts, and empty/overflow variants. A real segment reader joins actual
+PLT/PPT producers into both finalizers. No supplied results, validity
+premises, new proof trust, caps, pins, budgets or termination bypass are
+introduced. These tests are not official conformance evidence; outer
+main/tile/file/parser/F2/F4/F8 composition remains separate.
+
 ## Actual packet metadata finalization
 
 The actual packet-length sum consumes raw source variants and the genuine
