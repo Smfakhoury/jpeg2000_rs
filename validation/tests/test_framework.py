@@ -1114,6 +1114,12 @@ class FrameworkTests(WorkingFiles):
             framework._MAIN_COMPONENT_CONFIGURATION_CONTRACTS, 6,
         )
 
+    def test_inventory_binds_actual_sot_reader_full_header_state_and_all_marker_predicates(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-sot-and-marker-admission"},
+            framework._SOT_MARKER_ADMISSION_CONTRACTS, 4,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

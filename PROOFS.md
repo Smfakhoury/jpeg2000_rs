@@ -25,6 +25,30 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual SOT and marker admission
+
+The actual SOT reader consumes the genuine segment reader, binding every
+header field and complete parser state on success and each error. Existing
+peek, work, standalone-marker, segment-length and truncation errors retain
+their original partial commits. SOT marker/payload admission then derives
+the raw tile index, declared length, part index and part count from bytes.
+Zero count and zero length bypass their respective checks; nonzero values
+retain part-index bounds and the 14-byte minimum. Malformed SOT errors use
+the segment offset after the real reader has advanced.
+
+The actual known/main/tile marker predicates bind their exact complete u16
+sets without changing policy. Independent numeric-set comparisons cover
+all 65,536 marker values, with another full marker-domain reader comparison,
+393,216 tile-index/count boundaries, 327,680 part/count/length contexts and
+4,992 cursor/work/budget/frame/truncation contexts. A real two-header reader
+sequence preserves zero-count/length bypasses and cumulative state.
+Four exact binding recipes retain mutation rejection.
+
+No admitted headers, normalized counts/segments, supplied results, new
+trust, caps, pins, budgets or termination bypass are introduced. These
+tests are not official conformance results; outer main/tile/file/parser/
+F2/F4/F8 composition remains separate.
+
 ## Actual main component style and quantization production
 
 The actual main-header COC/QCC loops now call sole native producer methods.

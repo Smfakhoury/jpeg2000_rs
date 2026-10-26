@@ -1031,6 +1031,23 @@ _MAIN_COMPONENT_CONFIGURATION_CONTRACTS = {
     ),
 }
 
+_SOT_MARKER_ADMISSION_CONTRACTS = {
+    ("src/codestream.rs", "Parser::read_sot"): (
+        "part1_codestream_read_sot", _coverage_call("tile_part_header_outcome", r"\1"),
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*tile_count",
+    ),
+    ("src/codestream.rs", "is_known_segment_marker"): (
+        "part1_known_segment_marker", r"\1", None, r"marker",
+    ),
+    ("src/codestream.rs", "is_allowed_main_header"): (
+        "part1_allowed_main_header", r"\1", None, r"marker",
+    ),
+    ("src/codestream.rs", "is_allowed_tile_header"): (
+        "part1_allowed_tile_header", r"\1", None, r"marker",
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2678,6 +2695,7 @@ def validate_normative_coverage(
                 or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_RESOLUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _MAIN_COMPONENT_CONFIGURATION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _SOT_MARKER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

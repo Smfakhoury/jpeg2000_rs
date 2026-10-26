@@ -4,6 +4,46 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-sot-and-marker-admission",
+      "topic": "Actual SOT reader derives every five-field TilePart header and complete parser partial state from the genuine read_segment producer and real big-endian bytes. Preserve underlying peek/work/standalone/length/truncation/overflow errors and reader commits, SOT marker/payload8 admission, u16 tile index against raw u64 tile count, zero part-count bypass versus part-index<count, zero Psot bypass versus minimum14 and segment-offset malformed errors after cursor advancement. Actual known/main/tile marker predicates bind exact complete u16 admission sets, without changing any policy. No normalized segments/tile counts, supplied headers/results, new trust/caps/pins/budgets or termination bypass. Outer main/tile/file/parser/F2/F4/F8 composition remains separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_sot"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_read_sot"},
+        {"path": "specs/mod.rs", "symbol": "part1_known_segment_marker"},
+        {"path": "specs/mod.rs", "symbol": "part1_allowed_main_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_allowed_tile_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_read_segment"},
+        {"path": "specs/mod.rs", "symbol": "Part1CodestreamReader"},
+        {"path": "specs/mod.rs", "symbol": "Part1CodestreamSegment"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::read_sot"},
+        {"path": "src/codestream.rs", "symbol": "is_known_segment_marker"},
+        {"path": "src/codestream.rs", "symbol": "is_allowed_main_header"},
+        {"path": "src/codestream.rs", "symbol": "is_allowed_tile_header"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "tile_part_header_view"},
+        {"path": "src/codestream.rs", "symbol": "tile_part_header_outcome"},
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_segment"},
+        {"path": "src/codestream.rs", "symbol": "read_u16"},
+        {"path": "src/codestream.rs", "symbol": "read_u32"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_marker_admission_matches_independent_complete_u16_policy_sets"},
+        {"path": "src/codestream.rs", "symbol": "actual_sot_reader_preserves_all_marker_words_and_original_reader_errors"},
+        {"path": "src/codestream.rs", "symbol": "actual_sot_reader_derives_every_tile_index_and_exact_tile_count_boundary"},
+        {"path": "src/codestream.rs", "symbol": "actual_sot_reader_preserves_zero_count_length_bypasses_and_all_part_indexes"},
+        {"path": "src/codestream.rs", "symbol": "actual_sot_reader_preserves_truncations_work_error_order_full_frames_and_real_sequence"}
+      ]
+    },
+    {
       "id": "part1-complete-native-main-component-configuration",
       "topic": "Actual full main-header COC/QCC component table production, factored from sole parse_layout loops and wired back. Sole native checked factory bodies serve the existing constructor APIs and genuine producers, preserving fixed physical style capacity versus logical-length quantization vectors and every raw default field. Actual optional raw slots, COC/QCC parsers, decomposition resolver, full setters/getters and real direction-based compatibility are consumed, not supplied outcomes. Short slot arrays mean no override; extra slots are ignored; encoded component IDs need not equal the current slot in these total raw helpers, matching native behavior. Preserve constructor-before-marker errors, QCC style-get-before-decode order, full physical tails/steps and immutable reader frames, no normalized table/style/quantization premises. Actual COD/COC/QCD/QCC reader producers join both helpers. No new trust/caps/pins/budgets/oracle/termination bypass. Raw main-header collection and outer header/tile/file/parser/F2/F4/F8 composition remain separate.",
       "implementation_refs": [
