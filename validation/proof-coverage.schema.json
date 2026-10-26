@@ -9,7 +9,7 @@
   ],
   "properties": {
     "$schema": {"type": "string"},
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "crate_name": {"const": "jpeg2000_rs"},
     "verification_entrypoint": {"const": "cargo verus verify"},
     "source_root": {"const": "src/lib.rs"},
@@ -44,14 +44,14 @@
       "required": [
         "verus_verified_obligations", "verus_errors",
         "documented_rust_only_adapters", "verified_project_functions",
-        "incomplete_production_functions"
+        "source_function_coverage"
       ],
       "properties": {
         "verus_verified_obligations": {"type": "integer", "minimum": 1},
         "verus_errors": {"const": 0},
         "documented_rust_only_adapters": {"type": "integer", "minimum": 0},
         "verified_project_functions": {"type": "integer", "minimum": 1},
-        "incomplete_production_functions": {"const": 0}
+        "source_function_coverage": {"const": "not-measured"}
       }
     },
     "known_proof_boundary": {

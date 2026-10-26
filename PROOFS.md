@@ -1915,9 +1915,20 @@ python3 validation/generate-proof-coverage.py \
 ```
 
 The collector extracts exactly one root result, writes normalized
-`verus-result.json` and schema-v2 `proof-coverage.json`, and binds both the raw
+`verus-result.json` and schema-v3 `proof-coverage.json`, and binds both the raw
 Cargo output and normalized result by hash. The expected crate namespace is
 `jpeg2000_rs`, not the standalone compiler's default `lib`.
+
+The report's `results.source_function_coverage: "not-measured"` is informational:
+the collector does not compare a complete source-function inventory, so there
+is no measured denominator or coverage percentage. Observed verified project
+functions, verified obligations, zero Verus errors and documented Rust-only
+adapters remain separate fields; observed functions are not thereby claimed
+to have end-to-end contracts. This status never substitutes for successful
+whole-crate verification. Historical schema-v2 reports, including their former
+`incomplete_production_functions: 0` field, describe observed results, not an
+exhaustive source-coverage measurement. Retain historical evidence unchanged;
+regenerate with the commands above to produce a report for the current schema.
 
 Cargo can reuse an already verified artifact without emitting fresh JSON.
 For a fresh local report, clean only this crate's verification artifacts with
