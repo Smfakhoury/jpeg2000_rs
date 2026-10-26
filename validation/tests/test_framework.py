@@ -1028,6 +1028,12 @@ class FrameworkTests(WorkingFiles):
             framework._TRANSFORM_GRAPH_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_actual_packed_fragment_counters_bytes_work_and_ppm_frame_producers(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-packed-header-byte-production"},
+            framework._PACKED_HEADER_BYTES_CONTRACTS, 2,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

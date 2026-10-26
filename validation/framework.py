@@ -842,6 +842,25 @@ _COLLECTION_FRAGMENT_CONTRACTS = {
     ),
 }
 
+_PACKED_HEADER_BYTES_CONTRACTS = {
+    ("src/codestream.rs", "Parser::parse_packed_fragment"): (
+        "part1_parse_packed_fragment", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self"))
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "fragments")
+        + r"\s*,\s*" + _coverage_call("final", "bytes") + r"\s*@",
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*" + _coverage_call("segment_view", "segment") + r"\s*,\s*expected_marker"
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "next_index")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "fragments")
+        + r"\s*,\s*" + _coverage_call("old", "bytes") + r"\s*@",
+    ),
+    ("src/codestream.rs", "Parser::parse_ppm_frames"): (
+        "part1_parse_ppm_frames", _coverage_call("packed_header_frames_outcome", r"\1"), None,
+        r"bytes\s*@\s*,\s*fragments\s*,\s*self\.limits",
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2470,6 +2489,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_REGISTRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_GRAPH_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _PACKED_HEADER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

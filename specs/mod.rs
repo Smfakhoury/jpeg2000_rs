@@ -12828,6 +12828,93 @@ pub open spec fn part1_codestream_charge_work<'a>(state: Part1CodestreamReader<'
     }
 }
 
+pub open spec fn part1_codestream_packet_bytes<'a>(state: Part1CodestreamReader<'a>, bytes: u64)
+    -> Part1CodestreamReader<'a>
+{
+    Part1CodestreamReader { input: state.input, limits: state.limits, position: state.position,
+        work_units: state.work_units, packet_length_bytes: bytes, packet_lengths: state.packet_lengths }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_packed_fragment<'a>(
+    state: Part1CodestreamReader<'a>, segment: Part1CodestreamSegment, expected_marker: u16,
+    next_index: u16, fragments: u16, bytes: Seq<u8>,
+) -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>, u16, u16, Seq<u8>) {
+    if segment.marker != expected_marker || segment.payload.len() == 0 {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerLength)),
+            state, next_index, fragments, bytes)
+    } else if segment.payload[0] as u16 != next_index {
+        (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidMarkerOrder)),
+            state, next_index, fragments, bytes)
+    } else {
+        let next = (next_index as int + 1) as u16;
+        if fragments == u16::MAX {
+            (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::ArithmeticOverflow)),
+                state, next, fragments, bytes)
+        } else {
+            let count = (fragments as int + 1) as u16;
+            let fragment = segment.payload.subrange(1, segment.payload.len() as int);
+            let total = state.packet_length_bytes as int + fragment.len();
+            if bytes.len() + fragment.len() > usize::MAX || total > u64::MAX {
+                (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::ArithmeticOverflow)),
+                    state, next, count, bytes)
+            } else if total > crate::limits::resource_packet_header_byte_limit(state.limits) {
+                (Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::PacketHeaderBytes,
+                    limit: crate::limits::resource_packet_header_byte_limit(state.limits), actual: total as u64 }),
+                    state, next, count, bytes)
+            } else {
+                let charged = part1_codestream_charge_work(part1_codestream_packet_bytes(state, total as u64), fragment.len() as u64);
+                match charged.0 {
+                    Err(error) => (Err(error), charged.1, next, count, bytes),
+                    Ok(()) => (Ok(()), charged.1, next, count, bytes + fragment),
+                }
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_ppm_frames_from(
+    bytes: Seq<u8>, maximum: u32, position: nat, frames: Seq<(usize, usize)>,
+) -> Result<Seq<(usize, usize)>, crate::DecodeError>
+    decreases bytes.len() - position,
+{
+    if position >= bytes.len() { Ok(frames) }
+    else if bytes.len() - position < 4 {
+        Err(part1_codestream_malformed(position as usize, crate::MalformedKind::InvalidPackedPacketHeader))
+    } else {
+        let length = part1_codestream_u32(bytes[position as int], bytes[position as int + 1],
+            bytes[position as int + 2], bytes[position as int + 3]) as nat;
+        if length > usize::MAX {
+            Err(part1_codestream_malformed(position as usize, crate::MalformedKind::ArithmeticOverflow))
+        } else {
+            let start = position + 4;
+            let end = start + length;
+            if start > usize::MAX {
+                Err(part1_codestream_malformed(position as usize, crate::MalformedKind::ArithmeticOverflow))
+            } else if end > usize::MAX {
+                Err(part1_codestream_malformed(start as usize, crate::MalformedKind::ArithmeticOverflow))
+            } else if end > bytes.len() {
+                Err(part1_codestream_malformed(start as usize, crate::MalformedKind::InvalidPackedPacketHeader))
+            } else {
+                let next = frames.push((start as usize, length as usize));
+                if next.len() > maximum {
+                    Err(crate::DecodeError::LimitExceeded { resource: crate::Resource::TileParts,
+                        limit: maximum as u64, actual: next.len() as u64 })
+                } else { part1_ppm_frames_from(bytes, maximum, end, next) }
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_ppm_frames(bytes: Seq<u8>, fragments: u16, limits: &crate::ResourceLimits)
+    -> Result<Seq<(usize, usize)>, crate::DecodeError>
+{
+    if fragments == 0 { Ok(Seq::empty()) }
+    else { part1_ppm_frames_from(bytes, crate::limits::resource_tile_part_limit(limits), 0, Seq::empty()) }
+}
+
 pub open spec fn part1_codestream_peek_marker(state: Part1CodestreamReader<'_>)
     -> Result<u16, crate::DecodeError>
 {
