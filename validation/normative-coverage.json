@@ -4,6 +4,44 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-packed-header-byte-production",
+      "topic": "Actual PPM/PPT fragment byte/counter/parser-state producer and actual PPM frame Result from raw source bytes, markers, fragment counts and limits. Preserve marker/empty/order admission, index increment before count overflow, both counters before byte/work errors, packet-header byte commit before work failure and append only after genuine charge success. Full parser input/limits/position/work/packet-byte/packet-count fields and next-index/fragment-count/byte-vector frames bind every result. PPM fragments-zero bypass remains unconditional; nonzero framing derives all big-endian lengths, checked positions, exact header/start error offsets and post-push tile-part cap. No admitted fragments/frames/payloads, supplied decoded results, new trust/caps/pins/budgets or termination bypass. PLM/PLT admission/final metadata and outer parser/F2/F4/F8 remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_packed_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ppm_frames"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_parse_packed_fragment"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_ppm_frames"},
+        {"path": "specs/mod.rs", "symbol": "part1_ppm_frames_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_packet_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_charge_work"},
+        {"path": "specs/mod.rs", "symbol": "Part1CodestreamReader"},
+        {"path": "specs/mod.rs", "symbol": "Part1CodestreamSegment"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_packed_fragment"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ppm_frames"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "packed_header_frames_view"},
+        {"path": "src/codestream.rs", "symbol": "packed_header_frames_outcome"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_work"},
+        {"path": "src/codestream.rs", "symbol": "read_u32"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_packet_header_bytes"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_tile_parts"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_packed_fragments_preserve_all_indexes_counter_frames_and_source_bytes"},
+        {"path": "src/codestream.rs", "symbol": "actual_packed_fragments_preserve_header_work_limit_and_overflow_commit_order"},
+        {"path": "src/codestream.rs", "symbol": "actual_ppm_frames_preserve_zero_bypass_lengths_caps_offsets_and_reader"}
+      ]
+    },
+    {
       "id": "part2-complete-native-mct-graph-production",
       "topic": "Actual complete optional transform graph from raw MctParameters arrays/records/order, using first record ID and genuine unique ID/kind array references. Empty order bypasses all unused metadata; repeated raw order IDs and empty raw records retain native results. Sole collection, stage and graph traversal preserve row/column admission, offset-before-matrix lookup, zero-index bypass, exact checked intermediate element arithmetic before halving/subtraction, final dimensions/floating rejection and every cloned array/collection/wavelet/stage field. Full root/traversal links include every early error; no prepared graphs, validated dimensions/registries, supplied decoder outcomes, new trust/caps/pins/budgets or termination bypass. Actual parser-to-parameters and final file/layer/F2/F4/F8 joins remain separate.",
       "implementation_refs": [

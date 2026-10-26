@@ -3613,6 +3613,19 @@ struct PackedHeaderFrame {
     length: usize,
 }
 
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn packed_header_frames_view(values: Seq<PackedHeaderFrame>) -> Seq<(usize, usize)> {
+        values.map_values(|value: PackedHeaderFrame| (value.start, value.length))
+    }
+
+    closed spec fn packed_header_frames_outcome(value: Result<Vec<PackedHeaderFrame>, DecodeError>)
+        -> Result<Seq<(usize, usize)>, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(frames) => Ok(packed_header_frames_view(frames@)) }
+    }
+}
+
 pub fn parse(input: &[u8], limits: &ResourceLimits) -> Result<CodestreamInfo, DecodeError> {
     Ok(parse_layout(input, limits)?.info)
 }
@@ -9238,6 +9251,12 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), *final(next_index), *final(fragments), final(bytes)@)
+            == crate::specs::part1_parse_packed_fragment(parser_view(old(self)), segment_view(segment), expected_marker,
+                *old(next_index), *old(fragments), old(bytes)@),
+    ))]
     fn parse_packed_fragment(
         &mut self,
         segment: Segment<'a>,
@@ -9246,121 +9265,124 @@ impl<'a> Parser<'a> {
         fragments: &mut u16,
         bytes: &mut Vec<u8>,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_packed_fragment); }
         if segment.marker != expected_marker || segment.payload.is_empty() {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
         }
         let index = u16::from(segment.payload[0]);
         if index != *next_index || index > u16::from(u8::MAX) {
-            return Err(DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerOrder,
-            ));
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerOrder));
         }
-        *next_index = next_index.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        *fragments = fragments.checked_add(1).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        let fragment = segment.payload.get(1..).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::InvalidMarkerLength,
-            )
-        })?;
-        let new_length = bytes.len().checked_add(fragment.len()).ok_or_else(|| {
-            DecodeError::malformed(
-                self.offset(segment.offset),
-                MalformedKind::ArithmeticOverflow,
-            )
-        })?;
-        let total_header_bytes = self
-            .packet_length_bytes
-            .checked_add(fragment.len() as u64)
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(segment.offset),
-                    MalformedKind::ArithmeticOverflow,
-                )
-            })?;
+        *next_index += 1;
+        *fragments = match fragments.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let fragment = &segment.payload[1..];
+        let new_length = match bytes.len().checked_add(fragment.len()) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
+        let total_header_bytes = match self.packet_length_bytes.checked_add(fragment.len() as u64) {
+            Some(value) => value,
+            None => {
+                return Err(self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow));
+            }
+        };
         if total_header_bytes > self.limits.maximum_packet_header_bytes() {
-            return Err(DecodeError::limit(
-                Resource::PacketHeaderBytes,
-                self.limits.maximum_packet_header_bytes(),
-                total_header_bytes,
-            ));
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::PacketHeaderBytes,
+                limit: self.limits.maximum_packet_header_bytes(),
+                actual: total_header_bytes,
+            });
         }
         self.packet_length_bytes = total_header_bytes;
         self.charge_work(fragment.len() as u64)?;
-        bytes.reserve(new_length.saturating_sub(bytes.len()));
+        bytes.reserve(new_length - bytes.len());
         bytes.extend_from_slice(fragment);
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packed_header_frames_outcome(result) == crate::specs::part1_parse_ppm_frames(
+            bytes@, fragments, self.limits),
+    ))]
     fn parse_ppm_frames(
         &self,
         bytes: &[u8],
         fragments: u16,
     ) -> Result<Vec<PackedHeaderFrame>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost goal = crate::specs::part1_parse_ppm_frames(bytes@, fragments, self.limits); }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_ppm_frames); }
         if fragments == 0 {
-            return Ok(Vec::new());
+            let empty = Vec::new();
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(packed_header_frames_view(empty@) =~= Seq::empty()); }
+            return Ok(empty);
         }
         let mut frames = Vec::new();
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(packed_header_frames_view(frames@) =~= Seq::empty()); }
         let mut position = 0_usize;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant position <= bytes.len(),
+                    goal == crate::specs::part1_parse_ppm_frames(bytes@, fragments, self.limits),
+                    goal == crate::specs::part1_ppm_frames_from(bytes@,
+                        crate::limits::resource_tile_part_limit(self.limits), position as nat, packed_header_frames_view(frames@)),
                 decreases bytes.len() - position,
             )
         )]
         while position < bytes.len() {
-            if bytes.len().saturating_sub(position) < 4 {
-                return Err(DecodeError::malformed(
-                    position as u64,
-                    MalformedKind::InvalidPackedPacketHeader,
-                ));
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_ppm_frames_from, 1); }
+            if bytes.len() - position < 4 {
+                return Err(self.malformed_at(position, MalformedKind::InvalidPackedPacketHeader));
             }
-            let length = usize::try_from(read_u32([
+            let length = match usize::try_from(read_u32([
                 bytes[position],
                 bytes[position + 1],
                 bytes[position + 2],
                 bytes[position + 3],
-            ]))
-            .map_err(|_| {
-                DecodeError::malformed(position as u64, MalformedKind::ArithmeticOverflow)
-            })?;
-            position = position.checked_add(4).ok_or_else(|| {
-                DecodeError::malformed(position as u64, MalformedKind::ArithmeticOverflow)
-            })?;
+            ])) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Err(self.malformed_at(position, MalformedKind::ArithmeticOverflow));
+                }
+            };
+            position += 4;
             let start = position;
-            position = position.checked_add(length).ok_or_else(|| {
-                DecodeError::malformed(start as u64, MalformedKind::ArithmeticOverflow)
-            })?;
+            position = match position.checked_add(length) {
+                Some(value) => value,
+                None => return Err(self.malformed_at(start, MalformedKind::ArithmeticOverflow)),
+            };
             if position > bytes.len() {
-                return Err(DecodeError::malformed(
-                    start as u64,
-                    MalformedKind::InvalidPackedPacketHeader,
-                ));
+                return Err(self.malformed_at(start, MalformedKind::InvalidPackedPacketHeader));
             }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = packed_header_frames_view(frames@); }
             frames.push(PackedHeaderFrame { start, length });
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(packed_header_frames_view(frames@) =~= before.push((start, length))); }
             if frames.len() as u64 > u64::from(self.limits.maximum_tile_parts()) {
-                return Err(DecodeError::limit(
-                    Resource::TileParts,
-                    u64::from(self.limits.maximum_tile_parts()),
-                    frames.len() as u64,
-                ));
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TileParts,
+                    limit: u64::from(self.limits.maximum_tile_parts()),
+                    actual: frames.len() as u64,
+                });
             }
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_ppm_frames_from, 1); }
         Ok(frames)
     }
 
@@ -18409,6 +18431,362 @@ mod tests {
         );
         assert_eq!((reader.position, reader.work_units), (input.len(), 3));
         assert!(core::ptr::eq(reader.input.as_ptr(), input.as_ptr()));
+    }
+
+    #[derive(Clone)]
+    struct PackedProducerCase<'a> {
+        payload: &'a [u8],
+        marker: u16,
+        expected_marker: u16,
+        offset: usize,
+        position: usize,
+        work: u64,
+        header_bytes: u64,
+        packet_count: u64,
+        next: u16,
+        fragments: u16,
+        bytes: Vec<u8>,
+    }
+
+    fn raw_packed_producer_case(
+        payload: &[u8],
+        next: u16,
+        fragments: u16,
+    ) -> PackedProducerCase<'_> {
+        PackedProducerCase {
+            payload,
+            marker: PPM,
+            expected_marker: PPM,
+            offset: usize::MAX,
+            position: 13,
+            work: 0,
+            header_bytes: 0,
+            packet_count: u64::MAX,
+            next,
+            fragments,
+            bytes: vec![0xde, 0, 0xff],
+        }
+    }
+
+    fn reference_packed_producer(
+        limits: &ResourceLimits,
+        case: &mut PackedProducerCase<'_>,
+    ) -> Result<(), DecodeError> {
+        let malformed = |offset, kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        if case.marker != case.expected_marker || case.payload.is_empty() {
+            return Err(malformed(case.offset, MalformedKind::InvalidMarkerLength));
+        }
+        if u16::from(case.payload[0]) != case.next {
+            return Err(malformed(case.offset, MalformedKind::InvalidMarkerOrder));
+        }
+        case.next += 1;
+        if case.fragments == u16::MAX {
+            return Err(malformed(case.offset, MalformedKind::ArithmeticOverflow));
+        }
+        case.fragments += 1;
+        let fragment = &case.payload[1..];
+        let length = case.bytes.len() as u128 + fragment.len() as u128;
+        if length > usize::MAX as u128 {
+            return Err(malformed(case.offset, MalformedKind::ArithmeticOverflow));
+        }
+        let total = u128::from(case.header_bytes) + fragment.len() as u128;
+        if total > u128::from(u64::MAX) {
+            return Err(malformed(case.offset, MalformedKind::ArithmeticOverflow));
+        }
+        if total > u128::from(limits.maximum_packet_header_bytes()) {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::PacketHeaderBytes,
+                limit: limits.maximum_packet_header_bytes(),
+                actual: total as u64,
+            });
+        }
+        case.header_bytes = total as u64;
+        let work = u128::from(case.work) + fragment.len() as u128;
+        if work > u128::from(u64::MAX) {
+            return Err(malformed(case.position, MalformedKind::ArithmeticOverflow));
+        }
+        case.work = work as u64;
+        if case.work > limits.maximum_work_units() {
+            return Err(DecodeError::LimitExceeded {
+                resource: Resource::WorkUnits,
+                limit: limits.maximum_work_units(),
+                actual: case.work,
+            });
+        }
+        case.bytes = [case.bytes.as_slice(), fragment].concat();
+        Ok(())
+    }
+
+    fn assert_packed_producer_case(limits: &ResourceLimits, case: PackedProducerCase<'_>) {
+        let input = [0xa5, 0x5a];
+        let mut parser = new_parser(&input, limits).unwrap();
+        parser.position = case.position;
+        parser.work_units = case.work;
+        parser.packet_length_bytes = case.header_bytes;
+        parser.packet_lengths = case.packet_count;
+        let mut next = case.next;
+        let mut fragments = case.fragments;
+        let mut bytes = case.bytes.clone();
+        let mut expected = case.clone();
+        let expected_result = reference_packed_producer(limits, &mut expected);
+        assert_eq!(
+            parser.parse_packed_fragment(
+                Segment {
+                    marker: case.marker,
+                    offset: case.offset,
+                    payload: case.payload,
+                },
+                case.expected_marker,
+                &mut next,
+                &mut fragments,
+                &mut bytes,
+            ),
+            expected_result
+        );
+        assert_eq!(
+            (next, fragments, bytes),
+            (expected.next, expected.fragments, expected.bytes)
+        );
+        assert_eq!(
+            (
+                parser.position,
+                parser.work_units,
+                parser.packet_length_bytes,
+                parser.packet_lengths
+            ),
+            (
+                expected.position,
+                expected.work,
+                expected.header_bytes,
+                expected.packet_count
+            )
+        );
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+        assert!(core::ptr::eq(parser.limits, limits));
+    }
+
+    fn reference_ppm_producer(
+        bytes: &[u8],
+        fragments: u16,
+        limits: &ResourceLimits,
+    ) -> Result<Vec<(usize, usize)>, DecodeError> {
+        if fragments == 0 {
+            return Ok(Vec::new());
+        }
+        let malformed = |offset, kind| DecodeError::MalformedInput {
+            offset: offset as u64,
+            kind,
+        };
+        let mut position = 0_usize;
+        let mut frames = Vec::new();
+        while position < bytes.len() {
+            if bytes.len() - position < 4 {
+                return Err(malformed(
+                    position,
+                    MalformedKind::InvalidPackedPacketHeader,
+                ));
+            }
+            let length = u32::from_be_bytes(bytes[position..position + 4].try_into().unwrap());
+            if u128::from(length) > usize::MAX as u128 {
+                return Err(malformed(position, MalformedKind::ArithmeticOverflow));
+            }
+            let start = position as u128 + 4;
+            let end = start + u128::from(length);
+            if start > usize::MAX as u128 {
+                return Err(malformed(position, MalformedKind::ArithmeticOverflow));
+            }
+            if end > usize::MAX as u128 {
+                return Err(malformed(start as usize, MalformedKind::ArithmeticOverflow));
+            }
+            if end > bytes.len() as u128 {
+                return Err(malformed(
+                    start as usize,
+                    MalformedKind::InvalidPackedPacketHeader,
+                ));
+            }
+            frames.push((start as usize, length as usize));
+            if frames.len() as u64 > u64::from(limits.maximum_tile_parts()) {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::TileParts,
+                    limit: u64::from(limits.maximum_tile_parts()),
+                    actual: frames.len() as u64,
+                });
+            }
+            position = end as usize;
+        }
+        Ok(frames)
+    }
+
+    fn assert_ppm_producer_case(parser: &Parser<'_>, bytes: &[u8], fragments: u16) {
+        let actual = parser.parse_ppm_frames(bytes, fragments).map(|frames| {
+            frames
+                .into_iter()
+                .map(|frame| (frame.start, frame.length))
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            actual,
+            reference_ppm_producer(bytes, fragments, parser.limits)
+        );
+    }
+
+    #[test]
+    fn actual_packed_fragments_preserve_all_indexes_counter_frames_and_source_bytes() {
+        let limits = ResourceLimits::HARDENED;
+        let mut contexts = 0;
+        for index in 0..=u8::MAX {
+            for next in [0, 1, 254, 255, 256, u16::MAX] {
+                for fragments in [0, 1, u16::MAX - 1, u16::MAX] {
+                    for length in [0, 1, 3, 9] {
+                        let mut payload = vec![index];
+                        payload.extend((0..length).map(|value| value as u8 ^ index));
+                        for (marker, expected) in [(PPM, PPM), (PPT, PPT), (PPT, PPM)] {
+                            for offset in [0, usize::MAX] {
+                                let mut case = raw_packed_producer_case(&payload, next, fragments);
+                                case.marker = marker;
+                                case.expected_marker = expected;
+                                case.offset = offset;
+                                assert_packed_producer_case(&limits, case);
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 147_456);
+        for next in [0, 1, 254, 255, 256, u16::MAX] {
+            for fragments in [0, 1, u16::MAX - 1, u16::MAX] {
+                assert_packed_producer_case(
+                    &limits,
+                    raw_packed_producer_case(&[], next, fragments),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn actual_packed_fragments_preserve_header_work_limit_and_overflow_commit_order() {
+        let mut contexts = 0;
+        for work in [0, 1, 2, u64::MAX - 2, u64::MAX - 1, u64::MAX] {
+            for header_bytes in [0, 1, 2, u64::MAX - 1, u64::MAX] {
+                for initial_length in [0, 3] {
+                    for next in [0, 255] {
+                        for fragments in [0, u16::MAX] {
+                            for length in [0, 1, 3] {
+                                let mut payload = vec![next as u8];
+                                payload.extend(vec![0xa5; length]);
+                                for byte_limit in [
+                                    0,
+                                    1,
+                                    2,
+                                    8,
+                                    ResourceLimits::HARDENED.maximum_packet_header_bytes(),
+                                ] {
+                                    for work_limit in
+                                        [0, 1, 2, 8, ResourceLimits::HARDENED.maximum_work_units()]
+                                    {
+                                        let limits = ResourceLimits::HARDENED
+                                            .with_maximum_packet_header_bytes(byte_limit)
+                                            .unwrap()
+                                            .with_maximum_work_units(work_limit)
+                                            .unwrap();
+                                        let mut case =
+                                            raw_packed_producer_case(&payload, next, fragments);
+                                        case.work = work;
+                                        case.header_bytes = header_bytes;
+                                        case.bytes = vec![0xff; initial_length];
+                                        case.position = 17;
+                                        case.offset = usize::MAX;
+                                        assert_packed_producer_case(&limits, case);
+                                        contexts += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 18_000);
+    }
+
+    #[test]
+    fn actual_ppm_frames_preserve_zero_bypass_lengths_caps_offsets_and_reader() {
+        let mut words = 0;
+        for low in 0..=u16::MAX {
+            for high in [0_u32, 0xffff0000] {
+                let length = high | u32::from(low);
+                let mut bytes = length.to_be_bytes().to_vec();
+                bytes.extend([0, 1, 2]);
+                for cap in [0, 1, 2] {
+                    let limits = ResourceLimits::HARDENED
+                        .with_maximum_tile_parts(cap)
+                        .unwrap();
+                    let parser = new_parser(&[], &limits).unwrap();
+                    for fragments in [0, 1, u16::MAX] {
+                        assert_ppm_producer_case(&parser, &bytes, fragments);
+                        words += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(words, 1_179_648);
+        let mut compound = Vec::new();
+        for length in [0_u32, 1, 3, 8] {
+            compound.extend(length.to_be_bytes());
+            compound.extend(vec![0xa5; length as usize]);
+        }
+        let mut cuts = 0;
+        for end in 0..=compound.len() {
+            for cap in [0, 1, 3, 4, ResourceLimits::HARDENED.maximum_tile_parts()] {
+                let limits = ResourceLimits::HARDENED
+                    .with_maximum_tile_parts(cap)
+                    .unwrap();
+                let parser = new_parser(&[], &limits).unwrap();
+                for fragments in [0, 1, u16::MAX] {
+                    assert_ppm_producer_case(&parser, &compound[..end], fragments);
+                    cuts += 1;
+                }
+            }
+        }
+        assert_eq!(cuts, 435);
+        let mut data = 2_u32.to_be_bytes().to_vec();
+        data.extend([0xaa, 0xbb]);
+        data.extend(0_u32.to_be_bytes());
+        data.extend(1_u32.to_be_bytes());
+        data.push(0xff);
+        let mut first = vec![0];
+        first.extend(&data[..3]);
+        let mut second = vec![1];
+        second.extend(&data[3..]);
+        let mut input = segment(PPM, &first);
+        input.extend(segment(PPM, &second));
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let (mut next, mut fragments, mut bytes) = (0, 0, Vec::new());
+        for _ in 0..2 {
+            let raw = parser.read_segment().unwrap();
+            parser
+                .parse_packed_fragment(raw, PPM, &mut next, &mut fragments, &mut bytes)
+                .unwrap();
+        }
+        assert_eq!((next, fragments, &bytes), (2, 2, &data));
+        let frames: Vec<(usize, usize)> = parser
+            .parse_ppm_frames(&bytes, fragments)
+            .unwrap()
+            .into_iter()
+            .map(|frame| (frame.start, frame.length))
+            .collect();
+        assert_eq!(frames, vec![(4, 2), (10, 0), (14, 1)]);
+        assert_eq!(parser.position, input.len());
+        assert_eq!(parser.work_units, 17);
+        assert_eq!(parser.packet_length_bytes, 15);
+        assert_eq!(parser.packet_lengths, 0);
+        assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
     }
 
     fn reference_mct_graph_element_count(
