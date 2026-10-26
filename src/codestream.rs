@@ -2362,6 +2362,24 @@ verus! {
         match value { Err(error) => Err(error), Ok(value) => Ok(mct_array_view(&value)) }
     }
 
+    closed spec fn mct_arrays_view(values: Seq<MctArray>) -> Seq<crate::specs::Part2MctArray> {
+        values.map_values(|value: MctArray| mct_array_view(&value))
+    }
+
+    closed spec fn mct_record_view(value: &MctRecord) -> crate::specs::Part1MctRecord {
+        (value.index, mcc_collection_references_view(value.collections@))
+    }
+
+    closed spec fn mct_records_view(values: Seq<MctRecord>) -> Seq<crate::specs::Part1MctRecord> {
+        values.map_values(|value: MctRecord| mct_record_view(&value))
+    }
+
+    closed spec fn mct_array_reference_outcome(value: Result<&MctArray, DecodeError>)
+        -> Result<crate::specs::Part2MctArray, DecodeError>
+    {
+        match value { Err(error) => Err(error), Ok(array) => Ok(mct_array_view(array)) }
+    }
+
     pub open spec fn mct_array_option(value: Option<&MctArray>) -> Option<crate::specs::Part2MctArray> {
         match value { None => None, Some(array) => Some(mct_array_view(array)) }
     }
@@ -10712,81 +10730,217 @@ fn maximum_u32_for_bits(bits: u8) -> Result<u32, DecodeError> {
     Ok(value)
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_mct_registry_array_find(mct_arrays_view(arrays@), index, 0),
+        match result { Some(position) => position < arrays.len(), None => true },
+))]
+fn find_mct_array_index(arrays: &[MctArray], index: u8) -> Option<usize> {
+    let mut position = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant position <= arrays.len(),
+            crate::specs::part1_mct_registry_array_find(mct_arrays_view(arrays@), index, 0)
+                == crate::specs::part1_mct_registry_array_find(mct_arrays_view(arrays@), index, position as nat),
+        decreases arrays.len() - position,
+    ))]
+    while position < arrays.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_registry_array_find, 1); reveal(mct_array_view); }
+        if arrays[position].index == index {
+            return Some(position);
+        }
+        position += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_mct_registry_array_find, 1); }
+    None
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_mct_registry_record_find(mct_records_view(records@), index, 0),
+        match result { Some(position) => position < records.len(), None => true },
+))]
+fn find_mct_record_index(records: &[MctRecord], index: u8) -> Option<usize> {
+    let mut position = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant position <= records.len(),
+            crate::specs::part1_mct_registry_record_find(mct_records_view(records@), index, 0)
+                == crate::specs::part1_mct_registry_record_find(mct_records_view(records@), index, position as nat),
+        decreases records.len() - position,
+    ))]
+    while position < records.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_registry_record_find, 1); reveal(mct_record_view); }
+        if records[position].index == index {
+            return Some(position);
+        }
+        position += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_mct_registry_record_find, 1); }
+    None
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_mct_registry_unique_array(mct_arrays_view(arrays@), marker_offset),
+))]
 fn validate_unique_mct_array_indexes(
     arrays: &[MctArray],
     marker_offset: usize,
 ) -> Result<(), DecodeError> {
-    let Some(last) = arrays.last() else {
+    if arrays.is_empty() {
         return Ok(());
-    };
-    if arrays[..arrays.len() - 1]
-        .iter()
-        .any(|array| array.index == last.index)
-    {
-        return Err(DecodeError::malformed(
-            marker_offset as u64,
-            MalformedKind::InvalidTransform,
-        ));
+    }
+    let last = arrays.len() - 1;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(mct_array_view);
+        assert(mct_arrays_view(arrays@.subrange(0, last as int)) =~= mct_arrays_view(arrays@).drop_last());
+    }
+    if find_mct_array_index(&arrays[..last], arrays[last].index).is_some() {
+        return Err(DecodeError::MalformedInput {
+            offset: marker_offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        });
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_mct_registry_unique_record(mct_records_view(records@), marker_offset),
+))]
 fn validate_unique_mct_record_indexes(
     records: &[MctRecord],
     marker_offset: usize,
 ) -> Result<(), DecodeError> {
-    let Some(last) = records.last() else {
+    if records.is_empty() {
         return Ok(());
-    };
-    if records[..records.len() - 1]
-        .iter()
-        .any(|record| record.index == last.index)
-    {
-        return Err(DecodeError::malformed(
-            marker_offset as u64,
-            MalformedKind::InvalidTransform,
-        ));
+    }
+    let last = records.len() - 1;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        reveal(mct_record_view);
+        assert(mct_records_view(records@.subrange(0, last as int)) =~= mct_records_view(records@).drop_last());
+    }
+    if find_mct_record_index(&records[..last], records[last].index).is_some() {
+        return Err(DecodeError::MalformedInput {
+            offset: marker_offset as u64,
+            kind: MalformedKind::InvalidTransform,
+        });
     }
     Ok(())
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(_result =>
+    ensures ((), mct_arrays_view(final(arrays)@)) == crate::specs::part1_mct_registry_replace_array(
+        mct_arrays_view(old(arrays)@), mct_array_view(&replacement)),
+))]
 fn replace_mct_array(arrays: &mut Vec<MctArray>, replacement: MctArray) {
-    if let Some(array) = arrays
-        .iter_mut()
-        .find(|array| array.index == replacement.index)
-    {
-        *array = replacement;
-    } else {
-        arrays.push(replacement);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = mct_arrays_view(arrays@); let ghost value = mct_array_view(&replacement); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(mct_array_view); }
+    match find_mct_array_index(arrays, replacement.index) {
+        Some(index) => {
+            arrays[index] = replacement;
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(mct_arrays_view(arrays@) =~= input.update(index as int, value)); }
+        }
+        None => {
+            arrays.push(replacement);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(mct_arrays_view(arrays@) =~= input.push(value)); }
+        }
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(_result =>
+    ensures ((), mct_records_view(final(records)@)) == crate::specs::part1_mct_registry_replace_record(
+        mct_records_view(old(records)@), mct_record_view(&replacement)),
+))]
 fn replace_mct_record(records: &mut Vec<MctRecord>, replacement: MctRecord) {
-    if let Some(record) = records
-        .iter_mut()
-        .find(|record| record.index == replacement.index)
-    {
-        *record = replacement;
-    } else {
-        records.push(replacement);
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost input = mct_records_view(records@); let ghost value = mct_record_view(&replacement); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(mct_record_view); }
+    match find_mct_record_index(records, replacement.index) {
+        Some(index) => {
+            records[index] = replacement;
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(mct_records_view(records@) =~= input.update(index as int, value)); }
+        }
+        None => {
+            records.push(replacement);
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(mct_records_view(records@) =~= input.push(value)); }
+        }
     }
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures mct_array_reference_outcome(result) == crate::specs::part1_mct_registry_reference(
+        mct_arrays_view(arrays@), index, kind),
+))]
 fn referenced_mct_array(
     arrays: &[MctArray],
     index: u8,
     kind: MctArrayKind,
 ) -> Result<&MctArray, DecodeError> {
-    let mut matches = arrays
-        .iter()
-        .filter(|array| array.index == index && mct_array_kinds_equal(array.kind, kind));
-    let array = matches
-        .next()
-        .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTransform))?;
-    if matches.next().is_some() {
-        return Err(DecodeError::malformed(0, MalformedKind::InvalidTransform));
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part1_mct_registry_reference(mct_arrays_view(arrays@), index, kind); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_mct_registry_reference); }
+    let mut position = 0_usize;
+    let mut found: Option<usize> = None;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant position <= arrays.len(),
+            match found { Some(candidate) => candidate < position, None => true },
+            goal == crate::specs::part1_mct_registry_reference(mct_arrays_view(arrays@), index, kind),
+            goal == crate::specs::part1_mct_registry_reference_from(
+                mct_arrays_view(arrays@), index, kind, position as nat, found),
+        decreases arrays.len() - position,
+    ))]
+    while position < arrays.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_mct_registry_reference_from, 1); reveal(mct_array_view); }
+        let array = &arrays[position];
+        if array.index == index && mct_array_kinds_equal(array.kind, kind) {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(mct_arrays_view(arrays@)[position as int] == mct_array_view(array));
+                assert(mct_arrays_view(arrays@)[position as int].0 == index);
+                assert(mct_arrays_view(arrays@)[position as int].1 == kind);
+            }
+            if found.is_some() {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(goal == Err(crate::specs::part1_codestream_malformed(
+                        0, MalformedKind::InvalidTransform)));
+                }
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::InvalidTransform,
+                });
+            }
+            found = Some(position);
+        }
+        position += 1;
     }
-    Ok(array)
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_mct_registry_reference_from, 1); }
+    match found {
+        Some(candidate) => Ok(&arrays[candidate]),
+        None => Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::InvalidTransform,
+        }),
+    }
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
@@ -18146,6 +18300,241 @@ mod tests {
         );
         assert_eq!((reader.position, reader.work_units), (input.len(), 3));
         assert!(core::ptr::eq(reader.input.as_ptr(), input.as_ptr()));
+    }
+
+    fn raw_mct_registry_array(index: u8, variant: usize) -> MctArray {
+        MctArray {
+            index,
+            kind: [
+                MctArrayKind::Dependency,
+                MctArrayKind::Decorrelation,
+                MctArrayKind::Offset,
+            ][variant % 3],
+            numeric_format: [
+                MctNumericFormat::Int16,
+                MctNumericFormat::Int32,
+                MctNumericFormat::Float32,
+                MctNumericFormat::Float64,
+            ][variant / 3 % 4],
+            fraction_bits: [0, 32, 255][variant / 12 % 3],
+            values: match variant % 4 {
+                0 => vec![],
+                1 => vec![i64::MIN],
+                2 => vec![0, variant as i64],
+                _ => vec![i64::MIN, variant as i64, i64::MAX],
+            },
+        }
+    }
+
+    fn raw_mct_registry_record(index: u8, variant: usize) -> MctRecord {
+        let collections = (0..variant % 4)
+            .map(|position| {
+                let value = variant + position;
+                MctCollectionReference {
+                    input_components: vec![0, u16::MAX, value as u16, 0],
+                    output_components: if value.is_multiple_of(2) {
+                        vec![]
+                    } else {
+                        vec![u16::MAX, 0]
+                    },
+                    transform: if value.is_multiple_of(3) {
+                        MctCollectionReferenceTransform::Array {
+                            kind: [
+                                MctArrayKind::Dependency,
+                                MctArrayKind::Decorrelation,
+                                MctArrayKind::Offset,
+                            ][value / 3 % 3],
+                            reversible: value.is_multiple_of(2),
+                            transform_index: [0, 7, 255][value / 3 % 3],
+                            offset_index: [255, 0, 7][value / 6 % 3],
+                        }
+                    } else {
+                        MctCollectionReferenceTransform::Wavelet(MctWavelet {
+                            transform: if value % 3 == 1 {
+                                MctWaveletType::Reversible5x3
+                            } else {
+                                MctWaveletType::Irreversible9x7
+                            },
+                            levels: [0, 1, 255][value % 3],
+                            component_offset: if value.is_multiple_of(2) {
+                                i32::MIN
+                            } else {
+                                i32::MAX
+                            },
+                        })
+                    },
+                }
+            })
+            .collect();
+        MctRecord { index, collections }
+    }
+
+    fn raw_mct_registry_index_cases(index: u8) -> [Vec<u8>; 6] {
+        [
+            vec![],
+            vec![index],
+            vec![index.wrapping_add(1)],
+            vec![index, index.wrapping_add(1), index],
+            vec![index.wrapping_add(1), index, 0, index],
+            vec![index, index, index.wrapping_add(1)],
+        ]
+    }
+
+    #[test]
+    fn actual_mct_registry_preserves_last_only_admission_and_all_array_replacements() {
+        let mut contexts = 0;
+        let mut replacements = 0;
+        for index in 0..=u8::MAX {
+            for indices in raw_mct_registry_index_cases(index) {
+                for variant in 0..36 {
+                    let arrays: Vec<MctArray> = indices
+                        .iter()
+                        .enumerate()
+                        .map(|(position, value)| raw_mct_registry_array(*value, variant + position))
+                        .collect();
+                    let expected_first = arrays.iter().position(|array| array.index == index);
+                    assert_eq!(find_mct_array_index(&arrays, index), expected_first);
+                    for offset in [0, usize::MAX] {
+                        let duplicate_last = arrays.last().is_some_and(|last| {
+                            arrays[..arrays.len() - 1]
+                                .iter()
+                                .any(|array| array.index == last.index)
+                        });
+                        let expected = if duplicate_last {
+                            Err(DecodeError::MalformedInput {
+                                offset: offset as u64,
+                                kind: MalformedKind::InvalidTransform,
+                            })
+                        } else {
+                            Ok(())
+                        };
+                        assert_eq!(validate_unique_mct_array_indexes(&arrays, offset), expected);
+                    }
+                    for value in [0, 3, 7, 11, 12, 23, 24, 35] {
+                        let replacement = raw_mct_registry_array(index, value);
+                        let mut actual = arrays.clone();
+                        let mut expected = arrays.clone();
+                        match expected_first {
+                            Some(position) => expected[position] = replacement.clone(),
+                            None => expected.push(replacement.clone()),
+                        }
+                        replace_mct_array(&mut actual, replacement);
+                        assert_eq!(actual, expected);
+                        replacements += 1;
+                    }
+                    contexts += 1;
+                }
+            }
+        }
+        assert_eq!(contexts, 55_296);
+        assert_eq!(replacements, 442_368);
+    }
+
+    #[test]
+    fn actual_mct_registry_preserves_complete_raw_record_replacements() {
+        let mut contexts = 0;
+        let mut replacements = 0;
+        for index in 0..=u8::MAX {
+            for indices in raw_mct_registry_index_cases(index) {
+                for variant in 0..12 {
+                    let records: Vec<MctRecord> = indices
+                        .iter()
+                        .enumerate()
+                        .map(|(position, value)| {
+                            raw_mct_registry_record(*value, variant + position)
+                        })
+                        .collect();
+                    let expected_first = records.iter().position(|record| record.index == index);
+                    assert_eq!(find_mct_record_index(&records, index), expected_first);
+                    for offset in [0, usize::MAX] {
+                        let duplicate_last = records.last().is_some_and(|last| {
+                            records[..records.len() - 1]
+                                .iter()
+                                .any(|record| record.index == last.index)
+                        });
+                        let expected = if duplicate_last {
+                            Err(DecodeError::MalformedInput {
+                                offset: offset as u64,
+                                kind: MalformedKind::InvalidTransform,
+                            })
+                        } else {
+                            Ok(())
+                        };
+                        assert_eq!(
+                            validate_unique_mct_record_indexes(&records, offset),
+                            expected
+                        );
+                    }
+                    for value in [0, 1, 2, 3, 5, 7, 11, 12] {
+                        let replacement = raw_mct_registry_record(index, value);
+                        let mut actual = records.clone();
+                        let mut expected = records.clone();
+                        match expected_first {
+                            Some(position) => expected[position] = replacement.clone(),
+                            None => expected.push(replacement.clone()),
+                        }
+                        replace_mct_record(&mut actual, replacement);
+                        assert_eq!(actual, expected);
+                        replacements += 1;
+                    }
+                    contexts += 1;
+                }
+            }
+        }
+        assert_eq!(contexts, 18_432);
+        assert_eq!(replacements, 147_456);
+    }
+
+    #[test]
+    fn actual_mct_registry_references_require_exactly_one_matching_index_and_kind() {
+        let mut contexts = 0;
+        for index in 0..=u8::MAX {
+            let mut cases = raw_mct_registry_index_cases(index).to_vec();
+            cases.push(vec![index; 4]);
+            cases.push(vec![
+                index.wrapping_add(1),
+                index,
+                index.wrapping_add(1),
+                index,
+            ]);
+            for indices in cases {
+                for variant in 0..12 {
+                    let arrays: Vec<MctArray> = indices
+                        .iter()
+                        .enumerate()
+                        .map(|(position, value)| raw_mct_registry_array(*value, variant + position))
+                        .collect();
+                    for kind in [
+                        MctArrayKind::Dependency,
+                        MctArrayKind::Decorrelation,
+                        MctArrayKind::Offset,
+                    ] {
+                        let matches: Vec<usize> = arrays
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, array)| array.index == index && array.kind == kind)
+                            .map(|(position, _)| position)
+                            .collect();
+                        let result = referenced_mct_array(&arrays, index, kind);
+                        if matches.len() == 1 {
+                            let actual = result.unwrap();
+                            assert_eq!(actual, &arrays[matches[0]]);
+                            assert!(core::ptr::eq(actual, &arrays[matches[0]]));
+                        } else {
+                            assert_eq!(
+                                result,
+                                Err(DecodeError::MalformedInput {
+                                    offset: 0,
+                                    kind: MalformedKind::InvalidTransform,
+                                })
+                            );
+                        }
+                        contexts += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 73_728);
     }
 
     fn reference_prepare_mct_fragment(

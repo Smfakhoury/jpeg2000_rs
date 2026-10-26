@@ -14940,6 +14940,82 @@ pub open spec fn part1_consume_mcc_fragment(
     }
 }
 
+pub type Part1MctRecord = (u8, Seq<Part1MccCollectionReference>);
+
+#[verifier::opaque]
+pub open spec fn part1_mct_registry_array_find(arrays: Seq<Part2MctArray>, index: u8, position: nat) -> Option<usize>
+    decreases arrays.len() - position,
+{
+    if position >= arrays.len() { None }
+    else if arrays[position as int].0 == index { Some(position as usize) }
+    else { part1_mct_registry_array_find(arrays, index, position + 1) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_registry_record_find(records: Seq<Part1MctRecord>, index: u8, position: nat) -> Option<usize>
+    decreases records.len() - position,
+{
+    if position >= records.len() { None }
+    else if records[position as int].0 == index { Some(position as usize) }
+    else { part1_mct_registry_record_find(records, index, position + 1) }
+}
+
+pub open spec fn part1_mct_registry_unique_array(arrays: Seq<Part2MctArray>, offset: usize) -> Result<(), crate::DecodeError> {
+    if arrays.len() == 0 || part1_mct_registry_array_find(arrays.drop_last(), arrays.last().0, 0).is_none() {
+        Ok(())
+    } else { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform)) }
+}
+
+pub open spec fn part1_mct_registry_unique_record(records: Seq<Part1MctRecord>, offset: usize) -> Result<(), crate::DecodeError> {
+    if records.len() == 0 || part1_mct_registry_record_find(records.drop_last(), records.last().0, 0).is_none() {
+        Ok(())
+    } else { Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidTransform)) }
+}
+
+pub open spec fn part1_mct_registry_replace_array(arrays: Seq<Part2MctArray>, replacement: Part2MctArray)
+    -> ((), Seq<Part2MctArray>)
+{
+    ((), match part1_mct_registry_array_find(arrays, replacement.0, 0) {
+        None => arrays.push(replacement),
+        Some(index) => arrays.update(index as int, replacement),
+    })
+}
+
+pub open spec fn part1_mct_registry_replace_record(records: Seq<Part1MctRecord>, replacement: Part1MctRecord)
+    -> ((), Seq<Part1MctRecord>)
+{
+    ((), match part1_mct_registry_record_find(records, replacement.0, 0) {
+        None => records.push(replacement),
+        Some(index) => records.update(index as int, replacement),
+    })
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_registry_reference_from(
+    arrays: Seq<Part2MctArray>, index: u8, kind: crate::codestream::MctArrayKind,
+    position: nat, found: Option<usize>,
+) -> Result<Part2MctArray, crate::DecodeError>
+    decreases arrays.len() - position,
+{
+    if position >= arrays.len() {
+        match found {
+            Some(candidate) if candidate < arrays.len() => Ok(arrays[candidate as int]),
+            _ => Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidTransform)),
+        }
+    } else if arrays[position as int].0 == index && arrays[position as int].1 == kind {
+        if found.is_some() {
+            Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidTransform))
+        } else { part1_mct_registry_reference_from(arrays, index, kind, position + 1, Some(position as usize)) }
+    } else { part1_mct_registry_reference_from(arrays, index, kind, position + 1, found) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_registry_reference(
+    arrays: Seq<Part2MctArray>, index: u8, kind: crate::codestream::MctArrayKind,
+) -> Result<Part2MctArray, crate::DecodeError> {
+    part1_mct_registry_reference_from(arrays, index, kind, 0, None)
+}
+
 pub struct Part1MctFragment {
     pub descriptor: u16, pub next_index: u16, pub final_index: u16,
     pub offset: usize, pub data: Seq<u8>,
