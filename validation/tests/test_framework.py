@@ -139,6 +139,50 @@ class FrameworkTests(WorkingFiles):
         with self.assertRaises(SchemaError):
             framework.validate_schema(schema, 7)
 
+    def test_inventory_caller_indexes_are_fresh_and_preserve_original_word_matching(self):
+        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        entry = next(item for item in coverage["requirements"]
+                     if item["id"] == "part1-complete-native-packet-length-admission")
+        coverage["requirements"] = [entry]
+        entry["implementation_refs"] = [{"path": "src/decode.rs", "symbol": "coverage_index_caller"}]
+        source = (framework.ROOT / "src/decode.rs").resolve()
+        original = source.read_text()
+        self.assertNotRegex(original, r"\bparse_plm\s*\(")
+        read_text = Path.read_text
+        current = original
+        reads = []
+
+        def altered(path, *args, **kwargs):
+            if path == source:
+                reads.append(path)
+                return current
+            return read_text(path, *args, **kwargs)
+
+        cases = [
+            ("parse_plm ()", True),
+            ("r#parse_plm\n()", True),
+            ('"parse_plm()"', True),
+            ("misparse_plm()", False),
+            ("parse_plm_suffix()", False),
+            ("\u00e9parse_plm()", False),
+            ("parse_plm::<T>()", False),
+            ("parse_plm()", True),
+        ]
+        with mock.patch.object(Path, "read_text", altered):
+            for expression, accepted in cases:
+                with self.subTest(expression=expression):
+                    current = original + (
+                        "\nfn coverage_index_caller() {\n"
+                        f"    validate_packet_lengths(); {expression};\n"
+                        "}\n"
+                    )
+                    if accepted:
+                        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+                    else:
+                        with self.assertRaisesRegex(ValueError, "not used by claimed implementation: parse_plm"):
+                            framework.validate_normative_coverage(coverage)
+        self.assertEqual(len(reads), len(cases))
+
     def test_generation_is_deterministic_and_complete(self):
         first = framework.build_manifest(framework.generated_cases())
         self.assertEqual(first, framework.build_manifest(framework.generated_cases()))
@@ -1687,6 +1731,34 @@ class FrameworkTests(WorkingFiles):
         self.assertIsNone(framework._coverage_function_header(duplicate, "RawBitReader::decode"))
         nested = "impl Tier1SymbolDecoder for RawBitReader<'_> {\n    fn unrelated() {\n        fn decode() {}\n    }\n}\n"
         self.assertIsNone(framework._coverage_function_header(nested, "RawBitReader::decode"))
+
+    def test_qualified_impl_range_index_preserves_traits_duplicates_and_changed_text(self):
+        trait = (
+            "impl Tier1SymbolDecoder for RawBitReader<'_> {\n"
+            "    fn decode(&mut self) {}\n"
+            "    fn read_bit(&mut self) {}\n"
+            "}\n"
+        )
+        inherent = "impl RawBitReader<'_> {\n    fn read_bit(&mut self) {}\n}\n"
+        text = trait + inherent
+        ranges = {}
+        for source in [
+            text, trait, text + inherent, text.replace("read_bit", "unrelated"), text,
+            "impl RawBitReader<'_> {\n    fn read_bit(&mut self) {}\n",
+        ]:
+            for symbol in [
+                "RawBitReader::decode", "RawBitReader::read_bit", "OtherReader::decode",
+            ]:
+                with self.subTest(source=source, symbol=symbol):
+                    actual = framework._coverage_function_header(
+                        source, symbol, implementation_ranges=ranges,
+                    )
+                    expected = framework._coverage_function_header(source, symbol)
+                    self.assertEqual(actual.span() if actual else None, expected.span() if expected else None)
+        self.assertEqual(
+            framework._coverage_function_header(text, "RawBitReader::read_bit", implementation_ranges=ranges).start(),
+            text.rfind("    fn read_bit"),
+        )
 
     def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
         original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())

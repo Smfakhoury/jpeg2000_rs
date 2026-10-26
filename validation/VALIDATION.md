@@ -32,6 +32,15 @@ and converted output bytes are unchanged and checked by harness regressions
 and independent numerical comparisons. This reduces validation-subject
 serialization overhead; it is not a decoder throughput or conformance claim.
 
+Inventory validation reuses content-keyed implementation ranges and file
+call-name indexes within each invocation. A fresh invocation rereads its
+source files and rebuilds the indexes, including after source mutations.
+Owner/trait selection, duplicate-method rejection and same-file executable
+body checks are unchanged. Cross-file matching retains the previous
+conservative word/token rules; it is not a Rust parser. These indexes avoid
+repeated full-source regex scans without selecting fewer tests or relaxing
+contract, source-linkage or mutation-rejection checks.
+
 All reports default to ignored `target/validation/`. The `run`, `budget`,
 `official`, `numerical`, `htj2k`, `schemas`, and `all` commands accept `--output-dir`. Existing
 tracked report paths are refused. Reports bind the Git commit, dirty flag,
