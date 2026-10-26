@@ -949,6 +949,25 @@ _TILE_PACKET_ADMISSION_CONTRACTS = {
     ),
 }
 
+_COMPONENT_HEADER_APPLICATION_CONTRACTS = {
+    ("src/codestream.rs", "component_depths_uniform"): (
+        "part1_component_depths_uniform", r"\1", None,
+        _coverage_call("parsed_image_size_view", "size") + r"\s*,\s*first",
+    ),
+    ("src/codestream.rs", "Parser::apply_component_bit_depths"): (
+        "part1_apply_component_depths", r"\1",
+        _coverage_call("parsed_image_size_view", _coverage_call("final", "size")),
+        _coverage_call("parsed_image_size_view", _coverage_call("old", "size"))
+        + r"\s*,\s*depths\s*@\s*,\s*self\.position",
+    ),
+    ("src/codestream.rs", "Parser::apply_component_registrations"): (
+        "part1_apply_component_registrations", r"\1",
+        _coverage_call("parsed_image_size_view", _coverage_call("final", "size")),
+        _coverage_call("parsed_image_size_view", _coverage_call("old", "size"))
+        + r"\s*,\s*registrations\s*@\s*,\s*self\.position",
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2593,6 +2612,7 @@ def validate_normative_coverage(
                 or _PACKET_LENGTH_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_METADATA_FINALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_PACKET_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

@@ -25,6 +25,32 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual component depth and registration application
+
+Actual main-header application consumes the raw component-depth and
+registration vectors, with the sole original loops factored into native
+methods and actually wired back. Empty vectors bypass all checks. Nonempty
+vectors check descriptor availability before physical component bounds,
+retaining every committed prefix and old uniform flag on errors.
+Depth application then consumes the actual component-zero getter and a
+physical precision-and-sign uniformity query. Getter failures retain offset
+zero, distinct from parser-position errors. Raw precision values, vacuous
+queries, logical-versus-physical counts and early exits remain native.
+Registration changes only the actual horizontal/vertical fields.
+
+Full result/image observations include all geometry, sampling, depth/sign,
+registration, uniform flags and unused physical tails. Canonical and suffix
+loop links and three mathematical termination checks cover these actual
+bodies without normalized inputs, supplied results, validity premises,
+new trust, caps, pins, budgets or termination bypass.
+
+Independent references cover 10,752 physical-uniformity contexts, 5,670
+depth/frame contexts, 7,680 raw precision/sign contexts, 3,402 registration/
+frame contexts and all 65,536 horizontal fractions with paired vertical
+values. A genuine SIZ/CBD/CRG segment-reader chain feeds actual producers
+into both methods. These are not official conformance results; outer
+header/tile/file/parser/F2/F4/F8 composition remains separate.
+
 ## Actual PLT/PPT tile packet admission
 
 The sole actual PLT/PPT tile-header branches now call their factored native

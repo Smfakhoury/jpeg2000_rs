@@ -145,6 +145,39 @@ pub(crate) fn image_component_info(
     Ok(size.component_info[index])
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_component_depths_uniform(parsed_image_size_view(size), first),
+))]
+fn component_depths_uniform(size: &ImageSize, first: ComponentInfo) -> bool {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part1_component_depths_uniform(parsed_image_size_view(size), first); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_component_depths_uniform); }
+    let mut component = 1_u16;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            goal == crate::specs::part1_component_depths_uniform(parsed_image_size_view(size), first),
+            goal == crate::specs::part1_component_depths_uniform_from(parsed_image_size_view(size), first, component as nat),
+        decreases size.components as int - component as int,
+    ))]
+    while component < size.components {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_component_depths_uniform_from, 1); }
+        let info = match size.component(component) {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+        if info.precision != first.precision || info.signed != first.signed {
+            return false;
+        }
+        component += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_component_depths_uniform_from, 1); }
+    true
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct TileBounds {
@@ -4123,6 +4156,125 @@ fn new_parser<'a>(input: &'a [u8], limits: &'a ResourceLimits) -> Result<Parser<
 }
 
 impl<'a> Parser<'a> {
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parsed_image_size_view(final(size))) == crate::specs::part1_apply_component_depths(
+            parsed_image_size_view(old(size)), depths@, self.position),
+    ))]
+    fn apply_component_bit_depths(
+        &self,
+        size: &mut ImageSize,
+        depths: &[ComponentBitDepth],
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = parsed_image_size_view(size);
+            let ghost goal = crate::specs::part1_apply_component_depths(initial, depths@, self.position);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_apply_component_depths); }
+        if depths.is_empty() {
+            return Ok(());
+        }
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= size.components,
+                initial == parsed_image_size_view(old(size)),
+                goal == crate::specs::part1_apply_component_depths(initial, depths@, self.position),
+                goal == crate::specs::part1_apply_component_depths_from(
+                    parsed_image_size_view(size), depths@, self.position, component as nat),
+            decreases size.components - component,
+        ))]
+        while component < size.components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_apply_component_depths_from, 1); }
+            let index = usize::from(component);
+            if index >= depths.len() {
+                return Err(self.malformed_here(MalformedKind::MissingRequiredStructure));
+            }
+            let depth = depths[index];
+            if index >= size.component_info.len() {
+                return Err(self.malformed_here(MalformedKind::InvalidImageGeometry));
+            }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = parsed_image_size_view(size); }
+            size.component_info[index].precision = depth.precision;
+            size.component_info[index].signed = depth.signed;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(size.component_info@ =~= before.infos.update(index as int, ComponentInfo {
+                    precision: depth.precision, signed: depth.signed, ..before.infos[index as int]
+                }));
+            }
+            component += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_apply_component_depths_from, 1); }
+        let first = size.component(0)?;
+        let uniform = component_depths_uniform(size, first);
+        size.uniform_bit_depth = if uniform { Some(first.precision) } else { None };
+        size.uniform_signed = if uniform { Some(first.signed) } else { None };
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parsed_image_size_view(final(size))) == crate::specs::part1_apply_component_registrations(
+            parsed_image_size_view(old(size)), registrations@, self.position),
+    ))]
+    fn apply_component_registrations(
+        &self,
+        size: &mut ImageSize,
+        registrations: &[ComponentRegistration],
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = parsed_image_size_view(size);
+            let ghost goal = crate::specs::part1_apply_component_registrations(initial, registrations@, self.position);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_apply_component_registrations); }
+        if registrations.is_empty() {
+            return Ok(());
+        }
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= size.components,
+                initial == parsed_image_size_view(old(size)),
+                goal == crate::specs::part1_apply_component_registrations(initial, registrations@, self.position),
+                goal == crate::specs::part1_apply_component_registrations_from(
+                    parsed_image_size_view(size), registrations@, self.position, component as nat),
+            decreases size.components - component,
+        ))]
+        while component < size.components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_apply_component_registrations_from, 1); }
+            let index = usize::from(component);
+            if index >= registrations.len() {
+                return Err(self.malformed_here(MalformedKind::MissingRequiredStructure));
+            }
+            let registration = registrations[index];
+            if index >= size.component_info.len() {
+                return Err(self.malformed_here(MalformedKind::InvalidImageGeometry));
+            }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = parsed_image_size_view(size); }
+            size.component_info[index].x_registration = registration.horizontal;
+            size.component_info[index].y_registration = registration.vertical;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(size.component_info@ =~= before.infos.update(index as int, ComponentInfo {
+                    x_registration: registration.horizontal, y_registration: registration.vertical,
+                    ..before.infos[index as int]
+                }));
+            }
+            component += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_apply_component_registrations_from, 1); }
+        Ok(())
+    }
+
     fn parse_layout(self) -> Result<CodestreamLayout<'a>, DecodeError> {
         let mut parser = self;
         parser.expect_standalone(SOC)?;
@@ -4367,42 +4519,8 @@ impl<'a> Parser<'a> {
         if !pending_mct.is_empty() || !pending_mcc.is_empty() {
             return Err(parser.malformed_here(MalformedKind::MissingRequiredStructure));
         }
-        if !part2_extensions.component_bit_depths.is_empty() {
-            let mut component = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant component <= image_size.components,
-                    decreases image_size.components - component,
-                )
-            )]
-            while component < image_size.components {
-                let depth = *part2_extensions
-                    .component_bit_depths
-                    .get(usize::from(component))
-                    .ok_or_else(|| {
-                        parser.malformed_here(MalformedKind::MissingRequiredStructure)
-                    })?;
-                let info = image_size
-                    .component_info
-                    .get_mut(usize::from(component))
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidImageGeometry))?;
-                info.precision = depth.precision;
-                info.signed = depth.signed;
-                component = component
-                    .checked_add(1)
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-            let first = image_size.component(0)?;
-            let uniform = (1..image_size.components).all(|component| {
-                matches!(
-                    image_size.component(component),
-                    Ok(info) if info.precision == first.precision && info.signed == first.signed
-                )
-            });
-            image_size.uniform_bit_depth = if uniform { Some(first.precision) } else { None };
-            image_size.uniform_signed = if uniform { Some(first.signed) } else { None };
-        }
+        parser
+            .apply_component_bit_depths(&mut image_size, &part2_extensions.component_bit_depths)?;
         let main_header_end = parser.position;
         let ppm_frames = parser.parse_ppm_frames(&ppm_bytes, ppm_fragments)?;
         let main_header = parser
@@ -4485,33 +4603,10 @@ impl<'a> Parser<'a> {
                 MalformedKind::MissingRequiredStructure,
             ));
         }
-        if !part2_extensions.component_registrations.is_empty() {
-            let mut component = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant component <= image_size.components,
-                    decreases image_size.components - component,
-                )
-            )]
-            while component < image_size.components {
-                let registration = *part2_extensions
-                    .component_registrations
-                    .get(usize::from(component))
-                    .ok_or_else(|| {
-                        parser.malformed_here(MalformedKind::MissingRequiredStructure)
-                    })?;
-                let info = image_size
-                    .component_info
-                    .get_mut(usize::from(component))
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidImageGeometry))?;
-                info.x_registration = registration.horizontal;
-                info.y_registration = registration.vertical;
-                component = component
-                    .checked_add(1)
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-        }
+        parser.apply_component_registrations(
+            &mut image_size,
+            &part2_extensions.component_registrations,
+        )?;
         let main_mct_parameters = MctParameters {
             arrays: mct_arrays,
             records: mct_records,
@@ -19402,6 +19497,400 @@ mod tests {
         );
         assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
         assert!(core::ptr::eq(parser.limits, &limits));
+    }
+
+    fn raw_component_application_size(components: u16, variant: u8) -> ImageSize {
+        let mut size = raw_resolution_size(
+            if variant == 0 { 0 } else { u32::MAX },
+            17,
+            (0, u8::MAX),
+            0x1234,
+            components,
+        );
+        for (index, info) in size.component_info.iter_mut().enumerate() {
+            info.precision = if variant == 1 {
+                (index as u8).wrapping_mul(17)
+            } else {
+                7
+            };
+            info.signed = variant == 2 && index % 2 != 0;
+            info.x_subsampling = (index as u8).wrapping_mul(3);
+            info.y_subsampling = u8::MAX - index as u8;
+            info.x_registration = (index as u16).wrapping_mul(257);
+            info.y_registration = u16::MAX - info.x_registration;
+        }
+        size
+    }
+
+    fn reference_uniform_component_depths(size: &ImageSize, first: ComponentInfo) -> bool {
+        (1..usize::from(size.components)).all(|index| {
+            size.component_info.get(index).is_some_and(|info| {
+                (info.precision, info.signed) == (first.precision, first.signed)
+            })
+        })
+    }
+
+    fn reference_component_depth_application(
+        size: &mut ImageSize,
+        depths: &[ComponentBitDepth],
+        offset: usize,
+    ) -> Result<(), DecodeError> {
+        if depths.is_empty() {
+            return Ok(());
+        }
+        for index in 0..usize::from(size.components) {
+            let depth = depths.get(index).ok_or_else(|| {
+                input_error_literal(offset, MalformedKind::MissingRequiredStructure)
+            })?;
+            let info = size
+                .component_info
+                .get_mut(index)
+                .ok_or_else(|| input_error_literal(offset, MalformedKind::InvalidImageGeometry))?;
+            *info = ComponentInfo {
+                precision: depth.precision,
+                signed: depth.signed,
+                ..*info
+            };
+        }
+        if size.components == 0 {
+            return Err(input_error_literal(0, MalformedKind::InvalidImageGeometry));
+        }
+        let first = size.component_info[0];
+        let uniform = reference_uniform_component_depths(size, first);
+        size.uniform_bit_depth = uniform.then_some(first.precision);
+        size.uniform_signed = uniform.then_some(first.signed);
+        Ok(())
+    }
+
+    fn reference_component_registration_application(
+        size: &mut ImageSize,
+        registrations: &[ComponentRegistration],
+        offset: usize,
+    ) -> Result<(), DecodeError> {
+        if registrations.is_empty() {
+            return Ok(());
+        }
+        for index in 0..usize::from(size.components) {
+            let registration = registrations.get(index).ok_or_else(|| {
+                input_error_literal(offset, MalformedKind::MissingRequiredStructure)
+            })?;
+            let info = size
+                .component_info
+                .get_mut(index)
+                .ok_or_else(|| input_error_literal(offset, MalformedKind::InvalidImageGeometry))?;
+            *info = ComponentInfo {
+                x_registration: registration.horizontal,
+                y_registration: registration.vertical,
+                ..*info
+            };
+        }
+        Ok(())
+    }
+
+    fn component_application_reader_state(parser: &Parser<'_>) -> PacketAdmissionState {
+        PacketAdmissionState {
+            position: parser.position,
+            work: parser.work_units,
+            header_bytes: parser.packet_length_bytes,
+            packet_count: parser.packet_lengths,
+        }
+    }
+
+    fn assert_component_depth_application(
+        parser: &Parser<'_>,
+        size: ImageSize,
+        depths: &[ComponentBitDepth],
+    ) {
+        let before = component_application_reader_state(parser);
+        let mut expected = size;
+        let expected_result =
+            reference_component_depth_application(&mut expected, depths, parser.position);
+        let mut actual = size;
+        assert_eq!(
+            parser.apply_component_bit_depths(&mut actual, depths),
+            expected_result
+        );
+        assert_eq!(actual, expected);
+        assert_packet_admission_state(parser, before, parser.input, parser.limits);
+    }
+
+    fn assert_component_registration_application(
+        parser: &Parser<'_>,
+        size: ImageSize,
+        registrations: &[ComponentRegistration],
+    ) {
+        let before = component_application_reader_state(parser);
+        let mut expected = size;
+        let expected_result = reference_component_registration_application(
+            &mut expected,
+            registrations,
+            parser.position,
+        );
+        let mut actual = size;
+        assert_eq!(
+            parser.apply_component_registrations(&mut actual, registrations),
+            expected_result
+        );
+        assert_eq!(actual, expected);
+        assert_packet_admission_state(parser, before, parser.input, parser.limits);
+    }
+
+    #[test]
+    fn actual_component_uniformity_uses_physical_infos_and_every_raw_first_depth() {
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            2,
+            MAX_COMPONENTS as u16 - 1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for variant in 0..3 {
+                let size = raw_component_application_size(components, variant);
+                for precision in 0..=u8::MAX {
+                    for signed in [false, true] {
+                        let first = ComponentInfo {
+                            precision,
+                            signed,
+                            x_subsampling: 0,
+                            y_subsampling: u8::MAX,
+                            x_registration: u16::MAX,
+                            y_registration: 0,
+                        };
+                        assert_eq!(
+                            component_depths_uniform(&size, first),
+                            reference_uniform_component_depths(&size, first)
+                        );
+                        contexts += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 10_752);
+    }
+
+    #[test]
+    fn actual_component_depth_application_preserves_prefix_errors_flags_tails_and_reader() {
+        let input = [0xa5, 0x5a];
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX;
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            2,
+            MAX_COMPONENTS as u16 - 1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for variant in 0..3 {
+                for flags in [
+                    (None, None),
+                    (Some(0), Some(false)),
+                    (Some(u8::MAX), Some(true)),
+                ] {
+                    let mut size = raw_component_application_size(components, variant);
+                    (size.uniform_bit_depth, size.uniform_signed) = flags;
+                    for length in [
+                        0,
+                        1,
+                        2,
+                        MAX_COMPONENTS - 1,
+                        MAX_COMPONENTS,
+                        MAX_COMPONENTS + 1,
+                    ] {
+                        for pattern in 0..5 {
+                            let depths: Vec<_> = (0..length)
+                                .map(|index| ComponentBitDepth {
+                                    precision: match pattern {
+                                        0 => 0,
+                                        1 => u8::MAX,
+                                        2 | 4 => (index as u8).wrapping_mul(17),
+                                        _ => 7,
+                                    },
+                                    signed: pattern == 1
+                                        || (matches!(pattern, 2 | 3) && index % 2 != 0),
+                                })
+                                .collect();
+                            for position in [0, 17, usize::MAX] {
+                                parser.position = position;
+                                assert_component_depth_application(&parser, size, &depths);
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 5_670);
+        let mut words = 0;
+        parser.position = usize::MAX;
+        for precision in 0..=u8::MAX {
+            for signed in [false, true] {
+                for components in [0, 1, 2, MAX_COMPONENTS as u16, MAX_COMPONENTS as u16 + 1] {
+                    let size = raw_component_application_size(components, 2);
+                    for length in [1, 2, MAX_COMPONENTS] {
+                        let depths = vec![ComponentBitDepth { precision, signed }; length];
+                        assert_component_depth_application(&parser, size, &depths);
+                        words += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(words, 7_680);
+    }
+
+    #[test]
+    fn actual_component_registration_preserves_native_bounds_order_and_every_raw_fraction() {
+        let input = [0xa5, 0x5a];
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX;
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            2,
+            MAX_COMPONENTS as u16 - 1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for variant in 0..3 {
+                for flags in [
+                    (None, None),
+                    (Some(0), Some(false)),
+                    (Some(u8::MAX), Some(true)),
+                ] {
+                    let mut size = raw_component_application_size(components, variant);
+                    (size.uniform_bit_depth, size.uniform_signed) = flags;
+                    for length in [
+                        0,
+                        1,
+                        2,
+                        MAX_COMPONENTS - 1,
+                        MAX_COMPONENTS,
+                        MAX_COMPONENTS + 1,
+                    ] {
+                        for pattern in 0..3 {
+                            let registrations: Vec<_> = (0..length)
+                                .map(|index| ComponentRegistration {
+                                    horizontal: if pattern == 0 {
+                                        0
+                                    } else {
+                                        (index as u16).wrapping_mul(257)
+                                    },
+                                    vertical: if pattern == 2 { u16::MAX } else { index as u16 },
+                                })
+                                .collect();
+                            for position in [0, 17, usize::MAX] {
+                                parser.position = position;
+                                assert_component_registration_application(
+                                    &parser,
+                                    size,
+                                    &registrations,
+                                );
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 3_402);
+        parser.position = usize::MAX;
+        let size = raw_component_application_size(1, 1);
+        for horizontal in 0..=u16::MAX {
+            assert_component_registration_application(
+                &parser,
+                size,
+                &[ComponentRegistration {
+                    horizontal,
+                    vertical: u16::MAX - horizontal,
+                }],
+            );
+        }
+    }
+
+    #[test]
+    fn actual_component_application_consumes_real_siz_cbd_crg_reader_producers() {
+        let mut siz = vec![0, 0];
+        for word in [32_u32, 32, 0, 0, 32, 32, 0, 0] {
+            siz.extend(word.to_be_bytes());
+        }
+        siz.extend(2_u16.to_be_bytes());
+        siz.extend([7, 1, 1, 7, 1, 1]);
+        let mut input = segment(SIZ, &siz);
+        input.extend(segment(CBD, &[0, 2, 7, 0x87]));
+        input.extend(segment(CRG, &[0x12, 0x34, 0xab, 0xcd, 0xff, 0xff, 0, 1]));
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let raw = parser.read_segment().unwrap();
+        let (mut size, _) = parser.parse_siz(raw).unwrap();
+        let mut extensions = Part2Extensions::default();
+        let raw = parser.read_segment().unwrap();
+        parser
+            .parse_cbd(raw, size.components, &mut extensions)
+            .unwrap();
+        let raw = parser.read_segment().unwrap();
+        parser
+            .parse_crg(raw, size.components, &mut extensions)
+            .unwrap();
+        let before = component_application_reader_state(&parser);
+        let original = size;
+        parser
+            .apply_component_bit_depths(&mut size, &extensions.component_bit_depths)
+            .unwrap();
+        parser
+            .apply_component_registrations(&mut size, &extensions.component_registrations)
+            .unwrap();
+        assert_eq!(
+            (size.components, size.uniform_bit_depth, size.uniform_signed),
+            (2, None, None)
+        );
+        assert_eq!(
+            (
+                size.component_info[0].precision,
+                size.component_info[0].signed
+            ),
+            (8, false)
+        );
+        assert_eq!(
+            (
+                size.component_info[1].precision,
+                size.component_info[1].signed
+            ),
+            (8, true)
+        );
+        assert_eq!(
+            (
+                size.component_info[0].x_registration,
+                size.component_info[0].y_registration
+            ),
+            (0x1234, 0xabcd)
+        );
+        assert_eq!(
+            (
+                size.component_info[1].x_registration,
+                size.component_info[1].y_registration
+            ),
+            (u16::MAX, 1)
+        );
+        assert_eq!(size.component_info[2..], original.component_info[2..]);
+        assert_eq!(
+            (size.width, size.height, size.tiles_across, size.tiles_down),
+            (32, 32, 1, 1)
+        );
+        assert_eq!(parser.position, input.len());
+        assert_packet_admission_state(&parser, before, &input, &limits);
     }
 
     fn reference_packet_sum(source: PacketLengthSource<'_>) -> Result<u64, DecodeError> {

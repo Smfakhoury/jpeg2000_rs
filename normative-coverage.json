@@ -4,6 +4,45 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-component-header-application",
+      "topic": "Actual main-header component bit-depth and registration application, factored from sole parse_layout loops and wired back, plus the actual physical uniform-depth query. Full raw ImageSize geometry, logical components, physical ComponentInfo array, uniform flags and unused tails bind every Result and partial prefix update. Empty descriptor vectors bypass every check. Nonempty application checks descriptor availability before physical info bounds; errors preserve committed prefixes and old uniform flags. Depth application consumes actual component(0) and physical precision-and-sign uniformity, retaining getter offset zero versus parser-position errors, raw precision values, vacuous queries and native early exits. Registration changes only horizontal/vertical fields and retains flags/sampling/depth/geometry/tails. Actual SIZ/CBD/CRG reader producers feed the application chain. No normalized infos/vectors, supplied results, validity premises, new trust/caps/pins/budgets or termination bypass. Outer header/tile/file/parser/F2/F4/F8 composition remains separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::apply_component_bit_depths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::apply_component_registrations"},
+        {"path": "src/codestream.rs", "symbol": "component_depths_uniform"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_depths"},
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_depths_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_registrations"},
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_registrations_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_depths_uniform"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_depths_uniform_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_image_size_component"},
+        {"path": "specs/mod.rs", "symbol": "Part1ParsedImageSize"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "component_depths_uniform"},
+        {"path": "src/codestream.rs", "symbol": "Parser::apply_component_bit_depths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::apply_component_registrations"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parsed_image_size_view"},
+        {"path": "src/codestream.rs", "symbol": "image_component_info"},
+        {"path": "src/codestream.rs", "symbol": "ImageSize::component"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_siz"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_cbd"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_crg"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_component_uniformity_uses_physical_infos_and_every_raw_first_depth"},
+        {"path": "src/codestream.rs", "symbol": "actual_component_depth_application_preserves_prefix_errors_flags_tails_and_reader"},
+        {"path": "src/codestream.rs", "symbol": "actual_component_registration_preserves_native_bounds_order_and_every_raw_fraction"},
+        {"path": "src/codestream.rs", "symbol": "actual_component_application_consumes_real_siz_cbd_crg_reader_producers"}
+      ]
+    },
+    {
       "id": "part1-complete-native-tile-packet-admission",
       "topic": "Actual PLT/PPT tile packet admission, factored from the sole real read_tile_part branches and wired back as actual callers. Raw main source presence rejects before empty payload, marker/index, counters or work; absent sources remain absent even with nonzero raw metadata. PLT index commits before genuine raw varint admission, seen commits only after that succeeds, and packet-count, encoded-byte and payload-total additions commit sequentially. All errors retain exact complete parser and five external scalar frames. Index-only PLT payloads and index 255 to 256 remain native. PPT consumes actual packed-fragment production only after the raw main conflict check, preserving next/fragment/byte/full-reader frames and first error ordering. No prepared main/counters/results, normalized metadata, new trust/caps/pins/budgets or termination bypass. Outer main/tile/file/parser/F2/F4/F8 composition remains separate.",
       "implementation_refs": [

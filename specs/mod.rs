@@ -13223,6 +13223,102 @@ pub struct Part1ParsedImageSize {
     pub infos: Seq<crate::codestream::ComponentInfo>,
 }
 
+#[verifier::opaque]
+pub open spec fn part1_component_depths_uniform_from(
+    size: Part1ParsedImageSize, first: crate::codestream::ComponentInfo, component: nat,
+) -> bool
+    decreases size.components as nat - component,
+{
+    if component >= size.components {
+        true
+    } else {
+        match part1_image_size_component(size.components, size.infos, component as u16) {
+            Err(_) => false,
+            Ok(info) => info.precision == first.precision && info.signed == first.signed
+                && part1_component_depths_uniform_from(size, first, component + 1),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_component_depths_uniform(size: Part1ParsedImageSize, first: crate::codestream::ComponentInfo) -> bool {
+    part1_component_depths_uniform_from(size, first, 1)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_apply_component_depths_from(
+    size: Part1ParsedImageSize, depths: Seq<crate::codestream::ComponentBitDepth>,
+    offset: usize, component: nat,
+) -> (Result<(), crate::DecodeError>, Part1ParsedImageSize)
+    decreases size.components as nat - component,
+{
+    if component >= size.components {
+        match part1_image_size_component(size.components, size.infos, 0) {
+            Err(error) => (Err(error), size),
+            Ok(first) => {
+                let uniform = part1_component_depths_uniform(size, first);
+                (Ok(()), Part1ParsedImageSize {
+                    uniform_bit_depth: if uniform { Some(first.precision) } else { None },
+                    uniform_signed: if uniform { Some(first.signed) } else { None }, ..size
+                })
+            },
+        }
+    } else if component >= depths.len() {
+        (Err(part1_codestream_malformed(offset, crate::MalformedKind::MissingRequiredStructure)), size)
+    } else if component >= size.infos.len() {
+        (Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidImageGeometry)), size)
+    } else {
+        let depth = depths[component as int];
+        let info = crate::codestream::ComponentInfo {
+            precision: depth.precision, signed: depth.signed, ..size.infos[component as int]
+        };
+        part1_apply_component_depths_from(Part1ParsedImageSize {
+            infos: size.infos.update(component as int, info), ..size
+        }, depths, offset, component + 1)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_apply_component_depths(
+    size: Part1ParsedImageSize, depths: Seq<crate::codestream::ComponentBitDepth>, offset: usize,
+) -> (Result<(), crate::DecodeError>, Part1ParsedImageSize) {
+    if depths.len() == 0 { (Ok(()), size) }
+    else { part1_apply_component_depths_from(size, depths, offset, 0) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_apply_component_registrations_from(
+    size: Part1ParsedImageSize, registrations: Seq<crate::codestream::ComponentRegistration>,
+    offset: usize, component: nat,
+) -> (Result<(), crate::DecodeError>, Part1ParsedImageSize)
+    decreases size.components as nat - component,
+{
+    if component >= size.components {
+        (Ok(()), size)
+    } else if component >= registrations.len() {
+        (Err(part1_codestream_malformed(offset, crate::MalformedKind::MissingRequiredStructure)), size)
+    } else if component >= size.infos.len() {
+        (Err(part1_codestream_malformed(offset, crate::MalformedKind::InvalidImageGeometry)), size)
+    } else {
+        let registration = registrations[component as int];
+        let info = crate::codestream::ComponentInfo {
+            x_registration: registration.horizontal, y_registration: registration.vertical,
+            ..size.infos[component as int]
+        };
+        part1_apply_component_registrations_from(Part1ParsedImageSize {
+            infos: size.infos.update(component as int, info), ..size
+        }, registrations, offset, component + 1)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_apply_component_registrations(
+    size: Part1ParsedImageSize, registrations: Seq<crate::codestream::ComponentRegistration>, offset: usize,
+) -> (Result<(), crate::DecodeError>, Part1ParsedImageSize) {
+    if registrations.len() == 0 { (Ok(()), size) }
+    else { part1_apply_component_registrations_from(size, registrations, offset, 0) }
+}
+
 pub struct Part1SizComponents {
     pub offset: usize, pub component: u16,
     pub infos: Seq<crate::codestream::ComponentInfo>,
