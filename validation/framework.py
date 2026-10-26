@@ -968,6 +968,34 @@ _COMPONENT_HEADER_APPLICATION_CONTRACTS = {
     ),
 }
 
+_DECOMPOSITION_RESOLUTION_CONTRACTS = {
+    ("src/codestream.rs", "Part2Extensions::decomposition_structure"): (
+        "part1_dfs_lookup", _coverage_call("dfs_option_view", r"\1"), None,
+        _coverage_call("owned_extensions_view", "self") + r"\.decompositions\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream.rs", "Part2Extensions::arbitrary_decomposition"): (
+        "part1_ads_lookup", _coverage_call("ads_option_view", r"\1"), None,
+        _coverage_call("owned_extensions_view", "self") + r"\.arbitrary\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream.rs", "ComponentCodingStyles::set"): (
+        "part1_set_component_style", r"\1",
+        _coverage_call("component_style_owner_view", _coverage_call("final", "self")),
+        _coverage_call("component_style_owner_view", _coverage_call("old", "self"))
+        + r"\s*,\s*component\s*,\s*" + _coverage_call("parsed_coding_style_view", "style"),
+    ),
+    ("src/codestream.rs", "resolve_decomposition_style"): (
+        "part1_resolve_decomposition_style", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
+        _coverage_call("parsed_coding_style_view", "style")
+        + r"\s*,\s*" + _coverage_call("owned_extensions_view", "extensions"),
+    ),
+    ("src/codestream.rs", "Parser::resolve_decomposition_structures"): (
+        "part1_resolve_decompositions", r"\1",
+        _coverage_call("component_style_owner_view", _coverage_call("final", "styles")),
+        _coverage_call("component_style_owner_view", _coverage_call("old", "styles"))
+        + r"\s*,\s*" + _coverage_call("owned_extensions_view", "extensions"),
+    ),
+}
+
 _TRANSFORM_GRAPH_CONTRACTS = {
     ("src/codestream.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
@@ -2613,6 +2641,7 @@ def validate_normative_coverage(
                 or _PACKET_METADATA_FINALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_PACKET_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _DECOMPOSITION_RESOLUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

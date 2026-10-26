@@ -25,6 +25,33 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Actual DFS/ADS decomposition resolution
+
+The actual DFS/ADS lookup bodies now bind the complete first matching record,
+retaining their prior membership guarantees. Raw duplicate IDs remain
+first-match; DFS has priority over ADS. The sole factored component resolver
+rejects empty DFS directions even at zero levels, repeats the last direction,
+and preserves every unrelated style field. A local direction-prefix error
+does not commit the component; earlier completed components remain updated.
+
+ADS retains the native validation-only policy: all sublevel depths must be
+in 1..3, an empty list is accepted, and the style is stored unchanged without
+normalizing or applying its unused raw split list. Missing selectors leave
+slots untouched. The actual setter and complete owner traversal bind logical
+counts, every physical style/precinct/direction/flag/transform field and
+unused tails. Exact canonical and suffix links and five mathematical
+termination checks cover the genuine bodies, not prepared resolutions.
+
+Independent references cover all 65,536 stored/requested ID pairs with
+contradictory duplicates, 864 setter contexts, 196,608 raw style/selector/
+level contexts, 7,680 raw depth-value contexts and 10,752 full owner/error/
+reader contexts. Actual DFS/ADS segment readers feed the producer-to-resolver
+join. Five strict binding recipes retain mutation rejection. No validity
+premises, normalized records/styles, supplied results, new trust, caps,
+pins, budgets or termination bypass are introduced. These tests are not
+official conformance evidence; outer main/tile/file/parser/F2/F4/F8
+composition remains separate.
+
 ## Actual component depth and registration application
 
 Actual main-header application consumes the raw component-depth and

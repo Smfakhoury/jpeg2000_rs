@@ -178,6 +178,90 @@ fn component_depths_uniform(size: &ImageSize, first: ComponentInfo) -> bool {
     true
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures parsed_coding_style_outcome(result) == crate::specs::part1_resolve_decomposition_style(
+        parsed_coding_style_view(style), owned_extensions_view(extensions)),
+))]
+fn resolve_decomposition_style(
+    style: CodingStyle,
+    extensions: &Part2Extensions,
+) -> Result<CodingStyle, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = parsed_coding_style_view(style);
+        let ghost goal = crate::specs::part1_resolve_decomposition_style(initial, owned_extensions_view(extensions));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_resolve_decomposition_style); }
+    let Some(index) = style.decomposition_structure else {
+        return Ok(style);
+    };
+    let Some(structure) = extensions.decomposition_structure(index) else {
+        let decomposition = match extensions.arbitrary_decomposition(index) {
+            Some(value) => value,
+            None => {
+                return Err(packet_input_error(
+                    0,
+                    MalformedKind::MissingRequiredStructure,
+                ));
+            }
+        };
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= decomposition.sublevel_depths.len(),
+                initial == parsed_coding_style_view(style),
+                goal == crate::specs::part1_resolve_decomposition_style(initial, owned_extensions_view(extensions)),
+                goal == if crate::specs::part1_ads_depths_valid(decomposition.sublevel_depths@, position as nat) {
+                    Ok(initial)
+                } else { Err(crate::specs::part1_codestream_malformed(0, MalformedKind::InvalidCodingStyle)) },
+            decreases decomposition.sublevel_depths.len() - position,
+        ))]
+        while position < decomposition.sublevel_depths.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_ads_depths_valid, 1); }
+            let depth = decomposition.sublevel_depths[position];
+            if depth == 0 || depth > 3 {
+                return Err(packet_input_error(0, MalformedKind::InvalidCodingStyle));
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_ads_depths_valid, 1); }
+        return Ok(style);
+    };
+    if structure.directions.is_empty() {
+        return Err(packet_input_error(0, MalformedKind::InvalidCodingStyle));
+    }
+    let mut resolved = style;
+    let mut stage = 0_u8;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant stage <= style.decomposition_levels,
+            initial == parsed_coding_style_view(style),
+            structure.directions.len() > 0,
+            goal == crate::specs::part1_resolve_decomposition_style(initial, owned_extensions_view(extensions)),
+            goal == crate::specs::part1_decomposition_directions_from(
+                parsed_coding_style_view(resolved), structure.directions@, stage as nat),
+            resolved.decomposition_levels == style.decomposition_levels,
+        decreases style.decomposition_levels - stage,
+    ))]
+    while stage < style.decomposition_levels {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_decomposition_directions_from, 1); }
+        let requested = usize::from(stage);
+        let direction_index = requested.min(structure.directions.len() - 1);
+        let direction = structure.directions[direction_index];
+        if requested >= resolved.decomposition_directions.len() {
+            return Err(packet_input_error(0, MalformedKind::InvalidCodingStyle));
+        }
+        resolved.decomposition_directions[requested] = direction;
+        stage += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_decomposition_directions_from, 1); }
+    Ok(resolved)
+}
+
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
 pub struct TileBounds {
@@ -554,6 +638,12 @@ verus! {
 
     pub closed spec fn component_coding_style_count(styles: &ComponentCodingStyles) -> u16 {
         styles.components
+    }
+
+    closed spec fn component_style_owner_view(styles: &ComponentCodingStyles)
+        -> (u16, Seq<crate::specs::Part1ParsedCodingStyle>)
+    {
+        (styles.components, styles.styles@.map(|_i: int, style: CodingStyle| parsed_coding_style_view(style)))
     }
 
     pub closed spec fn coding_style_tier1_result(style: CodingStyle) -> Result<Tier1CodingStyle, DecodeError> {
@@ -1026,15 +1116,23 @@ impl ComponentCodingStyles {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, component_style_owner_view(final(self))) == crate::specs::part1_set_component_style(
+            component_style_owner_view(old(self)), component, parsed_coding_style_view(style)),
+    ))]
     fn set(&mut self, component: u16, style: CodingStyle) -> Result<(), DecodeError> {
-        if component >= self.components {
-            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_set_component_style); }
+        if component >= self.components || usize::from(component) >= self.styles.len() {
+            return Err(packet_input_error(0, MalformedKind::InvalidCodingStyle));
         }
-        let slot = self
-            .styles
-            .get_mut(usize::from(component))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidCodingStyle))?;
-        *slot = style;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = component_style_owner_view(self); }
+        self.styles[usize::from(component)] = style;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(component_style_owner_view(self).1 =~= before.1.update(component as int, parsed_coding_style_view(style)));
+        }
         Ok(())
     }
 
@@ -1878,16 +1976,21 @@ impl Part2Extensions {
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures result.is_some() == part2_execution_registry(self).0.contains(index),
+        ensures dfs_option_view(result) == crate::specs::part1_dfs_lookup(owned_extensions_view(self).decompositions, index, 0),
+            result.is_some() == part2_execution_registry(self).0.contains(index),
     ))]
     pub(crate) fn decomposition_structure(&self, index: u8) -> Option<&DecompositionStructure> {
         let mut position = 0_usize;
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant position <= self.decomposition_structures.len(),
+                crate::specs::part1_dfs_lookup(owned_extensions_view(self).decompositions, index, 0)
+                    == crate::specs::part1_dfs_lookup(owned_extensions_view(self).decompositions, index, position as nat),
                 forall|prior: int| 0 <= prior < position ==> self.decomposition_structures@[prior].index != index,
             decreases self.decomposition_structures.len() - position,
         ))]
         while position < self.decomposition_structures.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_dfs_lookup, 1); }
             let structure = &self.decomposition_structures[position];
             if structure.index == index {
                 #[cfg(verus_keep_ghost)]
@@ -1899,6 +2002,8 @@ impl Part2Extensions {
             }
             position += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_dfs_lookup, 1); }
         #[cfg(verus_keep_ghost)]
         proof! {
             if part2_execution_registry(self).0.contains(index) {
@@ -1940,16 +2045,21 @@ impl Part2Extensions {
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures result.is_some() == part2_execution_registry(self).1.contains(index),
+        ensures ads_option_view(result) == crate::specs::part1_ads_lookup(owned_extensions_view(self).arbitrary, index, 0),
+            result.is_some() == part2_execution_registry(self).1.contains(index),
     ))]
     pub(crate) fn arbitrary_decomposition(&self, index: u8) -> Option<&ArbitraryDecomposition> {
         let mut position = 0_usize;
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant position <= self.arbitrary_decompositions.len(),
+                crate::specs::part1_ads_lookup(owned_extensions_view(self).arbitrary, index, 0)
+                    == crate::specs::part1_ads_lookup(owned_extensions_view(self).arbitrary, index, position as nat),
                 forall|prior: int| 0 <= prior < position ==> self.arbitrary_decompositions@[prior].index != index,
             decreases self.arbitrary_decompositions.len() - position,
         ))]
         while position < self.arbitrary_decompositions.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_ads_lookup, 1); }
             let decomposition = &self.arbitrary_decompositions[position];
             if decomposition.index == index {
                 #[cfg(verus_keep_ghost)]
@@ -1961,6 +2071,8 @@ impl Part2Extensions {
             }
             position += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_ads_lookup, 1); }
         #[cfg(verus_keep_ghost)]
         proof! {
             if part2_execution_registry(self).1.contains(index) {
@@ -3725,6 +3837,18 @@ verus! {
         (value.index, value.sublevel_depths@, value.subband_splits@)
     }
 
+    pub closed spec fn dfs_option_view(value: Option<&DecompositionStructure>)
+        -> Option<(u8, Seq<DecompositionDirection>)>
+    {
+        match value { None => None, Some(value) => Some(owned_decomposition_view(value)) }
+    }
+
+    pub closed spec fn ads_option_view(value: Option<&ArbitraryDecomposition>)
+        -> Option<(u8, Seq<u8>, Seq<DecompositionDirection>)>
+    {
+        match value { None => None, Some(value) => Some(owned_arbitrary_decomposition_view(value)) }
+    }
+
     closed spec fn ads_payload_outcome(result: Result<ArbitraryDecomposition, DecodeError>)
         -> Result<(u8, Seq<u8>, Seq<DecompositionDirection>), DecodeError>
     {
@@ -5076,80 +5200,57 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, component_style_owner_view(final(styles))) == crate::specs::part1_resolve_decompositions(
+            component_style_owner_view(old(styles)), owned_extensions_view(extensions)),
+    ))]
     fn resolve_decomposition_structures(
         &self,
         styles: &mut ComponentCodingStyles,
         extensions: &Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = component_style_owner_view(styles);
+            let ghost goal = crate::specs::part1_resolve_decompositions(initial, owned_extensions_view(extensions));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_resolve_decompositions);
+            reveal(crate::specs::part1_resolve_decomposition_style);
+            reveal(crate::specs::part1_set_component_style);
+        }
         let mut component = 0_u16;
         let components = styles.components;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant component <= components,
+                    components == initial.0, styles.components == components,
+                    initial == component_style_owner_view(old(styles)),
+                    goal == crate::specs::part1_resolve_decompositions(initial, owned_extensions_view(extensions)),
+                    goal == crate::specs::part1_resolve_decompositions_from(
+                        component_style_owner_view(styles), owned_extensions_view(extensions), component as nat),
                 decreases components - component,
             )
         )]
         while component < components {
-            let mut style = styles.style(component)?;
-            if let Some(index) = style.decomposition_structure {
-                let Some(structure) = extensions.decomposition_structure(index) else {
-                    let decomposition =
-                        extensions.arbitrary_decomposition(index).ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::MissingRequiredStructure)
-                        })?;
-                    if decomposition
-                        .sublevel_depths
-                        .iter()
-                        .any(|depth| *depth == 0 || *depth > 3)
-                    {
-                        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-                    }
-                    styles.set(component, style)?;
-                    component = component
-                        .checked_add(1)
-                        .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-                    continue;
-                };
-                if structure.directions.is_empty() {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-                }
-                let mut stage = 0_u8;
-                let levels = style.decomposition_levels;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant stage <= levels,
-                        decreases levels - stage,
-                    )
-                )]
-                while stage < levels {
-                    let available = structure.directions.len();
-                    let requested = usize::from(stage);
-                    let last = available.checked_sub(1).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                    })?;
-                    let direction_index = requested.min(last);
-                    let direction =
-                        *structure.directions.get(direction_index).ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                        })?;
-                    *style
-                        .decomposition_directions
-                        .get_mut(requested)
-                        .ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                        })? = direction;
-                    stage = stage.checked_add(1).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                }
-                styles.set(component, style)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_resolve_decompositions_from, 1);
+                reveal(crate::specs::part1_resolve_decomposition_style);
+                reveal(crate::specs::part1_set_component_style);
             }
-            component = component
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            let style = styles.style(component)?;
+            if style.decomposition_structure.is_some() {
+                let resolved = resolve_decomposition_style(style, extensions)?;
+                styles.set(component, resolved)?;
+            }
+            component += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_resolve_decompositions_from, 1); }
         Ok(())
     }
 
@@ -19888,6 +19989,413 @@ mod tests {
         assert_eq!(
             (size.width, size.height, size.tiles_across, size.tiles_down),
             (32, 32, 1, 1)
+        );
+        assert_eq!(parser.position, input.len());
+        assert_packet_admission_state(&parser, before, &input, &limits);
+    }
+
+    fn raw_decomposition_extensions(variant: usize, length: usize) -> Part2Extensions {
+        use DecompositionDirection::{Horizontal, None, TwoDimensional, Vertical};
+        let directions: Vec<_> = (0..length)
+            .map(|index| [None, Horizontal, Vertical, TwoDimensional][index % 4])
+            .collect();
+        let dfs = |index, directions| DecompositionStructure { index, directions };
+        let ads = |depths| ArbitraryDecomposition {
+            index: 0,
+            sublevel_depths: depths,
+            subband_splits: vec![Vertical, None, Horizontal],
+        };
+        let mut extensions = Part2Extensions {
+            metadata_bytes: u64::MAX,
+            component_bit_depths: vec![ComponentBitDepth {
+                precision: 0,
+                signed: true,
+            }],
+            ..Part2Extensions::default()
+        };
+        match variant {
+            0 => {}
+            1 => extensions.decomposition_structures.push(dfs(0, directions)),
+            2 => extensions
+                .decomposition_structures
+                .push(dfs(u8::MAX, directions)),
+            3 => {
+                extensions.decomposition_structures.push(dfs(0, directions));
+                extensions
+                    .decomposition_structures
+                    .push(dfs(0, vec![TwoDimensional]));
+            }
+            4 => {
+                extensions.arbitrary_decompositions.push(ads(vec![0]));
+                extensions.arbitrary_decompositions.push(ads(vec![1, 2, 3]));
+            }
+            5 => {
+                extensions.arbitrary_decompositions.push(ads(vec![1, 2, 3]));
+                extensions.arbitrary_decompositions.push(ads(vec![0]));
+            }
+            6 => {
+                extensions.arbitrary_decompositions.push(ads(Vec::new()));
+                extensions.arbitrary_decompositions.push(ads(vec![0]));
+            }
+            _ => {
+                extensions.decomposition_structures.push(dfs(0, directions));
+                extensions.arbitrary_decompositions.push(ads(vec![1, 2, 3]));
+            }
+        }
+        extensions
+    }
+
+    fn reference_decomposition_style(
+        mut style: CodingStyle,
+        extensions: &Part2Extensions,
+    ) -> Result<CodingStyle, DecodeError> {
+        let Some(index) = style.decomposition_structure else {
+            return Ok(style);
+        };
+        if let Some(position) = extensions
+            .decomposition_structures
+            .iter()
+            .position(|entry| entry.index == index)
+        {
+            let directions = &extensions.decomposition_structures[position].directions;
+            let Some(last) = directions.last() else {
+                return Err(input_error_literal(0, MalformedKind::InvalidCodingStyle));
+            };
+            let count = usize::from(style.decomposition_levels);
+            if count > style.decomposition_directions.len() {
+                return Err(input_error_literal(0, MalformedKind::InvalidCodingStyle));
+            }
+            let selected: Vec<_> = directions
+                .iter()
+                .copied()
+                .chain(core::iter::repeat(*last))
+                .take(count)
+                .collect();
+            style.decomposition_directions[..count].copy_from_slice(&selected);
+            return Ok(style);
+        }
+        let Some(position) = extensions
+            .arbitrary_decompositions
+            .iter()
+            .position(|entry| entry.index == index)
+        else {
+            return Err(input_error_literal(
+                0,
+                MalformedKind::MissingRequiredStructure,
+            ));
+        };
+        if extensions.arbitrary_decompositions[position]
+            .sublevel_depths
+            .iter()
+            .all(|depth| (1..=3).contains(depth))
+        {
+            Ok(style)
+        } else {
+            Err(input_error_literal(0, MalformedKind::InvalidCodingStyle))
+        }
+    }
+
+    fn reference_decomposition_owner(
+        owner: &mut ComponentCodingStyles,
+        extensions: &Part2Extensions,
+    ) -> Result<(), DecodeError> {
+        for index in 0..usize::from(owner.components) {
+            let style = *owner
+                .styles
+                .get(index)
+                .ok_or_else(|| input_error_literal(0, MalformedKind::InvalidCodingStyle))?;
+            if style.decomposition_structure.is_some() {
+                let resolved = reference_decomposition_style(style, extensions)?;
+                owner.styles[index] = resolved;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn actual_decomposition_lookups_preserve_all_ids_first_duplicates_and_full_raw_records() {
+        use DecompositionDirection::{Horizontal, None, Vertical};
+        let mut contexts = 0;
+        for stored in 0..=u8::MAX {
+            let extensions = Part2Extensions {
+                decomposition_structures: vec![
+                    DecompositionStructure {
+                        index: stored,
+                        directions: vec![Horizontal, None],
+                    },
+                    DecompositionStructure {
+                        index: stored,
+                        directions: vec![Vertical],
+                    },
+                    DecompositionStructure {
+                        index: stored.wrapping_add(1),
+                        directions: Vec::new(),
+                    },
+                ],
+                arbitrary_decompositions: vec![
+                    ArbitraryDecomposition {
+                        index: stored,
+                        sublevel_depths: vec![0, u8::MAX],
+                        subband_splits: vec![Vertical, None],
+                    },
+                    ArbitraryDecomposition {
+                        index: stored,
+                        sublevel_depths: vec![1],
+                        subband_splits: vec![Horizontal],
+                    },
+                    ArbitraryDecomposition {
+                        index: stored.wrapping_add(1),
+                        sublevel_depths: Vec::new(),
+                        subband_splits: Vec::new(),
+                    },
+                ],
+                ..Part2Extensions::default()
+            };
+            for index in 0..=u8::MAX {
+                let dfs = extensions.decomposition_structure(index);
+                let expected = extensions
+                    .decomposition_structures
+                    .iter()
+                    .position(|entry| entry.index == index);
+                assert_eq!(dfs.is_some(), expected.is_some());
+                if let (Some(actual), Some(position)) = (dfs, expected) {
+                    assert!(core::ptr::eq(
+                        actual,
+                        &extensions.decomposition_structures[position]
+                    ));
+                    assert_eq!(
+                        (actual.index, &actual.directions),
+                        (
+                            extensions.decomposition_structures[position].index,
+                            &extensions.decomposition_structures[position].directions
+                        )
+                    );
+                }
+                let ads = extensions.arbitrary_decomposition(index);
+                let expected = extensions
+                    .arbitrary_decompositions
+                    .iter()
+                    .position(|entry| entry.index == index);
+                assert_eq!(ads.is_some(), expected.is_some());
+                if let (Some(actual), Some(position)) = (ads, expected) {
+                    assert!(core::ptr::eq(
+                        actual,
+                        &extensions.arbitrary_decompositions[position]
+                    ));
+                    assert_eq!(
+                        (
+                            actual.index,
+                            &actual.sublevel_depths,
+                            &actual.subband_splits
+                        ),
+                        (
+                            extensions.arbitrary_decompositions[position].index,
+                            &extensions.arbitrary_decompositions[position].sublevel_depths,
+                            &extensions.arbitrary_decompositions[position].subband_splits
+                        )
+                    );
+                }
+                contexts += 1;
+            }
+        }
+        assert_eq!(contexts, 65_536);
+    }
+
+    #[test]
+    fn actual_style_setter_preserves_logical_physical_bounds_and_every_unused_slot() {
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            MAX_COMPONENTS as u16 - 1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for component in [
+                0,
+                1,
+                MAX_COMPONENTS as u16 - 1,
+                MAX_COMPONENTS as u16,
+                MAX_COMPONENTS as u16 + 1,
+                u16::MAX,
+            ] {
+                for pattern in 0..4 {
+                    for levels in [0, 1, 31, 32, 33, u8::MAX] {
+                        let before = core::array::from_fn(|index| {
+                            raw_resolution_style(index as u8, index % 8)
+                        });
+                        let mut owner = ComponentCodingStyles {
+                            components,
+                            styles: before,
+                        };
+                        let style = raw_resolution_style(levels, pattern);
+                        let mut expected = before;
+                        let result =
+                            if component < components && usize::from(component) < before.len() {
+                                expected[usize::from(component)] = style;
+                                Ok(())
+                            } else {
+                                Err(input_error_literal(0, MalformedKind::InvalidCodingStyle))
+                            };
+                        assert_eq!(owner.set(component, style), result);
+                        assert_eq!((owner.components, owner.styles), (components, expected));
+                        contexts += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 864);
+    }
+
+    #[test]
+    fn actual_decomposition_style_preserves_all_levels_dfs_priority_ads_policy_and_full_fields() {
+        let mut contexts = 0;
+        for levels in 0..=u8::MAX {
+            for pattern in 0..4 {
+                for length in [0, 1, 2, 31, 32, 33] {
+                    for variant in 0..8 {
+                        let extensions = raw_decomposition_extensions(variant, length);
+                        for selector in [None, Some(0), Some(1), Some(u8::MAX)] {
+                            let mut style = raw_resolution_style(levels, pattern);
+                            style.decomposition_structure = selector;
+                            assert_eq!(
+                                resolve_decomposition_style(style, &extensions),
+                                reference_decomposition_style(style, &extensions)
+                            );
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 196_608);
+        let mut depths = 0;
+        for depth in 0..=u8::MAX {
+            for position in [0, 1, 3] {
+                let mut extensions = raw_decomposition_extensions(5, 0);
+                extensions.arbitrary_decompositions[0].sublevel_depths = vec![1, 2, 3, 1];
+                extensions.arbitrary_decompositions[0].sublevel_depths[position] = depth;
+                for levels in [0, 1, 32, 33, u8::MAX] {
+                    for selector in [None, Some(0)] {
+                        let mut style = raw_resolution_style(levels, 6);
+                        style.decomposition_structure = selector;
+                        assert_eq!(
+                            resolve_decomposition_style(style, &extensions),
+                            reference_decomposition_style(style, &extensions)
+                        );
+                        depths += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(depths, 7_680);
+    }
+
+    #[test]
+    fn actual_decomposition_owner_preserves_error_prefixes_all_physical_tails_and_reader() {
+        let input = [0xa5, 0x5a];
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        parser.work_units = u64::MAX;
+        parser.packet_length_bytes = u64::MAX;
+        parser.packet_lengths = u64::MAX;
+        let mut contexts = 0;
+        for components in [
+            0,
+            1,
+            2,
+            MAX_COMPONENTS as u16 - 1,
+            MAX_COMPONENTS as u16,
+            MAX_COMPONENTS as u16 + 1,
+            u16::MAX,
+        ] {
+            for pattern in 0..4 {
+                for variant in 0..8 {
+                    for length in [0, 1, 2, 31, 32, 33] {
+                        let extensions = raw_decomposition_extensions(variant, length);
+                        for bad in [None, Some(0), Some(1), Some(MAX_COMPONENTS - 1)] {
+                            let styles = core::array::from_fn(|index| {
+                                let mut style = raw_resolution_style(
+                                    if pattern < 2 {
+                                        2
+                                    } else {
+                                        [0, 1, 32, 33, u8::MAX][index % 5]
+                                    },
+                                    index % 8,
+                                );
+                                style.decomposition_structure = if bad == Some(index) {
+                                    Some(253)
+                                } else if pattern == 1 || index % 3 == 1 {
+                                    None
+                                } else if pattern == 3 {
+                                    Some(u8::MAX)
+                                } else {
+                                    Some(0)
+                                };
+                                style
+                            });
+                            for position in [0, usize::MAX] {
+                                parser.position = position;
+                                let before = component_application_reader_state(&parser);
+                                let mut actual = ComponentCodingStyles { components, styles };
+                                let mut expected = actual;
+                                let result =
+                                    reference_decomposition_owner(&mut expected, &extensions);
+                                assert_eq!(
+                                    parser
+                                        .resolve_decomposition_structures(&mut actual, &extensions),
+                                    result
+                                );
+                                assert_eq!(
+                                    (actual.components, actual.styles),
+                                    (expected.components, expected.styles)
+                                );
+                                assert_packet_admission_state(&parser, before, &input, &limits);
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(contexts, 10_752);
+    }
+
+    #[test]
+    fn actual_decomposition_resolution_consumes_real_dfs_ads_reader_producers() {
+        let mut input = segment(DFS, &raw_dfs_payload(5, 2));
+        input.extend(segment(ADS, &raw_ads_payload(7, 3, 4, 1)));
+        let limits = ResourceLimits::HARDENED;
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let mut extensions = Part2Extensions::default();
+        let raw = parser.read_segment().unwrap();
+        parser.parse_dfs(raw, &mut extensions).unwrap();
+        let raw = parser.read_segment().unwrap();
+        parser.parse_ads(raw, &mut extensions).unwrap();
+        let mut dfs_style = raw_resolution_style(7, 6);
+        dfs_style.decomposition_structure = Some(5);
+        let mut ads_style = raw_resolution_style(u8::MAX, 4);
+        ads_style.decomposition_structure = Some(7);
+        let mut owner = ComponentCodingStyles::new(2, dfs_style).unwrap();
+        owner.set(1, ads_style).unwrap();
+        let mut expected = owner;
+        reference_decomposition_owner(&mut expected, &extensions).unwrap();
+        let before = component_application_reader_state(&parser);
+        parser
+            .resolve_decomposition_structures(&mut owner, &extensions)
+            .unwrap();
+        assert_eq!(
+            (owner.components, owner.styles),
+            (expected.components, expected.styles)
+        );
+        assert_eq!(owner.styles[1], ads_style);
+        let directions = &extensions.decomposition_structures[0].directions;
+        assert_eq!(&owner.styles[0].decomposition_directions[..2], directions);
+        assert!(
+            owner.styles[0].decomposition_directions[2..7]
+                .iter()
+                .all(|direction| direction == directions.last().unwrap())
         );
         assert_eq!(parser.position, input.len());
         assert_packet_admission_state(&parser, before, &input, &limits);

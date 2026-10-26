@@ -1102,6 +1102,12 @@ class FrameworkTests(WorkingFiles):
             framework._COMPONENT_HEADER_APPLICATION_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_dfs_ads_first_lookups_style_set_and_complete_resolution(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-decomposition-resolution"},
+            framework._DECOMPOSITION_RESOLUTION_CONTRACTS, 5,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},

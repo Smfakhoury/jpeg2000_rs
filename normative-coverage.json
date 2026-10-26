@@ -4,6 +4,54 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-decomposition-resolution",
+      "topic": "Actual full DFS/ADS first-record lookup, raw component-style setter, local decomposition-style Result and whole ComponentCodingStyles traversal from raw extensions and every physical/logical style field. Preserve previous lookup membership guarantees while strengthening to exact first ID/full record including duplicates and unused splits. DFS wins over ADS, rejects empty directions even at zero levels, repeats the last declared direction, and drops local partial direction edits on errors; previous completed components remain committed. ADS only validates each sublevel depth in 1..3 and stores the unchanged style, including empty depth lists and unused raw splits; no invented normalization/application. No selector leaves the slot untouched. Full style observations include every direction/precinct/flag/transform/geometry field and unused physical tails. Actual DFS/ADS reader producers feed the resolver. No prepared records/styles/resolutions, validity premises, new trust/caps/pins/budgets or termination bypass. Outer main/tile/file/parser/F2/F4/F8 composition remains separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_decomposition_structures"},
+        {"path": "src/codestream.rs", "symbol": "resolve_decomposition_style"},
+        {"path": "src/codestream.rs", "symbol": "ComponentCodingStyles::set"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_dfs_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part1_ads_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part1_ads_depths_valid"},
+        {"path": "specs/mod.rs", "symbol": "part1_decomposition_directions_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_resolve_decomposition_style"},
+        {"path": "specs/mod.rs", "symbol": "part1_set_component_style"},
+        {"path": "specs/mod.rs", "symbol": "part1_resolve_decompositions_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_resolve_decompositions"},
+        {"path": "specs/mod.rs", "symbol": "Part1ParsedCodingStyle"},
+        {"path": "specs/mod.rs", "symbol": "Part2OwnedExtensions"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::decomposition_structure"},
+        {"path": "src/codestream.rs", "symbol": "Part2Extensions::arbitrary_decomposition"},
+        {"path": "src/codestream.rs", "symbol": "ComponentCodingStyles::set"},
+        {"path": "src/codestream.rs", "symbol": "resolve_decomposition_style"},
+        {"path": "src/codestream.rs", "symbol": "Parser::resolve_decomposition_structures"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parsed_coding_style_view"},
+        {"path": "src/codestream.rs", "symbol": "parsed_coding_style_outcome"},
+        {"path": "src/codestream.rs", "symbol": "component_style_owner_view"},
+        {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
+        {"path": "src/codestream.rs", "symbol": "dfs_option_view"},
+        {"path": "src/codestream.rs", "symbol": "ads_option_view"},
+        {"path": "src/codestream.rs", "symbol": "ComponentCodingStyles::style"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_dfs"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_ads"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_decomposition_lookups_preserve_all_ids_first_duplicates_and_full_raw_records"},
+        {"path": "src/codestream.rs", "symbol": "actual_style_setter_preserves_logical_physical_bounds_and_every_unused_slot"},
+        {"path": "src/codestream.rs", "symbol": "actual_decomposition_style_preserves_all_levels_dfs_priority_ads_policy_and_full_fields"},
+        {"path": "src/codestream.rs", "symbol": "actual_decomposition_owner_preserves_error_prefixes_all_physical_tails_and_reader"},
+        {"path": "src/codestream.rs", "symbol": "actual_decomposition_resolution_consumes_real_dfs_ads_reader_producers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-component-header-application",
       "topic": "Actual main-header component bit-depth and registration application, factored from sole parse_layout loops and wired back, plus the actual physical uniform-depth query. Full raw ImageSize geometry, logical components, physical ComponentInfo array, uniform flags and unused tails bind every Result and partial prefix update. Empty descriptor vectors bypass every check. Nonempty application checks descriptor availability before physical info bounds; errors preserve committed prefixes and old uniform flags. Depth application consumes actual component(0) and physical precision-and-sign uniformity, retaining getter offset zero versus parser-position errors, raw precision values, vacuous queries and native early exits. Registration changes only horizontal/vertical fields and retains flags/sampling/depth/geometry/tails. Actual SIZ/CBD/CRG reader producers feed the application chain. No normalized infos/vectors, supplied results, validity premises, new trust/caps/pins/budgets or termination bypass. Outer header/tile/file/parser/F2/F4/F8 composition remains separate.",
       "implementation_refs": [
