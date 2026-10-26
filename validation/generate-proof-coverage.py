@@ -128,7 +128,7 @@ def generate_coverage(result: object, root: Path) -> dict:
             raise ValueError(f"forbidden proof escape {forbidden.group()!r} in {source_path}")
     coverage = {
         "$schema": "../../validation/proof-coverage.schema.json",
-        "schema_version": 2,
+        "schema_version": 3,
         "crate_name": EXPECTED_CRATE,
         "verification_entrypoint": "cargo verus verify",
         "provenance": source_binding(root),
@@ -146,7 +146,7 @@ def generate_coverage(result: object, root: Path) -> dict:
             "verus_errors": verification["errors"],
             "verified_project_functions": len(functions),
             "documented_rust_only_adapters": len(RUST_ONLY_ADAPTERS),
-            "incomplete_production_functions": 0,
+            "source_function_coverage": "not-measured",
         },
         "known_proof_boundary": {
             "lifetime_analysis": (

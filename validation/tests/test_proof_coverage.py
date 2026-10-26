@@ -39,13 +39,55 @@ class ProofCoverageTests(unittest.TestCase):
 
     def test_valid_observed_project_run_has_honest_boundary(self):
         report = proof_coverage.generate_coverage(self.result, self.work)
-        self.assertEqual(report["results"]["verified_project_functions"], 1)
+        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["results"], {
+            "verus_verified_obligations": 1,
+            "verus_errors": 0,
+            "verified_project_functions": 1,
+            "documented_rust_only_adapters": len(proof_coverage.RUST_ONLY_ADAPTERS),
+            "source_function_coverage": "not-measured",
+        })
+        self.assertNotIn("incomplete_production_functions", report["results"])
+        self.assertEqual(report["rust_only_adapters"], proof_coverage.RUST_ONLY_ADAPTERS)
         self.assertIn("does not verify lifetimes", report["known_proof_boundary"]["lifetime_analysis"])
         self.assertIn("No exhaustive", report["scope"])
         framework.validate_schema(VALIDATION / "proof-coverage.schema.json", report)
         self.assertEqual(report["verification_entrypoint"], "cargo verus verify")
         self.assertEqual(report["crate_name"], "jpeg2000_rs")
         self.assertEqual(report["known_proof_boundary"]["termination"], [])
+
+    def test_schema_rejects_legacy_or_measured_coverage_claims(self):
+        report = proof_coverage.generate_coverage(self.result, self.work)
+        mutations = [
+            lambda r: r.update(schema_version=2),
+            lambda r: r["results"].pop("source_function_coverage"),
+            lambda r: r["results"].update(source_function_coverage="measured"),
+            lambda r: r["results"].update(source_function_coverage=0),
+            lambda r: r["results"].update(incomplete_production_functions=0),
+            lambda r: r["results"].update(verus_errors=1),
+            lambda r: r["results"].update(verus_verified_obligations=0),
+            lambda r: r["results"].update(verified_project_functions=0),
+        ]
+        for mutate in mutations:
+            invalid = copy.deepcopy(report)
+            mutate(invalid)
+            with self.subTest(mutation=mutate), self.assertRaises(ValueError):
+                framework.validate_schema(VALIDATION / "proof-coverage.schema.json", invalid)
+        legacy = copy.deepcopy(report)
+        legacy["schema_version"] = 2
+        legacy["results"].pop("source_function_coverage")
+        legacy["results"]["incomplete_production_functions"] = 0
+        with self.assertRaises(ValueError):
+            framework.validate_schema(VALIDATION / "proof-coverage.schema.json", legacy)
+
+    def test_unobserved_source_function_does_not_imply_measured_coverage(self):
+        (self.work / "src/lib.rs").write_text("pub fn fixture() {}\npub fn unobserved() {}\n")
+        report = proof_coverage.generate_coverage(self.result, self.work)
+        self.assertEqual(report["results"]["source_function_coverage"], "not-measured")
+        self.assertEqual(report["results"]["verified_project_functions"], 1)
+        self.assertEqual(report["functions"], [
+            {"function": "jpeg2000_rs::fixture", "disposition": "verified"},
+        ])
 
     def test_empty_and_malformed_results_fail_closed(self):
         for result in (None, [], {}, {"verification-results": []}, {**self.result, "func-details": {}}):
@@ -165,6 +207,9 @@ class ProofCoverageTests(unittest.TestCase):
         completed = subprocess.run(command, cwd=framework.ROOT, capture_output=True, text=True)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         report = json.loads((output / "proof-coverage.json").read_text())
+        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["results"]["source_function_coverage"], "not-measured")
+        self.assertNotIn("incomplete_production_functions", report["results"])
         normalized = output / "verus-result.json"
         self.assertEqual(json.loads(normalized.read_text()), self.result)
         self.assertEqual(report["verus_result_sha256"], framework.sha256_file(normalized))
