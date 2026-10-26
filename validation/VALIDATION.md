@@ -26,6 +26,12 @@ generated decoder cases, independent numerical cases, and budgets. It builds the
 internal approvals, old results, or committed source snapshots. `--subject`
 selects a different harness; `--no-build` uses the existing default binary.
 
+The harness formats integer samples directly into one comma-separated row
+buffer, avoiding a separate allocation for every sample. Signed, unsigned
+and converted output bytes are unchanged and checked by harness regressions
+and independent numerical comparisons. This reduces validation-subject
+serialization overhead; it is not a decoder throughput or conformance claim.
+
 All reports default to ignored `target/validation/`. The `run`, `budget`,
 `official`, `numerical`, `htj2k`, `schemas`, and `all` commands accept `--output-dir`. Existing
 tracked report paths are refused. Reports bind the Git commit, dirty flag,

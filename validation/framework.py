@@ -842,6 +842,27 @@ _COLLECTION_FRAGMENT_CONTRACTS = {
     ),
 }
 
+_TRANSFORM_GRAPH_CONTRACTS = {
+    ("src/codestream.rs", "Parser::expected_mct_elements"): (
+        "part1_mct_graph_element_count", r"\1", None,
+        r"rows\s*,\s*columns\s*,\s*kind\s*,\s*reversible",
+    ),
+    ("src/codestream.rs", "Parser::resolve_mct_collection"): (
+        "part1_mct_graph_collection", _coverage_call("mct_collection_outcome", r"\1"), None,
+        _coverage_call("mcc_collection_reference_view", "reference") + r"\s*,\s*"
+        + _coverage_call("mct_arrays_view", r"arrays\s*@"),
+    ),
+    ("src/codestream.rs", "Parser::resolve_mct_stage"): (
+        "part1_mct_graph_stage", _coverage_call("mct_stage_outcome", r"\1"), None,
+        _coverage_call("mct_record_view", "record") + r"\s*,\s*"
+        + _coverage_call("mct_arrays_view", r"arrays\s*@"),
+    ),
+    ("src/codestream.rs", "Parser::resolve_multiple_component_transform"): (
+        "part1_mct_graph", _coverage_call("mct_graph_outcome", r"\1"), None,
+        _coverage_call("mct_parameters_view", "parameters"),
+    ),
+}
+
 _TRANSFORM_REGISTRY_CONTRACTS = {
     ("src/codestream.rs", "find_mct_array_index"): (
         "part1_mct_registry_array_find", r"\1", None,
@@ -2448,6 +2469,7 @@ def validate_normative_coverage(
                 or _COLLECTION_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_FRAGMENT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_REGISTRY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TRANSFORM_GRAPH_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))

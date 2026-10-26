@@ -14940,6 +14940,136 @@ pub open spec fn part1_consume_mcc_fragment(
     }
 }
 
+pub struct Part1MctParameters {
+    pub arrays: Seq<Part2MctArray>,
+    pub records: Seq<Part1MctRecord>,
+    pub order: Seq<u8>,
+}
+
+pub open spec fn part1_mct_graph_element_count(
+    rows: usize, columns: usize, kind: crate::codestream::MctArrayKind, reversible: bool,
+) -> Result<usize, crate::DecodeError> {
+    let maximum = usize::MAX as int;
+    let error = part1_codestream_malformed(0, crate::MalformedKind::ArithmeticOverflow);
+    if kind == crate::codestream::MctArrayKind::Decorrelation {
+        let product = rows as int * columns as int;
+        if product > maximum { Err(error) } else { Ok(product as usize) }
+    } else if reversible {
+        if rows == usize::MAX { Err(error) }
+        else {
+            let product = rows as int * (rows as int + 1);
+            if product > maximum || product / 2 == 0 { Err(error) }
+            else { Ok((product / 2 - 1) as usize) }
+        }
+    } else {
+        let partner = if rows == 0 { 0int } else { rows as int - 1 };
+        let product = rows as int * partner;
+        if product > maximum { Err(error) } else { Ok((product / 2) as usize) }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_graph_collection(
+    reference: Part1MccCollectionReference, arrays: Seq<Part2MctArray>,
+) -> Result<Part2MctCollection, crate::DecodeError> {
+    let rows = reference.inputs.len();
+    let columns = reference.outputs.len();
+    if rows == 0 || rows != columns {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidTransform))
+    } else {
+        match reference.transform {
+            Part1MccTransformReference::Wavelet(wavelet) => Ok((
+                wavelet.0 == crate::codestream::MctWaveletType::Reversible5x3,
+                reference.inputs, reference.outputs, crate::codestream::MctCollectionKind::Wavelet,
+                None, None, Some(wavelet))),
+            Part1MccTransformReference::Array { kind, reversible, transform_index, offset_index } => {
+                let offsets: Result<Option<Part2MctArray>, crate::DecodeError> = if offset_index == 0 { Ok(None) }
+                    else { match part1_mct_registry_reference(arrays, offset_index, crate::codestream::MctArrayKind::Offset) {
+                        Err(error) => Err(error), Ok(array) => Ok(Some(array)),
+                    } };
+                match offsets {
+                    Err(error) => Err(error),
+                    Ok(offsets) => {
+                        let matrix: Result<Option<Part2MctArray>, crate::DecodeError> = if transform_index == 0 { Ok(None) }
+                            else { match part1_mct_registry_reference(arrays, transform_index, kind) {
+                                Err(error) => Err(error), Ok(array) => Ok(Some(array)),
+                            } };
+                        match matrix {
+                            Err(error) => Err(error),
+                            Ok(matrix) => {
+                                match part1_mct_graph_element_count(rows as usize, columns as usize, kind, reversible) {
+                                    Err(error) => Err(error),
+                                    Ok(expected) => {
+                                        let invalid_offsets = match offsets { None => false, Some(array) => array.4.len() != rows };
+                                        let floating_offsets = match offsets { None => false, Some(array) => array.3 != 0 };
+                                        let invalid_matrix = match matrix { None => false, Some(array) => array.4.len() != expected };
+                                        let floating_matrix = match matrix { None => false, Some(array) => array.3 != 0 };
+                                        if invalid_offsets || invalid_matrix || (reversible && (floating_matrix || floating_offsets)) {
+                                            Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidTransform))
+                                        } else {
+                                            Ok((reversible, reference.inputs, reference.outputs,
+                                                if kind == crate::codestream::MctArrayKind::Dependency {
+                                                    crate::codestream::MctCollectionKind::Dependency
+                                                } else { crate::codestream::MctCollectionKind::Decorrelation },
+                                                matrix, offsets, None))
+                                        }
+                                    },
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_graph_stage_from(
+    record: Part1MctRecord, arrays: Seq<Part2MctArray>, position: nat, collections: Seq<Part2MctCollection>,
+) -> Result<Part2MctStage, crate::DecodeError>
+    decreases record.1.len() - position,
+{
+    if position >= record.1.len() { Ok((record.0, collections)) }
+    else {
+        match part1_mct_graph_collection(record.1[position as int], arrays) {
+            Err(error) => Err(error),
+            Ok(collection) => part1_mct_graph_stage_from(record, arrays, position + 1, collections.push(collection)),
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_graph_stage(record: Part1MctRecord, arrays: Seq<Part2MctArray>) -> Result<Part2MctStage, crate::DecodeError> {
+    part1_mct_graph_stage_from(record, arrays, 0, Seq::empty())
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_graph_from(
+    parameters: Part1MctParameters, position: nat, stages: Seq<Part2MctStage>,
+) -> Result<Option<Seq<Part2MctStage>>, crate::DecodeError>
+    decreases parameters.order.len() - position,
+{
+    if position >= parameters.order.len() { Ok(Some(stages)) }
+    else {
+        match part1_mct_registry_record_find(parameters.records, parameters.order[position as int], 0) {
+            None => Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidTransform)),
+            Some(index) => {
+                match part1_mct_graph_stage(parameters.records[index as int], parameters.arrays) {
+                    Err(error) => Err(error),
+                    Ok(stage) => part1_mct_graph_from(parameters, position + 1, stages.push(stage)),
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_mct_graph(parameters: Part1MctParameters) -> Result<Option<Seq<Part2MctStage>>, crate::DecodeError> {
+    if parameters.order.len() == 0 { Ok(None) }
+    else { part1_mct_graph_from(parameters, 0, Seq::empty()) }
+}
+
 pub type Part1MctRecord = (u8, Seq<Part1MccCollectionReference>);
 
 #[verifier::opaque]

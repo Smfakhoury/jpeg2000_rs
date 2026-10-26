@@ -1,4 +1,4 @@
-use std::{env, fs, process};
+use std::{env, fmt::Write as _, fs, process};
 
 use jpeg2000_rs::{
     ConvertedImage, DatabinCache, DatabinId, DecodeError, DecodeOptions, DecodeSelection,
@@ -19,6 +19,17 @@ fn print_error(error: DecodeError) -> ! {
     process::exit(1);
 }
 
+fn format_samples<T: std::fmt::Display>(values: &[T]) -> String {
+    let mut output = String::new();
+    for (index, value) in values.iter().enumerate() {
+        if index != 0 {
+            output.push(',');
+        }
+        write!(output, "{value}").expect("sample formatting failed");
+    }
+    output
+}
+
 fn print_image(image: &TypedImage) {
     println!(
         "IMAGE\n{} {} {}",
@@ -29,22 +40,8 @@ fn print_image(image: &TypedImage) {
     for component in image.components() {
         let info = component.info();
         let (kind, samples) = match component.samples() {
-            TypedSamples::Signed(values) => (
-                "signed",
-                values
-                    .iter()
-                    .map(i64::to_string)
-                    .collect::<Vec<_>>()
-                    .join(","),
-            ),
-            TypedSamples::Unsigned(values) => (
-                "unsigned",
-                values
-                    .iter()
-                    .map(u64::to_string)
-                    .collect::<Vec<_>>()
-                    .join(","),
-            ),
+            TypedSamples::Signed(values) => ("signed", format_samples(values)),
+            TypedSamples::Unsigned(values) => ("unsigned", format_samples(values)),
         };
         println!(
             "{}\t{}\t{}\t{}\t{}\t{}",
@@ -207,12 +204,7 @@ fn print_converted_image(image: &ConvertedImage) {
         image.channels().len()
     );
     for channel in image.channels() {
-        let samples = channel
-            .samples()
-            .iter()
-            .map(u16::to_string)
-            .collect::<Vec<_>>()
-            .join(",");
+        let samples = format_samples(channel.samples());
         println!(
             "{}\t{}\t{}\t0\tunsigned\t{}",
             image.width(),
@@ -517,6 +509,44 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn sample_rows_preserve_exact_signed_unsigned_and_converted_output() {
+        assert_eq!(format_samples::<i64>(&[]), "");
+        assert_eq!(format_samples(&[0_i64]), "0");
+        assert_eq!(
+            format_samples(&[i64::MIN, -1, 0, 1, i64::MAX]),
+            "-9223372036854775808,-1,0,1,9223372036854775807"
+        );
+        assert_eq!(format_samples(&[0_u64, u64::MAX]), "0,18446744073709551615");
+        assert_eq!(format_samples(&[0_u16, 1, u16::MAX]), "0,1,65535");
+        let signed: Vec<i64> = (0..4096)
+            .map(|index| {
+                if index % 2 == 0 {
+                    i64::MIN + index
+                } else {
+                    i64::MAX - index
+                }
+            })
+            .collect();
+        let unsigned: Vec<u64> = signed.iter().map(|value| *value as u64).collect();
+        assert_eq!(
+            format_samples(&signed),
+            signed
+                .iter()
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        assert_eq!(
+            format_samples(&unsigned),
+            unsigned
+                .iter()
+                .map(u64::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
     }
 
     #[test]
