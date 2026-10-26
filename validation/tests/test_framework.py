@@ -1034,6 +1034,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKED_HEADER_BYTES_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_packet_length_admission_full_reader_and_plm_group_production(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-packet-length-admission"},
+            framework._PACKET_LENGTH_ADMISSION_CONTRACTS, 2,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},
