@@ -4,6 +4,48 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part1-complete-native-packet-length-admission",
+      "topic": "Actual raw encoded packet-length admission and actual PLM group Result, complete parser state, next index and full borrowed group frames. Byte addition commits before its header-byte cap; genuine work charge precedes source-derived variable-length traversal; all varint errors map to the marker offset; global packet count commits only after complete traversal and before its packet cap. PLM minimum length and index admission precede the increment, retained on later failures including index 255 to 256. Every group length and borrowed source derives from real big-endian bytes; native admission partial commits survive errors; successful groups append before the TileParts cap. Preserve arbitrary prior groups and raw fields, source/order/error offsets and all parser input/limits/position/work/byte/count fields. No normalized lengths/groups/counters, admitted varints, supplied results, new trust/caps/pins/budgets or termination bypass. PLT/final metadata and outer parser/F2/F4/F8 joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream.rs", "symbol": "Parser::validate_packet_lengths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_plm"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_validate_packet_lengths"},
+        {"path": "specs/mod.rs", "symbol": "part1_packet_length_admission_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_plm"},
+        {"path": "specs/mod.rs", "symbol": "part1_plm_groups_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_packet_count"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_packet_bytes"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_charge_work"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_packet_length_decode"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream.rs", "symbol": "Parser::validate_packet_lengths"},
+        {"path": "src/codestream.rs", "symbol": "Parser::parse_plm"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream.rs", "symbol": "parser_view"},
+        {"path": "src/codestream.rs", "symbol": "segment_view"},
+        {"path": "src/codestream.rs", "symbol": "packet_lengths_view"},
+        {"path": "src/codestream.rs", "symbol": "packet_length_groups_view"},
+        {"path": "src/codestream.rs", "symbol": "decode_packet_length"},
+        {"path": "src/codestream.rs", "symbol": "Parser::charge_work"},
+        {"path": "src/codestream.rs", "symbol": "read_u32"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_packet_header_bytes"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_packets"},
+        {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_tile_parts"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream.rs", "symbol": "actual_packet_length_admission_derives_all_short_varints_and_full_reader_results"},
+        {"path": "src/codestream.rs", "symbol": "actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits"},
+        {"path": "src/codestream.rs", "symbol": "actual_plm_groups_derive_raw_lengths_indexes_borrowed_sources_and_partial_commits"},
+        {"path": "src/codestream.rs", "symbol": "actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join"}
+      ]
+    },
+    {
       "id": "part1-complete-native-packed-header-byte-production",
       "topic": "Actual PPM/PPT fragment byte/counter/parser-state producer and actual PPM frame Result from raw source bytes, markers, fragment counts and limits. Preserve marker/empty/order admission, index increment before count overflow, both counters before byte/work errors, packet-header byte commit before work failure and append only after genuine charge success. Full parser input/limits/position/work/packet-byte/packet-count fields and next-index/fragment-count/byte-vector frames bind every result. PPM fragments-zero bypass remains unconditional; nonzero framing derives all big-endian lengths, checked positions, exact header/start error offsets and post-push tile-part cap. No admitted fragments/frames/payloads, supplied decoded results, new trust/caps/pins/budgets or termination bypass. PLM/PLT admission/final metadata and outer parser/F2/F4/F8 remain separate.",
       "implementation_refs": [
