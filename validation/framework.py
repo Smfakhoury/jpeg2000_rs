@@ -1919,8 +1919,8 @@ def validate_normative_coverage(
 ) -> dict[str, Any]:
     """Check the links present, without asserting exhaustive clause coverage."""
     if coverage is None:
-        coverage = json.loads((ROOT / "normative-coverage.json").read_text())
-    validate_schema(ROOT / "normative-coverage.schema.json", coverage)
+        coverage = json.loads((VALIDATION / "normative-coverage.json").read_text())
+    validate_schema(VALIDATION / "normative-coverage.schema.json", coverage)
     texts: dict[Path, str] = {}
     symbols: dict[Path, set[str]] = {}
     headers: dict[tuple[Path, str], re.Match[str] | None] = {}

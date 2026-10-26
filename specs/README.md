@@ -641,8 +641,10 @@ tile-part/packed-header/packet-length cursors, duplicate suppression, context
 layer writes, resolution selection, earlier packet effects and all late checked
 aggregate/consumption errors. Actual external owner interfaces are prerequisites,
 not assumed successful traces. The intermediate body and association stages
-alone do not close this boundary; the precinct join below now closes the
-single-packet caller, while progression and whole F5H remain open.
+alone do not close this boundary; the precinct join below closes the
+single-packet caller. See the [complete mixed packet-body boundary](../PROOFS.md#complete-actual-mixed-packet-body-acceptance)
+for the additional actual producers. A complete raw-input-to-frame theorem
+is a separate claim, not implied by either local relation.
 
 The actual precinct header association stages now refine
 `part1_precinct_header_slot`, `part1_precinct_header_members` and
@@ -1331,13 +1333,11 @@ Q32 identity is proved rather than treating the private constant as a new
 assumption. These arithmetic/row results do not establish collection/stage
 dispatch or dependency/wavelet orchestration.
 
-F6 remains open: general MCT
-paths and actual whole-decoder composition from
-coefficients through reconstruction, assembly and typed conversion
-into component-sample
-relations still require their own complete actual-stage theorems. Independent
-unavailable-reference adjudication remains separate, as do
-parsing and entropy decoding.
+These row models alone do not establish collection or stage dispatch. See
+[complete native MCT composition](../PROOFS.md#complete-wavelet-stage-and-real-owner-buffer-mct-composition)
+for the additional actual producers. Raw-input-to-component-sample
+composition, independent unavailable-reference adjudication, parsing and
+entropy-decoding boundaries must still be reviewed separately.
 
 ### Reconstruction reading path
 
@@ -1459,7 +1459,7 @@ has been reconciled or proved.
 
 1. Read the selected editions and acquisition boundaries in
    [REFERENCES.md](../REFERENCES.md).
-2. Use [normative-coverage.json](../normative-coverage.json) to locate the
+2. Use [normative-coverage.json](../validation/normative-coverage.json) to locate the
    implementation, model, contract, proof and independent test for a topic.
    This is a technical index, not an exhaustive clause checklist.
 3. Compare the semantic definitions in [mod.rs](mod.rs) with the authorized
@@ -1482,7 +1482,7 @@ units and ranges beside the corresponding model and evidence. The unresolved
 edition boundaries above must remain unresolved until the authorized source
 is available; a successful solver run does not fill them in.
 
-## Frozen F5H directional-reader stages
+## HT directional-reader contracts
 
 The raw Tier-1 observation substage retains every stored coefficient limb,
 legacy midpoint tag and sign/significance/refinement flag. Plane dimensions

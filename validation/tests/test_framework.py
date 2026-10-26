@@ -98,7 +98,7 @@ class WorkingFiles(unittest.TestCase):
 
 class FrameworkTests(WorkingFiles):
     def test_inventory_source_indexes_are_fresh_per_call_and_preserve_const_functions(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = coverage["requirements"][:1]
         entry = coverage["requirements"][0]
         reference = {**entry["proof_refs"][0], "symbol": "coverage_cache_overlap"}
@@ -170,13 +170,13 @@ class FrameworkTests(WorkingFiles):
         self.assertEqual([c["samples"] for c in parsed["image"]["components"]], [[1], [2], [3]])
 
     def test_inventory_checks_present_items_without_exact_progress_counts(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
         coverage["requirements"] = coverage["requirements"][:1]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
 
     def test_inventory_rejects_missing_evidence_and_shadow_only_links(self):
-        original = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         for field in ("implementation_refs", "spec_refs", "contract_refs", "proof_refs", "test_refs"):
             coverage = copy.deepcopy(original)
             coverage["requirements"][0][field][0]["symbol"] = "unchecked_shadow"
@@ -188,7 +188,7 @@ class FrameworkTests(WorkingFiles):
             framework.validate_normative_coverage(coverage)
 
     def test_inventory_checks_named_result_equalities_not_just_model_mentions(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-composition-rendering"
@@ -209,7 +209,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_requires_named_result_and_final_state_in_mutation_relation(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-composition-rendering"
@@ -234,7 +234,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_requires_known_complete_projection_of_the_bound_result(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-layer-input-construction"
@@ -258,7 +258,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_checks_each_complete_frame_stage_result_projection(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-normalized-layer-frame-stages"
@@ -307,7 +307,7 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_checks_complete_reconstruction_and_sequence_projections(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         names = {"inverse_quantize_values", "inverse_quantize_plane", "inverse_5_3", "interleave"}
         coverage["requirements"] = [
             item for item in coverage["requirements"]
@@ -341,7 +341,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_checks_standard_profile_bound_return_projections(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/transform.rs"
         original = source.read_text()
         read_text = Path.read_text
@@ -395,7 +395,7 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_requires_complete_normalized_plane_bound_result(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part1-complete-normalized-component-plane"
@@ -417,7 +417,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_requires_complete_channel_layout_bound_result(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-complete-component-channel-layout"
@@ -439,7 +439,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_all_complete_cleanup_plane_and_raw_interface_recipes(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/tier1.rs"
         read_text = Path.read_text
         original = source.read_text()
@@ -522,7 +522,7 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_complete_palette_components_to_actual_results_and_inputs(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(
             item for item in original_coverage["requirements"]
             if item["id"] == "part2-complete-native-palette-component"
@@ -606,7 +606,7 @@ class FrameworkTests(WorkingFiles):
         self._assert_complete_packet_contract_bindings({
             "part1-complete-native-packed-header-length-inputs", "part1-complete-native-grid-progression-composition",
         }, recipes, 40)
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in coverage["requirements"]
                      if item["id"] == "part1-complete-native-grid-progression-composition")
         for path, symbol in support:
@@ -728,7 +728,7 @@ class FrameworkTests(WorkingFiles):
         )
 
     def test_decoder_unit_state_contracts_reject_nonunit_return_signatures(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         read_text = Path.read_text
         for relative, symbols in (
             ("src/tier1.rs", ("set_force_high_throughput", "set_multiple_ht_sets_allowed")),
@@ -1035,7 +1035,7 @@ class FrameworkTests(WorkingFiles):
         )
 
     def _assert_complete_packet_contract_bindings(self, entry_ids, recipes, expected_count):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         self.assertEqual(framework.validate_normative_coverage(original_coverage)["status"], "passed")
         entries = [entry for entry in original_coverage["requirements"] if entry["id"] in entry_ids]
         references = [reference for entry in entries for reference in entry["contract_refs"]]
@@ -1164,7 +1164,7 @@ class FrameworkTests(WorkingFiles):
                         framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_all_native_arbitrary_kernel_and_preparation_results(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in original_coverage["requirements"]
                      if item["id"] == "part2-complete-native-arbitrary-kernel-preparation")
         read_text = Path.read_text
@@ -1263,7 +1263,7 @@ class FrameworkTests(WorkingFiles):
                         framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_actual_selection_association_and_output_native_inputs(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in original_coverage["requirements"]
                      if item["id"] == "part2-complete-native-container-selection-output")
         read_text = Path.read_text
@@ -1350,7 +1350,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(no_caller)
 
     def test_inventory_binds_native_ht_continuation_placeholder_and_staged_groups(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         read_text = Path.read_text
         for symbol, model, arguments in (
             ("decode_high_throughput_refinement", "ht_decode_refinement_contribution", (
@@ -1442,7 +1442,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(no_caller)
 
     def test_inventory_binds_complete_native_mixed_packet_body_and_all_mutable_progress(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in original_coverage["requirements"]
                      if item["id"] == "part1-complete-native-mixed-code-block-body")
         read_text = Path.read_text
@@ -1551,7 +1551,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(no_caller)
 
     def test_inventory_binds_complete_header_to_actual_native_results_inputs_and_owner(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(
             item for item in original_coverage["requirements"]
             if item["id"] == "part2-complete-native-output-header"
@@ -1677,7 +1677,7 @@ class FrameworkTests(WorkingFiles):
         self.assertIsNone(framework._coverage_function_header(nested, "RawBitReader::decode"))
 
     def test_inventory_binds_complete_standard_plan_to_actual_results_and_native_inputs(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(
             item for item in original_coverage["requirements"]
             if item["id"] == "part1-complete-standard-plan-coordinator"
@@ -1764,7 +1764,7 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_all_actual_refinement_frames_and_public_inputs(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         cases = (
             ("decode_ht_refinement_plane", "ht_refinement_plane", "ht_plane_outcome", None,
              ((r"code_block_plane_view\(cleanup_plane\)", "code_block_plane_view(unrelated)"),
@@ -1926,7 +1926,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(wrong_impl)
 
     def test_inventory_binds_complete_cleanup_caller_stages_to_exact_native_inputs(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/tier1.rs"
         read_text = Path.read_text
         original = source.read_text()
@@ -1986,7 +1986,7 @@ class FrameworkTests(WorkingFiles):
                         self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                     framework.validate_normative_coverage(coverage)
     def test_inventory_binds_complete_palette_lookup_to_actual_result_and_inputs(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-complete-native-palette-lookup"
@@ -2026,7 +2026,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_typed_conversion_and_packet_access_to_exact_results(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         read_text = Path.read_text
         for relative, symbol, projection, model, requirement in (
             ("src/image.rs", "DecodedComponent::typed_samples", "decoded_typed_samples_outcome",
@@ -2071,7 +2071,7 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_complete_numeric_magnitude_and_every_reader_state(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part15-numeric-magnitude-reader-state"
@@ -2124,7 +2124,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_retains_every_complete_assembly_helper_model_link(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part1-complete-registered-tile-image-assembly"
@@ -2146,7 +2146,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(altered)
 
     def test_inventory_binds_complete_assembly_to_full_result_and_exact_model(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/image.rs"
         read_text = Path.read_text
         original = source.read_text()
@@ -2188,7 +2188,7 @@ class FrameworkTests(WorkingFiles):
                     framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_complete_ht_metadata_to_actual_inputs_limit_and_caller(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part15-complete-cleanup-metadata"
@@ -2245,7 +2245,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(wrong)
 
     def test_inventory_binds_complete_ht_parser_to_its_exact_outcome_and_model(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part15-cleanup-partition"
@@ -2281,7 +2281,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_connected_selected_color_to_actual_result_and_exact_model(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part1-connected-typed-color-selection"
@@ -2314,7 +2314,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_complete_crop_to_exact_full_result_models(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/color.rs"
         original = source.read_text()
         read_text = Path.read_text
@@ -2362,7 +2362,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_each_complete_color_converter_result_to_its_exact_model(self):
-        original_coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         source = framework.ROOT / "src/color.rs"
         original = source.read_text()
         read_text = Path.read_text
@@ -2421,7 +2421,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_requires_all_mutable_outputs_in_planar_state_relation(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-composition-rendering"
@@ -2455,7 +2455,7 @@ class FrameworkTests(WorkingFiles):
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_requires_bound_result_and_complete_mutable_reader_view(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part1-raw-bitstream-state"
@@ -2507,7 +2507,7 @@ impl HtReverseVlcReader {
         self.assertIsNone(framework._coverage_function_header(text, "Unknown::read_bit"))
 
     def test_inventory_requires_function_specific_complete_ht_reader_relations(self):
-        original = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        original = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         original["requirements"] = [
             item for item in original["requirements"]
             if item["id"] in (
@@ -2624,7 +2624,7 @@ impl HtReverseVlcReader {
             framework.validate_normative_coverage(wrong)
 
     def test_inventory_checks_success_guard_and_all_layer_outputs(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-composition-rendering"
@@ -2652,7 +2652,7 @@ impl HtReverseVlcReader {
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_same_file_usage_requires_another_listed_function_body(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-composition-rendering"
@@ -2668,7 +2668,7 @@ impl HtReverseVlcReader {
                 framework.validate_normative_coverage(coverage)
 
     def test_inventory_checks_typed_result_model_equalities(self):
-        coverage = json.loads((framework.ROOT / "normative-coverage.json").read_text())
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part2-jpx-composition-rendering"
@@ -2805,10 +2805,12 @@ impl HtReverseVlcReader {
         clone.mkdir()
         for directory in ("src", "specs", "proofs", "examples", "validation"):
             shutil.copytree(framework.ROOT / directory, clone / directory, ignore=shutil.ignore_patterns("__pycache__", "results"))
-        for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "normative-coverage.json", "normative-coverage.schema.json"):
+        for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml"):
             shutil.copyfile(framework.ROOT / name, clone / name)
         root_json = {path.name for path in clone.glob("*.json")}
-        self.assertEqual(root_json, {"normative-coverage.json", "normative-coverage.schema.json"})
+        self.assertEqual(root_json, set())
+        self.assertTrue((clone / "validation/normative-coverage.json").is_file())
+        self.assertTrue((clone / "validation/normative-coverage.schema.json").is_file())
         source_hashes = {
             path: framework.sha256_file(path)
             for path in clone.rglob("*") if path.is_file()

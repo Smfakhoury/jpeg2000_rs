@@ -39,8 +39,9 @@ be attached to public reports without redistribution permission.
 
 ## Security requirements
 
-- Production Rust must forbid unsafe code unless an exception is individually
-  reviewed, documented, and approved.
+- First-party Rust must forbid unsafe code. The library uses a crate-level
+  prohibition and package lint; the standalone fuzz package has its own
+  package lint. Do not add local allowances or weaken either prohibition.
 - Every input-derived length, offset, count, dimension, allocation, and work
   calculation must use checked arithmetic.
 - Malformed input must not panic, loop without progress, allocate beyond the
@@ -53,3 +54,17 @@ be attached to public reports without redistribution permission.
 
 The detailed threat inventory and required controls are in
 [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
+## Unsafe-code boundary
+
+The owned library, examples and fuzz sources contain no unsafe blocks or
+unsafe functions. The ordinary decoder has no external runtime Cargo
+dependencies. This is not a claim that Rust's standard library, the optional
+verification dependency, libFuzzer, compilers, or native reference decoders
+contain no unsafe implementation code. Those are separate tool/dependency
+boundaries; native reference tools remain out of process.
+
+Keep the compiler-enforced prohibition enabled for all package targets,
+including examples and the separate fuzz manifest. Tests and Clippy must
+still run: absence of unsafe code does not establish panic freedom,
+resource safety, arithmetic correctness or standards conformance.

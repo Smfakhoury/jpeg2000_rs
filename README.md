@@ -123,6 +123,23 @@ provided. See [supported profiles and limitations](SUPPORTED.md) for details.
 
 ## Proofs and testing
 
+### Repository layout
+
+- [src/](src/) is the single executable decoder used by Cargo and Verus.
+- [specs/](specs/) and [proofs/](proofs/) contain maintained semantic models
+  and proofs, not generated run results.
+- [validation/](validation/) contains the reusable harness, regression tests,
+  pinned oracle configuration, corpus manifest and JSON schemas.
+  Its [technical reference inventory](validation/normative-coverage.json)
+  links implementation, model, contract and test symbols; the accompanying
+  [schema](validation/normative-coverage.schema.json) validates those links.
+  These are required validation inputs, not a progress ledger or a
+  standards-conformance certificate.
+- Generated reports, native reference builds and fuzz artifacts belong under
+  ignored `target/`, not in the repository root or versioned source.
+  Personal execution plans, approval correspondence and session logs do not
+  belong in the published tree.
+
 - [Proof architecture and reproduction](PROOFS.md)
 - [Decoder validation and external conformance inputs](validation/VALIDATION.md)
 - [Contribution and local checks](CONTRIBUTING.md)
@@ -133,6 +150,10 @@ Rust builds and Verus verification share [src/](src/) as the executable source
 of truth. [specs/](specs/) and [proofs/](proofs/) contain proof-only models and
 lemmas. Verification is not a substitute for official test vectors, numerical
 conformance, or independent review of the specifications.
+
+The crate package deliberately contains the runtime source and its public
+documentation, not the repository's verification and validation toolchain.
+Reproducing proofs or reference-decoder comparisons requires a source checkout.
 
 ## Security
 

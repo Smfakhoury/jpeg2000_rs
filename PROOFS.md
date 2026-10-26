@@ -1,5 +1,20 @@
 # Verus proofs
 
+## Reading this document
+
+The sections below describe individual contract boundaries, including narrower
+relations that are composed by later sections. They are not a chronological
+progress board, a release attestation, or a claim that the entire public
+decoder is proved from raw bytes through frame output. In particular, a
+complete relation for parsed layouts or supplied normalized samples does not
+prove the parsing or normalization that produced those inputs.
+
+Use the maintained [technical reference inventory](validation/normative-coverage.json)
+and [auditor reading path](specs/README.md) to locate current executable
+contracts and models. Exact run counts and source/tool hashes belong in fresh
+CI artifacts, not committed result snapshots. Independent model-to-standard
+review and official conformance testing remain separate.
+
 ## Single executable implementation
 
 Cargo and Verus use the exact [src/lib.rs](src/lib.rs) crate root. Production
@@ -1534,9 +1549,9 @@ functions and ambiguous inherent/trait duplicates reject. A trait name before
 `for` is not misidentified as the implementation's receiver type. No runtime
 adapter or decoder body is added to satisfy the inventory.
 
-Whole joined production verification and targeted acceptance regressions pass.
-Full frozen qualification is separate; legacy/mixed packet orchestration and
-complete F5L/F5H remain open.
+The relation above covers this caller boundary. Complete mixed packet-body
+acceptance is described below; neither boundary by itself establishes a raw
+codestream-to-frame theorem. Exact-candidate qualification remains separate.
 
 ## Complete actual mixed packet-body acceptance
 
@@ -2114,10 +2129,11 @@ precision/index/error frontiers. This is a local arithmetic/row milestone,
 not complete collection, dependency, wavelet, stage or general MCT execution,
 external array-MCT qualification or whole F6 completion.
 
-F6 remains open: general MCT paths and the actual
-whole-decoder composed
-coefficient-to-component-sample bridge are not
-established here. Whole tile-sample-to-image assembly does not close those gaps.
+These arithmetic/row contracts alone do not establish collection or stage
+composition. The [complete native MCT composition](#complete-wavelet-stage-and-real-owner-buffer-mct-composition)
+section describes those additional actual producers. A whole-decoder,
+raw-input-to-component-sample relation is a separate boundary; tile-sample
+assembly alone does not establish it.
 See the [reconstruction model reading path](specs/README.md#reconstruction-reading-path).
 
 ### General scope
@@ -2125,7 +2141,7 @@ See the [reconstruction model reading path](specs/README.md#reconstruction-readi
 Verification checks the properties expressed by contracts and loop invariants,
 including bounds, arithmetic checks, termination, and selected functional
 relations to specification helpers. The technical inventory
-[normative-coverage.json](normative-coverage.json) links implementation,
+[normative-coverage.json](validation/normative-coverage.json) links implementation,
 contract, specification, proof, and test symbols.
 
 That inventory is not an exhaustive normative-clause checklist. A helper

@@ -12,6 +12,10 @@ package release is explicitly authorized.
 - Keep specifications, proofs, tests, reusable validation tooling, and relevant
   documentation in the source tree.
 - Keep internal approval correspondence and generated run reports outside it.
+- Keep maintained JSON manifests, schemas and the technical reference
+  inventory under [validation/](validation/). They are test inputs, not
+  disposable tracking files. Keep execution plans and task status in the
+  issue/PR system rather than adding source-tree progress ledgers.
 - Run the [contributor checks](CONTRIBUTING.md) from a clean clone.
 - Describe the implemented profile and [proof boundaries](PROOFS.md) accurately.
 
@@ -37,6 +41,15 @@ Source-publication approval does not by itself choose a history strategy or
 authorize ref deletion, force-pushing, or repository replacement/renaming.
 Keep the repository private until the actual retained content and any proposed
 operations have the required owner approval.
+
+### Unsafe-code review
+
+Confirm the library crate-level prohibition and both the main and standalone
+fuzz package's `unsafe_code = "forbid"` lints remain enabled. Review all owned
+Rust targets, not only the default library configuration, and run their
+compiler/Clippy checks. The current owned sources have no unsafe code to
+replace; do not describe dependency or standard-library internals as audited
+by that fact. A future change in this boundary requires a new review.
 
 ### Candidate checks
 
