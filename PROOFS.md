@@ -40,6 +40,47 @@ that reading path.
 Ordinary Rust builds erase ghost code and retain Rust's borrow checking.
 Source and proof changes must be validated together.
 
+## Temporary model-review hold
+
+The [model-review hold](.github/workflows/model-review-hold.yml) is a
+conservative engineering freeze while document-use, independent-review and
+trusted-adjudicator decisions are pending. It is not approval of any model's
+correspondence with an ITU edition.
+
+The [controller](validation/check-model-review-hold.py) holds changes to any
+Rust source, all files under `src/`, `.cargo/` and `.github/`, non-Markdown
+files under `specs/`, `proofs/` and `validation/`, Cargo/toolchain manifests
+and locks, and Git attributes/submodule configuration. This deliberately
+includes implementation-only edits, representation
+changes, tests and the controller itself: it does not try to infer semantic
+equivalence from a diff. Markdown audit-guide changes remain possible; their
+claims still need human review.
+
+The workflow targets pull requests to `main` and uses `pull_request_target`.
+It checks out the trusted default-branch `github.sha`, not a proposed branch
+or an arbitrary PR base, and runs only that controller. It fetches but never
+checks out or executes the
+proposed code. It assesses committed changes from the unique merge base,
+including deletions and renames. A policy edit in the same proposal cannot
+grant itself an exception. Missing history or ambiguous merge bases fail.
+
+This initial hold has **no approved-amendment override**. Replacing it with
+a separately reviewed amendment process requires actual trusted reviewer
+identities, source-bound evidence and owner authorization; a candidate's own
+`approved` flag is not an approval. It does not complete that governance work.
+An owner-approved transition must arrange replacement of the hold rather
+than treating a held change as approved.
+
+The check becomes available only after the workflow is merged into the default
+branch. Its presence does not configure branch protection or prevent direct
+pushes, administrative bypasses or changes to repository settings. Required
+checks/reviews and controller ownership need owner configuration and live
+demonstration before enforcement can be claimed. Existing Verus, runtime,
+numerical, resource and evidence gates remain unchanged.
+
+Run the controller regressions with
+`python3 -m unittest validation.tests.test_model_review_hold -v`.
+
 ## Actual packet-length admission and PLM group production
 
 Actual packet-length admission binds its full parser state and result to the
