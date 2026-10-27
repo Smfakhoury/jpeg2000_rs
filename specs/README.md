@@ -1,175 +1,161 @@
 # Specification audit guide
 
-Use this guide to follow decoder behavior from executable Rust to mathematical
-models, contracts, and supporting evidence. Start with one component or either
-worked reading example below; the [detailed semantic reference](AUDIT_REFERENCE.md)
-retains the longer explanations and local contract boundaries.
+A JPEG 2000 decoder turns compressed bytes into pixels. It reads headers and
+packets, recovers numerical coefficients, applies transforms, and assembles
+an image. This directory describes those steps mathematically so that Verus
+can check the Rust implementation against them.
 
-## What is established, and what is not
+If you are here to review the work, start with one small part of that pipeline.
+You do not need to read the whole specification to make a useful contribution.
+Keep two questions separate:
 
-Production contracts relate actual executable definitions to explicit models:
-values, typed errors, check order, mutable state, and preserved fields where
-specified. Cargo and Verus share [src/lib.rs](../src/lib.rs) and the executable
-definitions; there is no second proof-only decoder. Each theorem's inputs and
-preconditions determine its scope. A supplied-coefficient theorem, for example,
-does not establish the preceding compressed-byte interpretation.
+1. **Does the code do what our model says?** A successful proof answers this
+   for the function and inputs covered by its contract.
+2. **Does our model say what the standard requires?** That needs a separate
+   comparison with the right edition of the standard.
 
-These relations do **not** by themselves establish correspondence to every
-selected standards clause, complete public-decoder correctness, standards-level
-numerical tolerances, official conformance, or release authorization. Read
-[the concrete boundaries](../PROOFS.md#concrete-contract-boundaries) before
-composing claims across stages. Generated vectors and independent implementation
-comparisons are supporting evidence, not official certification.
-
-The released verifier uses `--no-lifetime`: Verus lifetime analysis is disabled;
-Rust borrow checking is not. See the [tool boundary](../PROOFS.md#current-lifetime-analysis-limitation)
-and [reproduction instructions](../PROOFS.md#reproduce-verification).
+The models and implementation were developed together, not from an
+independently audited, frozen translation of the standard. Independent
+model-to-standard review remains outstanding.
 
 ## Reading path and reference status
 
-1. Check the selected edition and acquisition status below and in
-   [REFERENCES.md](../REFERENCES.md).
-2. Locate a component in the map below. The maintained
-   [technical inventory](../validation/normative-coverage.json) supplies named
-   implementation, model, contract, proof, and independent-test pointers.
-3. Read the actual Rust body and its adjacent `verus_spec` contract. Compare the
-   model's domains, units, rounding, failures, and state updates with the
-   authorized reference; then follow the proof and test pointers.
-4. Consult [PROOFS.md](../PROOFS.md) for composition and tool boundaries and the
-   [detailed reference](AUDIT_REFERENCE.md) for semantic explanations. Neither
-   an inventory entry nor a solver success completes a normative walkthrough.
+- **For orientation:** read the component map, then the short addition example.
+- **For a code/proof review:** follow either example into its detailed
+  walkthrough. The [technical index](../validation/normative-coverage.json)
+  provides the corresponding implementation, model, contract, proof and tests.
+- **For a standards audit:** choose a component and confirm the reference
+  edition first. Compare its rules with the model before judging the proof.
 
-| Selected reference | Status and audit boundary |
-|---|---|
-| T.800 (2024-07), core coding / JP2 | Selected edition; model-to-normative correspondence still needs clause-level review. |
-| T.801 (2023-08), extensions / JPX | Selected edition, but acquired T.801 (2021) informed ADS/ATK/NLT/CBD interpretation. The editions remain unreconciled; authorized 2023 full text is needed. The five Part 1 progression orders and POC sequencing do not imply support for the additional Part 2 orders. |
-| T.808 (2026-06), JPIP | Catalog-only reference, not acquired normative text or a completed edition audit. |
-| T.814 (2019-06), HTJ2K | Acquired reference; contracts and generated-image checks are not a completed normative audit. |
-| T.803 (2024-02), conformance | Conformance target, not a decoder feature or certification. Official assets have separate access/use conditions. |
+Here is the current document basis; none of these rows means "conformance
+certified."
 
-[REFERENCES.md](../REFERENCES.md#standards) records official source links and
-acquisition distinctions. Availability does not imply permission for agent
-processing or redistribution. This guide reproduces no standards text and
-supplies no inferred clause/page citations.
+| Selected reference | What it covers | Official free PDF | Review status |
+|---|---|---|---|
+| T.800 (2024-07) | Core coding and JP2 | [2019-06 (older edition)][t800-pdf] | Selected 2024 edition still needs clause-by-clause review. |
+| T.801 (2023-08) | Extensions and JPX | [2021-06 (older edition)][t801-pdf] | Some interpretation used 2021; reconciliation with 2023 is pending. |
+| T.808 (2026-06) | JPIP | [2022-12 (older edition)][t808-pdf] | Selected 2026 text is restricted; edition/model review is pending. |
+| T.814 (2019-06) | HTJ2K | [2019-06][t814-pdf] | Text was acquired; model-to-standard review is pending. |
+| T.803 (2024-02) | Conformance testing | [2024-02][t803-pdf] | A test target, not certification; official assets have separate access conditions. |
 
-## Three kinds of material
+These are direct English-PDF links on ITU's site. **Older editions are not
+substitutes for the selected editions:** T.800 (2024) and T.801 (2023) are
+payment-controlled, and T.808 (2026) is TIES-restricted. The edition
+differences have not been reconciled.
 
-- **Normative semantics to audit:** coding/format denotations in [mod.rs](mod.rs)
-  and the component model files below. Their names are navigation aids, not
-  evidence that every selected edition's rules have been checked.
-- **Implementation, numerical, and resource policy:** capacity, fixed-point
-  rounding, normalization, supported profiles, typed rejections, and limits
-  must be read as explicit choices, not silently promoted to normative rules.
-  See [validation guidance](../validation/VALIDATION.md) for independent
-  numerical comparisons and their limits.
-- **Supporting lemmas and invariants:** [proofs/](../proofs/) contains
-  representation, induction, and algebraic support.
-  [internal_specs.rs](../proofs/internal_specs.rs) holds invariant-only witnesses;
-  it does not replace the semantic models or authorize assumptions.
-
-The inventory is a technical reference index, not an exhaustive clause checklist.
-The [proof-coverage schema](../validation/proof-coverage.schema.json), version 3,
-requires `source_function_coverage: "not-measured"`. Observed functions are
-neither a complete source-function denominator nor functional-coverage evidence.
+[REFERENCES.md](../REFERENCES.md#standards) has the official links and fuller
+edition/support notes, including the distinction between Part 1 and Part 2
+progression orders. The PDFs are not reproduced here. Access, redistribution
+and automated processing are separate permissions; missing text is not a
+reason to invent a citation.
 
 ## Component map
 
-Pointers below are starting points; use the inventory for individual symbols
-and the linked boundaries before inferring a larger composition.
+Think of the decoder as a sequence of jobs:
 
-| Component | Actual source → model | Current boundary to keep in view |
+| Component | Its job | Start reading |
 |---|---|---|
-| Bytes / containers | [codestream.rs](../src/codestream.rs), [jp2.rs](../src/jp2.rs), [jpx.rs](../src/jpx.rs), [jpip.rs](../src/jpip.rs) → [mod.rs](mod.rs): `part1_codestream_read_segment`, `part9_*`, `part2_*` | Raw reader, metadata, container and selection contracts have distinct inputs; a local marker theorem is not the whole public decoder. See [container composition](../PROOFS.md#complete-native-container-selection-and-typed-output-composition). |
-| Packet / entropy | [packet.rs](../src/packet.rs), [mq.rs](../src/mq.rs), [tier1.rs](../src/tier1.rs) → [packet_input.rs](packet_input.rs), [header.rs](header.rs), [tag_tree.rs](tag_tree.rs), [packet.rs](packet.rs), [mq.rs](mq.rs), [legacy.rs](legacy.rs), [mod.rs](mod.rs): `part15_*` | Reader, traversal, retained-contribution and coefficient-state relations must be composed explicitly. See [mixed dispatch](../PROOFS.md#complete-unconditional-mixed-contribution-body-and-tier-1-dispatch). |
-| Coefficients / arithmetic | [magnitude.rs](../src/magnitude.rs), [tier1.rs](../src/tier1.rs), [refinement.rs](../src/refinement.rs) → [mod.rs](mod.rs): `part1_magnitude_value`, `ht_cleanup_plane` | Full 384-bit arithmetic support is not HT byte meaning; supplied metadata/bytes and raw coefficient frames remain explicit. See [magnitude interface](AUDIT_REFERENCE.md#full-native-magnitude-interface). |
-| Transforms | [transform.rs](../src/transform.rs), [decode.rs](../src/decode.rs) → [mod.rs](mod.rs): `part1_inverse_quantization`, `part1_inverse_level`, `part1_apply_component_transform` | Stage contracts distinguish supplied coefficients, prepared components and real owner buffers. Deterministic fixed-point behavior alone establishes no normative tolerance. See [reconstruction](#reconstruction-reading-path). |
-| Channels / color | [decode.rs](../src/decode.rs), [jp2.rs](../src/jp2.rs), [color.rs](../src/color.rs) → [mod.rs](mod.rs): `part2_palette_component`, `color_convert_jp2`, `color_convert_selected` | Palette/CDEF routing, registration, conversion and crop have separate admissions. Supported enumerations and ICC rejection are explicit. See [semantic detail](AUDIT_REFERENCE.md#semantic-definitions-versus-internal-proof-support). |
-| Layers / frames | [jpx.rs](../src/jpx.rs) → [mod.rs](mod.rs): `part2_layer_input`, `part2_build_timeline`, `part2_render_normalized_frame` | Normalized 16-bit source-over and floor-scaled sampling are selected policy. Timeline/frame results are input-relative, not proofs of compressed decoding or container normalization. See [composition vocabulary](AUDIT_REFERENCE.md#normalized-source-over-vocabulary). |
+| Headers and containers | Find image data, dimensions and decoding instructions in the input bytes. | [Parsing code](../src/codestream.rs), [container code](../src/jp2.rs) |
+| Packets | Work out which pieces of compressed data are present and in what order to process them. | [Packet code](../src/packet.rs), [packet models](packet.rs) |
+| Coefficients and arithmetic | Recover coefficient signs and magnitudes using legacy coding or HTJ2K, without losing high bits. | [Tier-1 code](../src/tier1.rs), [integer arithmetic](../src/magnitude.rs) |
+| Transforms | Undo quantization and wavelet/component transforms to rebuild sample values. | [Transform code](../src/transform.rs), [mathematical models](mod.rs) |
+| Channels and color | Interpret palettes and channel mappings, then perform supported color conversions. | [Color code](../src/color.rs), [sample processing](../src/decode.rs) |
+| Layers and frames | Combine prepared layers into output frames. | [JPX code](../src/jpx.rs), [composition models](mod.rs) |
+
+This is a map of responsibilities, not a claim that one theorem connects the
+entire pipeline. The [detailed component index](AUDIT_REFERENCE.md#component-entry-points-and-boundaries)
+lists the exact model names and local limits. [PROOFS.md](../PROOFS.md)
+explains what inputs each checked stage starts from and where the remaining
+connections are.
 
 ## Example 1: full-width magnitude addition
 
-**Code → model.** Open `Magnitude::checked_add` in
-[src/magnitude.rs](../src/magnitude.rs). It adds six little-endian `u64` limbs
-with a carry. Its closed `magnitude_value` projection is defined by
-`part1_magnitude_value` in [mod.rs](mod.rs): the natural value of all 384 bits.
-`magnitude_addition` is natural addition; `part1_magnitude_capacity()` is `2^384`.
-No normalized-coefficient or HT-success premise is required.
+**Question to audit:** can an addition silently lose its high bits?
 
-**Contract.** The adjacent `verus_spec` binds both operands to that full-value
-view. If their sum is below capacity, the result is `Ok` with exactly that sum
-and the raw/value representation relation. Otherwise the result is exactly
-`MalformedInput { offset: 0, kind: ArithmeticOverflow }`, expressed through
-`part1_transform_error(true)`. This is a finite-capacity arithmetic theorem,
-not a theorem that compressed bytes denote a particular coefficient.
+Start with `Magnitude::checked_add` in [the Rust code](../src/magnitude.rs).
+A magnitude is stored as six 64-bit words. Its contract must describe the
+value of the whole number, not just the first word: return the exact sum when
+it fits, or the specified overflow error otherwise.
 
-**Proof / test.** Follow the loop's prefix-sum/carry invariant and
-`production_magnitude_add_prefix_step`, `production_magnitude_add_limb`, and
-`production_magnitude_prefix_update` in
-[proofs/production_impl/mod.rs](../proofs/production_impl/mod.rs).
-`exact_full_capacity_addition_matches_bit_carry_reference` in
-[src/magnitude.rs](../src/magnitude.rs) independently compares bit-array addition,
-including complete carry propagation and exact overflow errors. The
-[arithmetic boundary](../PROOFS.md#full-native-magnitude-arithmetic) explains
-how this supports reconstruction without proving HT byte semantics or a
-completed ITU-clause audit.
+Compare that promise with the [addition model](mod.rs), then inspect the carry
+proof and the independent bit-by-bit reference test. The
+[full walkthrough](AUDIT_REFERENCE.md#worked-example-1-full-width-magnitude-addition)
+names every definition and test to follow. This is a review of arithmetic;
+it does not establish how compressed bits became those numbers.
 
 ## Example 2: PLM packet-length admission
 
-**Code → model.** Open `Parser::parse_plm` and its actual callee
-`Parser::validate_packet_lengths` in [src/codestream.rs](../src/codestream.rs).
-Their models in [mod.rs](mod.rs) are `part1_parse_plm`,
-`part1_plm_groups_from`, `part1_validate_packet_lengths`, and
-`part1_packet_length_admission_from`. The raw variable-length decoder is modeled
-by `part1_packet_length_decode` in [packet_input.rs](packet_input.rs).
-Group lengths and borrowed byte slices derive from the real segment payload,
-not supplied decoded lengths or a bank of decoder results.
+**Question to audit:** what changes when parsing fails partway through?
 
-**Contract.** Each adjacent `verus_spec` equates the actual result and final
-state with the model from the initial raw state. Admission binds the complete
-parser view; PLM also binds the next index and all group views, including
-arbitrary preexisting groups. Read the ordering, not just the successful count:
+A PLM marker carries encoded packet-length information. Start with
+`Parser::parse_plm` in [the parser](../src/codestream.rs), then compare it
+with the [packet-length models](mod.rs).
 
-- Minimum payload length and index checks precede the PLM index increment.
-  A successful index admission, including 255 → 256, survives later failure.
-- Packet-header-byte addition commits before its cap check. Genuine work
-  charging precedes variable-length traversal; malformed varints retain these
-  charges but do not commit a packet count.
-- Completed traversal commits the global packet count before its cap check.
-  A successful group is appended before the tile-part cap check, so that
-  failure retains the appended group.
-- Work errors use the parser position; byte/count overflow and malformed
-  varints use the marker offset. Empty encoded input still checks counters.
+Do not check only the successful result. For example, a group is appended
+before the tile-part limit is checked. If that check fails, the model and
+contract must both retain the appended group. The
+[full walkthrough](AUDIT_REFERENCE.md#worked-example-2-plm-packet-length-admission)
+traces the bytes, counters, error offsets, proof and tests. It shows a local
+parser guarantee, not a proof of the complete public decoder.
 
-The relations preserve typed first failures, partial commits and untouched
-parser/group fields; they do not prove PLT/final metadata or the outer
-parser/decoder joins.
+Both examples explain code-to-model review. A completed standards audit also
+needs the independent source comparison described above.
 
-**Proof / test.** Follow `parser_view`, `segment_view`,
-`packet_length_groups_view`, the source-derived traversal invariants, and
-`decode_packet_length` / `Parser::charge_work` in the same source file.
-Independent wide-arithmetic tests there include
-`actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits`
-and `actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join`.
-The [PLM boundary](../PROOFS.md#actual-packet-length-admission-and-plm-group-production)
-and inventory enumerate the remaining evidence. This reading example is not a
-completed normative clause walkthrough or official conformance evidence.
+## Three kinds of material
+
+When opening a definition, ask which of these it is:
+
+- **A rule intended to represent the standard:** for example, what an encoded
+  field means. Its correspondence with the source text needs auditing.
+- **A choice made by this implementation:** for example, integer capacity,
+  fixed-point rounding, supported profiles, 16-bit layer composition or a
+  resource limit. Do not mistake such a choice for a standard requirement.
+- **A tool for a proof:** algebra, representations and loop bookkeeping in
+  [proofs/](../proofs/) and [internal_specs.rs](../proofs/internal_specs.rs).
+  These help establish a result; they are not additional codec rules.
+
+## What is established, and what is not
+
+Cargo and Verus use the same [executable Rust](../src/lib.rs), not separate
+decoders. Contracts check specified results, errors and state changes.
+But the starting point matters: a proof that begins with supplied coefficients
+does not prove that earlier compressed-byte decoding was correct.
+
+We do not claim a completed independent standards audit, a complete public
+bytes-to-image proof, official conformance or release authorization.
+Generated tests and comparisons with other decoders are useful checks, not
+certification. See the [concrete proof boundaries](../PROOFS.md#concrete-contract-boundaries)
+and [validation guidance](../validation/VALIDATION.md).
+
+Function counts are not a completeness percentage; the
+[proof-report format](../validation/proof-coverage.schema.json) records source
+function coverage as not measured. The released verifier also disables Verus
+lifetime analysis (`--no-lifetime`); ordinary Rust borrow checking still runs.
+See the [tool limitation](../PROOFS.md#current-lifetime-analysis-limitation)
+and [verification instructions](../PROOFS.md#reproduce-verification).
 
 ## Reconstruction reading path
 
-Start with [the magnitude example](#example-1-full-width-magnitude-addition),
-then follow ROI restoration, quantization, lifting, plane geometry, component
-transforms and assembly in the
-[detailed reconstruction path](AUDIT_REFERENCE.md#reconstruction-reading-path).
-Keep supplied-coefficient, supplied-tile and raw-input boundaries separate;
-see [bounded reconstruction](../PROOFS.md#bounded-supplied-coefficient-reconstruction)
-and [real owner-buffer composition](../PROOFS.md#complete-wavelet-stage-and-real-owner-buffer-mct-composition).
+To follow coefficients through to sample values, use the
+[reconstruction tour](AUDIT_REFERENCE.md#reconstruction-reading-path).
+At each step, note which inputs are supplied and which the code actually
+derives. The [bounded reconstruction notes](../PROOFS.md#bounded-supplied-coefficient-reconstruction)
+and [buffer-composition notes](../PROOFS.md#complete-wavelet-stage-and-real-owner-buffer-mct-composition)
+explain those distinctions in detail.
 
-## Frozen F5H directional-reader stages
+<a id="frozen-f5h-directional-reader-stages"></a>
+## HTJ2K bit readers
 
-For the directional-reader boundary, start with the actual raw-reader fields,
-stuffing, exhaustion and termination behavior in the
-[HT directional-reader contracts](AUDIT_REFERENCE.md#ht-directional-reader-contracts).
-Then follow the [full refinement-plane profile](AUDIT_REFERENCE.md#frozen-full-f5h-refinement-plane-profile)
-and [cleanup-plane profile](AUDIT_REFERENCE.md#frozen-f5h-cleanup-plane-reconstruction-profile).
-Reader contracts alone do not establish the complete Tier-1 caller. “F5H” is an
-internal profile label, not a standards clause or conformance designation.
+For a lower-level audit, start with the
+[bit-reader explanation](AUDIT_REFERENCE.md#ht-directional-reader-contracts),
+then the [refinement](AUDIT_REFERENCE.md#frozen-full-f5h-refinement-plane-profile)
+and [cleanup](AUDIT_REFERENCE.md#frozen-f5h-cleanup-plane-reconstruction-profile)
+details. Reader proofs alone do not establish the complete coefficient
+decoder. Labels such as "F5H" in that reference are internal work labels,
+not names from the standard.
+
+[t800-pdf]: https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.800-201906-S!!PDF-E&type=items
+[t801-pdf]: https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.801-202106-S!!PDF-E&type=items
+[t808-pdf]: https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.808-202212-S!!PDF-E&type=items
+[t814-pdf]: https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.814-201906-I!!PDF-E&type=items
+[t803-pdf]: https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.803-202402-I!!PDF-E&type=items

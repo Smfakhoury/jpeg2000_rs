@@ -1997,3 +1997,82 @@ Complete fixed image/sample outcomes and first errors contain no supplied
 decoded/planning/copy witness banks or normalized-layout premises. The
 native loops establish all count/work/source/selection frames internally.
 Raw parser/typed/file/F2/F4/final F8 joins remain separate.
+
+## Component entry points and boundaries
+
+| Component | Actual source → model | Current boundary to keep in view |
+|---|---|---|
+| Bytes / containers | [codestream.rs](../src/codestream.rs), [jp2.rs](../src/jp2.rs), [jpx.rs](../src/jpx.rs), [jpip.rs](../src/jpip.rs) → [mod.rs](mod.rs): `part1_codestream_read_segment`, `part9_*`, `part2_*` | Raw reader, metadata, container and selection contracts have distinct inputs; a local marker theorem is not the whole public decoder. See [container composition](../PROOFS.md#complete-native-container-selection-and-typed-output-composition). |
+| Packet / entropy | [packet.rs](../src/packet.rs), [mq.rs](../src/mq.rs), [tier1.rs](../src/tier1.rs) → [packet_input.rs](packet_input.rs), [header.rs](header.rs), [tag_tree.rs](tag_tree.rs), [packet.rs](packet.rs), [mq.rs](mq.rs), [legacy.rs](legacy.rs), [mod.rs](mod.rs): `part15_*` | Reader, traversal, retained-contribution and coefficient-state relations must be composed explicitly. See [mixed dispatch](../PROOFS.md#complete-unconditional-mixed-contribution-body-and-tier-1-dispatch). |
+| Coefficients / arithmetic | [magnitude.rs](../src/magnitude.rs), [tier1.rs](../src/tier1.rs), [refinement.rs](../src/refinement.rs) → [mod.rs](mod.rs): `part1_magnitude_value`, `ht_cleanup_plane` | Full 384-bit arithmetic support is not HT byte meaning; supplied metadata/bytes and raw coefficient frames remain explicit. See [magnitude interface](AUDIT_REFERENCE.md#full-native-magnitude-interface). |
+| Transforms | [transform.rs](../src/transform.rs), [decode.rs](../src/decode.rs) → [mod.rs](mod.rs): `part1_inverse_quantization`, `part1_inverse_level`, `part1_apply_component_transform` | Stage contracts distinguish supplied coefficients, prepared components and real owner buffers. Deterministic fixed-point behavior alone establishes no normative tolerance. See [reconstruction](README.md#reconstruction-reading-path). |
+| Channels / color | [decode.rs](../src/decode.rs), [jp2.rs](../src/jp2.rs), [color.rs](../src/color.rs) → [mod.rs](mod.rs): `part2_palette_component`, `color_convert_jp2`, `color_convert_selected` | Palette/CDEF routing, registration, conversion and crop have separate admissions. Supported enumerations and ICC rejection are explicit. See [semantic detail](AUDIT_REFERENCE.md#semantic-definitions-versus-internal-proof-support). |
+| Layers / frames | [jpx.rs](../src/jpx.rs) → [mod.rs](mod.rs): `part2_layer_input`, `part2_build_timeline`, `part2_render_normalized_frame` | Normalized 16-bit source-over and floor-scaled sampling are selected policy. Timeline/frame results are input-relative, not proofs of compressed decoding or container normalization. See [composition vocabulary](AUDIT_REFERENCE.md#normalized-source-over-vocabulary). |
+
+## Worked example 1: full-width magnitude addition
+
+**Code → model.** Open `Magnitude::checked_add` in
+[src/magnitude.rs](../src/magnitude.rs). It adds six little-endian `u64` limbs
+with a carry. Its closed `magnitude_value` projection is defined by
+`part1_magnitude_value` in [mod.rs](mod.rs): the natural value of all 384 bits.
+`magnitude_addition` is natural addition; `part1_magnitude_capacity()` is `2^384`.
+No normalized-coefficient or HT-success premise is required.
+
+**Contract.** The adjacent `verus_spec` binds both operands to that full-value
+view. If their sum is below capacity, the result is `Ok` with exactly that sum
+and the raw/value representation relation. Otherwise the result is exactly
+`MalformedInput { offset: 0, kind: ArithmeticOverflow }`, expressed through
+`part1_transform_error(true)`. This is a finite-capacity arithmetic theorem,
+not a theorem that compressed bytes denote a particular coefficient.
+
+**Proof / test.** Follow the loop's prefix-sum/carry invariant and
+`production_magnitude_add_prefix_step`, `production_magnitude_add_limb`, and
+`production_magnitude_prefix_update` in
+[proofs/production_impl/mod.rs](../proofs/production_impl/mod.rs).
+`exact_full_capacity_addition_matches_bit_carry_reference` in
+[src/magnitude.rs](../src/magnitude.rs) independently compares bit-array addition,
+including complete carry propagation and exact overflow errors. The
+[arithmetic boundary](../PROOFS.md#full-native-magnitude-arithmetic) explains
+how this supports reconstruction without proving HT byte semantics or a
+completed ITU-clause audit.
+
+## Worked example 2: PLM packet-length admission
+
+**Code → model.** Open `Parser::parse_plm` and its actual callee
+`Parser::validate_packet_lengths` in [src/codestream.rs](../src/codestream.rs).
+Their models in [mod.rs](mod.rs) are `part1_parse_plm`,
+`part1_plm_groups_from`, `part1_validate_packet_lengths`, and
+`part1_packet_length_admission_from`. The raw variable-length decoder is modeled
+by `part1_packet_length_decode` in [packet_input.rs](packet_input.rs).
+Group lengths and borrowed byte slices derive from the real segment payload,
+not supplied decoded lengths or a bank of decoder results.
+
+**Contract.** Each adjacent `verus_spec` equates the actual result and final
+state with the model from the initial raw state. Admission binds the complete
+parser view; PLM also binds the next index and all group views, including
+arbitrary preexisting groups. Read the ordering, not just the successful count:
+
+- Minimum payload length and index checks precede the PLM index increment.
+  A successful index admission, including 255 → 256, survives later failure.
+- Packet-header-byte addition commits before its cap check. Genuine work
+  charging precedes variable-length traversal; malformed varints retain these
+  charges but do not commit a packet count.
+- Completed traversal commits the global packet count before its cap check.
+  A successful group is appended before the tile-part cap check, so that
+  failure retains the appended group.
+- Work errors use the parser position; byte/count overflow and malformed
+  varints use the marker offset. Empty encoded input still checks counters.
+
+The relations preserve typed first failures, partial commits and untouched
+parser/group fields; they do not prove PLT/final metadata or the outer
+parser/decoder joins.
+
+**Proof / test.** Follow `parser_view`, `segment_view`,
+`packet_length_groups_view`, the source-derived traversal invariants, and
+`decode_packet_length` / `Parser::charge_work` in the same source file.
+Independent wide-arithmetic tests there include
+`actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits`
+and `actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join`.
+The [PLM boundary](../PROOFS.md#actual-packet-length-admission-and-plm-group-production)
+and inventory enumerate the remaining evidence. This reading example is not a
+completed normative clause walkthrough or official conformance evidence.
