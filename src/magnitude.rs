@@ -255,7 +255,7 @@ impl Magnitude {
         if carry {
             return Err(arithmetic_overflow());
         }
-        Ok(Self { limbs })
+        Ok(Self::ZERO)
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
