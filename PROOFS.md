@@ -49,14 +49,17 @@ correspondence with an ITU edition.
 
 The [controller](validation/check-model-review-hold.py) holds changes to any
 Rust source, all files under `src/`, `.cargo/` and `.github/`, non-Markdown
-files under `specs/`, `proofs/` and `validation/`, and Cargo/toolchain manifests
-and locks. This deliberately includes implementation-only edits, representation
+files under `specs/`, `proofs/` and `validation/`, Cargo/toolchain manifests
+and locks, and Git attributes/submodule configuration. This deliberately
+includes implementation-only edits, representation
 changes, tests and the controller itself: it does not try to infer semantic
 equivalence from a diff. Markdown audit-guide changes remain possible; their
 claims still need human review.
 
-The workflow uses `pull_request_target`, checks out the event's base commit,
-and runs only its controller. It fetches but never checks out or executes the
+The workflow targets pull requests to `main` and uses `pull_request_target`.
+It checks out the trusted default-branch `github.sha`, not a proposed branch
+or an arbitrary PR base, and runs only that controller. It fetches but never
+checks out or executes the
 proposed code. It assesses committed changes from the unique merge base,
 including deletions and renames. A policy edit in the same proposal cannot
 grant itself an exception. Missing history or ambiguous merge bases fail.
@@ -68,7 +71,7 @@ identities, source-bound evidence and owner authorization; a candidate's own
 An owner-approved transition must arrange replacement of the hold rather
 than treating a held change as approved.
 
-The check becomes available only after the workflow is merged into the target
+The check becomes available only after the workflow is merged into the default
 branch. Its presence does not configure branch protection or prevent direct
 pushes, administrative bypasses or changes to repository settings. Required
 checks/reviews and controller ownership need owner configuration and live

@@ -16,6 +16,7 @@ def held_path(path: str) -> bool:
         return not path.endswith(".md")
     return path.rsplit("/", 1)[-1] in {
         "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rust-toolchain",
+        ".gitattributes", ".gitmodules",
     }
 
 

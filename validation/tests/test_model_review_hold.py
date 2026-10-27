@@ -57,6 +57,7 @@ class ModelReviewHoldTests(unittest.TestCase):
             ".github/workflows/model-review-hold.yml", ".github/new-workflow.yml",
             ".cargo/config.toml", "Cargo.toml", "Cargo.lock", "fuzz/Cargo.toml",
             "rust-toolchain.toml", "rust-toolchain", "validation/framework.py",
+            ".gitattributes", ".gitmodules",
             "validation/check-model-review-hold.py", "validation/normative-coverage.json",
             "validation/tests/test_model_review_hold.py",
         ):
