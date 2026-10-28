@@ -1,0 +1,16 @@
+[package]
+name = "jpeg2000_image_consumer_probe"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.88.0"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+image = { version = "=0.25.10", default-features = false }
+jpeg2000_rs = { path = "../../target/package/jpeg2000_rs-0.1.0", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
