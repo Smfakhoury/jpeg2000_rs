@@ -1570,7 +1570,7 @@
         {"path": "src/decode.rs", "symbol": "tile_decode_metadata_view"},
         {"path": "src/decode.rs", "symbol": "tile_decode_metadata_outcome"},
         {"path": "src/decode.rs", "symbol": "resolution_counts_outcome_for_tile"},
-        {"path": "src/decode.rs", "symbol": "tile_part_mct_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "tile_part_mct_view"},
         {"path": "src/codestream.rs", "symbol": "mct_array_view"},
         {"path": "src/codestream.rs", "symbol": "mct_collection_view"},
         {"path": "src/codestream.rs", "symbol": "mct_stage_view"},
@@ -1608,7 +1608,7 @@
       "proof_refs": [
         {"path": "src/decode.rs", "symbol": "progression_plan_view"},
         {"path": "src/decode.rs", "symbol": "planning_components_view"},
-        {"path": "src/decode.rs", "symbol": "prepare_plan_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "prepare_plan_view"},
         {"path": "src/packet.rs", "symbol": "PacketGrid::packet_count"},
         {"path": "src/packet.rs", "symbol": "PacketGrid::selected_packet_count"},
         {"path": "src/packet.rs", "symbol": "PacketGrid::total_precinct_count"}
@@ -1635,9 +1635,9 @@
         {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "decoded_tile_components_view"},
-        {"path": "src/decode.rs", "symbol": "decoded_tile_components_outcome"},
-        {"path": "src/decode.rs", "symbol": "planning_precinct_planes_known_fields"},
+        {"path": "src/decode/proof_support.rs", "symbol": "decoded_tile_components_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "decoded_tile_components_outcome"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planning_precinct_planes_known_fields"},
         {"path": "src/decode.rs", "symbol": "progression_plan_view"},
         {"path": "src/decode.rs", "symbol": "reconstruct_planned_tile"},
         {"path": "src/packet.rs", "symbol": "decode_progression_tile_packets"},
