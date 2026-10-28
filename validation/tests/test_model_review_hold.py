@@ -400,6 +400,12 @@ class ModelReviewHoldTests(unittest.TestCase):
             "validation/expected-package-files.txt": "src/decode/proof_support.rs\nsrc/decode.rs\n",
             "validation/normative-coverage.json": '{"proof_refs":[{"path":"src/decode/proof_support.rs","symbol":"helper"}]}\n',
         }
+        return self.layout_fixture(
+            originals, proposed, "decode-proof-support",
+            "Exact support layout, not normative model approval.",
+        )
+
+    def layout_fixture(self, originals, proposed, profile, rationale):
         for path, content in originals.items():
             self.write(path, content)
         base = self.commit()
@@ -407,9 +413,9 @@ class ModelReviewHoldTests(unittest.TestCase):
             self.write(path, content)
         head = self.commit()
         entry = {
-            "id": "proof-support-fixture", "profile": "decode-proof-support",
+            "id": f"{profile}-fixture", "profile": profile,
             "source_pr": 1, "source_head": head, "ci_run": 1, "verus_run": 2,
-            "rationale": "Exact support layout, not normative model approval.",
+            "rationale": rationale,
             "paths": {
                 path: {
                     "before": self.git("rev-parse", f"{base}:{path}") if path in originals else None,
@@ -454,6 +460,64 @@ class ModelReviewHoldTests(unittest.TestCase):
             entry["paths"][replacement] = entry["paths"].pop("src/decode.rs")
             with self.assertRaises(ValueError):
                 model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def tier1_test_fixture(self):
+        originals = {
+            "src/tier1.rs": "fn decode() {}\n#[cfg(test)]\nmod tests { #[test] fn exact() {} }\n",
+            "validation/expected-package-files.txt": "src/tier1.rs\n",
+            "validation/normative-coverage.json": '{"test_refs":[{"path":"src/tier1.rs","symbol":"exact"}]}\n',
+            "validation/tests/test_framework.py": "original binding regression\n",
+        }
+        proposed = {
+            "src/tier1.rs": "fn decode() {}\n#[cfg(test)]\nmod tests;\n",
+            "src/tier1/tests.rs": "use super::*;\n#[test]\nfn exact() {}\n",
+            "validation/expected-package-files.txt": "src/tier1/tests.rs\nsrc/tier1.rs\n",
+            "validation/normative-coverage.json": '{"test_refs":[{"path":"src/tier1/tests.rs","symbol":"exact"}]}\n',
+            "validation/tests/test_framework.py": "relocated binding regression\n",
+        }
+        return self.layout_fixture(
+            originals, proposed, "tier1-test-extraction",
+            "Exact private-test relocation with unchanged runtime/proof prefix.",
+        )
+
+    def test_exact_tier1_test_record_passes_only_after_trusted_adoption(self):
+        base, head, entry = self.tier1_test_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_tier1_test_record_rejects_changed_runtime_tests_inventory_or_bindings(self):
+        base, head, entry = self.tier1_test_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-tier1-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_tier1_test_record_does_not_authorize_models_other_modules_or_controller(self):
+        base, head, entry = self.tier1_test_fixture()
+        for index, path in enumerate((
+            "specs/new.rs", "src/decode/proof_support.rs", "validation/check-model-review-hold.py",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-tier1-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_tier1_test_profile_cannot_name_another_module_or_controller(self):
+        _, _, original = self.tier1_test_fixture()
+        for replacement in ("src/decode.rs", "specs/new.rs", "validation/check-model-review-hold.py"):
+            with self.subTest(path=replacement):
+                entry = copy.deepcopy(original)
+                entry["paths"][replacement] = entry["paths"].pop("src/tier1.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
 
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
