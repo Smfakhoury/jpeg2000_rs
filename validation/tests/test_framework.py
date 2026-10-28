@@ -1085,20 +1085,32 @@ class FrameworkTests(WorkingFiles):
         )
 
     def test_inventory_tracks_relocated_parser_tests_and_rejects_stale_or_missing_bindings(self):
+        self._assert_relocated_test_bindings(
+            "part1-complete-native-packet-length-admission",
+            "src/codestream.rs", "src/codestream/tests.rs",
+        )
+
+    def test_inventory_tracks_relocated_tier1_tests_and_rejects_stale_or_missing_bindings(self):
+        self._assert_relocated_test_bindings(
+            "part2-complete-native-decoder-initialization",
+            "src/tier1.rs", "src/tier1/tests.rs",
+        )
+
+    def _assert_relocated_test_bindings(self, entry_id, original_path, moved_path):
         coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in coverage["requirements"]
-                     if item["id"] == "part1-complete-native-packet-length-admission")
+                     if item["id"] == entry_id)
         coverage["requirements"] = [entry]
         self.assertTrue(entry["test_refs"])
-        self.assertTrue(all(ref["path"] == "src/codestream/tests.rs" for ref in entry["test_refs"]))
+        self.assertTrue(all(ref["path"] == moved_path for ref in entry["test_refs"]))
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
 
         stale = copy.deepcopy(coverage)
-        stale["requirements"][0]["test_refs"][0]["path"] = "src/codestream.rs"
+        stale["requirements"][0]["test_refs"][0]["path"] = original_path
         with self.assertRaises(ValueError):
             framework.validate_normative_coverage(stale)
 
-        moved = framework.ROOT / "src/codestream/tests.rs"
+        moved = framework.ROOT / moved_path
         symbol = entry["test_refs"][0]["symbol"]
         read_text = Path.read_text
 

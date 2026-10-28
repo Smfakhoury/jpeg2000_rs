@@ -1907,7 +1907,7 @@
       ],
       "test_refs": [
         {"path": "src/decode.rs", "symbol": "actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers"},
-        {"path": "src/tier1.rs", "symbol": "configured_decoder_derives_initial_state_and_preserves_bound_admission_order"}
+        {"path": "src/tier1/tests.rs", "symbol": "configured_decoder_derives_initial_state_and_preserves_bound_admission_order"}
       ]
     },
     {
@@ -1939,8 +1939,8 @@
         {"path": "src/tier1.rs", "symbol": "code_block_plane_from_dimensions"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "actual_decoder_initialization_derives_every_field_from_raw_dimensions_bits_and_style"},
-        {"path": "src/tier1.rs", "symbol": "initialization_policy_setters_preserve_all_unrelated_raw_state_and_error_snapshots"}
+        {"path": "src/tier1/tests.rs", "symbol": "actual_decoder_initialization_derives_every_field_from_raw_dimensions_bits_and_style"},
+        {"path": "src/tier1/tests.rs", "symbol": "initialization_policy_setters_preserve_all_unrelated_raw_state_and_error_snapshots"}
       ]
     },
     {
@@ -4375,7 +4375,7 @@
           "symbol": "actual_precinct_wrapper_commits_literal_ht_cleanup_before_late_length_mismatch"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "complete_style_byte_parser_matches_all_native_bytes_and_flags"
         },
         {
@@ -4715,11 +4715,11 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_group_route_uses_retained_option_not_current_cleanup_flag"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_whole_decoder_clone_preserves_all_raw_malformed_fields_and_independent_storage"},
-        {"path": "src/tier1.rs", "symbol": "ht_staged_group_complete_native_pass_domain_uses_real_grouping_and_rollback"},
-        {"path": "src/tier1.rs", "symbol": "ht_staged_group_every_late_failure_keeps_original_state_not_staged_partial_writes"},
-        {"path": "src/tier1.rs", "symbol": "ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures"},
-        {"path": "src/tier1.rs", "symbol": "ht_actual_groups_continue_and_replace_using_real_retained_state"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_whole_decoder_clone_preserves_all_raw_malformed_fields_and_independent_storage"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_staged_group_complete_native_pass_domain_uses_real_grouping_and_rollback"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_staged_group_every_late_failure_keeps_original_state_not_staged_partial_writes"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_actual_groups_continue_and_replace_using_real_retained_state"}
       ]
     },
     {
@@ -4749,14 +4749,14 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_refinement_reset_frames_all_unrelated_decoder_fields"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_continuation_replays_real_concatenation_from_cleanup_not_current_output"},
-        {"path": "src/tier1.rs", "symbol": "ht_continuation_empty_concatenation_preserves_output_and_skips_replay_only"},
-        {"path": "src/tier1.rs", "symbol": "ht_continuation_rejects_before_commit_but_keeps_exact_late_accounting_writes"},
-        {"path": "src/tier1.rs", "symbol": "ht_continuation_native_pass_domain_and_retained_size_boundaries_are_exact"},
-        {"path": "src/tier1.rs", "symbol": "ht_placeholder_all_native_passes_and_phases_preserve_actual_admission"},
-        {"path": "src/tier1.rs", "symbol": "ht_placeholder_replacement_and_late_errors_retain_cleanup_option_and_prior_writes"},
-        {"path": "src/tier1.rs", "symbol": "ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures"},
-        {"path": "src/tier1.rs", "symbol": "ht_actual_groups_continue_and_replace_using_real_retained_state"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_continuation_replays_real_concatenation_from_cleanup_not_current_output"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_continuation_empty_concatenation_preserves_output_and_skips_replay_only"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_continuation_rejects_before_commit_but_keeps_exact_late_accounting_writes"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_continuation_native_pass_domain_and_retained_size_boundaries_are_exact"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_placeholder_all_native_passes_and_phases_preserve_actual_admission"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_placeholder_replacement_and_late_errors_retain_cleanup_option_and_prior_writes"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_actual_staged_group_runs_all_placeholder_groups_and_rolls_back_failures"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_actual_groups_continue_and_replace_using_real_retained_state"}
       ]
     },
     {
@@ -4924,13 +4924,13 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_neighbor_balance_overflow_keeps_the_prior_count_increment"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_both_passes_preserve_raw_flags_and_all_six_words"},
-        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_uses_wide_native_borrow_addition_and_no_midpoint_normalization"},
-        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_delays_patch_signs_and_keeps_discovery_distinct"},
-        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_vertical_causality_changes_only_actual_neighbor_admission"},
-        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_first_errors_keep_real_reader_claim_and_counter_order"},
-        {"path": "src/tier1.rs", "symbol": "ht_full_refinement_native_rejections_overflow_underflow_and_zero_are_exact"},
-        {"path": "src/tier1.rs", "symbol": "ht_refinement_neighbor_overflows_and_malformed_shapes_have_ordered_effects"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_refinement_both_passes_preserve_raw_flags_and_all_six_words"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_refinement_uses_wide_native_borrow_addition_and_no_midpoint_normalization"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_refinement_delays_patch_signs_and_keeps_discovery_distinct"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_refinement_vertical_causality_changes_only_actual_neighbor_admission"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_refinement_first_errors_keep_real_reader_claim_and_counter_order"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_refinement_native_rejections_overflow_underflow_and_zero_are_exact"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_refinement_neighbor_overflows_and_malformed_shapes_have_ordered_effects"}
       ]
     },
     {
@@ -4965,9 +4965,9 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_complete_symbol_model_preserves_the_frozen_cleanup_only_profile"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_full_symbol_caller_distinguishes_none_empty_refinement_and_pre_refinement_plane"},
-        {"path": "src/tier1.rs", "symbol": "ht_public_segment_entry_binds_actual_pass_byte_work_admission_and_error_order"},
-        {"path": "src/tier1.rs", "symbol": "ht_public_segment_entry_keeps_none_and_some_empty_distinct_without_assumed_context"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_full_symbol_caller_distinguishes_none_empty_refinement_and_pre_refinement_plane"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_public_segment_entry_binds_actual_pass_byte_work_admission_and_error_order"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_public_segment_entry_keeps_none_and_some_empty_distinct_without_assumed_context"}
       ]
     },
     {
@@ -4997,11 +4997,11 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_cleanup_store_final_byte_overflow_keeps_earlier_counter_updates"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_composes_real_metadata_numeric_duplicate_and_complete_decoder_state"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_preserves_metadata_before_native_pass_error_order_and_full_failure_frame"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_metadata_work_failure_retains_every_decoder_field"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_caller_accounting_failures_preserve_ordered_commits_not_rollback"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_duplicate_preserves_full_raw_coefficients_and_rejects_bad_shapes"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_caller_composes_real_metadata_numeric_duplicate_and_complete_decoder_state"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_caller_preserves_metadata_before_native_pass_error_order_and_full_failure_frame"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_caller_metadata_work_failure_retains_every_decoder_field"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_caller_accounting_failures_preserve_ordered_commits_not_rollback"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_duplicate_preserves_full_raw_coefficients_and_rejects_bad_shapes"}
       ]
     },
     {
@@ -5057,12 +5057,12 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "ht_kappa_conservative_overflow_applies_without_gamma"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_places_literal_full_words_flags_and_ignores_old_coefficients"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_preserves_permissive_metadata_domains_and_coordinate_error_order"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_placement_errors_follow_magsgn_consumption_and_scanning"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_statistic_overflows_retain_each_ordered_partial_effect"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_stencils_reset_max_overwrite_swap_and_drive_noninitial_u"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_plane_finish_preserves_outputs_and_reports_physical_padding_stuffing_and_budget"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_plane_places_literal_full_words_flags_and_ignores_old_coefficients"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_plane_preserves_permissive_metadata_domains_and_coordinate_error_order"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_plane_placement_errors_follow_magsgn_consumption_and_scanning"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_plane_statistic_overflows_retain_each_ordered_partial_effect"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_plane_stencils_reset_max_overwrite_swap_and_drive_noninitial_u"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_plane_finish_preserves_outputs_and_reports_physical_padding_stuffing_and_budget"}
       ]
     },
     {
@@ -5110,8 +5110,8 @@
         {"path": "proofs/spec_properties/mod.rs", "symbol": "tier1_raw_insignificance_ignores_stale_full_words_and_legacy_tags"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "raw_plane_getters_preserve_malformed_shapes_and_exact_index_errors"},
-        {"path": "src/tier1.rs", "symbol": "raw_signed_coefficients_keep_full_words_flags_and_native_midpoint_errors"}
+        {"path": "src/tier1/tests.rs", "symbol": "raw_plane_getters_preserve_malformed_shapes_and_exact_index_errors"},
+        {"path": "src/tier1/tests.rs", "symbol": "raw_signed_coefficients_keep_full_words_flags_and_native_midpoint_errors"}
       ]
     },
     {
@@ -5540,39 +5540,39 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_reader_transitions_match_exhaustive_two_byte_token_oracle"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_reader_limits_preserve_post_bit_counter_and_exact_state"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_reader_overflow_and_invalid_state_errors_preserve_complete_state"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_reader_initial_input_limits_match_exact_claims"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_reader_termination_matches_independent_alternating_suffix_arithmetic"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "later_empty_terminated_mq_pass_preserves_real_pass_accounting"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "empty_initial_and_unterminated_legacy_segments_remain_invalid"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "empty_raw_predictable_termination_requires_no_consumed_symbols"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_predictable_termination_checks_the_exact_stuffed_ff_tail"
         }
       ],
@@ -5850,27 +5850,27 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "tier_one_pass_schedule_repeats_normative_cycle"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "forms_tier_one_contexts_from_neighbors"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "refinement_records_zero_decisions_without_changing_magnitude"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "legacy_partial_quality_reconstructs_signed_midpoints_without_changing_prefixes"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "legacy_partial_pass_midpoints_are_coefficient_local"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "legacy_midpoint_reconstruction_preserves_wide_magnitudes"
         }
       ],
@@ -6484,23 +6484,23 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "forms_tier_one_contexts_from_neighbors"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_bypass_decodes_significance_and_refinement_passes"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "raw_bypass_sign_bits_do_not_use_mq_sign_prediction"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "traverses_all_three_passes_and_preserves_bitplane_eligibility"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "vertical_causal_context_ignores_the_next_stripe"
         }
       ],
@@ -9344,7 +9344,7 @@
           "symbol": "validates_part15_capability_combinations"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "reconstructs_capability_b74_magnitude_without_narrowing"
         }
       ],
@@ -9414,11 +9414,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_packet_pass_group_has_literal_complete_fields_and_native_rejections"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
         },
         {
@@ -9526,23 +9526,23 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_complete_partition_preserves_every_stream_and_optional_empty"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_partition_checks_actual_budget_before_scup_and_sizes_before_budget"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_partition_native_capacity_and_scup_boundaries_are_exact"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "groups_ht_packet_passes_and_retains_bounded_stream_views"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "rejects_invalid_ht_cleanup_termination_and_limits"
         }
       ],
@@ -9628,23 +9628,23 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_readers_apply_directional_stuffing_and_reject_bad_mel_sequences"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_cleanup_rejects_cursor_collision_and_out_of_bounds_significance"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_cleanup_accepts_fused_mel_vlc_final_byte"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_cleanup_fusion_does_not_cross_bytes"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_cleanup_fusion_excludes_ff"
         }
       ],
@@ -9703,14 +9703,14 @@
         {"path": "specs/mod.rs", "symbol": "ht_cleanup_reader_read_vlc"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_reverse_vlc_fixed_stream_has_exact_terminal_and_stuffed_cursors"},
-        {"path": "src/tier1.rs", "symbol": "ht_reverse_vlc_first_budget_error_does_not_eagerly_load"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_reader_overflow_keeps_the_exact_partial_cursor_update"},
-        {"path": "src/tier1.rs", "symbol": "ht_mel_fixed_stream_covers_terminal_nibble_stuffing_and_exhaustion"},
-        {"path": "src/tier1.rs", "symbol": "ht_mel_first_stuffing_and_budget_errors_preserve_full_state"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_reader_length_boundaries_are_typed"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_pair_collision_precedes_bit_and_outer_budget_follows_claim"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_pair_inner_failure_preserves_claims_and_outer_counter"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_reverse_vlc_fixed_stream_has_exact_terminal_and_stuffed_cursors"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_reverse_vlc_first_budget_error_does_not_eagerly_load"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_reader_overflow_keeps_the_exact_partial_cursor_update"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_mel_fixed_stream_covers_terminal_nibble_stuffing_and_exhaustion"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_mel_first_stuffing_and_budget_errors_preserve_full_state"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_reader_length_boundaries_are_typed"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_pair_collision_precedes_bit_and_outer_budget_follows_claim"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_pair_inner_failure_preserves_claims_and_outer_counter"}
       ],
       "topic": "Frozen cleanup MEL/reverse-VLC single-bit subprofile: exact bytes, result, complete nested state, terminal nibble/stuffing/exhaustion, shared-byte collision and first inner/outer budget/overflow rejection; not MagSgn/refinement, multi-bit callers or full F5H"
     },
@@ -9804,17 +9804,17 @@
         {"path": "specs/mod.rs", "symbol": "ht_cleanup_mel_event"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_magsgn_words_have_exact_fill_and_physical_state"},
-        {"path": "src/tier1.rs", "symbol": "ht_magsgn_word_and_finish_fail_at_the_first_actual_bit"},
-        {"path": "src/tier1.rs", "symbol": "ht_magsgn_overflow_keeps_each_ordered_partial_update"},
-        {"path": "src/tier1.rs", "symbol": "ht_refinement_fixed_bytes_return_exact_directional_positions_and_fill"},
-        {"path": "src/tier1.rs", "symbol": "ht_refinement_counter_and_sum_overflow_preserve_ordered_cursor_updates"},
-        {"path": "src/tier1.rs", "symbol": "ht_refinement_budget_boundaries_and_constructor_capacities_are_exact"},
-        {"path": "src/tier1.rs", "symbol": "ht_refinement_collision_retains_consumption_and_reverse_stuffed_mask"},
-        {"path": "src/tier1.rs", "symbol": "ht_refinement_missing_claim_storage_and_reverse_absence_have_exact_effects"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_vlc_words_peek_without_mutation_and_advance_to_first_error"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_mel_events_have_exact_run_suffix_and_cache_transitions"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_mel_event_overflow_and_partial_suffix_failure_keep_actual_state"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_magsgn_words_have_exact_fill_and_physical_state"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_magsgn_word_and_finish_fail_at_the_first_actual_bit"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_magsgn_overflow_keeps_each_ordered_partial_update"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_refinement_fixed_bytes_return_exact_directional_positions_and_fill"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_refinement_counter_and_sum_overflow_preserve_ordered_cursor_updates"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_refinement_budget_boundaries_and_constructor_capacities_are_exact"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_refinement_collision_retains_consumption_and_reverse_stuffed_mask"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_refinement_missing_claim_storage_and_reverse_absence_have_exact_effects"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_vlc_words_peek_without_mutation_and_advance_to_first_error"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_mel_events_have_exact_run_suffix_and_cache_transitions"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_mel_event_overflow_and_partial_suffix_failure_keep_actual_state"}
       ],
       "topic": "Complete selected actual directional/MagSgn word/refinement claim-padding/VLC word/MEL event state models and checked production refinements, with actual constructor/mutating production callers indexed; standalone public MagSgn read_bits and refinement read_bit adapters are proved but have no internal production caller; no full-block or mixed-sequencing claim"
     },
@@ -9864,11 +9864,11 @@
         {"path": "src/tier1.rs", "symbol": "ht_vlc_table_view"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_uvlc_prefixes_and_suffixes_use_exact_physical_bits"},
-        {"path": "src/tier1.rs", "symbol": "ht_uvlc_result_width_and_budget_rejections_keep_the_consumed_bit"},
-        {"path": "src/tier1.rs", "symbol": "ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results"},
-        {"path": "src/tier1.rs", "symbol": "ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked"},
-        {"path": "src/tier1.rs", "symbol": "ht_quad_word_context_suppression_and_charge_order_are_exact"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_uvlc_prefixes_and_suffixes_use_exact_physical_bits"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_uvlc_result_width_and_budget_rejections_keep_the_consumed_bit"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_quad_word_context_suppression_and_charge_order_are_exact"}
       ],
       "topic": "Complete selected actual UVLC/quad-word interpretation result and entire final stream/event/claim/work state; six exact receiver contracts with actual table views and context-zero MEL/advance/tick ordering indexed through real production callers; no full metadata/coefficient block or mixed-sequencing claim"
     },
@@ -9971,19 +9971,19 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "decodes_bounded_ht_cleanup_quad_metadata"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_cleanup_context_preserves_both_northern_columns"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_noninitial_context_uses_the_northern_boundary_stencil"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_cleanup_rejects_cursor_collision_and_out_of_bounds_significance"
         }
       ],
@@ -10045,13 +10045,13 @@
         {"path": "specs/mod.rs", "symbol": "ht_cleanup_readers_finish"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_complete_metadata_odd_rows_pairs_and_members_have_literal_outputs"},
-        {"path": "src/tier1.rs", "symbol": "ht_metadata_last_row_budget_failure_retains_stored_quad_and_all_counters"},
-        {"path": "src/tier1.rs", "symbol": "ht_metadata_actual_word_phase_chooses_each_neighbor_and_west_context"},
-        {"path": "src/tier1.rs", "symbol": "ht_metadata_sample_error_and_counter_overflow_have_exact_mutation_frames"},
-        {"path": "src/tier1.rs", "symbol": "ht_metadata_public_header_order_and_empty_private_streams_are_typed"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_context_preserves_both_northern_columns"},
-        {"path": "src/tier1.rs", "symbol": "ht_cleanup_accepts_fused_mel_vlc_final_byte"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_complete_metadata_odd_rows_pairs_and_members_have_literal_outputs"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_metadata_last_row_budget_failure_retains_stored_quad_and_all_counters"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_metadata_actual_word_phase_chooses_each_neighbor_and_west_context"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_metadata_sample_error_and_counter_overflow_have_exact_mutation_frames"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_metadata_public_header_order_and_empty_private_streams_are_typed"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_context_preserves_both_northern_columns"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_cleanup_accepts_fused_mel_vlc_final_byte"}
       ],
       "topic": "Complete actual public/segment cleanup metadata result and typed first error over ordered rows/pairs/members, real contexts/events/UVLC, full lower mutation frames and every metadata field; exact internal producer/outcome/model/argument recipe and true block caller indexed, no magnitude/coefficient or mixed-sequencer completion"
     },
@@ -10088,10 +10088,10 @@
         {"path": "specs/mod.rs", "symbol": "ht_bin_center_odd"}
       ],
       "test_refs": [
-        {"path": "src/tier1.rs", "symbol": "ht_numeric_reconstruction_has_independent_full_value_sign_and_exponent_fixtures"},
-        {"path": "src/tier1.rs", "symbol": "ht_numeric_reconstruction_preserves_wide_bits_at_the_native_precision_ceiling"},
-        {"path": "src/tier1.rs", "symbol": "ht_numeric_first_reader_failures_keep_every_actual_cursor_and_counter"},
-        {"path": "src/tier1.rs", "symbol": "ht_numeric_header_and_native_overflow_order_do_not_assume_a_valid_reader"}
+        {"path": "src/tier1/tests.rs", "symbol": "ht_numeric_reconstruction_has_independent_full_value_sign_and_exponent_fixtures"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_numeric_reconstruction_preserves_wide_bits_at_the_native_precision_ceiling"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_numeric_first_reader_failures_keep_every_actual_cursor_and_counter"},
+        {"path": "src/tier1/tests.rs", "symbol": "ht_numeric_header_and_native_overflow_order_do_not_assume_a_valid_reader"}
       ],
       "topic": "Complete actual full-value numeric magnitude/sign/exponent and every first-error MagSgn reader state using real F6 arithmetic; exact bound outcome/final-reader/old-reader/model/argument recipe and real caller indexed, no coefficient-plane or mixed-sequencer completion"
     },
@@ -10176,15 +10176,15 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_magsgn_reader_is_bounded_stuffed_and_termination_checked"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "completes_non_initial_ht_kappa_from_north_exponents"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "reconstructs_positive_ht_cleanup_magnitude_from_physical_bits"
         },
         {
@@ -10196,7 +10196,7 @@
           "symbol": "decodes_ht_embedded_precision_separately_from_value"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_embedded_zero_bit_still_reduces_payload_precision"
         }
       ],
@@ -10234,11 +10234,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_refinement_applies_new_signs_and_magnitude_bits_transactionally"
         },
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_refinement_readers_are_stuffed_bounded_and_collision_checked"
         }
       ],
@@ -10304,7 +10304,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/tier1.rs",
+          "path": "src/tier1/tests.rs",
           "symbol": "ht_refinement_applies_new_signs_and_magnitude_bits_transactionally"
         },
         {
