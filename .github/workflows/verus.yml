@@ -86,6 +86,8 @@ jobs:
           git diff --exit-code
       - name: Check packaged-source binding
         run: .venv/bin/python -m unittest validation.tests.test_packaged_source -v
+      - name: Install pinned project formatter for the archive check
+        run: rustup toolchain install 1.93.1 --profile minimal --component rustfmt
       - name: Verify the packaged production crate (stable release; lifetime analysis disabled)
         shell: bash
         env:
@@ -93,6 +95,7 @@ jobs:
         run: |
           cargo package --locked
           PACKAGE_ROOT=$(.venv/bin/python validation/check-packaged-source.py prepare)
+          cargo +1.93.1 fmt --manifest-path "$PACKAGE_ROOT/Cargo.toml" --all -- --check
           cargo verus verify --manifest-path "$PACKAGE_ROOT/Cargo.toml" \
             --features verus --locked --fwd-verus-args-to roots \
             --target-dir "$GITHUB_WORKSPACE/target/verus-package" --lib -- \

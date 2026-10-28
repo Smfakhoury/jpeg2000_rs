@@ -61,7 +61,7 @@ artifacts. Follow the [contributor setup](CONTRIBUTING.md) for tool prerequisite
 |---|---|
 | Rust behavior | All-target tests, doctests and release checks on supported platforms |
 | Rust diagnostics | Formatting, strict Clippy and rustdoc |
-| Packaged decoder | Exact package-file inventory and `cargo package --locked`, including its default verification build |
+| Packaged decoder | Exact package-file inventory, `cargo package --locked` with its verification build, and pinned formatting of the actual unpacked archive |
 | External consumer | Standalone `image` adapter tests/doctest and release check on Rust 1.88, pinned formatting, strict Clippy and rustdoc against the unpacked package |
 | General decoder validation | Python regression suite and `python validation/run-validation.py all` |
 | Independent HT validation | Separate `python validation/run-validation.py htj2k` invocation |
