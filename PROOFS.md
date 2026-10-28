@@ -64,12 +64,21 @@ proposed code. It assesses committed changes from the unique merge base,
 including deletions and renames. A policy edit in the same proposal cannot
 grant itself an exception. Missing history or ambiguous merge bases fail.
 
-This initial hold has **no approved-amendment override**. Replacing it with
-a separately reviewed amendment process requires actual trusted reviewer
-identities, source-bound evidence and owner authorization; a candidate's own
-`approved` flag is not an approval. It does not complete that governance work.
-An owner-approved transition must arrange replacement of the hold rather
-than treating a held change as approved.
+The hold has **no general model-amendment override**. It can recognize an
+exact test-only relocation through a record in the trusted controller:
+the entire held path set, original and proposed Git blob identities, and
+regular-file modes must all match. A record is effective only after the
+owner adopts that separately reviewed transition on the default branch.
+Changing a runtime line, test, inventory entry, file mode or additional
+protected file makes that authorization inapplicable.
+
+These fingerprints are authorization data, not a semantic-equivalence
+checker or normative approval. Review still needs the mechanical preservation
+argument, unchanged test identities, package checks and the complete existing
+gates. A candidate cannot authorize itself by editing its controller or
+adding an `approved` flag; controller changes remain held by the previous
+trusted controller. General model amendments still require actual trusted
+reviewers, authoritative source evidence and separate owner adjudication.
 
 The check becomes available only after the workflow is merged into the default
 branch. Its presence does not configure branch protection or prevent direct

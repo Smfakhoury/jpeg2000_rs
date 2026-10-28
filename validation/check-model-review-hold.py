@@ -8,6 +8,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Only records adopted on the trusted default branch authorize a move.
+# Each path binds both the original and proposed regular-file Git blob IDs.
+REVIEWED_TEST_EXTRACTIONS: tuple[dict[str, tuple[str | None, str]], ...] = (
+    {
+        "src/codestream.rs": (
+            "d8c8066b191da8382ce10c2ca3eb6587d07a9b44",
+            "09f0b4369eabb7c05098d2aaa22041bfeadbe698",
+        ),
+        "src/codestream/tests.rs": (
+            None,
+            "9317d9d81f43fb8d8d382e2a5733d8583789afc2",
+        ),
+        "validation/expected-package-files.txt": (
+            "ef00ad4587c92a7c52365e5d6a1a0dec18f12005",
+            "026b291e83d7b551c092b5919886bc19b8b7b90e",
+        ),
+        "validation/normative-coverage.json": (
+            "8053dd2c9ce66efdb4f39f75aa0e45539ccc7e9c",
+            "05237df10a29fd9e430180a0f7250da810db567f",
+        ),
+        "validation/tests/test_framework.py": (
+            "28edc2ee48064bbb2693c44656705ab8934086fb",
+            "43da2a6f2e292bef0b9d411f772b59993f39403d",
+        ),
+    },
+)
+
 
 def held_path(path: str) -> bool:
     if path.endswith(".rs") or path.startswith(("src/", ".cargo/", ".github/")):
@@ -33,17 +60,41 @@ def git(repository: Path, *arguments: str) -> bytes:
     ).stdout
 
 
+def reviewed_test_extraction(
+    repository: Path, base: str, head: str, changes: list[str],
+) -> bool:
+    for record in REVIEWED_TEST_EXTRACTIONS:
+        if set(record) != set(changes):
+            continue
+        matches = True
+        for path, (before, after) in record.items():
+            for commit, blob in ((base, before), (head, after)):
+                expected = b"" if blob is None else (
+                    f"100644 blob {blob}\t{path}\0".encode("utf-8")
+                )
+                if git(repository, "ls-tree", "-z", commit, "--", path) != expected:
+                    matches = False
+                    break
+            if not matches:
+                break
+        if matches:
+            return True
+    return False
+
+
 def held_changes(repository: Path, base: str, head: str) -> list[str]:
     commit_sha(base)
     commit_sha(head)
     ancestors = git(repository, "merge-base", "--all", base, head).splitlines()
     if len(ancestors) != 1:
         raise ValueError("review requires exactly one merge base")
+    ancestor = ancestors[0].decode("ascii")
     changes = git(
         repository, "diff", "--no-ext-diff", "--no-textconv", "--no-renames",
-        "--name-only", "-z", ancestors[0].decode("ascii"), head, "--",
+        "--name-only", "-z", ancestor, head, "--",
     )
-    return [os.fsdecode(path) for path in changes.split(b"\0") if path and held_path(os.fsdecode(path))]
+    held = [os.fsdecode(path) for path in changes.split(b"\0") if path and held_path(os.fsdecode(path))]
+    return [] if reviewed_test_extraction(repository, ancestor, head, held) else held
 
 
 def main() -> int:
@@ -76,7 +127,7 @@ def main() -> int:
             "See PROOFS.md, #149 and #150."
         )
         return 1
-    print("PASS: no changes to the held engineering proof/model surface.")
+    print("PASS: no unapproved changes to the held engineering proof/model surface.")
     return 0
 
 

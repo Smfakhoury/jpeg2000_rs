@@ -73,7 +73,7 @@ class ModelReviewHoldTests(unittest.TestCase):
         self.write("specs/AUDIT_REFERENCE.md", "# Existing detail\n")
         result = self.run_controller(self.base, self.commit())
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("PASS: no changes", result.stdout)
+        self.assertIn("PASS: no unapproved changes", result.stdout)
 
     def test_source_change_is_held(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
@@ -176,6 +176,117 @@ class ModelReviewHoldTests(unittest.TestCase):
                 model_review_hold.held_changes(self.repository, self.base, self.base),
                 [name],
             )
+
+    def reviewed_extraction_fixture(self):
+        originals = {
+            "src/codestream.rs": "fn value() -> u8 { 1 }\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn example() { assert_eq!(super::value(), 1); }\n}\n",
+            "validation/normative-coverage.json": '{"test_file":"src/codestream.rs"}\n',
+            "validation/expected-package-files.txt": "src/codestream.rs\n",
+        }
+        proposed = {
+            "src/codestream.rs": "fn value() -> u8 { 1 }\n#[cfg(test)]\nmod tests;\n",
+            "src/codestream/tests.rs": "#[test]\nfn example() { assert_eq!(super::value(), 1); }\n",
+            "validation/normative-coverage.json": '{"test_file":"src/codestream/tests.rs"}\n',
+            "validation/expected-package-files.txt": "src/codestream.rs\nsrc/codestream/tests.rs\n",
+        }
+        for path, content in originals.items():
+            self.write(path, content)
+        base = self.commit()
+        for path, content in proposed.items():
+            self.write(path, content)
+        head = self.commit()
+        record = {
+            path: (
+                self.git("rev-parse", f"{base}:{path}") if path in originals else None,
+                self.git("rev-parse", f"{head}:{path}"),
+            )
+            for path in proposed
+        }
+        return base, head, record
+
+    def test_exact_reviewed_test_extraction_passes(self):
+        base, head, record = self.reviewed_extraction_fixture()
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_unreviewed_test_extraction_is_held(self):
+        base, head, record = self.reviewed_extraction_fixture()
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", ()):
+            self.assertEqual(
+                set(model_review_hold.held_changes(self.repository, base, head)),
+                set(record),
+            )
+
+    def test_incomplete_reviewed_move_is_held(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        self.git("checkout", "-b", "incomplete", base)
+        self.write("src/codestream.rs", "fn value() -> u8 { 1 }\n#[cfg(test)]\nmod tests;\n")
+        self.write("src/codestream/tests.rs", "#[test]\nfn example() {}\n")
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_changed_reviewed_test_body_is_held(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        self.write("src/codestream/tests.rs", "#[test]\nfn example() {}\n")
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertIn(
+                "src/codestream/tests.rs",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_changed_runtime_in_reviewed_move_is_held(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        self.write("src/codestream.rs", "fn value() -> u8 { 0 }\n#[cfg(test)]\nmod tests;\n")
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertIn(
+                "src/codestream.rs",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_reviewed_move_does_not_authorize_another_model(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        self.write("specs/new.rs", "pub spec fn weakened() -> bool { true }\n")
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertIn(
+                "specs/new.rs",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_reviewed_move_cannot_edit_its_controller(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        self.write("validation/check-model-review-hold.py", "raise SystemExit(0)\n")
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertIn(
+                "validation/check-model-review-hold.py",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_reviewed_move_checks_regular_file_modes(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        self.git("update-index", "--chmod=+x", "src/codestream/tests.rs")
+        self.git("commit", "--message", "Change mode")
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertIn(
+                "src/codestream/tests.rs",
+                model_review_hold.held_changes(self.repository, base, self.git("rev-parse", "HEAD")),
+            )
+
+    def test_reviewed_move_is_bound_to_original_source(self):
+        base, head, record = self.reviewed_extraction_fixture()
+        self.git("checkout", "-b", "different-original", base)
+        self.write("src/codestream.rs", "fn value() -> u8 { 2 }\n")
+        other_base = self.commit()
+        for path in record:
+            self.write(path, self.git("show", f"{head}:{path}") + "\n")
+        other_head = self.commit()
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertTrue(model_review_hold.held_changes(self.repository, other_base, other_head))
+
+    def test_reviewed_move_requires_the_new_test_file(self):
+        base, _, record = self.reviewed_extraction_fixture()
+        (self.repository / "src/codestream/tests.rs").unlink()
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, self.commit()))
 
 
 if __name__ == "__main__":
