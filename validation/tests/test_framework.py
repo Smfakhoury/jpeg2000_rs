@@ -2692,7 +2692,7 @@ impl HtReverseVlcReader {
             ):
                 # These public adapters have real API tests, not internal decoder callers.
                 coverage["requirements"][0]["implementation_refs"] = [{
-                    "path": "src/tier1.rs",
+                    "path": "src/tier1/tests.rs",
                     "symbol": (
                         "ht_magsgn_words_have_exact_fill_and_physical_state"
                         if symbol == "HtForwardMagSgnReader::read_bits"
