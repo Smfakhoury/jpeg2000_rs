@@ -60,9 +60,12 @@ check the original source-bound results and the mechanical/behavioral argument.
 
 Only bounded engineering path sets declared by the trusted controller are
 supported. The existing records cover parser-test extraction, the standalone
-image consumer and source-inclusive packaging. A proposed
-[decode-support profile authorization](decode-support-profile-authorization.md)
-does not activate its new scope or add a source exception by changing this
+image consumer and source-inclusive packaging. The #169
+[decode-support profile operation](decode-support-profile-authorization.md)
+was rolled back after required actual-main validation failed; its forward
+permission is spent. A new
+[recovery authorization proposal](decode-support-profile-recovery-authorization.md)
+does not activate that scope or add a source exception by changing this
 documentation. Normative model/proof targets and controller amendments remain
 outside the source-record profiles.
 Unknown fields/profiles, missing history, malformed trusted data, extra protected
