@@ -57,6 +57,17 @@ jobs:
         run: diff -u validation/expected-package-files.txt <(cargo package --list --locked)
       - name: Verify packaged decoder builds
         run: cargo package --locked
+      - name: Check image consumer against the unpacked package
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/image-consumer-probe
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal
+          cargo +1.88.0 test --locked --manifest-path validation/image-consumer-probe/Cargo.toml
+          cargo +1.88.0 check --release --all-targets --locked --manifest-path validation/image-consumer-probe/Cargo.toml
+          cargo fmt --manifest-path validation/image-consumer-probe/Cargo.toml --package jpeg2000_image_consumer_probe -- --check
+          cargo clippy --all-targets --locked --manifest-path validation/image-consumer-probe/Cargo.toml -- -D warnings
+          RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked --manifest-path validation/image-consumer-probe/Cargo.toml
+          git diff --exit-code
 
   native-numerics:
     name: Native numerical (${{ matrix.os }})
