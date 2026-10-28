@@ -2070,7 +2070,8 @@ parser/decoder joins.
 **Proof / test.** Follow `parser_view`, `segment_view`,
 `packet_length_groups_view`, the source-derived traversal invariants, and
 `decode_packet_length` / `Parser::charge_work` in the same source file.
-Independent wide-arithmetic tests there include
+Independent wide-arithmetic tests in the
+[parser test module](../src/codestream/tests.rs) include
 `actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits`
 and `actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join`.
 The [PLM boundary](../PROOFS.md#actual-packet-length-admission-and-plm-group-production)
