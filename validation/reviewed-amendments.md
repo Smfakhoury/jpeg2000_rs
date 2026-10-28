@@ -6,22 +6,43 @@ An empty registry authorizes no protected changes. Records below are proposals
 while this file is on a feature branch; only owner adoption on trusted `main`
 gives them authority.
 
-## Proposed engineering decisions
+## Engineering decisions and proposed addition
 
-| Record | Exact scope | Original evidence |
+| Record | Status and exact scope | Original evidence |
 |---|---|---|
-| `proposal-160` | Move the private parser tests to their own file; executable/contract/proof prefix unchanged, same compiled tests, exact inventory bindings | #160, CI40608106332 / Verus40608106341 |
-| `proposal-164` | Standalone `image` 0.25.10 consumer, its package-only CI step, source, tests and fixtures; no decoder API or implementation change | #164, CI40665820297 / Verus40665820275 |
+| `proposal-160` | Adopted through #167; the private parser-test relocation is now owner-merged in #160 | CI40608106332 / Verus40608106341; refreshed source qualification is retained in #160 |
+| `proposal-164` | Adopted through #167; the standalone package-only `image` consumer is now owner-merged in #164 | CI40665820297 / Verus40665820275; refreshed source qualification is retained in #164 |
+| `proposal-163-b4c6d67` | Proposed exact source-inclusive package manifest/inventory, archive-binding checker/tests and Verus workflow; no Rust body change | #163, CI40713472934 / Verus40713472868 |
 
-This is not approval to merge either source PR. After record adoption, refresh
-each source branch from accepted main and require fresh complete checks before
-requesting source review. Exact bytes, not a feature name or author's assertion,
-control eligibility. Neither record permits normative model/proof Rust or
-controller changes, combined amendments, or changed pins/caps.
+Record adoption is gate eligibility, not permission to merge a source PR.
+For the new #163 record, refresh the source branch from accepted main after
+adoption and require fresh complete checks before requesting source review.
+Exact bytes, not a feature name or author's assertion, control eligibility.
+No record permits normative model/proof Rust or controller changes, combined
+amendments, or changed verifier/dependency pins and resource caps.
 
-The package-distribution proposal #163 is deliberately not included. It shares
-the package inventory with #160 and needs refreshed identities/evidence after
-the first structural move is accepted. Do not silently reuse a stale record.
+### Package-distribution choice
+
+The proposed #163 record chooses a source-complete archive rather than the
+current lean package. Include the existing verification Rust sources and
+technical reference so the actual unpacked crate supports the project's
+pinned formatter and same-source Verus replay. Do not use formatter skips,
+dummy specifications or a second decoder.
+
+The refreshed archive has 51 files, including all 35 runtime/model/proof Rust
+files byte-identical to accepted main. Its compressed size is about 901 KiB
+instead of the current 659 KiB. Ordinary builds still have zero default runtime
+dependencies and do not enable ghost modules. No PDF, validation tooling,
+default feature, decoder API or Rust implementation changes are included;
+`publish = false` remains in force.
+
+The source candidate was refreshed after both #160 and #164 landed, including
+the new private-test file in Cargo traversal order. The record below therefore
+uses the current original/proposed inventory identities, not the stale
+pre-relocation proposal. Original evidence includes actual archive formatting
+with Rust 1.93.1, repository and archive Verus 3,518/0 each, unchanged input
+bindings, MSRV 660+3 from the retained archive and the real consumer's 37 tests
+plus doctest. These checks are engineering evidence, not normative certification.
 
 An exception must first be proposed in a separate documentation-only PR. All
 required checks on that PR must pass before review is requested. Owner adoption
@@ -122,6 +143,37 @@ files and non-regular file modes fail closed.
         "validation/image-consumer-probe/tests/fixtures/rgb.jp2": {
           "before": null,
           "after": "b36f70e6d01316b056e30aa72aa05344f1181b55"
+        }
+      }
+    },
+    {
+      "id": "proposal-163-b4c6d67",
+      "profile": "source-complete-package",
+      "source_pr": 163,
+      "source_head": "b4c6d67af550c1ad69274f5d0f3db57b9d4b4cdc",
+      "ci_run": 40713472934,
+      "verus_run": 40713472868,
+      "rationale": "Source-inclusive package preserves every Rust body and default dependency while requiring actual unpacked formatting, input binding and whole-crate proof replay; not normative approval or publication.",
+      "paths": {
+        ".github/workflows/verus.yml": {
+          "before": "5f9cf1c43fae6163438514052162a743169d1621",
+          "after": "11772c4f5f30a1f39dec8214a5a04741cd14782c"
+        },
+        "Cargo.toml": {
+          "before": "b23f0d048482d5c3ab6e2767e0ca45a971ee2d95",
+          "after": "d03202f88351757c86268f1f24102e21d0c90410"
+        },
+        "validation/check-packaged-source.py": {
+          "before": null,
+          "after": "80ea00883050923503738b845087122c6f6b4822"
+        },
+        "validation/expected-package-files.txt": {
+          "before": "026b291e83d7b551c092b5919886bc19b8b7b90e",
+          "after": "208d745650df83c5531c01f5ec7632f065da72e2"
+        },
+        "validation/tests/test_packaged_source.py": {
+          "before": null,
+          "after": "e48ca2c8f14499be0c40c00c31b5aa189544053c"
         }
       }
     }
