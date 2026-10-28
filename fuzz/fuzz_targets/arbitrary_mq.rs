@@ -1,7 +1,7 @@
 #![no_main]
 
-use jpeg2000_rs::mq::MqDecoder;
-use jpeg2000_rs_fuzz::resource_limits;
+use jpeg2000_decoder::mq::MqDecoder;
+use jpeg2000_decoder_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

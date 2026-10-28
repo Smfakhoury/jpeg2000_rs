@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "jpeg2000_rs"
+name = "jpeg2000-decoder"
 version = "0.1.0"
 dependencies = [
  "vstd",

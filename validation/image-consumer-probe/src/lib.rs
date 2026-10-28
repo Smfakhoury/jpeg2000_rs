@@ -13,7 +13,7 @@ mod decoder;
 pub use decoder::{register_jp2_hook, HookRegistrationError, Jp2Decoder};
 
 use image::DynamicImage;
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     decode_jp2_color, ConvertedChannelType, ConvertedColorSpace, DecodeError, DecodeOptions,
 };
 use std::{collections::TryReserveError, error::Error, fmt};
@@ -185,7 +185,7 @@ fn pack_planes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jpeg2000_rs::{ChannelAssociation, Resource, ResourceLimits};
+    use jpeg2000_decoder::{ChannelAssociation, Resource, ResourceLimits};
 
     const GRAY: &[u8] = include_bytes!("../tests/fixtures/gray.jp2");
     const RGB: &[u8] = include_bytes!("../tests/fixtures/rgb.jp2");

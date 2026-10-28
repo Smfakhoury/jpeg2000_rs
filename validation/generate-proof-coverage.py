@@ -11,26 +11,27 @@ from pathlib import Path
 from framework import report_path, report_schema, source_binding, validate_schema, write_json
 
 EXPECTED_VERUS_COMMIT = "426d8b01e7ffb910a36c15e1f870ff985bb61eef"
-EXPECTED_CRATE = "jpeg2000_rs"
+EXPECTED_PACKAGE = "jpeg2000-decoder"
+EXPECTED_CRATE = "jpeg2000_decoder"
 RUST_ONLY_ADAPTERS = [
     {
-        "function": "jpeg2000_rs::error::<DecodeError as core::fmt::Display>::fmt",
+        "function": f"{EXPECTED_CRATE}::error::<DecodeError as core::fmt::Display>::fmt",
         "disposition": "rust-standard-library-adapter",
     },
     {
-        "function": "jpeg2000_rs::error::<DecodeError as std::error::Error>",
+        "function": f"{EXPECTED_CRATE}::error::<DecodeError as std::error::Error>",
         "disposition": "marker-trait-adapter",
     },
     {
-        "function": "jpeg2000_rs::error::<DecodeError as From<std::io::Error>>::from",
+        "function": f"{EXPECTED_CRATE}::error::<DecodeError as From<std::io::Error>>::from",
         "disposition": "rust-standard-library-adapter",
     },
     {
-        "function": "jpeg2000_rs::jp2::<BoxReader as Iterator>::next",
+        "function": f"{EXPECTED_CRATE}::jp2::<BoxReader as Iterator>::next",
         "disposition": "delegates-to-verified-next_box_ref",
     },
     {
-        "function": "jpeg2000_rs::packet::<PacketIterator as Iterator>::next",
+        "function": f"{EXPECTED_CRATE}::packet::<PacketIterator as Iterator>::next",
         "disposition": "delegates-to-verified-next_packet",
     },
 ]

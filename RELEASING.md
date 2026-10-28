@@ -4,6 +4,11 @@ Publishing source, claiming standards conformance, and publishing a versioned
 crate are different decisions. `publish = false` remains in force until a
 package release is explicitly authorized.
 
+The intended registry package is `jpeg2000-decoder`, imported in Rust as
+`jpeg2000_decoder`. Repository URLs remain `microsoft/jpeg2000_rs`.
+Check registry name availability again for the actual release; an earlier
+not-found response does not reserve a name or authorize publication.
+
 ## Source publication
 
 - Confirm the approved source license and preserve required third-party notices.
@@ -113,6 +118,9 @@ must remain visible.
 
 - Obtain owner authorization for a specific candidate and release scope.
 - Confirm package contents, license metadata, examples, and API documentation.
+- Verify Cargo metadata reports package `jpeg2000-decoder` and library target
+  `jpeg2000_decoder`; exercise the actual `jpeg2000-decoder-<version>.crate`
+  archive and its unpacked directory, not an old-name package left in `target`.
 - Run the pinned formatter on the unpacked package as well as the repository,
   so conditional module paths do not point to omitted source files. Build and
   run the unpacked unit tests and doctests at the runtime minimum.

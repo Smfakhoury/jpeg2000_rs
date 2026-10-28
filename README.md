@@ -1,7 +1,13 @@
-# jpeg2000_rs
+# jpeg2000-decoder
 
 A resource-bounded JPEG 2000 decoder written in Rust, with Verus specifications
 and proofs attached to the production implementation.
+
+The Cargo package is `jpeg2000-decoder`; Rust code imports it as
+`jpeg2000_decoder`. The repository remains
+[`microsoft/jpeg2000_rs`](https://github.com/microsoft/jpeg2000_rs).
+The crate has not been published; registry publication requires a separate
+release authorization.
 
 The library decodes raw codestreams and JP2/JPH containers, provides explicit
 JPX codestream and frame selection, and supports bounded JPIP databin
@@ -34,7 +40,7 @@ Package publication is disabled.
 ## Decode a JP2 image
 
 ```no_run
-use jpeg2000_rs::{DecodeOptions, TypedSamples, decode_jp2};
+use jpeg2000_decoder::{DecodeOptions, TypedSamples, decode_jp2};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let input = std::fs::read("image.jp2")?;
@@ -63,7 +69,7 @@ JPX layer/frame APIs are separate from component sample decoding; see the
 ## Select a region or native resolution
 
 ```no_run
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     DecodeOptions, DecodeSelection, ImageRegion, decode_codestream_selected,
 };
 
@@ -85,7 +91,7 @@ decoded image. A selection must fit the input's actual origin and geometry.
 ## Resource limits and errors
 
 ```no_run
-use jpeg2000_rs::{DecodeOptions, ResourceLimits, decode_codestream};
+use jpeg2000_decoder::{DecodeOptions, ResourceLimits, decode_codestream};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let limits = ResourceLimits::default()

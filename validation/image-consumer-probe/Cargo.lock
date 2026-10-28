@@ -33,16 +33,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg2000-decoder"
+version = "0.1.0"
+
+[[package]]
 name = "jpeg2000_image_consumer_probe"
 version = "0.0.0"
 dependencies = [
  "image",
- "jpeg2000_rs",
+ "jpeg2000-decoder",
 ]
-
-[[package]]
-name = "jpeg2000_rs"
-version = "0.1.0"
 
 [[package]]
 name = "moxcms"

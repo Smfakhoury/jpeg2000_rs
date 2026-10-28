@@ -1,6 +1,6 @@
 use std::{env, fmt::Write as _, fs, process};
 
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     ConvertedImage, DatabinCache, DatabinId, DecodeError, DecodeOptions, DecodeSelection,
     ImageRegion, JpipAutomaticProgressiveDecoder, JpipFragment, JpipMessage, JpipMessageParser,
     JpipPrecinctCodestreamPlan, JpipPrecinctPacket, JpipProgressiveDecoder, MalformedKind,
@@ -464,7 +464,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jpeg2000_rs::TileSelection;
+    use jpeg2000_decoder::TileSelection;
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()

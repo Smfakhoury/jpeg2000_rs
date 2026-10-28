@@ -1,12 +1,12 @@
 #![no_main]
 
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     DecodeOptions, DecodeSelection, ImageRegion, codestream, decode_codestream,
     decode_codestream_selected, decode_jp2, decode_jp2_selected, decode_jph, decode_jph_selected,
     decode_jpx_codestream, decode_jpx_codestream_selected, inspect_jph, inspect_jpx_layers, jp2,
     render_jpx_composition, render_jpx_frame, render_jpx_layer,
 };
-use jpeg2000_rs_fuzz::resource_limits;
+use jpeg2000_decoder_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 const SOC: u16 = 0xff4f;
