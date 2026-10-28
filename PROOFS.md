@@ -65,18 +65,29 @@ including deletions and renames. A policy edit in the same proposal cannot
 grant itself an exception. Missing history or ambiguous merge bases fail.
 
 The hold has **no general model-amendment override**. It can recognize an
-exact test-only relocation through a record in the trusted controller:
+exact test-only relocation or consumer-validation addition through a record in
+the trusted controller:
 the entire held path set, original and proposed Git blob identities, and
 regular-file modes must all match. A record is effective only after the
 owner adopts that separately reviewed transition on the default branch.
-Changing a runtime line, test, inventory entry, file mode or additional
+Changing a runtime line, test, workflow, inventory entry, file mode or additional
 protected file makes that authorization inapplicable.
 
+The consumer-validation record binds only the nine protected files of #164:
+its existing CI workflow update and eight standalone validation-package files.
+The locked `image` dependency, adapter, tests, fixtures and package path cannot
+be substituted. It does not authorize #163's distribution-policy proposal,
+production decoder/model changes or combined amendments. Like the separate
+parser-relocation record, it remains a proposal until owner adoption; the
+candidate controller cannot enable it for itself.
+
 These fingerprints are authorization data, not a semantic-equivalence
-checker or normative approval. Review still needs the mechanical preservation
-argument, unchanged test identities, package checks and the complete existing
-gates. A candidate cannot authorize itself by editing its controller or
-adding an `approved` flag; controller changes remain held by the previous
+checker or normative approval. Relocation review needs the mechanical
+preservation argument and unchanged test identities. Consumer review needs the
+actual packaged dependency, locked versions, supported profile, error/resource
+behavior and original execution evidence. Both still need package checks and
+the complete existing gates. A candidate cannot authorize itself by editing
+its controller or adding an `approved` flag; controller changes remain held by the previous
 trusted controller. General model amendments still require actual trusted
 reviewers, authoritative source evidence and separate owner adjudication.
 

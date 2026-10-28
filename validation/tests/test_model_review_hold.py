@@ -288,6 +288,117 @@ class ModelReviewHoldTests(unittest.TestCase):
         with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (record,)):
             self.assertTrue(model_review_hold.held_changes(self.repository, base, self.commit()))
 
+    def reviewed_consumer_fixture(self):
+        workflow = ".github/workflows/ci.yml"
+        self.write(workflow, "jobs: original\n")
+        base = self.commit()
+        proposed = {
+            workflow: "jobs: checked-package-consumer\n",
+            "validation/image-consumer-probe/.gitignore": "/target/\n",
+            "validation/image-consumer-probe/Cargo.toml": "[package]\nname = 'probe'\n",
+            "validation/image-consumer-probe/Cargo.lock": "version = 4\n",
+            "validation/image-consumer-probe/src/lib.rs": "mod decoder;\n",
+            "validation/image-consumer-probe/src/decoder.rs": "pub struct Decoder;\n",
+            "validation/image-consumer-probe/tests/adapter.rs": "#[test]\nfn example() {}\n",
+            "validation/image-consumer-probe/tests/fixtures/gray.jp2": "gray fixture\n",
+            "validation/image-consumer-probe/tests/fixtures/rgb.jp2": "rgb fixture\n",
+        }
+        for path, content in proposed.items():
+            self.write(path, content)
+        head = self.commit()
+        record = {
+            path: (
+                self.git("rev-parse", f"{base}:{path}") if path == workflow else None,
+                self.git("rev-parse", f"{head}:{path}"),
+            )
+            for path in proposed
+        }
+        return base, head, record
+
+    def test_exact_reviewed_consumer_with_guide_change_passes(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        self.write("RELEASING.md", "# Consumer scope\n")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, self.commit()), [])
+
+    def test_unreviewed_consumer_is_held(self):
+        base, head, record = self.reviewed_consumer_fixture()
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", ()):
+            self.assertEqual(
+                set(model_review_hold.held_changes(self.repository, base, head)),
+                set(record),
+            )
+
+    def test_reviewed_consumer_cannot_change_its_source(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        path = "validation/image-consumer-probe/src/decoder.rs"
+        self.write(path, "pub struct Changed;\n")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertIn(path, model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_reviewed_consumer_cannot_change_its_workflow(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        self.write(".github/workflows/ci.yml", "jobs: changed\n")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertIn(
+                ".github/workflows/ci.yml",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_reviewed_consumer_requires_all_files(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        (self.repository / "validation/image-consumer-probe/Cargo.lock").unlink()
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_reviewed_consumer_does_not_authorize_another_model(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        self.write("specs/new.rs", "pub spec fn weakened() -> bool { true }\n")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertIn(
+                "specs/new.rs",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_reviewed_consumer_cannot_edit_its_controller(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        self.write("validation/check-model-review-hold.py", "raise SystemExit(0)\n")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertIn(
+                "validation/check-model-review-hold.py",
+                model_review_hold.held_changes(self.repository, base, self.commit()),
+            )
+
+    def test_reviewed_consumer_checks_regular_file_modes(self):
+        base, _, record = self.reviewed_consumer_fixture()
+        path = "validation/image-consumer-probe/src/decoder.rs"
+        self.git("update-index", "--chmod=+x", path)
+        self.git("commit", "--message", "Change mode")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertIn(
+                path,
+                model_review_hold.held_changes(self.repository, base, self.git("rev-parse", "HEAD")),
+            )
+
+    def test_reviewed_consumer_is_bound_to_original_workflow(self):
+        base, head, record = self.reviewed_consumer_fixture()
+        self.git("checkout", "-b", "different-original", base)
+        self.write(".github/workflows/ci.yml", "jobs: different-original\n")
+        other_base = self.commit()
+        for path in record:
+            self.write(path, self.git("show", f"{head}:{path}") + "\n")
+        with patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (record,)):
+            self.assertTrue(
+                model_review_hold.held_changes(self.repository, other_base, self.commit()),
+            )
+
+    def test_separate_reviewed_records_do_not_authorize_their_combination(self):
+        base, _, extraction = self.reviewed_extraction_fixture()
+        _, head, consumer = self.reviewed_consumer_fixture()
+        with patch.object(model_review_hold, "REVIEWED_TEST_EXTRACTIONS", (extraction,)), \
+                patch.object(model_review_hold, "REVIEWED_CONSUMER_PROBES", (consumer,)):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
 
 if __name__ == "__main__":
     unittest.main()
