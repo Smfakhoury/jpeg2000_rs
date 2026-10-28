@@ -95,6 +95,9 @@ must remain visible.
 
 - Obtain owner authorization for a specific candidate and release scope.
 - Confirm package contents, license metadata, examples, and API documentation.
+- Run the pinned formatter on the unpacked package as well as the repository,
+  so conditional module paths do not point to omitted source files. Build and
+  run the unpacked unit tests and doctests at the runtime minimum.
 - Verify that ghost code is erased in ordinary Rust builds.
 - Review all required validation and proof results against the same candidate.
 - Set a version and enable package publication only when authorized.

@@ -15,6 +15,17 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Packaged source and repository verification
+
+The crate archive includes the Rust model/proof files required by the
+conditional module paths in the library. Ordinary builds do not enable those
+ghost modules. Including the files preserves source-tooling access; it does
+not install Verus or claim a fresh successful proof replay.
+
+CI workflows, validation scripts and independent oracle tooling remain in
+the repository. Use the exact source revision from the package's
+`.cargo_vcs_info.json` for the complete reproduction procedure below.
+
 ## Single executable implementation
 
 Cargo and Verus use the exact [src/lib.rs](src/lib.rs) crate root. Production

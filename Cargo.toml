@@ -21,6 +21,9 @@ include = [
     "REFERENCES.md",
     "THIRD_PARTY_NOTICES",
     "src/**/*.rs",
+    "specs/**/*.rs",
+    "specs/AUDIT_REFERENCE.md",
+    "proofs/**/*.rs",
 ]
 
 [features]
