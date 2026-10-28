@@ -388,6 +388,73 @@ class ModelReviewHoldTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             model_review_hold.read_reviewed_amendments(link)
 
+    def proof_support_fixture(self):
+        originals = {
+            "src/decode.rs": "fn decode() {}\n#[cfg(verus_keep_ghost)]\nverus! { pub proof fn helper() {} }\n",
+            "validation/expected-package-files.txt": "src/decode.rs\n",
+            "validation/normative-coverage.json": '{"proof_refs":[{"path":"src/decode.rs","symbol":"helper"}]}\n',
+        }
+        proposed = {
+            "src/decode.rs": 'fn decode() {}\n#[cfg(verus_keep_ghost)]\ninclude!("decode/proof_support.rs");\n',
+            "src/decode/proof_support.rs": "verus! { pub proof fn helper() {} }\n",
+            "validation/expected-package-files.txt": "src/decode/proof_support.rs\nsrc/decode.rs\n",
+            "validation/normative-coverage.json": '{"proof_refs":[{"path":"src/decode/proof_support.rs","symbol":"helper"}]}\n',
+        }
+        for path, content in originals.items():
+            self.write(path, content)
+        base = self.commit()
+        for path, content in proposed.items():
+            self.write(path, content)
+        head = self.commit()
+        entry = {
+            "id": "proof-support-fixture", "profile": "decode-proof-support",
+            "source_pr": 1, "source_head": head, "ci_run": 1, "verus_run": 2,
+            "rationale": "Exact support layout, not normative model approval.",
+            "paths": {
+                path: {
+                    "before": self.git("rev-parse", f"{base}:{path}") if path in originals else None,
+                    "after": self.git("rev-parse", f"{head}:{path}"),
+                }
+                for path in proposed
+            },
+        }
+        return base, head, entry
+
+    def test_exact_decode_support_profile_passes_only_after_trusted_adoption(self):
+        base, head, entry = self.proof_support_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_decode_support_record_does_not_authorize_changed_runtime(self):
+        base, _, entry = self.proof_support_fixture()
+        self.write("src/decode.rs", "fn decode() { panic!() }\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertIn("src/decode.rs",
+                          model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_decode_support_record_does_not_authorize_changed_proof_or_model(self):
+        base, head, original = self.proof_support_fixture()
+        self.write("src/decode/proof_support.rs", "verus! { pub proof fn changed() {} }\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([original])):
+            self.assertIn("src/decode/proof_support.rs",
+                          model_review_hold.held_changes(self.repository, base, self.commit()))
+        self.git("checkout", "-b", "extra-model", head)
+        self.write("specs/new.rs", "pub spec fn weakened() -> bool { true }\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([original])):
+            self.assertIn("specs/new.rs",
+                          model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_decode_support_profile_cannot_name_another_module_or_controller(self):
+        _, _, original = self.proof_support_fixture()
+        for replacement in ("src/tier1.rs", "validation/check-model-review-hold.py"):
+            entry = copy.deepcopy(original)
+            entry["paths"][replacement] = entry["paths"].pop("src/decode.rs")
+            with self.assertRaises(ValueError):
+                model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()
