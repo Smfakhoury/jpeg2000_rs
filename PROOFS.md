@@ -64,12 +64,32 @@ proposed code. It assesses committed changes from the unique merge base,
 including deletions and renames. A policy edit in the same proposal cannot
 grant itself an exception. Missing history or ambiguous merge bases fail.
 
-This initial hold has **no approved-amendment override**. Replacing it with
-a separately reviewed amendment process requires actual trusted reviewer
-identities, source-bound evidence and owner authorization; a candidate's own
-`approved` flag is not an approval. It does not complete that governance work.
-An owner-approved transition must arrange replacement of the hold rather
-than treating a held change as approved.
+The original hold had no amendment path and protected its own controller.
+The owner adopted the green documentation-only [one-time bootstrap
+authorization](validation/gate-bootstrap-authorization.md) in #166. Its exact
+two-file repair was deployed at `b81ba3149dedf23961e14ba035d4cc1c2dbd1b80`
+and accepted from fresh actual-main CI/Verus artifacts. The initial trusted
+registry was empty; that operation approved no source exception and changed
+no runtime/model/proof Rust, workflow, pin or resource setting.
+
+The [trusted registry](validation/reviewed-amendments.md) now provides a bounded
+engineering amendment path. Registry-only Markdown PRs can pass CI before owner
+review because they do not amend held source. Their proposed data is validated
+by the normal tests, but the live gate reads only its trusted default-branch
+copy. Source PRs cannot approve themselves by also editing their own registry.
+
+After owner adoption of a separate, all-green registry-only PR, an exact record
+can recognize the entire protected-path set, original/proposed Git blob IDs and
+regular-file modes. Unknown profiles, normative model/proof Rust, the controller,
+combined amendments and other protected changes remain held. Source branches
+must be refreshed from accepted main and all required checks must genuinely
+pass before source review is requested.
+
+Fingerprints and evidence identifiers are not semantic-equivalence or normative
+approval. This engineering mechanism does not complete trusted-adjudicator
+selection, independent normative review or enforcement configuration discussed
+in #149 and #150. No failed check may be waived, relabeled or treated as a green
+review handoff.
 
 The check becomes available only after the workflow is merged into the default
 branch. Its presence does not configure branch protection or prevent direct
