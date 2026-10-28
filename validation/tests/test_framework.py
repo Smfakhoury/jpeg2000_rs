@@ -1084,6 +1084,33 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_LENGTH_ADMISSION_CONTRACTS, 2,
         )
 
+    def test_inventory_tracks_relocated_parser_tests_and_rejects_stale_or_missing_bindings(self):
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        entry = next(item for item in coverage["requirements"]
+                     if item["id"] == "part1-complete-native-packet-length-admission")
+        coverage["requirements"] = [entry]
+        self.assertTrue(entry["test_refs"])
+        self.assertTrue(all(ref["path"] == "src/codestream/tests.rs" for ref in entry["test_refs"]))
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+
+        stale = copy.deepcopy(coverage)
+        stale["requirements"][0]["test_refs"][0]["path"] = "src/codestream.rs"
+        with self.assertRaises(ValueError):
+            framework.validate_normative_coverage(stale)
+
+        moved = framework.ROOT / "src/codestream/tests.rs"
+        symbol = entry["test_refs"][0]["symbol"]
+        read_text = Path.read_text
+
+        def missing_symbol(path, *args, **kwargs):
+            text = read_text(path, *args, **kwargs)
+            if path == moved:
+                return text.replace(f"fn {symbol}(", f"fn removed_{symbol}(", 1)
+            return text
+
+        with mock.patch.object(Path, "read_text", missing_symbol), self.assertRaises(ValueError):
+            framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},
