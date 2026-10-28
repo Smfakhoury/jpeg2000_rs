@@ -61,7 +61,7 @@ artifacts. Follow the [contributor setup](CONTRIBUTING.md) for tool prerequisite
 |---|---|
 | Rust behavior | All-target tests, doctests and release checks on supported platforms |
 | Rust diagnostics | Formatting, strict Clippy and rustdoc |
-| Packaged decoder | Exact package-file inventory and `cargo package --locked`, including its default verification build |
+| Packaged decoder | Exact package-file inventory, `cargo package --locked` with its verification build, and pinned formatting of the actual unpacked archive |
 | External consumer | Standalone `image` adapter tests/doctest and release check on Rust 1.88, pinned formatting, strict Clippy and rustdoc against the unpacked package |
 | General decoder validation | Python regression suite and `python validation/run-validation.py all` |
 | Independent HT validation | Separate `python validation/run-validation.py htj2k` invocation |
@@ -113,6 +113,12 @@ must remain visible.
 
 - Obtain owner authorization for a specific candidate and release scope.
 - Confirm package contents, license metadata, examples, and API documentation.
+- Run the pinned formatter on the unpacked package as well as the repository,
+  so conditional module paths do not point to omitted source files. Build and
+  run the unpacked unit tests and doctests at the runtime minimum.
+- Require the archive's separate whole-crate Verus replay and fail-closed
+  collection, with unchanged input bindings; do not infer it from repository
+  verification or source-file inclusion.
 - Verify that ghost code is erased in ordinary Rust builds.
 - Review all required validation and proof results against the same candidate.
 - Set a version and enable package publication only when authorized.

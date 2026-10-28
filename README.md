@@ -25,8 +25,9 @@ Ordinary decoder builds support Rust 1.88.0 and newer. CI checks this minimum
 with `cargo +1.88.0`; the development toolchain remains pinned separately in
 [rust-toolchain.toml](rust-toolchain.toml).
 The default decoder build has no external Cargo dependencies and forbids unsafe
-code. The optional `verus` feature supplies pinned verification tooling only;
-it is outside the runtime minimum-version guarantee and uses its own toolchain.
+code. The optional `verus` feature enables the pinned verification library;
+it does not install or run the verifier. That feature is outside the runtime
+minimum-version guarantee and uses its own toolchain.
 See the [Cargo-Verus instructions](PROOFS.md#reproduce-verification).
 Package publication is disabled.
 
@@ -151,9 +152,17 @@ of truth. [specs/](specs/) and [proofs/](proofs/) contain proof-only models and
 lemmas. Verification is not a substitute for official test vectors, numerical
 conformance, or independent review of the specifications.
 
-The crate package deliberately contains the runtime source and its public
-documentation, not the repository's verification and validation toolchain.
-Reproducing proofs or reference-decoder comparisons requires a source checkout.
+The crate package contains runtime source, public documentation and the Rust
+model/proof files referenced by its conditional modules. Keeping those files
+available allows an unpacked source tree to be formatted and inspected without
+inventing replacement specifications. Ghost-only modules remain disabled in
+ordinary decoder builds; they add no default Cargo dependency.
+
+Verification binaries, CI configuration, validation tools and oracle builds
+are not bundled. Reproducing the complete verification and comparison workflow
+still requires the exact repository revision recorded by `git.sha1` in the
+package's `.cargo_vcs_info.json`, with the pinned tools described there.
+Including proof source is not itself a successful verification result.
 
 ## Security
 

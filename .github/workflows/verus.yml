@@ -84,6 +84,28 @@ jobs:
             target/validation/cargo-verus-output.log
           .venv/bin/python validation/run-validation.py schemas
           git diff --exit-code
+      - name: Check packaged-source binding
+        run: .venv/bin/python -m unittest validation.tests.test_packaged_source -v
+      - name: Install pinned project formatter for the archive check
+        run: rustup toolchain install 1.93.1 --profile minimal --component rustfmt
+      - name: Verify the packaged production crate (stable release; lifetime analysis disabled)
+        shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: 1.98.1-x86_64-unknown-linux-gnu
+        run: |
+          cargo package --locked
+          PACKAGE_ROOT=$(.venv/bin/python validation/check-packaged-source.py prepare)
+          cargo +1.93.1 fmt --manifest-path "$PACKAGE_ROOT/Cargo.toml" --all -- --check
+          cargo verus verify --manifest-path "$PACKAGE_ROOT/Cargo.toml" \
+            --features verus --locked --fwd-verus-args-to roots \
+            --target-dir "$GITHUB_WORKSPACE/target/verus-package" --lib -- \
+            --no-lifetime --output-json \
+            > target/validation/packaged-cargo-verus-output.log
+          .venv/bin/python validation/generate-proof-coverage.py \
+            target/validation/packaged-cargo-verus-output.log \
+            --root "$PACKAGE_ROOT" --output-dir target/validation/packaged-proof
+          .venv/bin/python validation/check-packaged-source.py verify
+          git diff --exit-code
       - name: Upload Verus reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -93,5 +115,18 @@ jobs:
             target/validation/*.json
             target/validation/*verus*.log
             target/validation/partial-rejection.log
+            target/validation/packaged-proof/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload packaged archive and proof binding
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packaged-verus-validation
+          path: |
+            target/package/*.crate
+            target/validation/packaged-source-inputs.json
+            target/validation/packaged-cargo-verus-output.log
+            target/validation/packaged-proof/**
           if-no-files-found: warn
           retention-days: 14

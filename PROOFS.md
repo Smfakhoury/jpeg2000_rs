@@ -15,6 +15,26 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Packaged source and repository verification
+
+The crate archive includes the Rust model/proof files required by the
+conditional module paths in the library. Ordinary builds do not enable those
+ghost modules. Including the files preserves source-tooling access; it does
+not install Verus or claim a fresh successful proof replay.
+
+CI workflows, validation scripts and independent oracle tooling remain in
+the repository. Use the exact source revision from the package's
+`.cargo_vcs_info.json` for the complete reproduction procedure below.
+
+The proof workflow checks the unpacked archive with the project's pinned
+Rust 1.93.1 formatter, without skipped modules or dummy specifications, and
+requires separate whole-crate replays for the repository and unpacked archive.
+The archive replay uses the same pinned verifier,
+verification feature and disclosed `--no-lifetime` setting, followed by the
+same fail-closed collector with the unpacked source root. An input manifest
+binds the archive, every extracted file and all committed Rust sources before
+and after replay; it also records Cargo's manifest normalization explicitly.
+
 ## Single executable implementation
 
 Cargo and Verus use the exact [src/lib.rs](src/lib.rs) crate root. Production
