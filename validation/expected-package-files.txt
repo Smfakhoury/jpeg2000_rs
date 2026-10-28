@@ -47,6 +47,7 @@ src/mq.rs
 src/options.rs
 src/packet.rs
 src/refinement.rs
+src/tier1/tests.rs
 src/tier1.rs
 src/tier1_ht_tables.rs
 src/transform.rs
