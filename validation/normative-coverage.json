@@ -39,10 +39,10 @@
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_tile_parts"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_packet_length_admission_derives_all_short_varints_and_full_reader_results"},
-        {"path": "src/codestream.rs", "symbol": "actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits"},
-        {"path": "src/codestream.rs", "symbol": "actual_plm_groups_derive_raw_lengths_indexes_borrowed_sources_and_partial_commits"},
-        {"path": "src/codestream.rs", "symbol": "actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_packet_length_admission_derives_all_short_varints_and_full_reader_results"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_packet_length_admission_preserves_byte_work_packet_overflow_and_limit_commits"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_plm_groups_derive_raw_lengths_indexes_borrowed_sources_and_partial_commits"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_plm_groups_preserve_charge_errors_append_caps_and_real_segment_reader_join"}
       ]
     },
     {
@@ -78,9 +78,9 @@
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_tile_parts"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_packed_fragments_preserve_all_indexes_counter_frames_and_source_bytes"},
-        {"path": "src/codestream.rs", "symbol": "actual_packed_fragments_preserve_header_work_limit_and_overflow_commit_order"},
-        {"path": "src/codestream.rs", "symbol": "actual_ppm_frames_preserve_zero_bypass_lengths_caps_offsets_and_reader"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_packed_fragments_preserve_all_indexes_counter_frames_and_source_bytes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_packed_fragments_preserve_header_work_limit_and_overflow_commit_order"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_ppm_frames_preserve_zero_bypass_lengths_caps_offsets_and_reader"}
       ]
     },
     {
@@ -124,9 +124,9 @@
         {"path": "src/codestream.rs", "symbol": "MctArray::clone"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mct_graph_element_counts_preserve_checked_intermediate_overflow"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_graph_collections_preserve_lookup_shape_flags_and_all_fields"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_graph_complete_parameters_preserve_order_first_records_and_empty_bypass"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_graph_element_counts_preserve_checked_intermediate_overflow"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_graph_collections_preserve_lookup_shape_flags_and_all_fields"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_graph_complete_parameters_preserve_order_first_records_and_empty_bypass"}
       ]
     },
     {
@@ -175,9 +175,9 @@
         {"path": "src/codestream.rs", "symbol": "mct_array_kinds_equal"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mct_registry_preserves_last_only_admission_and_all_array_replacements"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_registry_preserves_complete_raw_record_replacements"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_registry_references_require_exactly_one_matching_index_and_kind"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_registry_preserves_last_only_admission_and_all_array_replacements"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_registry_preserves_complete_raw_record_replacements"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_registry_references_require_exactly_one_matching_index_and_kind"}
       ]
     },
     {
@@ -221,9 +221,9 @@
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mct_fragments_preserve_descriptors_first_matches_and_partial_commits"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_fragments_compose_numeric_arrays_swap_order_offsets_and_reader"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_fragment_lookup_caps_and_overflow_preserve_raw_prior_state"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_fragments_preserve_descriptors_first_matches_and_partial_commits"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_fragments_compose_numeric_arrays_swap_order_offsets_and_reader"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_fragment_lookup_caps_and_overflow_preserve_raw_prior_state"}
       ]
     },
     {
@@ -279,9 +279,9 @@
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mct_numeric_scalars_preserve_ieee_fields_ties_underflow_and_full_word_bytes"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_arrays_preserve_all_descriptors_formats_limits_and_first_value_errors"},
-        {"path": "src/codestream.rs", "symbol": "actual_mct_element_bounds_and_real_reader_preserve_all_array_fields"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_numeric_scalars_preserve_ieee_fields_ties_underflow_and_full_word_bytes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_arrays_preserve_all_descriptors_formats_limits_and_first_value_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_element_bounds_and_real_reader_preserve_all_array_fields"}
       ]
     },
     {
@@ -325,9 +325,9 @@
         {"path": "src/refinement.rs", "symbol": "mct_fragment_complete"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_fragments_preserve_all_index_headers_first_matches_and_partial_failure_commits"},
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_fragments_compose_real_records_swap_order_offsets_and_completed_policy"},
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_fragment_lookup_and_component_byte_bounds_preserve_raw_prior_state"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_fragments_preserve_all_index_headers_first_matches_and_partial_failure_commits"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_fragments_compose_real_records_swap_order_offsets_and_completed_policy"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_fragment_lookup_and_component_byte_bounds_preserve_raw_prior_state"}
       ]
     },
     {
@@ -376,9 +376,9 @@
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_collections_preserve_all_kind_bytes_flags_routes_wavelets_and_offsets"},
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_records_preserve_header_limits_terminal_parallel_order_and_all_fields"},
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_parallel_and_signed_offsets_match_independent_sets_and_full_width_reference"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_collections_preserve_all_kind_bytes_flags_routes_wavelets_and_offsets"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_records_preserve_header_limits_terminal_parallel_order_and_all_fields"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_parallel_and_signed_offsets_match_independent_sets_and_full_width_reference"}
       ]
     },
     {
@@ -414,9 +414,9 @@
         {"path": "src/codestream.rs", "symbol": "read_u16"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mco_preserves_zero_order_all_stage_pairs_and_count_frontiers"},
-        {"path": "src/codestream.rs", "symbol": "actual_mcc_component_lists_preserve_all_headers_words_and_partial_cursors"},
-        {"path": "src/codestream.rs", "symbol": "actual_transform_routing_membership_and_real_mcc_mco_callers_preserve_order"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mco_preserves_zero_order_all_stage_pairs_and_count_frontiers"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_component_lists_preserve_all_headers_words_and_partial_cursors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_transform_routing_membership_and_real_mcc_mco_callers_preserve_order"}
       ]
     },
     {
@@ -463,9 +463,9 @@
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_work_units"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_progression_shape_preserves_raw_styles_empty_bypass_and_work_thresholds"},
-        {"path": "src/codestream.rs", "symbol": "actual_progression_marking_preserves_arbitrary_bitmaps_and_partial_failure_prefixes"},
-        {"path": "src/codestream.rs", "symbol": "actual_progression_admission_matches_independent_coordinate_sets_and_overlap_order"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_progression_shape_preserves_raw_styles_empty_bypass_and_work_thresholds"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_progression_marking_preserves_arbitrary_bitmaps_and_partial_failure_prefixes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_progression_admission_matches_independent_coordinate_sets_and_overlap_order"}
       ]
     },
     {
@@ -500,9 +500,9 @@
         {"path": "src/codestream.rs", "symbol": "read_u16"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_poc_reads_preserve_width_fallback_endian_bytes_and_segment_error_offsets"},
-        {"path": "src/codestream.rs", "symbol": "actual_poc_preserves_raw_records_width_thresholds_end256_and_error_precedence"},
-        {"path": "src/codestream.rs", "symbol": "actual_poc_reader_join_retains_raw_invalid_ranges_and_rejects_bad_order"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_poc_reads_preserve_width_fallback_endian_bytes_and_segment_error_offsets"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_poc_preserves_raw_records_width_thresholds_end256_and_error_precedence"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_poc_reader_join_retains_raw_invalid_ranges_and_rejects_bad_order"}
       ]
     },
     {
@@ -554,9 +554,9 @@
         {"path": "src/codestream.rs", "symbol": "Parser::segment_byte"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_atk_coefficients_preserve_all_raw_bytes_widths_signs_and_error_offsets"},
-        {"path": "src/codestream.rs", "symbol": "actual_atk_preserves_all_descriptors_steps_counts_and_terminal_order"},
-        {"path": "src/codestream.rs", "symbol": "actual_atk_preserves_first_duplicates_all_owner_fields_and_ordered_budget_failures"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_atk_coefficients_preserve_all_raw_bytes_widths_signs_and_error_offsets"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_atk_preserves_all_descriptors_steps_counts_and_terminal_order"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_atk_preserves_first_duplicates_all_owner_fields_and_ordered_budget_failures"}
       ]
     },
     {
@@ -589,9 +589,9 @@
         {"path": "src/refinement.rs", "symbol": "tlm_length_bytes"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_tlm_preserves_every_header_style_index_and_external_counter"},
-        {"path": "src/codestream.rs", "symbol": "actual_tlm_preserves_endian_words_valid_prefixes_and_record_alignment"},
-        {"path": "src/codestream.rs", "symbol": "actual_tlm_preserves_three_owner_frames_partial_charges_and_real_reader"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_tlm_preserves_every_header_style_index_and_external_counter"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_tlm_preserves_endian_words_valid_prefixes_and_record_alignment"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_tlm_preserves_three_owner_frames_partial_charges_and_real_reader"}
       ]
     },
     {
@@ -643,9 +643,9 @@
         {"path": "src/refinement.rs", "symbol": "cbd_signed"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_nlt_preserves_all_component_selectors_precision_and_type_bytes"},
-        {"path": "src/codestream.rs", "symbol": "actual_nlt_preserves_gamma_words_point_widths_caps_and_tail_bytes"},
-        {"path": "src/codestream.rs", "symbol": "actual_nlt_preserves_first_duplicate_all_owner_fields_and_ordered_budget_failures"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_nlt_preserves_all_component_selectors_precision_and_type_bytes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_nlt_preserves_gamma_words_point_widths_caps_and_tail_bytes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_nlt_preserves_first_duplicate_all_owner_fields_and_ordered_budget_failures"}
       ]
     },
     {
@@ -686,9 +686,9 @@
         {"path": "src/refinement.rs", "symbol": "part15_cap_payload_length"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_marker_word_reader_preserves_all_endian_pairs_and_odd_tail_offsets"},
-        {"path": "src/codestream.rs", "symbol": "actual_profile_numbers_preserve_word_order_and_last_zero_error_precedence"},
-        {"path": "src/codestream.rs", "symbol": "actual_cap_preserves_mask_halves_bit_counts_length_order_and_reader_join"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_marker_word_reader_preserves_all_endian_pairs_and_odd_tail_offsets"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_profile_numbers_preserve_word_order_and_last_zero_error_precedence"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_cap_preserves_mask_halves_bit_counts_length_order_and_reader_join"}
       ]
     },
     {
@@ -721,8 +721,8 @@
         {"path": "src/refinement.rs", "symbol": "cbd_signed"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_cbd_preserves_all_raw_descriptors_and_partial_depth_prefixes"},
-        {"path": "src/codestream.rs", "symbol": "actual_cbd_preserves_budget_header_and_reader_order_with_all_owner_fields"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_cbd_preserves_all_raw_descriptors_and_partial_depth_prefixes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_cbd_preserves_budget_header_and_reader_order_with_all_owner_fields"}
       ]
     },
     {
@@ -775,9 +775,9 @@
         {"path": "src/refinement.rs", "symbol": "dfs_direction_code"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_two_bit_values_preserve_terminal_padding_and_error_order"},
-        {"path": "src/codestream.rs", "symbol": "actual_dfs_preserves_descriptor_bytes_unused_padding_and_first_registry_slot"},
-        {"path": "src/codestream.rs", "symbol": "actual_ads_preserves_all_raw_counts_padding_first_duplicates_and_owner_fields"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_two_bit_values_preserve_terminal_padding_and_error_order"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_dfs_preserves_descriptor_bytes_unused_padding_and_first_registry_slot"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_ads_preserves_all_raw_counts_padding_first_duplicates_and_owner_fields"}
       ]
     },
     {
@@ -822,9 +822,9 @@
         {"path": "src/codestream.rs", "symbol": "read_u16"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_raw_roi_preserves_length_component_style_and_full_shift_order"},
-        {"path": "src/codestream.rs", "symbol": "actual_segment_byte_preserves_checked_index_and_error_offset"},
-        {"path": "src/codestream.rs", "symbol": "actual_crg_preserves_all_owner_fields_partial_budget_commits_and_registration_bytes"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_roi_preserves_length_component_style_and_full_shift_order"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_segment_byte_preserves_checked_index_and_error_offset"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_crg_preserves_all_owner_fields_partial_budget_commits_and_registration_bytes"}
       ]
     },
     {
@@ -865,9 +865,9 @@
         {"path": "src/codestream.rs", "symbol": "read_u16"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_raw_quantization_derives_all_steps_defaults_and_ordered_errors"},
-        {"path": "src/codestream.rs", "symbol": "actual_component_quantization_binds_prefix_bytes_defaults_and_reader"},
-        {"path": "src/codestream.rs", "symbol": "main_header_quantization_may_precede_coding_style"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_quantization_derives_all_steps_defaults_and_ordered_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_quantization_binds_prefix_bytes_defaults_and_reader"},
+        {"path": "src/codestream/tests.rs", "symbol": "main_header_quantization_may_precede_coding_style"}
       ]
     },
     {
@@ -905,8 +905,8 @@
         {"path": "src/codestream.rs", "symbol": "Parser::malformed_at"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_raw_component_styles_preserve_source_defaults_selectors_and_first_errors"},
-        {"path": "src/codestream.rs", "symbol": "actual_component_index_preserves_width_threshold_error_kind_and_marker_independence"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_component_styles_preserve_source_defaults_selectors_and_first_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_index_preserves_width_threshold_error_kind_and_marker_independence"}
       ]
     },
     {
@@ -941,7 +941,7 @@
         {"path": "src/tier1.rs", "symbol": "tier1_block_coding_from_code_block_style"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_raw_cod_derives_full_style_defaults_precincts_and_ordered_admission"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_cod_derives_full_style_defaults_precincts_and_ordered_admission"}
       ]
     },
     {
@@ -977,7 +977,7 @@
         {"path": "src/codestream.rs", "symbol": "segment_view"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_raw_siz_derives_every_image_field_uniform_policy_unused_slot_and_first_limit_error"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_siz_derives_every_image_field_uniform_policy_unused_slot_and_first_limit_error"}
       ]
     },
     {
@@ -1027,7 +1027,7 @@
         {"path": "src/codestream.rs", "symbol": "segment_outcome"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_raw_reader_derives_marker_payload_cursor_work_and_partial_error_state"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_reader_derives_marker_payload_cursor_work_and_partial_error_state"}
       ]
     },
     {
@@ -1264,7 +1264,7 @@
       ],
       "test_refs": [
         {"path": "src/image.rs", "symbol": "actual_nonlinear_arithmetic_preserves_checked_i128_rounding_q32_and_power_boundaries"},
-        {"path": "src/codestream.rs", "symbol": "actual_nonlinear_getters_expose_complete_raw_descriptors_without_validation"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_nonlinear_getters_expose_complete_raw_descriptors_without_validation"}
       ]
     },
     {
@@ -1302,7 +1302,7 @@
         {"path": "src/decode.rs", "symbol": "registered_ceil_div_u32"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_nonlinear_lookup_preserves_first_specific_then_first_default_and_all_raw_fields"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_nonlinear_lookup_preserves_first_specific_then_first_default_and_all_raw_fields"},
         {"path": "src/decode.rs", "symbol": "actual_nonlinear_regions_derive_last_raw_tile_owner_registered_clipping_and_error_order"}
       ]
     },
@@ -1442,8 +1442,8 @@
         {"path": "src/decode.rs", "symbol": "collected_tile_parts_outcome"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_owned_tile_part_clone_preserves_every_raw_field_and_independent_nested_buffers"},
-        {"path": "src/codestream.rs", "symbol": "actual_ordered_tile_collection_copies_raw_non_normalized_fields_and_retains_duplicate_order"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_owned_tile_part_clone_preserves_every_raw_field_and_independent_nested_buffers"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_ordered_tile_collection_copies_raw_non_normalized_fields_and_retains_duplicate_order"}
       ]
     },
     {
@@ -1523,8 +1523,8 @@
         {"path": "src/refinement.rs", "symbol": "part15_magnitude_bound"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_capability_lookup_preserves_all_u8_parts_raw_masks_and_ragged_physical_words"},
-        {"path": "src/codestream.rs", "symbol": "actual_ht_profile_policy_preserves_every_raw_ccap_word_physical_lookup_and_unused_owner_field"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_capability_lookup_preserves_all_u8_parts_raw_masks_and_ragged_physical_words"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_ht_profile_policy_preserves_every_raw_ccap_word_physical_lookup_and_unused_owner_field"}
       ]
     },
     {
@@ -1581,10 +1581,10 @@
         {"path": "src/codestream.rs", "symbol": "ArbitraryKernel::reversible"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_mct_identity_compares_every_raw_graph_array_stage_and_collection_field"},
-        {"path": "src/codestream.rs", "symbol": "actual_maximum_isotropic_reduction_preserves_full_u8_levels_and_physical_prefix_laziness"},
-        {"path": "src/codestream.rs", "symbol": "actual_tile_style_resolution_preparation_preserves_raw_modes_owners_and_arbitrary_agreement_policy"},
-        {"path": "src/codestream.rs", "symbol": "actual_tile_metadata_derives_first_payload_mct_kernel_and_ordered_style_results"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_mct_identity_compares_every_raw_graph_array_stage_and_collection_field"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_maximum_isotropic_reduction_preserves_full_u8_levels_and_physical_prefix_laziness"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_tile_style_resolution_preparation_preserves_raw_modes_owners_and_arbitrary_agreement_policy"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_tile_metadata_derives_first_payload_mct_kernel_and_ordered_style_results"}
       ]
     },
     {
@@ -1721,7 +1721,7 @@
         {"path": "src/codestream.rs", "symbol": "CodingStyle::resolution_downsampling"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_resolution_plan_metadata_preserves_complete_raw_geometry_counts_split_and_origin_fields"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_resolution_plan_metadata_preserves_complete_raw_geometry_counts_split_and_origin_fields"},
         {"path": "src/decode.rs", "symbol": "actual_precinct_origins_preserve_raw_divisor_addition_and_multiplication_frontiers"}
       ]
     },
@@ -1844,8 +1844,8 @@
         {"path": "src/tier1.rs", "symbol": "Tier1CodingStyle::set_force_high_throughput"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "raw_component_quantization_and_roi_getters_preserve_logical_physical_policy"},
-        {"path": "src/codestream.rs", "symbol": "actual_component_plan_metadata_preserves_all_ordered_raw_admission_and_output_fields"}
+        {"path": "src/codestream/tests.rs", "symbol": "raw_component_quantization_and_roi_getters_preserve_logical_physical_policy"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_plan_metadata_preserves_all_ordered_raw_admission_and_output_fields"}
       ]
     },
     {
@@ -1977,8 +1977,8 @@
         {"path": "src/codestream.rs", "symbol": "quantization_view"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "complete_subband_vectors_match_raw_coordinates_direction_order_and_every_field"},
-        {"path": "src/codestream.rs", "symbol": "subband_vectors_preserve_component_admission_and_raw_prefix_index_boundaries"}
+        {"path": "src/codestream/tests.rs", "symbol": "complete_subband_vectors_match_raw_coordinates_direction_order_and_every_field"},
+        {"path": "src/codestream/tests.rs", "symbol": "subband_vectors_preserve_component_admission_and_raw_prefix_index_boundaries"}
       ]
     },
     {
@@ -2007,8 +2007,8 @@
         {"path": "src/codestream.rs", "symbol": "Quantization::guard_bits"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "quantization_lookup_and_public_subband_index_preserve_raw_words_and_lazy_policy"},
-        {"path": "src/codestream.rs", "symbol": "subband_admission_matches_every_field_and_raw_error_priority"}
+        {"path": "src/codestream/tests.rs", "symbol": "quantization_lookup_and_public_subband_index_preserve_raw_words_and_lazy_policy"},
+        {"path": "src/codestream/tests.rs", "symbol": "subband_admission_matches_every_field_and_raw_error_priority"}
       ]
     },
     {
@@ -2044,8 +2044,8 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_packet_grid_component_start"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "component_resolution_preparation_retains_raw_owners_discard_and_first_errors"},
-        {"path": "src/codestream.rs", "symbol": "component_packet_grid_matches_real_geometry_padding_selection_and_limit_order"}
+        {"path": "src/codestream/tests.rs", "symbol": "component_resolution_preparation_retains_raw_owners_discard_and_first_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "component_packet_grid_matches_real_geometry_padding_selection_and_limit_order"}
       ]
     },
     {
@@ -2083,8 +2083,8 @@
         {"path": "src/codestream.rs", "symbol": "CodingStyle::precinct_exponents"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "resolution_geometry_matches_complete_raw_whole_and_registered_tile_outputs"},
-        {"path": "src/codestream.rs", "symbol": "resolution_geometry_preserves_raw_admission_and_sampling_error_priority"}
+        {"path": "src/codestream/tests.rs", "symbol": "resolution_geometry_matches_complete_raw_whole_and_registered_tile_outputs"},
+        {"path": "src/codestream/tests.rs", "symbol": "resolution_geometry_preserves_raw_admission_and_sampling_error_priority"}
       ]
     },
     {
@@ -2115,8 +2115,8 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_resolution_scales_error"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "resolution_styles_preserve_all_raw_level_resolution_and_lazy_precinct_cases"},
-        {"path": "src/codestream.rs", "symbol": "resolution_scale_step_preserves_raw_scales_selector_priority_and_overflow"}
+        {"path": "src/codestream/tests.rs", "symbol": "resolution_styles_preserve_all_raw_level_resolution_and_lazy_precinct_cases"},
+        {"path": "src/codestream/tests.rs", "symbol": "resolution_scale_step_preserves_raw_scales_selector_priority_and_overflow"}
       ]
     },
     {
@@ -2145,8 +2145,8 @@
         {"path": "src/codestream.rs", "symbol": "image_size_component_infos"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "registered_component_ceiling_matches_wide_arithmetic_and_all_registration_words"},
-        {"path": "src/codestream.rs", "symbol": "tile_component_bounds_match_raw_geometry_and_ordered_descriptor_admission"}
+        {"path": "src/codestream/tests.rs", "symbol": "registered_component_ceiling_matches_wide_arithmetic_and_all_registration_words"},
+        {"path": "src/codestream/tests.rs", "symbol": "tile_component_bounds_match_raw_geometry_and_ordered_descriptor_admission"}
       ]
     },
     {
@@ -2183,7 +2183,7 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_tiles_error"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_layout_execution_admission_preserves_raw_count_and_global_error_order"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_layout_execution_admission_preserves_raw_count_and_global_error_order"}
       ]
     },
     {
@@ -2213,8 +2213,8 @@
         {"path": "src/codestream.rs", "symbol": "Part2Extensions::validate_executable"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "actual_execution_style_admission_matches_raw_registry_membership_and_lazy_fields"},
-        {"path": "src/codestream.rs", "symbol": "actual_component_depth_comparison_preserves_raw_order_precision_and_sign"}
+        {"path": "src/codestream/tests.rs", "symbol": "actual_execution_style_admission_matches_raw_registry_membership_and_lazy_fields"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_depth_comparison_preserves_raw_order_precision_and_sign"}
       ]
     },
     {
@@ -2512,7 +2512,7 @@
         {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
         {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
         {"path": "src/decode.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
-        {"path": "src/codestream.rs", "symbol": "actual_kernel_registry_retains_first_duplicates_and_every_raw_index"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_kernel_registry_retains_first_duplicates_and_every_raw_index"},
         {"path": "src/image.rs", "symbol": "native_mct_wavelet_partitions_match_signed_integer_intervals"},
         {"path": "src/image.rs", "symbol": "native_mct_wavelet_scaled_snapshot_keeps_full_precision_and_error_priority"},
         {"path": "src/image.rs", "symbol": "native_mct_wavelet_reversible_collection_matches_independent_synthesis"},
@@ -3095,19 +3095,19 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "packed_reassembly_literal_fragments_ranges_and_late_errors_have_exact_bytes"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "packet_length_full_width_noncanonical_and_unterminated_groups_match_wide_words"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "packed_raw_source_marker_and_absent_metadata_do_not_invent_shape_invariants"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "packet_lengths_exhaustive_two_byte_windows_and_every_raw_iterator_field"
         }
       ]
@@ -4379,7 +4379,7 @@
           "symbol": "complete_style_byte_parser_matches_all_native_bytes_and_flags"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "complete_packet_style_owners_preserve_raw_counts_styles_and_header_presence"
         }
       ]
@@ -5462,7 +5462,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "rejects_impossible_geometry"
         },
         {
@@ -6158,15 +6158,15 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "rejects_unknown_or_reserved_markers_as_malformed"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "parses_bounded_tile_part"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "rejects_missing_siz_and_trailing_bytes"
         }
       ],
@@ -6846,11 +6846,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "validates_tlm_against_sot_tile_part_length"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "retains_selected_part2_marker_families"
         }
       ],
@@ -6904,11 +6904,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "retains_dfs_and_atk_coding_style_references"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "resolves_mixed_dfs_sequence_into_bounded_topology"
         }
       ],
@@ -6970,11 +6970,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "parses_uniform_cbd_descriptor"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "parses_bounded_nlt_lookup_table"
         },
         {
@@ -7032,7 +7032,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "parses_and_executes_extended_atk_forms"
         },
         {
@@ -7142,15 +7142,15 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "reassembles_segmented_mct_and_mcc_with_contiguous_indexes"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "converts_f32_mct_values_to_deterministic_fixed_point"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "converts_finite_binary64_and_rejects_non_finite_or_overflow"
         },
         {
@@ -9262,11 +9262,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "detects_ht_and_mixed_profiles_without_entering_the_block_decoder"
         },
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "rejects_malformed_or_inconsistent_ht_profile_signaling"
         }
       ],
@@ -9340,7 +9340,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/codestream.rs",
+          "path": "src/codestream/tests.rs",
           "symbol": "validates_part15_capability_combinations"
         },
         {
@@ -11039,8 +11039,8 @@
         {"path": "specs/mod.rs", "symbol": "part1_subband_count_through_resolution"}
       ],
       "test_refs": [
-        {"path": "src/codestream.rs", "symbol": "raw_component_getter_covers_entire_u16_index_domain"},
-        {"path": "src/codestream.rs", "symbol": "decomposition_selectors_cover_entire_u8_level_stage_resolution_domains"}
+        {"path": "src/codestream/tests.rs", "symbol": "raw_component_getter_covers_entire_u16_index_domain"},
+        {"path": "src/codestream/tests.rs", "symbol": "decomposition_selectors_cover_entire_u8_level_stage_resolution_domains"}
       ],
       "topic": "Actual raw component information and reconstruction direction/count selectors with full native u16/u8 input domains, physical array bounds, exact errors and first-error ordering; no valid-header or profile premise"
     },
