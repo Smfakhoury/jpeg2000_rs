@@ -31,10 +31,6 @@ AMENDMENT_PROFILES = {
         "validation/check-packaged-source.py", "validation/expected-package-files.txt",
         "validation/tests/test_packaged_source.py",
     }),
-    "decode-proof-support": frozenset({
-        "src/decode.rs", "src/decode/proof_support.rs",
-        "validation/normative-coverage.json", "validation/expected-package-files.txt",
-    }),
 }
 
 
