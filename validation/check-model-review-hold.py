@@ -35,6 +35,11 @@ AMENDMENT_PROFILES = {
         "src/decode.rs", "src/decode/proof_support.rs",
         "validation/normative-coverage.json", "validation/expected-package-files.txt",
     }),
+    "tier1-test-extraction": frozenset({
+        "src/tier1.rs", "src/tier1/tests.rs",
+        "validation/normative-coverage.json", "validation/expected-package-files.txt",
+        "validation/tests/test_framework.py",
+    }),
 }
 
 
