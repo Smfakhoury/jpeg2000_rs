@@ -519,6 +519,55 @@ class ModelReviewHoldTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     model_review_hold.read_reviewed_amendments(self.registry([entry]))
 
+    def crate_rename_fixture(self):
+        paths = model_review_hold.AMENDMENT_PROFILES["crate-publication-rename"]
+        originals = {path: f"original {path}\n" for path in paths}
+        proposed = {path: f"renamed {path}\n" for path in paths}
+        return self.layout_fixture(
+            originals, proposed, "crate-publication-rename",
+            "Exact owner-requested package/import/collector rename, not a normative amendment.",
+        )
+
+    def test_exact_crate_rename_record_requires_trusted_adoption(self):
+        base, head, entry = self.crate_rename_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_crate_rename_record_rejects_any_changed_protected_identity(self):
+        base, head, entry = self.crate_rename_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-rename-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_crate_rename_record_cannot_authorize_codec_models_or_controller(self):
+        base, head, entry = self.crate_rename_fixture()
+        for index, path in enumerate((
+            "src/lib.rs", "src/tier1.rs", "specs/new.rs", "proofs/new.rs",
+            "validation/check-model-review-hold.py",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-rename-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_crate_rename_profile_cannot_expand_to_codec_or_controller_paths(self):
+        _, _, original = self.crate_rename_fixture()
+        for path in ("src/lib.rs", "specs/new.rs", "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("Cargo.toml")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()
