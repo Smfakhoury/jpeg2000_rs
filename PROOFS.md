@@ -64,12 +64,28 @@ proposed code. It assesses committed changes from the unique merge base,
 including deletions and renames. A policy edit in the same proposal cannot
 grant itself an exception. Missing history or ambiguous merge bases fail.
 
-This initial hold has **no approved-amendment override**. Replacing it with
-a separately reviewed amendment process requires actual trusted reviewer
-identities, source-bound evidence and owner authorization; a candidate's own
-`approved` flag is not an approval. It does not complete that governance work.
-An owner-approved transition must arrange replacement of the hold rather
-than treating a held change as approved.
+The bounded engineering amendment path uses a
+[trusted registry](validation/reviewed-amendments.md). It starts empty and
+authorizes no protected changes. Registry-only Markdown PRs can pass CI before
+review because they do not amend held source. Their proposed data is validated
+by the normal test suite, but the live gate reads only its trusted default-branch
+copy. A source PR cannot approve itself by also editing its own registry.
+
+After owner adoption of a separate, all-green registry-only PR, an exact record
+can recognize the entire protected-path set, original/proposed Git blob IDs and
+regular-file modes. Only the three bounded engineering profiles are supported;
+normative model/proof Rust, the controller itself, combined amendments and other
+protected changes remain held. Source branches must be refreshed and all checks
+must pass before requesting source review. Fingerprints and evidence links are
+not semantic-equivalence or normative-certification results.
+
+The old gate also protects its own controller, so this reader requires an
+explicitly authorized, gate-only trusted-branch bootstrap. It cannot bootstrap
+itself through a red PR. Until that separate operation is authorized and its
+actual-main evidence passes, the old gate remains authoritative and affected
+PRs remain drafts. No failed check may be bypassed or represented as green.
+This does not settle the actual trusted reviewer/adjudicator roster, independent
+normative review, or enforcement configuration discussed in #149 and #150.
 
 The check becomes available only after the workflow is merged into the default
 branch. Its presence does not configure branch protection or prevent direct
