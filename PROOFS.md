@@ -71,6 +71,14 @@ identities, source-bound evidence and owner authorization; a candidate's own
 An owner-approved transition must arrange replacement of the hold rather
 than treating a held change as approved.
 
+A proposed [one-time gate bootstrap](validation/gate-bootstrap-authorization.md)
+provides a documentation-only authorization route whose PR can pass all required
+checks before owner review. It does not itself update the controller or approve
+any source change. Only actual owner adoption, the exact recorded file
+identities and fresh qualification of the resulting commit can authorize that
+bounded operational step. Until then, the current hold remains authoritative.
+The proposed [trusted registry](validation/reviewed-amendments.md) starts empty.
+
 The check becomes available only after the workflow is merged into the default
 branch. Its presence does not configure branch protection or prevent direct
 pushes, administrative bypasses or changes to repository settings. Required
