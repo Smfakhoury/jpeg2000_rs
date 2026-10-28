@@ -2,9 +2,9 @@
 
 This is policy data, not a proof or conformance certificate. The controller reads
 only the copy from its trusted default-branch checkout, never a proposed branch.
-An empty registry authorizes no protected changes. Records below are proposals
-while this file is on a feature branch; only owner adoption on trusted `main`
-gives them authority.
+An empty registry authorizes no protected changes. New or changed records are
+proposals while this file is on a feature branch; only owner adoption on trusted
+`main` gives them authority. Unchanged adopted records retain their history.
 
 ## Engineering decisions and proposed addition
 
@@ -12,10 +12,11 @@ gives them authority.
 |---|---|---|
 | `proposal-160` | Adopted through #167; the private parser-test relocation is now owner-merged in #160 | CI40608106332 / Verus40608106341; refreshed source qualification is retained in #160 |
 | `proposal-164` | Adopted through #167; the standalone package-only `image` consumer is now owner-merged in #164 | CI40665820297 / Verus40665820275; refreshed source qualification is retained in #164 |
-| `proposal-163-b4c6d67` | Proposed exact source-inclusive package manifest/inventory, archive-binding checker/tests and Verus workflow; no Rust body change | #163, CI40713472934 / Verus40713472868 |
+| `proposal-163-b4c6d67` | Adopted through #168; the source-complete package is now owner-merged in #163 | CI40713472934 / Verus40713472868; refreshed source and actual-main qualification are retained in #163 |
+| `proposal-171-ghost-support` | Proposed exact reconstruction proof/view relocation in the existing `decode` module; no runtime, contract or normative-model change | #171, CI40730904780 / Verus40729319509; refreshed source checks remain mandatory |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
-For the new #163 record, refresh the source branch from accepted main after
+For the new #171 record, refresh the source branch from accepted main after
 adoption and require fresh complete checks before requesting source review.
 Exact bytes, not a feature name or author's assertion, control eligibility.
 No record permits normative model/proof Rust or controller changes, combined
@@ -23,15 +24,15 @@ amendments, or changed verifier/dependency pins and resource caps.
 
 ### Package-distribution choice
 
-The proposed #163 record chooses a source-complete archive rather than the
-current lean package. Include the existing verification Rust sources and
+The adopted #163 record chose a source-complete archive rather than its
+lean predecessor. Include the existing verification Rust sources and
 technical reference so the actual unpacked crate supports the project's
 pinned formatter and same-source Verus replay. Do not use formatter skips,
 dummy specifications or a second decoder.
 
-The refreshed archive has 51 files, including all 35 runtime/model/proof Rust
-files byte-identical to accepted main. Its compressed size is about 901 KiB
-instead of the current 659 KiB. Ordinary builds still have zero default runtime
+The accepted archive has 51 files, including all 35 runtime/model/proof Rust
+files byte-identical to its source. Its compressed size is about 901 KiB
+instead of the predecessor's 659 KiB. Ordinary builds still have zero default runtime
 dependencies and do not enable ghost modules. No PDF, validation tooling,
 default feature, decoder API or Rust implementation changes are included;
 `publish = false` remains in force.
@@ -43,6 +44,32 @@ pre-relocation proposal. Original evidence includes actual archive formatting
 with Rust 1.93.1, repository and archive Verus 3,518/0 each, unchanged input
 bindings, MSRV 660+3 from the retained archive and the real consumer's 37 tests
 plus doctest. These checks are engineering evidence, not normative certification.
+
+### Proposed decode-support layout
+
+The new #171 record covers only `src/decode.rs`,
+`src/decode/proof_support.rs`, the package inventory and the technical reference
+inventory. It moves the existing 132-line reconstruction proof/view block through
+a cfg-guarded include into the same logical `decode` module. Body bytes,
+visibility and open/closed declarations are unchanged; recombination reproduces
+the original decoder file exactly. Five proof-reference paths follow the move.
+Attached contracts, loop invariants and executable bodies remain in place.
+
+The recorded original source `233574e0392a7b460c6732d597008eca039f3971`
+passed complete CI and repository/archive Verus with 3,518/0 each and all 4,554
+observed project function identities retained, including the original lemma
+namespace. The bound archive has 52 files and 36 Rust files; pinned formatting,
+compiled native test identities, MSRV, resource and actual consumer gates passed.
+These are engineering observations, not exhaustive source proof coverage,
+lifetime verification or independent normative correspondence.
+
+Draft #171 was refreshed from accepted recovery main
+`0e1158a1dc563474081cf52487295e00a684a0eb`, retaining all four exact proposed
+blobs. Its policy hold is real, not a check to waive. This separate record must
+first be owner-adopted with every check green; then refresh the source branch
+again and require fresh complete checks before requesting source review.
+This record cannot authorize Tier-1 cleanup, another module, a controller
+amendment or a combined change.
 
 An exception must first be proposed in a separate documentation-only PR. All
 required checks on that PR must pass before review is requested. Owner adoption
@@ -63,10 +90,13 @@ supported. The existing records cover parser-test extraction, the standalone
 image consumer and source-inclusive packaging. The #169
 [decode-support profile operation](decode-support-profile-authorization.md)
 was rolled back after required actual-main validation failed; its forward
-permission is spent. A new
-[recovery authorization proposal](decode-support-profile-recovery-authorization.md)
-does not activate that scope or add a source exception by changing this
-documentation. Normative model/proof targets and controller amendments remain
+permission is spent. The owner-adopted #170
+[recovery authorization](decode-support-profile-recovery-authorization.md)
+was deployed at `0e1158a1dc563474081cf52487295e00a684a0eb` and accepted from
+fresh actual-main CI and repository/archive proof artifacts. It installed only
+the fixed decode-support profile and added no source record. This proposed
+record does not activate itself by changing this documentation.
+Normative model/proof targets and controller amendments remain
 outside the source-record profiles.
 Unknown fields/profiles, missing history, malformed trusted data, extra protected
 files and non-regular file modes fail closed.
@@ -181,6 +211,33 @@ files and non-regular file modes fail closed.
         "validation/tests/test_packaged_source.py": {
           "before": null,
           "after": "e48ca2c8f14499be0c40c00c31b5aa189544053c"
+        }
+      }
+    },
+    {
+      "id": "proposal-171-ghost-support",
+      "profile": "decode-proof-support",
+      "source_pr": 171,
+      "source_head": "233574e0392a7b460c6732d597008eca039f3971",
+      "ci_run": 40730904780,
+      "verus_run": 40729319509,
+      "rationale": "Exact ghost proof/view relocation preserves the executable/contract/proof bodies and original decode namespace; original-file recombination and every observed function identity match. Not normative approval or source-PR merge permission.",
+      "paths": {
+        "src/decode.rs": {
+          "before": "d2f27aff98662153229e6bb85be644150937c92d",
+          "after": "afd81f4a1d9d17a79f952248e602798e544db53e"
+        },
+        "src/decode/proof_support.rs": {
+          "before": null,
+          "after": "848e266a5715993d226b5905fe112f035b183c87"
+        },
+        "validation/normative-coverage.json": {
+          "before": "05237df10a29fd9e430180a0f7250da810db567f",
+          "after": "26369b786df8431b476a3a67f83a454e8968375c"
+        },
+        "validation/expected-package-files.txt": {
+          "before": "208d745650df83c5531c01f5ec7632f065da72e2",
+          "after": "1afd84378f402a66b4a59b83fb17cdd5cbdaa454"
         }
       }
     }
