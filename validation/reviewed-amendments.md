@@ -14,6 +14,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-164` | Adopted through #167; the standalone package-only `image` consumer is now owner-merged in #164 | CI40665820297 / Verus40665820275; refreshed source qualification is retained in #164 |
 | `proposal-163-b4c6d67` | Adopted through #168; the source-complete package is now owner-merged in #163 | CI40713472934 / Verus40713472868; refreshed source and actual-main qualification are retained in #163 |
 | `proposal-171-ghost-support` | Adopted through #172; the mechanical proof/view relocation is now owner-merged in #171 | CI40730904780 / Verus40729319509; refreshed source and actual-main qualification are retained in #171 |
+| `proposal-174-tier1-tests` | Proposed exact private Tier-1 test relocation; complete production/contract/proof prefix unchanged | #174, CI40772805265 / Verus40772806908; refreshed source checks remain mandatory |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -76,6 +77,36 @@ waived or overridden.
 This record cannot authorize Tier-1 cleanup, another module, a controller
 amendment or a combined change.
 
+### Proposed private Tier-1 test layout
+
+The new #174 record covers only `src/tier1.rs`, `src/tier1/tests.rs`, the
+technical reference and package inventories, and the binding-regression test
+file. It moves the existing private `cfg(test)` module body without changing
+the production/contract/proof prefix or its `tier1::tests` identity and private
+access. The runtime-facing file decreases from 15,501 to 8,250 lines; the
+standalone test module has 7,167 lines after pinned formatting.
+
+Exactly 119 test references follow the move. The accepted ghost-support sources
+and five proof-reference moves remain unchanged. The actual archive has 53 files
+and 37 Rust files; all 666 compiled native test identities match the accepted
+baseline. All 147 actual Tier-1 tests, missing/stale binding regressions, actual
+archive MSRV 660+3 and real image consumer 37+1 checks passed.
+
+The recorded original source `79c6f9aecd316e70fbcf323eda7fdbfd58c8c036` passed
+fresh full CI and repository/archive Verus with 289 Python tests without skips,
+3,518/0 per proof replay and all 4,554 observed project function identities
+retained. Actual pinned formatting, source binding and native/MSRV/resource/
+consumer gates passed. These are engineering observations, not exhaustive
+source proof coverage, lifetime verification or normative correspondence.
+
+Draft #174 was normally refreshed from accepted profile main
+`452d07bbc3eb059324dc2e6583b5c0097b50c881`, preserving all five exact proposed
+blobs. Its policy hold is real, not a check to waive. This separate record must
+first be owner-adopted with every check green; then accept fresh main, refresh
+the source branch again and require fresh complete checks before source review.
+This record cannot authorize another module, a controller/model change or a
+combined amendment.
+
 An exception must first be proposed in a separate documentation-only PR. All
 required checks on that PR must pass before review is requested. Owner adoption
 of an exact record on `main` authorizes only those original/proposed regular-file
@@ -106,9 +137,12 @@ outside the source-record profiles.
 Unknown fields/profiles, missing history, malformed trusted data, extra protected
 files and non-regular file modes fail closed.
 
-The proposed [Tier-1 test-profile authorization](tier1-test-profile-authorization.md)
-is a separate fixed two-file controller operation. It does not activate a new
-profile or source exception by changing this documentation. The existing
+The owner-adopted #173
+[Tier-1 test-profile authorization](tier1-test-profile-authorization.md) was
+deployed at `452d07bbc3eb059324dc2e6583b5c0097b50c881` and accepted from fresh
+actual-main CI and repository/archive proof artifacts. It installed only the
+fixed five-path Tier-1 profile and added no source record. This proposed record
+does not activate itself by changing a feature branch; the existing
 decode-support record cannot authorize Tier-1 cleanup.
 
 ```json
@@ -248,6 +282,37 @@ decode-support record cannot authorize Tier-1 cleanup.
         "validation/expected-package-files.txt": {
           "before": "208d745650df83c5531c01f5ec7632f065da72e2",
           "after": "1afd84378f402a66b4a59b83fb17cdd5cbdaa454"
+        }
+      }
+    },
+    {
+      "id": "proposal-174-tier1-tests",
+      "profile": "tier1-test-extraction",
+      "source_pr": 174,
+      "source_head": "79c6f9aecd316e70fbcf323eda7fdbfd58c8c036",
+      "ci_run": 40772805265,
+      "verus_run": 40772806908,
+      "rationale": "Mechanical private-test relocation preserves the complete production/contract/proof prefix, test-module identity and accepted ghost support. Exact evidence/package bindings and current compiled native identities are retained; not normative approval or source-PR merge permission.",
+      "paths": {
+        "src/tier1.rs": {
+          "before": "97eb35539d40f4059a8bf735e2b8ff82baf26b32",
+          "after": "be2b059c31a5b0db4571d8fc61e506c01fa69a47"
+        },
+        "src/tier1/tests.rs": {
+          "before": null,
+          "after": "24b8b6ed98ffbe15af1af8dcc216f9edbcf82767"
+        },
+        "validation/normative-coverage.json": {
+          "before": "26369b786df8431b476a3a67f83a454e8968375c",
+          "after": "c7436555216afc20d9cd86dfa7d0291deb2fd179"
+        },
+        "validation/expected-package-files.txt": {
+          "before": "1afd84378f402a66b4a59b83fb17cdd5cbdaa454",
+          "after": "a2d0538bf1db8f48537bb303bd55666df142ff16"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "43da2a6f2e292bef0b9d411f772b59993f39403d",
+          "after": "bc1541157dfcb818f70546589e524dfb52d2afff"
         }
       }
     }
