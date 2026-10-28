@@ -13,10 +13,10 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-160` | Adopted through #167; the private parser-test relocation is now owner-merged in #160 | CI40608106332 / Verus40608106341; refreshed source qualification is retained in #160 |
 | `proposal-164` | Adopted through #167; the standalone package-only `image` consumer is now owner-merged in #164 | CI40665820297 / Verus40665820275; refreshed source qualification is retained in #164 |
 | `proposal-163-b4c6d67` | Adopted through #168; the source-complete package is now owner-merged in #163 | CI40713472934 / Verus40713472868; refreshed source and actual-main qualification are retained in #163 |
-| `proposal-171-ghost-support` | Proposed exact reconstruction proof/view relocation in the existing `decode` module; no runtime, contract or normative-model change | #171, CI40730904780 / Verus40729319509; refreshed source checks remain mandatory |
+| `proposal-171-ghost-support` | Adopted through #172; the mechanical proof/view relocation is now owner-merged in #171 | CI40730904780 / Verus40729319509; refreshed source and actual-main qualification are retained in #171 |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
-For the new #171 record, refresh the source branch from accepted main after
+For every future record, refresh the source branch from accepted main after
 adoption and require fresh complete checks before requesting source review.
 Exact bytes, not a feature name or author's assertion, control eligibility.
 No record permits normative model/proof Rust or controller changes, combined
@@ -30,8 +30,8 @@ technical reference so the actual unpacked crate supports the project's
 pinned formatter and same-source Verus replay. Do not use formatter skips,
 dummy specifications or a second decoder.
 
-The accepted archive has 51 files, including all 35 runtime/model/proof Rust
-files byte-identical to its source. Its compressed size is about 901 KiB
+The archive accepted for #163 had 51 files, including all 35 runtime/model/proof
+Rust files byte-identical to its source. Its compressed size was about 901 KiB
 instead of the predecessor's 659 KiB. Ordinary builds still have zero default runtime
 dependencies and do not enable ghost modules. No PDF, validation tooling,
 default feature, decoder API or Rust implementation changes are included;
@@ -45,9 +45,9 @@ with Rust 1.93.1, repository and archive Verus 3,518/0 each, unchanged input
 bindings, MSRV 660+3 from the retained archive and the real consumer's 37 tests
 plus doctest. These checks are engineering evidence, not normative certification.
 
-### Proposed decode-support layout
+### Adopted decode-support layout
 
-The new #171 record covers only `src/decode.rs`,
+The adopted #171 record covers only `src/decode.rs`,
 `src/decode/proof_support.rs`, the package inventory and the technical reference
 inventory. It moves the existing 132-line reconstruction proof/view block through
 a cfg-guarded include into the same logical `decode` module. Body bytes,
@@ -63,11 +63,16 @@ compiled native test identities, MSRV, resource and actual consumer gates passed
 These are engineering observations, not exhaustive source proof coverage,
 lifetime verification or independent normative correspondence.
 
-Draft #171 was refreshed from accepted recovery main
+Source #171 was refreshed from accepted recovery main
 `0e1158a1dc563474081cf52487295e00a684a0eb`, retaining all four exact proposed
-blobs. Its policy hold is real, not a check to waive. This separate record must
-first be owner-adopted with every check green; then refresh the source branch
-again and require fresh complete checks before requesting source review.
+blobs. After owner adoption through #172, it was refreshed again to
+`884e2063c8a5054a17040ce47a59910769481e1d`; every source check, including fresh
+policy gates, passed before source review. The owner merged #171 at
+`24dd11ed3f32ae899802ce019076cda5e61fbe48`. Fresh actual-main CI and both
+repository/archive proofs were independently accepted: 288 Python tests without
+skips, 3,518/0 per proof replay, unchanged observed function identities and a
+52-file/36-Rust source-bound archive. The earlier failed policy hold was not
+waived or overridden.
 This record cannot authorize Tier-1 cleanup, another module, a controller
 amendment or a combined change.
 
@@ -94,12 +99,17 @@ permission is spent. The owner-adopted #170
 [recovery authorization](decode-support-profile-recovery-authorization.md)
 was deployed at `0e1158a1dc563474081cf52487295e00a684a0eb` and accepted from
 fresh actual-main CI and repository/archive proof artifacts. It installed only
-the fixed decode-support profile and added no source record. This proposed
-record does not activate itself by changing this documentation.
+the fixed decode-support profile and added no source record. This source
+record did not activate itself by changing a feature branch.
 Normative model/proof targets and controller amendments remain
 outside the source-record profiles.
 Unknown fields/profiles, missing history, malformed trusted data, extra protected
 files and non-regular file modes fail closed.
+
+The proposed [Tier-1 test-profile authorization](tier1-test-profile-authorization.md)
+is a separate fixed two-file controller operation. It does not activate a new
+profile or source exception by changing this documentation. The existing
+decode-support record cannot authorize Tier-1 cleanup.
 
 ```json
 {
