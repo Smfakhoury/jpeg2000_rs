@@ -33,6 +33,7 @@ specs/tag_tree.rs
 src/codestream/tests.rs
 src/codestream.rs
 src/color.rs
+src/decode/proof_support.rs
 src/decode.rs
 src/error.rs
 src/image.rs

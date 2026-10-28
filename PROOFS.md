@@ -41,6 +41,13 @@ Cargo and Verus use the exact [src/lib.rs](src/lib.rs) crate root. Production
 algorithms live in [src/](src/); a second proof-only decoder implementation is
 not maintained.
 
+The reconstruction proof/view support in
+[src/decode/proof_support.rs](src/decode/proof_support.rs) is included into the
+existing `decode` module only under `verus_keep_ghost`. It contains no executable
+decoder alternative. Executable bodies, attached contracts and loop invariants
+remain in the same source; the support declarations retain their visibility and
+open/closed semantics.
+
 Verus-only attributes and modules are enabled with `verus_keep_ghost`:
 
 - [src/refinement.rs](src/refinement.rs) contains executable helpers with
