@@ -98,6 +98,9 @@ must remain visible.
 - Run the pinned formatter on the unpacked package as well as the repository,
   so conditional module paths do not point to omitted source files. Build and
   run the unpacked unit tests and doctests at the runtime minimum.
+- Require the archive's separate whole-crate Verus replay and fail-closed
+  collection, with unchanged input bindings; do not infer it from repository
+  verification or source-file inclusion.
 - Verify that ghost code is erased in ordinary Rust builds.
 - Review all required validation and proof results against the same candidate.
 - Set a version and enable package publication only when authorized.
