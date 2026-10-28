@@ -44,8 +44,8 @@ operations have the required owner approval.
 
 ### Unsafe-code review
 
-Confirm the library crate-level prohibition and both the main and standalone
-fuzz package's `unsafe_code = "forbid"` lints remain enabled. Review all owned
+Confirm the library crate-level prohibition and the main, standalone fuzz and
+image consumer packages' `unsafe_code = "forbid"` lints remain enabled. Review all owned
 Rust targets, not only the default library configuration, and run their
 compiler/Clippy checks. The current owned sources have no unsafe code to
 replace; do not describe dependency or standard-library internals as audited
@@ -62,6 +62,7 @@ artifacts. Follow the [contributor setup](CONTRIBUTING.md) for tool prerequisite
 | Rust behavior | All-target tests, doctests and release checks on supported platforms |
 | Rust diagnostics | Formatting, strict Clippy and rustdoc |
 | Packaged decoder | Exact package-file inventory and `cargo package --locked`, including its default verification build |
+| External consumer | Standalone `image` adapter tests/doctest and release check on Rust 1.88, pinned formatting, strict Clippy and rustdoc against the unpacked package |
 | General decoder validation | Python regression suite and `python validation/run-validation.py all` |
 | Independent HT validation | Separate `python validation/run-validation.py htj2k` invocation |
 | Representative process bounds | Separate Linux `python validation/run-validation.py resources` invocation |
@@ -76,6 +77,23 @@ Perform these checks in a clean checkout, regenerate the corpus without
 changing tracked source, and retain source/tool/input/output hash bindings.
 Keep skipped comparisons and unavailable external conformance inputs visible
 rather than presenting them as passed checks.
+
+### External `image` consumer exercise
+
+The repository-only [consumer probe](validation/image-consumer-probe/src/lib.rs)
+uses published `image` 0.25.10 with its built-in codecs disabled. Its dependency
+points to the actual `cargo package` output, not the repository decoder.
+The [CI quality job](.github/workflows/ci.yml) builds that package before running
+the probe. Neither the probe nor `image` is added to the decoder's shipped
+package or default dependency graph.
+
+The probe implements `ImageDecoder` plus opt-in `ImageReader` hooks for a bounded
+opaque grayscale/sRGB JP2 profile. Pixel decoding is deferred until the trait's
+read method; strict `image` dimensions are checked first, and the original codec
+resource limits remain in force. It is not streaming, comprehensive metadata or
+profile support, a global memory bound, an upstream `image` integration, or part
+of the decoder's Verus proof claim. Synthetic fixtures exercise API behavior,
+not official conformance.
 
 ## Conformance evidence
 

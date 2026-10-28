@@ -30,6 +30,7 @@ specs/packet_orchestration.rs
 specs/packet_progression.rs
 specs/packet_tile.rs
 specs/tag_tree.rs
+src/codestream/tests.rs
 src/codestream.rs
 src/color.rs
 src/decode.rs
