@@ -1,4 +1,6 @@
+import copy
 import importlib.util
+import json
 import subprocess
 import sys
 import tempfile
@@ -73,7 +75,7 @@ class ModelReviewHoldTests(unittest.TestCase):
         self.write("specs/AUDIT_REFERENCE.md", "# Existing detail\n")
         result = self.run_controller(self.base, self.commit())
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("PASS: no changes", result.stdout)
+        self.assertIn("PASS: no unapproved changes", result.stdout)
 
     def test_source_change_is_held(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
@@ -176,6 +178,229 @@ class ModelReviewHoldTests(unittest.TestCase):
                 model_review_hold.held_changes(self.repository, self.base, self.base),
                 [name],
             )
+
+
+    def registry(self, entries):
+        directory = tempfile.TemporaryDirectory(prefix="jpeg2000-trusted-registry-")
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "registry.md"
+        path.write_text(
+            "# Trusted fixture\n\n```json\n"
+            + json.dumps({"schema_version": 1, "amendments": entries})
+            + "\n```\n", encoding="utf-8",
+        )
+        return path
+
+    def consumer_fixture(self):
+        workflow = ".github/workflows/ci.yml"
+        self.write(workflow, "jobs: original\n")
+        base = self.commit()
+        for path in model_review_hold.AMENDMENT_PROFILES["image-consumer-probe"]:
+            self.write(path, "checked consumer fixture\n")
+        head = self.commit()
+        entry = {
+            "id": "consumer-fixture",
+            "profile": "image-consumer-probe",
+            "source_pr": 164, "source_head": head, "ci_run": 1, "verus_run": 2,
+            "rationale": "Bounded standalone consumer, not a normative amendment.",
+            "paths": {
+                path: {
+                    "before": self.git("rev-parse", f"{base}:{path}") if path == workflow else None,
+                    "after": self.git("rev-parse", f"{head}:{path}"),
+                }
+                for path in model_review_hold.AMENDMENT_PROFILES["image-consumer-probe"]
+            },
+        }
+        return base, head, entry
+
+    def test_repository_registry_is_valid(self):
+        self.assertIsInstance(
+            model_review_hold.read_reviewed_amendments(CONTROLLER.parent / "reviewed-amendments.md"),
+            list,
+        )
+
+    def test_exact_trusted_record_passes(self):
+        base, head, entry = self.consumer_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_candidate_record_cannot_authorize_its_source(self):
+        base, _, entry = self.consumer_fixture()
+        self.write("validation/reviewed-amendments.md",
+                   "```json\n" + json.dumps({"schema_version": 1, "amendments": [entry]}) + "\n```\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(
+                set(model_review_hold.held_changes(self.repository, base, self.commit())),
+                set(entry["paths"]),
+            )
+
+    def test_registry_only_proposal_can_pass_before_review(self):
+        self.write("validation/reviewed-amendments.md", "proposed policy data\n")
+        self.assertEqual(model_review_hold.held_changes(self.repository, self.base, self.commit()), [])
+
+    def test_documentation_can_repair_invalid_trusted_registry(self):
+        path = self.registry([])
+        path.write_text("invalid trusted data\n", encoding="utf-8")
+        self.write("validation/reviewed-amendments.md", "repaired proposed data\n")
+        with patch.object(model_review_hold, "REGISTRY", path):
+            self.assertEqual(model_review_hold.held_changes(self.repository, self.base, self.commit()), [])
+
+    def test_extra_model_is_held_despite_trusted_consumer_record(self):
+        base, _, entry = self.consumer_fixture()
+        self.write("specs/new.rs", "pub spec fn weakened() -> bool { true }\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertIn("specs/new.rs",
+                          model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_changed_consumer_source_is_held(self):
+        base, _, entry = self.consumer_fixture()
+        path = "validation/image-consumer-probe/src/decoder.rs"
+        self.write(path, "changed consumer\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertIn(path, model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_changed_workflow_is_held(self):
+        base, _, entry = self.consumer_fixture()
+        self.write(".github/workflows/ci.yml", "changed workflow\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertIn(".github/workflows/ci.yml",
+                          model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_missing_consumer_file_is_held(self):
+        base, _, entry = self.consumer_fixture()
+        (self.repository / "validation/image-consumer-probe/Cargo.lock").unlink()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_wrong_original_blob_is_held(self):
+        base, head, entry = self.consumer_fixture()
+        entry["paths"][".github/workflows/ci.yml"]["before"] = "0" * 40
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
+    def test_original_absence_is_required(self):
+        base, head, entry = self.consumer_fixture()
+        self.git("checkout", "-b", "different-original", base)
+        self.write("validation/image-consumer-probe/Cargo.toml", "preexisting\n")
+        other_base = self.commit()
+        for path in entry["paths"]:
+            self.write(path, self.git("show", f"{head}:{path}") + "\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertTrue(model_review_hold.held_changes(self.repository, other_base, self.commit()))
+
+    def test_executable_mode_is_held(self):
+        base, _, entry = self.consumer_fixture()
+        path = "validation/image-consumer-probe/src/decoder.rs"
+        self.git("update-index", "--chmod=+x", path)
+        self.git("commit", "--message", "Change mode")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertIn(path, model_review_hold.held_changes(
+                self.repository, base, self.git("rev-parse", "HEAD")))
+
+    def test_controller_cannot_be_combined_with_authorized_source(self):
+        base, _, entry = self.consumer_fixture()
+        self.write("validation/check-model-review-hold.py", "raise SystemExit(0)\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertIn("validation/check-model-review-hold.py",
+                          model_review_hold.held_changes(self.repository, base, self.commit()))
+
+    def test_separate_records_do_not_authorize_combined_changes(self):
+        base, _, consumer = self.consumer_fixture()
+        paths = model_review_hold.AMENDMENT_PROFILES["source-complete-package"]
+        for path in paths:
+            self.write(path, "package fixture\n")
+        head = self.commit()
+        package = dict(consumer, id="package-fixture", profile="source-complete-package",
+                       source_head=head, paths={
+                           path: {"before": None, "after": self.git("rev-parse", f"{head}:{path}")}
+                           for path in paths
+                       })
+        with patch.object(model_review_hold, "REGISTRY", self.registry([consumer, package])):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
+    def test_malformed_missing_multiple_or_duplicate_json_is_rejected(self):
+        for text in (
+            "no JSON\n", "```json\n{\n```\n",
+            '```json\n{"schema_version":1,"schema_version":1,"amendments":[]}\n```\n',
+            '```json\n{"schema_version":1,"amendments":[]}\n```\n' * 2,
+        ):
+            with self.subTest(text=text):
+                path = self.registry([])
+                path.write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(path)
+
+    def test_record_schema_rejects_flags_unknown_profiles_and_normative_paths(self):
+        _, _, original = self.consumer_fixture()
+        for change in (
+            lambda entry: entry.update(approved=True),
+            lambda entry: entry.pop("ci_run"),
+            lambda entry: entry.update(profile="normative-model"),
+            lambda entry: entry["paths"].update({"specs/new.rs": {"before": None, "after": "a" * 40}}),
+            lambda entry: entry["paths"].update({"validation/check-model-review-hold.py": {"before": None, "after": "a" * 40}}),
+            lambda entry: entry.update(source_pr=True),
+            lambda entry: entry.update(verus_run=0),
+            lambda entry: entry.update(source_head="short"),
+            lambda entry: entry.update(rationale=" "),
+        ):
+            entry = copy.deepcopy(original)
+            change(entry)
+            with self.assertRaises(ValueError):
+                model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_invalid_or_unchanged_blob_identities_are_rejected(self):
+        _, _, original = self.consumer_fixture()
+        path = ".github/workflows/ci.yml"
+        for identities in (
+            {"before": "short", "after": "a" * 40},
+            {"before": None, "after": None},
+            {"before": "a" * 40, "after": "a" * 40},
+            {"before": None, "after": "z" * 40},
+            {"before": None, "after": "a" * 40, "approved": True},
+        ):
+            entry = copy.deepcopy(original)
+            entry["paths"][path] = identities
+            with self.assertRaises(ValueError):
+                model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_invalid_envelopes_and_duplicate_record_ids_are_rejected(self):
+        _, _, entry = self.consumer_fixture()
+        with self.assertRaises(ValueError):
+            model_review_hold.read_reviewed_amendments(self.registry([entry, entry]))
+        for data in (
+            [], {"schema_version": True, "amendments": []},
+            {"schema_version": 2, "amendments": []},
+            {"schema_version": 1, "amendments": {}},
+            {"schema_version": 1, "amendments": [], "approved": True},
+        ):
+            path = self.registry([])
+            path.write_text("```json\n" + json.dumps(data) + "\n```\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                model_review_hold.read_reviewed_amendments(path)
+
+    def test_missing_or_symlink_registry_is_rejected(self):
+        path = self.registry([])
+        missing = path.with_name("missing.md")
+        with self.assertRaises(ValueError):
+            model_review_hold.read_reviewed_amendments(missing)
+        link = path.with_name("linked.md")
+        link.symlink_to(path)
+        with self.assertRaises(ValueError):
+            model_review_hold.read_reviewed_amendments(link)
+
+    def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
+        self.write("src/lib.rs", "pub fn changed() {}\n")
+        head = self.commit()
+        with tempfile.TemporaryDirectory(prefix="jpeg2000-controller-cli-") as directory:
+            controller = Path(directory) / "validation/check-model-review-hold.py"
+            controller.parent.mkdir()
+            controller.write_text(CONTROLLER.read_text(), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(controller), "--repository", str(self.repository),
+                 self.base, head], capture_output=True, text=True,
+            )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("trusted amendment registry must be a regular file", result.stderr)
 
 
 if __name__ == "__main__":
