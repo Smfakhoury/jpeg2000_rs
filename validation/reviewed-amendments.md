@@ -58,9 +58,13 @@ absent original) and `after` (a different blob ID). Evidence identifiers provide
 an audit path; their presence does not certify the evidence. Owner review must
 check the original source-bound results and the mechanical/behavioral argument.
 
-Only the three known engineering profiles in the controller are supported:
-parser-test extraction, the standalone image consumer, and source-inclusive
-packaging. None permits normative model/proof Rust or controller amendments.
+Only bounded engineering path sets declared by the trusted controller are
+supported. The existing records cover parser-test extraction, the standalone
+image consumer and source-inclusive packaging. A proposed
+[decode-support profile authorization](decode-support-profile-authorization.md)
+does not activate its new scope or add a source exception by changing this
+documentation. Normative model/proof targets and controller amendments remain
+outside the source-record profiles.
 Unknown fields/profiles, missing history, malformed trusted data, extra protected
 files and non-regular file modes fail closed.
 
