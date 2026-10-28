@@ -115,3 +115,15 @@ jobs:
             target/validation/packaged-proof/**
           if-no-files-found: warn
           retention-days: 14
+      - name: Upload packaged archive and proof binding
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packaged-verus-validation
+          path: |
+            target/package/*.crate
+            target/validation/packaged-source-inputs.json
+            target/validation/packaged-cargo-verus-output.log
+            target/validation/packaged-proof/**
+          if-no-files-found: warn
+          retention-days: 14
