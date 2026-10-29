@@ -15,6 +15,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-163-b4c6d67` | Adopted through #168; the source-complete package is now owner-merged in #163 | CI40713472934 / Verus40713472868; refreshed source and actual-main qualification are retained in #163 |
 | `proposal-171-ghost-support` | Adopted through #172; the mechanical proof/view relocation is now owner-merged in #171 | CI40730904780 / Verus40729319509; refreshed source and actual-main qualification are retained in #171 |
 | `proposal-174-tier1-tests` | Adopted through #175; private Tier-1 tests are now merged in #174 under explicit owner delegation | CI40772805265 / Verus40772806908; refreshed source and actual-main qualification are retained in #174 |
+| `proposal-177-crate-rename` | Proposed exact owner-requested Cargo package/import/tooling rename; no decoder/model/proof Rust change | #177; original CI40789824278 / Verus40789825409; fresh source checks required after adoption |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -123,6 +124,29 @@ Delegated merges are recorded as delegated, not as independent human approvals.
 Registry publication, visibility/tag changes and history rewriting remain
 separate decisions.
 
+### Proposed publication name
+
+The new #177 record binds exactly the 23 paths in the fixed
+`crate-publication-rename` profile to their original/proposed regular-file blobs.
+Cargo uses `jpeg2000-decoder`; Rust imports and fresh proof reports use
+`jpeg2000_decoder`. Examples, fuzz targets, the actual packaged `image` consumer,
+archive binding, proof collector/schema/tests and related docs follow that name.
+The repository remains `microsoft/jpeg2000_rs`; historical evidence and stable
+validation protocol IDs are not rewritten.
+
+The original source `5d99c8bc42f3ab932c54213519ab49d54880e8ee` passed full CI
+and repository/archive Verus with 294 Python tests without skips, 3,518/0 per
+replay, all 4,554 observed identities retained modulo only the exact requested
+crate prefix, and a 53-file/37-Rust bound archive. Every decoder/model/proof Rust
+byte, dependency version/checksum/pin, default dependency, MSRV and cap is unchanged.
+Old-name and dependency-only proof evidence remains rejected.
+
+This is gate eligibility, not permission to merge a red source PR or publish.
+After separate adoption on trusted main, accept fresh main, normally refresh #177
+and require every fresh source gate and original-artifact audit to pass. The
+owner's explicit engineering delegation permits reviewed normal merges, not
+admin/status overrides or independent normative certification.
+
 An exception must first be proposed in a separate documentation-only PR. All
 required checks on that PR must pass before review is requested. Owner adoption
 of an exact record on `main` authorizes only those original/proposed regular-file
@@ -161,9 +185,10 @@ fixed five-path Tier-1 profile and added no source record. This proposed record
 does not activate itself by changing a feature branch; the existing
 decode-support record cannot authorize Tier-1 cleanup.
 
-The proposed [publication-name profile authorization](crate-rename-profile-authorization.md)
-is a new exact two-file controller operation under that delegation. It does not
-activate a rename scope or source exception by changing this feature branch.
+The #176 [publication-name profile authorization](crate-rename-profile-authorization.md)
+was deployed at `8055a5e9f766a02fb40fd2526dd3ffd96eb96c3d` and accepted from
+fresh actual-main CI and both proof replays. It added only the fixed profile,
+not a source record. This proposed record cannot activate itself on a feature branch.
 
 ```json
 {
@@ -333,6 +358,109 @@ activate a rename scope or source exception by changing this feature branch.
         "validation/tests/test_framework.py": {
           "before": "43da2a6f2e292bef0b9d411f772b59993f39403d",
           "after": "bc1541157dfcb818f70546589e524dfb52d2afff"
+        }
+      }
+    },
+    {
+      "id": "proposal-177-crate-rename",
+      "profile": "crate-publication-rename",
+      "source_pr": 177,
+      "source_head": "5d99c8bc42f3ab932c54213519ab49d54880e8ee",
+      "ci_run": 40789824278,
+      "verus_run": 40789825409,
+      "rationale": "Exact owner-requested package/import/consumer/fuzz/archive/proof-namespace rename. Decoder/model/proof Rust, dependency pins/caps and stable historical evidence unchanged; not registry publication or normative certification.",
+      "paths": {
+        "Cargo.lock": {
+          "before": "8bd2cfd4db859e52593ffef32a436e636f2def4c",
+          "after": "e1529eaee7b468eaedc9b412855ba1c6b7a1943e"
+        },
+        "Cargo.toml": {
+          "before": "d03202f88351757c86268f1f24102e21d0c90410",
+          "after": "5a8932f3becc76671045d98698508fa2c034e7b3"
+        },
+        "examples/validation_decoder.rs": {
+          "before": "95387fb840dbf6e45b915b5eebea7ad866cea11e",
+          "after": "66aa6e451b2566f14627bd47914ca3a56f4eae8a"
+        },
+        "fuzz/Cargo.lock": {
+          "before": "4f1972085a9ebcd9bbbc7c5b34bc54b9d07307c5",
+          "after": "bc77584a72e0be083f5b433263c88b0f7fbfb7d6"
+        },
+        "fuzz/Cargo.toml": {
+          "before": "9d87c468400fe39962a8dc5d6b114f6a6ecbdd84",
+          "after": "eb4e40065b493ed85c831a449c09a62d84257457"
+        },
+        "fuzz/fuzz_targets/arbitrary_codestream.rs": {
+          "before": "07cfc2c1288c6d0ff7ae34a4d71ab0fc90f75d49",
+          "after": "b5c0ee1542c2b710d72bcfe3b09f8392e5de4ffb"
+        },
+        "fuzz/fuzz_targets/arbitrary_jp2.rs": {
+          "before": "90bcf9f45ca56d2151554450339c771744a847e4",
+          "after": "9759038e292013ae4ae09d9851deb9959e59eafb"
+        },
+        "fuzz/fuzz_targets/arbitrary_jpip.rs": {
+          "before": "57bb923b9a6ad3733cee4ff4baf5f33911545c52",
+          "after": "ce72d23c9df8279298a12b8019b0e2e88f706822"
+        },
+        "fuzz/fuzz_targets/arbitrary_mq.rs": {
+          "before": "04513d63730f65aaab15bf7ac5969ec4ac33257b",
+          "after": "cc5fc8190c23a706c43657c3d6ee022737484dab"
+        },
+        "fuzz/fuzz_targets/arbitrary_packet.rs": {
+          "before": "6f2f77cc0e1912920c20aff87c4c5b672a9bffa9",
+          "after": "c260f37812189c02913025548d2098057b995a28"
+        },
+        "fuzz/fuzz_targets/arbitrary_tier1.rs": {
+          "before": "beca6c0bf85136917c9026d0ab37a0432ebae0d5",
+          "after": "36f7676206937b860792f12f838b3bb69992a2ac"
+        },
+        "fuzz/fuzz_targets/structured_framing.rs": {
+          "before": "1ea887095caff78ee553fd920b4e14b30063fd5a",
+          "after": "db1888cc91cc087bc2ec676ffa2d9d23aa5fa9b0"
+        },
+        "fuzz/src/lib.rs": {
+          "before": "7745e45a0c15666771fde85f091d76c4af9f7181",
+          "after": "5c1e2a124a43ff224bd8f0543a4048ee9f2a4b3c"
+        },
+        "validation/check-packaged-source.py": {
+          "before": "80ea00883050923503738b845087122c6f6b4822",
+          "after": "a5bd6e56be8adddde34c4490e5b5e761aa1ee6f3"
+        },
+        "validation/generate-proof-coverage.py": {
+          "before": "08177cbe25df3a089e234adfd1d2443da40f2b30",
+          "after": "b40eb49890b344e6aac81fe6511ee9e5d73fd95d"
+        },
+        "validation/image-consumer-probe/Cargo.lock": {
+          "before": "491fa432326017b6eb284354ebc9fbf595c5f56f",
+          "after": "0b6972accafa836b8390e4130f194073998fde2b"
+        },
+        "validation/image-consumer-probe/Cargo.toml": {
+          "before": "1735ac1955818412f4b4f266d080f0c418d137aa",
+          "after": "78c53f83fbd2a5ad79c917f4427a249d235a9f49"
+        },
+        "validation/image-consumer-probe/src/decoder.rs": {
+          "before": "e8c36bb5ac7b5b12612fbc85163f44768e6eaa7c",
+          "after": "07980025e18ebb70c88bb58c98564cee14d5c8a4"
+        },
+        "validation/image-consumer-probe/src/lib.rs": {
+          "before": "40c4eff6e40c9b647ac4ec1e12a295cb956d8060",
+          "after": "a149c2e239f2ea62e175ddb249066c536533b8b6"
+        },
+        "validation/image-consumer-probe/tests/adapter.rs": {
+          "before": "1eeb94542c3e000b2bc6631198437389eb8c2cea",
+          "after": "7470c1831535c9f5afd1e96c1a31b004c542fc67"
+        },
+        "validation/proof-coverage.schema.json": {
+          "before": "e806b5dcdc2afd5ab8f861a9561e1a4b6d87701b",
+          "after": "f73baf7545c4ed6445a37e4d7eff6babeed8d11b"
+        },
+        "validation/tests/test_packaged_source.py": {
+          "before": "e48ca2c8f14499be0c40c00c31b5aa189544053c",
+          "after": "45fd740d605cebb4cd5044592668bfc48f4411b3"
+        },
+        "validation/tests/test_proof_coverage.py": {
+          "before": "76026ec16c80b96f29971d4a859ee7aed0a4e609",
+          "after": "b1132139e7adce6620fab222198ecc7ff5ba043c"
         }
       }
     }
