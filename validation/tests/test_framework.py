@@ -573,20 +573,20 @@ class FrameworkTests(WorkingFiles):
         )
         read_text = Path.read_text
         for relative, symbol, projection, model, arguments in (
-            ("src/decode.rs", "copy_typed_component", "crate::image::typed_component_output",
+            ("src/decode/output.rs", "copy_typed_component", "crate::image::typed_component_output",
              "part2_typed_component_copy", (
                 ("typed_component_output_view(source)", "typed_component_output_view(unrelated)"),
             )),
-            ("src/decode.rs", "map_palette_component", "crate::image::typed_component_output",
+            ("src/decode/output.rs", "map_palette_component", "crate::image::typed_component_output",
              "part2_palette_component", (
                 ("typed_component_view(source)", "typed_component_view(unrelated)"),
                 ("palette_view(palette)", "palette_view(unrelated)"),
                 ("palette), column", "palette), 0"),
             )),
-            ("src/decode.rs", "palette_modulus", None, "part2_palette_modulus", (
+            ("src/decode/output.rs", "palette_modulus", None, "part2_palette_modulus", (
                 ("part2_palette_modulus(precision)", "part2_palette_modulus(0)"),
             )),
-            ("src/decode.rs", "invalid_jp2_output", None, "part2_color_input_error", ()),
+            ("src/decode/output.rs", "invalid_jp2_output", None, "part2_color_input_error", ()),
             ("src/image.rs", "typed_component_from_parts", "typed_component_value_view",
              "part2_typed_component_from_parts", (
                 ("width, height, info", "height, width, info"),
@@ -1108,7 +1108,23 @@ class FrameworkTests(WorkingFiles):
             if reference["symbol"] == "prepared_tile_views"
         ]
         self.assertTrue(retained)
-        self.assertTrue(all(reference["path"] == "src/decode.rs" for reference in retained))
+        self.assertTrue(all(reference["path"] == "src/decode/reconstruction.rs" for reference in retained))
+
+    def test_decoder_child_module_requires_the_actual_cross_module_caller(self):
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        entry = next(item for item in coverage["requirements"]
+                     if item["id"] == "part2-complete-native-tile-component-geometry")
+        coverage["requirements"] = [entry]
+        entry["contract_refs"] = [{
+            "path": "src/decode/arithmetic.rs", "symbol": "registered_ceil_div_u32",
+        }]
+        entry["implementation_refs"] = [{
+            "path": "src/decode/api.rs", "symbol": "nonlinear_component_extent",
+        }]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        entry["implementation_refs"][0]["symbol"] = "decode_codestream"
+        with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+            framework.validate_normative_coverage(coverage)
 
     def _assert_relocated_test_bindings(self, entry_id, original_path, moved_path):
         coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
@@ -1314,11 +1330,11 @@ class FrameworkTests(WorkingFiles):
              (("value, divisor", "divisor, value"), ("value, divisor", "value, 0"))),
             ("src/transform.rs", "round_shift_i128", None, "part2_atk_round_shift",
              (("value, shift", "value, 0"), ("value, shift", "0, shift"))),
-            ("src/decode.rs", "prepare_tile_component_with_kernel", "prepared_component_outcome", "part2_prepare_component",
+            ("src/decode/reconstruction.rs", "prepare_tile_component_with_kernel", "prepared_component_outcome", "part2_prepare_component",
              (("prepare_plan_view(plan)", "prepare_plan_view(unrelated)"), ("prepare_precincts_view(precincts@)", "prepare_precincts_view(unrelated@)"), ("arbitrary_kernel_option(kernel)", "arbitrary_kernel_option(None)"), ("resource_decoded_bytes_limit(limits)", "resource_decoded_bytes_limit(unrelated)"))),
-            ("src/decode.rs", "reconstruct_prepare_working", "prepare_fold_outcome", "part2_prepare_reconstruct",
+            ("src/decode/reconstruction.rs", "reconstruct_prepare_working", "prepare_fold_outcome", "part2_prepare_reconstruct",
              (("working_bands_view(working@)", "working_bands_view(unrelated@)"), ("arbitrary_kernel_option(kernel)", "arbitrary_kernel_option(None)"), ("reversible,", "true,"))),
-            ("src/decode.rs", "reconstruct_prepare_resolution", "prepare_fold_outcome", "part2_prepare_resolution",
+            ("src/decode/reconstruction.rs", "reconstruct_prepare_resolution", "prepare_fold_outcome", "part2_prepare_resolution",
              (("before@", "unrelated@"), ("plan.subbands@", "unrelated@"), ("direction, reversible", "direction, true"), ("arbitrary_kernel_option(kernel)", "arbitrary_kernel_option(None)"))),
         )
         self.assertEqual(len(cases), 21)
@@ -1380,22 +1396,22 @@ class FrameworkTests(WorkingFiles):
             ("src/codestream.rs", "ImageSize::tile_count", None, "part2_selection_tile_count", ("selection_geometry_view(&self)", "selection_geometry_view(unrelated)")),
             ("src/codestream.rs", "ImageSize::tile_bounds", None, "part2_selection_tile_bounds", ("self), tile_index", "self), 0")),
             ("src/options.rs", "selection_from_parts", "decode_selection_value_view", "part2_selection_from_parts", ("region, discard_levels", "region, 0")),
-            ("src/decode.rs", "ceil_div_u32", None, "part2_selection_ceil", ("value, divisor", "divisor, value")),
-            ("src/decode.rs", "tile_list_contains", None, "part2_tile_list_contains", ("tiles@, tile", "unrelated@, tile")),
-            ("src/decode.rs", "selection_rectangle_area", None, "part2_rectangle_area", ("part2_rectangle_area(bounds)", "part2_rectangle_area(unrelated)")),
-            ("src/decode.rs", "validate_explicit_tile_indices", None, "part2_explicit_tile_prefix", ("explicit_tiles@.len()", "0")),
-            ("src/decode.rs", "validate_selection_tile_rectangle", None, "part2_validate_tile_rectangle", ("explicit_tiles@, tiles_across", "explicit_tiles@, 0")),
-            ("src/decode.rs", "validate_selection_rectangle_cells", None, "part2_rectangle_rows", ("bounds.2 as nat - bounds.0 as nat + 1", "bounds.3 as nat - bounds.1 as nat + 1")),
-            ("src/decode.rs", "selection_region", "selection_region_outcome", "part2_selection_region", ("requested, image_x1, image_y1", "requested, image_y1, image_x1")),
-            ("src/decode.rs", "select_intersecting_tiles", "selected_tiles_outcome", "part2_select_intersecting_tiles", ("region@, tile_count", "unrelated@, tile_count")),
-            ("src/decode.rs", "explicit_tiles_from_selection", "selected_tiles_outcome", "part2_selection_explicit", ("tile_selection_view(selection)", "tile_selection_view(unrelated)")),
-            ("src/decode.rs", "validate_selection", "validated_selection_outcome", "part2_validate_selection", ("decode_selection_view(selection)", "decode_selection_view(unrelated)")),
-            ("src/decode.rs", "color_selection_from_validated", "color_selection_outcome", "part2_color_selection_context", ("size.x_origin, size.y_origin", "size.y_origin, size.x_origin")),
-            ("src/decode.rs", "color_selection_for_size", "color_selection_outcome", "part2_color_selection_requested", ("decode_selection_view(requested)", "decode_selection_view(unrelated)")),
-            ("src/decode.rs", "apply_associated_output", "associated_typed_outcome", "part2_apply_associated_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
-            ("src/decode.rs", "convert_associated_color", "crate::color::converted_image_result", "part2_convert_associated", ("typed_image_value_view(*image)", "typed_image_value_view(*unrelated)")),
-            ("src/decode.rs", "convert_associated_selected_color", "crate::color::converted_image_result", "part2_convert_associated_selected", ("header), target", "header), unrelated")),
-            ("src/decode.rs", "finish_associated_selected_output", "crate::color::converted_image_result", "part2_finish_associated_selected_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
+            ("src/decode/arithmetic.rs", "ceil_div_u32", None, "part2_selection_ceil", ("value, divisor", "divisor, value")),
+            ("src/decode/selection.rs", "tile_list_contains", None, "part2_tile_list_contains", ("tiles@, tile", "unrelated@, tile")),
+            ("src/decode/selection.rs", "selection_rectangle_area", None, "part2_rectangle_area", ("part2_rectangle_area(bounds)", "part2_rectangle_area(unrelated)")),
+            ("src/decode/selection.rs", "validate_explicit_tile_indices", None, "part2_explicit_tile_prefix", ("explicit_tiles@.len()", "0")),
+            ("src/decode/selection.rs", "validate_selection_tile_rectangle", None, "part2_validate_tile_rectangle", ("explicit_tiles@, tiles_across", "explicit_tiles@, 0")),
+            ("src/decode/selection.rs", "validate_selection_rectangle_cells", None, "part2_rectangle_rows", ("bounds.2 as nat - bounds.0 as nat + 1", "bounds.3 as nat - bounds.1 as nat + 1")),
+            ("src/decode/selection.rs", "selection_region", "selection_region_outcome", "part2_selection_region", ("requested, image_x1, image_y1", "requested, image_y1, image_x1")),
+            ("src/decode/selection.rs", "select_intersecting_tiles", "selected_tiles_outcome", "part2_select_intersecting_tiles", ("region@, tile_count", "unrelated@, tile_count")),
+            ("src/decode/selection.rs", "explicit_tiles_from_selection", "selected_tiles_outcome", "part2_selection_explicit", ("tile_selection_view(selection)", "tile_selection_view(unrelated)")),
+            ("src/decode/selection.rs", "validate_selection", "validated_selection_outcome", "part2_validate_selection", ("decode_selection_view(selection)", "decode_selection_view(unrelated)")),
+            ("src/decode/output.rs", "color_selection_from_validated", "color_selection_outcome", "part2_color_selection_context", ("size.x_origin, size.y_origin", "size.y_origin, size.x_origin")),
+            ("src/decode/output.rs", "color_selection_for_size", "color_selection_outcome", "part2_color_selection_requested", ("decode_selection_view(requested)", "decode_selection_view(unrelated)")),
+            ("src/decode/output.rs", "apply_associated_output", "associated_typed_outcome", "part2_apply_associated_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
+            ("src/decode/output.rs", "convert_associated_color", "crate::color::converted_image_result", "part2_convert_associated", ("typed_image_value_view(*image)", "typed_image_value_view(*unrelated)")),
+            ("src/decode/output.rs", "convert_associated_selected_color", "crate::color::converted_image_result", "part2_convert_associated_selected", ("header), target", "header), unrelated")),
+            ("src/decode/output.rs", "finish_associated_selected_output", "crate::color::converted_image_result", "part2_finish_associated_selected_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
             ("src/jp2.rs", "associated_header_for_codestream", "associated_header_outcome", "part2_associated_codestream_header", ("associated_header_view(fallback)", "associated_header_view(unrelated)")),
             ("src/jp2.rs", "validate_container_codestream", None, "part2_validate_selected_header", ("header.image, codestream.image_size.width", "header.image, 0")),
             ("src/jp2.rs", "validate_selected_header", None, "part2_validate_selected_header", ("codestream.image_size.uniform_signed, offset", "codestream.image_size.uniform_signed, 0")),
@@ -1667,7 +1683,7 @@ class FrameworkTests(WorkingFiles):
         )
         read_text = Path.read_text
         for relative, symbol, projection, model, arguments in (
-            ("src/decode.rs", "apply_jp2_output", "crate::image::decoded_typed_image_outcome",
+            ("src/decode/output.rs", "apply_jp2_output", "crate::image::decoded_typed_image_outcome",
              "part2_apply_output_header", (
                 ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)"),
                 ("output_header_view(header)", "output_header_view(unrelated)"),
@@ -1819,7 +1835,7 @@ class FrameworkTests(WorkingFiles):
             item for item in original_coverage["requirements"]
             if item["id"] == "part1-complete-standard-plan-coordinator"
         )
-        conditional = {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"}
+        conditional = {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"}
         self.assertNotIn(conditional, entry["contract_refs"])
         self.assertIn(conditional, entry["implementation_refs"])
         conditional_coverage = copy.deepcopy(original_coverage)
@@ -1828,7 +1844,7 @@ class FrameworkTests(WorkingFiles):
         with self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
             framework.validate_normative_coverage(conditional_coverage)
         read_text = Path.read_text
-        source = framework.ROOT / "src/decode.rs"
+        source = framework.ROOT / "src/decode/reconstruction.rs"
         original = source.read_text()
         for symbol, projection, model, arguments in (
             ("prepare_tile_component", "prepared_component_outcome", "part1_prepare_standard_component", (
@@ -1868,7 +1884,7 @@ class FrameworkTests(WorkingFiles):
         ):
             coverage = copy.deepcopy(original_coverage)
             coverage["requirements"] = [copy.deepcopy(entry)]
-            reference = {"path": "src/decode.rs", "symbol": symbol}
+            reference = {"path": "src/decode/reconstruction.rs", "symbol": symbol}
             self.assertIn(reference, entry["contract_refs"])
             coverage["requirements"][0]["contract_refs"] = [reference]
             self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
@@ -2425,7 +2441,7 @@ class FrameworkTests(WorkingFiles):
         ]
         self.assertEqual(len(coverage["requirements"]), 1)
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
-        source = framework.ROOT / "src/decode.rs"
+        source = framework.ROOT / "src/decode/output.rs"
         read_text = Path.read_text
         original = source.read_text()
         end = re.search(r"\bfn\s+convert_selected_color\b", original).start()

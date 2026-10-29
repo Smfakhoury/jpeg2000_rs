@@ -45,15 +45,23 @@ Private parser, Tier-1 and decoder tests live in
 [codestream/tests.rs](src/codestream/tests.rs),
 [tier1/tests.rs](src/tier1/tests.rs), and
 [decode/tests.rs](src/decode/tests.rs). They remain `cfg(test)` child modules with
-the same private access; production bodies, contracts and proofs stay in their
-original modules.
+the same private access and test identities.
 
-The reconstruction proof/view support in
+The [decoder facade](src/decode.rs) keeps shared types and public re-exports.
+Real Rust child modules separate geometry, planning, reconstruction, execution,
+selection, output mapping and public entry points; see the
+[responsibility map](README.md#repository-layout). Existing public paths remain
+available. Function bodies, attached contracts and loop invariants move together.
+Only private helper visibility expands to the enclosing decoder module where
+required; no private fields become public.
+
+The shared decoder proof/view support in
 [src/decode/proof_support.rs](src/decode/proof_support.rs) is included into the
 existing `decode` module only under `verus_keep_ghost`. It contains no executable
-decoder alternative. Executable bodies, attached contracts and loop invariants
-remain in the same source; the support declarations retain their visibility and
-open/closed semantics.
+decoder alternative. Its declarations retain their root logical namespace,
+visibility and open/closed semantics. Executable definitions now have real child
+module namespaces: fresh verifier evidence must bind those actual names, not
+silently rewrite old reports. Old source-bound records remain historical.
 
 Verus-only attributes and modules are enabled with `verus_keep_ghost`:
 

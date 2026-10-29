@@ -59,7 +59,7 @@ Think of the decoder as a sequence of jobs:
 | Packets | Work out which pieces of compressed data are present and in what order to process them. | [Packet code](../src/packet.rs), [packet models](packet.rs) |
 | Coefficients and arithmetic | Recover coefficient signs and magnitudes using legacy coding or HTJ2K, without losing high bits. | [Tier-1 code](../src/tier1.rs), [integer arithmetic](../src/magnitude.rs) |
 | Transforms | Undo quantization and wavelet/component transforms to rebuild sample values. | [Transform code](../src/transform.rs), [mathematical models](mod.rs) |
-| Channels and color | Interpret palettes and channel mappings, then perform supported color conversions. | [Color code](../src/color.rs), [sample processing](../src/decode.rs) |
+| Channels and color | Interpret palettes and channel mappings, then perform supported color conversions. | [Color code](../src/color.rs), [sample processing](../src/decode/output.rs) |
 | Layers and frames | Combine prepared layers into output frames. | [JPX code](../src/jpx.rs), [composition models](mod.rs) |
 
 This is a map of responsibilities, not a claim that one theorem connects the

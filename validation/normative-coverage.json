@@ -1034,10 +1034,10 @@
       "id": "part2-complete-native-full-selected-typed-layout-decoding",
       "topic": "Complete actual full/selected raw parsed-layout/request/limits/input-length to final TypedImage Result, every geometry/descriptor/sample/channel-definition field and first error. Actual decode_layout/selected derives decoded images from genuine tile bytes/plans/metadata/empty state, then real typed conversion, source-owned nonlinear regions and complete owner mutation, then final output-shape admission compose in original order. No supplied decoded/typed/region/sample/result banks, normalized layout, successful admission/coverage/budget premises or callback. Public raw codestream entry points still execute actual byte parser first and call the sole private body. Actual compressed-byte parser functional Result, file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_codestream"},
-        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_typed_layout"},
-        {"path": "src/decode.rs", "symbol": "typed_layout"}
+        {"path": "src/decode/api.rs", "symbol": "decode_codestream"},
+        {"path": "src/decode/api.rs", "symbol": "decode_codestream_selected"},
+        {"path": "src/decode/api.rs", "symbol": "decode_typed_layout"},
+        {"path": "src/decode/api.rs", "symbol": "typed_layout"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_typed_layout"},
@@ -1050,16 +1050,16 @@
         {"path": "specs/mod.rs", "symbol": "part1_validate_typed_output_shape"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_typed_layout"},
-        {"path": "src/decode.rs", "symbol": "typed_layout"}
+        {"path": "src/decode/api.rs", "symbol": "decode_typed_layout"},
+        {"path": "src/decode/api.rs", "symbol": "typed_layout"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
         {"path": "src/image.rs", "symbol": "DecodedImage::typed"},
-        {"path": "src/decode.rs", "symbol": "collect_nonlinear_regions"},
+        {"path": "src/decode/api.rs", "symbol": "collect_nonlinear_regions"},
         {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
-        {"path": "src/decode.rs", "symbol": "validate_part1_output_shape"},
+        {"path": "src/decode/api.rs", "symbol": "validate_part1_output_shape"},
         {"path": "src/image.rs", "symbol": "decoded_typed_image_outcome"}
       ],
       "test_refs": [
@@ -1070,7 +1070,7 @@
       "id": "part2-complete-native-nonlinear-owner-mutation",
       "topic": "Complete actual TypedImage and TypedComponent nonlinear region Result/final owner fields on success AND failure, from real raw typed samples/region transforms/limits and derived None scratch/target/work. Actual component body preserves selected-region/rectangle/descriptor/duplicate/read/scalar-before-work order, original per-component byte-before-coverage/conversion policy, all metadata and committed component prefix on errors. No decoded/sample/scratch/result banks, normalized image/region premises, precomputed source coverage or budget success. All bounds/frames/termination derive internally; shared proved checked index/work bodies retain original operations. Genuine typed_layout invokes the sole image body and real component producer. Whole typed/parser/file/F2/F4/final F8 and hosted/main/publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "typed_layout"},
+        {"path": "src/decode/api.rs", "symbol": "typed_layout"},
         {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"},
         {"path": "src/image.rs", "symbol": "TypedComponent::apply_nonlinear_regions"}
       ],
@@ -1101,7 +1101,7 @@
         {"path": "src/image.rs", "symbol": "typed_image_value_view"},
         {"path": "src/image.rs", "symbol": "typed_component_view"},
         {"path": "src/image.rs", "symbol": "nlt_scratch_view"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_regions_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "nonlinear_regions_view"},
         {"path": "src/image.rs", "symbol": "inverse_nlt_sample"},
         {"path": "src/image.rs", "symbol": "index"},
         {"path": "src/image.rs", "symbol": "charge_mct_work"},
@@ -1271,9 +1271,9 @@
       "id": "part2-complete-native-nonlinear-region-production",
       "topic": "Complete actual nonlinear transform selection, registered output metadata and full raw layout/image to ordered nonlinear regions Result. First component-specific transform precedes first default; last matching tile-part owner replaces main metadata even when empty. Preserve component-before-tile traversal, all metadata/check/narrowing order, lazy tile geometry only with a selected transform, clipping and every raw transform field. Prove all frames/bounds internally, no normalized metadata, supplied regions/transforms/results or success premises. Sole extracted bodies are used by actual typed_layout with original allocation and error policy. Nonlinear sample execution, final typed/raw parser/file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "typed_layout"},
-        {"path": "src/decode.rs", "symbol": "collect_nonlinear_regions"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_component_extent"},
+        {"path": "src/decode/api.rs", "symbol": "typed_layout"},
+        {"path": "src/decode/api.rs", "symbol": "collect_nonlinear_regions"},
+        {"path": "src/decode/api.rs", "symbol": "nonlinear_component_extent"},
         {"path": "src/image.rs", "symbol": "TypedImage::apply_nonlinear_regions"}
       ],
       "spec_refs": [
@@ -1289,17 +1289,17 @@
       ],
       "contract_refs": [
         {"path": "src/codestream.rs", "symbol": "Part2Extensions::nonlinear_transform_for"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_component_extent"},
-        {"path": "src/decode.rs", "symbol": "collect_nonlinear_regions"}
+        {"path": "src/decode/api.rs", "symbol": "nonlinear_component_extent"},
+        {"path": "src/decode/api.rs", "symbol": "collect_nonlinear_regions"}
       ],
       "proof_refs": [
         {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},
         {"path": "src/codestream.rs", "symbol": "owned_extensions_view"},
         {"path": "src/codestream.rs", "symbol": "nonlinear_transform_option_view"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_region_view"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_regions_view"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_regions_outcome"},
-        {"path": "src/decode.rs", "symbol": "registered_ceil_div_u32"}
+        {"path": "src/decode/proof_support.rs", "symbol": "nonlinear_region_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "nonlinear_regions_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "nonlinear_regions_outcome"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "registered_ceil_div_u32"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_nonlinear_lookup_preserves_first_specific_then_first_default_and_all_raw_fields"},
@@ -1310,9 +1310,9 @@
       "id": "part1-complete-native-typed-output-shape-admission",
       "topic": "Complete actual final typed output-shape Result from raw input length, actual layout counts and actual typed image. Preserve header-before-components admission, strict positive extents/counts, exact component count and row/area checks for signed or unsigned sequences without multiplying or inspecting sample values/descriptors/origins/definitions. All iteration/read/arithmetic bounds derive internally; no valid-image or successful-decoder premise. Both actual raw codestream entry points consume this sole body. Typed nonlinear finalization, byte parser, file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_codestream"},
-        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_typed_layout"}
+        {"path": "src/decode/api.rs", "symbol": "decode_codestream"},
+        {"path": "src/decode/api.rs", "symbol": "decode_codestream_selected"},
+        {"path": "src/decode/api.rs", "symbol": "decode_typed_layout"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part1_validate_typed_output_shape"},
@@ -1321,7 +1321,7 @@
         {"path": "specs/mod.rs", "symbol": "part1_component_output_shape_valid"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "validate_part1_output_shape"}
+        {"path": "src/decode/api.rs", "symbol": "validate_part1_output_shape"}
       ],
       "proof_refs": [
         {"path": "src/image.rs", "symbol": "typed_image_value_view"},
@@ -1337,9 +1337,9 @@
       "id": "part2-complete-native-full-selected-layout-decoding",
       "topic": "Complete actual decode_layout and decode_layout_selected Result/all decoded image dimensions/origins/component descriptors/coordinates/fraction/sample fields from raw actual CodestreamLayout/request/limits. Actual Part2 admission then tile count/cap65536 or actual selection validation, genuine source-derived cloned tile collection, real raw per-tile metadata/policy/plan/account/byte/reconstruction from empty accumulation and real full/selected image assembly compose in source order. Complete raw owned observations carry clones without opaque allocation identity or copy/result witnesses; no normalized layout, supplied decoded components/plans/callbacks/banks or success/budget premises. All counters/work/selection/error/allocation policy and every loop bound/frame derive internally. Actual public codestream callers use sole bodies. Raw parser/typed final/file/F2/F4/final F8 and hosted/main/publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_codestream"},
-        {"path": "src/decode.rs", "symbol": "decode_codestream_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_typed_layout"}
+        {"path": "src/decode/api.rs", "symbol": "decode_codestream"},
+        {"path": "src/decode/api.rs", "symbol": "decode_codestream_selected"},
+        {"path": "src/decode/api.rs", "symbol": "decode_typed_layout"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_layout"},
@@ -1355,17 +1355,17 @@
         {"path": "specs/mod.rs", "symbol": "part2_assemble_prepared"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "layout_accumulation_view"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_execution"},
-        {"path": "src/decode.rs", "symbol": "validate_selection"},
-        {"path": "src/decode.rs", "symbol": "validated_selection_view"},
-        {"path": "src/decode.rs", "symbol": "collect_tile_parts"},
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
-        {"path": "src/decode.rs", "symbol": "assemble_prepared_components"},
+        {"path": "src/decode/proof_support.rs", "symbol": "layout_accumulation_view"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_execution"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection"},
+        {"path": "src/decode/proof_support.rs", "symbol": "validated_selection_view"},
+        {"path": "src/decode/execution.rs", "symbol": "collect_tile_parts"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "assemble_prepared_components"},
         {"path": "src/codestream.rs", "symbol": "tile_parts_owned_view"}
       ],
       "test_refs": [
@@ -1376,8 +1376,8 @@
       "id": "part2-complete-native-owned-payload-semantics",
       "topic": "Complete raw owned payload observations are now the mathematical codec operands, derived from actual source data rather than normalized inputs. Existing Native payload model entries remain thin raw-observation wrappers over the same single owned-data algorithm; actual Rust decoder/public API/bytes/style/selection/budgets/error behavior remain unchanged. Proved actual metadata, F5 byte execution and whole raw-tile outputs are invariant under complete raw observed copies, not opaque allocation identity. Real collector and Clone producers establish those data equalities, so no supplied copy/plan/decoded result witness bank is needed. Exact existing native contract bindings retained; whole outer layout/raw parser/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_at"},
@@ -1391,7 +1391,7 @@
         {"path": "specs/packet_tile.rs", "symbol": "part1_progression_payloads_owned"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"}
       ],
       "proof_refs": [
         {"path": "proofs/spec_properties/mod.rs", "symbol": "tile_metadata_ignores_owned_allocation_identity"},
@@ -1410,9 +1410,9 @@
       "id": "part2-complete-native-owned-tile-collection",
       "topic": "Complete actual same-order owned TilePartPayload copy and ordered per-tile source collection: every raw copy/quantization/progression/MCT/Part2/kernel/nonlinear/registration/length/header/flag/data field derives from original actual owners. Actual manual Clone bodies retain former derived field order and same Vec/Option clone operations; no defaults, normalized metadata, allocation identity claim, assumed clone or successful result bank. Collector clones EVERY original source part before filtering, preserving actual allocation/error/duplicate order and unused invalid fields. Both actual layout paths use sole collector. Complete logical observations, not opaque allocation identity; whole layout/raw-parser/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
-        {"path": "src/decode.rs", "symbol": "collect_tile_parts"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "collect_tile_parts"},
         {"path": "src/codestream.rs", "symbol": "Part2Extensions::clone"},
         {"path": "src/codestream.rs", "symbol": "ArbitraryKernel::clone"},
         {"path": "src/codestream.rs", "symbol": "KernelLiftingStep::clone"},
@@ -1427,7 +1427,7 @@
       ],
       "contract_refs": [
         {"path": "src/codestream.rs", "symbol": "TilePartPayload::clone"},
-        {"path": "src/decode.rs", "symbol": "collect_tile_parts"}
+        {"path": "src/decode/execution.rs", "symbol": "collect_tile_parts"}
       ],
       "proof_refs": [
         {"path": "src/codestream.rs", "symbol": "tile_part_owned_view"},
@@ -1439,7 +1439,7 @@
         {"path": "src/codestream.rs", "symbol": "owned_nonlinear_view"},
         {"path": "src/codestream.rs", "symbol": "owned_decomposition_view"},
         {"path": "src/codestream.rs", "symbol": "owned_arbitrary_decomposition_view"},
-        {"path": "src/decode.rs", "symbol": "collected_tile_parts_outcome"}
+        {"path": "src/decode/proof_support.rs", "symbol": "collected_tile_parts_outcome"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_owned_tile_part_clone_preserves_every_raw_field_and_independent_nested_buffers"},
@@ -1450,8 +1450,8 @@
       "id": "part2-complete-native-raw-tile-decoding",
       "topic": "Complete actual per-tile decoder Result/all prepared component/coordinate/extent/fraction/sample fields, global packet/precinct/codeblock counters and MCT work from raw tile-part bytes/metadata, image/tile/profile/full-or-discard mode, limits and owned prior accumulation. Actual first/MCT/kernel/style preparation and raw profile policy derive actual raw-owner plan/grid/decoder/placement vectors, exact accounting, actual F5 byte execution and real F6/F7 reconstruction. No supplied plan, decoded-plane/sample/reconstruction outcomes, normalized metadata or success/budget premise. Existing prepared prefix is transport only and new tile samples are computed internally. Both actual full/selected layout callers execute sole producer; tile collection/clone, whole-layout/selection/raw parser/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_tile_parts_at"},
@@ -1464,15 +1464,15 @@
         {"path": "specs/mod.rs", "symbol": "part2_profile_force_ht"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "decoded_layout_tile_view"},
-        {"path": "src/decode.rs", "symbol": "decoded_layout_tile_outcome"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"},
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "account_planned_tile"},
-        {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"},
+        {"path": "src/decode/proof_support.rs", "symbol": "decoded_layout_tile_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "decoded_layout_tile_outcome"},
+        {"path": "src/decode/execution.rs", "symbol": "prepare_tile_decode_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "account_planned_tile"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_planned_tile_components"},
         {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"},
         {"path": "src/codestream.rs", "symbol": "CodestreamProfile::part15_allows_multiple_ht_sets"},
         {"path": "src/codestream.rs", "symbol": "CodestreamProfile::part15_magnitude_bound"},
@@ -1486,9 +1486,9 @@
       "id": "part2-complete-native-ht-profile-policy",
       "topic": "Complete actual CAP part lookup/part15 word/block-mode/multiple-set/magnitude and actual codestream HT policy from raw p_cap/physical c_capabilities/optional profile owners. Retain all-u8 part admission, raw bit rank and physical lookup, absent/ragged defaults, invalid-mode nonvalidation, multiple-set bit and low-five-bit magnitude mapping, default bound74 and builtin mode classification. Unused r_siz/block-coding/profile words do not normalize or override raw CAP. Both real layout decoders consume exact getters before actual plan generation; no parsed policy/result bank, normalized CAP or successful premise. Tile collection/clone, whole raw layout/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"},
         {"path": "src/codestream.rs", "symbol": "ExtendedCapabilities::part15_value"},
         {"path": "src/codestream.rs", "symbol": "ExtendedCapabilities::part15_block_mode"},
         {"path": "src/codestream.rs", "symbol": "ExtendedCapabilities::part15_allows_multiple_ht_sets"},
@@ -1531,12 +1531,12 @@
       "id": "part2-complete-native-tile-decode-metadata",
       "topic": "Complete actual raw tile-part/component-count/full-or-discard mode to real first payload, exact MCT consistency, actual builtin/arbitrary-kernel transform choice and ordered full-first-three style agreement or selected all-component isotropic/reduction counts. Real MCT array/collection/stage/transform identity binds every raw field, not normalized numeric equivalence; optional None differs from an empty graph. Exact maximum isotropic prefix truncates/lazily stops at physical32; decoder wavelet agreement deliberately accepts only equal builtins, not equal arbitrary indices. Preserve first-before-MCT-before-kernel-before-style/reduction errors, kernel lookup even when MCT flag is false, checked-u8 level advancement before subtraction and all unused fields. Both real layout callers share sole producers; no supplied equality/kernel/metadata/results or successful premises. Whole tile collection/layout/selection/file/F2/F4/final F8 and publication remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_resolutions"},
-        {"path": "src/decode.rs", "symbol": "optional_multiple_component_transforms_equal"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"},
+        {"path": "src/decode/execution.rs", "symbol": "prepare_tile_decode_metadata"},
+        {"path": "src/decode/execution.rs", "symbol": "prepare_tile_component_resolutions"},
+        {"path": "src/decode/execution.rs", "symbol": "optional_multiple_component_transforms_equal"},
         {"path": "src/codestream.rs", "symbol": "MctCollection::equals"},
         {"path": "src/codestream.rs", "symbol": "MctStage::equals"},
         {"path": "src/codestream.rs", "symbol": "MultipleComponentTransform::equals"}
@@ -1561,15 +1561,15 @@
         {"path": "src/codestream.rs", "symbol": "MctStage::equals"},
         {"path": "src/codestream.rs", "symbol": "MultipleComponentTransform::equals"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::maximum_isotropic_reduction"},
-        {"path": "src/decode.rs", "symbol": "optional_multiple_component_transforms_equal"},
-        {"path": "src/decode.rs", "symbol": "wavelet_transforms_equal"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_resolutions"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_decode_metadata"}
+        {"path": "src/decode/execution.rs", "symbol": "optional_multiple_component_transforms_equal"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "wavelet_transforms_equal"},
+        {"path": "src/decode/execution.rs", "symbol": "prepare_tile_component_resolutions"},
+        {"path": "src/decode/execution.rs", "symbol": "prepare_tile_decode_metadata"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "tile_decode_metadata_view"},
-        {"path": "src/decode.rs", "symbol": "tile_decode_metadata_outcome"},
-        {"path": "src/decode.rs", "symbol": "resolution_counts_outcome_for_tile"},
+        {"path": "src/decode/proof_support.rs", "symbol": "tile_decode_metadata_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "tile_decode_metadata_outcome"},
+        {"path": "src/decode/proof_support.rs", "symbol": "resolution_counts_outcome_for_tile"},
         {"path": "src/decode/proof_support.rs", "symbol": "tile_part_mct_view"},
         {"path": "src/codestream.rs", "symbol": "mct_array_view"},
         {"path": "src/codestream.rs", "symbol": "mct_collection_view"},
@@ -1591,10 +1591,10 @@
       "id": "part2-complete-native-layout-accounting",
       "topic": "Complete actual full/selected post-plan global packet/precinct/codeblock accounting Result/all counters from raw complete plan, raw optional resolution counts, arbitrary prior counters and actual limits. Preserve selected-grid admission before packet sum/limit, full grid versus selected plan-style layer division, precinct sum/limit, full per-component placement-length codeblock checks versus selected raw placement/subband resolution lookup/count and final-only check. Empty-component and unused-field laziness, malformed indices/zero layers, overflow and typed first-error order remain. No supplied count/result bank, valid/normalized plan or successful resource premise; actual full/selected layout callers consume sole helper before actual byte/reconstruction. Whole raw-layout/metadata/selection/file/F2/F4/final F8 and publishing remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"},
-        {"path": "src/decode.rs", "symbol": "account_planned_tile"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"},
+        {"path": "src/decode/execution.rs", "symbol": "account_planned_tile"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_tile_accounting"},
@@ -1602,12 +1602,12 @@
         {"path": "specs/mod.rs", "symbol": "part2_selected_component_blocks"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "account_planned_tile"},
-        {"path": "src/decode.rs", "symbol": "count_selected_component_blocks"}
+        {"path": "src/decode/execution.rs", "symbol": "account_planned_tile"},
+        {"path": "src/decode/execution.rs", "symbol": "count_selected_component_blocks"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "progression_plan_view"},
-        {"path": "src/decode.rs", "symbol": "planning_components_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "progression_plan_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planning_components_view"},
         {"path": "src/decode/proof_support.rs", "symbol": "prepare_plan_view"},
         {"path": "src/packet.rs", "symbol": "PacketGrid::packet_count"},
         {"path": "src/packet.rs", "symbol": "PacketGrid::selected_packet_count"},
@@ -1622,9 +1622,9 @@
       "id": "part2-complete-native-packet-reconstruction-join",
       "topic": "Complete actual owned post-plan packet-to-prepared-component Result/all component/position/extent/fraction/sample fields and MCT work from raw complete plan state, actual tile-part bytes/first payload/image/standard transform/selection/limits/prepared prefix/work. Actual maintained F5 packet execution mutates real decoder state, proved decoder/precinct/vector field projections derive actual coefficient planes, and actual F6/F7 reconstruction computes every sample. No supplied decoded-plane or reconstruction result bank/callback, normalized plan or successful resource premise. Owned prepared prefix is preserved transport; existing full and selected decoder paths execute the sole body after unchanged actual plan production/global accounting/metadata admission. This join does not by itself close whole raw layout/selection/file/F2/F4/final F8 producer or uniform-facade gaps.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_tile_parts_at"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_tile_parts_at"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_decode_planned_tile_components"},
@@ -1632,14 +1632,14 @@
         {"path": "specs/mod.rs", "symbol": "part2_reconstruct_planned_tile"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_planned_tile_components"}
       ],
       "proof_refs": [
         {"path": "src/decode/proof_support.rs", "symbol": "decoded_tile_components_view"},
         {"path": "src/decode/proof_support.rs", "symbol": "decoded_tile_components_outcome"},
         {"path": "src/decode/proof_support.rs", "symbol": "planning_precinct_planes_known_fields"},
-        {"path": "src/decode.rs", "symbol": "progression_plan_view"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_planned_tile"},
+        {"path": "src/decode/proof_support.rs", "symbol": "progression_plan_view"},
+        {"path": "src/decode/execution.rs", "symbol": "reconstruct_planned_tile"},
         {"path": "src/packet.rs", "symbol": "decode_progression_tile_packets"},
         {"path": "src/packet.rs", "symbol": "decode_progression_tile_packets_selected"},
         {"path": "src/packet.rs", "symbol": "packet_precinct_vector_known_fields"},
@@ -1654,11 +1654,11 @@
       "id": "part2-complete-native-component-tile-planning",
       "topic": "Complete actual raw-owner selected tile-plan Result/all tile/style/style-owner/full private grid/precinct/component/band/placement fields, plus actual complete per-component plan and prior/new precinct vectors/global selected count. Raw image/style owners/quantization owners/ROI/tile/discard/HT policies/limits derive first tile bounds and real selected grid, actual component/resolution metadata and coordinates, actual precinct execution/decoder/context/tag-tree producers and complete ordered component/placement vectors. No supplied successful plans, normalized geometry, prepared metadata or decoder/result banks. Existing precinct prefix is preserved transport only; new plans derive internally. Public component-owner boundary shares sole selected body with exact original defaults. First errors, all raw/unused-field laziness, allocation and selected/local resource ordering remain. Full packet-to-decoded-component/file/F2/F4/final F8 joins and uniform-owner facade construction remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_with_roi"},
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_with_component_overrides"},
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_with_roi"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_with_component_overrides"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_progression_tile_plan"},
@@ -1669,24 +1669,24 @@
         {"path": "specs/mod.rs", "symbol": "part2_component_plan_precinct"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_tile_component"},
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_with_component_overrides"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_tile_component"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_with_component_overrides"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "planned_component_view"},
-        {"path": "src/decode.rs", "symbol": "planned_component_outcome"},
-        {"path": "src/decode.rs", "symbol": "component_plan_builder_view"},
-        {"path": "src/decode.rs", "symbol": "planning_precincts_view"},
-        {"path": "src/decode.rs", "symbol": "planning_components_view"},
-        {"path": "src/decode.rs", "symbol": "tile_plan_buffers_view"},
-        {"path": "src/decode.rs", "symbol": "progression_plan_view"},
-        {"path": "src/decode.rs", "symbol": "progression_plan_outcome"},
-        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "prepare_resolution_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "derive_planned_precinct_origin"},
-        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"},
-        {"path": "src/decode.rs", "symbol": "derive_packet_grid_for_components"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_component_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_component_outcome"},
+        {"path": "src/decode/proof_support.rs", "symbol": "component_plan_builder_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planning_precincts_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planning_components_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "tile_plan_buffers_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "progression_plan_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "progression_plan_outcome"},
+        {"path": "src/decode/planning.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "prepare_resolution_plan_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "derive_planned_precinct_origin"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_packet_precinct"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_packet_grid_for_components"},
         {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"}
       ],
       "test_refs": [
@@ -1698,8 +1698,8 @@
       "id": "part2-complete-native-resolution-planning",
       "topic": "Complete actual per-resolution plan metadata Result/all full geometry/subband range/precinct count/first-grid/band/block fields from raw image/style/component/tile/resolution and unnormalized raw component origin; complete checked precinct-band coordinate Result from raw first/across/precinct/band dimensions. Actual geometry, style lookups/scales/directions and derived arithmetic retain original order. Zero real subband delta bypasses only precinct-count narrowing, not later exponent/split/size admission; empty resolutions and anisotropic phases remain. No supplied geometry, lattice/count result, normalized origin or successful budget/allocation premise; actual tile loop consumes sole bodies. Complete resolution/component/tile vectors and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_tile_component"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_tile_component"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_resolution_plan_metadata"},
@@ -1707,13 +1707,13 @@
         {"path": "specs/mod.rs", "symbol": "part2_planned_precinct_origin"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "prepare_resolution_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "derive_planned_precinct_origin"}
+        {"path": "src/decode/planning.rs", "symbol": "prepare_resolution_plan_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "derive_planned_precinct_origin"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "resolution_plan_metadata_view"},
-        {"path": "src/decode.rs", "symbol": "resolution_plan_metadata_outcome"},
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode/proof_support.rs", "symbol": "resolution_plan_metadata_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "resolution_plan_metadata_outcome"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry_for"},
         {"path": "src/codestream.rs", "symbol": "resolution_selectors_known_fields"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count_through_resolution"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
@@ -1729,8 +1729,8 @@
       "id": "part2-complete-native-precinct-planning",
       "topic": "Complete actual per-precinct planning Result/all private packet coordinate/state/context/decoder/subband/tag-tree fields plus owned placement prefixes and global codeblock count from raw band/block/subband source and range/style/HT policy/location/selection/limits. Checked source indices/lookups derive actual optional subband executions, configured decoder vectors and flattened indices; actual packet factory derives all final state. Preserve source-error order, empty/ragged/over-three source laziness, selected-only global charging before later local factory and tag-tree admission, allocation order and buffer moves. No supplied prepared execution/decoder bank, initialized precinct, normalized range or successful budget/allocation premise. Real tile planner consumes sole producer; complete resolution/component/tile plans and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_tile_component"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_tile_component"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_precinct"},
@@ -1738,13 +1738,13 @@
         {"path": "specs/mod.rs", "symbol": "part2_planned_precinct_subband"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_packet_precinct"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "precinct_plan_builder_view"},
-        {"path": "src/decode.rs", "symbol": "planned_precinct_view"},
-        {"path": "src/decode.rs", "symbol": "planned_precinct_outcome"},
-        {"path": "src/decode.rs", "symbol": "plan_subband_execution"},
+        {"path": "src/decode/proof_support.rs", "symbol": "precinct_plan_builder_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_precinct_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_precinct_outcome"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_subband_execution"},
         {"path": "src/packet.rs", "symbol": "packet_executions_view"},
         {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"},
         {"path": "src/packet.rs", "symbol": "packet_precinct_outcome"}
@@ -1757,24 +1757,24 @@
       "id": "part2-complete-native-subband-execution",
       "topic": "Complete actual raw band/block/subband/style/HT policy/location/owned prefix/global count/selection/limits to optional full PacketSubbandExecution, all placement fields, flattened index and charged count. Actual checked intersections/lattice/shape derive before actual configured decoder vectors; no supplied lattice, counts, initialized state/results or successful budget/allocation premise. Preserve subband-end arithmetic before empty-intersection bypass, band-end/divisor/count error order, selected-only charging, actual packet orientation/shape/maximum-zero metadata, owned prefixes and laziness of unused fields. Real tile planner consumes the sole producer; full resolution/precinct/component/tile and decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_subband_execution"},
-        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_subband_execution"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_packet_precinct"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_subband_lattice"},
         {"path": "specs/mod.rs", "symbol": "part2_planned_subband_execution"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_planned_subband_lattice"},
-        {"path": "src/decode.rs", "symbol": "plan_subband_execution"}
+        {"path": "src/decode/planning.rs", "symbol": "derive_planned_subband_lattice"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_subband_execution"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "planned_subband_lattice_view"},
-        {"path": "src/decode.rs", "symbol": "planned_subband_lattice_outcome"},
-        {"path": "src/decode.rs", "symbol": "planned_subband_execution_view"},
-        {"path": "src/decode.rs", "symbol": "planned_subband_execution_outcome"},
-        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_subband_lattice_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_subband_lattice_outcome"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_subband_execution_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_subband_execution_outcome"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_codeblock_decoders"},
         {"path": "src/packet.rs", "symbol": "packet_execution_known_fields"}
       ],
       "test_refs": [
@@ -1786,9 +1786,9 @@
       "id": "part2-complete-native-codeblock-vectors",
       "topic": "Complete actual raw codeblock lattice/clipping/shape/subband/style/HT policy/location/owned placement prefix/global count/selection/limits to all owned decoder and placement vectors, flattened decoder index and charged count. Real configured decoders, every placement field, row-major append order, untouched prefixes and selected-only CodeBlocks-before-WorkUnits admission derive from actual inputs. Empty shapes retain original laziness; geometry/initialization/relative-position/index errors retain order. Actual tile planner consumes the sole vector producer; no supplied initialized/decoded state bank, prepared plan, validated dimensions or successful budget/allocation premise. Full resolution/precinct/component/tile plan and decoded-component/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"},
-        {"path": "src/decode.rs", "symbol": "plan_subband_execution"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_codeblock_decoders"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_subband_execution"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_codeblocks"},
@@ -1797,13 +1797,13 @@
         {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_rows"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "append_planned_codeblock"},
-        {"path": "src/decode.rs", "symbol": "plan_codeblock_decoders"}
+        {"path": "src/decode/planning.rs", "symbol": "append_planned_codeblock"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_codeblock_decoders"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "planned_codeblocks_view"},
-        {"path": "src/decode.rs", "symbol": "planned_codeblocks_outcome"},
-        {"path": "src/decode.rs", "symbol": "derive_planned_codeblock_geometry"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_codeblocks_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "planned_codeblocks_outcome"},
+        {"path": "src/decode/planning.rs", "symbol": "derive_planned_codeblock_geometry"},
         {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"},
         {"path": "src/tier1.rs", "symbol": "tier1_initial_decoder_outcome"},
         {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"}
@@ -1817,9 +1817,9 @@
       "id": "part2-complete-native-component-plan-metadata",
       "topic": "Complete actual per-component tile-plan metadata Result/all owned fields from raw image/style owner/quantization owner/ROI/component/tile/discard/force inputs. Original style-before-reduction-before-quantization admission, Tier1 route policy, tile bounds/full output geometry, real scaling, raw image-origin component position and last ROI/subband production remain. New raw quantization/ROI getters retain logical/physical distinction and unused descriptor values; no normalized metadata/bounds/bands, supplied lookup/result or successful allocation/budget premise. Actual tile planner consumes the sole metadata body; full precinct/codeblock/component plan vectors, decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "plan_tile_component"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_tile_component"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_component_plan_metadata"},
@@ -1829,13 +1829,13 @@
       "contract_refs": [
         {"path": "src/codestream.rs", "symbol": "ComponentQuantizations::quantization"},
         {"path": "src/codestream.rs", "symbol": "RoiShifts::shift"},
-        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"}
+        {"path": "src/decode/planning.rs", "symbol": "prepare_component_plan_metadata"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "component_plan_metadata_view"},
-        {"path": "src/decode.rs", "symbol": "component_plan_metadata_outcome"},
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
-        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"},
+        {"path": "src/decode/proof_support.rs", "symbol": "component_plan_metadata_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "component_plan_metadata_outcome"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_subbands_for"},
         {"path": "src/codestream.rs", "symbol": "component_quantization_result"},
         {"path": "src/codestream.rs", "symbol": "roi_shifts_view"},
         {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"},
@@ -1852,8 +1852,8 @@
       "id": "part2-complete-native-precinct-initialization",
       "topic": "Complete actual precinct initialization Result/all owned coordinate/state/context/decoder/subband/tag-tree fields from raw execution vectors/style/limits. Original execution-count/shape, cumulative code-block/work budget, decoder-length, linear-context, decoder-move and ordered two-tag-tree admission remain. Empty execution list succeeds with empty owned buffers and raw coordinates; style/decoder orientation discrepancies remain unvalidated. Actual tile planner/public facade reuse the sole constructor, contexts derive from real raw prefixes, and decoder vectors move rather than clone. No supplied precinct/grid/tag-tree/context/decoder result or normalized execution/budget/allocation premise. Whole tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "plan_packet_precinct"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_packet_precinct"},
         {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::new_subbands"},
         {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"}
       ],
@@ -1888,15 +1888,15 @@
       "id": "part2-complete-native-codeblock-planning",
       "topic": "Complete actual per-codeblock checked lattice/clipping/u16 dimension Result and configured decoder initial-state Result from raw grid/clip/block coordinates, bits/orientation/style/HT policy. Original nominal-axis arithmetic and clipped narrowing remain; zero dimensions are deliberately forwarded to the real decoder initializer rather than normalized here. Actual decoder initialization precedes multiple-set and magnitude-bound policy, including allocation/admission/error order. The real tile loop consumes both producers; no supplied placement/decoder/geometry result, admitted dimensions or successful allocation/budget premise. Whole tile-plan and F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "append_planned_codeblock"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "append_planned_codeblock"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_planned_codeblock_geometry"},
         {"path": "specs/mod.rs", "symbol": "part2_tier1_configured_decoder"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_planned_codeblock_geometry"},
+        {"path": "src/decode/planning.rs", "symbol": "derive_planned_codeblock_geometry"},
         {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"}
       ],
       "proof_refs": [
@@ -1914,9 +1914,9 @@
       "id": "part2-complete-native-decoder-initialization",
       "topic": "Complete actual Tier-1 decoder initialization Result/every decoder field from raw dimensions/significant-bitplanes/orientation/coding style. Original significant-bitplane admission precedes checked pass metadata and the sole proved plane constructor; no style normalization or initialized plane/decoder result premise. Public new facade and actual tile planner execute that sole body. Force-route style, multiple-HT-set and magnitude-bound setters preserve every unrelated raw field; invalid bound returns original decoder unchanged. No trusted adapter, supplied initialized state, successful allocation or budget premise. Actual tile-plan/packet/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "append_planned_codeblock"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "append_planned_codeblock"},
         {"path": "src/tier1.rs", "symbol": "tier1_configured_decoder"},
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::new"}
       ],
@@ -1947,9 +1947,9 @@
       "id": "part2-complete-native-subband-vector",
       "topic": "Complete actual public/private component subband-vector Result/all ordered fields from raw image/style/quantization/component/tile/ROI metadata. Real component admission precedes coordinate production, original truncated 32-stage count/capacity, ordered resolution traversal, anisotropic HL/LH/HH growth and quantization/phase/bitplane production. Growing actual vector length supplies each checked index; zero-resolution LL retains its original fixed index0. Final count equality and last u8 advancement/first errors are retained. No normalized bounds/style/bands/count, supplied lookup/geometry result or successful allocation/budget premise. Actual tile planner executes the same sole resolution producer; full tile-plan/decoder/file/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "prepare_component_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/planning.rs", "symbol": "prepare_component_plan_metadata"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_subbands_for"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_subband_count"},
@@ -1962,14 +1962,14 @@
       ],
       "contract_refs": [
         {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count"},
-        {"path": "src/decode.rs", "symbol": "derive_subband_resolution"},
-        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"}
+        {"path": "src/decode/geometry.rs", "symbol": "derive_subband_resolution"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_subbands_for"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_component_subbands"},
-        {"path": "src/decode.rs", "symbol": "subbands_outcome"},
-        {"path": "src/decode.rs", "symbol": "component_coordinate_bounds"},
-        {"path": "src/decode.rs", "symbol": "make_subband_geometry"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_subbands"},
+        {"path": "src/decode/proof_support.rs", "symbol": "subbands_outcome"},
+        {"path": "src/decode/geometry.rs", "symbol": "component_coordinate_bounds"},
+        {"path": "src/decode/geometry.rs", "symbol": "make_subband_geometry"},
         {"path": "src/codestream.rs", "symbol": "ImageSize::component"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::resolution_downsampling"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
@@ -1985,9 +1985,9 @@
       "id": "part2-complete-native-subband-admission",
       "topic": "Complete actual raw quantization observations, shared indexed/derived step computation, public isotropic orientation indexing and make_subband_geometry Result/all fields. Logical-before-physical step lookup and unvalidated raw step/guard words are retained; ScalarDerived observes step0 and saturates exponent without validating the supplied logical index. Public orientation admission differs intentionally from the actual geometry helper's raw orientation/index policy. Dynamic-range/quantization/bitplane admission precedes checked extents, preserving first errors, phase/ROI/dimensions and all outputs. No normalized depth/bounds/step, successful lookup or bitplane/budget premise. Actual subband construction executes the sole shared producer; complete subband-vector/tile-plan/F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_subband_resolution"},
-        {"path": "src/decode.rs", "symbol": "make_subband_geometry"},
-        {"path": "src/decode.rs", "symbol": "quantization_step_at_index"}
+        {"path": "src/decode/geometry.rs", "symbol": "derive_subband_resolution"},
+        {"path": "src/decode/geometry.rs", "symbol": "make_subband_geometry"},
+        {"path": "src/decode/geometry.rs", "symbol": "quantization_step_at_index"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_quantization_lookup"},
@@ -1997,11 +1997,11 @@
       ],
       "contract_refs": [
         {"path": "src/codestream.rs", "symbol": "Quantization::step"},
-        {"path": "src/decode.rs", "symbol": "quantization_step_at_index"},
-        {"path": "src/decode.rs", "symbol": "make_subband_geometry"}
+        {"path": "src/decode/geometry.rs", "symbol": "quantization_step_at_index"},
+        {"path": "src/decode/geometry.rs", "symbol": "make_subband_geometry"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "quantization_step_for_subband"},
+        {"path": "src/decode/geometry.rs", "symbol": "quantization_step_for_subband"},
         {"path": "src/codestream.rs", "symbol": "quantization_view"},
         {"path": "src/codestream.rs", "symbol": "Quantization::style"},
         {"path": "src/codestream.rs", "symbol": "Quantization::guard_bits"}
@@ -2015,8 +2015,8 @@
       "id": "part2-complete-native-component-packet-grid",
       "topic": "Complete actual derive_packet_grid_for_components Result/full PacketGrid from original raw ImageSize/component-style owner/layers/limits/tile/discard metadata. Real ordered all-component resolution admission precedes capacity, geometry, subband deltas, selected-only code-block accounting, all-resolution precinct counts/zero padding and the sole proved constructor's full offset/count/resource result. Discarded finest geometry is still computed and raw unused owner fields remain unvalidated. No normalized counts/grid/geometry, supplied lookup/scaling/result bank, successful budget or allocation premise. Actual full/selected tile planner executes this producer; packet-plan precinct/codeblock/component construction and F2/F4/F8 remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "derive_packet_grid_for_components"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_packet_grid_for_components"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_packet_grid_from_components"},
@@ -2029,12 +2029,12 @@
         {"path": "specs/packet_progression.rs", "symbol": "part1_packet_grid_new"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "prepare_component_resolution_counts"},
-        {"path": "src/decode.rs", "symbol": "derive_packet_grid_for_components"}
+        {"path": "src/decode/geometry.rs", "symbol": "prepare_component_resolution_counts"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_packet_grid_for_components"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "resolution_counts_outcome"},
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode/proof_support.rs", "symbol": "resolution_counts_outcome"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry_for"},
         {"path": "src/packet.rs", "symbol": "packet_grid_new_with_selected_resolutions"},
         {"path": "src/packet.rs", "symbol": "packet_grid_outcome"},
         {"path": "src/codestream.rs", "symbol": "ComponentCodingStyles::style"},
@@ -2052,11 +2052,11 @@
       "id": "part2-complete-native-resolution-geometry",
       "topic": "Complete actual derive_component_resolution_geometry[_for] Result/all fields from original raw ImageSize, real component/style selectors, resolution and optional tile. Resolution admission precedes real coordinate production and downsampling; actual checked extents, code-block and precinct address/count products preserve first-error order. Whole-image coordinates deliberately ignore registration while the tile branch uses actual registered clipping; raw nonzero-resolution subbands remains the original value3, including anisotropic directions. No admitted bounds/style/scales, supplied geometry/count results, successful allocation or budget premise. Public whole-image boundary and actual packet/planner callers share the sole implementation; complete packet planning/F2/F4/F8 remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry"},
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
-        {"path": "src/decode.rs", "symbol": "derive_packet_grid_for"},
-        {"path": "src/decode.rs", "symbol": "prepare_resolution_plan_metadata"},
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"}
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_packet_grid_for"},
+        {"path": "src/decode/planning.rs", "symbol": "prepare_resolution_plan_metadata"},
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_resolution_geometry"},
@@ -2068,14 +2068,14 @@
         {"path": "specs/mod.rs", "symbol": "part2_selection_floor"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
-        {"path": "src/decode.rs", "symbol": "component_coordinate_bounds"},
-        {"path": "src/decode.rs", "symbol": "floor_div_u32"}
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode/geometry.rs", "symbol": "component_coordinate_bounds"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "floor_div_u32"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry"},
-        {"path": "src/decode.rs", "symbol": "resolution_geometry_style"},
-        {"path": "src/decode.rs", "symbol": "ceil_div_u32"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry"},
+        {"path": "src/decode/proof_support.rs", "symbol": "resolution_geometry_style"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "ceil_div_u32"},
         {"path": "src/codestream.rs", "symbol": "resolution_selectors_known_fields"},
         {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"},
         {"path": "src/codestream.rs", "symbol": "ImageSize::tile_component_bounds"},
@@ -2092,8 +2092,8 @@
       "topic": "Complete actual raw resolution_downsampling traversal, ordered per-stage scale computation and precinct_exponents Result. Original resolution-before-traversal admission, real direction lookup before horizontal/vertical checked multiplication, first-overflow/physical-direction error and lazy raw precinct lookup are retained. Unused style/kernel/precinct flags remain unvalidated; raw precinct values above31 are returned rather than inventing downstream rejection here. No normalized style, valid stage/scale, supplied lookup or successful arithmetic premise. Actual planner/subband consumers execute the same sole bodies; complete resolution geometry/packet planning and F2/F4/F8 remain separate.",
       "implementation_refs": [
         {"path": "src/codestream.rs", "symbol": "CodingStyle::resolution_downsampling"},
-        {"path": "src/decode.rs", "symbol": "derive_component_resolution_geometry_for"},
-        {"path": "src/decode.rs", "symbol": "derive_component_subbands_for"}
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_resolution_geometry_for"},
+        {"path": "src/decode/geometry.rs", "symbol": "derive_component_subbands_for"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_resolution_downsampling"},
@@ -2123,9 +2123,10 @@
       "id": "part2-complete-native-tile-component-geometry",
       "topic": "Complete actual raw ImageSize::tile_component_bounds Result and shared registered-ceiling producer. Original checked tile geometry precedes ordered raw component admission, six registered ceiling computations, nonempty extents and relative-origin stores. All raw counts, descriptor registration/subsampling/unused precision/sign fields and checked failures are retained. Actual typed-layout output-region registration reuses the same scalar while preserving its distinct zero-divisor InvalidCodeBlock policy. No normalized geometry, admitted component or supplied scalar result premise; full packet planning and F2/F4/F8 remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "plan_progression_tile_at_selected"},
-        {"path": "src/decode.rs", "symbol": "typed_layout"},
-        {"path": "src/decode.rs", "symbol": "nonlinear_component_extent"}
+        {"path": "src/decode/planning.rs", "symbol": "plan_progression_tile_at_selected"},
+        {"path": "src/decode/api.rs", "symbol": "typed_layout"},
+        {"path": "src/decode/api.rs", "symbol": "nonlinear_component_extent"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "registered_ceil_div_u32"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_tile_component_bounds"},
@@ -2135,7 +2136,7 @@
       "contract_refs": [
         {"path": "src/codestream.rs", "symbol": "ImageSize::tile_component_bounds"},
         {"path": "src/codestream.rs", "symbol": "registered_ceil_div"},
-        {"path": "src/decode.rs", "symbol": "registered_ceil_div_u32"}
+        {"path": "src/decode/arithmetic.rs", "symbol": "registered_ceil_div_u32"}
       ],
       "proof_refs": [
         {"path": "src/codestream.rs", "symbol": "ImageSize::tile_bounds"},
@@ -2153,11 +2154,11 @@
       "id": "part2-complete-native-layout-execution-admission",
       "topic": "Complete actual validate_part2_execution Result over original parsed main/tile metadata/styles/raw component count. Actual executable observation, checked style lookup and real style admission, all main components before all tile headers, per-tile components before optional CBD agreement, empty-CBD bypass and every first/late error are composed without normalized metadata or supplied validator/decoder outcomes. Original full/selected decode_layout consumers execute these same producers. Real packet planning/decoder/frame and F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_execution"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_components"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_tile_execution"}
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_execution"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_components"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_tile_execution"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_validate_execution_layout"},
@@ -2167,14 +2168,14 @@
         {"path": "specs/mod.rs", "symbol": "part2_execution_tiles_prefix"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "validate_part2_execution"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_component"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_components"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_tile_execution"}
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_execution"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_component"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_components"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_tile_execution"}
       ],
       "proof_refs": [
-        {"path": "src/decode.rs", "symbol": "execution_header_view"},
-        {"path": "src/decode.rs", "symbol": "execution_tile_headers"},
+        {"path": "src/decode/proof_support.rs", "symbol": "execution_header_view"},
+        {"path": "src/decode/proof_support.rs", "symbol": "execution_tile_headers"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_components_empty"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_components_step"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_execution_components_error"},
@@ -2190,9 +2191,9 @@
       "id": "part2-complete-native-decoder-style-admission",
       "topic": "Complete actual parsed-metadata decoder coding-style admission Result and raw ordered component-depth comparison. Real DSC/ADS presence and ATK lookup derive from native registries, with missing-decomposition before kernel and raw unused fields retained/lazy. Lookup observations are proof support, not claims about unobserved descriptor contents. Actual validate_part2_execution consumes these sole bodies; full layout admission/planning/decoder results and F2/F4/F8 joins remain separate.",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "validate_part2_component"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_tile_execution"},
-        {"path": "src/decode.rs", "symbol": "validate_part2_execution"}
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_component"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_tile_execution"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_execution"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_validate_execution_style"},
@@ -2200,7 +2201,7 @@
         {"path": "specs/mod.rs", "symbol": "part2_kernel_registry_lookup"}
       ],
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "validate_part2_coding_style"},
+        {"path": "src/decode/execution.rs", "symbol": "validate_part2_coding_style"},
         {"path": "src/codestream.rs", "symbol": "Part2Extensions::component_bit_depths_equal"}
       ],
       "proof_refs": [
@@ -2455,13 +2456,13 @@
         {"path": "src/image.rs", "symbol": "apply_mct_stage"},
         {"path": "src/image.rs", "symbol": "apply_multiple_component_transform_components"},
         {"path": "src/image.rs", "symbol": "apply_multiple_component_transform"},
-        {"path": "src/decode.rs", "symbol": "apply_tile_multiple_component_transform"},
-        {"path": "src/decode.rs", "symbol": "finish_prepared_tile"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_planned_tile"},
-        {"path": "src/decode.rs", "symbol": "decode_planned_tile_components"},
-        {"path": "src/decode.rs", "symbol": "decode_progression_prepared_image"},
-        {"path": "src/decode.rs", "symbol": "decode_layout"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "apply_tile_multiple_component_transform"},
+        {"path": "src/decode/execution.rs", "symbol": "finish_prepared_tile"},
+        {"path": "src/decode/execution.rs", "symbol": "reconstruct_planned_tile"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_planned_tile_components"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "decode_progression_prepared_image"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_mct_dependency"},
@@ -2487,21 +2488,21 @@
         {"path": "src/image.rs", "symbol": "apply_mct_collection"},
         {"path": "src/image.rs", "symbol": "apply_mct_stage"},
         {"path": "src/image.rs", "symbol": "apply_multiple_component_transform_components"},
-        {"path": "src/decode.rs", "symbol": "apply_tile_multiple_component_transform"},
-        {"path": "src/decode.rs", "symbol": "finish_prepared_tile"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_planned_tile"},
-        {"path": "src/decode.rs", "symbol": "apply_prepared_component_transform"},
-        {"path": "src/decode.rs", "symbol": "assemble_prepared_components"},
-        {"path": "src/decode.rs", "symbol": "decode_prepared_image"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "apply_tile_multiple_component_transform"},
+        {"path": "src/decode/execution.rs", "symbol": "finish_prepared_tile"},
+        {"path": "src/decode/execution.rs", "symbol": "reconstruct_planned_tile"},
+        {"path": "src/decode/execution.rs", "symbol": "apply_prepared_component_transform"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "assemble_prepared_components"},
+        {"path": "src/decode/code_blocks.rs", "symbol": "decode_prepared_image"},
         {"path": "src/codestream.rs", "symbol": "Part2Extensions::arbitrary_kernel"}
       ],
       "proof_refs": [
         {"path": "src/image.rs", "symbol": "apply_multiple_component_transform"},
-        {"path": "src/decode.rs", "symbol": "decode_progression_prepared_image"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "decode_progression_prepared_image"},
         {"path": "src/image.rs", "symbol": "collect_decoded_transform_components"},
-        {"path": "src/decode.rs", "symbol": "collect_prepared_transform_components"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "collect_prepared_transform_components"},
         {"path": "src/image.rs", "symbol": "transform_components_borrow_frame"},
-        {"path": "src/decode.rs", "symbol": "prepared_tile_views"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepared_tile_views"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_reconstruct_components_step"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_mct_transform_step"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_mct_wavelet_reconstruction_step"},
@@ -3431,7 +3432,7 @@
           "symbol": "PacketGrid::new_with_component_resolutions"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/geometry.rs",
           "symbol": "derive_packet_grid_for_components"
         },
         {
@@ -4560,15 +4561,15 @@
         {"path": "src/transform.rs", "symbol": "fixed_mul_q32"},
         {"path": "src/transform.rs", "symbol": "fixed_div_q32"},
         {"path": "src/transform.rs", "symbol": "round_shift_i128"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"}
       ],
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"},
         {"path": "src/transform.rs", "symbol": "inverse_row_pair"},
         {"path": "src/transform.rs", "symbol": "inverse_column_pair"},
         {"path": "src/transform.rs", "symbol": "inverse_arbitrary"},
@@ -4766,41 +4767,41 @@
         {"path": "src/codestream.rs", "symbol": "ImageSize::tile_count"},
         {"path": "src/codestream.rs", "symbol": "ImageSize::tile_bounds"},
         {"path": "src/options.rs", "symbol": "selection_from_parts"},
-        {"path": "src/decode.rs", "symbol": "ceil_div_u32"},
-        {"path": "src/decode.rs", "symbol": "tile_list_contains"},
-        {"path": "src/decode.rs", "symbol": "selection_rectangle_area"},
-        {"path": "src/decode.rs", "symbol": "validate_explicit_tile_indices"},
-        {"path": "src/decode.rs", "symbol": "validate_selection_tile_rectangle"},
-        {"path": "src/decode.rs", "symbol": "validate_selection_rectangle_cells"},
-        {"path": "src/decode.rs", "symbol": "selection_region"},
-        {"path": "src/decode.rs", "symbol": "select_intersecting_tiles"},
-        {"path": "src/decode.rs", "symbol": "explicit_tiles_from_selection"},
-        {"path": "src/decode.rs", "symbol": "validate_selection"},
-        {"path": "src/decode.rs", "symbol": "color_selection_from_validated"},
-        {"path": "src/decode.rs", "symbol": "color_selection_for_size"},
-        {"path": "src/decode.rs", "symbol": "apply_associated_output"},
-        {"path": "src/decode.rs", "symbol": "convert_associated_color"},
-        {"path": "src/decode.rs", "symbol": "convert_associated_selected_color"},
-        {"path": "src/decode.rs", "symbol": "finish_associated_selected_output"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "ceil_div_u32"},
+        {"path": "src/decode/selection.rs", "symbol": "tile_list_contains"},
+        {"path": "src/decode/selection.rs", "symbol": "selection_rectangle_area"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_explicit_tile_indices"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection_tile_rectangle"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection_rectangle_cells"},
+        {"path": "src/decode/selection.rs", "symbol": "selection_region"},
+        {"path": "src/decode/selection.rs", "symbol": "select_intersecting_tiles"},
+        {"path": "src/decode/selection.rs", "symbol": "explicit_tiles_from_selection"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection"},
+        {"path": "src/decode/output.rs", "symbol": "color_selection_from_validated"},
+        {"path": "src/decode/output.rs", "symbol": "color_selection_for_size"},
+        {"path": "src/decode/output.rs", "symbol": "apply_associated_output"},
+        {"path": "src/decode/output.rs", "symbol": "convert_associated_color"},
+        {"path": "src/decode/output.rs", "symbol": "convert_associated_selected_color"},
+        {"path": "src/decode/output.rs", "symbol": "finish_associated_selected_output"},
         {"path": "src/jp2.rs", "symbol": "associated_header_for_codestream"},
         {"path": "src/jp2.rs", "symbol": "validate_container_codestream"},
         {"path": "src/jp2.rs", "symbol": "validate_selected_header"}
       ],
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "color_selection"},
-        {"path": "src/decode.rs", "symbol": "color_selection_for_size"},
-        {"path": "src/decode.rs", "symbol": "color_selection_from_validated"},
-        {"path": "src/decode.rs", "symbol": "validate_selection"},
-        {"path": "src/decode.rs", "symbol": "validate_selection_tile_rectangle"},
-        {"path": "src/decode.rs", "symbol": "validate_selection_rectangle_cells"},
-        {"path": "src/decode.rs", "symbol": "selection_region"},
-        {"path": "src/decode.rs", "symbol": "select_intersecting_tiles"},
-        {"path": "src/decode.rs", "symbol": "decode_jpx_file"},
-        {"path": "src/decode.rs", "symbol": "decode_jpx_file_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_jpx_codestream_color"},
-        {"path": "src/decode.rs", "symbol": "decode_jpx_codestream_color_selected"},
-        {"path": "src/decode.rs", "symbol": "decode_jp2_color_selected"},
-        {"path": "src/decode.rs", "symbol": "finish_associated_selected_output"},
+        {"path": "src/decode/output.rs", "symbol": "color_selection"},
+        {"path": "src/decode/output.rs", "symbol": "color_selection_for_size"},
+        {"path": "src/decode/output.rs", "symbol": "color_selection_from_validated"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection_tile_rectangle"},
+        {"path": "src/decode/selection.rs", "symbol": "validate_selection_rectangle_cells"},
+        {"path": "src/decode/selection.rs", "symbol": "selection_region"},
+        {"path": "src/decode/selection.rs", "symbol": "select_intersecting_tiles"},
+        {"path": "src/decode/output.rs", "symbol": "decode_jpx_file"},
+        {"path": "src/decode/output.rs", "symbol": "decode_jpx_file_selected"},
+        {"path": "src/decode/api.rs", "symbol": "decode_jpx_codestream_color"},
+        {"path": "src/decode/api.rs", "symbol": "decode_jpx_codestream_color_selected"},
+        {"path": "src/decode/api.rs", "symbol": "decode_jp2_color_selected"},
+        {"path": "src/decode/output.rs", "symbol": "finish_associated_selected_output"},
         {"path": "src/codestream.rs", "symbol": "ImageSize::tile_bounds"},
         {"path": "src/jp2.rs", "symbol": "validate_selected_header"}
       ],
@@ -5080,7 +5081,7 @@
       "implementation_refs": [
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::decode_high_throughput_segments"},
         {"path": "src/tier1.rs", "symbol": "reconstruct_ht_cleanup_plane"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
         {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::signed_coefficient"},
         {"path": "src/tier1.rs", "symbol": "CoefficientState::signed_magnitude"},
         {"path": "src/tier1.rs", "symbol": "CodeBlockPlane::coefficient"}
@@ -5125,7 +5126,7 @@
       ],
       "id": "part1-complete-decoded-typed-conversion",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "typed_layout"},
+        {"path": "src/decode/api.rs", "symbol": "typed_layout"},
         {"path": "src/image.rs", "symbol": "DecodedImage::typed"},
         {"path": "src/image.rs", "symbol": "DecodedComponent::typed_samples"},
         {"path": "src/image.rs", "symbol": "decoded_signed_sample"},
@@ -5170,7 +5171,7 @@
       "implementation_refs": [
         {"path": "src/packet.rs", "symbol": "packet_precinct_from_subbands"},
         {"path": "src/packet.rs", "symbol": "readonly_precinct_decoder_accessors_use_actual_vec_and_entire_native_indices"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
         {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder"},
         {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoders"},
         {"path": "src/packet.rs", "symbol": "PacketPrecinctDecoder::decoder_count"}
@@ -5192,17 +5193,17 @@
     },
     {
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "convert_selected_color"}
+        {"path": "src/decode/output.rs", "symbol": "convert_selected_color"}
       ],
       "id": "part1-connected-typed-color-selection",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_jp2_color_selected"},
-        {"path": "src/decode.rs", "symbol": "convert_associated_selected_color"}
+        {"path": "src/decode/api.rs", "symbol": "decode_jp2_color_selected"},
+        {"path": "src/decode/output.rs", "symbol": "convert_associated_selected_color"}
       ],
       "proof_refs": [
         {"path": "src/color.rs", "symbol": "converted_image_model"},
         {"path": "src/color.rs", "symbol": "converted_image_result"},
-        {"path": "src/decode.rs", "symbol": "invalid_decode"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "invalid_decode"},
         {"path": "src/image.rs", "symbol": "typed_image_geometry"}
       ],
       "spec_refs": [
@@ -5224,7 +5225,7 @@
       ],
       "id": "part1-complete-converted-selection-crop",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "convert_selected_color"},
+        {"path": "src/decode/output.rs", "symbol": "convert_selected_color"},
         {"path": "src/color.rs", "symbol": "ConvertedImage::crop"},
         {"path": "src/color.rs", "symbol": "crop_plane"}
       ],
@@ -5264,7 +5265,7 @@
       "id": "part1-complete-typed-color-conversion",
       "implementation_refs": [
         {"path": "src/jpx.rs", "symbol": "decode_layer"},
-        {"path": "src/decode.rs", "symbol": "convert_selected_color"},
+        {"path": "src/decode/output.rs", "symbol": "convert_selected_color"},
         {"path": "src/color.rs", "symbol": "convert_jp2_color"},
         {"path": "src/color.rs", "symbol": "convert_color_channel"},
         {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
@@ -6602,7 +6603,7 @@
       "id": "part1-multilevel-wavelet-synthesis",
       "implementation_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/reconstruction.rs",
           "symbol": "prepare_tile_component_with_kernel"
         },
         {
@@ -6636,7 +6637,7 @@
           "symbol": "progression_plan_routes_all_subbands_and_prepares_image"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/reconstruction.rs",
           "symbol": "prepared_tile_views"
         },
         {
@@ -6742,15 +6743,15 @@
       "id": "part1-decoded-output-shape",
       "implementation_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/api.rs",
           "symbol": "decode_codestream"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/api.rs",
           "symbol": "decode_codestream_selected"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/api.rs",
           "symbol": "validate_part1_output_shape"
         }
       ],
@@ -7194,7 +7195,7 @@
           "symbol": "parse_channel_definition"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/output.rs",
           "symbol": "map_palette_component"
         }
       ],
@@ -7256,7 +7257,7 @@
       "id": "part2-complete-native-palette-lookup",
       "implementation_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/output.rs",
           "symbol": "map_palette_component"
         },
         {
@@ -7298,18 +7299,18 @@
     },
     {
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "copy_typed_component"},
-        {"path": "src/decode.rs", "symbol": "map_palette_component"},
-        {"path": "src/decode.rs", "symbol": "palette_modulus"},
-        {"path": "src/decode.rs", "symbol": "invalid_jp2_output"},
+        {"path": "src/decode/output.rs", "symbol": "copy_typed_component"},
+        {"path": "src/decode/output.rs", "symbol": "map_palette_component"},
+        {"path": "src/decode/output.rs", "symbol": "palette_modulus"},
+        {"path": "src/decode/output.rs", "symbol": "invalid_jp2_output"},
         {"path": "src/image.rs", "symbol": "typed_component_from_parts"}
       ],
       "id": "part2-complete-native-palette-component",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "apply_jp2_output"},
-        {"path": "src/decode.rs", "symbol": "copy_typed_component"},
-        {"path": "src/decode.rs", "symbol": "map_palette_component"},
-        {"path": "src/decode.rs", "symbol": "palette_modulus"}
+        {"path": "src/decode/output.rs", "symbol": "apply_jp2_output"},
+        {"path": "src/decode/output.rs", "symbol": "copy_typed_component"},
+        {"path": "src/decode/output.rs", "symbol": "map_palette_component"},
+        {"path": "src/decode/output.rs", "symbol": "palette_modulus"}
       ],
       "proof_refs": [
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_palette_samples_empty"},
@@ -7342,15 +7343,15 @@
     },
     {
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "apply_jp2_output"},
+        {"path": "src/decode/output.rs", "symbol": "apply_jp2_output"},
         {"path": "src/image.rs", "symbol": "typed_image_from_components_with_origin"},
         {"path": "src/image.rs", "symbol": "TypedImage::component"}
       ],
       "id": "part2-complete-native-output-header",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_jp2"},
-        {"path": "src/decode.rs", "symbol": "decode_jp2_selected"},
-        {"path": "src/decode.rs", "symbol": "apply_jp2_output"}
+        {"path": "src/decode/api.rs", "symbol": "decode_jp2"},
+        {"path": "src/decode/api.rs", "symbol": "decode_jp2_selected"},
+        {"path": "src/decode/output.rs", "symbol": "apply_jp2_output"}
       ],
       "proof_refs": [
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_typed_components_output_push"},
@@ -10414,7 +10415,7 @@
       "id": "part1-complete-supplied-coefficient-quantization",
       "implementation_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/reconstruction.rs",
           "symbol": "prepare_tile_component_with_kernel"
         },
         {
@@ -10700,7 +10701,7 @@
       "id": "part1-complete-standard-wavelet-planes",
       "implementation_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/reconstruction.rs",
           "symbol": "prepare_tile_component_with_kernel"
         },
         {
@@ -10880,7 +10881,7 @@
       ],
       "id": "part1-complete-decoded-component-transforms",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_prepared_image"},
+        {"path": "src/decode/code_blocks.rs", "symbol": "decode_prepared_image"},
         {"path": "src/image.rs", "symbol": "apply_reversible_component_transform"},
         {"path": "src/image.rs", "symbol": "apply_irreversible_component_transform"},
         {"path": "src/image.rs", "symbol": "apply_component_transform"},
@@ -10910,18 +10911,18 @@
     },
     {
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "write_quantized_block"},
-        {"path": "src/decode.rs", "symbol": "write_quantized_row"},
-        {"path": "src/decode.rs", "symbol": "write_quantized_pixel"},
-        {"path": "src/decode.rs", "symbol": "checked_index"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "write_quantized_block"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "write_quantized_row"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "write_quantized_pixel"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "checked_index"}
       ],
       "id": "part1-complete-quantized-block-placement",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
-        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
-        {"path": "src/decode.rs", "symbol": "write_quantized_block"},
-        {"path": "src/decode.rs", "symbol": "write_quantized_row"},
-        {"path": "src/decode.rs", "symbol": "write_quantized_pixel"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "write_quantized_block"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "write_quantized_row"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "write_quantized_pixel"}
       ],
       "proof_refs": [
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_quantized_row_error_persists"},
@@ -10943,34 +10944,34 @@
     },
     {
       "contract_refs": [
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
-        {"path": "src/decode.rs", "symbol": "initialize_prepare_working"},
-        {"path": "src/decode.rs", "symbol": "append_prepare_subband"},
-        {"path": "src/decode.rs", "symbol": "collect_prepare_coefficients"},
-        {"path": "src/decode.rs", "symbol": "collect_prepare_cell"},
-        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
-        {"path": "src/decode.rs", "symbol": "validate_prepare_coverage"},
-        {"path": "src/decode.rs", "symbol": "copy_prepare_plane"},
-        {"path": "src/decode.rs", "symbol": "finish_prepared_component"},
-        {"path": "src/decode.rs", "symbol": "PreparedTileComponent::as_tile_component"},
-        {"path": "src/decode.rs", "symbol": "checked_area_u32"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "initialize_prepare_working"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "append_prepare_subband"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "collect_prepare_coefficients"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "collect_prepare_cell"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "validate_prepare_coverage"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "copy_prepare_plane"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "finish_prepared_component"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "PreparedTileComponent::as_tile_component"},
+        {"path": "src/decode/arithmetic.rs", "symbol": "checked_area_u32"}
       ],
       "id": "part1-complete-standard-plan-coordinator",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_progression_prepared_image"},
-        {"path": "src/decode.rs", "symbol": "prepared_tile_views"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"},
-        {"path": "src/decode.rs", "symbol": "initialize_prepare_working"},
-        {"path": "src/decode.rs", "symbol": "append_prepare_subband"},
-        {"path": "src/decode.rs", "symbol": "collect_prepare_coefficients"},
-        {"path": "src/decode.rs", "symbol": "collect_prepare_cell"},
-        {"path": "src/decode.rs", "symbol": "place_prepare_block"},
-        {"path": "src/decode.rs", "symbol": "validate_prepare_coverage"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_working"},
-        {"path": "src/decode.rs", "symbol": "reconstruct_prepare_resolution"},
-        {"path": "src/decode.rs", "symbol": "copy_prepare_plane"},
-        {"path": "src/decode.rs", "symbol": "finish_prepared_component"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "decode_progression_prepared_image"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepared_tile_views"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "initialize_prepare_working"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "append_prepare_subband"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "collect_prepare_coefficients"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "collect_prepare_cell"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "place_prepare_block"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "validate_prepare_coverage"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "copy_prepare_plane"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "finish_prepared_component"}
       ],
       "proof_refs": [
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_init_error"},
@@ -11027,7 +11028,7 @@
         {"path": "src/codestream.rs", "symbol": "CodingStyle::decomposition_direction"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::direction_for_resolution"},
         {"path": "src/codestream.rs", "symbol": "CodingStyle::subband_count_through_resolution"},
-        {"path": "src/decode.rs", "symbol": "prepare_tile_component_with_kernel"}
+        {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"}
       ],
       "proof_refs": [
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_subband_count_error_persists"}
@@ -11063,8 +11064,9 @@
       ],
       "id": "part1-complete-registered-tile-image-assembly",
       "implementation_refs": [
-        {"path": "src/decode.rs", "symbol": "decode_prepared_image"},
-        {"path": "src/decode.rs", "symbol": "decode_layout_selected"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "assemble_prepared_components"},
+        {"path": "src/decode/code_blocks.rs", "symbol": "decode_prepared_image"},
+        {"path": "src/decode/execution.rs", "symbol": "decode_layout_selected"},
         {"path": "src/image.rs", "symbol": "assemble_image"},
         {"path": "src/image.rs", "symbol": "assemble_selected_image"},
         {"path": "src/image.rs", "symbol": "append_assembly_component"},

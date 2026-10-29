@@ -33,7 +33,16 @@ specs/tag_tree.rs
 src/codestream/tests.rs
 src/codestream.rs
 src/color.rs
+src/decode/api.rs
+src/decode/arithmetic.rs
+src/decode/code_blocks.rs
+src/decode/execution.rs
+src/decode/geometry.rs
+src/decode/output.rs
+src/decode/planning.rs
 src/decode/proof_support.rs
+src/decode/reconstruction.rs
+src/decode/selection.rs
 src/decode/tests.rs
 src/decode.rs
 src/error.rs

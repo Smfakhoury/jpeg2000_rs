@@ -133,6 +133,24 @@ provided. See [supported profiles and limitations](SUPPORTED.md) for details.
 ### Repository layout
 
 - [src/](src/) is the single executable decoder used by Cargo and Verus.
+- [decode.rs](src/decode.rs) defines shared decoder types and preserves the public
+  API through re-exports. Its real Rust child modules separate responsibilities:
+
+  | Responsibility | Implementation |
+  |---|---|
+  | Public codestream and container entry points | [api.rs](src/decode/api.rs) |
+  | Component/resolution/subband geometry | [geometry.rs](src/decode/geometry.rs) |
+  | Precinct and code-block planning | [planning.rs](src/decode/planning.rs) |
+  | Coefficient preparation and reconstruction | [reconstruction.rs](src/decode/reconstruction.rs) |
+  | Full/selected tile and layout execution | [execution.rs](src/decode/execution.rs) |
+  | Palette, channel and selected-color output | [output.rs](src/decode/output.rs) |
+  | Region, tile and resolution selection | [selection.rs](src/decode/selection.rs) |
+  | Code-block/subband decoding and prepared-image API | [code_blocks.rs](src/decode/code_blocks.rs) |
+  | Checked indexing and coordinate arithmetic | [arithmetic.rs](src/decode/arithmetic.rs) |
+
+  Contracts and loop invariants remain attached to those executing bodies.
+  [Proof support](src/decode/proof_support.rs) stays ghost-only; the private
+  [tests](src/decode/tests.rs) retain their logical `decode::tests` identity.
 - [specs/](specs/) and [proofs/](proofs/) contain maintained semantic models
   and proofs, not generated run results.
 - [validation/](validation/) contains the reusable harness, regression tests,
