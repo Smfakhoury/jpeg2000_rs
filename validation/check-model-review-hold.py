@@ -40,6 +40,19 @@ AMENDMENT_PROFILES = {
         "validation/normative-coverage.json", "validation/expected-package-files.txt",
         "validation/tests/test_framework.py",
     }),
+    "crate-publication-rename": frozenset({
+        "Cargo.lock", "Cargo.toml", "examples/validation_decoder.rs",
+        "fuzz/Cargo.lock", "fuzz/Cargo.toml",
+        "fuzz/fuzz_targets/arbitrary_codestream.rs", "fuzz/fuzz_targets/arbitrary_jp2.rs",
+        "fuzz/fuzz_targets/arbitrary_jpip.rs", "fuzz/fuzz_targets/arbitrary_mq.rs",
+        "fuzz/fuzz_targets/arbitrary_packet.rs", "fuzz/fuzz_targets/arbitrary_tier1.rs",
+        "fuzz/fuzz_targets/structured_framing.rs", "fuzz/src/lib.rs",
+        "validation/check-packaged-source.py", "validation/generate-proof-coverage.py",
+        "validation/image-consumer-probe/Cargo.lock", "validation/image-consumer-probe/Cargo.toml",
+        "validation/image-consumer-probe/src/decoder.rs", "validation/image-consumer-probe/src/lib.rs",
+        "validation/image-consumer-probe/tests/adapter.rs", "validation/proof-coverage.schema.json",
+        "validation/tests/test_packaged_source.py", "validation/tests/test_proof_coverage.py",
+    }),
 }
 
 
