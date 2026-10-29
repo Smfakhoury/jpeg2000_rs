@@ -6,7 +6,7 @@ use image::{
     },
     ColorType, ExtendedColorType, ImageDecoder, ImageError, ImageResult, LimitSupport, Limits,
 };
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     jp2::{
         parse_and_inspect, BoxType, ColorMethod, ComponentBitDepth, ENUMERATED_GRAYSCALE,
         ENUMERATED_SRGB,
@@ -294,7 +294,7 @@ impl Error for HookRegistrationError {}
 ///
 /// ```no_run
 /// use jpeg2000_image_consumer_probe::register_jp2_hook;
-/// use jpeg2000_rs::DecodeOptions;
+/// use jpeg2000_decoder::DecodeOptions;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// register_jp2_hook(DecodeOptions::default(), 64 * 1024 * 1024)?;

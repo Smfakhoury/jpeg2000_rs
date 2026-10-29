@@ -28,7 +28,7 @@ class PackagedSourceTests(unittest.TestCase):
         self.git("config", "core.autocrlf", "false")
         self.files = {
             ".gitignore": b"target/\n",
-            "Cargo.toml": b'[package]\nname="jpeg2000_rs"\nversion="0.1.0"\n',
+            "Cargo.toml": b'[package]\nname="jpeg2000-decoder"\nversion="0.1.0"\n',
             "src/lib.rs": b"pub fn fixture() {}\n",
             "specs/mod.rs": b"// model fixture\n",
             "proofs/mod.rs": b"// proof fixture\n",
@@ -40,7 +40,7 @@ class PackagedSourceTests(unittest.TestCase):
         self.git("add", "--all")
         self.git("commit", "--message", "Fixture")
         self.commit = self.git("rev-parse", "HEAD")
-        self.package = self.root / "target/package/jpeg2000_rs-0.1.0"
+        self.package = self.root / "target/package/jpeg2000-decoder-0.1.0"
         self.archive = self.package.parent / (self.package.name + ".crate")
         self.package.mkdir(parents=True)
         self.members = {name: data for name, data in self.files.items() if name != ".gitignore"}
@@ -78,7 +78,7 @@ class PackagedSourceTests(unittest.TestCase):
 
     def test_package_path_preserves_the_full_semantic_version(self):
         metadata = {
-            "packages": [{"name": "jpeg2000_rs", "version": "0.1.0",
+            "packages": [{"name": "jpeg2000-decoder", "version": "0.1.0",
                           "manifest_path": str(self.root / "Cargo.toml")}],
             "target_directory": str(self.root / "target"),
         }
@@ -86,7 +86,20 @@ class PackagedSourceTests(unittest.TestCase):
                           return_value=json.dumps(metadata).encode()):
             package, archive = packaged_source.package_paths(self.root)
         self.assertEqual(package, self.package)
-        self.assertEqual(archive.name, "jpeg2000_rs-0.1.0.crate")
+        self.assertEqual(archive.name, "jpeg2000-decoder-0.1.0.crate")
+
+    def test_old_or_rust_namespace_package_names_are_rejected(self):
+        for name in ("jpeg2000_rs", "jpeg2000_decoder", "other-package"):
+            metadata = {
+                "packages": [{"name": name, "version": "0.1.0",
+                              "manifest_path": str(self.root / "Cargo.toml")}],
+                "target_directory": str(self.root / "target"),
+            }
+            with self.subTest(name=name), \
+                    patch.object(packaged_source.subprocess, "check_output",
+                                 return_value=json.dumps(metadata).encode()), \
+                    self.assertRaisesRegex(ValueError, "exactly the production jpeg2000-decoder"):
+                packaged_source.package_paths(self.root)
 
     def test_changed_unpacked_source_is_rejected(self):
         (self.package / "src/lib.rs").write_text("pub fn changed() {}\n")

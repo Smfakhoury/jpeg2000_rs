@@ -34,7 +34,7 @@ class ProofCoverageTests(unittest.TestCase):
                 "version": "fixture", "commit": proof_coverage.EXPECTED_VERUS_COMMIT,
                 "profile": "release", "toolchain": "fixture",
             },
-            "func-details": {"jpeg2000_rs::fixture": {"failed_proof_notes": [], "obligation_proof_notes": []}},
+            "func-details": {"jpeg2000_decoder::fixture": {"failed_proof_notes": [], "obligation_proof_notes": []}},
         }
 
     def test_valid_observed_project_run_has_honest_boundary(self):
@@ -53,7 +53,7 @@ class ProofCoverageTests(unittest.TestCase):
         self.assertIn("No exhaustive", report["scope"])
         framework.validate_schema(VALIDATION / "proof-coverage.schema.json", report)
         self.assertEqual(report["verification_entrypoint"], "cargo verus verify")
-        self.assertEqual(report["crate_name"], "jpeg2000_rs")
+        self.assertEqual(report["crate_name"], "jpeg2000_decoder")
         self.assertEqual(report["known_proof_boundary"]["termination"], [])
 
     def test_schema_rejects_legacy_or_measured_coverage_claims(self):
@@ -86,7 +86,7 @@ class ProofCoverageTests(unittest.TestCase):
         self.assertEqual(report["results"]["source_function_coverage"], "not-measured")
         self.assertEqual(report["results"]["verified_project_functions"], 1)
         self.assertEqual(report["functions"], [
-            {"function": "jpeg2000_rs::fixture", "disposition": "verified"},
+            {"function": "jpeg2000_decoder::fixture", "disposition": "verified"},
         ])
 
     def test_empty_and_malformed_results_fail_closed(self):
@@ -107,12 +107,12 @@ class ProofCoverageTests(unittest.TestCase):
         mutations = [
             lambda r: r["verus"].update(commit="0" * 40),
             lambda r: r.update({"func-details": {"vstd::fixture": {"failed_proof_notes": []}}}),
-            lambda r: r.update({"func-details": {"jpeg2000_rs::fixture": {}}}),
-            lambda r: r.update({"func-details": {"jpeg2000_rs::fixture": {"failed_proof_notes": ["failed"]}}}),
-            lambda r: r.update({"func-details": {"jpeg2000_rs::fixture": {"failed_proof_notes": [], "obligation_proof_notes": [], "trusted": True}}}),
-            lambda r: r.update({"func-details": {"jpeg2000_rs::fixture": {"failed_proof_notes": []}}}),
-            lambda r: r.update({"func-details": {"jpeg2000_rs::fixture": {"failed_proof_notes": [], "obligation_proof_notes": ["unexpected trust"]}}}),
-            lambda r: r.update({"func-details": {"jpeg2000_rs::fixture": None}}),
+            lambda r: r.update({"func-details": {"jpeg2000_decoder::fixture": {}}}),
+            lambda r: r.update({"func-details": {"jpeg2000_decoder::fixture": {"failed_proof_notes": ["failed"]}}}),
+            lambda r: r.update({"func-details": {"jpeg2000_decoder::fixture": {"failed_proof_notes": [], "obligation_proof_notes": [], "trusted": True}}}),
+            lambda r: r.update({"func-details": {"jpeg2000_decoder::fixture": {"failed_proof_notes": []}}}),
+            lambda r: r.update({"func-details": {"jpeg2000_decoder::fixture": {"failed_proof_notes": [], "obligation_proof_notes": ["unexpected trust"]}}}),
+            lambda r: r.update({"func-details": {"jpeg2000_decoder::fixture": None}}),
         ]
         for mutate in mutations:
             result = copy.deepcopy(self.result)
@@ -157,12 +157,12 @@ class ProofCoverageTests(unittest.TestCase):
         self.assertEqual(proof_coverage.load_cargo_verus_result(text), self.result)
 
     def test_dependency_legacy_or_other_crate_cannot_be_root_evidence(self):
-        for namespace in ("vstd", "lib", "other_project"):
+        for namespace in ("vstd", "lib", "other_project", "jpeg2000_rs", "jpeg2000-decoder"):
             result = copy.deepcopy(self.result)
             result["func-details"] = {
                 namespace + "::fixture": {"failed_proof_notes": [], "obligation_proof_notes": []},
             }
-            with self.subTest(namespace=namespace), self.assertRaisesRegex(ValueError, "no jpeg2000_rs"):
+            with self.subTest(namespace=namespace), self.assertRaisesRegex(ValueError, "no jpeg2000_decoder"):
                 proof_coverage.generate_coverage(result, self.work)
 
     def test_internal_specs_are_scanned_and_hashed(self):
@@ -182,8 +182,10 @@ class ProofCoverageTests(unittest.TestCase):
         )
         package = next(
             p for p in json.loads(completed.stdout)["packages"]
-            if p["name"] == proof_coverage.EXPECTED_CRATE
+            if p["name"] == proof_coverage.EXPECTED_PACKAGE
         )
+        library = next(target for target in package["targets"] if "lib" in target["kind"])
+        self.assertEqual(library["name"], proof_coverage.EXPECTED_CRATE)
         self.assertIs(package["metadata"]["verus"]["verify"], True)
         self.assertEqual(package["features"]["default"], [])
         self.assertEqual(package["features"]["verus"], ["dep:vstd"])

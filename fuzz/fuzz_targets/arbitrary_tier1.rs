@@ -1,6 +1,6 @@
 #![no_main]
 
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     mq::MqDecoder,
     tier1::{
         CodeBlockPlane, CodeBlockSegmentAccounting, HtForwardMagSgnReader,
@@ -14,7 +14,7 @@ use jpeg2000_rs::{
     },
     transform::{QuantizationStep, inverse_5_3, inverse_9_7, inverse_quantize, undo_maxshift},
 };
-use jpeg2000_rs_fuzz::resource_limits;
+use jpeg2000_decoder_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

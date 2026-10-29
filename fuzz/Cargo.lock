@@ -54,14 +54,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "jpeg2000_rs"
+name = "jpeg2000-decoder"
 version = "0.1.0"
 
 [[package]]
-name = "jpeg2000_rs-fuzz"
+name = "jpeg2000-decoder-fuzz"
 version = "0.0.0"
 dependencies = [
- "jpeg2000_rs",
+ "jpeg2000-decoder",
  "libfuzzer-sys",
 ]
 

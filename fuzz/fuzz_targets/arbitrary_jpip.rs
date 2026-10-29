@@ -1,10 +1,10 @@
 #![no_main]
 
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     DatabinCache, DatabinId, JpipDatabinRange, JpipFragment, JpipHeaderContext,
     ingest_jpip_response, parse_jpip_message,
 };
-use jpeg2000_rs_fuzz::resource_limits;
+use jpeg2000_decoder_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

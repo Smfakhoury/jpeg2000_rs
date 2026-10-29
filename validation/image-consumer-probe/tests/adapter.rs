@@ -2,8 +2,8 @@ use image::{
     error::LimitErrorKind, ColorType, DynamicImage, ExtendedColorType, ImageDecoder, ImageError,
     ImageReader, Limits,
 };
+use jpeg2000_decoder::{DecodeError, DecodeOptions, Resource, ResourceLimits};
 use jpeg2000_image_consumer_probe::{register_jp2_hook, Jp2Decoder, ProbeError};
-use jpeg2000_rs::{DecodeError, DecodeOptions, Resource, ResourceLimits};
 use std::{
     error::Error,
     io::{self, Cursor, Read, Seek, SeekFrom},

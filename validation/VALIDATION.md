@@ -908,8 +908,8 @@ After the actual pinned whole-crate Cargo-Verus command in
 
 The default report is `target/validation/proof-coverage.json`; `--output-dir`
 selects another directory. The collector writes normalized `verus-result.json`
-and a schema-v2 report identifying `cargo verus verify`, `src/lib.rs` and
-the exact `jpeg2000_rs` crate namespace. It requires one root JSON result,
+and a schema-v3 report identifying `cargo verus verify`, `src/lib.rs` and
+the exact `jpeg2000_decoder` crate namespace. It requires one root JSON result,
 the pinned commit, whole-crate success, zero errors, nonempty project results,
 and no termination bypasses or trusted proof escapes. A Cargo exit code, a
 dependency proof or cached build output is insufficient; module-only `focus`
@@ -918,3 +918,9 @@ are separately hashed. It does not compare against
 committed progress output or infer coverage for absent functions. CI retains
 the stable release's `--no-lifetime` boundary explicitly; lifetime verification
 is not claimed.
+
+The Cargo package is `jpeg2000-decoder`; its Rust namespace is
+`jpeg2000_decoder`. Existing corpus/profile/generator and oracle subject IDs
+are stable validation-protocol identifiers, not Cargo package names. They
+remain unchanged so old corpus and oracle configurations remain comparable.
+Historical source-bound proof reports retain their original namespace.

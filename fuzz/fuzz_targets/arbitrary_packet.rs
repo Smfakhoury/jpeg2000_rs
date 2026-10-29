@@ -1,6 +1,6 @@
 #![no_main]
 
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     codestream::{CodingStyle, ProgressionOrder, TilePartPayload, WaveletTransform},
     packet::{
         CodeBlockPacketContext, CodeBlockPacketState, PacketBitReader, PacketCodeBlockExecution,
@@ -10,7 +10,7 @@ use jpeg2000_rs::{
     },
     tier1::{SubbandOrientation, Tier1CodeBlockDecoder, Tier1CodingStyle},
 };
-use jpeg2000_rs_fuzz::resource_limits;
+use jpeg2000_decoder_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -76,8 +76,8 @@ fuzz_target!(|data: &[u8]| {
         multiple_component_transform: false,
         decomposition_levels: 0,
         decomposition_structure: None,
-        decomposition_directions: [jpeg2000_rs::codestream::DecompositionDirection::TwoDimensional;
-            32],
+        decomposition_directions:
+            [jpeg2000_decoder::codestream::DecompositionDirection::TwoDimensional; 32],
         code_block_width: 1,
         code_block_height: 1,
         code_block_style,
@@ -93,7 +93,7 @@ fuzz_target!(|data: &[u8]| {
         1,
         1,
         tile_coding_style,
-        jpeg2000_rs::codestream::RoiShifts::none(),
+        jpeg2000_decoder::codestream::RoiShifts::none(),
         packet_data,
     )
     .unwrap();

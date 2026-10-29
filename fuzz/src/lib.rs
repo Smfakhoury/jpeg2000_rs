@@ -1,4 +1,4 @@
-use jpeg2000_rs::ResourceLimits;
+use jpeg2000_decoder::ResourceLimits;
 
 pub fn resource_limits() -> ResourceLimits {
     ResourceLimits::default()
@@ -21,7 +21,7 @@ pub fn resource_limits() -> ResourceLimits {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jpeg2000_rs::{DecodeError, DecodeOptions, decode_codestream};
+    use jpeg2000_decoder::{DecodeError, DecodeOptions, decode_codestream};
 
     #[test]
     fn fuzz_profile_rejects_large_grid_before_exhausting_process_memory() {

@@ -10,7 +10,7 @@
   "properties": {
     "$schema": {"type": "string"},
     "schema_version": {"const": 3},
-    "crate_name": {"const": "jpeg2000_rs"},
+    "crate_name": {"const": "jpeg2000_decoder"},
     "verification_entrypoint": {"const": "cargo verus verify"},
     "source_root": {"const": "src/lib.rs"},
     "source_hashes": {
@@ -72,7 +72,7 @@
         "required": ["function", "disposition"],
         "additionalProperties": false,
         "properties": {
-          "function": {"type": "string", "pattern": "^jpeg2000_rs::"},
+          "function": {"type": "string", "pattern": "^jpeg2000_decoder::"},
           "disposition": {"const": "verified"}
         }
       }
@@ -83,7 +83,7 @@
         "type": "object",
         "required": ["function", "disposition"],
         "properties": {
-          "function": {"type": "string", "pattern": "^jpeg2000_rs::"},
+          "function": {"type": "string", "pattern": "^jpeg2000_decoder::"},
           "disposition": {"type": "string", "minLength": 1}
         },
         "additionalProperties": false

@@ -1,5 +1,5 @@
 [package]
-name = "jpeg2000_rs-fuzz"
+name = "jpeg2000-decoder-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -13,7 +13,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "=0.4.13"
 
-[dependencies.jpeg2000_rs]
+[dependencies.jpeg2000-decoder]
 path = ".."
 
 [[bin]]

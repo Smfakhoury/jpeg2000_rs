@@ -27,12 +27,12 @@ def package_paths(root: Path) -> tuple[Path, Path]:
     ))
     packages = [package for package in metadata["packages"]
                 if Path(package["manifest_path"]).resolve() == (root / "Cargo.toml").resolve()]
-    if len(packages) != 1 or packages[0]["name"] != "jpeg2000_rs":
-        raise ValueError("expected exactly the production jpeg2000_rs package")
+    if len(packages) != 1 or packages[0]["name"] != "jpeg2000-decoder":
+        raise ValueError("expected exactly the production jpeg2000-decoder package")
     target = Path(metadata["target_directory"])
     if target.resolve() != (root / "target").resolve():
         raise ValueError("packaged verification requires the repository-local target directory")
-    package = target / "package" / f"jpeg2000_rs-{packages[0]['version']}"
+    package = target / "package" / f"{packages[0]['name']}-{packages[0]['version']}"
     return package, package.parent / (package.name + ".crate")
 
 

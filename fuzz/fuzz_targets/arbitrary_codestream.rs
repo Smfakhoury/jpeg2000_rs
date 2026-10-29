@@ -1,6 +1,6 @@
 #![no_main]
 
-use jpeg2000_rs::{
+use jpeg2000_decoder::{
     DecodeOptions, codestream,
     decode::{
         decode_progression_prepared_image, derive_component_subbands,
@@ -9,7 +9,7 @@ use jpeg2000_rs::{
     decode_codestream,
     packet::decode_progression_tile_packets,
 };
-use jpeg2000_rs_fuzz::resource_limits;
+use jpeg2000_decoder_fuzz::resource_limits;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

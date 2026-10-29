@@ -2011,7 +2011,9 @@ python3 validation/generate-proof-coverage.py \
 The collector extracts exactly one root result, writes normalized
 `verus-result.json` and schema-v3 `proof-coverage.json`, and binds both the raw
 Cargo output and normalized result by hash. The expected crate namespace is
-`jpeg2000_rs`, not the standalone compiler's default `lib`.
+`jpeg2000_decoder`, not the Cargo package spelling `jpeg2000-decoder` or the
+standalone compiler's default `lib`. Historical source-bound evidence retains
+its original crate namespace; do not rewrite old reports for the rename.
 
 The report's `results.source_function_coverage: "not-measured"` is informational:
 the collector does not compare a complete source-function inventory, so there
@@ -2026,7 +2028,7 @@ regenerate with the commands above to produce a report for the current schema.
 
 Cargo can reuse an already verified artifact without emitting fresh JSON.
 For a fresh local report, clean only this crate's verification artifacts with
-`cargo clean -p jpeg2000_rs --target-dir target/verus`, then repeat the report
+`cargo clean -p jpeg2000-decoder --target-dir target/verus`, then repeat the report
 command. CI uses a fresh checkout. Reports are generated evidence, not
 committed snapshots; an empty/cached output cannot become a new proof report.
 If Cargo refuses to clean because the target lacks a valid `CACHEDIR.TAG`,
