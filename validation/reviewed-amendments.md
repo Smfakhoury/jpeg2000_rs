@@ -14,7 +14,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-164` | Adopted through #167; the standalone package-only `image` consumer is now owner-merged in #164 | CI40665820297 / Verus40665820275; refreshed source qualification is retained in #164 |
 | `proposal-163-b4c6d67` | Adopted through #168; the source-complete package is now owner-merged in #163 | CI40713472934 / Verus40713472868; refreshed source and actual-main qualification are retained in #163 |
 | `proposal-171-ghost-support` | Adopted through #172; the mechanical proof/view relocation is now owner-merged in #171 | CI40730904780 / Verus40729319509; refreshed source and actual-main qualification are retained in #171 |
-| `proposal-174-tier1-tests` | Proposed exact private Tier-1 test relocation; complete production/contract/proof prefix unchanged | #174, CI40772805265 / Verus40772806908; refreshed source checks remain mandatory |
+| `proposal-174-tier1-tests` | Adopted through #175; private Tier-1 tests are now merged in #174 under explicit owner delegation | CI40772805265 / Verus40772806908; refreshed source and actual-main qualification are retained in #174 |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -77,9 +77,9 @@ waived or overridden.
 This record cannot authorize Tier-1 cleanup, another module, a controller
 amendment or a combined change.
 
-### Proposed private Tier-1 test layout
+### Adopted private Tier-1 test layout
 
-The new #174 record covers only `src/tier1.rs`, `src/tier1/tests.rs`, the
+The adopted #174 record covers only `src/tier1.rs`, `src/tier1/tests.rs`, the
 technical reference and package inventories, and the binding-regression test
 file. It moves the existing private `cfg(test)` module body without changing
 the production/contract/proof prefix or its `tier1::tests` identity and private
@@ -99,13 +99,29 @@ retained. Actual pinned formatting, source binding and native/MSRV/resource/
 consumer gates passed. These are engineering observations, not exhaustive
 source proof coverage, lifetime verification or normative correspondence.
 
-Draft #174 was normally refreshed from accepted profile main
+Source #174 was normally refreshed from accepted profile main
 `452d07bbc3eb059324dc2e6583b5c0097b50c881`, preserving all five exact proposed
-blobs. Its policy hold is real, not a check to waive. This separate record must
-first be owner-adopted with every check green; then accept fresh main, refresh
-the source branch again and require fresh complete checks before source review.
+blobs. After owner adoption through #175, it was normally refreshed again to
+`aaa067e463c0a1de2d3b38616b15dd84c5c34279`; all source checks and fresh policy
+gates passed before review. The assistant reviewed and normally merged it under
+the owner's explicit delegation, without an admin/status override. Actual main
+`c25a5b5999e0cb7062faa6882078a9e1f1ee5b8a` was accepted from fresh full CI and
+repository/archive proof originals: 293 Python tests without skips, 3,518/0 per
+proof replay, unchanged observed function identities and a 53-file/37-Rust bound
+archive. The original failed policy hold was not waived or overridden.
 This record cannot authorize another module, a controller/model change or a
 combined amendment.
+
+### Delegated engineering merges
+
+On 2026-10-28 at 22:57 UTC the owner explicitly delegated engineering PR review
+and merge to the assistant while completing publication preparation. This does
+not make a feature branch authoritative, waive a gate or provide independent
+normative adjudication. Separate policy adoption on trusted main, exact source
+scope, fresh complete checks and original-artifact review still apply.
+Delegated merges are recorded as delegated, not as independent human approvals.
+Registry publication, visibility/tag changes and history rewriting remain
+separate decisions.
 
 An exception must first be proposed in a separate documentation-only PR. All
 required checks on that PR must pass before review is requested. Owner adoption
@@ -144,6 +160,10 @@ actual-main CI and repository/archive proof artifacts. It installed only the
 fixed five-path Tier-1 profile and added no source record. This proposed record
 does not activate itself by changing a feature branch; the existing
 decode-support record cannot authorize Tier-1 cleanup.
+
+The proposed [publication-name profile authorization](crate-rename-profile-authorization.md)
+is a new exact two-file controller operation under that delegation. It does not
+activate a rename scope or source exception by changing this feature branch.
 
 ```json
 {
