@@ -41,9 +41,10 @@ Cargo and Verus use the exact [src/lib.rs](src/lib.rs) crate root. Production
 algorithms live in [src/](src/); a second proof-only decoder implementation is
 not maintained.
 
-Private parser and Tier-1 tests live in
-[codestream/tests.rs](src/codestream/tests.rs) and
-[tier1/tests.rs](src/tier1/tests.rs). They remain `cfg(test)` child modules with
+Private parser, Tier-1 and decoder tests live in
+[codestream/tests.rs](src/codestream/tests.rs),
+[tier1/tests.rs](src/tier1/tests.rs), and
+[decode/tests.rs](src/decode/tests.rs). They remain `cfg(test)` child modules with
 the same private access; production bodies, contracts and proofs stay in their
 original modules.
 

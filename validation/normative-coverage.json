@@ -1063,7 +1063,7 @@
         {"path": "src/image.rs", "symbol": "decoded_typed_image_outcome"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_full_selected_typed_layouts_join_real_decode_nonlinear_and_shape_producers"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_full_selected_typed_layouts_join_real_decode_nonlinear_and_shape_producers"}
       ]
     },
     {
@@ -1303,7 +1303,7 @@
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_nonlinear_lookup_preserves_first_specific_then_first_default_and_all_raw_fields"},
-        {"path": "src/decode.rs", "symbol": "actual_nonlinear_regions_derive_last_raw_tile_owner_registered_clipping_and_error_order"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_nonlinear_regions_derive_last_raw_tile_owner_registered_clipping_and_error_order"}
       ]
     },
     {
@@ -1330,7 +1330,7 @@
         {"path": "src/refinement.rs", "symbol": "component_output_shape_valid"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_typed_output_admission_checks_raw_header_and_every_signed_unsigned_plane"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_typed_output_admission_checks_raw_header_and_every_signed_unsigned_plane"}
       ]
     },
     {
@@ -1369,7 +1369,7 @@
         {"path": "src/codestream.rs", "symbol": "tile_parts_owned_view"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_full_and_selected_layout_decode_derive_complete_images_from_real_source_parts_and_empty_state"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_full_and_selected_layout_decode_derive_complete_images_from_real_source_parts_and_empty_state"}
       ]
     },
     {
@@ -1403,7 +1403,7 @@
         {"path": "src/codestream.rs", "symbol": "packed_header_presence_matches_view"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_codec_output_is_identical_for_source_parts_and_independent_complete_owned_copies"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_codec_output_is_identical_for_source_parts_and_independent_complete_owned_copies"}
       ]
     },
     {
@@ -1479,7 +1479,7 @@
         {"path": "src/codestream.rs", "symbol": "CodestreamProfile::part15_requires_all_ht_blocks"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_raw_tile_decode_derives_all_samples_counters_work_and_first_errors_without_plan_results"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_raw_tile_decode_derives_all_samples_counters_work_and_first_errors_without_plan_results"}
       ]
     },
     {
@@ -1614,8 +1614,8 @@
         {"path": "src/packet.rs", "symbol": "PacketGrid::total_precinct_count"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_selected_component_accounting_preserves_raw_band_indices_resolution_and_overflow_order"},
-        {"path": "src/decode.rs", "symbol": "actual_layout_accounting_preserves_full_selected_global_limits_empty_and_malformed_plan_policy"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_selected_component_accounting_preserves_raw_band_indices_resolution_and_overflow_order"},
+        {"path": "src/decode/tests.rs", "symbol": "actual_layout_accounting_preserves_full_selected_global_limits_empty_and_malformed_plan_policy"}
       ]
     },
     {
@@ -1647,7 +1647,7 @@
         {"path": "src/tier1.rs", "symbol": "tier1_decoder_plane_matches_state"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_packet_reconstruction_uses_real_bytes_complete_decoder_planes_and_owned_prepared_prefixes"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_packet_reconstruction_uses_real_bytes_complete_decoder_planes_and_owned_prepared_prefixes"}
       ]
     },
     {
@@ -1690,8 +1690,8 @@
         {"path": "src/codestream.rs", "symbol": "selection_geometry_known_fields"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_component_plan_derives_full_component_and_precinct_vectors_from_real_raw_owners"},
-        {"path": "src/decode.rs", "symbol": "actual_selected_tile_plan_and_public_owner_boundary_bind_every_field_and_first_error"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_component_plan_derives_full_component_and_precinct_vectors_from_real_raw_owners"},
+        {"path": "src/decode/tests.rs", "symbol": "actual_selected_tile_plan_and_public_owner_boundary_bind_every_field_and_first_error"}
       ]
     },
     {
@@ -1722,7 +1722,7 @@
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_resolution_plan_metadata_preserves_complete_raw_geometry_counts_split_and_origin_fields"},
-        {"path": "src/decode.rs", "symbol": "actual_precinct_origins_preserve_raw_divisor_addition_and_multiplication_frontiers"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_precinct_origins_preserve_raw_divisor_addition_and_multiplication_frontiers"}
       ]
     },
     {
@@ -1750,7 +1750,7 @@
         {"path": "src/packet.rs", "symbol": "packet_precinct_outcome"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_precinct_plan_derives_all_private_packet_fields_from_raw_subband_ranges"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_precinct_plan_derives_all_private_packet_fields_from_raw_subband_ranges"}
       ]
     },
     {
@@ -1778,8 +1778,8 @@
         {"path": "src/packet.rs", "symbol": "packet_execution_known_fields"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_subband_lattice_preserves_raw_overflow_empty_intersection_and_divisor_policy"},
-        {"path": "src/decode.rs", "symbol": "actual_subband_execution_derives_full_packet_row_and_preserves_lazy_owned_prefix"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_subband_lattice_preserves_raw_overflow_empty_intersection_and_divisor_policy"},
+        {"path": "src/decode/tests.rs", "symbol": "actual_subband_execution_derives_full_packet_row_and_preserves_lazy_owned_prefix"}
       ]
     },
     {
@@ -1809,8 +1809,8 @@
         {"path": "src/tier1.rs", "symbol": "tier1_decoder_state"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_codeblock_vectors_bind_every_decoder_placement_prefix_policy_and_selected_limit"},
-        {"path": "src/decode.rs", "symbol": "actual_codeblock_cell_retains_existing_owned_decoder_and_placement_buffers"}
+        {"path": "src/decode/tests.rs", "symbol": "actual_codeblock_vectors_bind_every_decoder_placement_prefix_policy_and_selected_limit"},
+        {"path": "src/decode/tests.rs", "symbol": "actual_codeblock_cell_retains_existing_owned_decoder_and_placement_buffers"}
       ]
     },
     {
@@ -1906,7 +1906,7 @@
         {"path": "src/tier1.rs", "symbol": "Tier1CodeBlockDecoder::set_ht_magnitude_bound"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers"},
+        {"path": "src/decode/tests.rs", "symbol": "actual_planned_block_geometry_preserves_raw_lattice_clipping_and_u16_frontiers"},
         {"path": "src/tier1/tests.rs", "symbol": "configured_decoder_derives_initial_state_and_preserves_bound_admission_order"}
       ]
     },
@@ -2508,10 +2508,10 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_mct_prepared_inputs_shape"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "complete_coefficient_reconstruction_preserves_prefix_mct_and_error_frontiers"},
-        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
-        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
-        {"path": "src/decode.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_coefficient_reconstruction_preserves_prefix_mct_and_error_frontiers"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
+        {"path": "src/decode/tests.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
         {"path": "src/codestream/tests.rs", "symbol": "actual_kernel_registry_retains_first_duplicates_and_every_raw_index"},
         {"path": "src/image.rs", "symbol": "native_mct_wavelet_partitions_match_signed_integer_intervals"},
         {"path": "src/image.rs", "symbol": "native_mct_wavelet_scaled_snapshot_keeps_full_precision_and_error_priority"},
@@ -4623,9 +4623,9 @@
         {"path": "src/transform.rs", "symbol": "arbitrary_binary_coefficients_match_integer_rational_rounding_and_raw_format_edges"},
         {"path": "src/transform.rs", "symbol": "arbitrary_sequences_preserve_all_raw_kinds_width_hints_flags_and_scaling_order"},
         {"path": "src/transform.rs", "symbol": "arbitrary_lifting_runs_reverse_step_parity_and_preserves_late_partial_errors"},
-        {"path": "src/decode.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
-        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
-        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"}
+        {"path": "src/decode/tests.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"}
       ]
     },
     {
@@ -4839,10 +4839,10 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_color_sampling_error_guard"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "complete_native_selection_and_color_context_match_independent_spatial_reference"},
-        {"path": "src/decode.rs", "symbol": "associated_native_output_composes_actual_metadata_color_crop_and_none_bypass"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_native_selection_and_color_context_match_independent_spatial_reference"},
+        {"path": "src/decode/tests.rs", "symbol": "associated_native_output_composes_actual_metadata_color_crop_and_none_bypass"},
         {"path": "src/jp2.rs", "symbol": "complete_native_association_and_selected_header_validation_preserve_raw_choices"},
-        {"path": "src/decode.rs", "symbol": "selected_tiles_and_regions_match_full_decode_crops"}
+        {"path": "src/decode/tests.rs", "symbol": "selected_tiles_and_regions_match_full_decode_crops"}
       ]
     },
     {
@@ -5212,7 +5212,7 @@
         {"path": "specs/mod.rs", "symbol": "color_selection_target_error"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "selected_color_bridge_composes_actual_conversion_crop_and_error_order"}
+        {"path": "src/decode/tests.rs", "symbol": "selected_color_bridge_composes_actual_conversion_crop_and_error_order"}
       ],
       "topic": "Actual typed-input color-to-selection caller composition with complete pixels/metadata and conversion-before-target-before-crop error ordering, without assumed converted pixels"
     },
@@ -6632,7 +6632,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "progression_plan_routes_all_subbands_and_prepares_image"
         },
         {
@@ -6640,7 +6640,7 @@
           "symbol": "prepared_tile_views"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "reduced_selection_uses_native_resolution_and_selected_limits"
         }
       ],
@@ -6710,19 +6710,19 @@
       ],
       "test_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "top_level_apis_decode_poc_with_plm_plt_and_ppm_ppt"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "packed_headers_honor_plt_sop_and_eph"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "top_level_raw_and_jp2_decode_packed_packet_headers"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "decodes_single_sample_with_empty_detail_resolution_packet"
         }
       ],
@@ -6776,19 +6776,19 @@
       ],
       "test_refs": [
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "top_level_decode_assembles_clipped_tiles_and_typed_samples"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "output_shape_contracts_reject_empty_components_and_planes"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "selected_tiles_and_regions_match_full_decode_crops"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "top_level_jp2_decode_returns_typed_image"
         }
       ],
@@ -7154,7 +7154,7 @@
           "symbol": "converts_finite_binary64_and_rejects_non_finite_or_overflow"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "applies_ordered_part2_mct_stages_to_raw_jp2_and_selected_jpx_decode"
         }
       ],
@@ -7236,7 +7236,7 @@
           "symbol": "retains_signed_palette_and_channel_definition_records"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "jp2_palette_mapping_preserves_types_channels_and_direct_components"
         }
       ],
@@ -7335,8 +7335,8 @@
         {"path": "specs/mod.rs", "symbol": "part2_typed_sample_count"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "palette_component_mapping_matches_independent_complete_native_oracle"},
-        {"path": "src/decode.rs", "symbol": "palette_component_modulus_matches_all_native_precisions"}
+        {"path": "src/decode/tests.rs", "symbol": "palette_component_mapping_matches_independent_complete_native_oracle"},
+        {"path": "src/decode/tests.rs", "symbol": "palette_component_modulus_matches_all_native_precisions"}
       ],
       "topic": "Complete actual typed component copy and palette component Result over every stored palette/source shape and native column: exact all sample values/tags/metadata, ordered native index and table errors, descriptor precision/range, empty-source bypass of unaccessed table defects, copy-preserved versus palette-cleared CDEF. No parsed/normalized/rectangular/success premise. Whole header cmap/CDEF application, final image admission and selected pixels remain separate."
     },
@@ -7377,7 +7377,7 @@
         {"path": "specs/mod.rs", "symbol": "part2_typed_image_component"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "whole_output_header_matches_independent_native_order_and_admission_oracle"},
+        {"path": "src/decode/tests.rs", "symbol": "whole_output_header_matches_independent_native_order_and_admission_oracle"},
         {"path": "src/image.rs", "symbol": "typed_image_admission_preserves_native_count_origin_shape_and_error_priority"}
       ],
       "topic": "Complete actual unconditional output-header Result on native typed-image/header/caps: actual CMAP order, direct versus palette CDEF behavior, ordered duplicate CDEF append and first bad channel, final origin/count/area/cardinality/cumulative-byte admission and every output field/error. Unread header metadata/count hints stay unvalidated. No valid/normalized-header, successful mapping, shape or adequate-budget premise. Earlier parsing/association and selected target composition remain separate."
@@ -7426,7 +7426,7 @@
           "symbol": "signed_subsampled_sycc_and_alpha_resample_to_image_grid"
         },
         {
-          "path": "src/decode.rs",
+          "path": "src/decode/tests.rs",
           "symbol": "selected_color_decode_resamples_signed_subsampled_component"
         }
       ],
@@ -10936,8 +10936,8 @@
         {"path": "specs/mod.rs", "symbol": "part1_working_subband_frame"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "complete_quantized_block_placement_matches_independent_wide_reference"},
-        {"path": "src/decode.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
+        {"path": "src/decode/tests.rs", "symbol": "complete_quantized_block_placement_matches_independent_wide_reference"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_quantized_block_failures_preserve_samples_visits_and_metadata"}
       ],
       "topic": "Actual row-major writes of supplied quantized block samples into working subband samples and visited masks, including all metadata, buffer mismatches, overlap and checked-coordinate errors with exact partial states; not the entire prepare/multilevel/tile-image assembly coordinator"
     },
@@ -11005,9 +11005,9 @@
         {"path": "specs/mod.rs", "symbol": "part1_transform_area"}
       ],
       "test_refs": [
-        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
-        {"path": "src/decode.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
-        {"path": "src/decode.rs", "symbol": "progression_plan_routes_all_subbands_and_prepares_image"}
+        {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
+        {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"},
+        {"path": "src/decode/tests.rs", "symbol": "progression_plan_routes_all_subbands_and_prepares_image"}
       ],
       "topic": "Complete actual public prepare_tile_component Result over all native raw plans, precinct decoder/plane/coefficient fields, styles and caps for the None-kernel profile: initialization, raw six-limb signed/midpoint collection, quantization, placement/coverage/fraction checks, entire mixed-direction/multilevel 5/3 or Q16 9/7 fold, metadata and first errors. Missing Arbitrary kernel rejects exactly. Private Some-kernel/arbitrary, general MCT and whole decoder composition remain outside this result; no valid-header/normalized-coefficient/coverage/sufficient-budget/trace entry premise"
     },

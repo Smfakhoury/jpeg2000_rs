@@ -1096,6 +1096,20 @@ class FrameworkTests(WorkingFiles):
             "src/tier1.rs", "src/tier1/tests.rs",
         )
 
+    def test_inventory_tracks_relocated_decoder_tests_and_retains_production_references(self):
+        self._assert_relocated_test_bindings(
+            "part1-complete-native-typed-output-shape-admission",
+            "src/decode.rs", "src/decode/tests.rs",
+        )
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        retained = [
+            reference for entry in coverage["requirements"]
+            for reference in entry["test_refs"]
+            if reference["symbol"] == "prepared_tile_views"
+        ]
+        self.assertTrue(retained)
+        self.assertTrue(all(reference["path"] == "src/decode.rs" for reference in retained))
+
     def _assert_relocated_test_bindings(self, entry_id, original_path, moved_path):
         coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in coverage["requirements"]
