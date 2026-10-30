@@ -130,10 +130,17 @@ copy. Source PRs cannot approve themselves by also editing their own registry.
 
 After owner adoption of a separate, all-green registry-only PR, an exact record
 can recognize the entire protected-path set, original/proposed Git blob IDs and
-regular-file modes. Unknown profiles, normative model/proof Rust, the controller,
+regular-file modes. Unknown profiles, unlisted model/proof Rust, the controller,
 combined amendments and other protected changes remain held. Source branches
 must be refreshed from accepted main and all required checks must genuinely
 pass before source review is requested.
+
+The owner separately authorized bounded source-derived model/proof development
+in #192. Its exact two-file deployment is accepted, and its single-use forward
+permission is spent. The `packet-metadata-finalization` profile recognizes only
+separately adopted, exact eight-path source records. These additions describe
+the actual executing producers; they are not independent standards
+correspondence approval or a general exception for model/proof Rust.
 
 Fingerprints and evidence identifiers are not semantic-equivalence or normative
 approval. This engineering mechanism does not complete trusted-adjudicator
