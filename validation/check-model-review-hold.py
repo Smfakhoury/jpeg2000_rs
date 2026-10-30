@@ -10,6 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "validation/reviewed-amendments.md"
 AMENDMENT_PROFILES = {
+    "tile-component-style-cache": frozenset({
+        "src/codestream/layout.rs", "src/codestream/tiles.rs",
+        "src/codestream/tests.rs",
+    }),
     "packet-metadata-finalization": frozenset({
         "src/error.rs",
         "src/codestream/packet_headers.rs", "src/codestream/proof_support.rs",
