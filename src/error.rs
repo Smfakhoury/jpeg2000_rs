@@ -174,10 +174,8 @@ pub enum DecodeError {
 }
 
 impl DecodeError {
-    // The pinned attribute macro needs impl context for this associated const fn.
-    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
-    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures result == (Self::MalformedInput { offset, kind }),
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        ensures returns (Self::MalformedInput { offset, kind }),
     ))]
     pub(crate) const fn malformed(offset: u64, kind: MalformedKind) -> Self {
         Self::MalformedInput { offset, kind }

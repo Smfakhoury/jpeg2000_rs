@@ -179,7 +179,9 @@ every original argument and complete result projection.
 
 The original executable declarations and bodies are unchanged. A ghost-only
 contract on the existing `DecodeError::malformed` constructor exposes its exact
-offset and kind instead of rewriting the native error paths.
+offset and kind instead of rewriting the native error paths. It uses the
+repository's `ensures returns` form, avoiding static-receiver inference without
+macro-internal markers or verification allowances.
 
 This source-derived development does not establish model-to-standard review,
 official conformance or document-use rights. Actual PLT production,
