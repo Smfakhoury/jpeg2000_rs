@@ -682,6 +682,81 @@ class ModelReviewHoldTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     model_review_hold.read_reviewed_amendments(self.registry([entry]))
 
+    def packet_metadata_fixture(self):
+        paths = {
+            "src/error.rs",
+            "src/codestream/packet_headers.rs", "src/codestream/proof_support.rs",
+            "src/codestream/tests.rs", "specs/packet_input.rs",
+            "validation/framework.py", "validation/normative-coverage.json",
+            "validation/tests/test_framework.py",
+        }
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES["packet-metadata-finalization"],
+                         paths)
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in paths},
+            {path: f"source-derived result contract {path}\n" for path in paths},
+            "packet-metadata-finalization",
+            "Exact source-derived raw packet finalizers, not normative correspondence approval.",
+        )
+
+    def test_packet_metadata_record_requires_exact_trusted_adoption(self):
+        base, head, entry = self.packet_metadata_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_packet_metadata_record_rejects_each_changed_source_model_or_evidence(self):
+        base, head, entry = self.packet_metadata_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-packet-metadata-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_packet_metadata_record_does_not_authorize_other_models_or_controls(self):
+        base, head, entry = self.packet_metadata_fixture()
+        for index, path in enumerate((
+            "specs/packet.rs", "specs/new.rs", "proofs/new.rs", "src/codestream/tiles.rs",
+            "src/decode/api.rs", "src/lib.rs", "src/limits.rs", "Cargo.toml",
+            "rust-toolchain.toml", "validation/generate-proof-coverage.py",
+            "validation/check-model-review-hold.py", ".github/workflows/verus.yml",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-packet-metadata-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_packet_metadata_profile_rejects_expansion_and_incomplete_records(self):
+        _, _, original = self.packet_metadata_fixture()
+        for path in ("specs/new.rs", "proofs/new.rs", "src/codestream.rs",
+                     "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("specs/packet_input.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+        for path in original["paths"]:
+            with self.subTest(missing=path):
+                entry = copy.deepcopy(original)
+                del entry["paths"][path]
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_candidate_packet_metadata_record_cannot_authorize_itself(self):
+        base, _, entry = self.packet_metadata_fixture()
+        self.write("validation/reviewed-amendments.md",
+                   "```json\n" + json.dumps({"schema_version": 1, "amendments": [entry]})
+                   + "\n```\n")
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(
+                self.repository, base, self.commit())), set(entry["paths"]))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()
