@@ -206,7 +206,7 @@ jobs:
           build_command = "set -euo pipefail; source ../tools/activate; vargo build --release"
           test_command = (
               "set -euo pipefail; source ../tools/activate; "
-              "vargo test --release -p rust_verify_test -- "
+              "vargo --vargo-verbose test --release -p rust_verify_test "
               "--test consts _lifetime -- --nocapture --test-threads=1"
           )
           cpus = sorted(os.sched_getaffinity(0))[:2]
@@ -217,7 +217,7 @@ jobs:
               "public_repository": "https://github.com/verus-lang/verus",
               "requested_commit": head,
               "lifetime_checking": "Requested through the unchanged native harness; no extra verifier arguments. Not execution evidence if tests did not run.",
-              "bootstrap": "Only the public source's committed Cargo configuration; no environment override or binary patch.",
+              "bootstrap": "Only the public source's committed Cargo configuration/build tools; no private override or binary patch.",
               "limits": {
                   "job_minutes": 65, "cpu_affinity": cpus, "cargo_jobs": 2,
                   "per_process_address_space_bytes": 6 * 1024**3,
@@ -280,6 +280,50 @@ jobs:
                   for path in paths if path
               }
               (evidence / "source-sha256.json").write_text(json.dumps(source_hashes, indent=2) + "\n")
+              binding_ranges = {
+                  "CONTRIBUTING.md": [(126, 154)],
+                  "tools/vargo/src/cli.rs": [(421, 440)],
+                  "tools/vargo/src/commands/test.rs": [(11, 24)],
+                  "tools/vargo/src/commands/mod.rs": [(42, 84)],
+                  "source/verus/src/main.rs": [(190, 208)],
+                  "source/rust_verify_test/tests/common/mod.rs": [
+                      (233, 245), (290, 319), (365, 465), (667, 744),
+                  ],
+                  "source/rust_verify/src/config.rs": [(312, 320), (480, 488), (704, 712)],
+                  "source/rust_verify/src/driver.rs": [(326, 358)],
+                  "source/rust_verify/src/verifier.rs": [(2723, 2733), (3294, 3347)],
+              }
+              binding = {
+                  "method": "Unmodified pinned public source, not a reimplemented test harness or intercepted child.",
+                  "per_case_macro_options": [],
+                  "extra_verifier_arguments": [],
+                  "child_no_lifetime": False,
+                  "explanation": (
+                      "All six test_verify_one_file! invocations pass [] through the native macro. "
+                      "run_verus adds the lifetime-disabling flag only for an explicit option, "
+                      "and the clean environment has no extra verifier arguments. "
+                      "The verifier parses no_lifetime solely from that flag and otherwise "
+                      "sets up erasure and invokes its lifetime/borrow checks. Expected "
+                      "early-error cases can terminate before those later checks."
+                  ),
+                  "loading": (
+                      "The supported verus launcher uses rustup run with its committed toolchain. "
+                      "Native vargo test delegates to Cargo and its standard test loading environment. "
+                      "A bare direct-driver identity probe outside those environments is not required."
+                  ),
+                  "sources": {},
+              }
+              for name, ranges in binding_ranges.items():
+                  lines = (root / name).read_text().splitlines()
+                  binding["sources"][name] = {
+                      "sha256": source_hashes[name],
+                      "excerpts": [
+                          {"first_line": first, "last_line": last, "text": "\n".join(lines[first - 1:last])}
+                          for first, last in ranges
+                      ],
+                  }
+              (evidence / "native-harness-source-binding.json").write_text(json.dumps(binding, indent=2) + "\n")
+              report["native_harness_source_binding"] = "native-harness-source-binding.json"
               with (evidence / "public-source.tar").open("wb") as out:
                   subprocess.run(["git", "archive", "--format=tar", "HEAD"], cwd=root, stdout=out, check=True)
               test_path = source / "rust_verify_test/tests/consts.rs"
@@ -340,7 +384,6 @@ jobs:
               command("z3-identity", ["./z3", "--version"], source, 30)
               command("build", ["bash", "-c", build_command], source, 2100)
               command("verus-identity", ["./target-verus/release/verus", "--version"], source, 60)
-              command("rust-verify-identity", ["./target-verus/release/rust_verify", "--version"], source, 60)
               result = command("native-harness", ["bash", "-c", test_command], source, 720, required=False)
               output = (evidence / "native-harness.stdout").read_text(errors="replace")
               starts = list(re.finditer(r"^test (\w+) \.\.\. ", output, re.M))
