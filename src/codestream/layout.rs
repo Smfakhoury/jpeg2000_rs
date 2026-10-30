@@ -445,8 +445,11 @@ impl<'a> Parser<'a> {
                     forall|tile: int| 0 <= tile < tile_component_style_parts.len() ==>
                         match #[trigger] tile_component_style_parts@[tile] {
                             Some(part) => part < tile_part_payloads.len()
-                                && tile_part_payloads@[part as int].tile_index as int == tile,
-                            None => true,
+                                && tile_part_payloads@[part as int].tile_index as int == tile
+                                && forall|later: int| part < later < tile_part_payloads.len() ==>
+                                    (#[trigger] tile_part_payloads@[later]).tile_index as int != tile,
+                            None => forall|prior: int| 0 <= prior < tile_part_payloads.len() ==>
+                                (#[trigger] tile_part_payloads@[prior]).tile_index as int != tile,
                         },
                 decreases input_length as int - parser.position as int,
             )
@@ -646,8 +649,11 @@ impl<'a> Parser<'a> {
                         assert forall|tile: int| 0 <= tile < tile_component_style_parts.len() implies
                             match #[trigger] tile_component_style_parts@[tile] {
                                 Some(part) => part < tile_part_payloads.len()
-                                    && tile_part_payloads@[part as int].tile_index as int == tile,
-                                None => true,
+                                    && tile_part_payloads@[part as int].tile_index as int == tile
+                                    && forall|later: int| part < later < tile_part_payloads.len() ==>
+                                        (#[trigger] tile_part_payloads@[later]).tile_index as int != tile,
+                                None => forall|prior: int| 0 <= prior < tile_part_payloads.len() ==>
+                                    (#[trigger] tile_part_payloads@[prior]).tile_index as int != tile,
                             } by {
                                 if tile != tile_index {
                                     assert(tile_component_style_parts@[tile] == previous_style_parts[tile]);
@@ -655,9 +661,34 @@ impl<'a> Parser<'a> {
                                         Some(part) => {
                                             assert(part < previous_payloads.len());
                                             assert(tile_part_payloads@[part as int] == previous_payloads[part as int]);
+                                            assert forall|later: int| part < later < tile_part_payloads.len() implies
+                                                (#[trigger] tile_part_payloads@[later]).tile_index as int != tile by {
+                                                    if later < previous_payloads.len() {
+                                                        assert(tile_part_payloads@[later] == previous_payloads[later]);
+                                                        assert(previous_payloads[later].tile_index as int != tile);
+                                                    } else {
+                                                        assert(later == previous_payloads.len());
+                                                        assert(tile_part_payloads@[later].tile_index as int == tile_index);
+                                                    }
+                                                }
                                         }
-                                        None => {}
+                                        None => {
+                                            assert forall|prior: int| 0 <= prior < tile_part_payloads.len() implies
+                                                (#[trigger] tile_part_payloads@[prior]).tile_index as int != tile by {
+                                                    if prior < previous_payloads.len() {
+                                                        assert(tile_part_payloads@[prior] == previous_payloads[prior]);
+                                                        assert(previous_payloads[prior].tile_index as int != tile);
+                                                    } else {
+                                                        assert(prior == previous_payloads.len());
+                                                        assert(tile_part_payloads@[prior].tile_index as int == tile_index);
+                                                    }
+                                                }
+                                        }
                                     }
+                                } else {
+                                    assert(tile_component_style_parts@[tile] == Some(previous_payloads.len() as usize));
+                                    assert(tile_part_payloads.len() == previous_payloads.len() + 1);
+                                    assert(tile_part_payloads@[previous_payloads.len() as int].tile_index as int == tile);
                                 }
                             }
                     }
