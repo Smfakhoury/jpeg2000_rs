@@ -67,6 +67,9 @@ rule: physical method locations can move while their root type's canonical
 verifier identity remains unchanged. The source-derived reference inventory
 must resolve each actual definition and named caller, not accept an unrelated
 call elsewhere in a former monolith. Old source-bound records remain historical.
+Private symbol-trait adapters stay beside their shared trait in the Tier-1
+parent module, preserving their original implicit ghost visibility rather than
+opening previously opaque declarations to accommodate a child-module move.
 
 Verus-only attributes and modules are enabled with `verus_keep_ghost`:
 

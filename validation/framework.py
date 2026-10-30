@@ -307,8 +307,8 @@ def _coverage_definition_path(parent: str, symbol: str) -> str:
     return matches[0].relative_to(ROOT).as_posix()
 
 
-def _coverage_child_module(path: str) -> bool:
-    return path.startswith("src/") and path.count("/") > 1
+def _coverage_named_caller_required(path: str) -> bool:
+    return path == "src/tier1.rs" or (path.startswith("src/") and path.count("/") > 1)
 
 
 def _coverage_result_arguments(
@@ -3071,7 +3071,7 @@ def validate_normative_coverage(
                 ref != reference
                 and (cross_file_call(
                     (ROOT / ref["path"]).resolve(), ref["symbol"], short,
-                    require_caller_body=_coverage_child_module(reference["path"]),
+                    require_caller_body=_coverage_named_caller_required(reference["path"]),
                 )
                  if ref["path"] != reference["path"] else
                  same_file_call(path, ref["symbol"], short))

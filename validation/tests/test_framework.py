@@ -1229,7 +1229,7 @@ class FrameworkTests(WorkingFiles):
             def actual_call(caller):
                 caller_source = (framework.ROOT / caller["path"]).read_text()
                 callee = reference["symbol"].rsplit("::", 1)[-1]
-                if caller["path"] == reference["path"] or framework._coverage_child_module(reference["path"]):
+                if caller["path"] == reference["path"] or framework._coverage_named_caller_required(reference["path"]):
                     return framework._coverage_same_file_call(
                         caller_source, caller["symbol"], callee,
                         distinct_file=caller["path"] != reference["path"],

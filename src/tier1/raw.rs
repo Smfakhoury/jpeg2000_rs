@@ -1,7 +1,6 @@
-use super::{RawBitReader, Tier1SymbolDecoder};
+use super::RawBitReader;
 #[cfg(verus_keep_ghost)]
 use super::{raw_bit_reader_view, raw_reader_outcome};
-use crate::mq::MqDecoder;
 use crate::{DecodeError, MalformedKind, Resource, ResourceLimits};
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -193,43 +192,5 @@ impl<'a> RawBitReader<'a> {
         self.current_byte = next;
         self.bits_remaining = if stuffed { 7 } else { 8 };
         Ok(())
-    }
-}
-
-impl Tier1SymbolDecoder for MqDecoder<'_> {
-    #[cfg(verus_keep_ghost)]
-    verus! {
-        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
-            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(self))
-        }
-    }
-
-    fn decode(&mut self, context: usize) -> Result<bool, DecodeError> {
-        #[cfg(verus_keep_ghost)]
-        proof! { reveal(crate::specs::part1_legacy_symbol); }
-        MqDecoder::decode(self, context)
-    }
-
-    fn is_raw(&self) -> bool {
-        false
-    }
-}
-
-impl Tier1SymbolDecoder for RawBitReader<'_> {
-    #[cfg(verus_keep_ghost)]
-    verus! {
-        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
-            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(self))
-        }
-    }
-
-    fn decode(&mut self, _context: usize) -> Result<bool, DecodeError> {
-        #[cfg(verus_keep_ghost)]
-        proof! { reveal(crate::specs::part1_legacy_symbol); }
-        self.read_bit()
-    }
-
-    fn is_raw(&self) -> bool {
-        true
     }
 }

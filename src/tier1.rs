@@ -1,7 +1,10 @@
-use crate::{DecodeError, mq::MqContextState};
+use crate::{
+    DecodeError,
+    mq::{MqContextState, MqDecoder},
+};
 
 #[cfg(any(test, verus_keep_ghost))]
-use crate::{MalformedKind, Resource, ResourceLimits, magnitude::Magnitude, mq::MqDecoder};
+use crate::{MalformedKind, Resource, ResourceLimits, magnitude::Magnitude};
 
 #[cfg(verus_keep_ghost)]
 use crate::transform::SignedMagnitude;
@@ -435,6 +438,44 @@ trait Tier1SymbolDecoder {
         ensures result == (self.symbols_view() is Raw),
     ))]
     fn is_raw(&self) -> bool;
+}
+
+impl Tier1SymbolDecoder for MqDecoder<'_> {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
+            crate::specs::Part1LegacySymbols::Mq(crate::mq::mq_decoder_view(self))
+        }
+    }
+
+    fn decode(&mut self, context: usize) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_symbol); }
+        MqDecoder::decode(self, context)
+    }
+
+    fn is_raw(&self) -> bool {
+        false
+    }
+}
+
+impl Tier1SymbolDecoder for RawBitReader<'_> {
+    #[cfg(verus_keep_ghost)]
+    verus! {
+        spec fn symbols_view(&self) -> crate::specs::Part1LegacySymbols {
+            crate::specs::Part1LegacySymbols::Raw(raw_bit_reader_view(self))
+        }
+    }
+
+    fn decode(&mut self, _context: usize) -> Result<bool, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_legacy_symbol); }
+        self.read_bit()
+    }
+
+    fn is_raw(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Clone, Copy)]

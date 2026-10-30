@@ -5102,7 +5102,7 @@
       "id": "part1-raw-bitstream-state",
       "implementation_refs": [
         {
-          "path": "src/tier1/raw.rs", "symbol": "RawBitReader::decode"
+          "path": "src/tier1.rs", "symbol": "RawBitReader::decode"
         },
         {
           "path": "src/tier1/legacy_segments.rs", "symbol": "decode_legacy_segment"
