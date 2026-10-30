@@ -31,6 +31,64 @@ pub struct Part1PacketLengthIter {
     pub segment_end: usize,
 }
 
+#[verifier::opaque]
+pub open spec fn part1_parse_plt<'a>(
+    state: super::Part1CodestreamReader<'a>, segment: super::Part1CodestreamSegment,
+    main: Part1PacketLengths, next_index: u16, seen: bool,
+    packet_count: u64, encoded_bytes: u64, payload_bytes: u64,
+) -> (Result<(), crate::DecodeError>, super::Part1CodestreamReader<'a>, u16, bool, u64, u64, u64) {
+    if !matches!(main.source, Part1PacketLengthSource::None) {
+        (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::InvalidMarkerOrder)),
+            state, next_index, seen, packet_count, encoded_bytes, payload_bytes)
+    } else if segment.payload.len() == 0 {
+        (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::InvalidMarkerLength)),
+            state, next_index, seen, packet_count, encoded_bytes, payload_bytes)
+    } else if segment.payload[0] as u16 != next_index {
+        (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::InvalidMarkerOrder)),
+            state, next_index, seen, packet_count, encoded_bytes, payload_bytes)
+    } else {
+        let next = (next_index + 1) as u16;
+        let encoded = segment.payload.drop_first();
+        let admitted = super::part1_validate_packet_lengths(state, encoded, segment.offset);
+        match admitted.0 {
+            Err(error) => (Err(error), admitted.1, next, seen, packet_count, encoded_bytes, payload_bytes),
+            Ok((count, total)) => {
+                if packet_count as int + count as int > u64::MAX {
+                    (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::ArithmeticOverflow)),
+                        admitted.1, next, true, packet_count, encoded_bytes, payload_bytes)
+                } else {
+                    let packets = (packet_count + count) as u64;
+                    if encoded_bytes as int + encoded.len() > u64::MAX {
+                        (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::ArithmeticOverflow)),
+                            admitted.1, next, true, packets, encoded_bytes, payload_bytes)
+                    } else {
+                        let bytes = (encoded_bytes as int + encoded.len()) as u64;
+                        if payload_bytes as int + total as int > u64::MAX {
+                            (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::ArithmeticOverflow)),
+                                admitted.1, next, true, packets, bytes, payload_bytes)
+                        } else {
+                            (Ok(()), admitted.1, next, true, packets, bytes, (payload_bytes + total) as u64)
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_parse_ppt<'a>(
+    state: super::Part1CodestreamReader<'a>, segment: super::Part1CodestreamSegment,
+    main: Part1PackedHeaders, next_index: u16, fragments: u16, bytes: Seq<u8>,
+) -> (Result<(), crate::DecodeError>, super::Part1CodestreamReader<'a>, u16, u16, Seq<u8>) {
+    if !matches!(main.source, Part1PackedHeaderSource::None) {
+        (Err(part1_packet_input_error(segment.offset, crate::MalformedKind::InvalidMarkerOrder)),
+            state, next_index, fragments, bytes)
+    } else {
+        super::part1_parse_packed_fragment(state, segment, 0xff61, next_index, fragments, bytes)
+    }
+}
+
 pub open spec fn part1_packet_input_error(offset: usize, kind: crate::MalformedKind) -> crate::DecodeError {
     crate::DecodeError::MalformedInput { offset: offset as u64, kind }
 }
