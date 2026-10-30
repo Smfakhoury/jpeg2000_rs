@@ -9,7 +9,7 @@ use super::{
     Quantization, RGN, RoiShifts, SOD, SOT, TilePart, TilePartPayload,
 };
 #[cfg(verus_keep_ghost)]
-use super::{parser_view, tile_part_owned_view};
+use super::{parser_view, tile_part_header_outcome, tile_part_owned_view};
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
@@ -73,7 +73,14 @@ impl<'a> TilePartPayload<'a> {
     }
 }
 impl<'a> Parser<'a> {
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (tile_part_header_outcome(result), parser_view(final(self))) == crate::specs::part1_codestream_read_sot(
+            parser_view(old(self)), tile_count),
+    ))]
     pub(super) fn read_sot(&mut self, tile_count: u64) -> Result<TilePart, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_codestream_read_sot); }
         let segment = self.read_segment()?;
         if segment.marker != SOT || segment.payload.len() != 8 {
             return Err(DecodeError::malformed(

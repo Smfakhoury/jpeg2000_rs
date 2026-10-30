@@ -13055,6 +13055,43 @@ pub open spec fn part1_codestream_standalone(marker: u16) -> bool {
     marker == 0xff4f || marker == 0xff93 || marker == 0xffd9 || marker == 0xff92
 }
 
+pub open spec fn part1_known_segment_marker(marker: u16) -> bool {
+    matches!(marker, 0xff50..=0xff53 | 0xff55..=0xff59 | 0xff5c..=0xff61 |
+        0xff63..=0xff64 | 0xff72..=0xff79 | 0xff90)
+}
+
+pub open spec fn part1_allowed_main_header(marker: u16) -> bool {
+    part1_known_segment_marker(marker) && !matches!(marker, 0xff51 | 0xff58 | 0xff61 | 0xff90)
+}
+
+pub open spec fn part1_allowed_tile_header(marker: u16) -> bool {
+    matches!(marker, 0xff52..=0xff53 | 0xff58 | 0xff5c..=0xff5f | 0xff61 |
+        0xff64 | 0xff72..=0xff79)
+}
+
+#[verifier::opaque]
+pub open spec fn part1_codestream_read_sot<'a>(state: Part1CodestreamReader<'a>, tile_count: u64)
+    -> (Result<(usize, u32, u16, u8, u8), crate::DecodeError>, Part1CodestreamReader<'a>)
+{
+    let read = part1_codestream_read_segment(state);
+    match read.0 {
+        Err(error) => (Err(error), read.1),
+        Ok(segment) => {
+            if segment.marker != 0xff90 || segment.payload.len() != 8 {
+                (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTilePart)), read.1)
+            } else {
+                let index = part1_marker_value(segment.payload[0], segment.payload[1]);
+                let length = part1_siz_word(segment.payload, 2);
+                let part = segment.payload[6];
+                let count = segment.payload[7];
+                if index as u64 >= tile_count || (count != 0 && part >= count) || (length != 0 && length < 14) {
+                    (Err(part1_codestream_malformed(segment.offset, crate::MalformedKind::InvalidTilePart)), read.1)
+                } else { (Ok((segment.offset, length, index, part, count)), read.1) }
+            }
+        },
+    }
+}
+
 #[verifier::opaque]
 pub open spec fn part1_codestream_expect_standalone<'a>(state: Part1CodestreamReader<'a>, expected: u16)
     -> (Result<(), crate::DecodeError>, Part1CodestreamReader<'a>)

@@ -1073,6 +1073,45 @@
       ]
     },
     {
+      "id": "part1-complete-native-sot-reader-marker-admission",
+      "topic": "Source-derived complete actual raw read_segment-to-SOT Result and all parser fields on success and error, plus exact source-set u16 known/main/tile marker predicates. Preserve original reader errors before SOT checks, segment charge/cursor partial commits, raw tile-count and part-index/count/length zero bypasses, all returned header fields, offsets and unused counters. No normalized cursor/header, supplied segment/result bank, successful budget premise, stricter format admission or model-to-standard claim. Whole header/layout/public/file decoding and independent conformance remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::read_sot"},
+        {"path": "src/codestream/reader.rs", "symbol": "Parser::read_segment"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_read_sot"},
+        {"path": "specs/mod.rs", "symbol": "part1_known_segment_marker"},
+        {"path": "specs/mod.rs", "symbol": "part1_allowed_main_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_allowed_tile_header"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_read_segment"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_standalone"},
+        {"path": "specs/mod.rs", "symbol": "part1_marker_value"},
+        {"path": "specs/mod.rs", "symbol": "part1_siz_word"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::read_sot"},
+        {"path": "src/codestream/reader.rs", "symbol": "is_known_segment_marker"},
+        {"path": "src/codestream/reader.rs", "symbol": "is_allowed_main_header"},
+        {"path": "src/codestream/reader.rs", "symbol": "is_allowed_tile_header"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream/proof_support.rs", "symbol": "tile_part_header_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "tile_part_header_outcome"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "parser_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "segment_outcome"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream/tests.rs", "symbol": "actual_marker_admission_matches_independent_complete_u16_policy_sets"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_sot_reader_preserves_all_marker_words_and_original_reader_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_sot_reader_derives_every_tile_index_and_exact_tile_count_boundary"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_sot_reader_preserves_zero_count_length_bypasses_and_all_part_indexes"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_sot_reader_preserves_truncations_work_error_order_full_frames_and_real_sequence"}
+      ]
+    },
+    {
       "id": "part2-complete-native-full-selected-typed-layout-decoding",
       "topic": "Complete actual full/selected raw parsed-layout/request/limits/input-length to final TypedImage Result, every geometry/descriptor/sample/channel-definition field and first error. Actual decode_layout/selected derives decoded images from genuine tile bytes/plans/metadata/empty state, then real typed conversion, source-owned nonlinear regions and complete owner mutation, then final output-shape admission compose in original order. No supplied decoded/typed/region/sample/result banks, normalized layout, successful admission/coverage/budget premises or callback. Public raw codestream entry points still execute actual byte parser first and call the sole private body. Actual compressed-byte parser functional Result, file/F2/F4/final F8 and delivery remain separate.",
       "implementation_refs": [

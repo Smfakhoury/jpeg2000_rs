@@ -657,6 +657,16 @@ verus! {
         match result { Err(error) => Err(error), Ok(segment) => Ok(segment_view(segment)) }
     }
 
+    closed spec fn tile_part_header_view(value: TilePart) -> (usize, u32, u16, u8, u8) {
+        (value.start, value.length, value.tile_index, value.tile_part_index, value.tile_part_count)
+    }
+
+    closed spec fn tile_part_header_outcome(result: Result<TilePart, DecodeError>)
+        -> Result<(usize, u32, u16, u8, u8), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(tile_part_header_view(value)) }
+    }
+
     closed spec fn parsed_siz_outcome(result: Result<(ImageSize, u16), DecodeError>)
         -> Result<(crate::specs::Part1ParsedImageSize, u16), DecodeError>
     {

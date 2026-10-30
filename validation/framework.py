@@ -1362,6 +1362,23 @@ _CODESTREAM_READER_CONTRACTS = {
     ),
 }
 
+_SOT_READER_CONTRACTS = {
+    ("src/codestream/tiles.rs", "Parser::read_sot"): (
+        "part1_codestream_read_sot", _coverage_call("tile_part_header_outcome", r"\1"),
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*tile_count",
+    ),
+    ("src/codestream/reader.rs", "is_known_segment_marker"): (
+        "part1_known_segment_marker", r"\1", None, r"marker",
+    ),
+    ("src/codestream/reader.rs", "is_allowed_main_header"): (
+        "part1_allowed_main_header", r"\1", None, r"marker",
+    ),
+    ("src/codestream/reader.rs", "is_allowed_tile_header"): (
+        "part1_allowed_tile_header", r"\1", None, r"marker",
+    ),
+}
+
 _TYPED_LAYOUT_CONTRACTS = {
     ("src/decode/api.rs", "typed_layout"): (
         "part2_typed_layout", _coverage_call("crate::image::decoded_typed_image_outcome", r"\1"), None,
@@ -2575,6 +2592,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TYPED_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODESTREAM_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _SOT_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SIZ_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODING_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))

@@ -956,6 +956,22 @@ class FrameworkTests(WorkingFiles):
             framework._SIZ_GEOMETRY_CONTRACTS, 4,
         )
 
+    def test_inventory_binds_actual_raw_sot_reader_full_state_and_exact_marker_policies(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-sot-reader-marker-admission"},
+            framework._SOT_READER_CONTRACTS, 4,
+        )
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            entry for entry in coverage["requirements"]
+            if entry["id"] == "part1-complete-native-sot-reader-marker-admission"
+        ]
+        self._assert_contract_text_mutations(coverage, [
+            ("tile_part_header_outcome(result)", "unlisted_header_outcome(result)"),
+            ("tile_part_header_outcome(result)", "result"),
+            ("parser_view(final(self))", "parser_view(old(self))"),
+        ])
+
     def test_inventory_binds_actual_raw_cod_bytes_to_complete_style_and_precinct_defaults(self):
         self._assert_complete_packet_contract_bindings(
             {"part1-complete-native-raw-coding-style"},
