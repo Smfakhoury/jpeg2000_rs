@@ -133,3 +133,455 @@ jobs:
             target/validation/packaged-proof/**
           if-no-files-found: warn
           retention-days: 14
+
+  experimental-public-pr3266-bundle:
+    name: UNMERGED experiment - exact public PR3266 build and seven native tests
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      bundle-id: ${{ steps.bundle.outputs.artifact-id }}
+      bundle-digest: ${{ steps.bundle.outputs.artifact-digest }}
+    steps:
+      - name: Initialize public-only experiment context
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/public-pr3266-experiment/evidence"
+          python3 -I - <<'PY'
+          import json, os
+          from pathlib import Path
+          context = {key: os.environ[key] for key in
+                     ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA", "GITHUB_JOB")}
+          context["scope"] = "Unmerged source-built candidate, not an official release or primary-pin qualification."
+          (Path("public-pr3266-experiment/evidence") / "run-context.json").write_text(
+              json.dumps(context, indent=2) + "\n")
+          PY
+      - name: Checkout only pristine public upstream source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: verus-lang/verus
+          ref: 3c780fab898a3ad42440e1cd4d3f2c6f70b3a020
+          path: public-verus
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Build with committed bootstrap and locks; run native lifetime tests once
+        shell: bash
+        run: |
+          WORK="$GITHUB_WORKSPACE/public-pr3266-experiment"
+          PUBLIC_CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          test -x "$PUBLIC_CARGO_HOME/bin/rustup"
+          mkdir -p "$WORK/rustup" "$WORK/scratch" "$WORK/bundle"
+          env -i HOME="$HOME" CARGO_HOME="$PUBLIC_CARGO_HOME" RUSTUP_HOME="$WORK/rustup" \
+            TMPDIR="$WORK/scratch" PATH="$PUBLIC_CARGO_HOME/bin:/usr/local/bin:/usr/bin:/bin" \
+            LANG=C.UTF-8 LC_ALL=C.UTF-8 CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=2 \
+            CARGO_NET_RETRY=0 CARGO_HTTP_TIMEOUT=60 GIT_TERMINAL_PROMPT=0 \
+            VERUS_KEEP_TEST_DIR=1 RUST_TEST_THREADS=1 \
+            python3 -I - "$GITHUB_WORKSPACE/public-verus" "$WORK" <<'PY'
+          import hashlib, json, os, re, resource, subprocess, sys, tarfile, time
+          from pathlib import Path
+          root, work = map(Path, sys.argv[1:])
+          evidence, bundle = work / "evidence", work / "bundle"
+          source = root / "source"
+          head = "3c780fab898a3ad42440e1cd4d3f2c6f70b3a020"
+          names = [
+              "verified_module_const_ordering_lifetime",
+              "literal_const_typeck_lifetime",
+              "unused_spec_const_not_evaluated_lifetime",
+              "unused_invalid_exec_const_evaluated_lifetime",
+              "complex_typeck_const_remains_guarded_lifetime",
+              "spec_typeck_const_remains_guarded_lifetime",
+          ]
+          control = "return_static_lifetime"
+          build = "set -euo pipefail; source ../tools/activate; vargo build --release"
+          native = ("set -euo pipefail; source ../tools/activate; "
+                    "vargo --vargo-verbose test --release -p rust_verify_test "
+                    "--test consts _lifetime -- --nocapture --test-threads=1")
+          os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
+          resource.setrlimit(resource.RLIMIT_AS, (6 * 1024**3, 6 * 1024**3))
+          report = {
+              "scope": "One public-source build/native experiment; not project or release qualification.",
+              "public_commit": head, "context": json.loads((evidence / "run-context.json").read_text()),
+              "stages": [], "outcome": "incomplete", "build_command": build, "native_command": native,
+              "lifetime_binding": "Unchanged native harness, empty per-case options, clean environment; not syscall-attested.",
+          }
+          def digest(path):
+              with path.open("rb") as stream:
+                  return hashlib.file_digest(stream, "sha256").hexdigest()
+          def save():
+              (evidence / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+          def run(label, argv, cwd, seconds, required=True):
+              item = {"label": label, "argv": argv, "cwd": str(cwd), "timeout_seconds": seconds}
+              report["stages"].append(item)
+              save()
+              started = time.monotonic()
+              with (evidence / (label + ".stdout")).open("wb") as out, \
+                   (evidence / (label + ".stderr")).open("wb") as err:
+                  result = subprocess.run(
+                      ["timeout", "--signal=TERM", "--kill-after=15s", str(seconds), *argv],
+                      cwd=cwd, stdout=out, stderr=err, check=False)
+              item.update(returncode=result.returncode, elapsed_seconds=time.monotonic() - started)
+              item["stdout_sha256"] = digest(evidence / (label + ".stdout"))
+              item["stderr_sha256"] = digest(evidence / (label + ".stderr"))
+              save()
+              print(json.dumps(item), flush=True)
+              if required and result.returncode:
+                  raise RuntimeError(f"{label}: exit {result.returncode}; see original stdout/stderr")
+              return item
+          def hashes():
+              paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
+              return {os.fsdecode(p): digest(root / os.fsdecode(p)) for p in paths if p}
+          before = None
+          try:
+              for key in ("VERUS_EXTRA_ARGS", "RUSTC_BOOTSTRAP", "RUSTFLAGS", "RUSTUP_TOOLCHAIN"):
+                  assert key not in os.environ, key
+              assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() == head
+              report["public_tree"] = subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], cwd=root, text=True).strip()
+              run("pristine-before", ["git", "diff", "--exit-code", "HEAD"], root, 30)
+              before = hashes()
+              (evidence / "source-sha256.json").write_text(json.dumps(before, indent=2) + "\n")
+              with (evidence / "public-source.tar").open("wb") as out:
+                  subprocess.run(["git", "archive", "--format=tar", "HEAD"], cwd=root, stdout=out, check=True)
+              test_path = source / "rust_verify_test/tests/consts.rs"
+              assert digest(test_path) == "02bfbfce7995eede7e951c5f878fd3fa61e1f0ed7c25166aa351afbbbba04c2c"
+              tests = test_path.read_text()
+              selected = re.findall(r"#\[test\]\s+(\w+_lifetime)\s+code!", tests)
+              assert selected == names, selected
+              report["cases"] = []
+              for name in names:
+                  matches = list(re.finditer(
+                      r"test_verify_one_file!\s*\{\s*#\[test\]\s+" + name +
+                      r"\s+code!\s*\{(.*?)\n    \}\s*=> (.*?)\n\}", tests, re.S))
+                  assert len(matches) == 1
+                  report["cases"].append({
+                      "name": name, "harness_outcome": "not_run",
+                      "block_sha256": hashlib.sha256(matches[0][0].encode()).hexdigest(),
+                      "unchanged_expectation": matches[0][2]})
+              binding = {
+                  "per_case_options": [], "extra_verifier_arguments": [], "child_no_lifetime": False,
+                  "method": "Source-bound unchanged native harness, not intercepted child execution.",
+                  "sources": {name: {"sha256": before[name], "text": (root / name).read_text()}
+                              for name in (
+                                  "tools/vargo/src/commands/build.rs", "tools/vargo/src/commands/test.rs",
+                                  "tools/vargo/src/cli.rs", "source/rust_verify_test/tests/common/mod.rs",
+                                  "source/rust_verify/src/config.rs", "source/verus/src/main.rs")},
+              }
+              (evidence / "native-source-binding.json").write_text(json.dumps(binding, indent=2) + "\n")
+              run("rustup-shims", ["bash", "-c",
+                  "set -euo pipefail; for tool in rustup rustc cargo; do command -v \"$tool\"; done; rustup --version"],
+                  root, 90)
+              shims = (evidence / "rustup-shims.stdout").read_text().splitlines()[:3]
+              assert shims == [str(Path(os.environ["CARGO_HOME"]) / "bin" / t) for t in ("rustup", "rustc", "cargo")]
+              run("rustup-install", ["rustup", "toolchain", "install"], root, 600)
+              run("rustc-identity", ["rustc", "-vV"], root, 60)
+              run("cargo-identity", ["cargo", "-V"], root, 60)
+              assert (evidence / "rustc-identity.stdout").read_text().startswith("rustc 1.99.1 ")
+              assert (evidence / "cargo-identity.stdout").read_text().startswith("cargo 1.99.1 ")
+              run("get-z3", ["bash", "./tools/get-z3.sh"], source, 180)
+              run("z3-identity", ["./z3", "--version"], source, 30)
+              run("build", ["bash", "-c", build], source, 2100)
+              release = source / "target-verus/release"
+              run("verus-identity", [str(release / "verus"), "--version"], source, 60)
+              assert "0.2026.10.19.3c780fa" in (evidence / "verus-identity.stdout").read_text()
+              run("cargo-verus-cli", [str(release / "cargo-verus"), "verus", "verify", "--help"], source, 60)
+              result = run("native-harness", ["bash", "-c", native], source, 720, required=False)
+              output = (evidence / "native-harness.stdout").read_text(errors="replace")
+              starts = list(re.finditer(r"^test (\w+) \.\.\. ", output, re.M))
+              controls = [{"name": control, "harness_outcome": "not_run"}]
+              records = report["cases"] + controls
+              observed = [m[1] for m in starts]
+              expected = set(names + [control])
+              assert len(observed) == len(set(observed)), "Duplicate native test identities"
+              for index, match in enumerate(starts):
+                  segment = output[match.end():starts[index + 1].start() if index + 1 < len(starts) else len(output)]
+                  status = re.search(r"^(ok|FAILED)\s*$", segment, re.M)
+                  matches = [item for item in records if item["name"] == match[1]]
+                  assert len(matches) == 1 and status, f"Unknown or incomplete test {match[1]}"
+                  matches[0]["harness_outcome"] = status[1]
+              report["additional_native_controls"] = controls
+              report["native_summary"] = re.findall(r"^test result:.*$", output, re.M)
+              report["native_passed"] = sum(item["harness_outcome"] == "ok" for item in records)
+              save()
+              assert result["returncode"] == 0 and set(observed) == expected
+              assert report["native_passed"] == 7
+              assert re.search(r"^test result: ok\. 7 passed; 0 failed; 0 ignored;", output, re.M)
+              run("pristine-after", ["git", "diff", "--exit-code", "HEAD"], root, 30)
+              assert hashes() == before, "Public tracked source or locks changed"
+              for name in ("verus", "cargo-verus", "rust_verify", "z3", "libvstd.rlib", "vstd.vir",
+                           "libverus_builtin.rlib", "libverus_builtin_macros.so",
+                           "libverus_state_machines_macros.so", "version.txt", "verus-root"):
+                  assert (release / name).is_file(), name
+              tool_hashes = {str(p.relative_to(release)): digest(p) for p in sorted(release.rglob("*"))
+                             if p.is_file() and "test_inputs" not in p.relative_to(release).parts}
+              with tarfile.open(bundle / "tool-bundle.tar.gz", "w:gz") as packed:
+                  for name in tool_hashes:
+                      packed.add(release / name, arcname="tool/" + name, recursive=False)
+              (bundle / "rust-toolchain.toml").write_bytes((root / "rust-toolchain.toml").read_bytes())
+              manifest = {
+                  "context": report["context"], "public_commit": head, "public_tree": report["public_tree"],
+                  "native_passed": 7, "native_failed": 0, "native_ignored": 0, "native_exit": result["returncode"],
+                  "source_hashes": before, "tool_hashes": tool_hashes,
+                  "bundle_sha256": digest(bundle / "tool-bundle.tar.gz"),
+                  "rust_toolchain_sha256": digest(bundle / "rust-toolchain.toml"),
+                  "verus_version": (evidence / "verus-identity.stdout").read_text(),
+                  "rustc_version": (evidence / "rustc-identity.stdout").read_text(),
+              }
+              (bundle / "bundle-binding.json").write_text(json.dumps(manifest, indent=2) + "\n")
+              report["bundle_binding_sha256"] = digest(bundle / "bundle-binding.json")
+              report["outcome"] = "public_build_and_seven_native_tests_passed"
+          except Exception as error:
+              report.update(outcome="failed", failure=f"{type(error).__name__}: {error}")
+              print(report["failure"], file=sys.stderr, flush=True)
+          finally:
+              if before is not None:
+                  try:
+                      report["source_unchanged"] = hashes() == before
+                      if not report["source_unchanged"]:
+                          report.update(outcome="failed", failure="Public tracked source changed")
+                  except Exception as error:
+                      report.update(outcome="failed", retention_failure=str(error))
+              inputs = source / "target-verus/release/test_inputs"
+              if inputs.is_dir():
+                  with tarfile.open(evidence / "native-test-inputs.tar.gz", "w:gz") as packed:
+                      packed.add(inputs, arcname="test_inputs")
+              save()
+              manifest = {str(p.relative_to(evidence)): digest(p) for p in sorted(evidence.rglob("*")) if p.is_file()}
+              (evidence / "evidence-sha256.json").write_text(json.dumps(manifest, indent=2) + "\n")
+              print(json.dumps(report, indent=2), flush=True)
+          sys.exit(0 if report["outcome"] == "public_build_and_seven_native_tests_passed" else 1)
+          PY
+      - name: Retain SHA-bound standard public tool bundle
+        id: bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: experimental-public-pr3266-tool-bundle
+          path: public-pr3266-experiment/bundle/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain original public build and native evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: experimental-public-pr3266-evidence
+          path: public-pr3266-experiment/evidence/**
+          if-no-files-found: error
+          retention-days: 14
+
+  experimental-private-pr3266-lifetime:
+    name: UNMERGED experiment - accepted private root and actual Cargo archive, lifetimes ON
+    if: github.event_name == 'workflow_dispatch'
+    needs: experimental-public-pr3266-bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact accepted private input, not experimental workflow head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 9e577f1ebd075a8d81e81dbdcc82ac131c504ba9
+          path: private-source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Download only the successful public build artifact from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.experimental-public-pr3266-bundle.outputs.bundle-id }}
+          path: public-tool-bundle
+          merge-multiple: true
+      - name: Attempt each actual whole root once with lifetime checking enabled
+        shell: bash
+        env:
+          BUNDLE_ARTIFACT_ID: ${{ needs.experimental-public-pr3266-bundle.outputs.bundle-id }}
+          BUNDLE_ARTIFACT_DIGEST: ${{ needs.experimental-public-pr3266-bundle.outputs.bundle-digest }}
+        run: |
+          WORK="$GITHUB_WORKSPACE/target/project-lifetime-pr3266"
+          PUBLIC_CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          test -x "$PUBLIC_CARGO_HOME/bin/rustup"
+          mkdir -p "$WORK/evidence" "$WORK/rustup" "$WORK/scratch"
+          python3 -I - "$WORK/evidence/run-context.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          keys = ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA", "GITHUB_JOB",
+                  "BUNDLE_ARTIFACT_ID", "BUNDLE_ARTIFACT_DIGEST")
+          Path(sys.argv[1]).write_text(json.dumps({key: os.environ[key] for key in keys}, indent=2) + "\n")
+          PY
+          env -i HOME="$HOME" CARGO_HOME="$PUBLIC_CARGO_HOME" RUSTUP_HOME="$WORK/rustup" \
+            TMPDIR="$WORK/scratch" PATH="$PUBLIC_CARGO_HOME/bin:/usr/local/bin:/usr/bin:/bin" \
+            LANG=C.UTF-8 LC_ALL=C.UTF-8 CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=2 \
+            CARGO_NET_RETRY=0 CARGO_HTTP_TIMEOUT=60 GIT_TERMINAL_PROMPT=0 \
+            python3 -I - "$GITHUB_WORKSPACE/private-source" "$GITHUB_WORKSPACE/public-tool-bundle" "$WORK" <<'PY'
+          import hashlib, json, os, re, subprocess, sys, tarfile, time
+          from pathlib import Path
+          root, bundle, work = map(Path, sys.argv[1:])
+          evidence = work / "evidence"
+          accepted = "9e577f1ebd075a8d81e81dbdcc82ac131c504ba9"
+          report = {
+              "scope": "Unmerged experimental candidate on accepted project inputs, not qualification or primary-pin adoption.",
+              "context": json.loads((evidence / "run-context.json").read_text()),
+              "private_commit": accepted, "public_commit": "3c780fab898a3ad42440e1cd4d3f2c6f70b3a020",
+              "stages": [], "outcome": "incomplete", "lifetime_checking_requested": True,
+              "production_collector": "Unchanged and not used to accept an experimental version.",
+              "source_root": "src/lib.rs", "archive_root": "src/lib.rs",
+          }
+          def digest(path):
+              with path.open("rb") as stream:
+                  return hashlib.file_digest(stream, "sha256").hexdigest()
+          def save():
+              (evidence / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+          def run(label, argv, cwd, seconds, required=True):
+              item = {"label": label, "argv": argv, "cwd": str(cwd), "timeout_seconds": seconds}
+              report["stages"].append(item)
+              save()
+              started = time.monotonic()
+              with (evidence / (label + ".stdout")).open("wb") as out, \
+                   (evidence / (label + ".stderr")).open("wb") as err:
+                  result = subprocess.run(
+                      ["timeout", "--signal=TERM", "--kill-after=15s", str(seconds), *argv],
+                      cwd=cwd, stdout=out, stderr=err, check=False)
+              item.update(returncode=result.returncode, elapsed_seconds=time.monotonic() - started)
+              for stream in ("stdout", "stderr"):
+                  path = evidence / (label + "." + stream)
+                  item[stream + "_sha256"] = digest(path)
+              save()
+              print(json.dumps(item), flush=True)
+              if required and result.returncode:
+                  raise RuntimeError(f"{label}: exit {result.returncode}; see original stdout/stderr")
+              return item
+          def snapshot():
+              assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() == accepted
+              assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=root)
+              paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
+              return {os.fsdecode(p): digest(root / os.fsdecode(p)) for p in paths if p}
+          before = None
+          try:
+              before = snapshot()
+              report["private_tree"] = subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], cwd=root, text=True).strip()
+              (evidence / "private-source-before.json").write_text(json.dumps(before, indent=2) + "\n")
+              binding = json.loads((bundle / "bundle-binding.json").read_text())
+              report["bundle_binding_sha256"] = digest(bundle / "bundle-binding.json")
+              report["bundle"] = binding
+              assert binding["public_commit"] == report["public_commit"]
+              for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA"):
+                  assert binding["context"][key] == report["context"][key]
+              assert (binding["native_passed"], binding["native_failed"], binding["native_ignored"], binding["native_exit"]) == (7, 0, 0, 0)
+              assert digest(bundle / "tool-bundle.tar.gz") == binding["bundle_sha256"]
+              assert digest(bundle / "rust-toolchain.toml") == binding["rust_toolchain_sha256"]
+              with tarfile.open(bundle / "tool-bundle.tar.gz", "r:gz") as packed:
+                  for member in packed.getmembers():
+                      path = Path(member.name)
+                      assert not path.is_absolute() and ".." not in path.parts
+                      assert path.parts[0] == "tool" and member.isfile()
+                  packed.extractall(work, filter="data")
+              tool = work / "tool"
+              actual = {str(p.relative_to(tool)): digest(p) for p in sorted(tool.rglob("*")) if p.is_file()}
+              assert actual == binding["tool_hashes"], "Unpacked tool differs from public build"
+              os.environ["PATH"] = str(tool) + os.pathsep + os.environ["PATH"]
+              run("rustup-install", ["rustup", "toolchain", "install"], bundle, 600)
+              os.environ["RUSTUP_TOOLCHAIN"] = "1.99.1-x86_64-unknown-linux-gnu"
+              run("rustc-identity", ["rustc", "-vV"], root, 60)
+              run("cargo-identity", ["cargo", "-V"], root, 60)
+              run("verus-identity", [str(tool / "verus"), "--version"], root, 60)
+              assert (evidence / "rustc-identity.stdout").read_text() == binding["rustc_version"]
+              assert (evidence / "verus-identity.stdout").read_text() == binding["verus_version"]
+              run("z3-identity", [str(tool / "z3"), "--version"], root, 30)
+              assert snapshot() == before
+              def verify(label, manifest, target):
+                  argv = ["cargo", "verus", "verify", "-v", "--manifest-path", str(manifest),
+                          "--features", "verus", "--locked", "--fwd-verus-args-to", "roots",
+                          "--target-dir", str(target), "--lib", "--", "--output-json"]
+                  result = run(label, argv, root, 1200, required=False)
+                  # Retain candidate-native JSON without substituting the maintained collector.
+                  text = (evidence / (label + ".stdout")).read_text(errors="replace")
+                  objects, decoder, position = [], json.JSONDecoder(), 0
+                  while position < len(text):
+                      start = text.find("{", position)
+                      if start < 0:
+                          break
+                      try:
+                          value, end = decoder.raw_decode(text, start)
+                      except ValueError:
+                          position = start + 1
+                          continue
+                      position = end
+                      if isinstance(value, dict) and "verification-results" in value:
+                          objects.append(value)
+                  (evidence / (label + "-native-json.json")).write_text(json.dumps(objects, indent=2) + "\n")
+                  nonzero = [o for o in objects if isinstance(o.get("verification-results"), dict)
+                             and type(o["verification-results"].get("verified")) is int
+                             and o["verification-results"]["verified"] > 0]
+                  result["nonzero_query_results"] = [o["verification-results"] for o in nonzero]
+                  result["zero_query_or_metadata_results_excluded"] = len(objects) - len(nonzero)
+                  stderr = (evidence / (label + ".stderr")).read_text(errors="replace")
+                  result["first_error_diagnostic"] = next(
+                      (line for line in stderr.splitlines() if re.search(r"\berror\b|panicked|incompatible", line, re.I)), None)
+                  result["whole_root_native_success_observed"] = False
+                  if len(nonzero) == 1:
+                      verification = nonzero[0]["verification-results"]
+                      details = nonzero[0].get("func-details")
+                      result["whole_root_native_success_observed"] = (
+                          result["returncode"] == 0
+                          and verification.get("is-verifying-entire-crate") is True
+                          and verification.get("success") is True
+                          and type(verification.get("errors")) is int and verification["errors"] == 0
+                          and verification.get("encountered-error") is False
+                          and verification.get("encountered-vir-error") is False
+                          and isinstance(details, dict)
+                          and any(name.startswith("jpeg2000_decoder::") for name in details))
+                  result["outcome"] = (
+                      "whole_root_native_success_observed" if result["whole_root_native_success_observed"]
+                      else "actual_failure_no_retry" if result["returncode"] != 0
+                      else "exit_zero_without_completed_project_root_result")
+                  save()
+                  return result
+              source_result = verify("source-root", root / "Cargo.toml", work / "verus-source")
+              assert snapshot() == before
+              package = run("cargo-package", ["cargo", "package", "--locked"], root, 600, required=False)
+              archive_result = None
+              if package["returncode"] == 0:
+                  prepared = run("archive-binding-before",
+                      ["python3", "-I", "validation/check-packaged-source.py", "prepare"], root, 90)
+                  package_root = Path((evidence / "archive-binding-before.stdout").read_text().strip())
+                  (evidence / "packaged-source-inputs.json").write_bytes(
+                      (root / "target/validation/packaged-source-inputs.json").read_bytes())
+                  archive_binding = json.loads((evidence / "packaged-source-inputs.json").read_text())
+                  assert archive_binding["source_commit"] == accepted
+                  (evidence / "actual-package.crate").write_bytes(
+                      (root / "target/package" / (package_root.name + ".crate")).read_bytes())
+                  run("formatter-install", ["rustup", "toolchain", "install", "1.93.1",
+                      "--profile", "minimal", "--component", "rustfmt"], root, 600)
+                  run("archive-format", ["cargo", "+1.93.1", "fmt", "--manifest-path",
+                      str(package_root / "Cargo.toml"), "--all", "--", "--check"], root, 120)
+                  archive_result = verify("archive-root", package_root / "Cargo.toml", work / "verus-archive")
+                  run("archive-binding-after",
+                      ["python3", "-I", "validation/check-packaged-source.py", "verify"], root, 90)
+              report["outcome"] = (
+                  "both_whole_roots_native_success_observed_requires_original_adjudication"
+                  if source_result["whole_root_native_success_observed"] and archive_result
+                  and archive_result["whole_root_native_success_observed"]
+                  else "actual_project_or_archive_failure_no_retry")
+          except Exception as error:
+              report.update(outcome="failed", failure=f"{type(error).__name__}: {error}")
+              print(report["failure"], file=sys.stderr, flush=True)
+          finally:
+              try:
+                  after = snapshot()
+                  (evidence / "private-source-after.json").write_text(json.dumps(after, indent=2) + "\n")
+                  report["private_source_unchanged"] = before is not None and before == after
+                  if not report["private_source_unchanged"]:
+                      report.update(outcome="failed", failure="Private tracked inputs changed")
+              except Exception as error:
+                  report.update(outcome="failed", source_binding_failure=str(error))
+              save()
+              manifest = {str(p.relative_to(evidence)): digest(p) for p in sorted(evidence.rglob("*")) if p.is_file()}
+              (evidence / "evidence-sha256.json").write_text(json.dumps(manifest, indent=2) + "\n")
+              print(json.dumps(report, indent=2), flush=True)
+          sys.exit(0 if report["outcome"] == "both_whole_roots_native_success_observed_requires_original_adjudication" else 1)
+          PY
+      - name: Retain original private inputs binding and both independent attempt logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: experimental-private-pr3266-lifetime-evidence
+          path: target/project-lifetime-pr3266/evidence/**
+          if-no-files-found: error
+          retention-days: 14
