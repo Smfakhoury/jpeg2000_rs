@@ -171,9 +171,11 @@ jobs:
         shell: bash
         run: |
           WORK="$GITHUB_WORKSPACE/public-pr3266-experiment"
-          mkdir -p "$WORK/home" "$WORK/cargo" "$WORK/rustup" "$WORK/scratch"
-          env -i HOME="$WORK/home" CARGO_HOME="$WORK/cargo" RUSTUP_HOME="$WORK/rustup" \
-            TMPDIR="$WORK/scratch" PATH="/home/runner/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
+          PUBLIC_CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          test -x "$PUBLIC_CARGO_HOME/bin/rustup"
+          mkdir -p "$WORK/rustup" "$WORK/scratch"
+          env -i HOME="$HOME" CARGO_HOME="$PUBLIC_CARGO_HOME" RUSTUP_HOME="$WORK/rustup" \
+            TMPDIR="$WORK/scratch" PATH="$PUBLIC_CARGO_HOME/bin:/usr/local/bin:/usr/bin:/bin" \
             LANG=C.UTF-8 LC_ALL=C.UTF-8 CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=2 \
             CARGO_NET_RETRY=0 CARGO_HTTP_TIMEOUT=60 GIT_TERMINAL_PROMPT=0 \
             VERUS_KEEP_TEST_DIR=1 RUST_TEST_THREADS=1 \
@@ -226,6 +228,7 @@ jobs:
               "clean_environment": dict(os.environ),
               "build_command": build_command,
               "test_command": test_command,
+              "setup_ready": False,
               "cases": [], "stages": [], "outcome": "incomplete",
           }
 
@@ -302,10 +305,37 @@ jobs:
                       "harness_outcome": "not_run",
                   })
               save()
+              command("rustup-shim-identity", [
+                  "bash", "-c",
+                  "set -euo pipefail; "
+                  "for tool in rustup rustc cargo; do command -v \"$tool\"; done; "
+                  "rustup --version",
+              ], root, 60)
+              shim_output = (evidence / "rustup-shim-identity.stdout").read_text().splitlines()
+              expected_shims = [str(Path(os.environ["CARGO_HOME"]) / "bin" / tool)
+                                for tool in ["rustup", "rustc", "cargo"]]
+              assert shim_output[:3] == expected_shims, shim_output
+              report["rustup_shim_paths"] = expected_shims
               command("rustup-install", ["rustup", "toolchain", "install"], root, 600)
               command("rustc-identity", ["rustc", "-vV"], root, 60)
               command("cargo-identity", ["cargo", "-V"], root, 60)
               command("rustup-identity", ["rustup", "show"], root, 60)
+              command("rust-toolchain-paths", [
+                  "bash", "-c",
+                  "set -euo pipefail; rustup which rustc; rustup which cargo",
+              ], root, 60)
+              tool_paths = (evidence / "rust-toolchain-paths.stdout").read_text().splitlines()
+              expected_tools = [
+                  str(Path(os.environ["RUSTUP_HOME"]) / "toolchains" /
+                      "1.99.1-x86_64-unknown-linux-gnu" / "bin" / tool)
+                  for tool in ["rustc", "cargo"]
+              ]
+              assert tool_paths == expected_tools, tool_paths
+              assert (evidence / "rustc-identity.stdout").read_text().startswith("rustc 1.99.1 ")
+              assert (evidence / "cargo-identity.stdout").read_text().startswith("cargo 1.99.1 ")
+              report["installed_tool_paths"] = tool_paths
+              report["setup_ready"] = True
+              save()
               command("get-z3", ["bash", "./tools/get-z3.sh"], source, 180)
               command("z3-identity", ["./z3", "--version"], source, 30)
               command("build", ["bash", "-c", build_command], source, 2100)
