@@ -19,6 +19,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-180-decode-domains` | Proposed exact JBIG2-style decoder responsibility layout; executing contracts/body tokens and public API paths preserved | #180; original CI40978411701 / Verus40978411630; fresh source checks required after adoption |
 | `proposal-183-remaining-domains` | Proposed exact remaining responsibility modules; existing native contracts/bodies, shared types and original ghost semantics preserved | #183; original CI41024230240 / Verus41024233243; fresh source checks required after adoption |
 | `proposal-193-packet-metadata` | Proposed exact source-derived raw packet sum and metadata finalizers, result models and regressions; no source-integration or normative approval | #193; original CI41084399839 / Verus41084400145; fresh source checks required after adoption |
+| `proposal-195-component-style-cache` | Proposed exact three-path duplicate-cache correction and latest-owner proof; eligibility only, not source approval | #195; original CI41110257458 / Verus41110257409; fresh source checks and separate review required after adoption |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -28,6 +29,46 @@ No record permits unlisted model/proof Rust or controller changes, combined
 amendments, or changed verifier/dependency pins and resource caps. An explicitly
 adopted source-derived proof profile can admit only its exact listed additions;
 gate eligibility does not establish their correspondence with a standard.
+
+### Exact duplicate component-style cache correction
+
+The proposed #195 record covers exactly the three protected paths of
+`tile-component-style-cache`. Its literal profile was separately reviewed,
+adopted and deployed through #196. Fresh actual-main
+CI41119479082 and Verus41119479105 accepted exact deployment
+`9e577f1ebd075a8d81e81dbdcc82ac131c504ba9`: 325 Python tests without skips,
+3,519/0 per root and byte-bound archive replay, all 4,560 observed items
+unchanged and all normal gates. The #196 forward permission is spent.
+
+Exact source `e25716fce02bb0f50f56681a30a3621842cc4ef8` passed original
+CI41110257458 and Verus41110257409: 316 Python tests without skips,
+666 library plus six example tests and three doctests on the MSRV,
+3,519/0 per root/archive replay, 173 archive entries with 157 byte-bound Rust
+files and all existing numerical, HT, consumer and 65-record resource gates.
+All 4,560 prior observed project items remain identical; source-function
+coverage is not measured.
+
+The source replaces duplicated dense component-style snapshots with indices
+into retained payload owners. Its actual payload identity and inductive
+latest-owner/absence relations preserve inheritance, errors and native
+persistence. Models, decoder entry points, pins, resource thresholds, fixtures
+and oracle tolerances are unchanged. The related resource documentation is not
+a protected source amendment.
+
+Allocation attribution measured the duplicate cache at 1,901,056 bytes versus
+4,096 for the index cache. Three native same-input pairs moved selected/full
+RSS from 0.734-0.747 to 0.546-0.554; all 14 output hashes matched their original
+independent expectations. These are finite observations, not a universal bound.
+Instrumented heap measurements are not native resource-cap qualification.
+Original over-cap measurements remain retained; no infrastructure-flake cause
+or altered full-decode baseline is inferred.
+
+This proposal adds only the exact record below, preserving all nine prior
+record objects. It does not merge or review #195, approve #197/#198 or
+decomposition-resolution source, or establish normative correspondence.
+After normal record adoption, refresh #195 from accepted main and require fresh
+complete qualification, a ready policy check, separate source engineering
+review, normal guarded merge and actual-main acceptance.
 
 ### Source-derived packet metadata finalization
 
@@ -1200,6 +1241,29 @@ not independent human/normative approval; no publication is authorized.
         "validation/tests/test_framework.py": {
           "before": "988bfe0a7c7b39dbac2be6e171786b102ca3cfe1",
           "after": "e260337c210b0c1b7ab0d959b9fd6eebb630cea0"
+        }
+      }
+    },
+    {
+      "id": "proposal-195-component-style-cache",
+      "profile": "tile-component-style-cache",
+      "source_pr": 195,
+      "source_head": "e25716fce02bb0f50f56681a30a3621842cc4ef8",
+      "ci_run": 41110257458,
+      "verus_run": 41110257409,
+      "rationale": "Replace duplicate dense component-style snapshots by indices into retained payload owners; prove actual payload identity and latest-owner/absence invariants, preserving persistence, errors and outputs. Eligibility only, not source integration, a universal resource bound, normative correspondence or publication approval.",
+      "paths": {
+        "src/codestream/layout.rs": {
+          "before": "c91fb9df1748eaf10ae768f3e8c14db7b5e4d6a9",
+          "after": "bf51820d4ff7fb07a08f778f4930b01cec47a09a"
+        },
+        "src/codestream/tiles.rs": {
+          "before": "567f93406ade6a5c50af705d54b8cba899318c88",
+          "after": "52cb94617dc7a25420ec332b6646b62a54f2f258"
+        },
+        "src/codestream/tests.rs": {
+          "before": "76292936a11333af0afdd8570dfd3aeffda3f16a",
+          "after": "d8b26c92471551d87c57b555fca21644bd02b0cd"
         }
       }
     }
