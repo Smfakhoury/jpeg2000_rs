@@ -309,18 +309,18 @@ class FrameworkTests(WorkingFiles):
         ]
         requirement = coverage["requirements"][0]
         requirement["implementation_refs"] = [
-            {"path": "src/jpx.rs", "symbol": "inspect_file"},
-            {"path": "src/jpx.rs", "symbol": "render_inspected_frame"},
-            {"path": "src/jpx.rs", "symbol": "render_normalized_frame"},
-            {"path": "src/jpx.rs", "symbol": "render_decoded_layers"},
+            {"path": "src/jpx/inspection.rs", "symbol": "inspect_file"},
+            {"path": "src/jpx/render.rs", "symbol": "render_inspected_frame"},
+            {"path": "src/jpx/render.rs", "symbol": "render_normalized_frame"},
+            {"path": "src/jpx/render.rs", "symbol": "render_decoded_layers"},
             {"path": "src/color.rs", "symbol": "from_composited"},
         ]
         read_text = Path.read_text
         for relative, symbol, projection in (
-            ("src/jpx.rs", "render_decoded_layers", "crate::color::converted_image_result"),
-            ("src/jpx.rs", "select_frame_instructions", "frame_selection_result"),
-            ("src/jpx.rs", "build_timeline", "timeline_frames_result"),
-            ("src/jpx.rs", "render_normalized_frame", "crate::color::converted_image_result"),
+            ("src/jpx/render.rs", "render_decoded_layers", "crate::color::converted_image_result"),
+            ("src/jpx/timeline.rs", "select_frame_instructions", "frame_selection_result"),
+            ("src/jpx/timeline.rs", "build_timeline", "timeline_frames_result"),
+            ("src/jpx/render.rs", "render_normalized_frame", "crate::color::converted_image_result"),
             ("src/color.rs", "from_layer", "converted_image_result"),
             ("src/color.rs", "from_composited", "converted_image_result"),
         ):
@@ -587,7 +587,7 @@ class FrameworkTests(WorkingFiles):
                 ("part2_palette_modulus(precision)", "part2_palette_modulus(0)"),
             )),
             ("src/decode/output.rs", "invalid_jp2_output", None, "part2_color_input_error", ()),
-            ("src/image.rs", "typed_component_from_parts", "typed_component_value_view",
+            ("src/image/layout.rs", "typed_component_from_parts", "typed_component_value_view",
              "part2_typed_component_from_parts", (
                 ("width, height, info", "height, width, info"),
                 ("typed_samples_view(&samples)", "typed_samples_view(&unrelated)"),
@@ -643,8 +643,8 @@ class FrameworkTests(WorkingFiles):
 
     def test_inventory_binds_actual_packed_inputs_and_full_progression_results(self):
         support = {
-            ("src/packet.rs", "PacketGrid::selected_packet_count"),
-            ("src/packet.rs", "decode_progression_tile_packets"),
+            ("src/packet/progression.rs", "PacketGrid::selected_packet_count"),
+            ("src/packet/tile.rs", "decode_progression_tile_packets"),
         }
         recipes = {key: value for key, value in framework._PACKET_PROGRESSION_CONTRACTS.items() if key not in support}
         self._assert_complete_packet_contract_bindings({
@@ -1126,6 +1126,29 @@ class FrameworkTests(WorkingFiles):
         with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
             framework.validate_normative_coverage(coverage)
 
+    def test_module_definition_owner_ignores_unloaded_files_and_rejects_missing_or_ambiguous_definitions(self):
+        root = self.work / "module-owners"
+        directory = root / "src/example"
+        directory.mkdir(parents=True)
+        parent = root / "src/example.rs"
+        parent.write_text("mod live;\n")
+        live = directory / "live.rs"
+        live.write_text("pub fn exact() {}\n")
+        (directory / "unloaded.rs").write_text("pub fn exact() {}\n")
+        with mock.patch.object(framework, "ROOT", root):
+            self.assertEqual(
+                framework._coverage_definition_path("src/example.rs", "exact"),
+                "src/example/live.rs",
+            )
+            parent.write_text("mod live;\nmod duplicate;\n")
+            (directory / "duplicate.rs").write_text("pub fn exact() {}\n")
+            with self.assertRaisesRegex(ValueError, "exactly one executing definition"):
+                framework._coverage_definition_path("src/example.rs", "exact")
+            parent.write_text("mod live;\n")
+            live.write_text("pub fn renamed() {}\n")
+            with self.assertRaisesRegex(ValueError, "exactly one executing definition"):
+                framework._coverage_definition_path("src/example.rs", "exact")
+
     def _assert_relocated_test_bindings(self, entry_id, original_path, moved_path):
         coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         entry = next(item for item in coverage["requirements"]
@@ -1195,7 +1218,7 @@ class FrameworkTests(WorkingFiles):
             def actual_call(caller):
                 caller_source = (framework.ROOT / caller["path"]).read_text()
                 callee = reference["symbol"].rsplit("::", 1)[-1]
-                if caller["path"] == reference["path"] or reference["path"].startswith("src/decode/"):
+                if caller["path"] == reference["path"] or framework._coverage_child_module(reference["path"]):
                     return framework._coverage_same_file_call(caller_source, caller["symbol"], callee)
                 return re.search(rf"\b{re.escape(callee)}\s*\(", caller_source) is not None
 
@@ -1396,8 +1419,8 @@ class FrameworkTests(WorkingFiles):
                      if item["id"] == "part2-complete-native-container-selection-output")
         read_text = Path.read_text
         cases = (
-            ("src/codestream.rs", "ImageSize::tile_count", None, "part2_selection_tile_count", ("selection_geometry_view(&self)", "selection_geometry_view(unrelated)")),
-            ("src/codestream.rs", "ImageSize::tile_bounds", None, "part2_selection_tile_bounds", ("self), tile_index", "self), 0")),
+            ("src/codestream/geometry.rs", "ImageSize::tile_count", None, "part2_selection_tile_count", ("selection_geometry_view(&self)", "selection_geometry_view(unrelated)")),
+            ("src/codestream/geometry.rs", "ImageSize::tile_bounds", None, "part2_selection_tile_bounds", ("self), tile_index", "self), 0")),
             ("src/options.rs", "selection_from_parts", "decode_selection_value_view", "part2_selection_from_parts", ("region, discard_levels", "region, 0")),
             ("src/decode/arithmetic.rs", "ceil_div_u32", None, "part2_selection_ceil", ("value, divisor", "divisor, value")),
             ("src/decode/selection.rs", "tile_list_contains", None, "part2_tile_list_contains", ("tiles@, tile", "unrelated@, tile")),
@@ -1415,9 +1438,9 @@ class FrameworkTests(WorkingFiles):
             ("src/decode/output.rs", "convert_associated_color", "crate::color::converted_image_result", "part2_convert_associated", ("typed_image_value_view(*image)", "typed_image_value_view(*unrelated)")),
             ("src/decode/output.rs", "convert_associated_selected_color", "crate::color::converted_image_result", "part2_convert_associated_selected", ("header), target", "header), unrelated")),
             ("src/decode/output.rs", "finish_associated_selected_output", "crate::color::converted_image_result", "part2_finish_associated_selected_output", ("typed_image_value_view(decoded)", "typed_image_value_view(unrelated)")),
-            ("src/jp2.rs", "associated_header_for_codestream", "associated_header_outcome", "part2_associated_codestream_header", ("associated_header_view(fallback)", "associated_header_view(unrelated)")),
-            ("src/jp2.rs", "validate_container_codestream", None, "part2_validate_selected_header", ("header.image, codestream.image_size.width", "header.image, 0")),
-            ("src/jp2.rs", "validate_selected_header", None, "part2_validate_selected_header", ("codestream.image_size.uniform_signed, offset", "codestream.image_size.uniform_signed, 0")),
+            ("src/jp2/container.rs", "associated_header_for_codestream", "associated_header_outcome", "part2_associated_codestream_header", ("associated_header_view(fallback)", "associated_header_view(unrelated)")),
+            ("src/jp2/container.rs", "validate_container_codestream", None, "part2_validate_selected_header", ("header.image, codestream.image_size.width", "header.image, 0")),
+            ("src/jp2/container.rs", "validate_selected_header", None, "part2_validate_selected_header", ("codestream.image_size.uniform_signed, offset", "codestream.image_size.uniform_signed, 0")),
         )
         self.assertEqual(len(cases), 22)
         for relative, symbol, projection, model, argument in cases:
@@ -1693,7 +1716,7 @@ class FrameworkTests(WorkingFiles):
                 ("crate::limits::resource_component_limit(limits)", "0"),
                 ("crate::limits::resource_decoded_bytes_limit(limits)", "0"),
             )),
-            ("src/image.rs", "typed_image_from_components_with_origin", "decoded_typed_image_outcome",
+            ("src/image/layout.rs", "typed_image_from_components_with_origin", "decoded_typed_image_outcome",
              "part2_typed_image_from_parts", (
                 ("width, height, x_origin, y_origin", "height, width, x_origin, y_origin"),
                 ("width, height, x_origin, y_origin", "width, height, y_origin, x_origin"),
@@ -1701,7 +1724,7 @@ class FrameworkTests(WorkingFiles):
                 ("crate::limits::resource_component_limit(limits)", "0"),
                 ("crate::limits::resource_decoded_bytes_limit(limits)", "0"),
             )),
-            ("src/image.rs", "TypedImage::component", "typed_component_reference_output",
+            ("src/image/layout.rs", "TypedImage::component", "typed_component_reference_output",
              "part2_typed_image_component", (
                 ("typed_image_components(self)", "typed_image_components(unrelated)"),
                 ("typed_image_components(self)), index", "typed_image_components(self)), 0"),
@@ -1754,7 +1777,7 @@ class FrameworkTests(WorkingFiles):
                             mock.patch.object(Path, "read_text", altered), \
                             self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
                         framework.validate_normative_coverage(coverage)
-        coverage["requirements"][0]["contract_refs"] = [{"path": "src/image.rs", "symbol": "DecodedImage::component"}]
+        coverage["requirements"][0]["contract_refs"] = [{"path": "src/image/samples.rs", "symbol": "DecodedImage::component"}]
         with self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
             framework.validate_normative_coverage(coverage)
 
@@ -2148,7 +2171,7 @@ class FrameworkTests(WorkingFiles):
             if item["id"] == "part2-complete-native-palette-lookup"
         ]
         self.assertEqual(len(coverage["requirements"]), 1)
-        reference = {"path": "src/jp2.rs", "symbol": "Palette::value"}
+        reference = {"path": "src/jp2/color.rs", "symbol": "Palette::value"}
         self.assertIn(reference, coverage["requirements"][0]["contract_refs"])
         coverage["requirements"][0]["contract_refs"] = [reference]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
@@ -2185,11 +2208,11 @@ class FrameworkTests(WorkingFiles):
         original_coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
         read_text = Path.read_text
         for relative, symbol, projection, model, requirement in (
-            ("src/image.rs", "DecodedComponent::typed_samples", "decoded_typed_samples_outcome",
+            ("src/image/samples.rs", "DecodedComponent::typed_samples", "decoded_typed_samples_outcome",
              "part1_decoded_component_typed_samples", "part1-complete-decoded-typed-conversion"),
-            ("src/image.rs", "DecodedImage::typed", "decoded_typed_image_outcome",
+            ("src/image/samples.rs", "DecodedImage::typed", "decoded_typed_image_outcome",
              "part1_decoded_image_typed", "part1-complete-decoded-typed-conversion"),
-            ("src/packet.rs", "PacketPrecinctDecoder::decoder", "packet_decoder_outcome",
+            ("src/packet/precinct.rs", "PacketPrecinctDecoder::decoder", "packet_decoder_outcome",
              "part1_packet_precinct_decoder", "part1-complete-raw-packet-decoder-access"),
         ):
             coverage = copy.deepcopy(original_coverage)
@@ -2233,7 +2256,7 @@ class FrameworkTests(WorkingFiles):
             if item["id"] == "part15-numeric-magnitude-reader-state"
         ]
         self.assertEqual(len(coverage["requirements"]), 1)
-        producer = {"path": "src/tier1.rs", "symbol": "reconstruct_ht_magnitude"}
+        producer = {"path": "src/tier1/ht_cleanup.rs", "symbol": "reconstruct_ht_magnitude"}
         self.assertIn(producer, coverage["requirements"][0]["contract_refs"])
         coverage["requirements"][0]["contract_refs"] = [producer]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
@@ -2350,7 +2373,7 @@ class FrameworkTests(WorkingFiles):
             if item["id"] == "part15-complete-cleanup-metadata"
         ]
         self.assertEqual(len(coverage["requirements"]), 1)
-        producer = {"path": "src/tier1.rs", "symbol": "decode_ht_cleanup_segment_metadata"}
+        producer = {"path": "src/tier1/ht_metadata.rs", "symbol": "decode_ht_cleanup_segment_metadata"}
         self.assertIn(producer, coverage["requirements"][0]["contract_refs"])
         coverage["requirements"][0]["contract_refs"] = [producer]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
@@ -2408,7 +2431,7 @@ class FrameworkTests(WorkingFiles):
         ]
         self.assertEqual(len(coverage["requirements"]), 1)
         coverage["requirements"][0]["contract_refs"] = [
-            {"path": "src/tier1.rs", "symbol": "parse_ht_block_segments"}
+            {"path": "src/tier1/ht_segments.rs", "symbol": "parse_ht_block_segments"}
         ]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
         source = framework.ROOT / "src/tier1.rs"
@@ -2786,7 +2809,7 @@ impl HtReverseVlcReader {
             if item["id"] == "part2-jpx-composition-rendering"
         ]
         coverage["requirements"][0]["contract_refs"] = [{
-            "path": "src/jpx.rs", "symbol": "composite_placed_layer",
+            "path": "src/jpx/compositing.rs", "symbol": "composite_placed_layer",
         }]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
         read_text = Path.read_text
@@ -2814,8 +2837,8 @@ impl HtReverseVlcReader {
             if item["id"] == "part2-jpx-composition-rendering"
         ]
         entry = coverage["requirements"][0]
-        entry["contract_refs"] = [{"path": "src/jpx.rs", "symbol": "composite_placed_layer"}]
-        entry["implementation_refs"] = [{"path": "src/jpx.rs", "symbol": "render_decoded_layers"}]
+        entry["contract_refs"] = [{"path": "src/jpx/compositing.rs", "symbol": "composite_placed_layer"}]
+        entry["implementation_refs"] = [{"path": "src/jpx/render.rs", "symbol": "render_decoded_layers"}]
         self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
         for symbol in ("index_of", "render_jpx_frame", "composite_placed_layer"):
             entry["implementation_refs"] = [{"path": "src/jpx.rs", "symbol": symbol}]
